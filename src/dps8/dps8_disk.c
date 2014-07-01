@@ -253,6 +253,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
         case 025: // CMD 25 READ
           {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Read\n");
 //sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
@@ -367,6 +368,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 030: // CMD 30 SEEK_512
           {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Seek512\n");
 //sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
@@ -447,6 +449,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 031: // CMD 31 WRITE
           {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Write\n");
 //sim_printf ("disk write [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
@@ -548,6 +551,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 034: // CMD 34 SEEK
           {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Seek\n");
 //sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
@@ -630,6 +634,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 042: // CMD 42 RESTORE
           {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Restore\n");
             stati = 04000;
           }
           break;
