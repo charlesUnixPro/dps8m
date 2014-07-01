@@ -15,6 +15,7 @@
 #include "dps8_disk.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "sim_disk.h"
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -37,6 +38,10 @@
  at http://example.org/project/LICENSE.
  */
 
+
+// assuming 512 word36  sectors; and seekPosition is seek512
+#define SECTOR_SZ_IN_W36 512
+#define SECTOR_SZ_IN_BYTES ((36 * SECTOR_SZ_IN_W36) / 8)
 
 #define M3381_SECTORS 6895616
 // records per subdev: 74930 (127 * 590)
@@ -65,24 +70,26 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp);
 
 static t_stat disk_svc (UNIT *);
 
+#define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
+                     UNIT_IDLE | DKUF_F_RAW)
 static UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, & disk_svc},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
@@ -134,8 +141,8 @@ DEVICE disk_dev = {
     NULL,         /* deposit */ 
     disk_reset,   /* reset */
     NULL,         /* boot */
-    attach_unit,  /* attach */
-    detach_unit,  /* detach */
+    NULL,         /* attach */
+    NULL,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
@@ -151,6 +158,7 @@ DEVICE disk_dev = {
 static struct disk_state
   {
     enum { no_mode, seek512_mode, read_mode } io_mode;
+    uint seekPosition;
   } disk_state [N_DISK_UNITS_MAX];
 
 static struct
@@ -245,7 +253,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
         case 025: // CMD 25 READ
           {
-sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -257,7 +265,7 @@ sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("read  got type %d\n", dcw . type);
+//sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -267,7 +275,7 @@ sim_printf ("read  got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            // uint daddr = dcw.fields.ddcw.daddr;
+            uint daddr = dcw.fields.ddcw.daddr;
             // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
@@ -295,14 +303,71 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
+//sim_printf ("tally %d\n", tally);
+
+            rc = fseek (unitp -> fileref, 
+                        disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                        SEEK_SET);
+            if (rc)
+              {
+                sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+                stati = 04202; // attn, seek incomplete
+                break;
+              }
+
+            // Convert from word36 format to packed72 format
+
+            // round tally up to sector boundary
+            
+            // this math assumes tally is even.
+           
+            uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                                SECTOR_SZ_IN_W36;
+            uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+            uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+            uint p72ByteCnt = (tallyWords * 36) / 8;
+            uint8 buffer [p72ByteCnt];
+            memset (buffer, 0, sizeof (buffer));
+            rc = fread (buffer, SECTOR_SZ_IN_BYTES,
+                        tallySectors,
+                        unitp -> fileref);
+
+            if (rc == 0) // eof; reading a sector beyond the high water mark.
+              {
+                // okay; buffer was zero, so just pretend that a zero filled
+                // sector was read (ala demand page zero)
+              }
+            else if (rc != (int) tallySectors)
+              {
+                sim_printf ("read returned %d, errno %d\n", rc, errno);
+                stati = 04202; // attn, seek incomplete
+                break;
+              }
+//sim_printf ("tallySectors %u\n", tallySectors);
+//sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
+//for (uint i = 0; i < p72ByteCnt; i += 9)
+//{ word36 w1 = extr (& buffer [i / 9], 0, 36);
+  //word36 w2 = extr (& buffer [i / 9], 36, 36);
+  //sim_printf ("%5d %012llo %012llo\n", i * 2 / 9, w1, w2);
+//}
+//sim_printf ("read seekPosition %d\n", disk_statep -> seekPosition);
+//sim_printf ("buffer 0...\n");
+//for (uint i = 0; i < 9; i ++) sim_printf (" %03o", buffer [i]);
+//sim_printf ("\n");
+            disk_statep -> seekPosition += tallySectors;
+
+            uint wordsProcessed = 0;
+            for (uint i = 0; i < tally; i ++)
+              extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
+                                       & M [daddr + i]);
+//for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
             stati = 04000;
           }
           break;
 
         case 030: // CMD 30 SEEK_512
           {
-sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -314,7 +379,7 @@ sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("seek  got type %d\n", dcw . type);
+//sim_printf ("seek  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -324,7 +389,7 @@ sim_printf ("seek  got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            // uint daddr = dcw.fields.ddcw.daddr;
+            uint daddr = dcw.fields.ddcw.daddr;
             // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
@@ -352,14 +417,37 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
-            stati = 04000;
+            // Seek specific processing
+
+            if (tally != 1)
+              {
+                sim_printf ("disk seek dazed by tally %d != 1\n", tally);
+                stati = 04510; // Cmd reject, invalid inst. seq.
+                break;
+              }
+
+            word36 seekData = M [daddr];
+//sim_printf ("seekData %012llo\n", seekData);
+// Observations about the seek/write stream
+// the stream is seek512 followed by a write 1024.
+// the seek data is:  000300nnnnnn
+// lets assume the 3 is a copy of the seek cmd # as a data integrity check.
+// highest observed n during vol. inoit. 272657(8) 95663(10)
+//
+
+// disk_control.pl1: 
+//   quentry.sector = bit (sector, 21);  /* Save the disk device address. */
+// suggests seeks are 21 bits.
+//  
+            disk_statep -> seekPosition = seekData & MASK21;
+//sim_printf ("seek seekPosition %d\n", disk_statep -> seekPosition);
+            stati = 00000; // Channel ready
           }
           break;
 
-        case 033: // CMD 33 WRITE AND COMPARE
+        case 031: // CMD 31 WRITE
           {
-sim_printf ("disk write&cmp [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk write [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -371,7 +459,7 @@ sim_printf ("disk write&cmp [%lld]\n", sys_stats . total_cycles);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("write got type %d\n", dcw . type);
+//sim_printf ("write got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -381,7 +469,7 @@ sim_printf ("write got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            // uint daddr = dcw.fields.ddcw.daddr;
+            uint daddr = dcw.fields.ddcw.daddr;
             // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
@@ -409,14 +497,58 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
+//sim_printf ("tally %d\n", tally);
+
+            rc = fseek (unitp -> fileref, 
+                        disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                        SEEK_SET);
+//sim_printf ("write seekPosition %d\n", disk_statep -> seekPosition);
+            if (rc)
+              {
+                sim_printf ("fseek (write) returned %d, errno %d\n", rc, errno);
+                stati = 04202; // attn, seek incomplete
+                break;
+              }
+
+            // Convert from word36 format to packed72 format
+
+            // round tally up to sector boundary
+            
+            // this math assumes tally is even.
+           
+            uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                                SECTOR_SZ_IN_W36;
+            uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+            uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+            uint p72ByteCnt = (tallyWords * 36) / 8;
+            uint8 buffer [p72ByteCnt];
+            memset (buffer, 0, sizeof (buffer));
+            uint wordsProcessed = 0;
+            for (uint i = 0; i < tally; i ++)
+              insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
+                                    M [daddr + i]);
+
+            rc = fwrite (buffer, SECTOR_SZ_IN_BYTES,
+                         tallySectors,
+                         unitp -> fileref);
+                       
+            if (rc != (int) tallySectors)
+              {
+                sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
+                stati = 04202; // attn, seek incomplete
+                break;
+              }
+
+            disk_statep -> seekPosition += tallySectors;
+
             stati = 04000;
           }
+//exit(1);
           break;
 
-        case 034: // CMD 30 SEEK
+        case 034: // CMD 34 SEEK
           {
-sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -428,7 +560,7 @@ sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("seek  got type %d\n", dcw . type);
+//sim_printf ("seek  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -447,7 +579,7 @@ sim_printf ("seek  got type %d\n", dcw . type);
               * disc = false;
             else
               {
-sim_printf ("uncomfortable with this\n");
+//sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
@@ -466,7 +598,7 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
+//sim_printf ("tally %d\n", tally);
             stati = 04000;
           }
           break;
@@ -496,10 +628,16 @@ sim_printf ("tally %d\n", tally);
           }
           break;
 
+        case 042: // CMD 42 RESTORE
+          {
+            stati = 04000;
+          }
+          break;
+
         default:
           {
 sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
-            stati = 04000;
+            stati = 04501; // cmd reject, invalid opcode
           }
           break;
       

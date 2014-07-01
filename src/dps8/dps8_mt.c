@@ -93,7 +93,6 @@
 #include "dps8_iom.h"
 #include "dps8_mt.h"
 
-static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp);
 static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -613,24 +612,6 @@ static t_stat mt_svc (UNIT * unitp)
     return SCPE_OK;
   }
     
-
-static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
-  {
-    uint wp = * words_processed; // How many words have been processed
-
-    // 2 dps8m words == 9 bytes
-
-    uint bytes_processed = (wp * 9 + 1) / 2;
-    if (bytes_processed >= tbc)
-      return 1;
-    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
-
-    * wordp = extr36 (bufp, wp);
-    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
-    (* words_processed) ++;
-
-    return 0;
-  }
 
 #if 0
 static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_code, uint * tally, uint * __attribute__((unused)) cp, word36 * wordp, word12 * stati)

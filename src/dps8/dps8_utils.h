@@ -79,3 +79,5 @@ word18 extr18 (uint8 * bits, uint coffset);
 uint8 getbit (void * bits, int offset);
 t_uint64 extr (void * bits, int offset, int nbits);
 void put36 (word36 val, uint8 * bits, uint woffset);
+int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp);
+int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 wordp);

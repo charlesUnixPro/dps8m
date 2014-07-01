@@ -1659,4 +1659,39 @@ t_uint64 extr (void * bits, int offset, int nbits)
     return n;
   }
 
+int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
+  {
+    uint wp = * words_processed; // How many words have been processed
+
+    // 2 dps8m words == 9 bytes
+
+    uint bytes_processed = (wp * 9 + 1) / 2;
+    if (bytes_processed >= tbc)
+      return 1;
+    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+
+    * wordp = extr36 (bufp, wp);
+    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    (* words_processed) ++;
+
+    return 0;
+  }
+
+int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 word)
+  {
+    uint wp = * words_processed; // How many words have been processed
+
+    // 2 dps8m words == 9 bytes
+
+    uint bytes_processed = (wp * 9 + 1) / 2;
+    if (bytes_processed >= tbc)
+      return 1;
+    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+
+    put36 (word, bufp, wp);
+    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    (* words_processed) ++;
+
+    return 0;
+  }
 

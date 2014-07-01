@@ -111,6 +111,7 @@
 #define SETHI72(a,b)	(a &= MASK36, a |= ((((word72)(b) & MASK36)) << 36))
 #define SETLO72(a,b)	(a &= MASK36 << 36, a |= ((word72)(b) & MASK36))
 
+#define MASK21 07777777llu
 #define MASK27 0777777777llu
 
 // the 2 following may need some work........
