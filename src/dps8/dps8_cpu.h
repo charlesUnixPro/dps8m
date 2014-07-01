@@ -911,7 +911,7 @@ extern ctl_unit_data_t cu;
 
 // Control unit data (288 bits) 
 
-typedef struct
+typedef struct du_unit_data_t
   {
     // Word 0
     
@@ -942,9 +942,9 @@ typedef struct
                       //    30  1   I       Decimal unit interrupted flag; a 
                       //                      copy of the mid-instruction
                       //                      interrupt fault indicator
-    word1 F1;         //    31  1   F1      First time; data in operand 
+    // word1 F1;      //    31  1   F1      First time; data in operand 
                       //                      descriptor 1 is valid
-    word1 A1;         //    32  1   A1      Operand descriptor 1 is active
+    // word1 A1;      //    32  1   A1      Operand descriptor 1 is active
                       // 33-35  3   Zeroes
 
     // Word 3
@@ -968,9 +968,9 @@ typedef struct
                       // 27-29  3   Zeroes
     word1 R;          //    30  1   R       Last cycle performed must be 
                       //                    repeated
-    word1 F2;         //    31  1   F2      First time; data in operand 
+    // word1 F2;      //    31  1   F2      First time; data in operand 
                       //                      descriptor 2 is valid
-    word1 A2;         //    32  1   A2      Operand descriptor 2 is active
+    // word1 A2;      //    32  1   A2      Operand descriptor 2 is active
                       // 33-35  3   Zeroes
 
     // Word 5
@@ -994,9 +994,9 @@ typedef struct
                       //                      repeated
                       //                    [XXX: what is the difference between
                       //                      this and word4.R]
-    word1 F3;         //    31  1   F3      First time; data in operand 
+    // word1 F3;      //    31  1   F3      First time; data in operand 
                       //                      descriptor 3 is valid
-    word1 A3;         //    32  1   A3      Operand descriptor 3 is active
+    // word1 A3;      //    32  1   A3      Operand descriptor 3 is active
     word1 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
                       //                      to skip to find the next
                       //                      instruction following this 
@@ -1009,29 +1009,34 @@ typedef struct
                       //                      operand descriptor 3
 
     // Fields from above reorganized for generality
-    word2 TA [3];
+    word2 TAk [3];
 
 // D_PTR is a word24 divided into a 18 bit address, and a 6-bit bitno/char 
 // field
 
-//    word24 D_PTR [3];
-//#define D1_PTR D_PTR [0]
-//#define D2_PTR D_PTR [1]
-//#define D3_PTR D_PTR [2]
-    word18 D_PTR_W [3];
-#define D1_PTR_W D_PTR_W [0]
-#define D2_PTR_W D_PTR_W [1]
-#define D3_PTR_W D_PTR_W [2]
-    word6 D_PTR_B [3];
-#define D1_PTR_B D_PTR_B [0]
-#define D2_PTR_B D_PTR_B [1]
-#define D3_PTR_B D_PTR_B [2]
+    word18 Dk_PTR_W [3];
+#define D1_PTR_W Dk_PTR_W [0]
+#define D2_PTR_W Dk_PTR_W [1]
+#define D3_PTR_W Dk_PTR_W [2]
 
-    word24 /* D_RES */ N [3];
-#define D_RES N
-#define D1_RES N [0]
-#define D2_RES N [1]
-#define D3_RES N [2]
+    word6 Dk_PTR_B [3];
+#define D1_PTR_B Dk_PTR_B [0]
+#define D2_PTR_B Dk_PTR_B [1]
+#define D3_PTR_B Dk_PTR_B [2]
+
+    word24 Dk_RES [3];
+#define D_RES Dk_RES
+#define D1_RES Dk_RES [0]
+#define D2_RES Dk_RES [1]
+#define D3_RES Dk_RES [2]
+
+    word1 Fk [3];
+//#define F Fk
+#define F1 Fk [0]
+#define F2 Fk [0]
+#define F3 Fk [0]
+
+    word1 Ak [3];
 
     // Working storage for EIS instruction processing.
 

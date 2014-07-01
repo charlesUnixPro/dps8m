@@ -1131,9 +1131,9 @@ t_stat sim_instr (void)
         case JMP_REENTRY:
             reason = 0;
             break;
-#if 0
         case JMP_NEXT:
-            goto jmpNext;
+            goto nextInstruction;
+#if 0
         case JMP_RETRY:
             goto jmpRetry;
         case JMP_TRA:
@@ -1176,14 +1176,11 @@ t_stat sim_instr (void)
                                      // Acutally have FETCH jump to EXECUTE
                                      // instead of breaking.
 
-        if (rTR)
+        rTR = (rTR - 1) & MASK27;
+        if (rTR == MASK27) // passing thorugh 0...
           {
-            rTR = (rTR - 1) & MASK27;
-            if (rTR == 0) // passing thorugh 0...
-              {
-                if (switches . tro_enable)
-                  setG7fault (timer_fault);
-              }
+            if (switches . tro_enable)
+              setG7fault (timer_fault);
           }
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
@@ -1408,7 +1405,8 @@ t_stat sim_instr (void)
                 setCpuCycle (FETCH_cycle);
                 break;
 
-syncFaultReturn:
+nextInstruction:;
+syncFaultReturn:;
                 PPR.IC ++;
                 xec_side_effect = 0;
                 setCpuCycle (FETCH_cycle);

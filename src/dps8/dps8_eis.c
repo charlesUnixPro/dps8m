@@ -20,7 +20,18 @@
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 
-static word36 getMFReg (int n, bool RType);
+#ifdef DBGF
+// debugging
+static word18 dbgAddr0;
+static word36 dbgData0;
+static word18 dbgAddr1;
+static word36 dbgData1;
+#endif
+
+static word36 getMFReg (int n, bool RType, bool allowDUL);
+static word4 get4 (word36 w, int pos);
+static word6 get6 (word36 w, int pos);
+static word9 get9 (word36 w, int pos);
 
 struct MOPstruct
 {
@@ -129,8 +140,18 @@ static void unpackCharBit (word6 D_PTR_B, word3 TAk, uint * effCHAR, uint * effB
 //
 
 // CANFAULT
-static void setupOperandDesc (int k)
+
+static void mySetupOperandDesc (int k)
   {
+
+// mySetupOperandDesc fills in the following:
+//
+//   du . MFk
+//   du . Dk_PTR_W  -- The *pre-indirect* operand address
+//   du . Dk_RES
+//   du . Fk       <-- true
+//   du . Ak       <-- true
+
 // temp while buggy
 word15 saveTSR = TPR . TSR;
 word3 saveTRR = TPR . TRR;
@@ -138,7 +159,8 @@ word3 saveTRR = TPR . TRR;
 // XXX restart: only do this if the valid bit[k] is not set
     DCDstruct * ci = & currentInstruction;
 
-sim_debug (DBG_TRACE, & cpu_dev, "CAC k %d IWB %012llo\n", k, cu . IWB);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %d IWB %012llo\n", k, cu . IWB);
     word7 MFk;
     uint opType;
     switch (k)
@@ -158,16 +180,45 @@ sim_debug (DBG_TRACE, & cpu_dev, "CAC k %d IWB %012llo\n", k, cu . IWB);
       }
     du . MF [k - 1] = MFk;
 
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %u MFk %o\n", k, MFk);
+
     word36 operandDesc;
 
     // CANFAULT
-    Read (PPR . IC + k, & operandDesc, OPERAND_READ, 0);
-sim_debug (DBG_TRACE, & cpu_dev, "CAC first operand desc [%d] %012llo\n", k, operandDesc);
+    Read (PPR . IC + k, & operandDesc, OPERAND_READ, false);
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %u 1: opd %012llo\n",
+               k, operandDesc);
+
+    du . Dk_PTR_W [k - 1] = GETHI (operandDesc);
+
+// operandDesc is either the operand descriptor, or the address of it.
+
     // operandDesc is either the operand descriptor, or a pointer to it
+
+// Numbers are from RJ78, Figure 5-2.
+
+
+    word18 address = GETHI (operandDesc);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %u 1: address %06o\n",
+               k, address);
+
+    TPR . TSR = PPR . PSR;
+    TPR . TRR = PPR . PRR;
+
+    word8 ARn_CHAR = 0;
+    word6 ARn_BITNO = 0;
+
+    // 2
 
     if (MFk & MFkID)
       {
-sim_debug (DBG_TRACE, & cpu_dev, "CAC indirect\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "mySetupOperandDesc k %u 2: MFkID\n", k);
+
         // Indirect descriptor control. If ID = 1 for Mfk, then the kth word
         // following the instruction word is an indirect pointer to the operand
         // descriptor for the kth operand; otherwise, that word is the operand
@@ -179,23 +230,36 @@ sim_debug (DBG_TRACE, & cpu_dev, "CAC indirect\n");
         // Figure 4-5.
 
         bool a = operandDesc & (1 << 6); 
-        word18 address;
-        word3 prn;
-        word15 offset;
-        if (a)
+        
+        if (a)  // 3
           {
-            // A 3-bit pointer register number (n) and a 15-bit offset 
-            // relative to C (PRn . WORDNO)
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "mySetupOperandDesc k %u 3: a\n", k);
 
-            prn = GET_PRN (operandDesc);
-            offset = GET_OFFSET (operandDesc);
-            address = (PR [prn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
-          }
-        else
-          {
-            prn = 0;
-            offset = 0;
-            address = GETHI (operandDesc);
+            // A 3-bit pointer register number (n) and a 15-bit offset 
+            // relative to C (ARn . WORDNO)
+
+            // 4
+
+            word3 arn = GET_PRN (operandDesc);
+            word15 offset = GET_OFFSET (operandDesc);
+            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+
+            if (get_addr_mode () == APPEND_mode)
+              {
+                TPR . TSR = AR [arn] . SNR;
+                TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
+              }
+
+            ARn_CHAR = GET_AR_CHAR (arn); // AR[n].CHAR;
+            ARn_BITNO = GET_AR_BITNO (arn); // AR[n].BITNO;
+
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "mySetupOperandDesc k %u 4: arn %u offset %05u address %06u\n",
+              k, arn, offset, address);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "mySetupOperandDesc k %u 4: TSR %u TRR %u CHAR %u BITNO %u\n",
+              k, TPR . TSR, TPR . TRR, ARn_CHAR, ARn_BITNO);
           }
 
         // Address modifier for ADDRESS. All register modifiers except du and
@@ -203,29 +267,117 @@ sim_debug (DBG_TRACE, & cpu_dev, "CAC indirect\n");
         // 18-bit offset relative to value of the instruction counter for the
         // instruction word. C(REG) is always interpreted as a word offset. 
 
+        // 5, 6
+
         word4 reg = GET_TD (operandDesc);
-        address += getMFReg (reg, true);
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "mySetupOperandDesc k %u 5: reg %u getMFReg %llu\n",
+              k, reg, getMFReg (reg, true, false));
+
+        address += getMFReg (reg, true, false);
         address &= MASK18;
 
-        if (a)
-          {
-            TPR . TRR = max3 (PR [prn] . RNR, TPR . TRR, PPR . PRR);
-            TPR . TSR = PR [prn] . SNR;
-          }
-        else
-          {
-            TPR . TRR = PPR . PRR;
-            TPR . TSR = PPR . PSR;
-          }
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "mySetupOperandDesc k %u 6: addr %08u\n",
+              k, address);
+
+        // 7
 
         // CANFAULT
         Read (address, & operandDesc, EIS_OPERAND_READ, a);
-      }
-    // operandDesc is now the operand descriptor
 
-    word18 address = GETHI (operandDesc);
-sim_debug (DBG_TRACE, & cpu_dev, "CAC first address [%d] %06o\n", k, address);
-    //du . D_PTR_W [k - 1] = address;
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %u 7: opd %012llo\n",
+               k, operandDesc);
+      }
+
+// We now have the actual operand descriptor.
+
+    // 8
+
+    if (MFk & MFkAR)
+      {
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "mySetupOperandDesc k %u 8: MFkAR\n", k);
+
+        // 9
+
+        word3 arn = (address >> 15) & MASK3;
+        word15 offset = address & MASK15;
+        address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+
+#if 0 // we are not actually going to do the read
+        if (get_addr_mode () == APPEND_mode)
+          {
+            TPR . TSR = AR [arn] . SNR;
+            TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
+          }
+#endif
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "mySetupOperandDesc k %u 9: arn %u offset %05u address %06u\n",
+          k, arn, offset, address);
+      }
+
+    //  10, 11
+
+    int reg = MFk & MFkREGMASK;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "mySetupOperandDesc k %u 10: reg %u getMFReg %llu\n",
+          k, reg, getMFReg (reg, false, false));
+
+    address += getMFReg (reg, false, false);
+    address &= 0777777;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+        "mySetupOperandDesc k %u 11: addr %08u\n",
+        k, address);
+
+    du . TAk [k - 1] = bitfieldExtract36 (operandDesc, 13, 2);
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+        "mySetupOperandDesc k %u 12: TAk %u\n",
+        k, du . TAk [k - 1]);
+
+    //du . Dk_PTR_B [k - 1] = bitfieldExtract36 (operandDesc, 15, 3); // CNk
+    if (MFk & MFkRL)
+      {
+        uint reg = operandDesc & MFkREGMASK;
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "mySetupOperandDesc k %u 13: reg %u getMFReg %llu\n",
+          k, reg, getMFReg (reg, false, false));
+
+        du . Dk_RES [k - 1] = getMFReg (reg, false, false);
+
+        switch (du . TAk [k - 1])
+          {
+            case CTA4:
+              du . Dk_RES [k - 1] &= 017777777; ///< 22-bits of length
+              break;
+
+            case CTA6:
+            case CTA9:
+              du . Dk_RES [k - 1] &= 07777777;  ///< 21-bits of length.
+              break;
+
+            default:
+              sim_printf ("mySetupOperandDesc (ta=%d) How'd we get here 1?\n", du . TAk [k - 1]);
+              break;
+          }
+      }
+    else
+      du . Dk_RES [k - 1] = operandDesc & 07777;
+
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "mySetupOperandDesc k %u 14: Dk_RES %u\n",
+      k, du . Dk_RES [k - 1]);
+
+    du . Fk [k - 1] = 1; // First time
+    du . Ak [k - 1] = 1; // Active
 
 //
 // cmpc
@@ -326,127 +478,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "CAC first address [%d] %06o\n", k, address);
 // XXX btd op1 must be Y-char9; but there is no definition of
 // what happens if is different.
 
-    if (opType == EOP_ALPHA)
-      {
-        word8 ARn_CHAR = 0;
-        word6 ARn_BITNO = 0;
-
-        if (MFk & MFkAR)
-          {
-sim_debug (DBG_TRACE, & cpu_dev, "CAC MFkAR\n");
-            // If MKf contains AR then it Means Y-charn is not the memory 
-            // address of the data but is a reference to a pointer register 
-            // pointing to the data.
-
-            word3 arn = (address >> 15) & MASK3;
-            word15 offset = address & MASK15;
-            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
-        
-            ARn_CHAR = GET_AR_CHAR (arn); // AR[n].CHAR;
-            ARn_BITNO = GET_AR_BITNO (arn); // AR[n].BITNO;
-sim_debug (DBG_TRACE, & cpu_dev, "arn %d offset %05o ARn.WORDNO %o06o\n", arn, offset, AR [arn] . WORDNO);
-          }
-
-        word3 CN = getbits36 (operandDesc, 18, 3); 
-        word2 TAk = getbits36 (operandDesc, 21, 2); 
-        du . TA [k - 1] = TAk;
-
-        if (MFk & MFkRL)
-          {
-sim_debug (DBG_TRACE, & cpu_dev, "CAC MFkRL\n");
-            int reg = GET_TD (operandDesc);
-            du . D_RES [k - 1] = getMFReg (reg, false);
-            switch (TAk)
-              {
-                case CTA4:
-                  du . D_RES [k - 1] &= 017777777; // 22-bits of length
-                  break;
-                case CTA6:
-                case CTA9:
-                  du . D_RES [k - 1] &= 07777777;  // 21-bits of length.
-                  break;
-                default:
-                  // Technically, ill_proc should be "illegal eis modifier",
-                  // but the Fault Register has no such bit; the Fault
-                  // register description says ill_proc is anything not
-                  // handled by other bits.
-                  doFault (illproc_fault, ill_proc, "illegal TAk");
-              }
-          }
-        else
-          {
-            du . D_RES [k - 1] = operandDesc & 07777;
-          }
-
-        int r = SIGNEXT18 ((word18) getMFReg (MFk & 017, true));
-    
-        // AL-39 implies, and RJ-76 say that RL and reg == IC is
-        // illegal; but it the emulator ignores RL if reg == IC,
-        // then that PL/I generated code in Multics works. 
-        // "Pragmatic debugging."
-
-        if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4) // reg == IC ?
-          {
-            // The ic modifier is permitted in MFk.REG and 
-            // C (od)32,35 only if MFk.RL = 0, that is, if the 
-            // contents of the register is an address offset, 
-            // not the designation of a register containing the 
-            // operand length.
-            address += r;
-            r = 0;
-          }
-
-sim_debug (DBG_TRACE, & cpu_dev, "CAC second address [%d] %06o\n", k, address);
-
-        uint effBITNO;
-        uint effCHAR;
-        uint effWORDNO;
-  
-        // If seems that the effect address calcs given in AL39 p.6-27 are 
-        // not quite right.
-        // E.g. For CTA4/CTN4 because of the 4 "slop" bits you need to do 
-        // 32-bit calcs not 36-bit!
-
-        switch (TAk)
-          {
-            case CTA4:
-              effBITNO = 4 * (ARn_CHAR + 2*r + ARn_BITNO/4) % 2 + 1;
-              effCHAR = ((4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) % 32) / 4;
-              effWORDNO = address + 
-                          (4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) / 32;
-              effWORDNO &= AMASK;
-            
-              //e->YChar4[k-1] = e->effWORDNO;
-              //e->CN[k-1] = e->effCHAR;
-              break;
-            case CTA6:
-              effBITNO = (9 * ARn_CHAR + 6 * r + ARn_BITNO) % 9;
-              effCHAR = ((6 * CN + 9 * ARn_CHAR + 6 * r + ARn_BITNO) % 36) / 6;
-              effWORDNO = address + 
-                          (6 * CN + 9 * ARn_CHAR + 6 * r + ARn_BITNO) / 36;
-              effWORDNO &= AMASK;
-            
-              //e->YChar6[k-1] = e->effWORDNO;
-              //e->CN[k-1] = e->effCHAR;   // ??????
-              break;
-            case CTA9:
-              CN = (CN >> 1) & 03;  // XXX Do error checking
-            
-              effBITNO = 0;
-              effCHAR = (CN + ARn_CHAR + r) % 4;
-              effWORDNO = address +
-                          (9 * CN + 9 * ARn_CHAR + 9 * r + ARn_BITNO) / 36;
-              effWORDNO &= AMASK;
-            
-              //e->YChar9[k-1] = e->effWORDNO;
-              //e->CN[k-1] = e->effCHAR;   // ??????
-              break;
-          }
-    
-sim_debug (DBG_TRACE, & cpu_dev, "CAC third address [%d] %06o\n", k, effWORDNO);
-        du . D_PTR_W [k - 1] = effWORDNO;
-        packCharBit (& du . D_PTR_B [k - 1], TAk, effCHAR, effBITNO);
-      } // opType == EOP_ALPHA
 // temp  while buggy
 TPR . TSR = saveTSR;
 TPR . TRR = saveTRR;
@@ -464,10 +495,10 @@ void doEIS_CAF (void)
         return;
       }
 
-    setupOperandDesc (1);
-    setupOperandDesc (2);
+    mySetupOperandDesc (1);
+    mySetupOperandDesc (2);
     if (ndes == 3)
-      setupOperandDesc (3);
+      mySetupOperandDesc (3);
   }
 #endif
 
@@ -495,27 +526,355 @@ static void EISWrite(EISaddr *p, word36 data)
     }
 }
 
-#ifdef DBXF
-static word36 myEISRead (int k)
+#ifdef DBGF
+static void myEISDevelop (uint k, uint opType, uint pos,
+                          uint * addr, bool * ind)
   {
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "%s k %u opType %u pos %u\n", __func__, k, opType, pos);
 
-// Form effective word/char/bit
-//       address from
-//  Y, CN, C, B, C(PRn), C(r )
+    word36 operandDesc;
 
-    word36 data;
+    TPR . TSR = PPR . PSR;
+    TPR . TRR = PPR . PRR;
+    // CANFAULT
+    Read (PPR . IC + k, & operandDesc, OPERAND_READ, false);
+// Numbers are from RJ78, Figure 5-2.
+
     word7 MFk = du . MF [k - 1];
-#if 0
-    if (MFk & MFkAR)
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "%s k %u MFk %o\n", __func__, k, MFk);
+
+    word18 address = du . Dk_PTR_W [k - 1];
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "%s k %u 1: address %06o\n",
+               __func__, k, address);
+
+    word8 ARn_CHAR = 0;
+    word6 ARn_BITNO = 0;
+
+    if (MFk & MFkID)  // 2
       {
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "%s k %u 2: MFkID\n", __func__, k);
+
+        bool a = operandDesc & (1 << 6); 
+        if (a) // 3
+          {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "%s k %u 3: a\n", __func__, k);
+
             // If MKf contains AR then it Means Y-charn is not the memory 
             // address of the data but is a reference to a pointer register 
             // pointing to the data.
 
+            // 4
+
             word3 arn = (address >> 15) & MASK3;
             word15 offset = address & MASK15;
             address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
-#endif   
+
+            if (get_addr_mode () == APPEND_mode)
+              {
+                TPR . TSR = AR [arn] . SNR;
+                TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
+              }
+            ARn_CHAR = GET_AR_CHAR (arn); // AR[n].CHAR;
+            ARn_BITNO = GET_AR_BITNO (arn); // AR[n].BITNO;
+
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "%s k %u 4: arn %u offset %05u address %06u\n",
+              __func__, k, arn, offset, address);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "%s k %u 4: TSR %u TRR %u CHAR %u BITNO %u\n",
+              __func__, k, TPR . TSR, TPR . TRR, ARn_CHAR, ARn_BITNO);
+          }
+
+
+        // 5, 6
+
+        int reg = MFk & MFkREGMASK;
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "%s k %u 5: reg %u getMFReg %llu\n",
+              __func__, k, reg, getMFReg (reg, false, false));
+
+        address += getMFReg (reg, false, false);
+        address &= 0777777;
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "%s k %u 6: addr %08u\n",
+              __func__, k, address);
+
+        // 7
+
+        Read (address, & operandDesc, EIS_OPERAND_READ, a);  // read operand
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "%s k %u 7: opd %012llo\n",
+               __func__, k, operandDesc);
+      }
+
+    // 8
+
+    bool a = MFk & MFkAR;
+    if (a)
+      {
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "%s k %u 8: MFkAR\n", __func__, k);
+
+        // 9
+
+        word3 arn = (address >> 15) & MASK3;
+        word15 offset = address & MASK15;
+        address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+
+        if (get_addr_mode () == APPEND_mode)
+          {
+            TPR . TSR = AR [arn] . SNR;
+            TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
+          }
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "%s k %u 9: arn %u offset %05u address %06u\n",
+          __func__, k, arn, offset, address);
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "%s k %u 9: TSR %o TSR %o\n",
+          __func__, k, TPR . TSR, TPR . TRR);
+      }
+
+    //  10, 11
+
+    int reg = MFk & MFkREGMASK;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "%s k %u 10: reg %u getMFReg %llu\n",
+          __func__, k, reg, getMFReg (reg, false, false));
+
+    address += getMFReg (reg, false, false);
+    address &= 0777777;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+        "%s k %u 11: addr %08u\n",
+        __func__, k, address);
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+        "%s k %u 12: TAk %u\n",
+        __func__, k, du . TAk [k - 1]);
+
+    uint effBITNO;
+    uint effCHAR;
+    uint effWORDNO;
+  
+    if (opType == EOP_ALPHA) // alphanumeric
+      {
+        // Use TA from du; instruction may have overridden
+        // du . TAk [k - 1] = bitfieldExtract36 (operandDesc, 13, 2);
+        uint CN = bitfieldExtract36 (operandDesc, 15, 3); // CNk
+sim_debug (DBG_TRACEEXT, & cpu_dev, "new CN%u %u\n", k, CN);
+        uint res;
+        if (MFk & MFkRL)
+          {
+            uint reg = operandDesc & MFkREGMASK;
+
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "%s k %u 13: reg %u getMFReg %llu\n",
+              __func__, k, reg, getMFReg (reg, false, false));
+
+            if (reg == 04u) // IC
+              {
+                res = 0;
+              }
+            else
+              {
+                res = getMFReg (reg, false, false);
+                switch (du . TAk [k - 1])
+                  {
+                    case CTA4:
+                      res &= 017777777; ///< 22-bits of length
+                      break;
+    
+                    case CTA6:
+                    case CTA9:
+                      res &= 07777777;  ///< 21-bits of length.
+                      break;
+    
+                    default:
+                      sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", du . TAk [k - 1]);
+                      break;
+                  }
+              }
+          }
+        else
+          res = operandDesc & 07777;
+
+// The instruction may have over ridden the type; recalculate Dk_RES if the
+// first time myEISRead called
+
+        if (du . Fk [k - 1]) // If first time
+          du . Dk_RES [k - 1] = res;
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "%s k %u 14: Dk_RES %u\n",
+          __func__, k, du . Dk_RES [k - 1]);
+
+        int r = SIGNEXT18 ((word18) getMFReg (MFk & 017, false, false));
+    
+        // AL-39 implies, and RJ-76 say that RL and reg == IC is
+        // illegal; but it the emulator ignores RL if reg == IC,
+        // then that PL/I generated code in Multics works. 
+        // "Pragmatic debugging."
+
+        if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4) // reg == IC ?
+          {
+sim_debug (DBG_TRACEEXT, & cpu_dev, "wierd case k %u r %u\n", k, r);
+sim_printf ("wierd case k %u r %u\n", k, r);
+            // The ic modifier is permitted in MFk.REG and 
+            // C (od)32,35 only if MFk.RL = 0, that is, if the 
+            // contents of the register is an address offset, 
+            // not the designation of a register containing the 
+            // operand length.
+            address += r;
+            r = 0;
+          }
+
+//sim_debug (DBG_TRACE, & cpu_dev, "CAC second address [%d] %06o\n", k, address);
+
+        // If seems that the effect address calcs given in AL39 p.6-27 are 
+        // not quite right.
+        // E.g. For CTA4/CTN4 because of the 4 "slop" bits you need to do 
+        // 32-bit calcs not 36-bit!
+
+sim_debug (DBG_TRACEEXT, & cpu_dev, "address %o ARn_CHAR %u pos %u r %u ARn_BITNO %u CN %u\n",
+ address, ARn_CHAR, pos, r, ARn_BITNO, CN);
+        ARn_CHAR += pos;
+        switch (du . TAk [k - 1])
+          {
+            case CTA4:
+              effBITNO = 4 * (ARn_CHAR + 2*r + ARn_BITNO/4) % 2 + 1;
+              effCHAR = ((4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) % 32) / 4;
+              effWORDNO = address + 
+                          (4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) / 32;
+              effWORDNO &= AMASK;
+            
+              break;
+            case CTA6:
+              effBITNO = (6 * ARn_CHAR + 6 * r + ARn_BITNO) % 6;
+              effCHAR = ((6 * CN + 6 * ARn_CHAR + 6 * r + ARn_BITNO) % 36) / 6;
+              effWORDNO = address + 
+                          (6 * CN + 6 * ARn_CHAR + 6 * r + ARn_BITNO) / 36;
+//sim_printf ("delta %u\n", (6 * CN + 6 * ARn_CHAR + 6 * r + ARn_BITNO) / 36);
+              effWORDNO &= AMASK;
+              break;
+            case CTA9:
+              CN = (CN >> 1) & 03;  // XXX Do error checking
+              effBITNO = (9 * ARn_CHAR + 9 * r + ARn_BITNO) % 9;
+              effCHAR = ((9 * CN + 9 * ARn_CHAR + 9 * r + ARn_BITNO) % 36) / 9;
+              effWORDNO = address + 
+                          (9 * CN + 9 * ARn_CHAR + 9 * r + ARn_BITNO) / 36;
+//sim_printf ("delta %u\n", (6 * CN + 6 * ARn_CHAR + 6 * r + ARn_BITNO) / 36);
+              effWORDNO &= AMASK;
+              break;
+          }
+        du . Dk_PTR_B [k - 1] = effCHAR;
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s D%u_PTR_B %u\n",
+           __func__, k, effCHAR);
+      }
+    else
+      {
+sim_printf ("%s crash and burn\n", __func__);
+exit (1);
+      }
+
+    du . Fk [k - 1] = false; // No longer first time
+
+    //sim_printf ("operand %08o:%012llo\n", address, data);
+    * addr = effWORDNO;
+    * ind = a;
+  }
+
+static void myEISParse (uint k, uint opType)
+  {
+  
+// temp while buggy
+word15 saveTSR = TPR . TSR;
+word3 saveTRR = TPR . TRR;
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "myEISParse k %u type %d\n", k, opType);
+    uint addr;
+    bool ind;
+    myEISDevelop (k, opType, 0, & addr, & ind);
+// temp  while buggy
+TPR . TSR = saveTSR;
+TPR . TRR = saveTRR;
+  }
+
+static word36 myEISRead (uint k, uint opType, uint pos)
+  {
+// temp while buggy
+word15 saveTSR = TPR . TSR;
+word3 saveTRR = TPR . TRR;
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "myEISRead k %u opType %u pos %u\n", k, opType, pos);
+    uint effWORDNO;
+    bool a;
+    myEISDevelop (k, opType, pos, & effWORDNO, & a);
+
+    word36 data;
+
+    Read (effWORDNO, & data, EIS_OPERAND_READ, a);  // read operand
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "myEISRead: read %012llo@%o:%06o\n",
+               data, TPR . TSR, effWORDNO);
+
+    //sim_printf ("operand %08o:%012llo\n", address, data);
+dbgAddr1 = effWORDNO;
+dbgData1 = data;
+
+// temp  while buggy
+TPR . TSR = saveTSR;
+TPR . TRR = saveTRR;
+    return data;
+  }
+
+static uint myEISget469 (uint k, uint pos)
+  {
+    uint maxPos = 4u; // CTA9
+    switch (du . TAk [k - 1])
+      {
+        case CTA4:
+          maxPos = 8u;
+          break;
+            
+        case CTA6:
+          maxPos = 6u;
+          break;
+      }
+    
+
+    word36 data = myEISRead (k, EOP_ALPHA, pos);
+
+    uint c = 0;
+    uint coffset = du . Dk_PTR_B [k - 1]; // CN
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "myEISRead468 %u coffset %u\n",
+           k, coffset);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "myEISRead %u coffset %u\n", k, coffset);
+
+    switch (du . TAk [k - 1])
+      {
+        case CTA4:
+          c = get4 (data, coffset);
+          break;
+        case CTA6:
+          c = get6 (data, coffset);
+          break;
+        case CTA9:
+          c = get9 (data, coffset);
+          break;
+       }
+//sim_printf ("new: k %u TAk %u pos %d coffset %u c %o \n", k, du . TAk [k - 1], pos, coffset, c);
+    
+    return c;
   }
 #endif
 
@@ -530,7 +889,7 @@ static word36 EISRead(EISaddr *p)
         
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %o:%06o\n", __func__, TPR . TSR, p -> address);
         Read (p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read* %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     else
     {
@@ -558,29 +917,54 @@ static void EISReadN(EISaddr *p, int N, word36 *dst)
 }
 
 
+// getMFReg
+//  RType reflects the AL-39 R-type and C(op. desc.)32,35 columns
+//
+//  Table 4-1. R-type Modifiers for REG Fields
+//  
+//                   Meaning as used in:
+//
+//  Octal  R-type  MF.REG   Indirect operand    C(operand descriptor)32,35
+//  Code                    decriptor-pointer
+//  00         n       n          n                      IPR
+//  01        au      au          au                      au
+//  02        qu      qu          qu                      qu
+//  03        du     IPR         IPR                      du (a)
+//  04        ic      ic          ic                      ic (b)
+//  05        al       a (c)      al                       a (c)
+//  06        ql       q (c)      ql                       a (c)
+//  07        dl     IPR         IPR                     IPR
+//  1n        xn      xn          xn                      xn
+//
 
-static word36 getMFReg(int n, bool RType)
-{
+static word36 getMFReg (int n, bool RType, bool allowDUL)
+  {
     switch (n)
-    {
-        case 0: ///< n
+      {
+        case 0: // n
             return 0;
-        case 1: ///< au
+        case 1: // au
             return GETHI(rA);
-        case 2: ///< qu
+        case 2: // qu
             return GETHI(rQ);
-        case 3: ///< du
-            // XXX: IPR generate Illegal Procedure Fault
+        case 3: // du
+            // du is a special case for SCD, SCDR, SCM, and SCMR
+// XXX needs attention; doesn't work with old code; triggered by
+// XXX parseOperandDescriptor;
+           // if (! allowDUL)
+             //doFault (illproc_fault, ill_proc, "getMFReg du");
             return 0;
-        case 4: ///< ic - The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
+        case 4: // ic - The ic modifier is permitted in MFk.REG and 
+                // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
+                // the register is an address offset, not the designation of 
+                // a register containing the operand length.
             return PPR.IC;
         case 5: ///< al / a
             return RType ? GETLO(rA) : rA;
         case 6: ///< ql / a
             return RType ? GETLO(rQ) : rQ;
         case 7: ///< dl
-            // XXX: IPR generate Illegal Procedure Fault
-            return 0;
+             doFault (illproc_fault, ill_proc, "getMFReg dl");
         case 8:
         case 9:
         case 10:
@@ -589,29 +973,53 @@ static word36 getMFReg(int n, bool RType)
         case 13:
         case 14:
         case 15:
-            return rX[n - 8];
-    }
+            return rX [n - 8];
+      }
     sim_printf ("getMFReg(): How'd we get here? n=%d\n", n);
     return 0;
-}
+  }
 
 
 
 /*!
  5.2.10.5  Operand Descriptor Address Preparation Flowchart
-    A flowchart of the operations involved in operand descriptor address preparation is shown in Figure 5-2. The chart depicts the address preparation for operand descriptor 1 of a multiword instruction as described by modification field 1 (MF1). A similar type address preparation would be carried out for each operand descriptor as specified by its MF code.
+    A flowchart of the operations involved in operand descriptor address
+preparation is shown in Figure 5-2. The chart depicts the address preparation
+for operand descriptor 1 of a multiword instruction as described by
+modification field 1 (MF1). A similar type address preparation would be carried
+out for each operand descriptor as specified by its MF code.
     (Bull Nova 9000 pg 5-40  67 A2 RJ78 REV02)
  1. The multiword instruction is obtained from memory.
- 2. The indirect (ID) bit of MF1 is queried to determine if the descriptor for operand 1 is present or is an indirect word.
- 3. This step is reached only if an indirect word was in the operand descriptor location. Address modification for the indirect word is now performed. If the AR bit of the indirect word is 1, address register modification step 4 is performed.
- 4. The y field of the indirect word is added to the contents of the specified address register.
- 5. A check is now made to determine if the REG field of the indirect word specifies that a register type modification be performed.
- 6. The indirect address as modified by the address register is now modified by the contents of the specified register, producing the effective address of the operand descriptor.
- 7. The operand descriptor is obtained from the location determined by the generated effective address in item 6.
- 8. Modification of the operand descriptor address begins. This step is reached directly from 2 if no indirection is involved. The AR bit of MF1 is checked to determine if address register modification is specified.
- 9. Address register modification is performed on the operand descriptor as described under "Address Modification with Address Registers" above. The character and bit positions of the specified address register are used in one of two ways, depending on the type of operand descriptor, i.e., whether the type is a bit string, a numeric, or an alphanumeric descriptor.
- 10. The REG field of MF1 is checked for a legal code. If DU is specified in the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and the character or characters are arranged within the 18 bits of the word address portion of the operand descriptor.
- 11. The count contained in the register specified by the REG field code is appropriately converted and added to the operand address.
+ 2. The indirect (ID) bit of MF1 is queried to determine if the descriptor for
+operand 1 is present or is an indirect word.
+ 3. This step is reached only if an indirect word was in the operand descriptor
+location. Address modification for the indirect word is now performed. If the
+AR bit of the indirect word is 1, address register modification step 4 is
+performed.
+ 4. The y field of the indirect word is added to the contents of the specified
+address register.
+ 5. A check is now made to determine if the REG field of the indirect word
+specifies that a register type modification be performed.
+ 6. The indirect address as modified by the address register is now modified by
+the contents of the specified register, producing the effective address of the
+operand descriptor.
+ 7. The operand descriptor is obtained from the location determined by the
+generated effective address in item 6.
+ 8. Modification of the operand descriptor address begins. This step is reached
+directly from 2 if no indirection is involved. The AR bit of MF1 is checked to
+determine if address register modification is specified.
+ 9. Address register modification is performed on the operand descriptor as
+described under "Address Modification with Address Registers" above. The
+character and bit positions of the specified address register are used in one
+of two ways, depending on the type of operand descriptor, i.e., whether the
+type is a bit string, a numeric, or an alphanumeric descriptor.
+ 10. The REG field of MF1 is checked for a legal code. If DU is specified in
+the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM,
+or SCMR) for which DU is legal, the CN field is ignored and the character or
+characters are arranged within the 18 bits of the word address portion of the
+operand descriptor.
+ 11. The count contained in the register specified by the REG field code is
+appropriately converted and added to the operand address.
  12. The operand is retrieved from the calculated effective address location.
  */
 // prepare MFk operand descriptor for use by EIS instruction ....
@@ -679,7 +1087,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         // Address modifier for ADDRESS. All register modifiers except du and dl may be used. If the ic modifier is used, then ADDRESS is an 18-bit offset relative to value of the instruction counter for the instruction word. C(REG) is always interpreted as a word offset. REG 
         int reg = opDesc & 017;
-        address += getMFReg(reg, true);
+        address += getMFReg(reg, true, false);
         address &= 0777777;
         
         e->addr[k-1].address = address;
@@ -721,13 +1129,14 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     }
 
     int CN = (int)bitfieldExtract36(opDesc, 15, 3);    ///< character number
+sim_debug (DBG_TRACEEXT, & cpu_dev, "old CN%u %u\n", k, CN);
     
     e->TA[k-1] = (int)bitfieldExtract36(opDesc, 13, 2);    // type alphanumeric
     
     if (MFk & MFkRL)
     {
         int reg = opDesc & 017;
-        e->N[k-1] = (int32)getMFReg(reg, false);
+        e->N[k-1] = (int32)getMFReg(reg, false, false);
         switch (e->TA[k-1])
         {
             case CTA4:
@@ -745,8 +1154,11 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     else
         e->N[k-1] = opDesc & 07777;
     
-    int r = SIGNEXT18((word18)getMFReg(MFk & 017, true));
+sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    int r = SIGNEXT18((word18)getMFReg(MFk & 017, true, false));
     
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "reg offset %d\n", r);
+
     // AL-39 implies, and RJ-76 say that RL and reg == IC is illegal;
     // but it the emulator ignores RL if reg == IC, then that PL/I
     // generated code in Multics works. "Pragmatic debugging."
@@ -850,12 +1262,13 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
     if (MFk & MFkRL)
     {
         int reg = opDesc & 017;
-        e->N[k-1] = getMFReg(reg, true) & 077;
+        e->N[k-1] = getMFReg(reg, true, false) & 077;
     }
     else
         e->N[k-1] = opDesc & 077;
     
-    word36 r = getMFReg(MFk & 017, true);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    word36 r = getMFReg(MFk & 017, true, false);
     if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
@@ -942,10 +1355,11 @@ static void parseBitstringOperandDescriptor(int k, EISstruct *e)
     if (MFk & MFkRL)
     {
         int reg = opDesc & 017;
-        e->N[k-1] = getMFReg(reg, false) & 077777777;
+        e->N[k-1] = getMFReg(reg, false, false) & 077777777;
     }
     else
         e->N[k-1] = opDesc & 07777;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
     //e->B[k-1] = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;
@@ -953,7 +1367,7 @@ static void parseBitstringOperandDescriptor(int k, EISstruct *e)
     int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
     int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
     
-    word36 r = getMFReg(MFk & 017, true);
+    word36 r = getMFReg(MFk & 017, true, false);
     if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
@@ -1265,7 +1679,12 @@ static int EISget469(EISaddr *p, int *pos, int ta)
         //p->data = EISRead(p);    // read it from memory
     }
     p->data = EISRead(p);    // read it from memory
-    
+
+#ifdef DBGF
+dbgAddr0 = p -> address;
+dbgData0 = p -> data;
+#endif
+//sim_printf ("pos %u\n", * pos); 
     int c = 0;
     switch(ta)
     {
@@ -1279,6 +1698,7 @@ static int EISget469(EISaddr *p, int *pos, int ta)
             c = (word9)get9(p->data, *pos);
             break;
     }
+//sim_printf ("old: k: %u TAk %u coffset %u c %o \n", 0, ta, * pos, c);
     
     *pos += 1;
     //p->lastAddress = p->address;
@@ -3977,7 +4397,7 @@ void mvt(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1);    // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
 
-    word18 r = (word18)getMFReg(xREG, true);
+    word18 r = (word18)getMFReg(xREG, true, false);
 
     word18 xAddress = GETHI(xlat);
 
@@ -4324,7 +4744,7 @@ void scm(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    word18 r = (word18)getMFReg(y3REG, true);
+    word18 r = (word18)getMFReg(y3REG, true, false);
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, 
       "%s y3:0%06o y3A:%d y3REG: %d, r:%d\n",
@@ -4523,7 +4943,7 @@ void scmr(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    word18 r = (word18)getMFReg(y3REG, true);
+    word18 r = (word18)getMFReg(y3REG, true, false);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -4634,7 +5054,7 @@ void tct(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
     
-    word18 r = (word18)getMFReg(xREG, true);
+    word18 r = (word18)getMFReg(xREG, true, false);
     
     word18 xAddress = GETHI(xlat);
     
@@ -4703,7 +5123,7 @@ void tct(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    r = (word18)getMFReg(y3REG, true);
+    r = (word18)getMFReg(y3REG, true, false);
     
     ARn_CHAR = 0;
     ARn_BITNO = 0;
@@ -4853,7 +5273,7 @@ void tctr(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
     
-    word36s r = (word36s) SIGNEXT18 ((word18)getMFReg(xREG, true));
+    word36s r = (word36s) SIGNEXT18 ((word18)getMFReg(xREG, true, false));
     
     word18 xAddress = GETHI(xlat);
     
@@ -4924,7 +5344,7 @@ void tctr(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    r = SIGNEXT18((word18)getMFReg(y3REG, true));
+    r = SIGNEXT18((word18)getMFReg(y3REG, true, false));
     
     ARn_CHAR = 0;
     ARn_BITNO = 0;
@@ -5008,6 +5428,7 @@ sim_printf ("TCT c %03o %c cout %03o %c\n",
 }
 
 
+//#define DBGX
 // CANFAULT
 void cmpc(DCDstruct *ins)
 {
@@ -5021,12 +5442,21 @@ void cmpc(DCDstruct *ins)
     //    C(Y-charn1)i-1 :: C(FILL)
     //
     // Indicators:
-    //     Zero: If C(Y-charn1)i-1 = C(Y-charn2)i-1 for all i, then ON; otherwise, OFF
-    //     Carry: If C(Y-charn1)i-1 < C(Y-charn2)i-1 for any i, then OFF; otherwise ON
+    //     Zero: If C(Y-charn1)i-1 = C(Y-charn2)i-1 for all i, then ON; 
+    //       otherwise, OFF
+    //     Carry: If C(Y-charn1)i-1 < C(Y-charn2)i-1 for any i, then OFF; 
+    //       otherwise ON
     
-    // Both strings are treated as the data type given for the left-hand string, TA1. A data type given for the right-hand string, TA2, is ignored.
-    // Comparison is made on full 9-bit fields. If the given data type is not 9-bit (TA1 ≠ 0), then characters from C(Y-charn1) and C(Y-charn2) are high- order zero filled. All 9 bits of C(FILL) are used.
-    // Instruction execution proceeds until an inequality is found or the larger string length count is exhausted.
+    // Both strings are treated as the data type given for the left-hand
+    // string, TA1. A data type given for the right-hand string, TA2, is
+    // ignored.
+    //
+    // Comparison is made on full 9-bit fields. If the given data type is not
+    // 9-bit (TA1 ≠ 0), then characters from C(Y-charn1) and C(Y-charn2) are
+    // high- order zero filled. All 9 bits of C(FILL) are used.
+    //
+    // Instruction execution proceeds until an inequality is found or the
+    // larger string length count is exhausted.
     
     
     setupOperandDescriptor(1, e);
@@ -5036,25 +5466,37 @@ void cmpc(DCDstruct *ins)
     parseAlphanumericOperandDescriptor(2, e);
     
 #ifdef DBGF
+
+    du . TAk [1] = du . TAk [0]; // TA2 = TA1
+    myEISParse (2, EOP_ALPHA);
+
 // debug
-if (e->TA1 != du . TA1) sim_printf ("TA1 %d %d\n", e -> TA1, du . TA1);
-if (e->TA2 != du . TA2) sim_printf ("TA2 %d %d\n", e -> TA2, du . TA2);
-if (e->N1 != (int) du . N1) sim_printf ("%lld N1 %d %u\n", sys_stats . total_cycles, e -> N1, du . N1);
-if (e->N2 != (int) du . N2) sim_printf ("N2 %d %u\n", e -> N2, du . N2);
-if (e->addr[0].address != du . D_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sys_stats . total_cycles, e->addr[0].address, du . D_PTR_W [0]);
-if (e->addr[1].address != du . D_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sys_stats . total_cycles, e->addr[1].address, du . D_PTR_W [1]);
+if (e->TA1 != du . TAk [0]) sim_printf ("TA1 %d %d\n", e -> TA1, du . TAk [0]);
+if (e->TA2 != du . TAk [1]) sim_printf ("TA2 %d %d\n", e -> TA2, du . TAk [1]);
+if (e->N1 != (int) du . D1_RES) sim_printf ("%lld N1 %d %u\n", sys_stats . total_cycles, e -> N1, du . D1_RES);
+if (e->N2 != (int) du . D2_RES) sim_printf ("N2 %d %u\n", e -> N2, du . D2_RES);
+//if (e->addr[0].address != du . Dk_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sys_stats . total_cycles, e->addr[0].address, du . Dk_PTR_W [0]);
+//if (e->addr[1].address != du . Dk_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sys_stats . total_cycles, e->addr[1].address, du . Dk_PTR_W [1]);
+#if 0
 uint du_CN1, du_BITNO1, du_CN2, du_BITNO2;
-unpackCharBit (du . D_PTR_B [0], du . TA1, & du_CN1, & du_BITNO1);
-unpackCharBit (du . D_PTR_B [1], du . TA2, & du_CN2, & du_BITNO2);
-if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sys_stats . total_cycles, e->CN1, du_CN1);
-if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cycles, e->CN2, du_CN2);
+unpackCharBit (du . Dk_PTR_B [0], du . TAk [0], & du_CN1, & du_BITNO1);
+unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
+#else
+//uint du_CN1, du_CN2;
+//du_CN1 = du . Dk_PTR_B [0];
+//du_CN2 = du . Dk_PTR_B [1];
+#endif
+//if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sys_stats . total_cycles, e->CN1, du_CN1);
+//if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cycles, e->CN2, du_CN2);
 #endif
 
 #ifdef DBGF
-    e -> srcCN = du_CN1;  // starting at char pos CN
-    e -> srcCN2= du_CN2;  // character number
+    //e -> srcCN = du_CN1;  // starting at char pos CN
+    //e -> srcCN2= du_CN2;  // character number
+    e->srcCN = e->CN1;  ///< starting at char pos CN
+    e->srcCN2= e->CN2;  ///< character number
 
-    e -> srcTA = du . TA1;
+    e -> srcTA = du . TAk [0];
 #else
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -5080,17 +5522,42 @@ char * c2p = c2buf;
 *c1p = '\0';
 *c2p = '\0';
 #endif
+
 #ifdef DBGF
     uint i = 0;
-    for (; i < min (du . N1, du . N2); i ++)
+    for (; i < min (du . D1_RES, du . D2_RES); i ++)
 #else
     int i = 0;
     for (; i < min (e->N1, e->N2); i += 1)
 #endif
       {
 #ifdef DBGF
-        int c1 = EISget469(&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
-        int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2);   // get Y-char2n
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc i %u\n", i);
+        int c1_ = EISget469(&e->ADDR1,  &e->srcCN,  du . TAk [0]);   // get Y-char1n
+        int c1 = myEISget469 (1, i);
+        //du_CN1 ++;
+if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+if (c1!=c1_){
+sim_printf ("i %u c1 %o c1_ %o TA %u pos %u\n", i, c1, c1_, du . TAk [0], e->srcCN);
+sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
+sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
+sim_printf ("[%lld]\n", sys_stats . total_cycles);
+}
+        int c2_ = EISget469(&e->ADDR2, &e->srcCN2, du . TAk [1]);   // get Y-char2n
+        int c2 = myEISget469 (2, i);
+        //du_CN2 ++;
+if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+if (c2!=c2_){
+sim_printf ("i %u c2 %o c2_ %o\n", i, c2, c2_);
+sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
+sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
+sim_printf ("[%lld]\n", sys_stats . total_cycles);
+}
+if (dbgAddr0 != dbgAddr1 || dbgData0 != dbgData1) {
+sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
+sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
+sim_printf ("[%lld]\n", sys_stats . total_cycles);
+}
 #else
         int c1 = EISget469(&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
         int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);   // get Y-char2n
@@ -5099,6 +5566,7 @@ char * c2p = c2buf;
 *(c1p++)=c1; *c1p=0;    
 *(c2p++)=c2; *c2p=0;    
 #endif
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
         if (c1 != c2)
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
@@ -5110,20 +5578,22 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
         }
       }
 #ifdef DBGF
-    if (du . N1 < du . N2)
+    if (du . D1_RES < du . D2_RES)
       {
 #else
     if (e->N1 < e->N2)
 #endif
 #ifdef DBGF
-        for (; i < du . N2; i ++)
+        for (; i < du . D2_RES; i ++)
 #else
         for(; i < e->N2; i += 1)
 #endif
           {
             int c1 = fill;     // use fill for Y-char1n
 #ifdef DBGF
-            int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2); // get Y-char2n
+            //int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TAk [1]); // get Y-char2n
+            int c2 = myEISget469 (2, i);
+            //du_CN2 ++;
 #else
             int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2); // get Y-char2n
 #endif
@@ -5132,7 +5602,7 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 < c2, cu . IR, I_CARRY);
-#ifdef DBGF
+#ifdef DBGX
 sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
 #endif
                 return;
@@ -5140,19 +5610,21 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
           }
 #ifdef DBGF
       }
-    else if (du . N1 > du . N2)
+    else if (du . D1_RES > du . D2_RES)
       {
 #else
     else if (e->N1 > e->N2)
 #endif
 #ifdef DBGF
-        for(; i < du . N1; i ++)
+        for(; i < du . D1_RES; i ++)
 #else
         for(; i < e->N1; i ++)
 #endif
           {
 #ifdef DBGF
-            int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
+            //int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  du . TAk [0]);   // get Y-char1n
+            int c1 = myEISget469 (1, i);
+            //du_CN1 ++;
 #else
             int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
 #endif
@@ -5177,6 +5649,7 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
 sim_printf ("cmpc <%s> <%s> =\n", c1buf, c2buf);
 #endif
   }
+//#undef DBGX
 
 /*
  * SCD - Scan Characters Double
@@ -5296,7 +5769,7 @@ void scd(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    word18 r = (word18)getMFReg(y3REG, true);
+    word18 r = (word18)getMFReg(y3REG, true, false);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -5490,7 +5963,7 @@ void scdr(DCDstruct *ins)
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    word18 r = (word18)getMFReg(y3REG, true);
+    word18 r = (word18)getMFReg(y3REG, true, false);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;

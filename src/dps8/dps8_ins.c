@@ -347,9 +347,9 @@ static void du2words (word36 * words)
 
     putbits36 (& words [2],  0, 18, du . D1_PTR_W);
     putbits36 (& words [2], 18,  6, du . D1_PTR_B);
-    putbits36 (& words [2], 25,  2, du . TA1);
+    putbits36 (& words [2], 25,  2, du . TAk [0]);
     putbits36 (& words [2], 31,  1, du . F1);
-    putbits36 (& words [2], 32,  1, du . A1);
+    putbits36 (& words [2], 32,  1, du . Ak [0]);
 
     // Word 3
 
@@ -360,10 +360,10 @@ static void du2words (word36 * words)
 
     putbits36 (& words [4],  0, 18, du . D2_PTR_W);
     putbits36 (& words [4], 18,  6, du . D2_PTR_B);
-    putbits36 (& words [4], 25,  2, du . TA2);
+    putbits36 (& words [4], 25,  2, du . TAk [1]);
     putbits36 (& words [4], 30,  1, du . R);
     putbits36 (& words [4], 31,  1, du . F2);
-    putbits36 (& words [4], 32,  1, du . A2);
+    putbits36 (& words [4], 32,  1, du . Ak [1]);
 
     // Word 5
 
@@ -374,9 +374,9 @@ static void du2words (word36 * words)
 
     putbits36 (& words [6],  0, 18, du . D3_PTR_W);
     putbits36 (& words [6], 18,  6, du . D3_PTR_B);
-    putbits36 (& words [6], 25,  2, du . TA3);
+    putbits36 (& words [6], 25,  2, du . TAk [2]);
     putbits36 (& words [6], 31,  1, du . F3);
-    putbits36 (& words [6], 32,  1, du . A3);
+    putbits36 (& words [6], 32,  1, du . Ak [2]);
     putbits36 (& words [6], 33,  3, du . JMP);
 
     // Word 7
@@ -400,9 +400,9 @@ static void words2du (word36 * words)
 
     du . D1_PTR_W = getbits36 (words [2],  0, 18);
     du . D1_PTR_B = getbits36 (words [2], 18,  6);
-    du . TA1      = getbits36 (words [2], 25,  2);
+    du . TAk [0]  = getbits36 (words [2], 25,  2);
     du . F1       = getbits36 (words [2], 31,  1);
-    du . A1       = getbits36 (words [2], 32,  1);
+    du . Ak [0]   = getbits36 (words [2], 32,  1);
 
     // Word 3
 
@@ -413,9 +413,9 @@ static void words2du (word36 * words)
 
     du . D2_PTR_W = getbits36 (words [4],  0, 18);
     du . D2_PTR_B = getbits36 (words [4], 18,  6);
-    du . TA2      = getbits36 (words [4], 25,  2);
+    du . TAk [1]  = getbits36 (words [4], 25,  2);
     du . F2       = getbits36 (words [4], 31,  1);
-    du . A2       = getbits36 (words [4], 32,  1);
+    du . Ak [1]   = getbits36 (words [4], 32,  1);
 
     // Word 5
 
@@ -426,9 +426,9 @@ static void words2du (word36 * words)
 
     du . D3_PTR_W = getbits36 (words [6],  0, 18);
     du . D3_PTR_B = getbits36 (words [6], 18,  6);
-    du . TA3      = getbits36 (words [6], 25,  2);
+    du . TAk [2]  = getbits36 (words [6], 25,  2);
     du . F3       = getbits36 (words [6], 31,  1);
-    du . A3       = getbits36 (words [6], 32,  1);
+    du . Ak [2]   = getbits36 (words [6], 32,  1);
     du . JMP      = getbits36 (words [6], 33,  3);
 
     // Word 7
@@ -897,6 +897,16 @@ restart_1:
 #endif
         for(int n = 0; n < info -> ndes; n += 1)
           {
+// XXX This is a bit of a hack; In general the code is good about 
+// setting up for bit29 or PR operations by setting up TPR, but
+// assumes that the 'else' case can be ignored when it should set
+// TPR to the canonical values. Here, in the case of a EIS instruction
+// restart after page fault, the TPR is in an unknown state. Ultimately,
+// this should not be an issue, as this folderol would be in the DU, and
+// we would not be re-executing that code, but until then, set the TPR
+// to the condition we know it should be in.
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
             Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
           }
       }
@@ -5055,14 +5065,32 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
               }
 
             sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
-            sim_printf ("entered DIS_cycle\n");
+            //sim_printf ("entered DIS_cycle\n");
 
             // No operation takes place, and the processor does not 
             // continue with the next instruction; it waits for a 
             // external interrupt signal.
             // AND, according to pxss.alm, TRO
 
-#if 1
+// Bless NovaScale...
+//  DIS
+// 
+//    NOTES:
+// 
+//      1. The inhibit bit in this instruction only affects the recognition 
+//         of a Timer Runout (TROF) fault.
+//
+//         Inhibit ON delays the recognition of a TROF until the processor 
+//         enters Slave mode.
+//
+//         Inhibit OFF allows the TROF to interrupt the DIS state.
+// 
+//      2. For all other faults and interrupts, the inhibit bit is ignored.
+// 
+//      3. The use of this instruction in the Slave or Master mode causes a 
+//         Command fault.
+
+#if 0
             while (1)
               {
                 t_stat rc = simh_hooks ();
@@ -5070,19 +5098,23 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
                   return rc;
                 if (sample_interrupts ())
                   {
-                    //sim_printf ("leaving dis 'cause of interrupt\n");
+                    sim_printf ("leaving dis 'cause of interrupt\n");
                     break;
                   }
-                if (rTR)
+                //if (rTR)
                   {
                     rTR = (rTR - 1) & MASK27;
-                    if (switches . tro_enable)
+                    if (GET_I (cu . IWB) == 0) // Not inhibited
                       {
-                        if (rTR == 0)
+                        if (switches . tro_enable)
                           {
-                            //doFault (timer_fault, 0, "Timer runout");
-                            setG7fault (timer_fault);
-                            break;
+                            if (rTR == MASK27)
+                              {
+                                //doFault (timer_fault, 0, "Timer runout");
+                                setG7fault (timer_fault);
+                        sim_printf ("leaving dis 'cause of TRO\n");
+                                break;
+                              }
                           }
                       }
                   }
@@ -5090,7 +5122,10 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             sim_printf ("left DIS_cycle\n");
             break;
 #else
-            longjmp (jmpMain, JMP_REFETCH);
+            if (sample_interrupts ())
+              break;
+            else
+              longjmp (jmpMain, JMP_REFETCH);
 #endif
  
             

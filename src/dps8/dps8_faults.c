@@ -497,6 +497,11 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
         // cu_safe_store ();
       }
     
+    // If doInstruction faults, the instruction cycle counter doesn't get 
+    // bumped.
+    if (cpu . cycle == EXEC_cycle)
+      sys_stats . total_cycles += 1; // bump cycle counter
+
     // Set control unit 'fault occured during instruction fetch' flag
     cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
     cu . FI_ADDR = faultNumber;

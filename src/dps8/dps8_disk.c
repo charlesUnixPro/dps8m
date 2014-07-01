@@ -498,7 +498,7 @@ sim_printf ("tally %d\n", tally);
 
         default:
           {
-sim_printf ("disk daze %d\n", pcwp -> dev_cmd);
+sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
             stati = 04000;
           }
           break;
