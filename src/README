@@ -1,3 +1,24 @@
+Sat Jun 28 20:24:09 PDT 2014
+
+More IOM haking ^H^H^H^H^H^H^H work. 
+
+Quoting CAC
+ 
+“Okay, so deep investigation shows that IOM documentation is just wrong … I have long suspected the list service and indirect list service flowcharts in the IOM manual are generic reference models, and that each channel controller has its own unique algorithm for handling things. We are annoyed.”
+
+eventually getting to….
+
+CONSOLE: 1801.6  init_root_vols: Error reading dska_97a label.  Unsupported label version
+
+
+and a few small fixes for OS/X
+
+Thu Jun 12 20:11:16 PDT 2014 
+
+Many changes and fixes. We're getting there. Kudos to Charles Anthony for making much progress towards implementing faults & exceptions. 
+
+For the latest news consult: https://sourceforge.net/p/dps8m/wiki/Charles%27%20Progress%20Reports/ 
+
 Fri Feb 21 20:50:14 PST 2014
 
 Latest simulator statistics.

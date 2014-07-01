@@ -49,6 +49,26 @@
 
 
 /* ------------------------------------------------------------------ */
+/* HWR 6/28/14 18:54 derived from ......                              */
+/*     decContextDefault(...)                                         */
+/*                                                                    */
+/* decContextDefaultDPS8 -- initialize a context structure            */
+/*                                                                    */
+/* Similar to decContextDefault EXCEPT digits are set to 65 for our   */
+/* dps8 simulator (add additional features as required                */
+/*                                                                    */
+/* ------------------------------------------------------------------ */
+static
+decContext * decContextDefaultDPS8(decContext *context)
+{
+    decContextDefault(context, DEC_INIT_BASE);
+    
+    context->digits = 65;
+    
+    return context;
+}
+
+/* ------------------------------------------------------------------ */
 /* HWR 2/07 15:49 derived from ......                                 */
 /*                                                                    */
 /* decPackedToNumber -- convert BCD Packed Decimal to a decNumber     */
@@ -2108,7 +2128,8 @@ void mp3d (void)
 //    }
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
     
     decNumber _1, _2, _3;
     
