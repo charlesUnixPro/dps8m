@@ -76,7 +76,12 @@ static CTAB dps8_cmds[] =
     {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
     {"TEST", test, 0, "test: internal testing\n", NULL},
-    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
+// copied from scp.c
+#define SSH_ST          0                               /* set */
+#define SSH_SH          1                               /* show */
+#define SSH_CL          2                               /* clear */
+    {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
+    {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL},
     {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
     {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
