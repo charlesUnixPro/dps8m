@@ -838,22 +838,86 @@ t_stat executeInstruction (void)
         if (ci->info->flags & NO_RPT)
           doFault(illproc_fault, ill_proc, "no rpt allowed for instruction");
       }
+//
+// RPT:
+//
+// The computed address, y, of the operand (in the case of R modification) or
+// indirect word (in the case of RI modification) is determined as follows:
+//
+// For the first execution of the repeated instruction:
+//      C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
+// 
+// For all successive executions of the repeated instruction:
+//      C(Xn) + Delta -> y, y -> C(Xn);
+// 
+//
+//
+// RPD:
+//
+// The computed addresses, y-even and y-odd, of the operands (in the case of
+// R modification) or indirect words (in the case of RI modification) are
+// determined as follows:
+// 
+// For the first execution of the repeated instruction pair:
+//      C(C(PPR.IC)+1)0,17 + C(X-even) -> y-even, y-even -> C(X-even)
+//      C(C(PPR.IC)+2)0,17 + C(X-odd) -> y-odd, y-odd -> C(X-odd)
+// 
+// For all successive executions of the repeated instruction pair:
+//      if C(X0)8 = 1, then C(X-even) + Delta -> y-even,
+//           y-even -> C(X-even);
+//      otherwise, C(X-even) -> y-even
+//      if C(X0)9 = 1, then C(X-odd) + Delta -> y-odd,
+//           y-odd -> C(X-odd);
+//      otherwise, C(X-odd) -> y-odd
+// 
+// C(X0)8,9 correspond to control bits A and B, respectively, of the rpd
+// instruction word.
+// 
+
+// Handle first time of a RPT or RPD
 
     if (cu . repeat_first)
       {
         if (cu . rpt || (cu . rd && (PPR.IC & 1)))
           cu . repeat_first = false;
-        // For the first execution of the repeated instruction: 
-        // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-        word6 Td = GET_TD(ci->tag);
-        uint Xn = X(Td);  // Get Xn of next instruction
-        TPR.CA = (rX[Xn] + ci->address) & AMASK;
-        rX[Xn] = TPR.CA;
+        if (cu . rpt)
+          {
+            // For the first execution of the repeated instruction: 
+            // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+            word6 Td = GET_TD(ci->tag);
+            uint Xn = X(Td);  // Get Xn of next instruction
+            TPR.CA = (rX[Xn] + ci->address) & AMASK;
+            rX[Xn] = TPR.CA;
+          }
+        else if (cu . rd)
+          {
+            if ((PPR . IC & 1) == 0) // even
+              {
+// XXX
+              }
+            else // odd
+              {
+// XXX
+              }
+          }
+      }
+    else if (cu . rpt)  // RPT, not first time
+      {
+      }
+    else if (cu . rd)  // RPD, not first time
+      {
       }
 
+
     // If we are doing a RPT instruction, all of the CA setup has been done.
+
     if ((! cu . repeat_first) && (cu .rpt || cu . rd))
       {
+// XXX Not true; the CA has been trashed by instruction fetch...
+        // rY = TPR.CA;
+        word6 Td = GET_TD(ci -> tag);
+        uint Xn = X(Td);  // Get Xn of instruction
+        TPR . CA = rX [Xn];
         rY = TPR.CA;
       }
     else
@@ -4391,6 +4455,10 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0560:  ///< rpd
+#if 1
+// XXX The RPD code in CPU is so borked that we shouldn't even try. Ticket #18
+            return STOP_UNIMP;
+#else
             {
               uint c = (i->address >> 7) & 1;
               cu . delta = i->tag;
@@ -4401,6 +4469,7 @@ static t_stat DoBasicInstruction (void)
 //sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
             }
             break;
+#endif
 
         case 0500:  ///< rpl
             return STOP_UNIMP;
