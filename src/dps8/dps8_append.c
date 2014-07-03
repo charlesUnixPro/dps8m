@@ -865,6 +865,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 A:;
 #endif
 
+    TPR . CA = address;
 //
 // Phase 1:
 //
@@ -1314,6 +1315,7 @@ KL:;
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
+    TPR . CA = address;
     return finalAddress;    // or 0 or -1???
 }
 

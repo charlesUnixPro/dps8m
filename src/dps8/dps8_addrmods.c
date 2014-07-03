@@ -539,6 +539,12 @@ startCA:;
                        "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
           }
 
+        // If the indirect word faults, on restart the CA will be the post
+        // register modification value, so we want to prevent it from 
+        // happening again on restart
+
+        updateIWB (TPR . CA, TM_RI | TD_N);
+
         // in case it turns out to be a ITS/ITP
         iTAG = rTAG;
 
@@ -926,6 +932,8 @@ startCA:;
 
                 TPR . CA = Yi;
 
+                word18 computedAddress = TPR . CA;
+
                 // For each reference to the indirect word, the character
                 // counter, cf, is increased by 1 and the TALLY field is
                 // reduced by 1 after the computed address is formed. Character
@@ -969,14 +977,15 @@ startCA:;
                            "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n",
                            indword, saveCA);
 
+                TPR . CA = computedAddress;
 #ifdef ABUSE_CT_HOLD
                 cu . CT_HOLD = 020 | // flag = true
                                (characterOperandSize == TB9 ? 010 : 000) |
                                (characterOperandOffset & 007);
 
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (computedAddress, rTAG);
 #else
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                updateIWB (computedAddress, 0); // XXX guessing here...
 #endif
                 return SCPE_OK;
               } // IT_SC
@@ -1135,6 +1144,7 @@ startCA:;
                            Yi, tally, delta);
 
                 TPR . CA = Yi;
+                word18 computedAddress = TPR . CA;
 
                 Yi += delta;
                 Yi &= MASK18;
@@ -1151,6 +1161,8 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n",
                             indword, saveCA);
+
+                TPR . CA = computedAddress;
 
                 updateIWB (TPR . CA, 0); // XXX guessing here...
 
@@ -1206,6 +1218,7 @@ startCA:;
                            indword, saveCA);
 
 
+                TPR . CA = Yi;
                 updateIWB (TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
@@ -1261,6 +1274,7 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
+                TPR . CA = Yi;
                 updateIWB (TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
@@ -1294,6 +1308,7 @@ startCA:;
                            indword, Yi, tally);
 
                 TPR . CA = Yi;
+                word18 computedAddress = TPR . CA;
 
                 Yi += 1;
                 Yi &= MASK18;
@@ -1313,6 +1328,7 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
 
+                TPR . CA = computedAddress;
                 updateIWB (TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
