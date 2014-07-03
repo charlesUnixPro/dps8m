@@ -619,6 +619,8 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     
     word36 PTWx2;
     
+    sim_debug (DBG_APPENDING,& cpu_dev, "fetchPTW address %08o\n", sdw->ADDR + x2);
+
     core_read(sdw->ADDR + x2, &PTWx2);
     
     PTW0.ADDR = GETHI(PTWx2);
@@ -842,6 +844,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
     DCDstruct * i = & currentInstruction;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) Address=%06o\n", address);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
@@ -1186,9 +1189,17 @@ G:;
         //fetchPTW(SDW, TPR.CA);
         fetchPTW(SDW, address);
         if (!PTW0.F)
+        {
+            //TPR.CA = address;
+//if (address != TPR.CA){
+//sim_printf ("Address %06o TPR.CA %06o\n", address, TPR . CA);
+//sim_printf ("[%lld]\n", sys_stats . total_cycles );
+////exit (1);
+//}
             // initiate a directed fault
             doFault(dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
-        
+        }
+
         //loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
         loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
     }

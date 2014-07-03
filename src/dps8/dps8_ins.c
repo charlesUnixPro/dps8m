@@ -907,7 +907,7 @@ restart_1:
 // to the condition we know it should be in.
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
-            Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
+            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0); // I think.
           }
       }
     else

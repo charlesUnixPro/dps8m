@@ -1562,7 +1562,7 @@ t_stat ReadNnoalign (int n, word24 addr, word36 *Yblock, enum eMemoryAccessType 
     else
 #endif
         for (int j = 0 ; j < n ; j ++)
-            Read (addr + j, Yblock + j, OPERAND_READ, Tag);
+            Read (addr + j, Yblock + j, EIS_OPERAND_READ, Tag);
     
     return SCPE_OK;
 }
