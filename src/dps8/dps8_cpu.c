@@ -1309,8 +1309,6 @@ t_stat sim_instr (void)
                     doG7Fault ();
                   }
 
-// XXX This is wrong; it trashes IWB when executing IRODD; ticket #18
-
                 // If we have done the even of an XED, do the odd
                 if (cu . xde == 0 && cu . xdo == 1)
                   {

@@ -1338,6 +1338,7 @@ static void parseBitstringOperandDescriptor(int k, EISstruct *e)
         int n = (int)bitfieldExtract36(address, 15, 3);
         int offset = address & 077777;  // 15-bit signed number
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -1355,10 +1356,12 @@ static void parseBitstringOperandDescriptor(int k, EISstruct *e)
     if (MFk & MFkRL)
     {
         int reg = opDesc & 017;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %d val %llo\n", k, reg, getMFReg(reg, false, false));
         e->N[k-1] = getMFReg(reg, false, false) & 077777777;
     }
     else
         e->N[k-1] = opDesc & 07777;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
@@ -6213,13 +6216,16 @@ void cmpb(DCDstruct *ins)
     //getBit (0, 0, 0);   // initialize bit getter 1
     //getBit2(0, 0, 0);   // initialize bit getter 2
     
-    for(int i = 0 ; i < min(e->N1, e->N2) ; i += 1)
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
+    int i;
+    for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
     {
         //bool b1 = getBit (&srcAddr1, &charPosn1, &bitPosn1);
         //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
         bool b1 = EISgetBit (&e->ADDR1, &charPosn1, &bitPosn1);
         bool b2 = EISgetBit (&e->ADDR2, &charPosn2, &bitPosn2);
         
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2 %d\n", i, b1, b2);
         if (b1 != b2)
         {
             CLRF(cu.IR, I_ZERO);
@@ -6231,30 +6237,37 @@ void cmpb(DCDstruct *ins)
     }
     if (e->N1 < e->N2)
     {
-        bool b1 = e->F;
-        //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
-        bool b2 = EISgetBit(&e->ADDR2, &charPosn2, &bitPosn2);
-        
-        if (b1 != b2)
+        for(; i < e->N2 ; i += 1)
         {
-            CLRF(cu.IR, I_ZERO);
-            if (!b1 && b2)  // 0 < 1
-                CLRF(cu.IR, I_CARRY);
-            return;
-        }
+            bool b1 = e->F;
+            //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
+            bool b2 = EISgetBit(&e->ADDR2, &charPosn2, &bitPosn2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1fill %d b2 %d\n", i, b1, b2);
         
+            if (b1 != b2)
+            {
+                CLRF(cu.IR, I_ZERO);
+                if (!b1 && b2)  // 0 < 1
+                    CLRF(cu.IR, I_CARRY);
+                return;
+            }
+        }   
     } else if (e->N1 > e->N2)
     {
-        //bool b1 = getBit(&srcAddr1, &charPosn1, &bitPosn1);
-        bool b1 = EISgetBit(&e->ADDR1, &charPosn1, &bitPosn1);
-        bool b2 = e->F;
-        
-        if (b1 != b2)
+        for(; i < e->N1 ; i += 1)
         {
-            CLRF(cu.IR, I_ZERO);
-            if (!b1 && b2)  // 0 < 1
-                CLRF(cu.IR, I_CARRY);
-            return;
+            //bool b1 = getBit(&srcAddr1, &charPosn1, &bitPosn1);
+            bool b1 = EISgetBit(&e->ADDR1, &charPosn1, &bitPosn1);
+            bool b2 = e->F;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2fill %d\n", i, b1, b2);
+        
+            if (b1 != b2)
+            {
+                CLRF(cu.IR, I_ZERO);
+                if (!b1 && b2)  // 0 < 1
+                    CLRF(cu.IR, I_CARRY);
+                return;
+            }
         }
     }
 }

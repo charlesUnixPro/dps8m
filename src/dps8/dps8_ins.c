@@ -819,7 +819,7 @@ t_stat executeInstruction (void)
         word6 Td = GET_TD(ci->tag);
         switch (Td)
           {
-            case TD_X0:
+            //case TD_X0: Only X1-X7 permitted
             case TD_X1:
             case TD_X2:
             case TD_X3:
@@ -880,32 +880,12 @@ t_stat executeInstruction (void)
       {
         if (cu . rpt || (cu . rd && (PPR.IC & 1)))
           cu . repeat_first = false;
-        if (cu . rpt)
-          {
-            // For the first execution of the repeated instruction: 
-            // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-            word6 Td = GET_TD(ci->tag);
-            uint Xn = X(Td);  // Get Xn of next instruction
-            TPR.CA = (rX[Xn] + ci->address) & AMASK;
-            rX[Xn] = TPR.CA;
-          }
-        else if (cu . rd)
-          {
-            if ((PPR . IC & 1) == 0) // even
-              {
-// XXX
-              }
-            else // odd
-              {
-// XXX
-              }
-          }
-      }
-    else if (cu . rpt)  // RPT, not first time
-      {
-      }
-    else if (cu . rd)  // RPD, not first time
-      {
+        // For the first execution of the repeated instruction: 
+        // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+        word6 Td = GET_TD(ci->tag);
+        uint Xn = X(Td);  // Get Xn of next instruction
+        TPR.CA = (rX[Xn] + ci->address) & AMASK;
+        rX[Xn] = TPR.CA;
       }
 
 
@@ -913,7 +893,6 @@ t_stat executeInstruction (void)
 
     if ((! cu . repeat_first) && (cu .rpt || cu . rd))
       {
-// XXX Not true; the CA has been trashed by instruction fetch...
         // rY = TPR.CA;
         word6 Td = GET_TD(ci -> tag);
         uint Xn = X(Td);  // Get Xn of instruction
@@ -4455,10 +4434,6 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0560:  ///< rpd
-#if 1
-// XXX The RPD code in CPU is so borked that we shouldn't even try. Ticket #18
-            return STOP_UNIMP;
-#else
             {
               uint c = (i->address >> 7) & 1;
               cu . delta = i->tag;
@@ -4469,7 +4444,6 @@ static t_stat DoBasicInstruction (void)
 //sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
             }
             break;
-#endif
 
         case 0500:  ///< rpl
             return STOP_UNIMP;
@@ -5194,7 +5168,10 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             if (sample_interrupts ())
               break;
             else
-              longjmp (jmpMain, JMP_REFETCH);
+              {
+                sys_stats . total_cycles ++;
+                longjmp (jmpMain, JMP_REFETCH);
+              }
 #endif
  
             
@@ -6465,31 +6442,6 @@ static t_stat DoEISInstruction (void)
 
 }
 
-
-static void print_uint128_r (__uint128_t n)
-{
-    if (n == 0) {
-      return;
-    }
-
-    print_uint128_r(n/10);
-    sim_printf("%c", (int) (n%10+0x30));
-}
-
-static void print_int128 (__int128_t n)
-{
-    if (n == 0)
-    {
-        sim_printf ("0");
-        return;
-    }
-    if (n < 0)
-    {
-        sim_printf ("-");
-        n = -n;
-    }
-    print_uint128_r ((__uint128_t)n);
-}
 
 
 #include <ctype.h>

@@ -95,6 +95,9 @@
 #define SIGNMASK6       0340U     ///< sign mask for 6-bit number
 #define SIGNEXT6(x)     (int8)(((x) & SIGN6) ? ((x) | SIGNMASK6) : (x)) ///< sign extend a 6-bit word to 8-bit char
 
+#define MASK35          0377777777777llu
+#define MASK70          (((word72)1U << 70) - 1U)
+
 #define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) ((a >> 18) & MASK18))

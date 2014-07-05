@@ -1695,3 +1695,28 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_
     return 0;
   }
 
+static void print_uint128_r (__uint128_t n)
+{
+    if (n == 0) {
+      return;
+    }
+
+    print_uint128_r(n/10);
+    sim_printf("%c", (int) (n%10+0x30));
+}
+
+void print_int128 (__int128_t n)
+{
+    if (n == 0)
+    {
+        sim_printf ("0");
+        return;
+    }
+    if (n < 0)
+    {
+        sim_printf ("-");
+        n = -n;
+    }
+    print_uint128_r ((__uint128_t)n);
+}
+

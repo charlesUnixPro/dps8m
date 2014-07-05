@@ -300,6 +300,8 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
       {
         case 0: // CMD 00 Request status
           {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Request status\n");
             stati = 04000; // have_status = 1
             if (sim_tape_wrp (unitp))
               stati |= 1;
@@ -311,6 +313,8 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
         case 5: // CMD 05 -- Read Binary Record
           {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Read binary record\n");
             // We read the record into the tape controllers memory;
             // IOM can subsequently retrieve the data via DCWs.
             if (tape_statep -> bufp == NULL)
@@ -401,7 +405,8 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
             // uint cp = dcw.fields.ddcw.cp;
-
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
             if (type == 0) // IOTD
               * disc = true;
             else if (type == 1) // IOTP
@@ -509,6 +514,8 @@ sim_printf ("uncomfortable with this\n");
 
         case 057:               // CMD 057 -- Survey devices
           {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Survey devices\n");
             stati = 04000; // have_status = 1
             //* need_data = true;
 sim_printf ("got survey devices\n");
@@ -516,6 +523,8 @@ sim_printf ("got survey devices\n");
           }
             
         case 040:               // CMD 040 -- Reset Status
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Reset status\n");
             stati = 04000;
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Reset status is %04o.\n",
@@ -530,6 +539,8 @@ sim_printf ("got survey devices\n");
 // Since it's diffcult here to test for PCW/IDCW, assume that the PCW case
 // has been filtered out at a higher level
         case 051:               // CMD 051 -- Reset device status
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Reset device status\n");
             stati = 04000;
             break;
 

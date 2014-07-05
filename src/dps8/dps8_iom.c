@@ -1296,8 +1296,8 @@ int status_service (int iom_unit_num, uint chan, uint dev_code, word12 stati,
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
                    __func__, sc_word);
-        sc_word = setbits36 (sc_word, tally, 24, 12);
-        sc_word = setbits36 (sc_word, addr, 0, 18);
+        sc_word = setbits36 (sc_word, 24, 12, tally);
+        sc_word = setbits36 (sc_word, 0, 18, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
                    __func__, sc_word);

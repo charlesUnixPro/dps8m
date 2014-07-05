@@ -17,6 +17,7 @@
 #include "dps8_math.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_sys.h"
 
 //! floating-point stuff ....
 //! quad to octal
@@ -1720,17 +1721,35 @@ void dfdi (void)
 // CANFAULT 
 void dvf (void)
 {
-    //! C(AQ) / (Y)
-    //!  fractional quotient → C(A)
-    //!  fractional remainder → C(Q)
+    // C(AQ) / (Y)
+    //  fractional quotient → C(A)
+    //  fractional remainder → C(Q)
     
-    //! A 71-bit fractional dividend (including sign) is divided by a 36-bit fractional divisor yielding a 36-bit fractional quotient (including sign) and a 36-bit fractional remainder (including sign). C(AQ)71 is ignored; bit position 35 of the remainder corresponds to bit position 70 of the dividend. The
-    //! remainder sign is equal to the dividend sign unless the remainder is zero.
-    //! If | dividend | >= | divisor | or if the divisor = 0, division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude in absolute, and the negative indicator reflects the dividend sign.
+    // A 71-bit fractional dividend (including sign) is divided by a 36-bit 
+    // fractional divisor yielding a 36-bit fractional quotient (including 
+    // sign) and a 36-bit fractional remainder (including sign). C(AQ)71 is 
+    // ignored; bit position 35 of the remainder corresponds to bit position 
+    // 70 of the dividend. The remainder sign is equal to the dividend sign 
+    // unless the remainder is zero.
+    //
+    // If | dividend | >= | divisor | or if the divisor = 0, division does 
+    // not take place. Instead, a divide check fault occurs, C(AQ) contains 
+    // the dividend magnitude in absolute, and the negative indicator 
+    // reflects the dividend sign.
     
-    word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LL));
+// HWR code
+#if 0
+    // m1 divedend
+    // m2 divisor
+
+    word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
     word72 m2 = SIGNEXT72(SIGNEXT36(CY));
-    
+
+sim_printf ("[%lld]\n", sys_stats . total_cycles);
+sim_printf ("m1 "); print_int128 (m1); sim_printf ("\n");
+sim_printf ("-----------------\n");
+sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
+
     if (m2 == 0)
     {
         // XXX check flags
@@ -1764,7 +1783,9 @@ void dvf (void)
         SETF(cu.IR, I_ZERO);
         SCF(rA & SIGN36, cu.IR, I_NEG);
         
-        rA = m1;
+        //rA = m1;
+        rA = (m1 >> 36) & MASK36;
+        rQ = m1 & 0777777777776LLU;
         
         doFault(div_fault, 0, "DVF: divide check fault");
     }
@@ -1785,7 +1806,180 @@ void dvf (void)
     
     rA = (m3 >> 64) & MASK36;
     rQ = m3r & MASK36;   //01777777777LL;
+#endif
+
+// canonial code
+#if 0 
+
+sim_printf ("dvf [%lld]\n", sys_stats . total_cycles);
+sim_printf ("rA %llu\n", rA);
+sim_printf ("rQ %llu\n", rQ);
+sim_printf ("CY %llu\n", CY);
+
+    if (CY == 0)
+      {
+        // XXX check flags
+        SETF (cu . IR, I_ZERO);
+        SCF (rA & SIGN36, cu . IR, I_NEG);
+        
+        rA = 0;
+        rQ = 0;
+        
+        return;
+    }
+// http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
+// slide 10: sequential algorithim
+
+    // dividend format
+    // 0  1     70 71
+    // s  dividend x
+    //  C(AQ)
+
+    int sign = 1;
+    bool dividendNegative = (getbits36 (rA, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+
+    // Get the 70 bits of the dividend (72 bits less the sign bit and the
+    // ignored bit 71.
+
+    // dividend format:   . d(0) ...  d(69)
+
+    uint128 zFrac = ((rA & MASK35) << 35) | ((rQ >> 1) & MASK35);
+    if (dividendNegative)
+      {
+        zFrac = ~zFrac + 1;
+        sign = - sign;
+      }
+    zFrac &= MASK70;
+sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
+
+    // Get the 35 bits of the divisor (36 bits less the sign bit)
+
+    // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
     
+#if 1
+    // divisor goes in the high half
+    uint128 dFrac = (CY & MASK35) << 35;
+    if (divisorNegative)
+      {
+        dFrac = ~dFrac + 1;
+        sign = - sign;
+      }
+    dFrac &= MASK35 << 35;
+#else
+    // divisor goes in the low half
+    uint128 dFrac = CY & MASK35;
+    if (divisorNegative)
+      {
+        dFrac = ~dFrac + 1;
+        sign = - sign;
+      }
+    dFrac &= MASK35;
+#endif
+sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
+
+    uint128 sn = zFrac;
+    word36 quot = 0;
+    for (uint i = 0; i < 35; i ++)
+      {
+        // 71 bit number
+        uint128 s2n = sn << 1;
+        if (s2n > dFrac)
+          {
+            s2n -= dFrac;
+            quot |= (1llu << (34 - i));
+          }
+        sn = s2n;
+      }
+    word36 remainder = sn;
+
+    if (sign == -1)
+      quot = ~quot + 1;
+
+    if (dividendNegative)
+      remainder = ~remainder + 1;
+
+    rA = quot & MASK36;
+    rQ = remainder & MASK36;
+ 
+#endif
+
+// MM code
+#if 1
+
+//sim_printf ("dvf [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("rA %llu\n", rA);
+//sim_printf ("rQ %llu\n", rQ);
+//sim_printf ("CY %llu\n", CY);
+
+    if (CY == 0)
+      {
+        // XXX check flags
+        SETF (cu . IR, I_ZERO);
+        SCF (rA & SIGN36, cu . IR, I_NEG);
+        
+        rA = 0;
+        rQ = 0;
+        
+        return;
+    }
+// http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
+// slide 10: sequential algorithim
+
+    // dividend format
+    // 0  1     70 71
+    // s  dividend x
+    //  C(AQ)
+
+    int sign = 1;
+    bool dividendNegative = (getbits36 (rA, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+
+    // Get the 70 bits of the dividend (72 bits less the sign bit and the
+    // ignored bit 71.
+
+    // dividend format:   . d(0) ...  d(69)
+
+    uint128 zFrac = ((rA & MASK35) << 35) | ((rQ >> 1) & MASK35);
+    if (dividendNegative)
+      {
+        zFrac = ~zFrac + 1;
+        sign = - sign;
+      }
+    zFrac &= MASK70;
+//sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
+
+    // Get the 35 bits of the divisor (36 bits less the sign bit)
+
+    // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
+    
+    // divisor goes in the low half
+    uint128 dFrac = CY & MASK35;
+    if (divisorNegative)
+      {
+        dFrac = ~dFrac + 1;
+        sign = - sign;
+      }
+    dFrac &= MASK35;
+//sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
+
+
+    uint128 quot = zFrac / dFrac;
+    uint128 remainder = zFrac % dFrac;
+
+    if (sign == -1)
+      quot = ~quot + 1;
+
+    if (dividendNegative)
+      remainder = ~remainder + 1;
+
+    rA = quot & MASK36;
+    rQ = remainder & MASK36;
+ 
+#endif
+
+//sim_printf ("Quotient %lld (%llo)\n", rA, rA);
+//sim_printf ("Remainder %lld\n", rQ);
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }

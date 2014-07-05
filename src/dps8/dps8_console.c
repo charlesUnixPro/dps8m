@@ -367,6 +367,8 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
             uint cp = dcw.fields.ddcw.cp;
 
             if (type != 0 && type != 1) //IOTD, IOTP
@@ -445,6 +447,8 @@ sim_printf ("uncomfortable with this\n");
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
             // uint cp = dcw.fields.ddcw.cp;
 
             if (type != 0 && type != 1) //IOTD, IOTP
