@@ -327,7 +327,7 @@ sim_printf ("uncomfortable with this\n");
             uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
                                 SECTOR_SZ_IN_W36;
             uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-            uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+            //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
             uint p72ByteCnt = (tallyWords * 36) / 8;
             uint8 buffer [p72ByteCnt];
             memset (buffer, 0, sizeof (buffer));
@@ -528,7 +528,7 @@ sim_printf ("uncomfortable with this\n");
             uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
                                 SECTOR_SZ_IN_W36;
             uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-            uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+            //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
             uint p72ByteCnt = (tallyWords * 36) / 8;
             uint8 buffer [p72ByteCnt];
             memset (buffer, 0, sizeof (buffer));
@@ -819,17 +819,20 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
 static t_stat disk_svc (UNIT * unitp)
   {
+#if 1
+    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    disk_iom_cmd (unitp, pcwp);
+#else
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
-    //pcw_t * pcwp = (pcw_t *) (unitp -> up7);
     word24 dcw_ptr = (word24) (unitp -> u3);
     pcw_t pcw;
     word36 word0, word1;
     
     (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
     decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
- 
     disk_iom_cmd (unitp, & pcw);
+#endif 
     return SCPE_OK;
   }
 

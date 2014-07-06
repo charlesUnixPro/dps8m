@@ -609,17 +609,20 @@ sim_printf ("not instr\n");
 
 static t_stat mt_svc (UNIT * unitp)
   {
+#if 1
+    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    mt_iom_cmd (unitp, pcwp);
+#else
     int mt_unit_num = MT_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
-    //pcw_t * pcwp = (pcw_t *) (unitp -> up7);
     word24 dcw_ptr = (word24) (unitp -> u3);
     pcw_t pcw;
     word36 word0, word1;
 
     (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
     decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
-
     mt_iom_cmd (unitp, & pcw);
+#endif
     return SCPE_OK;
   }
     

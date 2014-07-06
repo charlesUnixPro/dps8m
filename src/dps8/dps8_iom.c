@@ -272,7 +272,7 @@ typedef struct
         // are dynamically allocated by the IOM as needed.
         UNIT * board; // represents the channel; See comment just above
 //--         channel_t channel_state;
-     
+        pcw_t pcw; // The pcw at the time of the CIOC.
         iom_cmd * iom_cmd;
       } channels [MAX_CHANNELS] [N_DEV_CODES];
   } iom_t;
@@ -1348,7 +1348,7 @@ static int send_general_interrupt(int iom_unit_num, uint chan, enum iom_imw_pics
     imw_addr +=  (pi_base << 3) | iom;
 #endif
 
-    sim_debug (DBG_INFO, &iom_dev, "send_general_interrupt: IOM %c, channel %d (%#o), level %d; Interrupt %d (%#o).\n", 'A' + iom_unit_num, chan, chan, pic, interrupt_num, interrupt_num);
+    sim_debug (DBG_NOTIFY, &iom_dev, "send_general_interrupt: IOM %c, channel %d (%#o), level %d; Interrupt %d (%#o).\n", 'A' + iom_unit_num, chan, chan, pic, interrupt_num, interrupt_num);
     word36 imw;
     (void) fetch_abs_word(imw_addr, &imw);
     // The 5 least significant bits of the channel determine a bit to be
@@ -1738,9 +1738,10 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
     uint dev_code = pcw . dev_code;
     DEVICE * devp = iom [iom_unit_num] . channels [chan] [dev_code] . dev;
 
-//if (chan == 013) iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
-//if (chan == 013) sim_printf ("[%lld]\n", sys_stats . total_cycles);
+//if (chan == 012) iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
+//if (chan == 012) sim_printf ("[%lld]\n", sys_stats . total_cycles);
 
+    sim_debug (DBG_NOTIFY, & iom_dev, "IOM dispatch to chan %o\n", chan);
     if (devp == NULL)
       {
         // BUG: no device connected; what's the appropriate fault code(s) ?
@@ -1766,6 +1767,15 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
 
     UNIT * unitp = iom [iom_unit_num] .channels [chan] [dev_code] . board;
 #if 1
+    // Stash a local copy of the PCW so that it is still valid at activation
+    // time
+    pcw_t * pcwp = & iom [iom_unit_num] .channels [chan] [dev_code] . pcw;
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    decode_idcw (iom_unit_num, pcwp, 1, word0, word1);
+    unitp -> up7 = (void *) pcwp;
+    sim_activate (unitp, sys_opts . iom_times . chan_activate);
+    return 0;
+#elif 0
     // pass the pcw pointer in through up7 for convienence
     unitp -> u3 = (int32) dcw_ptr;
     sim_activate (unitp, sys_opts . iom_times . chan_activate);
