@@ -472,22 +472,121 @@ startCA:;
         //           cu . repeat_first, cu . rpt, cu . rd,
         //           ((! cu . repeat_first) && (cu . rpt || cu . rd)));
 
+#if 0
         if ((! cu . repeat_first) && (cu . rpt || cu . rd))
           {
             sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD rpt special case: TPR.CA=%06o\n", TPR . CA);
             // calling updateIWB(TPR.CA, 0) here crashes unit tests; the rpt
             // code is using IWB to save the repeated instruction.
+// XXX No; that's not right.  The repeat code does not do save the instruction
+// XXX in the IWB; that's XEC/XED that does that.
             //updateIWB (identity)
             return SCPE_OK;
           }
+#endif
 
-        TPR . CA += Cr;
-        TPR . CA &= MASK18;   // keep to 18-bits
+        if (cu . rpt || cu . rd)
+          {
+//
+// RPT:
+//
+// The computed address, y, of the operand (in the case of R modification) or
+// indirect word (in the case of RI modification) is determined as follows:
+//
+// For the first execution of the repeated instruction:
+//      C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
+// 
+// For all successive executions of the repeated instruction:
+//      C(Xn) + Delta -> y, y -> C(Xn);
+// 
+//
+//
+// RPD:
+//
+// The computed addresses, y-even and y-odd, of the operands (in the case of
+// R modification) or indirect words (in the case of RI modification) are
+// determined as follows:
+// 
+// For the first execution of the repeated instruction pair:
+//      C(C(PPR.IC)+1)0,17 + C(X-even) -> y-even, y-even -> C(X-even)
+//      C(C(PPR.IC)+2)0,17 + C(X-odd) -> y-odd, y-odd -> C(X-odd)
+// 
+// For all successive executions of the repeated instruction pair:
+//      if C(X0)8 = 1, then C(X-even) + Delta -> y-even,
+//           y-even -> C(X-even);
+//      otherwise, C(X-even) -> y-even
+//      if C(X0)9 = 1, then C(X-odd) + Delta -> y-odd,
+//           y-odd -> C(X-odd);
+//      otherwise, C(X-odd) -> y-odd
+// 
+// C(X0)8,9 correspond to control bits A and B, respectively, of the rpd
+// instruction word.
+// 
 
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
+                       cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, 
+                       rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
+
+// Handle first time of a RPT or RPD
+
+            if (cu . repeat_first)
+              {
+                if (cu . rpt || (cu . rd && (PPR.IC & 1)))
+                  cu . repeat_first = false;
+                // For the first execution of the repeated instruction: 
+                // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+                if (cu . rpt ||                                            // rpt
+                    (cu . rd && ((PPR.IC & 1) == 0) /*&& (rX [0] & 01000)*/ ) || // rpd & even & A 
+                    (cu . rd && ((PPR.IC & 1) != 0) /*&& (rX [0] & 0400)*/))   // rpd & odd & B 
+                  {
+                    word6 Td = GET_TD (i -> tag);
+                    uint Xn = X (Td);  // Get Xn of next instruction
+                    sim_debug (DBG_TRACE, & cpu_dev, 
+                               "rpt/rd repeat first; CA was %06o\n", TPR . CA);
+                    TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
+                    sim_debug (DBG_TRACE, & cpu_dev, 
+                               "rpt/rd repeat first; CA is  %06o\n", TPR . CA);
+                    rX [Xn] = TPR . CA;
+                  }
+              }
+            else // not first
+              {
+                if (cu . rpt ||                                            // rpt
+                    (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
+                    (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))   // rpd & odd & B 
+                  {
+                    // rY = TPR.CA;
+                    word6 Td = GET_TD(i -> tag);
+                    uint Xn = X(Td);  // Get Xn of instruction
+                    // Delta is handled in executeInstruction
+                    // TPR . CA = rX [Xn] + cu . delta;
+                    TPR . CA = rX [Xn];
+                    rX [Xn] = TPR . CA;
+                    sim_debug (DBG_TRACE, & cpu_dev, 
+                               "rpt/rd (a)           CA is  %06o\n", TPR . CA);
+                  }
+                else if (cu . rd)
+                  {
+                    word6 Td = GET_TD(i -> tag);
+                    uint Xn = X(Td);  // Get Xn of instruction
+                    TPR . CA = rX [Xn];
+                    sim_debug (DBG_TRACE, & cpu_dev, 
+                               "rpt/rd (b)           CA is  %06o\n", TPR . CA);
+                  }
+              }
+          } // cu . rpt || cu . rpd
+
+        else // not repeat
+          {
+            TPR . CA += Cr;
+            TPR . CA &= MASK18;   // keep to 18-bits
+          }
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR . CA);
 
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, 0);
+
         return SCPE_OK;
       } // R_MOD
 

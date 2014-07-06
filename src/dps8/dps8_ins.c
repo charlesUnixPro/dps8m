@@ -103,7 +103,7 @@ static void readOperands (void)
     DCDstruct * i = & currentInstruction;
 
     sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
-    
+sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
     if (directOperandFlag)
       {
         CY = directOperand;
@@ -838,6 +838,9 @@ t_stat executeInstruction (void)
         if (ci->info->flags & NO_RPT)
           doFault(illproc_fault, ill_proc, "no rpt allowed for instruction");
       }
+
+// XXX This is too soon; doPtrReg needs to have been called.
+#if 0
 //
 // RPT:
 //
@@ -876,16 +879,24 @@ t_stat executeInstruction (void)
 
 // Handle first time of a RPT or RPD
 
+sim_debug (DBG_TRACE, & cpu_dev, "check first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
     if (cu . repeat_first)
       {
+// XXX This code is ignoring b29.
         if (cu . rpt || (cu . rd && (PPR.IC & 1)))
           cu . repeat_first = false;
         // For the first execution of the repeated instruction: 
         // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-        word6 Td = GET_TD(ci->tag);
-        uint Xn = X(Td);  // Get Xn of next instruction
-        TPR.CA = (rX[Xn] + ci->address) & AMASK;
-        rX[Xn] = TPR.CA;
+        if (cu . rpt ||                                            // rpt
+            (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
+            (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))   // rpd & odd & B 
+          {
+            word6 Td = GET_TD(ci->tag);
+            uint Xn = X(Td);  // Get Xn of next instruction
+sim_debug (DBG_TRACE, & cpu_dev, "rpt/rd repeat first; CA was %06o\n", TPR . CA);
+            TPR.CA = (rX[Xn] + ci->address) & AMASK;
+            rX[Xn] = TPR.CA;
+         }
       }
 
 
@@ -904,6 +915,10 @@ t_stat executeInstruction (void)
         TPR.CA = address;
         rY = TPR.CA;
       }
+#else
+    TPR.CA = address;
+    rY = TPR.CA;
+#endif
 
     if (!switches . append_after)
     {
@@ -1026,92 +1041,125 @@ restart_1:
       }
     
 
-    if ((! cu . repeat_first) && (cu . rpt || (cu . rd & (PPR.IC & 1))))
+    // Here, repeat_first means that the instruction just executed was the
+    // RPT or RPD; but when the even instruction of a RPD is executed, 
+    // repeat_first is still set, since repeat_first cannot be cleared
+    // until the odd instruction gets its first execution. Put some
+    // ugly logic in to detect that condition.
+
+    bool rf = cu . repeat_first;
+    if (rf && cu . rd && ((PPR . IC & 1) == 0))
+      rf = false;
+
+    if ((! rf) && (cu . rpt || cu . rd))
       {
-//sim_debug (DBG_TRACE, & cpu_dev, "cu.rpt\n");
-        // Delay this to here to so that CAF can see it.
-        //cu . repeat_first = 0;
-        bool exit = false;
-        // The repetition cycle consists of the following steps:
-        //  a. Execute the repeated instruction
+        // If we get here, the instruction just executed was a
+        //  RPT or RPD target instruction.
 
-        //  b. C(X0)0,7 - 1 → C(X0)0,7
-        uint x = bitfieldExtract(rX[0], 10, 8);
-        x -= 1;
-        rX[0] = bitfieldInsert(rX[0], x, 10, 8);
-//sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
+
+        // Add delta to index register.
+
+// XXX This seems really wrong; this should be in addrmods with the rest of the
+// RPT/RPD index register handling, but putting it there causes the index 
+// index register value to be low (by delta) at loop termination.
+        
+        sim_debug (DBG_TRACE, & cpu_dev,
+            "RPT/RPD delta first %d rf %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
+            cu . repeat_first, rf, cu . rpt, cu . rd, PPR . IC & 1, 
+            rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
+
+        if (cu . rpt ||                                             // rpt
+            (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
+            (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))    // rpd & odd & B 
+          {
+            word6 Td = GET_TD(ci -> tag);
+            uint Xn = X(Td);  // Get Xn of instruction
+            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
+          }
+
+        // Check for termination conditions.
+
+        if (cu . rpt || (cu . rd & (PPR.IC & 1)))
+          {
+            bool exit = false;
+            // The repetition cycle consists of the following steps:
+            //  a. Execute the repeated instruction
+            //  b. C(X0)0,7 - 1 → C(X0)0,7
+            uint x = bitfieldExtract (rX[ 0], 10, 8);
+            x -= 1;
+            rX [0] = bitfieldInsert (rX [0], x, 10, 8);
+
+            //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
                     
-        // Modify C(Xn) as described below
-        //  The computed address, y, of the operand (in the case 
-        //  of R modification) or indirect word (in the case of RI 
-        //  modification) is determined as follows:
-                    
-        word6 Td = GET_TD(ci -> tag);
-        uint Xn = X(Td);  // Get Xn of instruction
-        TPR.CA = (rX[Xn] + cu . delta) & AMASK;
-        rX[Xn] = TPR.CA;
-//sim_debug (DBG_TRACE, & cpu_dev, "Xn %o rX[Xn] %06o\n", Xn, rX[Xn]);
+            //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON 
+            //     and terminate
 
-        //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON and terminate
-        if (x == 0)
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
-            SETF(cu.IR, I_TALLY);
-            exit = true;
-          } 
+            if (x == 0)
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
+                SETF(cu.IR, I_TALLY);
+                exit = true;
+              } 
 
-        //  d. If a terminate condition has been met, then set 
-        //     the tally runout indicator OFF and terminate
+            //  d. If a terminate condition has been met, then set 
+            //     the tally runout indicator OFF and terminate
 
-        if (TSTF(cu.IR, I_ZERO) && (rX[0] & 0100))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          }
-        else if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          } 
-        else if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          } 
-        else if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          } 
-        else if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          } 
-        else if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          } 
-        else if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
-          {
-//sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
-            CLRF(cu.IR, I_TALLY);
-            exit = true;
-          }
+            if (TSTF(cu.IR, I_ZERO) && (rX[0] & 0100))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              }
+            else if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              } 
+            else if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              } 
+            else if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              } 
+            else if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              } 
+            else if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              } 
+            else if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
+                CLRF(cu.IR, I_TALLY);
+                exit = true;
+              }
 
-        if (exit)
-          {
-            cu . rpt = false;
-            cu . rd = false;
-          }
-      } // if (cu . rpt || cu . rd & (PPR.IC & 1))
+            if (exit)
+              {
+                cu . rpt = false;
+                cu . rd = false;
+              }
+            else
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "not terminate\n");
+              }
+          } // if (cu . rpt || cu . rd & (PPR.IC & 1))
+      } // (! rf) && (cu . rpt || cu . rd)
 
     sys_stats . total_cycles += 1; // bump cycle counter
     
