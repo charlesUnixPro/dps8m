@@ -1056,7 +1056,6 @@ restart_1:
         // If we get here, the instruction just executed was a
         //  RPT or RPD target instruction.
 
-
         // Add delta to index register.
 
 // XXX This seems really wrong; this should be in addrmods with the rest of the
@@ -1102,7 +1101,6 @@ restart_1:
                 SETF(cu.IR, I_TALLY);
                 exit = true;
               } 
-
             //  d. If a terminate condition has been met, then set 
             //     the tally runout indicator OFF and terminate
 

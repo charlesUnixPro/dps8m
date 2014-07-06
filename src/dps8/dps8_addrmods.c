@@ -472,18 +472,6 @@ startCA:;
         //           cu . repeat_first, cu . rpt, cu . rd,
         //           ((! cu . repeat_first) && (cu . rpt || cu . rd)));
 
-#if 0
-        if ((! cu . repeat_first) && (cu . rpt || cu . rd))
-          {
-            sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD rpt special case: TPR.CA=%06o\n", TPR . CA);
-            // calling updateIWB(TPR.CA, 0) here crashes unit tests; the rpt
-            // code is using IWB to save the repeated instruction.
-// XXX No; that's not right.  The repeat code does not do save the instruction
-// XXX in the IWB; that's XEC/XED that does that.
-            //updateIWB (identity)
-            return SCPE_OK;
-          }
-#endif
 
         if (cu . rpt || cu . rd)
           {
@@ -547,7 +535,9 @@ startCA:;
                     TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
                     sim_debug (DBG_TRACE, & cpu_dev, 
                                "rpt/rd repeat first; CA is  %06o\n", TPR . CA);
-                    rX [Xn] = TPR . CA;
+                    // No; rX does not have address added in, even if AL-39
+                    // says so.
+                    // rX [Xn] = TPR . CA;
                   }
               }
             else // not first
@@ -561,8 +551,11 @@ startCA:;
                     uint Xn = X(Td);  // Get Xn of instruction
                     // Delta is handled in executeInstruction
                     // TPR . CA = rX [Xn] + cu . delta;
-                    TPR . CA = rX [Xn];
-                    rX [Xn] = TPR . CA;
+                    // AL-39 says the X register has the address added in;
+                    // that is wrong. Add it in each time.
+                    // TPR . CA = rX [Xn];
+                    TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
+                    // rX [Xn] = TPR . CA;
                     sim_debug (DBG_TRACE, & cpu_dev, 
                                "rpt/rd (a)           CA is  %06o\n", TPR . CA);
                   }
