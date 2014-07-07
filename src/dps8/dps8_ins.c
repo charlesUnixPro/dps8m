@@ -6735,9 +6735,14 @@ static int doABSA (word36 * result)
 
             // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
+            sim_debug (DBG_APPENDING, & cpu_dev,
+              "absa DSBR.ADDR %08o TSR %o SDWe offset %o SWDe %08o\n",
+              DSBR . ADDR, TPR . TSR, 2 * TPR . TSR, 
+              DSBR . ADDR + 2 * TPR . TSR);
+
             word36 SDWe, SDWo;
-            core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
-            core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
+            core_read ((DSBR . ADDR + 2 * TPR . TSR) & PAMASK, & SDWe);
+            core_read ((DSBR . ADDR + 2 * TPR . TSR  + 1) & PAMASK, & SDWo);
 
 //sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
 //sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n", DSBR . ADDR, TPR . TSR);

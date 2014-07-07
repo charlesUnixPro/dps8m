@@ -278,7 +278,7 @@ static _ptw0* fetchDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
 
     word36 PTWx1;
-    core_read(DSBR.ADDR + x1, &PTWx1);
+    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1);
     
     PTW0.ADDR = GETHI(PTWx1);
     PTW0.U = TSTBIT(PTWx1, 9);
@@ -307,9 +307,9 @@ static _ptw0* modifyDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
     
     word36 PTWx1;
-    core_read(DSBR.ADDR + x1, &PTWx1);
+    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1);
     PTWx1 = SETBIT(PTWx1, 9);
-    core_write(DSBR.ADDR + x1, PTWx1);
+    core_write((DSBR.ADDR + x1) & PAMASK, PTWx1);
     
     PTW0.U = 1;
     
@@ -373,7 +373,7 @@ static _sdw0* fetchPSDW(word15 segno)
     
     word36 SDWeven, SDWodd;
     
-    core_read2((p->ADDR << 6) + y1, &SDWeven, &SDWodd);
+    core_read2(((p->ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -419,7 +419,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
     word36 SDWeven, SDWodd;
     
-    core_read2(DSBR.ADDR + 2 * segno, &SDWeven, &SDWodd);
+    core_read2((DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -621,7 +621,7 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     
     sim_debug (DBG_APPENDING,& cpu_dev, "fetchPTW address %08o\n", sdw->ADDR + x2);
 
-    core_read(sdw->ADDR + x2, &PTWx2);
+    core_read((sdw->ADDR + x2) & PAMASK, &PTWx2);
     
     PTW0.ADDR = GETHI(PTWx2);
     PTW0.U = TSTBIT(PTWx2, 9);
@@ -704,9 +704,9 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
     
     setAPUStatus (apuStatus_MPTW);
 
-    core_read(sdw->ADDR + x2, &PTWx2);
+    core_read((sdw->ADDR + x2) & PAMASK, &PTWx2);
     PTWx2 = SETBIT(PTWx2, 6);
-    core_write(sdw->ADDR + x2, PTWx2);
+    core_write((sdw->ADDR + x2) & PAMASK, PTWx2);
 //if_sim_debug (DBG_TRACE, & cpu_dev)
 //sim_printf ("modifyPTW 0%o %012llo ADDR %o U %llo M %llo F %llo FC %llo\n",
             //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 

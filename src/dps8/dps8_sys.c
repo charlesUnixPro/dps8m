@@ -621,8 +621,8 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
         word36 SDWe, SDWo;
-        core_read (DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno, & SDWe);
-        core_read (DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1, & SDWo);
+        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno) & PAMASK, & SDWe);
+        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1) & PAMASK, & SDWo);
 
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a

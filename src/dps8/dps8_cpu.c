@@ -206,8 +206,8 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
         word24 a = DSBR.ADDR + 2 * segno;
         
         // just fill with 0's for now .....
-        core_write (a + 0, 0);
-        core_write (a + 1, 0);
+        core_write ((a + 0) & PAMASK, 0);
+        core_write ((a + 1) & PAMASK, 0);
         
         segno ++; // onto next segment SDW
       }
@@ -232,7 +232,7 @@ _sdw0 *fetchSDW (word15 segno)
   {
     word36 SDWeven, SDWodd;
     
-    core_read2 (DSBR . ADDR + 2 * segno, & SDWeven, & SDWodd);
+    core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd);
     
     // even word
     static _sdw0 _s;
