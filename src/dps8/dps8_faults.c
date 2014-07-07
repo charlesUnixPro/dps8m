@@ -478,6 +478,7 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);

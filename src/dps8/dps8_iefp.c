@@ -11,6 +11,7 @@
 #include "dps8_cpu.h"
 #include "dps8_sys.h"
 #include "dps8_iefp.h"
+#include "dps8_utils.h"
 
 
 // new Read/Write stuff ...

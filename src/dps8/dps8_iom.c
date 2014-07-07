@@ -1739,7 +1739,7 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
     DEVICE * devp = iom [iom_unit_num] . channels [chan] [dev_code] . dev;
 
 //if (chan == 012) iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
-//if (chan == 012) sim_printf ("[%lld]\n", sys_stats . total_cycles);
+//if (chan == 012) sim_printf ("[%lld]\n", sim_timell ());
 
     sim_debug (DBG_NOTIFY, & iom_dev, "IOM dispatch to chan %o\n", chan);
     if (devp == NULL)
@@ -2004,7 +2004,7 @@ void iom_interrupt (int iom_unit_num)
 
     if_sim_debug (DBG_TRACE, & iom_dev)
       {
-        sim_printf ("[%lld]\n", sys_stats . total_cycles);
+        sim_printf ("[%lld]\n", sim_timell ());
         iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
       }
     int ret = do_connect_chan (iom_unit_num);

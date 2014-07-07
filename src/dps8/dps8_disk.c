@@ -240,7 +240,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 //  pcw.command = "40"b3;                      /* reset status */
 
     int chan = pcwp-> chan;
-//sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sys_stats . total_cycles);
+//sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
     switch (pcwp -> dev_cmd)
       {
         case 000: // CMD 00 Request status
@@ -254,7 +254,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         case 025: // CMD 25 READ
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Read\n");
-//sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk read [%lld]\n", sim_timell ());
             // Get the DDCW
 
             dcw_t dcw;
@@ -371,7 +371,7 @@ sim_printf ("uncomfortable with this\n");
         case 030: // CMD 30 SEEK_512
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Seek512\n");
-//sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk seek512 [%lld]\n", sim_timell ());
             // Get the DDCW
 
             dcw_t dcw;
@@ -454,7 +454,7 @@ sim_printf ("uncomfortable with this\n");
         case 031: // CMD 31 WRITE
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Write\n");
-//sim_printf ("disk write [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk write [%lld]\n", sim_timell ());
             // Get the DDCW
 
             dcw_t dcw;
@@ -558,7 +558,7 @@ sim_printf ("uncomfortable with this\n");
         case 034: // CMD 34 SEEK
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Seek\n");
-//sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("disk seek [%lld]\n", sim_timell ());
             // Get the DDCW
 
             dcw_t dcw;

@@ -711,31 +711,30 @@ static t_stat setupForOperandRead (void)
 
 static void traceInstruction (void)
   {
-    if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
-    {
+    if_sim_debug (DBG_TRACE, &cpu_dev)
+      {
         char * compname;
         word18 compoffset;
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
         if (where)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, where);
-            if_sim_debug (DBG_TRACE, &cpu_dev)
-              listSource (compname, compoffset);
-        }
+          {
+            sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+            listSource (compname, compoffset);
+          }
 
         if (get_addr_mode() == ABSOLUTE_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
-        }
+          {
+            sim_debug(DBG_TRACE, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+          }
         if (get_addr_mode() == APPEND_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
-        }
+          {
+            sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+          }
         if (get_addr_mode() == BAR_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
-        }
-    }
+          {
+            sim_debug(DBG_TRACE, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+          }
+      }
 
   }
 
@@ -1002,17 +1001,17 @@ restart_1:
           doComputedAddressFormation ();
 
           if (save != TPR.CA)
-            sim_printf ("XXX save %06o %06o %lld\n", save, TPR . CA, sys_stats . total_cycles);
+            sim_printf ("XXX save %06o %06o %lld\n", save, TPR . CA, sim_timell ());
           if (savef != characterOperandFlag)
-            sim_printf ("XXX savef %o %o %lld\n", savef, characterOperandOffset, sys_stats . total_cycles);
+            sim_printf ("XXX savef %o %o %lld\n", savef, characterOperandOffset, sim_timell ());
           if (saves != characterOperandSize)
-            sim_printf ("XXX saves %o %o %lld\n", saves, characterOperandSize, sys_stats . total_cycles);
+            sim_printf ("XXX saves %o %o %lld\n", saves, characterOperandSize, sim_timell ());
           if (saveo != characterOperandOffset)
-            sim_printf ("XXX saveo %o %o %lld\n", saveo, characterOperandOffset, sys_stats . total_cycles);
+            sim_printf ("XXX saveo %o %o %lld\n", saveo, characterOperandOffset, sim_timell ());
           if (savedof != directOperandFlag)
-            sim_printf ("XXX savedof %o %o %lld\n", savedof, directOperandFlag, sys_stats . total_cycles);
+            sim_printf ("XXX savedof %o %o %lld\n", savedof, directOperandFlag, sim_timell ());
           if (savedo != directOperand)
-            sim_printf ("XXX savedo %012llo %012llo %lld\n", savedo, directOperand, sys_stats . total_cycles);
+            sim_printf ("XXX savedo %012llo %012llo %lld\n", savedo, directOperand, sim_timell ());
 
           sim_debug (DBG_ADDRMOD, & cpu_dev, "back from 2nd call\n");
         }
@@ -5067,7 +5066,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             // cioc The system controller addressed by Y (i.e., contains 
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
-//sim_printf ("cioc [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("cioc [%lld]\n", sim_timell ());
             int cpu_port_num = query_scpage_map (TPR.CA);
 
             if (cpu_port_num < 0)
@@ -5161,6 +5160,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
                                      // break this logic
               {
                 sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);

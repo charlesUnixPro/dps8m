@@ -1720,3 +1720,9 @@ void print_int128 (__int128_t n)
     print_uint128_r ((__uint128_t)n);
 }
 
+// Return simh's gtime as a long long.
+uint64 sim_timell (void)
+  {
+    return (uint64) sim_gtime ();
+  }
+

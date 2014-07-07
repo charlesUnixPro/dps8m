@@ -1,15 +1,15 @@
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
-  if (sys_stats . total_cycles >= sim_deb_start && \
-      (sim_deb_stop == 0 || sys_stats . total_cycles < sim_deb_stop) && \
+  if (sim_timell () >= sim_deb_start && \
+      (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
       sim_deb && \
       ((dptr)->dctrl & dbits)) \
         _sim_debug (dbits, dptr, __VA_ARGS__); \
   else \
     (void) 0
 #define if_sim_debug(dbits, dptr) \
-  if (sys_stats . total_cycles >= sim_deb_start && \
-      (sim_deb_stop == 0 || sys_stats . total_cycles < sim_deb_stop) && \
+  if (sim_timell () >= sim_deb_start && \
+      (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
       sim_deb && \
      ((dptr)->dctrl & dbits))
 

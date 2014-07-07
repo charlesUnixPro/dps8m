@@ -1745,7 +1745,7 @@ void dvf (void)
     word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
     word72 m2 = SIGNEXT72(SIGNEXT36(CY));
 
-sim_printf ("[%lld]\n", sys_stats . total_cycles);
+sim_printf ("[%lld]\n", sim_timell ());
 sim_printf ("m1 "); print_int128 (m1); sim_printf ("\n");
 sim_printf ("-----------------\n");
 sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
@@ -1811,7 +1811,7 @@ sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
 // canonial code
 #if 0 
 
-sim_printf ("dvf [%lld]\n", sys_stats . total_cycles);
+sim_printf ("dvf [%lld]\n", sim_timell ());
 sim_printf ("rA %llu\n", rA);
 sim_printf ("rQ %llu\n", rQ);
 sim_printf ("CY %llu\n", CY);
@@ -1907,7 +1907,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 // MM code
 #if 1
 
-//sim_printf ("dvf [%lld]\n", sys_stats . total_cycles);
+//sim_printf ("dvf [%lld]\n", sim_timell ());
 //sim_printf ("rA %llu\n", rA);
 //sim_printf ("rQ %llu\n", rQ);
 //sim_printf ("CY %llu\n", CY);

@@ -1194,7 +1194,7 @@ G:;
             //TPR.CA = address;
 //if (address != TPR.CA){
 //sim_printf ("Address %06o TPR.CA %06o\n", address, TPR . CA);
-//sim_printf ("[%lld]\n", sys_stats . total_cycles );
+//sim_printf ("[%lld]\n", sim_timell () );
 ////exit (1);
 //}
             // initiate a directed fault

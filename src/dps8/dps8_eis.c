@@ -5476,10 +5476,10 @@ void cmpc(DCDstruct *ins)
 // debug
 if (e->TA1 != du . TAk [0]) sim_printf ("TA1 %d %d\n", e -> TA1, du . TAk [0]);
 if (e->TA2 != du . TAk [1]) sim_printf ("TA2 %d %d\n", e -> TA2, du . TAk [1]);
-if (e->N1 != (int) du . D1_RES) sim_printf ("%lld N1 %d %u\n", sys_stats . total_cycles, e -> N1, du . D1_RES);
+if (e->N1 != (int) du . D1_RES) sim_printf ("%lld N1 %d %u\n", sim_timell (), e -> N1, du . D1_RES);
 if (e->N2 != (int) du . D2_RES) sim_printf ("N2 %d %u\n", e -> N2, du . D2_RES);
-//if (e->addr[0].address != du . Dk_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sys_stats . total_cycles, e->addr[0].address, du . Dk_PTR_W [0]);
-//if (e->addr[1].address != du . Dk_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sys_stats . total_cycles, e->addr[1].address, du . Dk_PTR_W [1]);
+//if (e->addr[0].address != du . Dk_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sim_timell (), e->addr[0].address, du . Dk_PTR_W [0]);
+//if (e->addr[1].address != du . Dk_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sim_timell (), e->addr[1].address, du . Dk_PTR_W [1]);
 #if 0
 uint du_CN1, du_BITNO1, du_CN2, du_BITNO2;
 unpackCharBit (du . Dk_PTR_B [0], du . TAk [0], & du_CN1, & du_BITNO1);
@@ -5489,8 +5489,8 @@ unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
 //du_CN1 = du . Dk_PTR_B [0];
 //du_CN2 = du . Dk_PTR_B [1];
 #endif
-//if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sys_stats . total_cycles, e->CN1, du_CN1);
-//if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cycles, e->CN2, du_CN2);
+//if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sim_timell (), e->CN1, du_CN1);
+//if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sim_timell (), e->CN2, du_CN2);
 #endif
 
 #ifdef DBGF
@@ -5544,7 +5544,7 @@ if (c1!=c1_){
 sim_printf ("i %u c1 %o c1_ %o TA %u pos %u\n", i, c1, c1_, du . TAk [0], e->srcCN);
 sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
 sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sys_stats . total_cycles);
+sim_printf ("[%lld]\n", sim_timell ());
 }
         int c2_ = EISget469(&e->ADDR2, &e->srcCN2, du . TAk [1]);   // get Y-char2n
         int c2 = myEISget469 (2, i);
@@ -5554,12 +5554,12 @@ if (c2!=c2_){
 sim_printf ("i %u c2 %o c2_ %o\n", i, c2, c2_);
 sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
 sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sys_stats . total_cycles);
+sim_printf ("[%lld]\n", sim_timell ());
 }
 if (dbgAddr0 != dbgAddr1 || dbgData0 != dbgData1) {
 sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
 sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sys_stats . total_cycles);
+sim_printf ("[%lld]\n", sim_timell ());
 }
 #else
         int c1 = EISget469(&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n

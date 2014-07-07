@@ -1538,9 +1538,9 @@ DEVICE * sim_devices [] =
     NULL
 };
 
-// This is simh's sim_gtime, but returns total_cycles instead of sim_time.
-t_uint64 sim_ctime (void)
-  {
-    return sys_stats . total_cycles;
-  }
+//// This is simh's sim_gtime, but returns total_cycles instead of sim_time.
+//t_uint64 sim_ctime (void)
+//  {
+//    return sys_stats . total_cycles;
+//  }
 

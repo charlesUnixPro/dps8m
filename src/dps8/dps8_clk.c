@@ -2,6 +2,7 @@
 #include "dps8.h"
 #include "dps8_clk.h"
 #include "dps8_sys.h"
+#include "dps8_utils.h"
 
 #define TR_CLK 1 /* SIMH allows clock ids 0..7 */
 

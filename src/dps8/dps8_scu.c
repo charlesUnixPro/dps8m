@@ -1294,7 +1294,7 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
                 // This the equivalent of the XIP interrupt line to the CPU
                 // XXX it really should be done with cpu_svc();
                 //sim_printf ("delivered %d\n", inum);
-                //sim_printf ("[%lld]\n", sys_stats . total_cycles);
+                //sim_printf ("[%lld]\n", sim_timell ());
                 events . any = 1;
                 events . int_pending = 1;
                 events . interrupts [inum] = 1;
@@ -1847,7 +1847,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
       ((uint) getbits36(rega, 0, 16) << 16) |
       ((uint) getbits36(regq, 0, 16) <<  0);
 //sim_printf ("smcm  exec_intr_mask %012o\n", scu [scu_unit_num] . exec_intr_mask [mask_num]);
-//sim_printf ("[%lld]\n", sys_stats . total_cycles);
+//sim_printf ("[%lld]\n", sim_timell ());
     scu [scu_unit_num] . port_enable [0] = (uint) getbits36 (rega, 32, 1);
     scu [scu_unit_num] . port_enable [1] = (uint) getbits36 (rega, 33, 1);
     scu [scu_unit_num] . port_enable [2] = (uint) getbits36 (rega, 34, 1);

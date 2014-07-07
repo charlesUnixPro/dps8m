@@ -1016,7 +1016,7 @@ t_stat simh_hooks (void)
                       ((((t_addr) PPR.PSR) & 037777) << 18),
                       SWMASK ('E')))  /* breakpoint? */
       return STOP_BKPT; /* stop simulation */
-    if (sim_deb_break && sys_stats . total_cycles >= sim_deb_break)
+    if (sim_deb_break && sim_timell () >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
 
     return reason;
@@ -1224,7 +1224,7 @@ t_stat sim_instr (void)
                       {
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
-//sim_printf ("intr_pair_addr %u [%lld]\n", intr_pair_addr, sys_stats . total_cycles);
+//sim_printf ("intr_pair_addr %u [%lld]\n", intr_pair_addr, sim_timell ());
 
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
@@ -1430,7 +1430,7 @@ syncFaultReturn:;
                 // normal EXECUTE CYCLE but in the FAULT CYCLE with the
                 // processor in temporary absolute mode.
 
-                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sys_stats . total_cycles);
+                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
     
                 if (switches . report_faults)
                   {
@@ -1522,6 +1522,7 @@ syncFaultReturn:;
       } while (reason == 0);
 
 leave:
+    sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
       {

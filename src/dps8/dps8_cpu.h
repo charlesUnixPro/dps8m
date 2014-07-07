@@ -1084,5 +1084,5 @@ _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
 int query_scpage_map (word24 addr);
 void cpu_init (void);
-t_uint64 sim_ctime (void);
+//t_uint64 sim_ctime (void);
 
