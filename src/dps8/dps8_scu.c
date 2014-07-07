@@ -528,6 +528,7 @@ static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
 static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
+static void deliverInterrupts (int scu_unit_num);
 
 //#define N_SCU_UNITS_MAX 4
 #define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
@@ -681,7 +682,7 @@ typedef struct
     uint mask_enable [N_ASSIGNMENTS]; // enable/disable
     uint mask_assignment [N_ASSIGNMENTS]; // assigned port number
 
-
+    uint cells [N_CELL_INTERRUPTS];
 
     uint lower_store_size; // In K words, power of 2; 32 - 4096
     uint cyclic; // 7 bits
@@ -759,7 +760,28 @@ typedef struct {
 // ============================================================================
 
 
+t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, word36 rega)
+  {
+// XXX Should setting a cell generate in interrupt? Is this how multiple CPUS 
+// get each others attention?
+    if (getbits36 (rega, 35, 1))
+      {
+        for (int i = 0; i < 16; i ++)
+          {
+            scu [scu_unit_num] . cells [i] = getbits36 (rega, i, 1) ? 1 : 0;
+          }
+      }
+    else
+      {
+        for (int i = 0; i < 16; i ++)
+          {
+            scu [scu_unit_num] . cells [i + 16] = getbits36 (rega, i, 1) ? 1 : 0;
+          }
+      }
+    return SCPE_OK;
+  }
 
+              
 
 // system controller and the function to be performed as follows:
 //
@@ -911,12 +933,21 @@ t_stat scu_sscr (uint scu_unit_num, uint __attribute__((unused)) cpu_unit_num, w
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= getbits36(regq, 0, 16);
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", __func__, mask_num + 'A', bin2text(scu [scu_unit_num] . exec_intr_mask [mask_num], N_CELL_INTERRUPTS));
 //sim_printf ("sscr  exec_intr_mask %012o\n", scu [scu_unit_num] . exec_intr_mask [mask_num]);
+            deliverInterrupts (scu_unit_num);
           }
           break;
 
         case 00003: // Set interrupt cells
-//sim_printf ("sscr %o\n", function);
-          return STOP_UNIMP;
+          {
+            for (int i = 0; i < 16; i ++)
+              {
+                scu [scu_unit_num] . cells [i] = getbits36 (rega, i, 1) ? 1 : 0;
+                scu [scu_unit_num] . cells [i + 16] = getbits36 (regq, i, 1) ? 1 : 0;
+              }
+// XXX Should setting a cell generate in interrupt? Is this how multiple CPUS get
+// each others attention?
+          }
+          break;
 
         case 00004: // Set calendar clock (4MW SCU only)
         case 00005: 
@@ -1210,52 +1241,86 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 // SCU with the SC (set execute cells) SCU command. 
 //
 
-int scu_set_interrupt(uint scu_unit_num, uint inum)
-{
+int scu_set_interrupt (uint scu_unit_num, uint inum)
+  {
     const char* moi = "SCU::interrupt";
     
     //sim_printf ("received %d (%o)\n", inum, inum);
-    if (inum > 31) {
+    if (inum >= N_CELL_INTERRUPTS) 
+      {
         sim_debug (DBG_WARN, &scu_dev, "%s: Bad interrupt number %d\n", moi, inum);
         return 1;
-    }
+      }
     
-    for (int pima = 0; pima < N_ASSIGNMENTS; ++pima) {
-        if (scu [scu_unit_num] . mask_enable [pima] == 0) {
-            sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not assigned.\n",
-                    moi, pima + 'A');
+    scu [scu_unit_num] . cells [inum] = 1;
+
+    for (int pima = 0; pima < N_ASSIGNMENTS; ++pima)
+      {
+        if (scu [scu_unit_num] . mask_enable [pima] == 0) 
+          {
+            sim_debug (DBG_DEBUG, &scu_dev, 
+                       "%s: PIMA %c: Mask is not assigned.\n",
+                       moi, pima + 'A');
             continue;
-        }
+          }
         uint mask = scu [scu_unit_num] . exec_intr_mask [pima];
         uint port = scu [scu_unit_num ] . mask_assignment [pima];
-//sim_printf ("recv  exec_intr_mask %012o %d %012o\n", scu [scu_unit_num] . exec_intr_mask [pima], inum, 1<<(31-inum));
-        if ((mask & (1<<(31-inum))) == 0) {
-            sim_debug (DBG_INFO, &scu_dev, "%s: PIMA %c: Port %d is masked against interrupts.\n",
-                    moi, 'A' + pima, port);
-            sim_debug (DBG_DEBUG, &scu_dev, "%s: Mask: %s\n", moi, bin2text(mask, N_CELL_INTERRUPTS));
-        } else {
-            if (scu[scu_unit_num].ports[port].type != ADEV_CPU)
-                sim_debug (DBG_WARN, &scu_dev, "%s: PIMA %c: Port %d should receive interrupt %d, but the device is not a cpu.\n",
-                        moi, 'A' + pima, port, inum);
-            else {
-                //extern events_t events; // BUG: put in hdr file or hide behind an access function
-                sim_debug (DBG_NOTIFY, &scu_dev, "%s: PIMA %c: Port %d (which is connected to port %d of CPU %d will receive interrupt %d.\n",
-                        moi,
-                       'A' + pima, port, scu[scu_unit_num].ports[port].dev_port,
-                        scu[scu_unit_num].ports[port].idnum, inum);
-// This the equivalent of the XIP interrupt line to the CPU
-// XXX it really should be done with cpu_svc();
-//sim_printf ("delivered %d\n", inum);
-//sim_printf ("[%lld]\n", sys_stats . total_cycles);
-                events.any = 1;
-                events.int_pending = 1;
-                events.interrupts[inum] = 1;
-            }
-        }
-    }
+        //sim_printf ("recv  exec_intr_mask %012o %d %012o\n", 
+                    //scu [scu_unit_num] . exec_intr_mask [pima], inum, 
+                    //1<<(31-inum));
+        if ((mask & (1 << (31 - inum))) == 0)
+          {
+            sim_debug (DBG_INFO, &scu_dev, 
+                       "%s: PIMA %c: Port %d is masked against interrupts.\n",
+                       moi, 'A' + pima, port);
+            sim_debug (DBG_DEBUG, &scu_dev, "%s: Mask: %s\n", 
+                       moi, bin2text(mask, N_CELL_INTERRUPTS));
+          } 
+        else 
+          {
+            if (scu [scu_unit_num] . ports [port] . type != ADEV_CPU)
+              sim_debug (DBG_WARN, & scu_dev, 
+                  "%s: PIMA %c: Port %d interrupt %d, device is not a cpu.\n",
+                  moi, 'A' + pima, port, inum);
+            else
+              {
+                sim_debug (DBG_NOTIFY, & scu_dev,
+                           "%s: PIMA %c: Port %d (port %d of CPU %d will "
+                           "receive interrupt %d.\n",
+                           moi,
+                          'A' + pima, port, 
+                           scu [scu_unit_num] . ports [port] . dev_port,
+                           scu [scu_unit_num] . ports [port] . idnum, inum);
+                // This the equivalent of the XIP interrupt line to the CPU
+                // XXX it really should be done with cpu_svc();
+                //sim_printf ("delivered %d\n", inum);
+                //sim_printf ("[%lld]\n", sys_stats . total_cycles);
+                events . any = 1;
+                events . int_pending = 1;
+                events . interrupts [inum] = 1;
+                scu [scu_unit_num] . cells [inum] = 0;
+              }
+          }
+      }
+    if (scu [scu_unit_num] . cells [inum])
+      {
+        sim_debug (DBG_NOTIFY, & scu_dev,
+                   "Interrupt %d masked\n", inum);
+      }
     
     return 0;
 }
+
+static void deliverInterrupts (int scu_unit_num)
+  {
+    // The mask register has been updated; deliver any interrupt cells set
+    for (int i = 0; i < N_CELL_INTERRUPTS; i ++)
+      {
+        if (scu [scu_unit_num] . cells [i])
+          scu_set_interrupt (scu_unit_num, i);
+      }
+  }
+
 
 // ============================================================================
 
@@ -1791,6 +1856,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     scu [scu_unit_num] . port_enable [5] = (uint) getbits36 (regq, 33, 1);
     scu [scu_unit_num] . port_enable [6] = (uint) getbits36 (regq, 34, 1);
     scu [scu_unit_num] . port_enable [7] = (uint) getbits36 (regq, 35, 1);
+    deliverInterrupts (scu_unit_num);
     
     return SCPE_OK;
   }

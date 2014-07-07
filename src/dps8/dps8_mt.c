@@ -526,6 +526,12 @@ sim_printf ("got survey devices\n");
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset status\n");
             stati = 04000;
+            if (sim_tape_wrp (unitp))
+              stati |= 1;
+            if (sim_tape_bot (unitp))
+              stati |= 2;
+            if (sim_tape_eom (unitp))
+              stati |= 0340;
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, stati);
@@ -542,8 +548,26 @@ sim_printf ("got survey devices\n");
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset device status\n");
             stati = 04000;
+            if (sim_tape_wrp (unitp))
+              stati |= 1;
+            if (sim_tape_bot (unitp))
+              stati |= 2;
+            if (sim_tape_eom (unitp))
+              stati |= 0340;
             break;
 
+        case 070:              // CMD 070 -- Rewind.
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Rewind\n");
+            stati = 04000;
+            if (sim_tape_wrp (unitp))
+              stati |= 1;
+            if (sim_tape_bot (unitp))
+              stati |= 2;
+            if (sim_tape_eom (unitp))
+              stati |= 0340;
+            break;
+            
         default:
           {
             stati = 04501;

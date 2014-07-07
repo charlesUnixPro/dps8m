@@ -5095,22 +5095,35 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             }
             break;
 
-        case 0451:  ///< smic
-            return STOP_UNIMP;
+        case 0451:  // smic
+          {
+            // For the smic instruction, the first 2 or 3 bits of the addr
+            // field of the instruction are used to specify which SCU.
+            // 2 bits for the DPS8M.
+            int scu_unit_num = getbits36 (TPR.CA, 0, 2);
 
-        case 0057:  ///< sscr
-            {
-              // For the sscr instruction, the first 2 or 3 bits of the addr
-              // field of the instruction are used to specify which SCU.
-              // 2 bits for the DPS8M.
-              int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, rA);
+            if (rc == CONT_FAULT)
+              doFault(store_fault, 0, "(smic)");
+            if (rc)
+              return rc;
+          }
+          break;
 
-              t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA, rA, rQ);
-              if (rc == CONT_FAULT)
-                doFault(store_fault, 0, "(sscr)");
-              if (rc)
-                return rc;
-            }
+
+        case 0057:  // sscr
+          {
+            // For the sscr instruction, the first 2 or 3 bits of the addr
+            // field of the instruction are used to specify which SCU.
+            // 2 bits for the DPS8M.
+            int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+
+            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA, rA, rQ);
+            if (rc == CONT_FAULT)
+              doFault(store_fault, 0, "(sscr)");
+            if (rc)
+              return rc;
+          }
             break;
 
         // Privileged - Miscellaneous
