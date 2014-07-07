@@ -663,7 +663,7 @@ startCA:;
             if (GET_TD (GET_TAG(indword)) == IT_F2)
               {
                 TPR . CA = tmpCA;
-                doFault (f2_fault, 0, "RI_MOD: IT_F2");
+                doFault (f2_fault, 0, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
@@ -743,7 +743,7 @@ startCA:;
                     switch (Td)
                     {
                         case IT_F2:
-                            doFault (f2_fault, 0, "TM_IT: IT_F2");
+                            doFault (f2_fault, 0, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
                             doFault( f3_fault, 0, "TM_IT: IT_F3");
@@ -893,7 +893,7 @@ startCA:;
 
             case IT_F2:
               {
-                doFault(f2_fault, 0, "IT_MOD: IT_F2");
+                doFault(f2_fault, 0, "IT_MOD: IT_F2 (2)");
               }
 
             case IT_F3:
