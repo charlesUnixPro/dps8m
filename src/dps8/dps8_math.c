@@ -1745,10 +1745,10 @@ void dvf (void)
     word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
     word72 m2 = SIGNEXT72(SIGNEXT36(CY));
 
-sim_printf ("[%lld]\n", sim_timell ());
-sim_printf ("m1 "); print_int128 (m1); sim_printf ("\n");
-sim_printf ("-----------------\n");
-sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
+//sim_printf ("[%lld]\n", sim_timell ());
+//sim_printf ("m1 "); print_int128 (m1); sim_printf ("\n");
+//sim_printf ("-----------------\n");
+//sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
 
     if (m2 == 0)
     {

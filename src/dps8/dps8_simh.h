@@ -43,8 +43,9 @@
                  DBG_ERR )
 #define DBG_FAULT       (1U << 20)  ///< follow fault handling
 #define DBG_INTR        (1U << 21)  // follow interrupt handling
-#define DBG_CORE        (1U << 22)  // follow interrupt handling
+#define DBG_CORE        (1U << 22)
 #define DBG_CYCLE       (1U << 23)
+#define DBG_CAC         (1U << 24)
 
 // Abort codes, used to sort out longjmp's back to the main loop.
 // Codes > 0 are simulator stop codes

@@ -1160,7 +1160,8 @@ restart_1:
 
     sys_stats . total_cycles += 1; // bump cycle counter
     
-    if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
+    //if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
+    if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
         sim_debug(DBG_REGDUMPAQI, &cpu_dev, "A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(cu.IR));
         

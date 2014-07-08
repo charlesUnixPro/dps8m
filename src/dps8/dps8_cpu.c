@@ -86,6 +86,7 @@ static DEBTAB cpu_dt[] = {
     { "INTR",       DBG_INTR        },
     { "CORE",       DBG_CORE        },
     { "CYCLE",      DBG_CYCLE       },
+    { "CAC",        DBG_CAC         },
     { NULL,         0               }
 };
 
@@ -1316,11 +1317,13 @@ t_stat sim_instr (void)
                     cu . IWB = cu . IRODD;
                     cu . xde = cu . xdo = 0; // and done
                   }
+                // If we have done neither of the XED
                 else if (cu . xde == 1 && cu . xdo == 1)
                   {
                     cu . xde = 0; // do the odd next time
                     cu . xdo = 1;
                   }
+                // If were nave not yet done the XEC
                 else if (cu . xde == 1)
                   {
                     cu . xde = cu . xdo = 0; // and done
@@ -1385,6 +1388,7 @@ t_stat sim_instr (void)
                     break;
                   }
 
+#if 0
                 if (cu . xde == 1 && cu . xdo == 1) // we just did the even of an XED
                   {
                     setCpuCycle (FETCH_cycle);
@@ -1395,6 +1399,13 @@ t_stat sim_instr (void)
                     setCpuCycle (FETCH_cycle);
                     break;
                   }
+#endif
+                if (cu . xde || cu . xdo) // we are starting or are in an XEC/XED
+                  {
+                    setCpuCycle (FETCH_cycle);
+                    break;
+                  }
+
                 cu . xde = cu . xdo = 0;
                 PPR.IC ++;
                 if (ci->info->ndes > 0)

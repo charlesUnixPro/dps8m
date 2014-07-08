@@ -6,12 +6,11 @@
  * \brief EIS support code...
 */
 
+
 #include <stdio.h>
 //#define DBGF // page fault debugging
 //#define DBGX
-#ifdef DBGX
 #include <ctype.h>
-#endif
 
 #include "dps8.h"
 #include "dps8_cpu.h"
@@ -40,6 +39,62 @@ struct MOPstruct
 };
 
 
+static word36 EIScac (EISaddr * p, int offset, int ta)
+  {
+    word36 data;
+    int maxChars = 4; // CTA9
+    switch(ta)
+    {
+        case CTA4:
+            maxChars = 8;
+            break;
+            
+        case CTA6:
+            maxChars = 6;
+            break;
+    }
+    int woffset = offset / maxChars;
+    int coffset = offset % maxChars;
+
+    if (p -> mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
+      {
+        TPR . TRR = p -> RNR;
+        TPR . TSR = p -> SNR;
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %o:%06o\n", 
+                   __func__, TPR . TSR, p -> address);
+        Read (p -> address + woffset, & data, EIS_OPERAND_READ, true);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read* %012llo@%o:%06o\n", 
+                   __func__, data, TPR . TSR, p -> address);
+      }
+    else
+      {
+        if (get_addr_mode () == APPEND_mode)
+          {
+            TPR . TRR = PPR . PRR;
+            TPR . TSR = PPR . PSR;
+          }
+        
+        Read (p -> address + woffset, & data, EIS_OPERAND_READ, false);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", 
+                   __func__, data, TPR . TSR, p -> address);
+      }
+
+    word36 c = 0;
+    switch (ta)
+      {
+        case CTA4:
+          c = get4 (data, coffset);
+          break;
+        case CTA6:
+          c = get6 (data, coffset);
+          break;
+        case CTA9:
+          c = get9 (data, coffset);
+          break;
+      }
+    return c;
+  }
 #ifdef DBGF
 static void packCharBit (word6 * D_PTR_B, word3 TAk, uint effCHAR, uint effBITNO)
   {
@@ -5510,13 +5565,40 @@ unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, 
-      "%s srcCN:%d srcCN2:%d srcTA:%d srcSZ:%d fill:0%03o\n",
-      __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
+      "%s N1: %d N2: %d srcCN:%d srcCN2:%d srcTA:%d srcSZ:%d fill:0%03o\n",
+      __func__, e -> N1, e -> N2, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
       fill);
 
     SETF (cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
     SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
+    if_sim_debug (DBG_CAC, & cpu_dev)
+    if (e -> N1 < 80 && e -> N2 < 80)
+      {
+        sim_printf ("[%lld]\n", sim_timell ());
+        sim_printf ("s1: <");
+        for (int i = 0; i < e -> N1; i ++)
+          {
+            unsigned char c = (unsigned char) EIScac (& e -> ADDR1, e -> srcCN + i, e -> srcTA);
+            if (isprint (c))
+              sim_printf ("%c", c);
+            else
+              sim_printf ("\\%03o", c);
+          }
+        sim_printf (">\n");
+    
+        sim_printf ("s2: <");
+        for (int i = 0; i < e -> N2; i ++)
+          {
+            unsigned char c = (unsigned char) EIScac (& e -> ADDR2, e -> srcCN2 + i, e -> srcTA);
+            if (isprint (c))
+              sim_printf ("%c", c);
+            else
+              sim_printf ("\\%03o", c);
+          }
+        sim_printf (">\n");
+      }
+
 #ifdef DBGX
 char c1buf [1024];
 char c2buf [1024];

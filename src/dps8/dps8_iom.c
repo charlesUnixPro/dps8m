@@ -1132,7 +1132,7 @@ static void iom_fault (int iom_unit_num, uint chan, const char* who, int is_sys,
     if (who == NULL)
         who = "unknown";
     sim_debug (DBG_WARN, &iom_dev, "%s: Fault for IOM %c channel %d in %s: is_sys=%d, signal=%d\n", who, 'A' + iom_unit_num, chan, who, is_sys, signal);
-    sim_debug (DBG_ERR, &iom_dev, "%s: Not setting status word.\n", who);
+    sim_debug (DBG_WARN, &iom_dev, "%s: Not setting status word.\n", who);
   }
 
 /*
