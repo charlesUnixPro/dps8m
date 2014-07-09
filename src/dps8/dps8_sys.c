@@ -483,7 +483,8 @@ void listSource (char * compname, word18 offset)
                     fgets (line, 132, listing);
                     if (strncmp (line, offset_str, offset_str_len) == 0)
                       {
-                        sim_printf ("%s", line);
+                        //sim_printf ("%s", line);
+                        sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
                         //break;
                       }
                     if (strcmp (line, "\fLITERALS\n") == 0)
@@ -560,7 +561,8 @@ void listSource (char * compname, word18 offset)
                         if (lno != bestLine)
                           continue;
                         // Got it
-                        sim_printf ("%s", line);
+                        //sim_printf ("%s", line);
+                        sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
                         break;
                       }
                     goto fileDone;
@@ -574,7 +576,8 @@ void listSource (char * compname, word18 offset)
                         fgets (line, 132, listing);
                         if (strncmp (line, offset_str + 4, offset_str_len - 4) == 0)
                           {
-                            sim_printf ("%s", line);
+                            //sim_printf ("%s", line);
+                            sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
                             //break;
                           }
                         //if (strcmp (line, "\fLITERALS\n") == 0)

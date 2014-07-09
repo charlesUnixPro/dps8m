@@ -1983,13 +1983,13 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 
 addr_modes_t get_addr_mode(void)
 {
-    if (secret_addressing_mode)
-      { sim_debug (DBG_TRACE, & cpu_dev, "SECRET\n"); }
+    //if (secret_addressing_mode)
+      //{ sim_debug (DBG_TRACE, & cpu_dev, "SECRET\n"); }
     if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
-    if (went_appending)
-      { sim_debug (DBG_TRACE, & cpu_dev, "WENT\n"); }
+    //if (went_appending)
+      //{ sim_debug (DBG_TRACE, & cpu_dev, "WENT\n"); }
     if (went_appending)
         return APPEND_mode;
     //if (IR.abs_mode)
