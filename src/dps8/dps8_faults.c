@@ -11,6 +11,7 @@
 #include "dps8.h"
 #include "dps8_append.h"
 #include "dps8_cpu.h"
+#include "dps8_ins.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 
@@ -442,6 +443,8 @@ For now, at least, we must remember a few things:
 void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    if_sim_debug (DBG_FAULT, & cpu_dev)
+      traceInstruction (DBG_FAULT);
 
     // some debugging support stuff
     fault_psr = PPR.PSR;

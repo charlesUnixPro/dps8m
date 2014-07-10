@@ -1114,6 +1114,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
         case 00004: // Get calendar clock (4MW SCU only)
         case 00005: 
           {
+//rA = 0145642; rA = 0250557402045; break;
             if (switches . steady_clock)
               {
                 // The is a bit of code that is waiting for 5000 ms; this

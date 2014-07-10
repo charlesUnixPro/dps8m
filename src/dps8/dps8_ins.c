@@ -709,30 +709,30 @@ static t_stat setupForOperandRead (void)
 }
 #endif
 
-static void traceInstruction (void)
+void traceInstruction (uint flag)
   {
-    if_sim_debug (DBG_TRACE, &cpu_dev)
+    if_sim_debug (flag, &cpu_dev)
       {
         char * compname;
         word18 compoffset;
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
         if (where)
           {
-            sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+            sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
             listSource (compname, compoffset);
           }
 
         if (get_addr_mode() == ABSOLUTE_mode)
           {
-            sim_debug(DBG_TRACE, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
         if (get_addr_mode() == APPEND_mode)
           {
-            sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            sim_debug(flag, &cpu_dev, "%05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
         if (get_addr_mode() == BAR_mode)
           {
-            sim_debug(DBG_TRACE, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
       }
 
@@ -933,7 +933,7 @@ restart_1:
     // if a page fault occurs.
     ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
    
-    traceInstruction ();
+    traceInstruction (DBG_TRACE);
 
     // This must not happen on instruction restart
     if (! (cu . IR & I_MIIF))
