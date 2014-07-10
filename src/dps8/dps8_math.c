@@ -1718,6 +1718,10 @@ void dfdi (void)
     dfdvX (true);
 }
 
+
+//#define DVF_HWR 
+//#define DVF_FRACTIONAL
+#define DVF_CAC
 // CANFAULT 
 void dvf (void)
 {
@@ -1738,7 +1742,7 @@ void dvf (void)
     // reflects the dividend sign.
     
 // HWR code
-#if 0
+#ifdef DVF_HWR
     // m1 divedend
     // m2 divisor
 
@@ -1809,7 +1813,7 @@ void dvf (void)
 #endif
 
 // canonial code
-#if 0 
+#ifdef DVF_FRACTIONAL
 
 sim_printf ("dvf [%lld]\n", sim_timell ());
 sim_printf ("rA %llu\n", rA);
@@ -1905,7 +1909,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 #endif
 
 // MM code
-#if 1
+#ifdef DVF_CAC
 
 //sim_printf ("dvf [%lld]\n", sim_timell ());
 //sim_printf ("rA %llu\n", rA);
