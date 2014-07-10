@@ -5808,7 +5808,6 @@ static t_stat DoEISInstruction (void)
                 }
 
             // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit), an illegal procedure fault occurs.
-            // Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
    
             // XXX wire in fault detection
                 
@@ -5853,7 +5852,6 @@ static t_stat DoEISInstruction (void)
                 }
                 
                 //If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit), an illegal procedure fault occurs.
-                //Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
             }
             
             
