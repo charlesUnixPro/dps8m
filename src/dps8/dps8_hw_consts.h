@@ -146,6 +146,8 @@
 #define INST_M_OFFSET   077777U
 #define INST_V_PRN      33                              ///< n of PR[n] (Bit29=1)
 #define INST_M_PRN      07U
+#define INST_V_ARN      33                              ///< n of PR[n] (Bit29=1)
+#define INST_M_ARN      07U
 
 
 #define GET_TAG(x)      ((int32) ( (x)              & INST_M_TAG ))
@@ -156,6 +158,7 @@
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
 #define GET_PRN(x)      ((word3) (((x) >> INST_V_PRN) & INST_M_PRN))
+#define GET_ARN(x)      ((word3) (((x) >> INST_V_ARN) & INST_M_ARN))
 
 #define GET_TM(x)       ((int32)(GET_TAG(x) & 060U))
 #define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))

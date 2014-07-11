@@ -364,8 +364,8 @@ t_stat doComputedAddressFormation (void)
   {
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "doComputedAddressFormation(Entry): operType:%s TPR.CA=%06o\n",
-                opDescSTR (), TPR . CA);
+               "%s(Entry): operType:%s TPR.CA=%06o\n",
+                __func__, opDescSTR (), TPR . CA);
 
     DCDstruct * i = & currentInstruction;
 
@@ -417,8 +417,8 @@ startCA:;
     Tm = GET_TM (rTAG);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "doComputedAddressFormation(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               rTAG, getModString (rTAG), Tm, Td);
+               "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
+               __func__, rTAG, getModString (rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -434,8 +434,8 @@ startCA:;
           break;
       }
 
-    sim_printf ("doComputedAddressFormation(startCA): unknown Tm??? %o\n",
-                GET_TM (rTAG));
+    sim_printf ("%s(startCA): unknown Tm??? %o\n",
+                __func__, GET_TM (rTAG));
     return SCPE_OK;
 
 
@@ -460,7 +460,27 @@ startCA:;
             //updateIWB (identity)
             return SCPE_OK;
           }
+#define RPT_TRY4
+#ifdef RPT_TRY4
 
+        if (cu . rpt || cu . rd)
+          {
+            word6 Td = GET_TD (i -> tag);
+            uint Xn = X (Td);  // Get Xn of next instruction
+            TPR . CA = rX [Xn];
+            if (i -> a)
+              {
+                word3 PRn = (i -> address >> 15) & MASK3;
+                TPR . CA += PR [PRn] . WORDNO;
+                TPR . CA &= AMASK;
+              }
+          }
+        else
+          {
+            TPR . CA  += Cr;
+            TPR . CA  &= MASK18;   // keep to 18-bits
+          }
+#else
         // possible states
         // repeat_first rpt rd    do it?
         //       f       f   f      y
@@ -475,6 +495,16 @@ startCA:;
 
         if (cu . rpt || cu . rd)
           {
+             word6 Td = GET_TD (i -> tag);
+             uint Xn = X (Td);  // Get Xn of next instruction
+             TPR . CA = rX [Xn];
+          }
+        else
+          {
+            TPR . CA += Cr;
+            TPR . CA &= MASK18;   // keep to 18-bits
+          }
+
 //
 // RPT:
 //
@@ -623,11 +653,19 @@ startCA:;
             TPR . CA += Cr;
             TPR . CA &= MASK18;   // keep to 18-bits
           }
+#endif
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR . CA);
 
+#ifndef RPT_TRY4
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, 0);
-
+#else
+        // If repeat, the indirection chain is limited, so it is not needed
+        // to clear the tag; the delta code later on needs the tag to know
+        // which X register to update
+        if (! (cu . rpt || cu . rd))
+          updateIWB (TPR . CA, 0);
+#endif
         return SCPE_OK;
       } // R_MOD
 
@@ -654,6 +692,19 @@ startCA:;
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
 
+#ifdef RPT_TRY4
+        if (cu . rpt || cu . rd)
+          {
+             word6 Td = GET_TD (i -> tag);
+             uint Xn = X (Td);  // Get Xn of next instruction
+             tmpCA = rX [Xn];
+          }
+        else
+          {
+            tmpCA += Cr;
+            tmpCA &= MASK18;   // keep to 18-bits
+          }
+#else
             if (cu . rpt || cu . rd)
               {
                 sim_debug (DBG_TRACE, & cpu_dev,
@@ -768,7 +819,7 @@ startCA:;
                 tmpCA += Cr;
                 tmpCA &= MASK18;   // keep to 18-bits
               }
-
+#endif
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
           }
@@ -828,9 +879,16 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
                    indword, TPR . CA, rTAG);
-
+#ifndef RPT_TRY4
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, rTAG);
+#else
+        // If repeat, the indirection chain is limited, so it is not needed
+        // to clear the tag; the delta code later on needs the tag to know
+        // which X register to update
+        if (! (cu . rpt || cu . rd))
+          updateIWB (TPR . CA, rTAG);
+#endif
         goto startCA;
       } // RI_MOD
 
@@ -993,7 +1051,8 @@ startCA:;
               } // TM_IR
           } // Tm
 
-        sim_printf ("doComputedAddressFormation(IR_MOD): unknown Tm??? %o\n", GET_TM (rTAG));
+        sim_printf ("%s(IR_MOD): unknown Tm??? %o\n", 
+                    __func__, GET_TM (rTAG));
         return SCPE_OK;
       } // IR_MOD
 

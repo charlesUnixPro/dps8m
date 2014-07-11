@@ -838,86 +838,8 @@ t_stat executeInstruction (void)
           doFault(illproc_fault, ill_proc, "no rpt allowed for instruction");
       }
 
-// XXX This is too soon; doPtrReg needs to have been called.
-#if 0
-//
-// RPT:
-//
-// The computed address, y, of the operand (in the case of R modification) or
-// indirect word (in the case of RI modification) is determined as follows:
-//
-// For the first execution of the repeated instruction:
-//      C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
-// 
-// For all successive executions of the repeated instruction:
-//      C(Xn) + Delta -> y, y -> C(Xn);
-// 
-//
-//
-// RPD:
-//
-// The computed addresses, y-even and y-odd, of the operands (in the case of
-// R modification) or indirect words (in the case of RI modification) are
-// determined as follows:
-// 
-// For the first execution of the repeated instruction pair:
-//      C(C(PPR.IC)+1)0,17 + C(X-even) -> y-even, y-even -> C(X-even)
-//      C(C(PPR.IC)+2)0,17 + C(X-odd) -> y-odd, y-odd -> C(X-odd)
-// 
-// For all successive executions of the repeated instruction pair:
-//      if C(X0)8 = 1, then C(X-even) + Delta -> y-even,
-//           y-even -> C(X-even);
-//      otherwise, C(X-even) -> y-even
-//      if C(X0)9 = 1, then C(X-odd) + Delta -> y-odd,
-//           y-odd -> C(X-odd);
-//      otherwise, C(X-odd) -> y-odd
-// 
-// C(X0)8,9 correspond to control bits A and B, respectively, of the rpd
-// instruction word.
-// 
-
-// Handle first time of a RPT or RPD
-
-sim_debug (DBG_TRACE, & cpu_dev, "check first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
-    if (cu . repeat_first)
-      {
-// XXX This code is ignoring b29.
-        if (cu . rpt || (cu . rd && (PPR.IC & 1)))
-          cu . repeat_first = false;
-        // For the first execution of the repeated instruction: 
-        // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-        if (cu . rpt ||                                            // rpt
-            (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
-            (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))   // rpd & odd & B 
-          {
-            word6 Td = GET_TD(ci->tag);
-            uint Xn = X(Td);  // Get Xn of next instruction
-sim_debug (DBG_TRACE, & cpu_dev, "rpt/rd repeat first; CA was %06o\n", TPR . CA);
-            TPR.CA = (rX[Xn] + ci->address) & AMASK;
-            rX[Xn] = TPR.CA;
-         }
-      }
-
-
-    // If we are doing a RPT instruction, all of the CA setup has been done.
-
-    if ((! cu . repeat_first) && (cu .rpt || cu . rd))
-      {
-        // rY = TPR.CA;
-        word6 Td = GET_TD(ci -> tag);
-        uint Xn = X(Td);  // Get Xn of instruction
-        TPR . CA = rX [Xn];
-        rY = TPR.CA;
-      }
-    else
-      {
-        TPR.CA = address;
-        rY = TPR.CA;
-      }
-#else
     TPR.CA = address;
     rY = TPR.CA;
-#endif
 
     if (!switches . append_after)
     {
@@ -947,6 +869,99 @@ restart_1:
 
     du . JMP = info -> ndes;
 
+#define RPT_TRY4
+#ifdef RPT_TRY4
+    // possible states
+    // repeat_first rpt rd    do it?
+    //       f       f   f      y
+    //       t       x   x      y
+    //       f       t   x      n
+    //       f       x   t      n
+
+    if (cu . rpt || cu . rd)
+      {
+//
+// RPT:
+//
+// The computed address, y, of the operand (in the case of R modification) or
+// indirect word (in the case of RI modification) is determined as follows:
+//
+// For the first execution of the repeated instruction:
+//      C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
+// 
+// For all successive executions of the repeated instruction:
+//      C(Xn) + Delta -> y, y -> C(Xn);
+// 
+//
+// RPD:
+//
+// The computed addresses, y-even and y-odd, of the operands (in the case of
+// R modification) or indirect words (in the case of RI modification) are
+// determined as follows:
+// 
+// For the first execution of the repeated instruction pair:
+//      C(C(PPR.IC)+1)0,17 + C(X-even) -> y-even, y-even -> C(X-even)
+//      C(C(PPR.IC)+2)0,17 + C(X-odd) -> y-odd, y-odd -> C(X-odd)
+// 
+// For all successive executions of the repeated instruction pair:
+//      if C(X0)8 = 1, then C(X-even) + Delta -> y-even,
+//           y-even -> C(X-even);
+//      otherwise, C(X-even) -> y-even
+//      if C(X0)9 = 1, then C(X-odd) + Delta -> y-odd,
+//           y-odd -> C(X-odd);
+//      otherwise, C(X-odd) -> y-odd
+// 
+// C(X0)8,9 correspond to control bits A and B, respectively, of the rpd
+// instruction word.
+// 
+
+        sim_debug (DBG_TRACE, & cpu_dev,
+                   "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
+                   cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, 
+                   rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
+        sim_debug (DBG_TRACE, & cpu_dev,
+                   "RPT/RPD CA %06o\n", TPR . CA);
+
+// Handle first time of a RPT or RPD
+
+        if (cu . repeat_first)
+          {
+            if (cu . rpt || (cu . rd && (PPR.IC & 1)))
+              cu . repeat_first = false;
+
+            // For the first execution of the repeated instruction: 
+            // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+            if (cu . rpt ||                         // rpt
+                (cu . rd && ((PPR.IC & 1) == 0)) || // rpd & even & A 
+                (cu . rd && ((PPR.IC & 1) != 0)))   // rpd & odd & B 
+              {
+                word18 offset;
+                if (ci -> a)
+                  {
+                    offset = SIGNEXT15 (ci -> address & MASK15);
+                    //word3 PRn = (ci -> address >> 15) & MASK3;
+                    //offset += PR [PRn] . WORDNO;
+                    //offset &= AMASK;
+                  }
+                else
+                  offset = ci -> address;
+                offset &= AMASK;
+                sim_debug (DBG_TRACE, & cpu_dev, 
+                           "rpt/rd repeat first; offset is %06o\n", offset);
+
+                word6 Td = GET_TD (ci -> tag);
+                uint Xn = X (Td);  // Get Xn of next instruction
+                sim_debug (DBG_TRACE, & cpu_dev, 
+                           "rpt/rd repeat first; X%d was %06o\n", 
+                           Xn, rX [Xn]);
+                rX [Xn] = (rX [Xn] + offset) & AMASK;
+                sim_debug (DBG_TRACE, & cpu_dev, 
+                           "rpt/rd repeat first; X%d now %06o\n", 
+                           Xn, rX [Xn]);
+              }
+          }
+      } // cu . rpt || cu . rpd
+#endif
     if (info -> ndes > 0)
       {
 #ifdef DBGF
@@ -980,6 +995,7 @@ restart_1:
             // This must not happen on instruction restart
             cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
           }
+
 
         if (ci->info->flags & PREPARE_CA)
           doComputedAddressFormation ();
@@ -1084,7 +1100,7 @@ restart_1:
             bool exit = false;
             // The repetition cycle consists of the following steps:
             //  a. Execute the repeated instruction
-            //  b. C(X0)0,7 - 1 → C(X0)0,7
+            //  b. C(X0)0,7 - 1 -> C(X0)0,7
             uint x = bitfieldExtract (rX[ 0], 10, 8);
             x -= 1;
             rX [0] = bitfieldInsert (rX [0], x, 10, 8);
@@ -1384,7 +1400,7 @@ static t_stat DoBasicInstruction (void)
             
         case 0634:  ///< ldi
             {
-            // C(Y)18,31 → C(IR)
+            // C(Y)18,31 -> C(IR)
 
             word18 tmp18 = GETLO(CY) & 0777760;  // upper 14-bits of lower 18-bits
 
@@ -1566,13 +1582,13 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0551:  ///< stba
-            // 9-bit bytes of C(A) → corresponding bytes of C(Y), the byte 
+            // 9-bit bytes of C(A) -> corresponding bytes of C(Y), the byte 
             // positions affected being specified in the TAG field.
             copyBytes((i->tag >> 2) & 0xf, rA, &CY);
             break;
             
         case 0552:  ///< stbq
-            // 9-bit bytes of C(Q) → corresponding bytes of C(Y), the byte 
+            // 9-bit bytes of C(Q) -> corresponding bytes of C(Y), the byte 
             // positions affected being specified in the TAG field.
             copyBytes((i->tag >> 2) & 0xf, rQ, &CY);
             
@@ -1597,7 +1613,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0751: //< stca
-            /// Characters of C(A) → corresponding characters of C(Y), 
+            /// Characters of C(A) -> corresponding characters of C(Y), 
             /// the character positions affected being specified in the TAG 
             /// field.
             copyChars(i->tag, rA, &CY);
@@ -1605,22 +1621,22 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0752: ///< stcq
-            /// Characters of C(Q) → corresponding characters of C(Y), the 
+            /// Characters of C(Q) -> corresponding characters of C(Y), the 
             /// character positions affected being specified in the TAG field.
             copyChars(i->tag, rQ, &CY);
             break;
             
         case 0357: //< stcd
-            // C(PPR) → C(Y-pair) as follows:
+            // C(PPR) -> C(Y-pair) as follows:
             
-            //  000 → C(Y-pair)0,2
-            //  C(PPR.PSR) → C(Y-pair)3,17
-            //  C(PPR.PRR) → C(Y-pair)18,20
-            //  00...0 → C(Y-pair)21,29
-            //  (43)8 → C(Y-pair)30,35
+            //  000 -> C(Y-pair)0,2
+            //  C(PPR.PSR) -> C(Y-pair)3,17
+            //  C(PPR.PRR) -> C(Y-pair)18,20
+            //  00...0 -> C(Y-pair)21,29
+            //  (43)8 -> C(Y-pair)30,35
             
-            //  C(PPR.IC)+2 → C(Y-pair)36,53
-            //  00...0 → C(Y-pair)54,71
+            //  C(PPR.IC)+2 -> C(Y-pair)36,53
+            //  00...0 -> C(Y-pair)54,71
             
             Ypair[0] = 0;
             //Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PSR, 18, 15);
@@ -1639,8 +1655,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0754: ///< sti
             
-            // C(IR) → C(Y)18,31
-            // 00...0 → C(Y)32,35
+            // C(IR) -> C(Y)18,31
+            // 00...0 -> C(Y)32,35
             
 	    /// The contents of the indicator register after address
             /// preparation are stored in C(Y)18,31  C(Y)18,31 reflects the 
@@ -2050,7 +2066,7 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Addition
         case 0075:  ///< ada
             /**
-              \brief C(A) + C(Y) → C(A)
+              \brief C(A) + C(Y) -> C(A)
               Modifications: All
              
             (Indicators not listed are not affected)
@@ -2068,7 +2084,7 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0077:   ///< adaq
-            // C(AQ) + C(Y-pair) → C(AQ)
+            // C(AQ) + C(Y-pair) -> C(AQ)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
@@ -2078,7 +2094,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0033:   ///< adl
-            // C(AQ) + C(Y) sign extended → C(AQ)
+            // C(AQ) + C(Y) sign extended -> C(AQ)
             {
                 word72 tmp72 = SIGNEXT72(CY); // sign extend Cy
                 tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2089,7 +2105,7 @@ static t_stat DoBasicInstruction (void)
             
         case 0037:   ///< adlaq
             /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// C(AQ) + C(Y-pair) → C(AQ)
+            /// C(AQ) + C(Y-pair) -> C(AQ)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
@@ -2141,18 +2157,18 @@ static t_stat DoBasicInstruction (void)
             break;
         
         case 0054:   ///< aos
-            /// C(Y)+1→C(Y)
+            /// C(Y)+1->C(Y)
             
             CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
         
         case 0055:   ///< asa
-            /// C(A) + C(Y) → C(Y)
+            /// C(A) + C(Y) -> C(Y)
             CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0056:   ///< asq
-            /// C(Q) + C(Y) → C(Y)
+            /// C(Q) + C(Y) -> C(Y)
             CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
@@ -2166,7 +2182,7 @@ static t_stat DoBasicInstruction (void)
         case 0047:   ///< asx7
             {
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///    \brief C(Xn) + C(Y)0,17 → C(Y)0,17
+            ///    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
             
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2176,8 +2192,8 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0071:   ///< awca
-            /// If carry indicator OFF, then C(A) + C(Y) → C(A)
-            /// If carry indicator ON, then C(A) + C(Y) + 1 → C(A)
+            /// If carry indicator OFF, then C(A) + C(Y) -> C(A)
+            /// If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
             if (TSTF(cu.IR, I_CARRY))
                 rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2186,8 +2202,8 @@ static t_stat DoBasicInstruction (void)
             
             
         case 0072:   ///< awcq
-            /// If carry indicator OFF, then C(Q) + C(Y) → C(Q)
-            /// If carry indicator ON, then C(Q) + C(Y) + 1 → C(Q)
+            /// If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
+            /// If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
             if (TSTF(cu.IR, I_CARRY))
                 rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2197,12 +2213,12 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Subtraction
             
         case 0175:  ///< sba
-            /// C(A) - C(Y) → C(A)
+            /// C(A) - C(Y) -> C(A)
             rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0177:  ///< sbaq
-            /// C(AQ) - C(Y-pair) → C(AQ)
+            /// C(AQ) - C(Y-pair) -> C(AQ)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
@@ -2212,13 +2228,13 @@ static t_stat DoBasicInstruction (void)
             break;
           
         case 0135:  ///< sbla
-            /// C(A) - C(Y) → C(A) logical
+            /// C(A) - C(Y) -> C(A) logical
             rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0137:  ///< sblaq
             /// The sblaq instruction is identical to the sbaq instruction with the exception that the overflow indicator is not affected by the sblaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// \brief C(AQ) - C(Y-pair) → C(AQ)
+            /// \brief C(AQ) - C(Y-pair) -> C(AQ)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
@@ -2228,7 +2244,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0136:  ///< sblq
-            ///< C(Q) - C(Y) → C(Q)
+            ///< C(Q) - C(Y) -> C(Q)
             rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
@@ -2241,7 +2257,7 @@ static t_stat DoBasicInstruction (void)
         case 0126:  ///< sblx6
         case 0127:  ///< sblx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief     C(Xn) - C(Y)0,17 → C(Xn)
+            /// \brief     C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
@@ -2249,7 +2265,7 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0176:  ///< sbq
-            /// C(Q) - C(Y) → C(Q)
+            /// C(Q) - C(Y) -> C(Q)
             rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
@@ -2262,7 +2278,7 @@ static t_stat DoBasicInstruction (void)
         case 0166:  ///< sbx6
         case 0167:  ///< sbx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief  C(Xn) - C(Y)0,17 → C(Xn)
+            /// \brief  C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2270,13 +2286,13 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0155:  ///< ssa
-            /// C(A) - C(Y) → C(Y)
+            /// C(A) - C(Y) -> C(Y)
             CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
 
         case 0156:  ///< ssq
-            /// C(Q) - C(Y) → C(Y)
+            /// C(Q) - C(Y) -> C(Y)
             CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
@@ -2291,7 +2307,7 @@ static t_stat DoBasicInstruction (void)
         case 0147:  ///< ssx7
             {
             /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn) - C(Y)0,17 → C(Y)0,17
+            /// \brief C(Xn) - C(Y)0,17 -> C(Y)0,17
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
@@ -2301,8 +2317,8 @@ static t_stat DoBasicInstruction (void)
 
             
         case 0171:  ///< swca
-            /// If carry indicator ON, then C(A)- C(Y) → C(A)
-            /// If carry indicator OFF, then C(A) - C(Y) - 1 → C(A)
+            /// If carry indicator ON, then C(A)- C(Y) -> C(A)
+            /// If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
             if (!TSTF(cu.IR, I_CARRY))
                 rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2310,8 +2326,8 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0172:  ///< swcq
-            /// If carry indicator ON, then C(Q) - C(Y) → C(Q)
-            /// If carry indicator OFF, then C(Q) - C(Y) - 1 → C(Q)
+            /// If carry indicator ON, then C(Q) - C(Y) -> C(Q)
+            /// If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
             if (!TSTF(cu.IR, I_CARRY))
                 rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
@@ -2321,7 +2337,7 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Multiplication
         case 0401:  ///< mpf
             {
-            /// C(A) × C(Y) → C(AQ), left adjusted
+            /// C(A) × C(Y) -> C(AQ), left adjusted
             /**
              * Two 36-bit fractional factors (including sign) are multiplied to form a 71- bit fractional product (including sign), which is stored left-adjusted in the AQ register. AQ71 contains a zero. Overflow can occur only in the case of A and Y containing negative 1 and the result exceeding the range of the AQ register.
              */
@@ -2347,7 +2363,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0402:  ///< mpy
-            /// C(Q) × C(Y) → C(AQ), right adjusted
+            /// C(Q) × C(Y) -> C(AQ), right adjusted
             
             {
                 int64_t t0 = rQ & DMASK;
@@ -2370,7 +2386,7 @@ static t_stat DoBasicInstruction (void)
 //#define DIV_TRACE
         /// Fixed-Point Division
         case 0506:  ///< div
-            /// C(Q) / (Y) integer quotient → C(Q), integer remainder → C(A)
+            /// C(Q) / (Y) integer quotient -> C(Q), integer remainder -> C(A)
             /**
              * A 36-bit integer dividend (including sign) is divided by a 36-bit integer divisor (including sign) to form a 36-bit integer quotient (including sign) and a 36-bit integer remainder (including sign). The remainder sign is equal to the dividend sign unless the remainder is zero.
                If the dividend = -2**35 and the divisor = -1 or if the divisor = 0, then division does not take place. Instead, a divide check fault occurs, C(Q) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
@@ -2454,8 +2470,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0507:  ///< dvf
             /// C(AQ) / (Y)
-            ///  fractional quotient → C(A)
-            ///  fractional remainder → C(Q)
+            ///  fractional quotient -> C(A)
+            ///  fractional remainder -> C(Q)
             
             /// A 71-bit fractional dividend (including sign) is divided by a 36-bit fractional divisor yielding a 36-bit fractional quotient (including sign) and a 36-bit fractional remainder (including sign). C(AQ)71 is ignored; bit position 35 of the remainder corresponds to bit position 70 of the dividend. The
             ///  remainder sign is equal to the dividend sign unless the remainder is zero.
@@ -2468,7 +2484,7 @@ static t_stat DoBasicInstruction (void)
             
         /// Fixed-Point Negate
         case 0531:  ///< neg
-            /// -C(A) → C(A) if C(A) ≠ 0
+            /// -C(A) -> C(A) if C(A) ≠ 0
             /// XXX: what if C(A) == 0? Are flags affected? Assume yes, for now.
 
             rA &= DMASK;
@@ -2501,7 +2517,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0533:  ///< negl
-            /// -C(AQ) → C(AQ) if C(AQ) ≠ 0
+            /// -C(AQ) -> C(AQ) if C(AQ) ≠ 0
             /// XXX same problem as neg above - fixed
             {
                 rA &= DMASK;
@@ -2673,7 +2689,7 @@ static t_stat DoBasicInstruction (void)
             
         /// ￼Boolean And
         case 0375:  ///< ana
-            /// C(A)i & C(Y)i → C(A)i for i = (0, 1, ..., 35)
+            /// C(A)i & C(Y)i -> C(A)i for i = (0, 1, ..., 35)
             rA = rA & CY;
             rA &= DMASK;
             
@@ -2690,7 +2706,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0377:  ///< anaq
-            /// C(AQ)i & C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
+            /// C(AQ)i & C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
                 //!!!
                 word72 tmp72 = YPAIRTO72(Ypair);   //
@@ -2715,7 +2731,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0376:  ///< anq
-            /// C(Q)i & C(Y)i → C(Q)i for i = (0, 1, ..., 35)
+            /// C(Q)i & C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ & CY;
             rQ &= DMASK;
 
@@ -2732,7 +2748,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0355:  ///< ansa
-            /// C(A)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(A)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             {
                 CY = rA & CY;
                 CY &= DMASK;
@@ -2750,7 +2766,7 @@ static t_stat DoBasicInstruction (void)
             break;
         
         case 0356:  ///< ansq
-            /// C(Q)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(Q)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             {
                 CY = rQ & CY;
                 CY &= DMASK;
@@ -2776,7 +2792,7 @@ static t_stat DoBasicInstruction (void)
         case 0346:  ///< asnx6
         case 0347:  ///< asnx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i & C(Y)i → C(Y)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = rX[n] & GETHI(CY);
@@ -2806,7 +2822,7 @@ static t_stat DoBasicInstruction (void)
         case 0366:  ///< anx6
         case 0367:  ///< anx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i & C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i & C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] &= GETHI(CY);
@@ -2826,7 +2842,7 @@ static t_stat DoBasicInstruction (void)
 
         /// Boolean Or
         case 0275:  ///< ora
-            /// C(A)i | C(Y)i → C(A)i for i = (0, 1, ..., 35)
+            /// C(A)i | C(Y)i -> C(A)i for i = (0, 1, ..., 35)
             rA = rA | CY;
             rA &= DMASK;
             
@@ -2843,7 +2859,7 @@ static t_stat DoBasicInstruction (void)
             break;
          
         case 0277:  ///< oraq
-            /// C(AQ)i | C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
+            /// C(AQ)i | C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
                 //!!!
                 word72 tmp72 = YPAIRTO72(Ypair);   //
@@ -2867,7 +2883,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0276:  ///< orq
-            /// C(Q)i | C(Y)i → C(Q)i for i = (0, 1, ..., 35)
+            /// C(Q)i | C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ | CY;
             rQ &= DMASK;
 
@@ -2884,7 +2900,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0255:  ///< orsa
-            /// C(A)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(A)i | C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             CY = rA | CY;
             CY &= DMASK;
             
@@ -2901,7 +2917,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0256:  ///< orsq
-            /// C(Q)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(Q)i | C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             
             CY = rQ | CY;
             CY &= DMASK;
@@ -2927,7 +2943,7 @@ static t_stat DoBasicInstruction (void)
         case 0246:  ///< orsx6
         case 0247:  ///< orsx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i | C(Y)i → C(Y)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i | C(Y)i -> C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
             
@@ -2957,7 +2973,7 @@ static t_stat DoBasicInstruction (void)
         case 0266:  ///< orx6
         case 0267:  ///< orx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i | C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i | C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {   
                 uint32 n = opcode & 07;  // get n
                 rX[n] |= GETHI(CY);
@@ -2977,7 +2993,7 @@ static t_stat DoBasicInstruction (void)
            
         /// Boolean Exclusive Or
         case 0675:  ///< era
-            /// C(A)i ⊕ C(Y)i → C(A)i for i = (0, 1, ..., 35)
+            /// C(A)i ⊕ C(Y)i -> C(A)i for i = (0, 1, ..., 35)
             rA = rA ^ CY;
             rA &= DMASK;
 
@@ -2994,7 +3010,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0677:  ///< eraq
-            /// C(AQ)i ⊕ C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
+            /// C(AQ)i ⊕ C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
                 //!!!
                 word72 tmp72 = YPAIRTO72(Ypair);   //
@@ -3018,7 +3034,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0676:  ///< erq
-            /// C(Q)i ⊕ C(Y)i → C(Q)i for i = (0, 1, ..., 35)
+            /// C(Q)i ⊕ C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ ^ CY;
             rQ &= DMASK;
             if (rQ == 0)
@@ -3034,7 +3050,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0655:  ///< ersa
-            /// C(A)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(A)i ⊕ C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             
             CY = rA ^ CY;
             CY &= DMASK;
@@ -3054,7 +3070,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0656:  ///< ersq
-            /// C(Q)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 35)
+            /// C(Q)i ⊕ C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             
             CY = rQ ^ CY;
             CY &= DMASK;
@@ -3082,7 +3098,7 @@ static t_stat DoBasicInstruction (void)
         case 0646:   ///< ersx6
         case 0647:   ///< ersx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i ⊕ C(Y)i -> C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
             
@@ -3112,7 +3128,7 @@ static t_stat DoBasicInstruction (void)
         case 0666:  ///< erx6 !!!! Beware !!!!
         case 0667:  ///< erx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn)i ⊕ C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
+            /// \brief C(Xn)i ⊕ C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] ^= GETHI(CY);
@@ -3307,9 +3323,9 @@ static t_stat DoBasicInstruction (void)
         /// FLOATING-POINT ARITHMETIC INSTRUCTIONS
             
         case 0433:  ///< dfld
-            /// C(Y-pair)0,7 → C(E)
-            /// C(Y-pair)8,71 → C(AQ)0,63
-            /// 00...0 → C(AQ)64,71
+            /// C(Y-pair)0,7 -> C(E)
+            /// C(Y-pair)8,71 -> C(AQ)0,63
+            /// 00...0 -> C(AQ)64,71
             /// Zero: If C(AQ) = 0, then ON; otherwise OFF
             /// Neg: If C(AQ)0 = 1, then ON; otherwise OFF
             
@@ -3325,9 +3341,9 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0431:  ///< fld
-            /// C(Y)0,7 → C(E)
-            /// C(Y)8,35 → C(AQ)0,27
-            /// 00...0 → C(AQ)30,71
+            /// C(Y)0,7 -> C(E)
+            /// C(Y)8,35 -> C(AQ)0,27
+            /// 00...0 -> C(AQ)30,71
             /// Zero: If C(AQ) = 0, then ON; otherwise OFF
             /// Neg: If C(AQ)0 = 1, then ON; otherwise OFF
             
@@ -3341,8 +3357,8 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0457:  ///< dfst
-            /// C(E) → C(Y-pair)0,7
-            /// C(AQ)0,63 → C(Y-pair)8,71
+            /// C(E) -> C(Y-pair)0,7
+            /// C(AQ)0,63 -> C(Y-pair)8,71
             
             Ypair[0] = ((word36)rE << 28) | ((rA & 0777777777400LLU) >> 8);
             Ypair[1] = ((rA & 0377) << 28) | ((rQ & 0777777777400LLU) >> 8);
@@ -3355,8 +3371,8 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0455:  ///< fst
-            /// C(E) → C(Y)0,7
-            /// C(A)0,27 → C(Y)8,35
+            /// C(E) -> C(Y)0,7
+            /// C(A)0,27 -> C(Y)8,35
             rE &= MASK18;
             rA &= DMASK;
             CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
@@ -3367,8 +3383,8 @@ static t_stat DoBasicInstruction (void)
             
 //            frd();
 //            
-//            /// C(E) → C(Y)0,7
-//            /// C(A)0,27 → C(Y)8,35
+//            /// C(E) -> C(Y)0,7
+//            /// C(A)0,27 -> C(Y)8,35
 //            CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
 //
 //            /// Zero: If C(Y) = floating point 0, then ON; otherwise OFF
@@ -3409,7 +3425,7 @@ static t_stat DoBasicInstruction (void)
             break;
   
         case 0435:  ///< ufa
-            /// C(EAQ) + C(Y) → C(EAQ)
+            /// C(EAQ) + C(Y) -> C(EAQ)
             
             ufa();
             break;
@@ -3441,7 +3457,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0535:  ///< ufs
-            ///< C(EAQ) - C(Y) → C(EAQ)
+            ///< C(EAQ) - C(Y) -> C(EAQ)
             
             ufs ();
             break;
@@ -3470,7 +3486,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0421:  ///< ufm
-            /// C(EAQ) × C(Y) → C(EAQ)
+            /// C(EAQ) × C(Y) -> C(EAQ)
             ufm ();
             break;
             
@@ -3485,19 +3501,19 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0525:  ///< fdi
-            /// C(Y) / C(EAQ) → C(EA)
+            /// C(Y) / C(EAQ) -> C(EA)
             
             fdi ();
             break;
             
         case 0565:  ///< fdv
-            /// C(EAQ) /C(Y) → C(EA)
-            /// 00...0 → C(Q)
+            /// C(EAQ) /C(Y) -> C(EA)
+            /// 00...0 -> C(Q)
             fdv ();
             break;
             
         case 0513:  ///< fneg
-            /// -C(EAQ) normalized → C(EAQ)
+            /// -C(EAQ) normalized -> C(EAQ)
             fneg ();
             break;
             
@@ -3511,15 +3527,15 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0473:  ///< dfrd
-            /// C(EAQ) rounded to 64 bits → C(EAQ)
-            /// 0 → C(AQ)64,71 (See notes in dps8_math.c on dfrd())
+            /// C(EAQ) rounded to 64 bits -> C(EAQ)
+            /// 0 -> C(AQ)64,71 (See notes in dps8_math.c on dfrd())
 
             dfrd ();
             break;
             
         case 0471:  ///< frd
-            /// C(EAQ) rounded to 28 bits → C(EAQ)
-            /// 0 → C(AQ)28,71 (See notes in dps8_math.c on frd())
+            /// C(EAQ) rounded to 28 bits -> C(EAQ)
+            /// 0 -> C(AQ)28,71 (See notes in dps8_math.c on frd())
             
             frd ();
             break;
@@ -3553,7 +3569,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0415:  ///< ade
-            /// C(E) + C(Y)0,7 → C(E)
+            /// C(E) + C(Y)0,7 -> C(E)
             {
                 int8 e = (CY >> 28) & 0377;
                 SCF((rE + e) >  127, cu.IR, I_EOFL);
@@ -3578,7 +3594,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0411:  ///< lde
-            /// C(Y)0,7 → C(E)
+            /// C(Y)0,7 -> C(E)
             
             rE = (CY >> 28) & 0377;
             CLRF(cu.IR, I_ZERO | I_NEG);
@@ -3586,8 +3602,8 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0456:  ///< ste
-            /// C(E) → C(Y)0,7
-            /// 00...0 → C(Y)8,17
+            /// C(E) -> C(Y)0,7
+            /// 00...0 -> C(Y)8,17
             
             //CY = (rE << 28);
             CY = bitfieldInsert36(CY, ((word36)(rE & 0377) << 10), 18, 8);
@@ -3627,8 +3643,8 @@ static t_stat DoBasicInstruction (void)
             // Absolute mode: Can be set OFF but not ON by the ret instruction
             // All oter indicators: If corresponding bit in C(Y) is 1, then ON; otherwise, OFF
             
-            /// C(Y)0,17 → C(PPR.IC)
-            /// C(Y)18,31 → C(IR)
+            /// C(Y)0,17 -> C(PPR.IC)
+            /// C(Y)18,31 -> C(IR)
             // XXX Not completely implemented
             PPR.IC = GETHI(CY);
             cu.IR = GETLO(CY) & 0777760;
@@ -3654,33 +3670,33 @@ static t_stat DoBasicInstruction (void)
                  implying that control is always transferred into ring 0.
              */
             
-            /// C(Y-pair)3,17 → C(PPR.PSR)
-            /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) → C(PPR.PRR)
-            /// C(Y-pair)36,53 → C(PPR.IC)
-            /// If C(PPR.PRR) = 0 then C(SDW.P) → C(PPR.P);
-            /// otherwise 0 → C(PPR.P)
-            /// C(PPR.PRR) → C(PRn.RNR) for n = (0, 1, ..., 7)
+            /// C(Y-pair)3,17 -> C(PPR.PSR)
+            /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
+            /// C(Y-pair)36,53 -> C(PPR.IC)
+            /// If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
+            /// otherwise 0 -> C(PPR.P)
+            /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             
             processorCycle = RTCD_OPERAND_FETCH;
 
-            /// C(Y-pair)3,17 → C(PPR.PSR)
+            /// C(Y-pair)3,17 -> C(PPR.PSR)
             PPR.PSR = GETHI(Ypair[0]) & 077777LL;
             
             // XXX ticket #16
-            /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) → C(PPR.PRR)
+            /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
             PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, SDW->R1);
             
-            /// C(Y-pair)36,53 → C(PPR.IC)
+            /// C(Y-pair)36,53 -> C(PPR.IC)
             PPR.IC = GETHI(Ypair[1]);
             
-            /// If C(PPR.PRR) = 0 then C(SDW.P) → C(PPR.P);
-            /// otherwise 0 → C(PPR.P)
+            /// If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
+            /// otherwise 0 -> C(PPR.P)
             if (PPR.PRR == 0)
                 PPR.P = SDW->P;
             else
                 PPR.P = 0;
             
-            /// C(PPR.PRR) → C(PRn.RNR) for n = (0, 1, ..., 7)
+            /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             //for(int n = 0 ; n < 8 ; n += 1)
             //  PR[n].RNR = PPR.PRR;
 
@@ -3698,8 +3714,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0614:  ///< teo
             /// If exponent overflow indicator ON then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             /// otherwise, no change to C(PPR)
             if (cu.IR & I_EOFL)
             {
@@ -3713,8 +3729,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0615:  ///< teu
             /// If exponent underflow indicator ON then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & I_EUFL)
             {
                 PPR.IC = TPR.CA;
@@ -3729,8 +3745,8 @@ static t_stat DoBasicInstruction (void)
         
         case 0604:  ///< tmi
             /// If negative indicator ON then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & I_NEG)
             {
                 PPR.IC = TPR.CA;
@@ -3742,8 +3758,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0602:  ///< tnc
             /// If carry indicator OFF then
-            ///   C(TPR.CA) → C(PPR.IC)
-            ///   C(TPR.TSR) → C(PPR.PSR)
+            ///   C(TPR.CA) -> C(PPR.IC)
+            ///   C(TPR.TSR) -> C(PPR.PSR)
             if (!(cu.IR & I_CARRY))
             {
                 PPR.IC = TPR.CA;
@@ -3755,8 +3771,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0601:  ///< tnz
             /// If zero indicator OFF then
-            ///     C(TPR.CA) → C(PPR.IC)
-            ///     C(TPR.TSR) → C(PPR.PSR)
+            ///     C(TPR.CA) -> C(PPR.IC)
+            ///     C(TPR.TSR) -> C(PPR.PSR)
             if (!(cu.IR & I_ZERO))
             {
                 PPR.IC = TPR.CA;
@@ -3768,8 +3784,8 @@ static t_stat DoBasicInstruction (void)
 
         case 0617:  ///< tov
             /// If overflow indicator ON then
-            ///   C(TPR.CA) → C(PPR.IC)
-            ///   C(TPR.TSR) → C(PPR.PSR)
+            ///   C(TPR.CA) -> C(PPR.IC)
+            ///   C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & I_OFLOW)
             {
                 PPR.IC = TPR.CA;
@@ -3783,8 +3799,8 @@ static t_stat DoBasicInstruction (void)
 
         case 0605:  ///< tpl
             /// If negative indicator OFF, then
-            ///   C(TPR.CA) → C(PPR.IC)
-            ///   C(TPR.TSR) → C(PPR.PSR)
+            ///   C(TPR.CA) -> C(PPR.IC)
+            ///   C(TPR.TSR) -> C(PPR.PSR)
             if (!(cu.IR & I_NEG)) 
             {
                 PPR.IC = TPR.CA;
@@ -3795,8 +3811,8 @@ static t_stat DoBasicInstruction (void)
             break;
         
         case 0710:  ///< tra
-            /// C(TPR.CA) → C(PPR.IC)
-            /// C(TPR.TSR) → C(PPR.PSR)
+            /// C(TPR.CA) -> C(PPR.IC)
+            /// C(TPR.TSR) -> C(PPR.PSR)
             
             PPR.IC = TPR.CA;
             PPR.PSR = TPR.TSR;
@@ -3805,8 +3821,8 @@ static t_stat DoBasicInstruction (void)
 
         case 0603:  ///< trc
             ///  If carry indicator ON then
-            ///    C(TPR.CA) → C(PPR.IC)
-            ///    C(TPR.TSR) → C(PPR.PSR)
+            ///    C(TPR.CA) -> C(PPR.IC)
+            ///    C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & I_CARRY)
             {
                 PPR.IC = TPR.CA;
@@ -3826,12 +3842,12 @@ static t_stat DoBasicInstruction (void)
         case 0672:  ///< tsp6
         case 0673:  ///< tsp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PPR.PRR) → C(PRn.RNR)
-            ///  C(PPR.PSR) → C(PRn.SNR)
-            ///  C(PPR.IC) + 1 → C(PRn.WORDNO)
-            ///  00...0 → C(PRn.BITNO)
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(PPR.PRR) -> C(PRn.RNR)
+            ///  C(PPR.PSR) -> C(PRn.SNR)
+            ///  C(PPR.IC) + 1 -> C(PRn.WORDNO)
+            ///  00...0 -> C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             {
                 uint32 n;
                 if (opcode <= 0273)
@@ -3855,8 +3871,8 @@ static t_stat DoBasicInstruction (void)
                 doFault (acc_viol_fault, ACV15, "TSS boundary violation");
                 //break;
             }
-            /// C(TPR.CA) + (BAR base) → C(PPR.IC)
-            /// C(TPR.TSR) → C(PPR.PSR)
+            /// C(TPR.CA) + (BAR base) -> C(PPR.IC)
+            /// C(TPR.TSR) -> C(PPR.PSR)
             PPR.IC = TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
             PPR.PSR = TPR.TSR;
 
@@ -3872,9 +3888,9 @@ static t_stat DoBasicInstruction (void)
         case 0706:  ///< tsx6
         case 0707:  ///< tsx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(PPR.IC) + 1 → C(Xn)
-            /// C(TPR.CA) → C(PPR.IC)
-            /// C(TPR.TSR) → C(PPR.PSR)
+            ///   C(PPR.IC) + 1 -> C(Xn)
+            /// C(TPR.CA) -> C(PPR.IC)
+            /// C(TPR.TSR) -> C(PPR.PSR)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] = (PPR.IC + 1) & MASK18;
@@ -3885,8 +3901,8 @@ static t_stat DoBasicInstruction (void)
         
         case 0607:  ///< ttf
             /// If tally runout indicator OFF then
-            ///   C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///   C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             /// otherwise, no change to C(PPR)
             if ((cu.IR & I_TALLY) == 0)
             {
@@ -3899,8 +3915,8 @@ static t_stat DoBasicInstruction (void)
          
         case 0600:  ///< tze
             /// If zero indicator ON then
-            ///   C(TPR.CA) → C(PPR.IC)
-            ///   C(TPR.TSR) → C(PPR.PSR)
+            ///   C(TPR.CA) -> C(PPR.IC)
+            ///   C(TPR.TSR) -> C(PPR.PSR)
             /// otherwise, no change to C(PPR)
             if (cu.IR & I_ZERO)
             {
@@ -3912,47 +3928,47 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0311:  ///< easp0
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[0].SNR = TPR.CA;
             break;
         case 0313:  ///< easp2
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[2].SNR = TPR.CA;
             break;
         case 0331:  ///< easp4
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[4].SNR = TPR.CA;
             break;
         case 0333:  ///< easp6
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[6].SNR = TPR.CA;
             break;
         
         case 0310:  ///< eawp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[0].WORDNO = TPR.CA;
             PR[0].BITNO = TPR.TBR;
             break;
         case 0312:  ///< eawp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[2].WORDNO = TPR.CA;
             PR[2].BITNO = TPR.TBR;
             break;
         case 0330:  ///< eawp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[4].WORDNO = TPR.CA;
             PR[4].BITNO = TPR.TBR;
             break;
         case 0332:  ///< eawp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[6].WORDNO = TPR.CA;
             PR[6].BITNO = TPR.TBR;
             break;
@@ -3960,10 +3976,10 @@ static t_stat DoBasicInstruction (void)
             
         case 0351:  ///< epbp1
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = 0;
@@ -3971,10 +3987,10 @@ static t_stat DoBasicInstruction (void)
             break;
         case 0353:  ///< epbp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = 0;
@@ -3982,10 +3998,10 @@ static t_stat DoBasicInstruction (void)
             break;
         case 0371:  ///< epbp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = 0;
@@ -3994,10 +4010,10 @@ static t_stat DoBasicInstruction (void)
             
         case 0373:  ///< epbp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = 0;
@@ -4006,10 +4022,10 @@ static t_stat DoBasicInstruction (void)
         
         case 0350:  ///< epp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = TPR.CA;
@@ -4017,10 +4033,10 @@ static t_stat DoBasicInstruction (void)
             break;
         case 0352:  ///< epp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = TPR.CA;
@@ -4028,10 +4044,10 @@ static t_stat DoBasicInstruction (void)
             break;
         case 0370:  ///< epp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = TPR.CA;
@@ -4039,10 +4055,10 @@ static t_stat DoBasicInstruction (void)
             break;
         case 0372:  ///< epp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = TPR.CA;
@@ -4052,10 +4068,10 @@ static t_stat DoBasicInstruction (void)
         case 0173:  ///< lpri
             /// For n = 0, 1, ..., 7
             ///  Y-pair = Y-block16 + 2n
-            ///  Maximum of C(Y-pair)18,20; C(SDW.R1); C(TPR.TRR) → C(PRn.RNR)
-            ///  C(Y-pair) 3,17 → C(PRn.SNR)
-            ///  C(Y-pair)36,53 → C(PRn.WORDNO)
-            ///  C(Y-pair)57,62 → C(PRn.BITNO)
+            ///  Maximum of C(Y-pair)18,20; C(SDW.R1); C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(Y-pair) 3,17 -> C(PRn.SNR)
+            ///  C(Y-pair)36,53 -> C(PRn.WORDNO)
+            ///  C(Y-pair)57,62 -> C(PRn.BITNO)
             
             for(uint32 n = 0 ; n < 8 ; n ++)
             {
@@ -4084,16 +4100,16 @@ static t_stat DoBasicInstruction (void)
         case 0766:  ///< lprp6
         case 0767:  ///< lprp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
             ///  If C(Y)0,1 ≠ 11, then
-            ///    C(Y)0,5 → C(PRn.BITNO);
+            ///    C(Y)0,5 -> C(PRn.BITNO);
             ///  otherwise,
             ///    generate command fault
-            /// If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+            /// If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
             ///  otherwise,
-            /// 000 → C(PRn.SNR)0,2
-            /// C(Y)6,17 → C(PRn.SNR)3,14
-            /// C(Y)18,35 → C(PRn.WORDNO)
+            /// 000 -> C(PRn.SNR)0,2
+            /// C(Y)6,17 -> C(PRn.SNR)3,14
+            /// C(Y)18,35 -> C(PRn.WORDNO)
             {
                 uint32 n = opcode & 07;  // get n
                 PR[n].RNR = TPR.TRR;
@@ -4107,17 +4123,17 @@ static t_stat DoBasicInstruction (void)
                 else
                   doFault(cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
 
-                //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+                //If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
                     PR[n].SNR |= 070000; // XXX check to see if this is correct
-                else // otherwise, 000 → C(PRn.SNR)0,2
+                else // otherwise, 000 -> C(PRn.SNR)0,2
                     PR[n].SNR &= 007777;
                 // XXX completed, but needs testing
-                //C(Y)6,17 → C(PRn.SNR)3,14
+                //C(Y)6,17 -> C(PRn.SNR)3,14
                 //PR[n].SNR &= 3; -- huh? Never code when tired
                 PR[n].SNR &=             070000; // [CAC] added this
                 PR[n].SNR |= GETHI(CY) & 007777;
-                //C(Y)18,35 → C(PRn.WORDNO)
+                //C(Y)18,35 -> C(PRn.WORDNO)
                 PR[n].WORDNO = GETLO(CY);
 
                 sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
@@ -4126,12 +4142,12 @@ static t_stat DoBasicInstruction (void)
          
         case 0251:  ///< spbp1
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[1].SNR << 18;
             Ypair[0] |= (word36) PR[1].RNR << 15;
@@ -4143,12 +4159,12 @@ static t_stat DoBasicInstruction (void)
             
         case 0253:  ///< spbp3
             //l For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[3].SNR << 18;
             Ypair[0] |= (word36) PR[3].RNR << 15;
@@ -4160,12 +4176,12 @@ static t_stat DoBasicInstruction (void)
             
         case 0651:  ///< spbp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[5].SNR << 18;
             Ypair[0] |= (word36) PR[5].RNR << 15;
@@ -4177,12 +4193,12 @@ static t_stat DoBasicInstruction (void)
         
         case 0653:  ///< spbp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[7].SNR << 18;
             Ypair[0] |= (word36) PR[7].RNR << 15;
@@ -4196,16 +4212,16 @@ static t_stat DoBasicInstruction (void)
             /// For n = 0, 1, ..., 7
             ///  Y-pair = Y-block16 + 2n
             
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
             
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
         
             for(uint32 n = 0 ; n < 8 ; n++)
             {
@@ -4222,15 +4238,15 @@ static t_stat DoBasicInstruction (void)
             
         case 0250:  ///< spri0
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[0].SNR << 18;
             Ypair[0] |= (word36) PR[0].RNR << 15;
@@ -4242,15 +4258,15 @@ static t_stat DoBasicInstruction (void)
             
         case 0252:  ///< spri2
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[2].SNR << 18;
             Ypair[0] |= (word36) PR[2].RNR << 15;
@@ -4262,15 +4278,15 @@ static t_stat DoBasicInstruction (void)
   
         case 0650:  ///< spri4
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PAR[4].SNR << 18;
             Ypair[0] |= (word36) PAR[4].RNR << 15;
@@ -4284,15 +4300,15 @@ static t_stat DoBasicInstruction (void)
     
         case 0652:  ///< spri6
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[6].SNR << 18;
             Ypair[0] |= (word36) PR[6].RNR << 15;
@@ -4313,9 +4329,9 @@ static t_stat DoBasicInstruction (void)
         case 0546:  ///< sprp6
         case 0547:  ///< sprp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.BITNO) → C(Y)0,5
-            ///  C(PRn.SNR)3,14 → C(Y)6,17
-            //  C(PRn.WORDNO) → C(Y)18,35
+            ///  C(PRn.BITNO) -> C(Y)0,5
+            ///  C(PRn.SNR)3,14 -> C(Y)6,17
+            //  C(PRn.WORDNO) -> C(Y)18,35
             {
                 uint32 n = opcode & 07;  // get n
             
@@ -4347,8 +4363,8 @@ static t_stat DoBasicInstruction (void)
         case 0052:   ///< adwp2
         case 0053:   ///< adwp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
-            ///   00...0 → C(PRn.BITNO)
+            ///   C(Y)0,17 + C(PRn.WORDNO) -> C(PRn.WORDNO)
+            ///   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = opcode & 03;  // get n
                 PR[n].WORDNO += GETHI(CY);
@@ -4362,8 +4378,8 @@ static t_stat DoBasicInstruction (void)
         case 0152:   ///< adwp6
         case 0153:   ///< adwp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
-            ///   00...0 → C(PRn.BITNO)
+            ///   C(Y)0,17 + C(PRn.WORDNO) -> C(PRn.WORDNO)
+            ///   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = (opcode & MASK3) + 4U;  // get n
                 PR[n].WORDNO += GETHI(CY);
@@ -4373,14 +4389,14 @@ static t_stat DoBasicInstruction (void)
             break;
         
         case 0213:  ///< epaq
-            /// 000 → C(AQ)0,2
-            /// C(TPR.TSR) → C(AQ)3,17
-            /// 00...0 → C(AQ)18,32
-            /// C(TPR.TRR) → C(AQ)33,35
+            /// 000 -> C(AQ)0,2
+            /// C(TPR.TSR) -> C(AQ)3,17
+            /// 00...0 -> C(AQ)18,32
+            /// C(TPR.TRR) -> C(AQ)33,35
             
-            /// C(TPR.CA) → C(AQ)36,53
-            /// 00...0 → C(AQ)54,65
-            /// C(TPR.TBR) → C(AQ)66,71
+            /// C(TPR.CA) -> C(AQ)36,53
+            /// 00...0 -> C(AQ)54,65
+            /// C(TPR.TBR) -> C(AQ)66,71
             
             rA = TPR.TRR & MASK3;
             rA |= (word36) (TPR.TSR & MASK15) << 18;
@@ -4391,8 +4407,8 @@ static t_stat DoBasicInstruction (void)
             break;
         
         case 0633:  ///< rccl
-            /// 00...0 → C(AQ)0,19
-            /// C(calendar clock) → C(AQ)20,71
+            /// 00...0 -> C(AQ)0,19
+            /// C(calendar clock) -> C(AQ)20,71
             {
               // For the rccl instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
@@ -4508,7 +4524,7 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0550:  ///< sbar
-            /// C(BAR) → C(Y) 0,17
+            /// C(BAR) -> C(Y) 0,17
             SETHI(CY, (BAR.BASE << 9) | BAR.BOUND);
             
             break;
@@ -4517,10 +4533,10 @@ static t_stat DoBasicInstruction (void)
         /// translation
         case 0505:  ///< bcd
             /// Shift C(A) left three positions
-            /// | C(A) | / C(Y) → 4-bit quotient plus remainder
+            /// | C(A) | / C(Y) -> 4-bit quotient plus remainder
             /// Shift C(Q) left six positions
-            /// 4-bit quotient → C(Q)32,35
-            /// remainder → C(A)
+            /// 4-bit quotient -> C(Q)32,35
+            /// remainder -> C(A)
             
             /// XXX Tested. Seems to work OK
             {
@@ -4530,16 +4546,16 @@ static t_stat DoBasicInstruction (void)
                 rA &= DMASK;    // keep to 36-bits
             
                 word36 tmp36 = llabs(SIGNEXT36(rA));
-                word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) → 4-bit quotient plus remainder
+                word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) -> 4-bit quotient plus remainder
                 word36 tmp36r = tmp36 % CY;
             
                 rQ <<= 6;       // Shift C(Q) left six positions
                 rQ &= DMASK;
             
-                rQ &= ~017;     // 4-bit quotient → C(Q)32,35
+                rQ &= ~017;     // 4-bit quotient -> C(Q)32,35
                 rQ |= (tmp36q & 017);
             
-                rA = tmp36r;    // remainder → C(A)
+                rA = tmp36r;    // remainder -> C(A)
             
                 SCF(rA == 0, cu.IR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
                 SCF(tmp1,    cu.IR, I_NEG);   // If C(A)0 = 1 before execution, then ON; otherwise OFF
@@ -4547,8 +4563,8 @@ static t_stat DoBasicInstruction (void)
             break;
            
         case 0774:  ///< gtb
-            /// C(A)0 → C(A)0
-            /// C(A)i ⊕ C(A)i-1 → C(A)i for i = 1, 2, ..., 35
+            /// C(A)0 -> C(A)0
+            /// C(A)i ⊕ C(A)i-1 -> C(A)i for i = 1, 2, ..., 35
             {
                 /// TODO: untested.
             
@@ -4569,7 +4585,7 @@ static t_stat DoBasicInstruction (void)
          
         /// REGISTER LOAD
         case 0230:  ///< lbar
-            /// C(Y)0,17 → C(BAR)
+            /// C(Y)0,17 -> C(BAR)
             BAR.BASE = (GETHI(CY) >> 9) & 0777; /// BAR.BASE is upper 9-bits (0-8)
             BAR.BOUND = GETHI(CY) & 0777;       /// BAR.BOUND is next lower 9-bits (9-17)
             break;
@@ -4990,7 +5006,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
 
 // DPS 8M processors:
 // C(Port interlace, Ports A-D) -> C(A) 0,3
-// 01 → C(A) 4,5
+// 01 -> C(A) 4,5
 // C(Fault base switches) -> C(A) 6,12
 // 1 -> C(A) 13
 // 0000 -> C(A) 14,17
@@ -5258,8 +5274,8 @@ static t_stat DoEISInstruction (void)
     {
         case 0604:  ///< tmoz
             /// If negative or zero indicator ON then
-            /// C(TPR.CA) → C(PPR.IC)
-            /// C(TPR.TSR) → C(PPR.PSR)
+            /// C(TPR.CA) -> C(PPR.IC)
+            /// C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & (I_NEG | I_ZERO))
             {
                 PPR.IC = TPR.CA;
@@ -5270,8 +5286,8 @@ static t_stat DoEISInstruction (void)
 
         case 0605:  ///< tpnz
             /// If negative and zero indicators are OFF then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             if (!(cu.IR & I_NEG) && !(cu.IR & I_ZERO))
             {
                 PPR.IC = TPR.CA;
@@ -5283,8 +5299,8 @@ static t_stat DoEISInstruction (void)
 
         case 0601:  ///< trtf
             /// If truncation indicator OFF then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             if (!(cu.IR & I_TRUNC))
             {
                 PPR.IC = TPR.CA;
@@ -5296,8 +5312,8 @@ static t_stat DoEISInstruction (void)
 
         case 0600:  ///< trtn
             /// If truncation indicator ON then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             if (cu.IR & I_TRUNC)
             {
                 PPR.IC = TPR.CA;
@@ -5311,8 +5327,8 @@ static t_stat DoEISInstruction (void)
             
         case 0606:  ///< ttn
             /// If tally runout indicator ON then
-            ///  C(TPR.CA) → C(PPR.IC)
-            ///  C(TPR.TSR) → C(PPR.PSR)
+            ///  C(TPR.CA) -> C(PPR.IC)
+            ///  C(TPR.TSR) -> C(PPR.PSR)
             /// otherwise, no change to C(PPR)
             if (cu.IR & I_TALLY)
             {
@@ -5324,56 +5340,56 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0310:  ///< easp1
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[1].SNR = TPR.CA;
             break;
         case 0312:  ///< easp3
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[3].SNR = TPR.CA;
             break;
         case 0330:  ///< easp5
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[5].SNR = TPR.CA;
             break;
         case 0332:  ///< easp7
-            /// C(TPR.CA) → C(PRn.SNR)
+            /// C(TPR.CA) -> C(PRn.SNR)
             PR[7].SNR = TPR.CA;
             break;
 
         case 0311:  ///< eawp1
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[1].WORDNO = TPR.CA;
             PR[1].BITNO = TPR.TBR;
             break;
         case 0313:  ///< eawp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[3].WORDNO = TPR.CA;
             PR[3].BITNO = TPR.TBR;
             break;
         case 0331:  ///< eawp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[5].WORDNO = TPR.CA;
             PR[5].BITNO = TPR.TBR;
             break;
         case 0333:  ///< eawp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.CA) → C(PRn.WORDNO)
-            ///  C(TPR.TBR) → C(PRn.BITNO)
+            ///  C(TPR.CA) -> C(PRn.WORDNO)
+            ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[7].WORDNO = TPR.CA;
             PR[7].BITNO = TPR.TBR;
             break;        
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = 0;
@@ -5381,10 +5397,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0352:  ///< epbp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = 0;
@@ -5392,10 +5408,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0370:  ///< epbp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = 0;
@@ -5403,10 +5419,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0372:  ///< epbp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
+            ///  C(TPR.TRR) -> C(PRn.RNR)
+            ///  C(TPR.TSR) -> C(PRn.SNR)
+            ///  00...0 -> C(PRn.WORDNO)
+            ///  0000 -> C(PRn.BITNO)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = 0;
@@ -5416,10 +5432,10 @@ static t_stat DoEISInstruction (void)
         
         case 0351:  ///< epp1
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = TPR.CA;
@@ -5427,10 +5443,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = TPR.CA;
@@ -5438,10 +5454,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0371:  ///< epp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = TPR.CA;
@@ -5449,10 +5465,10 @@ static t_stat DoEISInstruction (void)
             break;
         case 0373:  ///< epp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
+            ///   C(TPR.TRR) -> C(PRn.RNR)
+            ///   C(TPR.TSR) -> C(PRn.SNR)
+            ///   C(TPR.CA) -> C(PRn.WORDNO)
+            ///   C(TPR.TBR) -> C(PRn.BITNO)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = TPR.CA;
@@ -5461,12 +5477,12 @@ static t_stat DoEISInstruction (void)
         
         case 0250:  ///< spbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[0].SNR << 18;
             Ypair[0] |= (word36) PR[0].RNR << 15;
@@ -5478,12 +5494,12 @@ static t_stat DoEISInstruction (void)
         
         case 0252:  ///< spbp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[2].SNR << 18;
             Ypair[0] |= (word36) PR[2].RNR << 15;
@@ -5495,12 +5511,12 @@ static t_stat DoEISInstruction (void)
             
         case 0650:  ///< spbp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[4].SNR << 18;
             Ypair[0] |= (word36) PR[4].RNR << 15;
@@ -5512,12 +5528,12 @@ static t_stat DoEISInstruction (void)
   
         case 0652:  ///< spbp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  000 → C(Y-pair)0,2
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  00...0 → C(Y-pair)36,71
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  000 -> C(Y-pair)0,2
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[6].SNR << 18;
             Ypair[0] |= (word36) PR[6].RNR << 15;
@@ -5529,15 +5545,15 @@ static t_stat DoEISInstruction (void)
 
         case 0251:  ///< spri1
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[1].SNR << 18;
             Ypair[0] |= (word36) PR[1].RNR << 15;
@@ -5551,15 +5567,15 @@ static t_stat DoEISInstruction (void)
     
         case 0253:  ///< spri3
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[3].SNR << 18;
             Ypair[0] |= (word36) PR[3].RNR << 15;
@@ -5573,15 +5589,15 @@ static t_stat DoEISInstruction (void)
 
         case 0651:  ///< spri5
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[5].SNR << 18;
             Ypair[0] |= (word36) PR[5].RNR << 15;
@@ -5595,15 +5611,15 @@ static t_stat DoEISInstruction (void)
 
         case 0653:  ///< spri7
             /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  000 → C(Y-pair)0,2
-            ///  C(PRn.SNR) → C(Y-pair)3,17
-            ///  C(PRn.RNR) → C(Y-pair)18,20
-            ///  00...0 → C(Y-pair)21,29
-            ///  (43)8 → C(Y-pair)30,35
-            ///  C(PRn.WORDNO) → C(Y-pair)36,53
-            ///  000 → C(Y-pair)54,56
-            ///  C(PRn.BITNO) → C(Y-pair)57,62
-            ///  00...0 → C(Y-pair)63,71
+            ///  000 -> C(Y-pair)0,2
+            ///  C(PRn.SNR) -> C(Y-pair)3,17
+            ///  C(PRn.RNR) -> C(Y-pair)18,20
+            ///  00...0 -> C(Y-pair)21,29
+            ///  (43)8 -> C(Y-pair)30,35
+            ///  C(PRn.WORDNO) -> C(Y-pair)36,53
+            ///  000 -> C(Y-pair)54,56
+            ///  C(PRn.BITNO) -> C(Y-pair)57,62
+            ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
             Ypair[0] |= (word36) PR[7].SNR << 18;
             Ypair[0] |= (word36) PR[7].RNR << 15;
@@ -5616,8 +5632,8 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0754:  ///< sra
-            /// 00...0 → C(Y)0,32
-            /// C(RALR) → C(Y)33,35
+            /// 00...0 -> C(Y)0,32
+            /// C(RALR) -> C(Y)33,35
             
             //Write(i, TPR.CA, (word36)rRALR, OperandWrite, rTAG);
             CY = (word36)rRALR;
@@ -5640,7 +5656,7 @@ static t_stat DoEISInstruction (void)
                 
                 uint32 n = opcode & 07;  // get
 
-                // C(Y)0,17 → C(ARn.WORDNO)
+                // C(Y)0,17 -> C(ARn.WORDNO)
                 AR[n].WORDNO = GETHI(CY);
 
                 int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21-22
@@ -5650,8 +5666,8 @@ static t_stat DoEISInstruction (void)
                 {
                     case CTA4:  // 2
                         // If C(Y)21,22 = 10 (TA code = 2), then
-                        //   C(Y)18,20 / 2 → C(ARn.CHAR)
-                        //   4 * (C(Y)18,20)mod2 + 1 → C(ARn.BITNO)
+                        //   C(Y)18,20 / 2 -> C(ARn.CHAR)
+                        //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
                         // AR[n].CHAR = CN / 2;
                         // AR[n].ABITNO = 4 * (CN % 2) + 1;
                         SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
@@ -5659,8 +5675,8 @@ static t_stat DoEISInstruction (void)
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
-                        //   (6 * C(Y)18,20) / 9 → C(ARn.CHAR)
-                        //   (6 * C(Y)18,20)mod9 → C(ARn.BITNO)
+                        //   (6 * C(Y)18,20) / 9 -> C(ARn.CHAR)
+                        //   (6 * C(Y)18,20)mod9 -> C(ARn.BITNO)
                         // AR[n].CHAR = (6 * CN) / 9;
                         // AR[n].ABITNO = (6 * CN) % 9;
                         SET_AR_CHAR_BIT (n, (6 * CN) / 9, (6 * CN) % 9);
@@ -5668,8 +5684,8 @@ static t_stat DoEISInstruction (void)
                         
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
-                        //   C(Y)18,19 → C(ARn.CHAR)
-                        //   0000 → C(ARn.BITNO)
+                        //   C(Y)18,19 -> C(ARn.CHAR)
+                        //   0000 -> C(ARn.BITNO)
                         // AR[n].CHAR = (CN >> 1); // remember, 9-bit CN's are funky
                         // AR[n].ABITNO = 0;
                         SET_AR_CHAR_BIT (n, (CN >> 1), 0); // remember, 9-bit CN's are funky
@@ -5686,7 +5702,7 @@ static t_stat DoEISInstruction (void)
         case 0765:
         case 0766:
         case 0767:
-            // For n = 0, 1, ..., or 7 as determined by operation code C(Y)0,23 → C(ARn)
+            // For n = 0, 1, ..., or 7 as determined by operation code C(Y)0,23 -> C(ARn)
             {
                 uint32 n = opcode & 07;  // get n
                 AR[n].WORDNO = GETHI(CY);
@@ -5729,7 +5745,7 @@ static t_stat DoEISInstruction (void)
                 
                 uint32 n = opcode & 07;  // get
                 
-                // C(Y)0,17 → C(ARn.WORDNO)
+                // C(Y)0,17 -> C(ARn.WORDNO)
                 AR[n].WORDNO = GETHI(CY);
                 
                 int TN = (int)bitfieldExtract36(CY, 13, 1); // C(Y) 21
@@ -5739,8 +5755,8 @@ static t_stat DoEISInstruction (void)
                 {
                     case CTN4:   // 1
                         // If C(Y)21 = 1 (TN code = 1), then
-                        //   (C(Y)18,20) / 2 → C(ARn.CHAR)
-                        //   4 * (C(Y)18,20)mod2 + 1 → C(ARn.BITNO)
+                        //   (C(Y)18,20) / 2 -> C(ARn.CHAR)
+                        //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
                         // AR[n].CHAR = CN / 2;
                         // AR[n].ABITNO = 4 * (CN % 2) + 1;
                         SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
@@ -5748,8 +5764,8 @@ static t_stat DoEISInstruction (void)
                         
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
-                        //   C(Y)18,20 → C(ARn.CHAR)
-                        //   0000 → C(ARn.BITNO)
+                        //   C(Y)18,20 -> C(ARn.CHAR)
+                        //   0000 -> C(ARn.BITNO)
                         // AR[n].CHAR = CN;
                         // AR[n].ABITNO = 0;
                         SET_AR_CHAR_BIT (n, CN, 0); 
@@ -5775,7 +5791,7 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
-                // C(ARn.WORDNO) → C(Y)0,17
+                // C(ARn.WORDNO) -> C(Y)0,17
                 CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
                 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR) and C(ARn.BITNO) are translated to an equivalent character position that goes to C(Y)18,20.
@@ -5786,22 +5802,22 @@ static t_stat DoEISInstruction (void)
                 {
                     case CTA4:  // 2
                         // If C(Y)21,22 = 10 (TA code = 2), then
-                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 → C(Y)18,20
+                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
-                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 → C(Y)18,20
+                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */) / 6;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
-                        //   C(ARn.CHAR) → C(Y)18,19
-                        //   0 → C(Y)20
+                        //   C(ARn.CHAR) -> C(Y)18,19
+                        //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
                         CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
                         break;
@@ -5829,7 +5845,7 @@ static t_stat DoEISInstruction (void)
                 int TN = (int)bitfieldExtract36(CY, 14, 1); // C(Y) 21
                 
                 // For n = 0, 1, ..., or 7 as determined by operation code
-                // C(ARn.WORDNO) → C(Y)0,17
+                // C(ARn.WORDNO) -> C(Y)0,17
                 CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
                 
                 int CN = 0;
@@ -5837,15 +5853,15 @@ static t_stat DoEISInstruction (void)
                 {
                     case CTN4:  // 1
                         // If C(Y)21 = 1 (TN code = 1) then
-                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 → C(Y)18,20
+                        //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
-                        //   C(ARn.CHAR) → C(Y)18,19
-                        //   0 → C(Y)20
+                        //   C(ARn.CHAR) -> C(Y)18,19
+                        //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
                         CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
                         break;
@@ -5866,8 +5882,8 @@ static t_stat DoEISInstruction (void)
         case 0746:
         case 0747:
             //For n = 0, 1, ..., or 7 as determined by operation code
-            //  C(ARn) → C(Y)0,23
-            //  C(Y)24,35 → unchanged
+            //  C(ARn) -> C(Y)0,23
+            //  C(Y)24,35 -> unchanged
             {
                 uint32 n = opcode & 07;  // get n
                 CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
@@ -5896,40 +5912,43 @@ static t_stat DoEISInstruction (void)
         // EIS - Address Register Special Arithmetic
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                word3 ARn = GET_ARN (cu . IWB); // 3-bit register specifier
+                word18 address = GET_OFFSET (cu . IWB); // 15-bit Address
+                // 4-bit register modification (None except au, qu, al, ql, xn)
+                word4 reg = GET_TAG (cu . IWB); 
 
-                int r = SIGNEXT18(getCrAR(reg));
+                word18 r = getCrAR (reg);
 
                 // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu.IWB))
-                {
+                //if (! i -> a)
+                if (! GET_A (cu . IWB))
+                  {
                     // If A = 0, then
-                    //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
-                    //   C(REG)mod4 → C(ARn.CHAR)
-                    AR[ARn].WORDNO = (address + r / 4);
+                    //   ADDRESS + C(REG) / 4 -> C(ARn.WORDNO)
+                    //   C(REG)mod4 -> C(ARn.CHAR)
+                    AR [ARn] . WORDNO = (address + r / 4);
                     // AR[ARn].CHAR = r % 4;
                     SET_AR_CHAR_BIT (ARn, r % 4, 0);
-                }
+                  }
                 else
-                {
+                  {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 4 → C(ARn.WORDNO)
-                    //   (C(ARn.CHAR) + C(REG))mod4 → C(ARn.CHAR)
-                    AR[ARn].WORDNO += (address + (r + GET_AR_CHAR (ARn)) / 4);
+                    //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 
+                    //     4 -> C(ARn.WORDNO)
+                    //   (C(ARn.CHAR) + C(REG))mod4 -> C(ARn.CHAR)
+                    AR [ARn] . WORDNO += 
+                      (address + (r + GET_AR_CHAR (ARn)) / 4);
                     // AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + r) % 4, 0);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
+                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) + r) % 4, 0);
+                  }
+                AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
                 // AR[ARn].CHAR &= 03;
 
-                // 0000 → C(ARn.BITNO)
+                // 0000 -> C(ARn.BITNO)
                 // Zero set in SET_AR_CHAR_BIT calls above
                 // AR[ARn].ABITNO = 0;
-            }
+              }
             break;
             
         case 0501:  ///< a6bd        Add 6-bit Displacement to Address Register
@@ -5941,13 +5960,13 @@ static t_stat DoEISInstruction (void)
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // If A = 0, then
-                //   ADDRESS + C(REG) / 6 → C(ARn.WORDNO)
-                //   ((6 * C(REG))mod36) / 9 → C(ARn.CHAR)
-                //   (6 * C(REG))mod9 → C(ARn.BITNO)
+                //   ADDRESS + C(REG) / 6 -> C(ARn.WORDNO)
+                //   ((6 * C(REG))mod36) / 9 -> C(ARn.CHAR)
+                //   (6 * C(REG))mod9 -> C(ARn.BITNO)
                 //If A = 1, then
-                //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                //   ((9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                //   (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
+                //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                //   ((9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                //   (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
                 if (! GET_A (cu . IWB))
@@ -5985,9 +6004,9 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
-                    //   C(REG)mod4 → C(ARn.CHAR)
-                    //   4 * C(REG)mod2 + 1 → C(ARn.BITNO)
+                    //   ADDRESS + C(REG) / 4 -> C(ARn.WORDNO)
+                    //   C(REG)mod4 -> C(ARn.CHAR)
+                    //   4 * C(REG)mod2 + 1 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = address + r / 4;
                     // AR[ARn].CHAR = r % 4;
                     // AR[ARn].ABITNO = 4 * r % 2 + 1;
@@ -5995,9 +6014,9 @@ static t_stat DoEISInstruction (void)
                 } else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                    //   4 * (C(ARn.CHAR) + 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 → C(ARn.BITNO)
+                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                    //   ((9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                    //   4 * (C(ARn.CHAR) + 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9;
                     // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1;
@@ -6024,9 +6043,9 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   ADDRESS + C(REG) / 36 → C(ARn.WORDNO)
-                    //   (C(REG)mod36) / 9 → C(ARn.CHAR)
-                    //   C(REG)mod9 → C(ARn.BITNO)
+                    //   ADDRESS + C(REG) / 36 -> C(ARn.WORDNO)
+                    //   (C(REG)mod36) / 9 -> C(ARn.CHAR)
+                    //   C(REG)mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = address + r / 36;
                     // AR[ARn].CHAR = (r % 36) / 9;
                     // AR[ARn].ABITNO = r % 9;
@@ -6035,9 +6054,9 @@ static t_stat DoEISInstruction (void)
                 else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                    //   (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
+                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                    //   ((9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                    //   (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 36) / 9;
                     // AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 9;
@@ -6060,11 +6079,11 @@ static t_stat DoEISInstruction (void)
                 
                 
                 // If A = 0, then
-                //   ADDRESS + C(REG) → C(ARn.WORDNO)
+                //   ADDRESS + C(REG) -> C(ARn.WORDNO)
                 // If A = 1, then
-                //   C(ARn.WORDNO) + ADDRESS + C(REG) → C(ARn.WORDNO)
-                // 00 → C(ARn.CHAR)
-                // 0000 → C(ARn.BITNO)
+                //   C(ARn.WORDNO) + ADDRESS + C(REG) -> C(ARn.WORDNO)
+                // 00 -> C(ARn.CHAR)
+                // 0000 -> C(ARn.BITNO)
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6093,8 +6112,8 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
-                    //   - C(REG)mod4 → C(ARn.CHAR)
+                    //   - (ADDRESS + C(REG) / 4) -> C(ARn.WORDNO)
+                    //   - C(REG)mod4 -> C(ARn.CHAR)
                     AR[ARn].WORDNO = -(address + r / 4);
                     // AR[ARn].CHAR = - (r % 4);
                     SET_AR_CHAR_BIT (ARn, (r % 4), 0);
@@ -6102,8 +6121,8 @@ static t_stat DoEISInstruction (void)
                 else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (C(ARn.CHAR) - C(REG)) / 4 → C(ARn.WORDNO)
-                    //   (C(ARn.CHAR) - C(REG))mod4 → C(ARn.CHAR)
+                    //   C(ARn.WORDNO) - ADDRESS + (C(ARn.CHAR) - C(REG)) / 4 -> C(ARn.WORDNO)
+                    //   (C(ARn.CHAR) - C(REG))mod4 -> C(ARn.CHAR)
                     AR[ARn].WORDNO = AR[ARn].WORDNO - address + (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) / 4;
                     // AR[ARn].CHAR = (AR[ARn].CHAR - r) % 4;
                     SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) % 4, 0);
@@ -6112,7 +6131,7 @@ static t_stat DoEISInstruction (void)
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
                 // AR[ARn].CHAR &= 03;
-                // 0000 → C(ARn.BITNO)
+                // 0000 -> C(ARn.BITNO)
                 // Zero set above in macro call
                 // AR[ARn].ABITNO = 0;
             }
@@ -6131,9 +6150,9 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 6) → C(ARn.WORDNO)
-                    //   - ((6 * C(REG))mod36) / 9 → C(ARn.CHAR)
-                    //   - (6 * C(REG))mod9 → C(ARn.BITNO)
+                    //   - (ADDRESS + C(REG) / 6) -> C(ARn.WORDNO)
+                    //   - ((6 * C(REG))mod36) / 9 -> C(ARn.CHAR)
+                    //   - (6 * C(REG))mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 6);
                     // AR[ARn].CHAR = -((6 * r) % 36) / 9;
                     // AR[ARn].ABITNO = -(6 * r) % 9;
@@ -6142,9 +6161,9 @@ static t_stat DoEISInstruction (void)
                 else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                    //   (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
+                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                    //   ((9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                    //   (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
                     //AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 36) / 9;
                     //AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 9;
@@ -6171,9 +6190,9 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
-                    //   - C(REG)mod4 → C(ARn.CHAR)
-                    //   - 4 * C(REG)mod2 + 1 → C(ARn.BITNO)
+                    //   - (ADDRESS + C(REG) / 4) -> C(ARn.WORDNO)
+                    //   - C(REG)mod4 -> C(ARn.CHAR)
+                    //   - 4 * C(REG)mod2 + 1 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 4);
                     // AR[ARn].CHAR = -(r % 4);
                     // AR[ARn].ABITNO = -4 * r % 2 + 1;
@@ -6182,9 +6201,9 @@ static t_stat DoEISInstruction (void)
                 else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                    //   4 * (C(ARn.CHAR) - 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 → C(ARn.BITNO)
+                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                    //   ((9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                    //   4 * (C(ARn.CHAR) - 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
 
                     AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) % 36) / 9;
@@ -6212,9 +6231,9 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 36) → C(ARn.WORDNO)
-                    //   - (C(REG)mod36) / 9 → C(ARn.CHAR)
-                    //   - C(REG)mod9 → C(ARn.BITNO)
+                    //   - (ADDRESS + C(REG) / 36) -> C(ARn.WORDNO)
+                    //   - (C(REG)mod36) / 9 -> C(ARn.CHAR)
+                    //   - C(REG)mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 36);
                     // AR[ARn].CHAR = -(r %36) / 9;
                     // AR[ARn].ABITNO = -(r % 9);
@@ -6223,9 +6242,9 @@ static t_stat DoEISInstruction (void)
                 else
                 {
                     // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
-                    //  ((9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
-                    //  (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
+                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
+                    //  ((9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
+                    //  (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
                     AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 36) / 9;
                     // AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 9;
@@ -6252,18 +6271,18 @@ static t_stat DoEISInstruction (void)
                 if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
-                    //   - (ADDRESS + C(REG)) → C(ARn.WORDNO)
+                    //   - (ADDRESS + C(REG)) -> C(ARn.WORDNO)
                     AR[ARn].WORDNO = -(address + r);
                 }
                 else
                 {
                     // If A = 1, then
-                    //     C(ARn.WORDNO) - (ADDRESS + C(REG)) → C(ARn.WORDNO)
+                    //     C(ARn.WORDNO) - (ADDRESS + C(REG)) -> C(ARn.WORDNO)
                     AR[ARn].WORDNO = AR[ARn].WORDNO - (address + r);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // 00 → C(ARn.CHAR)
-                // 0000 → C(ARn.BITNO)
+                // 00 -> C(ARn.CHAR)
+                // 0000 -> C(ARn.BITNO)
                 // AR[ARn].CHAR = 0;
                 // AR[ARn].ABITNO = 0;
                 SET_AR_CHAR_BIT (ARn, 0, 0);
