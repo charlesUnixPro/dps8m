@@ -1,0 +1,485 @@
+	COMPILATION LISTING OF SEGMENT et_page
+	Compiled by: Multics PL/I Compiler, Release 27b, of September 15, 1981
+	Compiled at: Honeywell LISD Phoenix, System M
+	Compiled on: 06/03/82  1024.0 mst Thu
+	    Options: optimize map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 et_page: procedure (statement, arg_et_data_ptr, code);
+       12 
+       13 
+       14 
+       15 /*	This procedure parses a page statement.
+       16*   *
+       17*   *	Created  Jan, 73  by  Bill Silver.
+       18*   *
+       19*   *
+       20*   *	The format of a  "page"  statement is:
+       21*   *
+       22*   *	page   -option . . . -option ;
+       23*   *
+       24*   *	1.  The first field in the statement MUST be the statement name "page".
+       25*   *
+       26*   *	2.  The other fields are options which specify what pages are to HAVE page
+       27*   *	    faults.   The following page names are defined:
+       28*   *
+       29*   *	    in1 in2      The 2 pages of the  eis  instruction itself.
+       30*   *
+       31*   *	    id1 id2 id3  The pages used by descriptors that are referenced via
+       32*   *       	                 indirect words.
+       33*   *
+       34*   *	    d11 d12 d13  The three pages of data referenced by descriptor  1.
+       35*   *
+       36*   *	    d21 d22 d23  The three pages of data referenced by descriptor  2.
+       37*   *
+       38*   *	    d31 d32 d32  The three pages of data referenced by descriptor  3.
+       39*   *
+       40*   *	3.  If the  "-all"  option is entered then  ALL  of the pages defined for this
+       41*   *	    instruction will take a page fault.  If other options are entered along
+       42*   *	    with the  "-all"  option then the pages specified will NOT have page faults.
+       43**/
+       44 
+       45 
+       46 
+       47 
+       48 /*	The following data items are used as arguments in the call to  et_page. */
+       49 
+       50 dcl  statement char (*),				/* The input string which contains the  "page"
+       51*						   *  statement to be parsed.  */
+       52 
+       53      arg_et_data_ptr ptr,				/* Input pointer to  et_setup_data.  */
+       54 
+       55      code fixed bin (35);				/* Error code.  */
+       56 
+       57 
+       58 
+       59 dcl  state_ptr ptr,					/* Pointer to the  "page"  statement.  */
+       60 
+       61      start fixed bin (35),				/* The number of characters allready processed
+       62*						   *  in this  "page"  statement.  */
+       63 
+       64      size fixed bin (35),				/* The current size ( in characters )
+       65*						   *  of the window on the  "page"  statement. */
+       66 
+       67      next_statement_x fixed bin;			/* The number of the last character in
+       68*						   *  the current statement.  */
+       69 
+       70 
+       71 
+       72 /*	This is an overlay of the input  "page"  statement.  */
+       73 
+       74 dcl 1 page_statement based (state_ptr),			/* Used to access the input data statement
+       75*						   *  as a stream of characters. */
+       76 
+       77     2 offset char (start),				/* The part of the  "page"  statement which we
+       78*						   *  have allready processed. */
+       79 
+       80     2 window char (size);				/* The part of the  "page"  statement which we
+       81*						   *  are currently accessing.  */
+       82 
+       83 
+       84 
+       85 dcl  i fixed bin;					/* Temporary variable. */
+       86 
+       87 
+       88 
+       89 
+       90 /*	The following table defines the names of the pages which are currently
+       91*   *	under the control of the user.
+       92**/
+       93 
+       94 dcl  page_names (14) char (4) internal static
+       95 
+       96      init ("-in1", "-in2",
+       97      "-id1", "-d11", "-d12", "-d13",
+       98      "-id2", "-d21", "-d22", "-d23",
+       99      "-id3", "-d31", "-d32", "-d33");
+      100 
+      101 
+      102 
+      103 
+      104 dcl  com_err_ entry options (variable),
+      105      et_util$skip entry (ptr, fixed bin (35), fixed bin (35));
+      106 
+      107 
+      108 
+      109 
+      110 dcl (addr,
+      111      length,
+      112      substr) builtin;
+      113 						/* 	*/
+  1     1 /*	BEGIN INCLUDE FILE  ...  et_instr_data_map.incl.pl1
+  1     2**
+  1     3**	Created  Jan, 73  by  Bill Silver.
+  1     4**
+  1     5**
+  1     6**	Below is a map of the data found in et_instr_data.alm.
+  1     7**	This is a table of  "eis" multi-word instructions.
+  1     8**/
+  1     9 
+  1    10 
+  1    11 
+  1    12 dcl	et_instr_data$num_instructions	fixed bin	   external;
+  1    13 
+  1    14 
+  1    15 dcl    1	et_instr_data$instructions( 0:1 )	aligned  external,
+  1    16 
+  1    17          (2 mnemonic	char(4),		/* Instruction's assembler name.  */
+  1    18 
+  1    19 	2 opcode		bit(10),		/* Opcode, rightmost bit always ON.  */
+  1    20 
+  1    21 	2 instr_typex	fixed bin(7),	/* 1 => alphanumeric,  2 => numeric,
+  1    22*					*  3 => bit  string    4 => conversion.  */
+  1    23 
+  1    24 	2 char_sizex (3)	fixed bin(2),	/* Defines the character size for each descriptor.
+  1    25*					*  0  =>  1,   1  =>  4,
+  1    26*					*  2  =>  36,  3  =>  -1,
+  1    27*					*  -1 =>  no descriptor  */
+  1    28 
+  1    29 	2 mf2_flag	bit(1),		/* 1 => instruction word has  "mf2"  field.
+  1    30*					*  0 => descriptor  word has  "mf2"  field.  */
+  1    31 
+  1    32 	2 mf3_flag	bit(1),		/* 1 => instruction word has  "mf3" field.
+  1    33*					*  0 => descriptor  word has  "mf3"  field.  */
+  1    34 
+  1    35 	2 desc_3_flag	bit(1),		/* 0 => instruction has 2 descriptors.
+  1    36*					*  1 => instruction has 3 descriptors.  */
+  1    37 
+  1    38 	2 test_x		fixed bin(2),	/* The number of the data statement used
+  1    39*					*  to input the  test  data.  */
+  1    40 
+  1    41 	2 result_x	fixed bin(2))	/* The number of the descriptor which
+  1    42*					*  references the result data.  */
+  1    43 
+  1    44 	unaligned;
+  1    45 
+  1    46 
+  1    47 /*	END of INCLUDE FILE  ...  et_instr_data_map.incl.pl1    */
+      114 
+      115 /* 	*/
+  2     1 /*	BEGINNING OF INCLUDE FILE  ...  et_setup_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created  Jan, 73  by  Bill Silver.
+  2     4*   *
+  2     5*   *
+  2     6*   * 	This include file defines the data that is needed to set up a test of an  eis
+  2     7*   *	instruction.  The area where this data actually resides is in  "et".
+  2     8**/
+  2     9 
+  2    10 
+  2    11 dcl  et_data_ptr ptr;				/* Pointer to the  et_data  area.  */
+  2    12 
+  2    13 
+  2    14 dcl 1 et_setup_data based (et_data_ptr) aligned,
+  2    15 
+  2    16     2 next_instruction_x fixed bin,			/* Index in script file of where the next
+  2    17*						   *  instruction test begins.  */
+  2    18 
+  2    19     2 name char (6),				/* Mnemonic name of the instruction
+  2    20*						   *  being tested. */
+  2    21 
+  2    22     2 test_count fixed bin,				/* The number of the current test. */
+  2    23 
+  2    24     2 note char (64),				/* A NOTE containing a description of the test. */
+  2    25 
+  2    26     2 loop_count fixed bin,				/* Number of times to execute the same
+  2    27*						   *  variation of an instruction.  */
+  2    28 
+  2    29     2 instr_offset fixed bin,				/* Indicates the position of the eis
+  2    30*						   *  instruction within the instruction
+  2    31*						   *  area in  etx. */
+  2    32 
+  2    33     2 instr_num fixed bin,				/* The index of the current instruction's
+  2    34*						   *  entry in the  et_instr_data$instruction
+  2    35*						   *  array.  */
+  2    36 
+  2    37     2 instr_type fixed bin,				/* 1  =  alphanumeric   2  =  numeric
+  2    38*						   *  3  =  bit  string    4  =  conversion  */
+  2    39 
+  2    40     2 instr_word bit (36),				/* The instruction word of the  eis
+  2    41*						   *  instruction to be tested.  */
+  2    42 
+  2    43     2 descriptors (3) bit (36),			/* The three possible descriptor words
+  2    44*						   *  of the eis instruction.  */
+  2    45 
+  2    46     2 ind_words (3) bit (36),				/* The three possible indirect words that
+  2    47*						   *  may follow the eis instruction.  */
+  2    48 
+  2    49     2 desc_ptrs (3) ptr,				/* An array of pointers to where any
+  2    50*						   *  indirect descriptors must be placed.  */
+  2    51 
+  2    52     2 mf_ptrs (3) ptr,				/* Pointers to the  mf  fields for each descriptor.
+  2    53*						   *  If an entry is null then there is no descriptor
+  2    54*						   *  associated with this entry.  */
+  2    55 
+  2    56     2 num_chars (3) fixed bin,			/* For each descriptor a code indicating what
+  2    57*						   *  type of "ta" or "tn" field it may have.  It
+  2    58*						   *  implies the number of characters in a word.
+  2    59*						   *   1 - descriptor must reference word boundary.
+  2    60*						   *   4 - any legal "ta" or "tn" field.
+  2    61*						   *       Implies 9 bit  characters as default.
+  2    62*						   *  36 - descriptor may reference  bits.
+  2    63*						   *  -1 - must use "ta" field of descriptor 1
+  2    64*						   *   0 - no descriptor.  */
+  2    65 
+  2    66     2 data_ptrs (5) ptr,				/* An array of pointers to where
+  2    67*						   *  the data for the corresponding
+  2    68*						   *  descriptor will go.  It points to
+  2    69*						   *  the first word of the data.
+  2    70*						   *  Entry (4) is for the test data.
+  2    71*						   *  Entry (5) is for the result data.  */
+  2    72 
+  2    73     2 data_lens (5) fixed bin,			/* An array of lengths of the data fields.
+  2    74*						   *  They will always be in units of chars. */
+  2    75 
+  2    76     2 data_offsets (5) fixed bin,			/* An array of character offsets.  They specify
+  2    77*						   *  the character position of the string  in
+  2    78*						   *  the first word of the string.  */
+  2    79 
+  2    80     2 page_faults (14) bit (1) unal,			/* A table of flags which indicate pages
+  2    81*						   *  which should take a page fault during
+  2    82*						   *  execution of the eis instruction. */
+  2    83 
+  2    84     2 page_ptrs (14) ptr,				/* A pointer to each page that is used
+  2    85*						   *  by the instruction.  Pages not used will
+  2    86*						   *  have null entries.  */
+  2    87 
+  2    88     2 truncation_flag fixed bin,			/* Indicates whether or not the instruction is
+  2    89*						   *  going to take a truncation fault.
+  2    90*						   *  1  =>  yes,   0  =>  no.  */
+  2    91 
+  2    92     2 pointers (0:7) ptr,				/* The values of the pointer registers
+  2    93*						   *  before the execution of the eis instr. */
+  2    94 
+  2    95     2 regs,					/* Index, A, and Q registers. */
+  2    96       3 x (0:7) fixed bin (17) unaligned,
+  2    97       3 A fixed bin (35),
+  2    98       3 Q fixed bin (35),
+  2    99       3 pad (2) bit (36),
+  2   100 
+  2   101     2 ir_word bit (36);				/* The settings of the indicator
+  2   102*						   *  registers after the eis instruction
+  2   103*						   *  has been executed.  */
+  2   104 
+  2   105 
+  2   106 
+  2   107 /*	END of INCLUDE FILE  ...  et_setup_data.incl.pl1	*/
+      116 
+      117 /* 	*/
+      118 /*	First we must set up the window on the input  "page"  statement.  We will skip the
+      119*   *	"page"  field at the beginning of the statement.  Note, the initial values for all of
+      120*   *	the entries in the page_faults array is OFF which implies no page faults.
+      121**/
+      122 
+      123 	state_ptr = addr (statement);
+      124 	next_statement_x = length (statement);
+      125 
+      126 	et_data_ptr = arg_et_data_ptr;
+      127 
+      128 	start = 4;
+      129 	size = next_statement_x - 4;
+      130 
+      131 
+      132 /*	Now process all of the options in this statement.   */
+      133 
+      134 
+      135 	do while (code = 0);
+      136 
+      137 
+      138 /*	Look for the next page name.  We are done when we hit the end of the statement.  */
+      139 
+      140 	     call et_util$skip (state_ptr, start, size);
+      141 
+      142 	     if substr (window, 1, 1) = ";"
+      143 
+      144 	     then return;
+      145 
+      146 
+      147 /*	Test to see if we have an  "-all"  option.  If not we will assume
+      148*   *	that it is a regular page name option.  Note, we will invert the value for all
+      149*   *	pages.  If other options are entered then they will will cause the page they represent
+      150*   *	to be an exception to the  "-all".
+      151**/
+      152 
+      153 	     if substr (window, 1, 4) = "-all"
+      154 
+      155 	     then do i = 1 to 14;
+      156 		page_faults (i) = ^page_faults (i);
+      157 	     end;
+      158 
+      159 
+      160 	     else do;
+      161 		call find_page_name;
+      162 		if code ^= 0
+      163 		then return;
+      164 	     end;
+      165 
+      166 	     start = start + 4;			/* Move window past page name. */
+      167 	     size = size - 4;
+      168 
+      169 	end;					/*  End of  do  loop.  */
+      170 
+      171 
+      172 /*	This is the logical end of the  parse_page_statement  procedure.  */
+      173 /* 	*/
+      174 find_page_name: procedure;
+      175 
+      176 
+      177 
+      178 /*	This procedure searches the  page_names  table for the current page name
+      179*   *	option which is assumed to be the next three characters  in the window.
+      180*   *	If  the page name option is valid then its position in the page_names
+      181*   *	table is used to locate it corresponding position in the  page_faults
+      182*   *	table and the entry in this table is changed.
+      183**/
+      184 
+      185 
+      186 
+      187 	     do i = 1 to 14;
+      188 
+      189 
+      190 		if substr (window, 1, 4) = page_names (i)
+      191 
+      192 		then do;				/* We have found the page - invert its entry. */
+      193 		     page_faults (i) = ^page_faults (i);
+      194 		     return;
+      195 		end;
+      196 
+      197 	     end;
+      198 
+      199 
+      200 /*	This page name option was not found so it must be illegal.  */
+      201 
+      202 	     code = 501;
+      203 	     call com_err_ (0, "ET", "^d Page names option ^a is invalid.",
+      204 		code, substr (window, 1, 3));
+      205 
+      206 	end find_page_name;
+      207 
+      208 
+      209 
+      210 
+      211      end et_page;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/03/82  1024.0  et_page.pl1                       >spec>on>phx-dir>et_page.pl1
+114          1    05/06/74  1741.2  et_instr_data_map.incl.pl1        >ldd>include>et_instr_data_map.incl.pl1
+116          2    06/02/82  1246.3  et_setup_data.incl.pl1            >spec>on>phx-dir>et_setup_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 110 ref 123
+arg_et_data_ptr                        parameter       pointer                  dcl 50 ref 11 126
+code                                   parameter       fixed bin(35,0)          dcl 50 set ref 11 135 162 202* 203*
+com_err_                        000010 constant        entry                    external dcl 104 ref 203
+et_data_ptr                     000106 automatic       pointer                  dcl 2-11 set ref 126* 156 156 193 193
+et_setup_data                          based           structure                level 1 dcl 2-14
+et_util$skip                    000012 constant        entry                    external dcl 104 ref 140
+i                               000105 automatic       fixed bin(17,0)          dcl 85 set ref 153* 156 156* 187* 190 193 193*
+length                                                 builtin function         dcl 110 ref 124
+next_statement_x                000104 automatic       fixed bin(17,0)          dcl 59 set ref 124* 129
+page_faults             104            based           bit(1)                   array level 2 packed unaligned dcl 2-14 set ref 156*
+                                                                                  156 193* 193
+page_names                      000000 constant        char(4)                  initial array unaligned dcl 94 ref 190
+page_statement                         based           structure                level 1 packed unaligned dcl 74
+size                            000103 automatic       fixed bin(35,0)          dcl 59 set ref 129* 140* 142 153 167* 167 190 203
+                                                                                  203
+start                           000102 automatic       fixed bin(35,0)          dcl 59 set ref 128* 140* 142 153 166* 166 190 203
+                                                                                  203
+state_ptr                       000100 automatic       pointer                  dcl 59 set ref 123* 140* 142 153 190 203 203
+statement                              parameter       char                     unaligned dcl 50 set ref 11 123 124
+substr                                                 builtin function         dcl 110 ref 142 153 190 203 203
+window                                 based           char                     level 2 packed unaligned dcl 74 ref 142 153 190 203
+                                                                                  203
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+et_instr_data$instructions             external static structure                array level 1 dcl 1-15
+et_instr_data$num_instructions         external static fixed bin(17,0)          dcl 1-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+et_page                         000043 constant        entry                    external dcl 11
+find_page_name                  000164 constant        entry                    internal dcl 174 ref 161
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       330         344     270         340
+Length       542     270        14         162      40           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+et_page                             122 external procedure  is an external procedure.  
+find_page_name                          internal procedure  shares stack frame of external procedure et_page.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+et_page                  000100 state_ptr                   et_page
+                         000102 start                       et_page
+                         000103 size                        et_page
+                         000104 next_statement_x            et_page
+                         000105 i                           et_page
+                         000106 et_data_ptr                 et_page
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return              ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      et_util$skip
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000037       123 000056       124 000061       126 000062       128 000065       129 000067       135 000072
+    140 000075       142 000110       153 000116       156 000127       157 000141       161 000144       162 000145
+    166 000150       167 000154       169 000162       211 000163       174 000164       187 000165       190 000172
+    193 000201       194 000213       197 000214       202 000216       203 000221       206 000266
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

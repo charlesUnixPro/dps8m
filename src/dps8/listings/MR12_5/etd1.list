@@ -1,0 +1,198 @@
+ASSEMBLY LISTING OF SEGMENT >dumps>old>recomp>etd1.alm                        
+ASSEMBLED ON:	11/15/82  1752.4 mst Mon
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.4  April 1981    
+ASSEMBLER CREATED:	11/03/82  1423.6 mst Wed
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " ***********************************************************
+    000000                           6  	name	etd1
+                                     7  
+                                     8  
+                        002000       9  	segdef	data
+                                    10  
+                                    11  
+                                    12  
+                        002000      13  	org	1024*1
+    002000                          14  data:
+                                    15  
+                        006000      16  	org	1024*3
+                                    17  
+                                    18  
+                                    19  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    006000  5a   000003 000000 
+    006001  5a   000024 600000 
+    006002  aa   000000 000000 
+    006003  55   000010 000002 
+    006004  5a   000002 400003 
+    006005  55   000006 000010 
+    006006  aa  004 145 164 144
+    006007  aa  061 000 000 000
+    006010  55   000015 000003 
+    006011  0a   002000 400000 
+    006012  55   000013 000003 
+    006013  aa  004 144 141 164         data
+    006014  aa  141 000 000 000
+    006015  55   000002 000010 
+    006016  6a   000000 400002 
+    006017  55   000020 000003 
+    006020  aa  014 163 171 155         symbol_table
+    006021  aa  142 157 154 137
+    006022  aa  164 141 142 154
+    006023  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    006024  aa   000000 000015 
+    006025  5a   000010 000000 
+    006026  aa   000000 000000 
+    006027  aa   000000 000000 
+    006030  aa   000000 000000 
+    006031  aa   000000 000000 
+    006032  aa   000000 000000 
+    006033  5a   000015 000000 
+    006034  aa   000000 000000 
+    006035  aa   000000 000000 
+    006036  aa   000000 000000 
+    006037  aa   000000 000000 
+    006040  aa   000000 000000 
+    006041  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    006042  aa   000001 000000 
+    006043  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   006000 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 111316 
+    000005  aa   510113 575622 
+    000006  aa   000000 111335 
+    000007  aa   722205 746710 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000367 
+    000020  aa   000000 000101 
+    000021  aa   000000 000356 
+    000022  aa   000361 000101 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056064 
+    000030  aa   040040 101160 
+    000031  aa   162151 154040 
+    000032  aa   061071 070061 
+    000033  aa   040040 040040 
+    000034  aa   110157 154155 
+    000035  aa   163164 145144 
+    000036  aa   164056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056155 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000032 
+    000067  aa   113331 135775 
+    000070  aa   000000 111335 
+    000071  aa   623056 200000 
+    000072  aa   076144 165155          >dumps>old>recomp>etd1.alm
+    000073  aa   160163 076157 
+    000074  aa   154144 076162 
+    000075  aa   145143 157155 
+    000076  aa   160076 145164 
+    000077  aa   144061 056141 
+    000100  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+        2000    data                     etd1:           9,   14.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

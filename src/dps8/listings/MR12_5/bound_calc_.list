@@ -1,0 +1,915 @@
+	COMPILATION LISTING OF SEGMENT calc
+	Compiled by: Multics PL/I Compiler, Release 31a, of October 12, 1988
+	Compiled at: Honeywell Bull, Phoenix AZ, SysM
+	Compiled on: 01/23/89  1228.6 mst Mon
+	    Options: optimize map
+
+        1 /****^  ************************************************************
+        2*        *                                                          *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1989                 *
+        4*        *                                                          *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982  *
+        6*        *                                                          *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1980. *
+        8*        *                                                          *
+        9*        ************************************************************ */
+       10 
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(88-10-19,Lee), approve(88-11-21,MCR8025), audit(88-12-23,Flegel),
+       16*     install(89-01-23,MR12.3-1010):
+       17*     Commands 421 (phx09588, phx18231) - modified to not set up a pi
+       18*     handler if it is being invoked as an active function.
+       19*  2) change(88-10-19,Lee), approve(88-11-21,MCR8025), audit(88-12-23,Flegel),
+       20*     install(89-01-23,MR12.3-1010):
+       21*     Commands 464 (phx10119, phx20071) - modified to complain about
+       22*     invalid characters specified in function names.
+       23*  3) change(88-10-19,Lee), approve(88-11-21,MCR8025), audit(88-12-23,Flegel),
+       24*     install(89-01-23,MR12.3-1010):
+       25*     Commands 805 (phx21221) - modified to accept "reasonable" variable
+       26*     names and to clean up invalid variables left after an error occurs.
+       27*                                                   END HISTORY COMMENTS */
+       28 
+       29 
+       30 /* The calc command provides the user with a calculator capable of evaluatiing PL/I-like expressions */
+       31 /* with operator precedence, a set of often used functions, and an addressable-by-identifier memory. */
+       32 
+       33 /* Changed to work as an active function by S. Herbst 10/07/78 */
+       34 /* Handlers added for pi, oveflow, underflow 09/28/79 S. Herbst */
+       35 /* . and .. features added 12/12/79 S. Herbst */
+       36 /* Red & black shifts removed, "q =" bug fixed 04/14/80 S. Herbst */
+       37 /* Fixed not to prompt with a space 01/12/81 S. Herbst */
+       38 
+       39 /* format: style4,ind3 */
+       40 
+       41 calc: proc;
+       42 
+       43 dcl  arg char (arg_len) based (arg_ptr);
+       44 dcl  return_string char (return_len) varying based (return_ptr);
+       45 
+       46 dcl  (af_sw, expr_arg_sw) bit (1) aligned;
+       47 
+       48 dcl  (arg_ptr, return_ptr) ptr;
+       49 
+       50 dcl  (arg_count, arg_len, return_len) fixed bin;
+       51 
+       52 dcl  error_table_$not_act_fnc fixed bin (35) ext;
+       53 
+       54 dcl  (active_fnc_err_, active_fnc_err_$af_suppress_name) entry options (variable);
+       55 dcl  (com_err_, com_err_$suppress_name) entry options (variable);
+       56 dcl  cu_$af_return_arg entry (fixed bin, ptr, fixed bin, fixed bin (35));
+       57 dcl  cu_$arg_ptr entry (fixed bin, ptr, fixed bin, fixed bin (35));
+       58 
+       59 
+       60 dcl  (calls static internal, ss, fv, fv_save, num) fixed bin (17);
+       61 dcl  code fixed bin (35);
+       62 dcl  dum float bin (27);
+       63 dcl  (sv, iptr, fvp, mp, vp) ptr;
+       64 dcl  floatval float bin (27) based (fvp);
+       65 dcl  in char (1300) unaligned;
+       66 dcl  move char (20) based (mp);
+       67 dcl  space (52) ptr;
+       68 dcl  error_string char (32);
+       69 dcl  out char (32) aligned;
+       70 dcl  var_name_chars char (63) static options (constant)	/* for variable/function name check */
+       71 	init ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_");
+       72 dcl  valid_token_delimiters char (9)			/* for variable/function name delimiter check */
+       73 	static options (constant) init (" .()=+-*/");
+       74 
+       75 dcl  1 in_structure unaligned based (addr (in)),
+       76        2 pad char (2),
+       77        2 in_com char (1298);
+       78 
+       79 dcl  1 s (0:63) aligned,				/* the stack */
+       80        2 type fixed bin (17),
+       81        2 op fixed bin (17),
+       82        2 value float bin (27),
+       83        2 var ptr;
+       84 
+       85 dcl  1 vars based (vp) aligned,			/* the list of variables and values */
+       86        2 next ptr,
+       87        2 d (0:31),
+       88          3 name char (8) aligned,
+       89          3 value float bin (27);
+       90 
+       91 dcl  ffip entry (ptr, fixed bin (17), fixed bin (17), float bin (27));
+       92 dcl  ffop entry (char (32) aligned, fixed bin (17), float bin (27));
+       93 dcl  (ioa_, ioa_$ioa_switch) entry options (variable);
+       94 dcl  iox_$error_output ptr external;
+       95 dcl  iox_$get_line entry (ptr, ptr, fixed bin, fixed bin, fixed bin (35));
+       96 dcl  iox_$put_chars entry (ptr, ptr, fixed bin, fixed bin (35));
+       97 dcl  iox_$user_output ptr ext;
+       98 dcl  iox_$user_input ptr ext;
+       99 dcl  cu_$cp entry (ptr, fixed bin, fixed bin (35));
+      100 dcl  cu_$grow_stack_frame entry (fixed bin (17), ptr, fixed bin (35));
+      101 dcl  (noprt, ileq) bit (1);
+      102 dcl  funcs (0:6) char (8) static internal init ("sin", "cos", "tan", "atan", "abs", "ln", "log");
+      103 dcl  (abs, addr, atan, cos, fixed, index, length, log, log10, ltrim) builtin;
+      104 dcl  (mod, null, rtrim, sin, substr, tan, verify) builtin;
+      105 
+      106 dcl  (fixedoverflow, overflow, program_interrupt, underflow) condition;
+      107 						/*						*/
+      108 
+      109 
+      110       call cu_$af_return_arg (arg_count, return_ptr, return_len, code);
+      111       if code = error_table_$not_act_fnc then do;
+      112          if arg_count > 1 then do;
+      113 	  call com_err_$suppress_name (0, "calc", "Usage:  calc {expression}");
+      114 	  return;
+      115          end;
+      116          else if arg_count = 1 then expr_arg_sw = "1"b;
+      117          else expr_arg_sw = "0"b;
+      118          af_sw = "0"b;
+      119       end;
+      120       else do;
+      121          if arg_count = 0 | arg_count > 1 then do;
+      122 	  call active_fnc_err_$af_suppress_name (0, "calc", "Usage:  [calc expression]");
+      123 	  return;
+      124          end;
+      125          af_sw, expr_arg_sw = "1"b;
+      126       end;
+      127 
+      128       vp, sv = addr (space);				/* initialize vars with e and pi */
+      129       iptr = addr (in);
+      130       vars.next = null;
+      131       vars.d.name (0) = "pi";
+      132       vars.d.value (0) = 3.14159265e0;
+      133       vars.d.name (1) = "e";
+      134       vars.d.value (1) = 2.7182818e0;
+      135       fv = 2;
+      136 
+      137       if ^af_sw then				/* phx09588,phx18231: */
+      138 	 on program_interrupt go to new_line;		/* set up pi handler only if not active function */
+      139 
+      140       on overflow, fixedoverflow begin;
+      141          error_string = "Overflow";
+      142          go to HANDLE_FAULT;
+      143       end;
+      144       on underflow begin;
+      145          error_string = "Exponent too small";
+      146          go to HANDLE_FAULT;
+      147       end;
+      148 
+      149 new_line: ss = -1;					/* reinitialize variables */
+      150       calls = 0;
+      151       noprt, ileq = "0"b;
+      152       if fv > 31 then do;
+      153          call cu_$grow_stack_frame (104, vp, code);	/* if vars too big, get more space */
+      154          if code ^= 0 then do;
+      155 	  call ioa_ ("Fatal out of space");
+      156 	  return;
+      157          end;
+      158          vars.next = sv;
+      159          sv = vp;
+      160          fv = 0;
+      161       end;
+      162 
+      163       if expr_arg_sw then do;
+      164          call cu_$arg_ptr (1, arg_ptr, arg_len, code);
+      165 
+      166          begin;
+      167 dcl  expr_arg char (arg_len + 1);
+      168 
+      169 	  expr_arg = arg || "
+      170 ";
+      171 	  call prec_calc (expr_arg, arg_len + 1, dum, code);
+      172 
+      173          end;
+      174 
+      175          return;
+      176       end;
+      177 
+      178 GET_LINE: call iox_$get_line (iox_$user_input, iptr, length (in), num, (0));
+      179 
+      180       if num = 1 then go to GET_LINE;			/* newline */
+      181       else if num = 2 & substr (in, 1, 1) = "." then do;
+      182          call ioa_ ("CALC 1.1");
+      183          go to GET_LINE;
+      184       end;
+      185       else if substr (in, 1, 2) = ".." then do;
+      186          call cu_$cp (addr (in_com), num - 2, code);
+      187          go to GET_LINE;
+      188       end;
+      189 
+      190       fv_save = fv;					/* phx21221: save to restore on error */
+      191       call prec_calc (in, num, dum, code);
+      192       if code > 1 then return;
+      193       go to new_line;
+      194 
+      195 
+      196 HANDLE_FAULT:
+      197       if af_sw then call active_fnc_err_ (0, "calc", "^a", error_string);
+      198       else call ioa_$ioa_switch (iox_$error_output, "^a", error_string);
+      199       if expr_arg_sw then return;
+      200       else go to new_line;
+      201 						/*						*/
+      202 /**** ****************************INTERNAL PROC PREC_CALC************************************* ****/
+      203 
+      204 
+      205 /* prec_calc does the actual work of the calc command.  It is recursive so function references may */
+      206 /* contain expressions (including other function references). */
+      207 
+      208 prec_calc: proc (in, num, fval, code);
+      209 						/* declarations */
+      210 dcl  (i, j, k, num, last, level, ip, strt) fixed bin (17);
+      211 dcl  code fixed bin (35);
+      212 dcl  (x, fval) float bin (27);
+      213 dcl  wrk char (1);
+      214 dcl  wrka char (8);
+      215 dcl  in char (*);
+      216 dcl  msg char (40) aligned;
+      217 
+      218       code, ip, last = 1; level = 0;
+      219       calls = calls + 1; ss = ss + 1;
+      220       s.type (ss) = 0;
+      221       s.op (ss) = 1;				/* put a start-of-stack char on s */
+      222       strt = ss - 1;
+      223 
+      224 start: if s.op (ss) ^= 0 then go to op_red;		/* if s: <op> */
+      225       i = s.op (ss - 1);
+      226       if i = 0 then do;				/* if s: <val> <val>  then error */
+      227 miss_op: msg = "Missing operator";
+      228          go to err;
+      229       end;
+      230       if ss - 2 = strt then go to add;			/* if s: "sos" <val>  then add */
+      231       if s.op (ss - 2) = 0 then go to add;		/* if s: <val> <op> <val> then add */
+      232       if i ^= 4 then
+      233 	 if i ^= 5 then do;				/* if s ^ : <op> "+"|"-" <val>  error */
+      234 ill_prefix:   msg = "Invalid prefix operator";
+      235 	    go to err;
+      236 	 end;
+      237       go to add;					/* syntax is OK so add to prefix to check prec */
+      238 
+      239 op_red: i = s.op (ss);
+      240       if i = 1 then go to add;			/* if s: "sos" then add */
+      241       j = s.op (ss - 1);
+      242       if j ^= 0 then do;				/* if s: <op> "-"|"+"  then add */
+      243          if i = 4 then go to add;
+      244          if i = 5 then go to add;
+      245       end;
+      246       if i = 2 then
+      247 	 if j = 1 then do;				/* if s: "sos" "eoi"  error */
+      248 	    if calls = 1 then return;
+      249 	    else do;
+      250 	       msg = "Null expression";
+      251 	       go to err;
+      252 	    end;
+      253 	 end;
+      254       if i > 2 then
+      255 	 if j ^= 0 then go to ill_prefix;		/* error if: <op> ^"eoi" */
+      256       j = s.op (ss - 2);
+      257       if j = 0 then go to miss_op;			/* error */
+      258       if i = 2 then
+      259 	 if j = 1 then go to print;			/* if: "sos" <any> "eoi"  then print */
+      260 						/* if op1>op2 then add, i.e. check precedence */
+      261       if ss - 3 = strt then go to add;			/* if <val2> is really "sos" then add */
+      262       if s.op (ss - 3) ^= 0 then do;			/* check fo r prefix op */
+      263          if s.type (ss) > s.type (ss - 2) + 4 then go to add; /* check precdence - prefix is very strong */
+      264          if j = 5 then s.value (ss - 1) = -s.value (ss - 1);/* do negation */
+      265          addr (s.type (ss - 2)) -> move = addr (s.type (ss - 1)) -> move; /* move over sign */
+      266          addr (s.type (ss - 1)) -> move = addr (s.type (ss)) -> move;
+      267          ss = ss - 1;
+      268          go to start;
+      269       end;
+      270       if s.type (ss) > s.type (ss - 2) then go to add;	/* s is: <val2><op2><val1><op1> */
+      271       j = j - 3;
+      272       go to operator (j);
+      273 
+      274 operator (0):
+      275 ASSIGN: s.var (ss - 3) -> floatval = s.value (ss - 1);	/* do assignment */
+      276       noprt = "1"b;
+      277       go to clean;
+      278 operator (1):
+      279 ADD:  s.value (ss - 3) = s.value (ss - 3) + s.value (ss - 1); /* do addition */
+      280       go to clean;
+      281 operator (2):
+      282 SUBTRACT: s.value (ss - 3) = s.value (ss - 3) - s.value (ss - 1); /* do subtraction */
+      283       go to clean;
+      284 operator (3):
+      285 MULTIPLY: s.value (ss - 3) = s.value (ss - 3) * s.value (ss - 1); /* do multiplication */
+      286       go to clean;
+      287 operator (4):
+      288 DIVIDE: if s.value (ss - 1) = 0e0 then do;		/* division by zero */
+      289          msg = "Divide by zero";
+      290          go to err;
+      291       end;
+      292       s.value (ss - 3) = s.value (ss - 3) / s.value (ss - 1); /* do division */
+      293       go to clean;
+      294 operator (5):
+      295 EXPONENT: if s.value (ss - 3) < 0e0 then do;		/* ** of neg number */
+      296          if mod (s.value (ss - 1), 1e0) = 0e0 then do;	/* neg to integer power */
+      297 	  s.value (ss - 3) = s.value (ss - 3) ** fixed (s.value (ss - 1), 17, 0);
+      298 	  go to clean;
+      299          end;
+      300          msg = "Neg num ** non-integer";
+      301          go to err;
+      302       end;
+      303       if s.value (ss - 1) = 0e0 then
+      304 	 if s.value (ss - 3) = 0e0 then do;		/* zero ** zero */
+      305 	    msg = "Zero ** zero";
+      306 	    go to err;
+      307 	 end;
+      308       s.value (ss - 3) = s.value (ss - 3) ** s.value (ss - 1); /* do exponentiation */
+      309 
+      310 clean: addr (s.type (ss - 2)) -> move = addr (s.type (ss)) -> move; /* remove top of stack */
+      311       ss = ss - 2;
+      312       go to start;
+      313 
+      314 print: fval = s.value (ss - 1);
+      315       if calls > 1 then go to no_print;
+      316 
+      317       if af_sw then do;
+      318          ip = 1;
+      319          call ffop (out, ip, fval);			/* convert value to char string */
+      320          return_string = rtrim (ltrim (substr (out, 1, ip - 1)));
+      321          return;
+      322       end;
+      323 
+      324       if noprt then go to no_print;
+      325       ip = 5;
+      326       substr (out, 1, 5) = "=   ";			/* set up output line */
+      327       call ffop (out, ip, fval);			/* convert value to char string */
+      328       substr (out, ip, 1) = "
+      329 ";						/* append NL to output line */
+      330       call iox_$put_chars (iox_$user_output, addr (out), ip, (0));
+      331 no_print: calls = calls - 1;				/* return to caller */
+      332       code = 0;
+      333       ss = strt;
+      334       return;
+      335 
+      336 add:  ss = ss + 1;					/* put new cell on stack */
+      337       if ss > 63 then do;				/* too many tokens on stack */
+      338          msg = "Simplify expression";
+      339          go to err;
+      340       end;
+      341 blank: if ip >= num then do;				/* look for end of input line */
+      342          if level ^= 0 then do;
+      343 	  msg = "Too few )'s";
+      344 	  go to err;
+      345          end;
+      346          s.type (ss) = 0;
+      347          s.op (ss) = 2;				/* put "eoi" on stack */
+      348          go to start;
+      349       end;
+      350       wrk = substr (in, ip, 1);
+      351       if wrk ^= " " then go to non_blank;		/* look for non-blank */
+      352 incr: ip = ip + 1;
+      353       go to blank;
+      354 non_blank:
+      355       i = index ("0123456789.()=+-*/", wrk);
+      356       if i = 0 then go to var_ref;			/* if not as in index, then go to var_ref */
+      357       if i <= 11 then do;
+      358          call ffip (addr (in), num - 1, ip, s.value (ss));	/* if numeric then call ffip for conversion */
+      359          s.op (ss) = 0;
+      360          ileq = "1"b;
+      361          last = 2;
+      362          go to start;
+      363       end;
+      364       if i = 12 then do;				/* if open paren then up prec level */
+      365          if last ^= 1 then
+      366 	    if last ^= 3 then do;			/* error if ( follows value or ) */
+      367 	       msg = "Invalid use of (";
+      368 	       go to err;
+      369 	    end;
+      370          last = 3;
+      371          level = level + 5;
+      372          ileq = "1"b;
+      373          go to incr;
+      374       end;
+      375 
+      376       if i = 13 then do;				/* if ) check for error then lower prec level */
+      377          if level = 0 then do;
+      378 	  msg = "Too many )'s";
+      379 	  go to err;
+      380          end;
+      381          if last ^= 2 then
+      382 	    if last ^= 4 then do;			/* error if ) follows ( or operator */
+      383 	       msg = "Invalid use of )";
+      384 	       go to err;
+      385 	    end;
+      386          last = 4;
+      387          level = level - 5;
+      388          ileq = "1"b;
+      389          go to incr;
+      390       end;
+      391 
+      392       if last = 3 then
+      393 	 if i ^= 15 then
+      394 	      if i ^= 16 then do;			/* "(" <op>^="+"|"-" */
+      395 	         msg = "Invalid op after (";
+      396 	         go to err;
+      397 	      end;
+      398       last = 1;
+      399       if substr (in, ip, 2) = "**" then do;
+      400          i = 19;					/* check for ** */
+      401          ip = ip + 1;
+      402       end;
+      403 
+      404       if i = 14 then
+      405 	 if ileq then do;				/* anything but <variable> before "=" is error */
+      406 	    msg = "Invalid use of =";
+      407 	    go to err;
+      408 	 end;
+      409       k = level + 1;
+      410       if i > 18 then k = k + 3;			/* assign precedence level to operator */
+      411       else if i > 16 then k = k + 2;
+      412       else if i > 14 then k = k + 1;
+      413       s.type (ss) = k;
+      414       s.op (ss) = i - 11;
+      415       ileq = "1"b;
+      416       ip = ip + 1;
+      417       go to start;
+      418 
+      419 var_ref: i = ip;					/* save start of var name */
+      420       last = 2;
+      421       if verify (wrk, var_name_chars) ^= 0 then do;	/* phx10119,20071,21221: name validity check */
+      422 bad_char: msg = "Invalid char " || wrk;
+      423          go to err;
+      424       end;
+      425       go to first;
+      426 var_loop: ip = ip + 1;
+      427       wrk = substr (in, ip, 1);
+      428 first: if ip < num then do;
+      429          if verify (wrk, var_name_chars) = 0 then		/* phx10119,20071,21221: name validity check */
+      430 	    go to var_loop;				/* find end of name */
+      431 
+      432          if verify (wrk, valid_token_delimiters) ^= 0 then	/* check for invalid */
+      433 	    go to bad_char;				/* char after name */
+      434       end;
+      435 
+      436       wrka = substr (in, i, ip - i);			/* wrka is var name */
+      437 
+      438       if expr_arg_sw then do;
+      439          do i = 0 to 6;
+      440 	  if wrka = funcs (i) then go to func_ref;
+      441          end;
+      442          if af_sw then call active_fnc_err_ (0, "calc", "Variables not allowed in expression argument.");
+      443          else call com_err_ (0, "calc", "Variables not allowed in expression argument.");
+      444          return;
+      445       end;
+      446 
+      447       vp = sv;
+      448       k = fv - 1;
+      449 next_v: do j = k to 0 by -1;				/* search vars for wrka */
+      450          if wrka = vars.d.name (j) then go to found;
+      451       end;
+      452       vp = vars.next;				/* chain to next block of vars */
+      453       k = 31;
+      454       if vp ^= null then go to next_v;			/* if null then name is undefined */
+      455       if wrka = "q" then do;				/* a name of "q" is a quit so return  with quit code */
+      456          if num > 2 then do;				/* other chars on the line */
+      457 	  msg = "Invalid var q";
+      458 	  go to err;
+      459          end;
+      460          code = 2;
+      461          return;
+      462       end;
+      463       if wrka = "list" then do;			/* a name of "list" means list all vars */
+      464          wrk = "
+      465 ";						/* set wrk = NL */
+      466          call iox_$put_chars (iox_$user_output, addr (wrk), 1, (0)); /* print a NL */
+      467          vp = sv;
+      468          k = fv - 1;
+      469 another: do j = k to 0 by -1;				/* go through vars printing out values and names */
+      470 	  substr (out, 1, 8) = vars.d.name (j);
+      471 	  substr (out, 9, 4) = " =  ";
+      472 	  ip = 13;
+      473 	  call ffop (out, ip, vars.d.value (j));	/* call ffop to convert value to char string */
+      474 	  substr (out, ip, 1) = "
+      475 ";						/* insert NL */
+      476 	  call iox_$put_chars (iox_$user_output, addr (out), ip, (0));
+      477          end;
+      478          vp = vars.next;
+      479          k = 31;
+      480          if vp ^= null then go to another;
+      481          call ioa_ (" ");
+      482          return;
+      483       end;
+      484       do i = 0 to 6;				/* see if var name is func name */
+      485          if wrka = funcs (i) then go to func_ref;
+      486       end;
+      487       if ileq then do;				/* since not command or func then undef var */
+      488 						/* so invalid if not first in line */
+      489          msg = "Undef var " || wrka;
+      490          go to err;
+      491       end;
+      492       vp = sv;
+      493       j = fv;
+      494       fv = fv + 1;					/* define var */
+      495       vars.d.name (j) = wrka;
+      496       vars.d.value (j) = 0e0;
+      497 found: s.op (ss) = 0;
+      498       s.value (ss) = vars.d.value (j);			/* put <val> on stack */
+      499       s.var (ss) = addr (vars.d.value (j));
+      500       go to start;
+      501 
+      502 func_ref: do ip = ip to num while (substr (in, ip, 1) ^= "("); /* find open paren */
+      503       end;
+      504       j = 0;
+      505       do k = ip to num;				/* find close paren */
+      506          if substr (in, k, 1) = "(" then j = j + 1;
+      507          if substr (in, k, 1) = ")" then j = j - 1;
+      508          if j = 0 then go to end_ref;
+      509       end;
+      510       msg = "Missing ) after " || wrka;
+      511       go to err;
+      512 end_ref: call prec_calc (substr (in, ip, k - ip + 2), k - ip + 2, x, code);
+      513       if code ^= 0 then return;
+      514       code = 1;
+      515       ip = k + 1;
+      516       s.op (ss) = 0;
+      517       s.var (ss) = null;
+      518       go to func (i);
+      519 func (0):
+      520 SIN:  s.value (ss) = sin (x); go to start;
+      521 func (1):
+      522 COS:  s.value (ss) = cos (x); go to start;
+      523 func (2):
+      524 TAN:  s.value (ss) = tan (x); go to start;
+      525 func (3):
+      526 ATAN: s.value (ss) = atan (x); go to start;
+      527 func (4):
+      528 ABS:  s.value (ss) = abs (x); go to start;
+      529 func (5):
+      530 LN:   s.value (ss) = log (x); go to start;
+      531 func (6):
+      532 LOG:  s.value (ss) = log10 (x); go to start;
+      533 
+      534 err:						/* error printout section */
+      535       if af_sw then do;
+      536          call active_fnc_err_ (0, "calc", "^a", msg);
+      537       end;
+      538       else call ioa_$ioa_switch (iox_$error_output, "^a", msg);
+      539       fv = fv_save;					/* phx21221 - clean up invalid variables on error */
+      540 
+      541       return;
+      542 
+      543    end prec_calc;
+      544 
+      545 /**** *****************************************END INTERNAL PROC PREC_CALC********************************** ****/
+      546 
+      547 
+      548    end calc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    01/23/89  1228.6  calc.pl1                          >spec>install>1010>calc.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+abs                                                    builtin function         dcl 103 ref 527
+active_fnc_err_                 000014 constant        entry                    external dcl 54 ref 196 442 536
+active_fnc_err_$af_suppress_name
+                                000016 constant        entry                    external dcl 54 ref 122
+addr                                                   builtin function         dcl 103 ref 128 129 186 186 186 186 265 265 266 266
+                                                                                  310 310 330 330 358 358 466 466 476 476 499
+af_sw                           000100 automatic       bit(1)                   dcl 46 set ref 118* 125* 137 196 317 442 534
+arg                                    based           char                     packed unaligned dcl 43 ref 169
+arg_count                       000106 automatic       fixed bin(17,0)          dcl 50 set ref 110* 112 116 121 121
+arg_len                         000107 automatic       fixed bin(17,0)          dcl 50 set ref 164* 167 169 171
+arg_ptr                         000102 automatic       pointer                  dcl 48 set ref 164* 169
+atan                                                   builtin function         dcl 103 ref 525
+calls                           000010 internal static fixed bin(17,0)          dcl 60 set ref 150* 219* 219 248 315 331* 331
+code                            000115 automatic       fixed bin(35,0)          dcl 61 in procedure "calc" set ref 110* 111 153* 154
+                                                                                  164* 171* 186* 191* 192
+code                                   parameter       fixed bin(35,0)          dcl 211 in procedure "prec_calc" set ref 208 218*
+                                                                                  332* 460* 512* 513 514*
+com_err_                        000020 constant        entry                    external dcl 55 ref 443
+com_err_$suppress_name          000022 constant        entry                    external dcl 55 ref 113
+cos                                                    builtin function         dcl 103 ref 521
+cu_$af_return_arg               000024 constant        entry                    external dcl 56 ref 110
+cu_$arg_ptr                     000026 constant        entry                    external dcl 57 ref 164
+cu_$cp                          000052 constant        entry                    external dcl 99 ref 186
+cu_$grow_stack_frame            000054 constant        entry                    external dcl 100 ref 153
+d                         2            based           structure                array level 2 dcl 85
+dum                             000116 automatic       float bin(27)            dcl 62 set ref 171* 191*
+error_string                    001004 automatic       char(32)                 packed unaligned dcl 68 set ref 141* 145* 196* 198*
+error_table_$not_act_fnc        000012 external static fixed bin(35,0)          dcl 52 ref 111
+expr_arg                        000100 automatic       char                     packed unaligned dcl 167 set ref 169* 171*
+expr_arg_sw                     000101 automatic       bit(1)                   dcl 46 set ref 116* 117* 125* 163 199 438
+ffip                            000030 constant        entry                    external dcl 91 ref 358
+ffop                            000032 constant        entry                    external dcl 92 ref 319 327 473
+fixed                                                  builtin function         dcl 103 ref 297
+fixedoverflow                   001626 stack reference condition                dcl 106 ref 140
+floatval                               based           float bin(27)            dcl 64 set ref 274*
+funcs                           000015 constant        char(8)                  initial array packed unaligned dcl 102 ref 440 485
+fv                              000112 automatic       fixed bin(17,0)          dcl 60 set ref 135* 152 160* 190 448 468 493 494*
+                                                                                  494 539*
+fv_save                         000113 automatic       fixed bin(17,0)          dcl 60 set ref 190* 539
+fval                                   parameter       float bin(27)            dcl 212 set ref 208 314* 319* 327*
+i                               000100 automatic       fixed bin(17,0)          dcl 210 set ref 225* 226 232 232 239* 240 243 244
+                                                                                  246 254 258 354* 356 357 364 376 392 392 400* 404
+                                                                                  410 411 412 414 419* 436 436 439* 440* 484* 485*
+                                                                                  518
+ileq                            001625 automatic       bit(1)                   packed unaligned dcl 101 set ref 151* 360* 372* 388*
+                                                                                  404 415* 487
+in                                     parameter       char                     packed unaligned dcl 215 in procedure "prec_calc"
+                                                                                  set ref 208 350 358 358 399 427 436 502 506 507
+                                                                                  512 512
+in                              000126 automatic       char(1300)               packed unaligned dcl 65 in procedure "calc" set ref
+                                                                                  129 178 178 181 185 186 186 191*
+in_com                    0(18)        based           char(1298)               level 2 packed packed unaligned dcl 75 set ref 186
+                                                                                  186
+in_structure                           based           structure                level 1 packed packed unaligned dcl 75
+index                                                  builtin function         dcl 103 ref 354
+ioa_                            000034 constant        entry                    external dcl 93 ref 155 182 481
+ioa_$ioa_switch                 000036 constant        entry                    external dcl 93 ref 198 538
+iox_$error_output               000040 external static pointer                  dcl 94 set ref 198* 538*
+iox_$get_line                   000042 constant        entry                    external dcl 95 ref 178
+iox_$put_chars                  000044 constant        entry                    external dcl 96 ref 330 466 476
+iox_$user_input                 000050 external static pointer                  dcl 98 set ref 178*
+iox_$user_output                000046 external static pointer                  dcl 97 set ref 330* 466* 476*
+ip                              000105 automatic       fixed bin(17,0)          dcl 210 set ref 218* 318* 319* 320 325* 327* 328
+                                                                                  330* 341 350 352* 352 358* 399 401* 401 416* 416
+                                                                                  419 426* 426 427 428 436 472* 473* 474 476* 502*
+                                                                                  502 502* 505 512 512 512 512 512 515*
+iptr                            000122 automatic       pointer                  dcl 63 set ref 129* 178*
+j                               000101 automatic       fixed bin(17,0)          dcl 210 set ref 241* 242 246 254 256* 257 258 264
+                                                                                  271* 271 272 449* 450* 469* 470 473* 493* 495 496
+                                                                                  498 499 504* 506* 506 507* 507 508
+k                               000102 automatic       fixed bin(17,0)          dcl 210 set ref 409* 410* 410 411* 411 412* 412 413
+                                                                                  448* 449 453* 468* 469 479* 505* 506 507* 512 512
+                                                                                  512 515
+last                            000103 automatic       fixed bin(17,0)          dcl 210 set ref 218* 361* 365 365 370* 381 381 386*
+                                                                                  392 398* 420*
+length                                                 builtin function         dcl 103 ref 178 178
+level                           000104 automatic       fixed bin(17,0)          dcl 210 set ref 218* 342 371* 371 377 387* 387 409
+log                                                    builtin function         dcl 103 ref 529
+log10                                                  builtin function         dcl 103 ref 531
+ltrim                                                  builtin function         dcl 103 ref 320
+mod                                                    builtin function         dcl 104 ref 296
+move                                   based           char(20)                 packed unaligned dcl 66 set ref 265* 265 266* 266
+                                                                                  310* 310
+msg                             000114 automatic       char(40)                 dcl 216 set ref 227* 234* 250* 289* 300* 305* 338*
+                                                                                  343* 367* 378* 383* 395* 406* 422* 457* 489* 510*
+                                                                                  536* 538*
+name                      2            based           char(8)                  array level 3 dcl 85 set ref 131* 133* 450 470 495*
+next                                   based           pointer                  level 2 dcl 85 set ref 130* 158* 452 478
+noprt                           001624 automatic       bit(1)                   packed unaligned dcl 101 set ref 151* 276* 324
+null                                                   builtin function         dcl 104 ref 130 454 480 517
+num                             000114 automatic       fixed bin(17,0)          dcl 60 in procedure "calc" set ref 178* 180 181 186
+                                                                                  191*
+num                                    parameter       fixed bin(17,0)          dcl 210 in procedure "prec_calc" ref 208 341 358 428
+                                                                                  456 502 505
+op                        1     001024 automatic       fixed bin(17,0)          array level 2 dcl 79 set ref 221* 224 225 231 239
+                                                                                  241 256 262 347* 359* 414* 497* 516*
+out                             001014 automatic       char(32)                 dcl 69 set ref 319* 320 326* 327* 328* 330 330 470*
+                                                                                  471* 473* 474* 476 476
+overflow                        001634 stack reference condition                dcl 106 ref 140
+program_interrupt               001642 stack reference condition                dcl 106 ref 137
+return_len                      000110 automatic       fixed bin(17,0)          dcl 50 set ref 110* 320
+return_ptr                      000104 automatic       pointer                  dcl 48 set ref 110* 320
+return_string                          based           varying char             dcl 44 set ref 320*
+rtrim                                                  builtin function         dcl 104 ref 320
+s                               001024 automatic       structure                array level 1 dcl 79
+sin                                                    builtin function         dcl 104 ref 519
+space                           000634 automatic       pointer                  array dcl 67 set ref 128
+ss                              000111 automatic       fixed bin(17,0)          dcl 60 set ref 149* 219* 219 220 221 222 224 225 230
+                                                                                  231 239 241 256 261 262 263 263 264 264 265 265
+                                                                                  266 266 267* 267 270 270 274 274 278 278 278 281
+                                                                                  281 281 284 284 284 287 292 292 292 294 296 297
+                                                                                  297 297 303 303 308 308 308 310 310 311* 311 314
+                                                                                  333* 336* 336 337 346 347 358 359 413 414 497 498
+                                                                                  499 516 517 519 521 523 525 527 529 531
+strt                            000106 automatic       fixed bin(17,0)          dcl 210 set ref 222* 230 261 333
+substr                                                 builtin function         dcl 104 set ref 181 185 320 326* 328* 350 399 427
+                                                                                  436 470* 471* 474* 502 506 507 512 512
+sv                              000120 automatic       pointer                  dcl 63 set ref 128* 158 159* 447 467 492
+tan                                                    builtin function         dcl 104 ref 523
+type                            001024 automatic       fixed bin(17,0)          array level 2 dcl 79 set ref 220* 263 263 265 265
+                                                                                  266 266 270 270 310 310 346* 413*
+underflow                       001650 stack reference condition                dcl 106 ref 144
+valid_token_delimiters          000033 constant        char(9)                  initial packed unaligned dcl 72 ref 432
+value                     2     001024 automatic       float bin(27)            array level 2 in structure "s" dcl 79 in procedure
+                                                                                  "calc" set ref 264* 264 274 278* 278 278 281* 281
+                                                                                  281 284* 284 284 287 292* 292 292 294 296 297* 297
+                                                                                  297 303 303 308* 308 308 314 358* 498* 519* 521*
+                                                                                  523* 525* 527* 529* 531*
+value                     4            based           float bin(27)            array level 3 in structure "vars" dcl 85
+                                                                                  in procedure "calc" set ref 132* 134* 473* 496*
+                                                                                  498 499
+var                       4     001024 automatic       pointer                  array level 2 dcl 79 set ref 274 499* 517*
+var_name_chars                  000036 constant        char(63)                 initial packed unaligned dcl 70 ref 421 429
+vars                                   based           structure                level 1 dcl 85
+verify                                                 builtin function         dcl 104 ref 421 429 432
+vp                              000124 automatic       pointer                  dcl 63 set ref 128* 130 131 132 133 134 153* 158 159
+                                                                                  447* 450 452* 452 454 467* 470 473 478* 478 480
+                                                                                  492* 495 496 498 499
+wrk                             000110 automatic       char(1)                  packed unaligned dcl 213 set ref 350* 351 354 421
+                                                                                  422 427* 429 432 464* 466 466
+wrka                            000112 automatic       char(8)                  packed unaligned dcl 214 set ref 436* 440 450 455
+                                                                                  463 485 489 495 510
+x                               000107 automatic       float bin(27)            dcl 212 set ref 512* 519 521 523 525 527 529 531
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+fvp                                    automatic       pointer                  dcl 63
+mp                                     automatic       pointer                  dcl 63
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ABS                             003076 constant        label                    dcl 527
+ADD                             001402 constant        label                    dcl 278
+ASSIGN                          001375 constant        label                    dcl 274
+ATAN                            003067 constant        label                    dcl 525
+COS                             003051 constant        label                    dcl 521
+DIVIDE                          001416 constant        label                    dcl 287
+EXPONENT                        001427 constant        label                    dcl 294
+GET_LINE                        000751 constant        label                    dcl 178 ref 180 183 187
+HANDLE_FAULT                    001101 constant        label                    dcl 196 ref 142 146
+LN                              003103 constant        label                    dcl 529
+LOG                             003112 constant        label                    dcl 531
+MULTIPLY                        001412 constant        label                    dcl 284
+SIN                             003042 constant        label                    dcl 519
+SUBTRACT                        001406 constant        label                    dcl 281
+TAN                             003060 constant        label                    dcl 523
+add                             001650 constant        label                    dcl 336 ref 230 231 237 240 243 244 261 263 270
+another                         002461 constant        label                    dcl 469 ref 480
+bad_char                        002155 constant        label                    dcl 422 ref 432
+blank                           001661 constant        label                    dcl 341 ref 353
+calc                            000320 constant        entry                    external dcl 41
+clean                           001473 constant        label                    dcl 310 ref 277 280 283 286 293 298
+end_ref                         002753 constant        label                    dcl 512 ref 508
+err                             003121 constant        label                    dcl 534 ref 228 235 251 290 301 306 339 344 368 379
+                                                                                  384 396 407 423 458 490 511
+first                           002203 constant        label                    dcl 428 ref 425
+found                           002645 constant        label                    dcl 497 ref 450
+func                            000006 constant        label                    array(0:6) dcl 519 ref 518
+func_ref                        002662 constant        label                    dcl 502 ref 440 485
+ill_prefix                      001254 constant        label                    dcl 234 ref 254
+incr                            001713 constant        label                    dcl 352 ref 373 389
+miss_op                         001235 constant        label                    dcl 227 ref 257
+new_line                        000565 constant        label                    dcl 149 ref 137 193 199
+next_v                          002346 constant        label                    dcl 449 ref 454
+no_print                        001637 constant        label                    dcl 331 ref 315 324
+non_blank                       001715 constant        label                    dcl 354 ref 351
+op_red                          001261 constant        label                    dcl 239 ref 224
+operator                        000000 constant        label                    array(0:5) dcl 274 ref 272
+prec_calc                       001165 constant        entry                    internal dcl 208 ref 171 191 512
+print                           001503 constant        label                    dcl 314 ref 258
+start                           001223 constant        label                    dcl 224 ref 268 312 348 362 417 500 520 522 524 526
+                                                                                  528 530 532
+var_loop                        002173 constant        label                    dcl 426 ref 429
+var_ref                         002141 constant        label                    dcl 419 ref 356
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3460        3536    3214        3470
+Length      3750    3214        56         175     243           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+calc                                991 external procedure  is an external procedure.  
+on unit on line 137                  64 on unit               
+on unit on line 140                  64 on unit               
+on unit on line 144                  64 on unit               
+begin block on line 166              90 begin block         uses auto adjustable storage.  
+prec_calc                           142 internal procedure  is called during a stack extension.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 calls                       calc
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 166  000100 expr_arg                    begin block on line 166
+calc                     000100 af_sw                       calc
+                         000101 expr_arg_sw                 calc
+                         000102 arg_ptr                     calc
+                         000104 return_ptr                  calc
+                         000106 arg_count                   calc
+                         000107 arg_len                     calc
+                         000110 return_len                  calc
+                         000111 ss                          calc
+                         000112 fv                          calc
+                         000113 fv_save                     calc
+                         000114 num                         calc
+                         000115 code                        calc
+                         000116 dum                         calc
+                         000120 sv                          calc
+                         000122 iptr                        calc
+                         000124 vp                          calc
+                         000126 in                          calc
+                         000634 space                       calc
+                         001004 error_string                calc
+                         001014 out                         calc
+                         001024 s                           calc
+                         001624 noprt                       calc
+                         001625 ileq                        calc
+prec_calc                000100 i                           prec_calc
+                         000101 j                           prec_calc
+                         000102 k                           prec_calc
+                         000103 last                        prec_calc
+                         000104 level                       prec_calc
+                         000105 ip                          prec_calc
+                         000106 strt                        prec_calc
+                         000107 x                           prec_calc
+                         000110 wrk                         prec_calc
+                         000112 wrka                        prec_calc
+                         000114 msg                         prec_calc
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     enter_begin_block   leave_begin_block   call_ext_out_desc   call_ext_out        call_int_this_desc
+call_int_other_desc return_mac          fl2_to_fx1          tra_ext_1           alloc_auto_adj      mdfl1
+enable_op           shorten_stack       ext_entry           int_entry           int_entry_desc      sine_radians_
+cosine_radians_     tangent_radians_    arc_tangent_radians_log_base_e_         log_base_10_        single_power_single_
+single_power_integer_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+active_fnc_err_               active_fnc_err_$af_suppress_name                            com_err_
+com_err_$suppress_name        cu_$af_return_arg             cu_$arg_ptr                   cu_$cp
+cu_$grow_stack_frame          ffip                          ffop                          ioa_
+ioa_$ioa_switch               iox_$get_line                 iox_$put_chars
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$not_act_fnc      iox_$error_output             iox_$user_input               iox_$user_output
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     41 000317       110 000325       111 000341       112 000345       113 000350       114 000376       116 000377
+    117 000403       118 000404       119 000405       121 000406       122 000412       123 000440       125 000441
+    128 000444       129 000450       130 000452       131 000454       132 000460       133 000462       134 000465
+    135 000467       137 000471       140 000512       141 000526       142 000532       140 000535       144 000542
+    145 000556       146 000562       149 000565       150 000567       151 000571       152 000573       153 000576
+    154 000612       155 000614       156 000630       158 000631       159 000633       160 000635       163 000636
+    164 000640       166 000657       167 000662       171 000673       169 000676       171 000716       173 000747
+    175 000750       178 000751       180 000773       181 000776       182 001004       183 001017       185 001020
+    186 001024       187 001046       190 001047       191 001051       192 001075       193 001100       196 001101
+    198 001136       199 001161       208 001164       218 001200       218 001206       219 001207       219 001210
+    220 001212       221 001215       222 001220       224 001223       225 001231       226 001234       227 001235
+    228 001240       230 001241       231 001245       232 001247       234 001254       235 001257       237 001260
+    239 001261       240 001262       241 001264       242 001267       243 001270       244 001273       246 001275
+    248 001303       250 001307       251 001312       254 001313       256 001320       257 001322       258 001323
+    261 001331       262 001335       263 001337       264 001343       265 001351       266 001356       267 001363
+    268 001365       270 001366       271 001371       272 001373       274 001375       276 001377       277 001401
+    278 001402       280 001405       281 001406       283 001411       284 001412       286 001415       287 001416
+    289 001420       290 001423       292 001424       293 001426       294 001427       296 001431       297 001435
+    298 001447       300 001450       301 001453       303 001454       305 001460       306 001463       308 001464
+    310 001473       311 001500       312 001502       314 001503       315 001506       317 001512       318 001514
+    319 001516       320 001530       321 001570       324 001571       325 001573       326 001575       327 001600
+    328 001612       330 001617       331 001637       332 001642       333 001644       334 001647       336 001650
+    337 001652       338 001655       339 001660       341 001661       342 001665       343 001667       344 001672
+    346 001673       347 001677       348 001702       350 001703       351 001710       352 001713       353 001714
+    354 001715       356 001726       357 001727       358 001731       359 001756       360 001762       361 001764
+    362 001766       364 001767       365 001771       367 001776       368 002001       370 002002       371 002004
+    372 002006       373 002011       376 002012       377 002014       378 002016       379 002021       381 002022
+    383 002027       384 002032       386 002033       387 002035       388 002037       389 002042       392 002043
+    395 002053       396 002056       398 002057       399 002061       400 002066       401 002070       404 002071
+    406 002077       407 002102       409 002103       410 002106       411 002114       412 002121       413 002124
+    414 002132       415 002135       416 002137       417 002140       419 002141       420 002143       421 002145
+    422 002155       423 002170       425 002172       426 002173       427 002174       428 002203       429 002207
+    432 002217       436 002227       438 002236       439 002241       440 002245       441 002254       442 002256
+    443 002311       444 002340       447 002341       448 002343       449 002346       450 002352       451 002363
+    452 002366       453 002373       454 002375       455 002401       456 002406       457 002412       458 002415
+    460 002416       461 002420       463 002421       464 002426       466 002430       467 002452       468 002456
+    469 002461       470 002466       471 002475       472 002477       473 002501       474 002514       476 002521
+    477 002541       478 002544       479 002551       480 002553       481 002557       482 002572       484 002573
+    485 002577       486 002606       487 002610       489 002613       490 002626       492 002630       493 002632
+    494 002634       495 002635       496 002643       497 002645       498 002650       499 002657       500 002661
+    502 002662       503 002701       504 002703       505 002704       506 002715       507 002726       508 002732
+    509 002734       510 002736       511 002751       512 002753       513 003017       514 003023       515 003025
+    516 003030       517 003034       518 003037       519 003042       520 003050       521 003051       522 003057
+    523 003060       524 003066       525 003067       526 003075       527 003076       528 003102       529 003103
+    530 003111       531 003112       532 003120       534 003121       536 003124       537 003156       538 003157
+    539 003202       541 003205
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

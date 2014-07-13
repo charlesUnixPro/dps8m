@@ -1,0 +1,1020 @@
+	COMPILATION LISTING OF SEGMENT et_desc
+	Compiled by: Multics PL/I Compiler, Release 27b, of September 15, 1981
+	Compiled at: Honeywell LISD Phoenix, System M
+	Compiled on: 06/03/82  1021.3 mst Thu
+	    Options: optimize map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 et_desc: procedure (statement, arg_et_data_ptr, code);
+       12 
+       13 
+       14 
+       15 /*	This procedure will parse the data in a "desc" statement that is part of
+       16*   *	the input script to the  eis_tester  program.
+       17*   *
+       18*   *	Originally coded  Nov, 72  by  Bill Silver
+       19*   *
+       20*   *
+       21*   *	A  desc  statement has the following format.
+       22*   *
+       23*   *	desc	num	-option . . . -option  ;
+       24*   *
+       25*   *	1.  The first field in the statement MUST be "desc".
+       26*   *
+       27*   *	2.  The second field in the statement MUST be the number of the
+       28*   *	    descriptor.  It MUST be either "1", "2", or "3".
+       29*   *
+       30*   *	3.  Any number of valid  "desc"  statement options may follow.
+       31*   *	    The format is the same for all desc options.  It is:
+       32*   *
+       33*   *	    -name	  term
+       34*   *
+       35*   *	4.  name is the two character name of the option and term is the data
+       36*   *	    associated with this option.  The valid option names are:
+       37*   *
+       38*   *	    a)	cp	The original character position within a word of
+       39*   *			9 bit characters.  It is used in bit string instructions.
+       40*   *			Its term must be a number from  0 - 3.
+       41*   *
+       42*   *	    b)  	bp	The original bit position within a  9  bit character.
+       43*   *			Its term must be a number from  0 - 8.
+       44*   *
+       45*   *	    c)	cn	The original character number within the data word
+       46*   *			referenced by the original data word address.
+       47*   *			It is used in character string instructions.  Its term must be
+       48*   *			a number from  0 - 7.  The meaning of this term is defined by
+       49*   *			the  "ta" and "tn" fields.  NOTE, if the instruction is:
+       50*   *			CMPC, SCD, SCDR, SCM,  or  SCMR  then the  "desc 2"  statement
+       51*   *			may NOT specify a "ta" field.  Descriptor 2 must use the value
+       52*   *			specified in descriptor 1.  To use this feature the  "desc 1"
+       53*   *			statement MUST PRECEED the  "desc 2" statement.
+       54*   *
+       55*   *	    d)	ta	Defines the alphanumeric character type.
+       56*   *			Its term must be either:  9, 6, or 4.
+       57*   *
+       58*   *	    e)	tn	Defines the type of numeric character.
+       59*   *			Its term must be either  9 or 4.
+       60*   *
+       61*   *	    f)	sd	The  sign and decimal  type.
+       62*   *			Its term must be one of the following characters:
+       63*   *			  f  -  Floating point, leading sign
+       64*   *			  l  -  Leading sign,  scaled
+       65*   *			  t  -  Trailing sign, scaled
+       66*   *			  n  -  No sign,  scaled
+       67*   *
+       68*   *	    g)	sf	The scaling factor.
+       69*   *			Its term is a signed (or unsigned) decimal number.
+       70*   *
+       71*   *	    h)	ns	The number of characters or bits in a string.
+       72*   *			Its term is an unsigned decimal number.
+       73*   *
+       74*   *	    i)	nn	The number of characters in a numeric string.
+       75*   *			Its term is an unsigned decimal number which must not
+       76*   *			be greater than  64.
+       77**/
+       78 
+       79 
+       80 
+       81 
+       82 
+       83 
+       84 
+       85 
+       86 
+       87 /*		PARAMETER  DATA		*/
+       88 
+       89 
+       90 dcl  statement char (*),				/* The input string containing the  "desc"
+       91*						   *  statement to be parsed. */
+       92 
+       93      arg_et_data_ptr ptr,				/* Input pointer to the  et  data.  */
+       94 
+       95      code fixed bin (35);				/* Error code.  */
+       96 
+       97 
+       98 
+       99 
+      100 
+      101 
+      102 /*		AUTOMATIC  DATA		*/
+      103 
+      104 
+      105 /*	The following data items are used in calls to  et_util.  */
+      106 
+      107 dcl  state_ptr ptr,					/* Pointer to the  "desc"  input statement. */
+      108 
+      109      start fixed bin (35),				/* The number of characters allready
+      110*						   *  processed in this  "desc"  statement.
+      111*						   *  The next character is the start of
+      112*						   *  the window.  */
+      113 
+      114      size fixed bin (35),				/* The current size ( in characters )
+      115*						   *  of the window on the "desc" statement. */
+      116 
+      117      next_statement_x fixed bin;			/* Index of the last character in the
+      118*						   *  statement - in effect the number of
+      119*						   *  characters in the statement.  */
+      120 
+      121 
+      122 /*	These are some temporary variables. */
+      123 
+      124 dcl  dec_num fixed bin,				/* Holds converted decimal number. */
+      125 
+      126      i fixed bin,
+      127 
+      128      len fixed bin,					/* Length of a field. */
+      129 
+      130      desc_ptr ptr,					/* Work pointer to a descriptor word. */
+      131 
+      132      option_name char (3),				/* Used to temporarily hold option name. */
+      133 
+      134      option_num fixed bin;				/* Option index.  */
+      135 
+      136 
+      137 /*	The following data items are used when processing descriptors.  */
+      138 
+      139 dcl  dx fixed bin (17),				/* Index to  those tables
+      140*						   *  that are dependent on the three
+      141*						   *  descriptors or indirect words. */
+      142 
+      143      cn_value fixed bin;				/* Character position. */
+      144 
+      145 
+      146 
+      147 
+      148 
+      149 /*		BASED  DATA		*/
+      150 
+      151 
+      152 /*	This is an overlay of the input  "desc"  statement.  */
+      153 
+      154 dcl 1 desc_statement based (state_ptr),			/* Used to access the input data statement
+      155*						   *  as a stream of characters. */
+      156 
+      157     2 offset char (start),				/* The part of the "desc" statement which we have
+      158*						   *  allready processed. */
+      159 
+      160     2 window char (size);				/* The part of the "desc" statement which we are
+      161*						   *  currently accessing.  */
+      162 
+      163 
+      164 /*	An overlay of the decimal numbers which hold the input data terms.  */
+      165 
+      166 dcl  bit_word bit (36) based (addr (dec_num)) aligned;
+      167 
+      168 
+      169 /*	An overlay of an  mf  field.  */
+      170 
+      171 dcl 1 mf_map based unaligned,
+      172     2 ar bit (1),
+      173     2 rl bit (1),
+      174     2 id bit (1),
+      175     2 reg bit (4);
+      176 
+      177 
+      178 /*	The following three declarations are used to reference fields in the three
+      179*   *	types of descriptors  - bit string, alphanumeric, and numeric.
+      180**/
+      181 
+      182 dcl 1 desc_bit_map based aligned,
+      183    (2 pad1 bit (18),
+      184     2 c bit (2),
+      185     2 b bit (4),
+      186     2 n bit (12)) unaligned;
+      187 
+      188 dcl 1 desc_alpha_map based aligned,
+      189    (2 pad1 bit (18),
+      190     2 cn bit (3),
+      191     2 ta bit (2),
+      192     2 pad2 bit (1),
+      193     2 n bit (12)) unaligned;
+      194 
+      195 dcl 1 desc_num_map based aligned,
+      196    (2 pad1 bit (18),
+      197     2 cn bit (3),
+      198     2 tn bit (1),
+      199     2 s bit (2),
+      200     2 sf bit (6),
+      201     2 n bit (6)) unaligned;
+      202 
+      203 
+      204 
+      205 
+      206 /*		INTERNAL  STATIC  DATA	*/
+      207 
+      208 
+      209 dcl  option_names (9) char (3) internal static
+      210      init ("-cp", "-bp", "-cn", "-ta", "-tn", "-sd", "-sf", "-ns", "-nn");
+      211 
+      212 
+      213 dcl  sd_table (0:3) char (1) internal static
+      214      init ("f", "l", "t", "n");
+      215 
+      216 
+      217 /*	This table is a list of the names of the  4  types of  eis  instruction.  */
+      218 
+      219 dcl  instr_type_names (4) char (12) aligned internal static
+      220      init ("alphanumeric", "numeric     ",
+      221      "bit  string ", "conversion  ");
+      222 
+      223 
+      224 
+      225 
+      226 
+      227 /*		EXTERNAL  DATA		*/
+      228 
+      229 
+      230 /*	The following declarations reference the procedures called by  et_desc.  */
+      231 
+      232 dcl  com_err_ entry options (variable),
+      233 
+      234      et_util$get_next entry (ptr, fixed bin (35), fixed bin (35), char (*), fixed bin),
+      235      et_util$skip entry (ptr, fixed bin (35), fixed bin (35)),
+      236      et_util$convert_decimal entry (ptr, fixed bin (35), fixed bin (35), fixed bin,
+      237      fixed bin (35));
+      238 
+      239 
+      240 dcl (addr,
+      241      fixed,
+      242      length,
+      243      null,
+      244      substr,
+      245      verify) builtin;
+      246 						/*  */
+  1     1 /*	BEGIN INCLUDE FILE  ...  et_instr_data_map.incl.pl1
+  1     2**
+  1     3**	Created  Jan, 73  by  Bill Silver.
+  1     4**
+  1     5**
+  1     6**	Below is a map of the data found in et_instr_data.alm.
+  1     7**	This is a table of  "eis" multi-word instructions.
+  1     8**/
+  1     9 
+  1    10 
+  1    11 
+  1    12 dcl	et_instr_data$num_instructions	fixed bin	   external;
+  1    13 
+  1    14 
+  1    15 dcl    1	et_instr_data$instructions( 0:1 )	aligned  external,
+  1    16 
+  1    17          (2 mnemonic	char(4),		/* Instruction's assembler name.  */
+  1    18 
+  1    19 	2 opcode		bit(10),		/* Opcode, rightmost bit always ON.  */
+  1    20 
+  1    21 	2 instr_typex	fixed bin(7),	/* 1 => alphanumeric,  2 => numeric,
+  1    22*					*  3 => bit  string    4 => conversion.  */
+  1    23 
+  1    24 	2 char_sizex (3)	fixed bin(2),	/* Defines the character size for each descriptor.
+  1    25*					*  0  =>  1,   1  =>  4,
+  1    26*					*  2  =>  36,  3  =>  -1,
+  1    27*					*  -1 =>  no descriptor  */
+  1    28 
+  1    29 	2 mf2_flag	bit(1),		/* 1 => instruction word has  "mf2"  field.
+  1    30*					*  0 => descriptor  word has  "mf2"  field.  */
+  1    31 
+  1    32 	2 mf3_flag	bit(1),		/* 1 => instruction word has  "mf3" field.
+  1    33*					*  0 => descriptor  word has  "mf3"  field.  */
+  1    34 
+  1    35 	2 desc_3_flag	bit(1),		/* 0 => instruction has 2 descriptors.
+  1    36*					*  1 => instruction has 3 descriptors.  */
+  1    37 
+  1    38 	2 test_x		fixed bin(2),	/* The number of the data statement used
+  1    39*					*  to input the  test  data.  */
+  1    40 
+  1    41 	2 result_x	fixed bin(2))	/* The number of the descriptor which
+  1    42*					*  references the result data.  */
+  1    43 
+  1    44 	unaligned;
+  1    45 
+  1    46 
+  1    47 /*	END of INCLUDE FILE  ...  et_instr_data_map.incl.pl1    */
+      247 
+      248 /* 	*/
+  2     1 /*	BEGINNING OF INCLUDE FILE  ...  et_setup_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created  Jan, 73  by  Bill Silver.
+  2     4*   *
+  2     5*   *
+  2     6*   * 	This include file defines the data that is needed to set up a test of an  eis
+  2     7*   *	instruction.  The area where this data actually resides is in  "et".
+  2     8**/
+  2     9 
+  2    10 
+  2    11 dcl  et_data_ptr ptr;				/* Pointer to the  et_data  area.  */
+  2    12 
+  2    13 
+  2    14 dcl 1 et_setup_data based (et_data_ptr) aligned,
+  2    15 
+  2    16     2 next_instruction_x fixed bin,			/* Index in script file of where the next
+  2    17*						   *  instruction test begins.  */
+  2    18 
+  2    19     2 name char (6),				/* Mnemonic name of the instruction
+  2    20*						   *  being tested. */
+  2    21 
+  2    22     2 test_count fixed bin,				/* The number of the current test. */
+  2    23 
+  2    24     2 note char (64),				/* A NOTE containing a description of the test. */
+  2    25 
+  2    26     2 loop_count fixed bin,				/* Number of times to execute the same
+  2    27*						   *  variation of an instruction.  */
+  2    28 
+  2    29     2 instr_offset fixed bin,				/* Indicates the position of the eis
+  2    30*						   *  instruction within the instruction
+  2    31*						   *  area in  etx. */
+  2    32 
+  2    33     2 instr_num fixed bin,				/* The index of the current instruction's
+  2    34*						   *  entry in the  et_instr_data$instruction
+  2    35*						   *  array.  */
+  2    36 
+  2    37     2 instr_type fixed bin,				/* 1  =  alphanumeric   2  =  numeric
+  2    38*						   *  3  =  bit  string    4  =  conversion  */
+  2    39 
+  2    40     2 instr_word bit (36),				/* The instruction word of the  eis
+  2    41*						   *  instruction to be tested.  */
+  2    42 
+  2    43     2 descriptors (3) bit (36),			/* The three possible descriptor words
+  2    44*						   *  of the eis instruction.  */
+  2    45 
+  2    46     2 ind_words (3) bit (36),				/* The three possible indirect words that
+  2    47*						   *  may follow the eis instruction.  */
+  2    48 
+  2    49     2 desc_ptrs (3) ptr,				/* An array of pointers to where any
+  2    50*						   *  indirect descriptors must be placed.  */
+  2    51 
+  2    52     2 mf_ptrs (3) ptr,				/* Pointers to the  mf  fields for each descriptor.
+  2    53*						   *  If an entry is null then there is no descriptor
+  2    54*						   *  associated with this entry.  */
+  2    55 
+  2    56     2 num_chars (3) fixed bin,			/* For each descriptor a code indicating what
+  2    57*						   *  type of "ta" or "tn" field it may have.  It
+  2    58*						   *  implies the number of characters in a word.
+  2    59*						   *   1 - descriptor must reference word boundary.
+  2    60*						   *   4 - any legal "ta" or "tn" field.
+  2    61*						   *       Implies 9 bit  characters as default.
+  2    62*						   *  36 - descriptor may reference  bits.
+  2    63*						   *  -1 - must use "ta" field of descriptor 1
+  2    64*						   *   0 - no descriptor.  */
+  2    65 
+  2    66     2 data_ptrs (5) ptr,				/* An array of pointers to where
+  2    67*						   *  the data for the corresponding
+  2    68*						   *  descriptor will go.  It points to
+  2    69*						   *  the first word of the data.
+  2    70*						   *  Entry (4) is for the test data.
+  2    71*						   *  Entry (5) is for the result data.  */
+  2    72 
+  2    73     2 data_lens (5) fixed bin,			/* An array of lengths of the data fields.
+  2    74*						   *  They will always be in units of chars. */
+  2    75 
+  2    76     2 data_offsets (5) fixed bin,			/* An array of character offsets.  They specify
+  2    77*						   *  the character position of the string  in
+  2    78*						   *  the first word of the string.  */
+  2    79 
+  2    80     2 page_faults (14) bit (1) unal,			/* A table of flags which indicate pages
+  2    81*						   *  which should take a page fault during
+  2    82*						   *  execution of the eis instruction. */
+  2    83 
+  2    84     2 page_ptrs (14) ptr,				/* A pointer to each page that is used
+  2    85*						   *  by the instruction.  Pages not used will
+  2    86*						   *  have null entries.  */
+  2    87 
+  2    88     2 truncation_flag fixed bin,			/* Indicates whether or not the instruction is
+  2    89*						   *  going to take a truncation fault.
+  2    90*						   *  1  =>  yes,   0  =>  no.  */
+  2    91 
+  2    92     2 pointers (0:7) ptr,				/* The values of the pointer registers
+  2    93*						   *  before the execution of the eis instr. */
+  2    94 
+  2    95     2 regs,					/* Index, A, and Q registers. */
+  2    96       3 x (0:7) fixed bin (17) unaligned,
+  2    97       3 A fixed bin (35),
+  2    98       3 Q fixed bin (35),
+  2    99       3 pad (2) bit (36),
+  2   100 
+  2   101     2 ir_word bit (36);				/* The settings of the indicator
+  2   102*						   *  registers after the eis instruction
+  2   103*						   *  has been executed.  */
+  2   104 
+  2   105 
+  2   106 
+  2   107 /*	END of INCLUDE FILE  ...  et_setup_data.incl.pl1	*/
+      249 
+      250 /* 	*/
+      251 /*	Set up the window on the input  "desc"  statement.  We will skip the
+      252*   *	"desc" field at the beginning of the statement.
+      253**/
+      254 
+      255 	state_ptr = addr (statement);
+      256 	next_statement_x = length (statement);
+      257 
+      258 	et_data_ptr = arg_et_data_ptr;		/* Copy this argument.  */
+      259 
+      260 
+      261 	start = 4;
+      262 	size = next_statement_x - 4;
+      263 
+      264 
+      265 /*	Get the  num  field which must be next. */
+      266 
+      267 	call et_util$skip (state_ptr, start, size);
+      268 
+      269 
+      270 /*	Validate and convert the num  field.  */
+      271 
+      272 	len = verify (substr (window, 1, 1), "123");
+      273 
+      274 	if len = 0				/* 0 => number found in string "123".  */
+      275 
+      276 	then dx = fixed (substr (window, 1, 1), 17);
+      277 
+      278 	else do;
+      279 	     code = 301;
+      280 	     call com_err_ (0, "ET", "^d Illegal desc num  field: ^a",
+      281 		code, substr (window, 1, 1));
+      282 	     return;
+      283 	end;
+      284 
+      285 
+      286 /*	Now test to see if we should process this descriptor.  Only descriptor 3  is in
+      287*   *	question.  If this  num field  is a  3  then check to see if this instruction has
+      288*   *	3  descriptors.
+      289**/
+      290 
+      291 	if dx = 3
+      292 
+      293 	then if ^ et_instr_data$instructions (instr_num).desc_3_flag
+      294 
+      295 	     then do;
+      296 		code = 302;
+      297 		call com_err_ (0, "ET", "^d desc 3 statement invalid - instruction has only 2 descriptors.", code);
+      298 		return;
+      299 	     end;
+      300 
+      301 
+      302 /*	Get a pointer to the descriptor we will be working with.  */
+      303 
+      304 	desc_ptr = addr (descriptors (dx));
+      305 
+      306 
+      307 	start = start + 1;				/* Move window past  num  field. */
+      308 	size = size - 1;
+      309 
+      310 	cn_value = -1;				/* Indicate no  cn  option specified.  */
+      311 
+      312 
+      313 
+      314 
+      315 /*	Now start to process the options.  We will test for each possible
+      316*   *	option name.  Each iteration of the loop will process one option.
+      317**/
+      318 
+      319 
+      320 option_loop:
+      321 
+      322 
+      323 /*	Get the next option name.  If there are no more options then we have processed
+      324*   *	all of the options in this  "desc" statement.  Before we return we must set up
+      325*   *	the  "cn"  field.
+      326**/
+      327 
+      328 	call et_util$get_next (state_ptr, start, size, "-", len);
+      329 
+      330 	if len = 0
+      331 	then goto setup_cn_field;
+      332 
+      333 
+      334 /*	We will try to find this option name in our list of valid names.  */
+      335 
+      336 	option_name = substr (window, 1, 3);
+      337 
+      338 	do option_num = 1 to 9;
+      339 	     if option_names (option_num) = option_name
+      340 	     then goto found_option;
+      341 	end;
+      342 
+      343 /*	We did not find a valid option name.  There must be an input error.  */
+      344 
+      345 	code = 303;
+      346 
+      347 	call com_err_ (0, "ET", "^d Illegal option ""^a"" in ""desc ^d"" statment.",
+      348 	     code, option_name, dx);
+      349 
+      350 	return;
+      351 
+      352 
+      353 /*	We have found a valid option name.  We will position the window to the beginning
+      354*   *	of the term field.  For all but the  "-sd" option the term will be a decimal number.
+      355*   *	We will get the decimal term.  Then we will go to the code which processes this
+      356*   *	option.
+      357**/
+      358 
+      359 found_option:
+      360 
+      361 	start = start + 3;
+      362 	size = size - 3;
+      363 
+      364 	call et_util$skip (state_ptr, start, size);
+      365 
+      366 	if option_name = "-sd"
+      367 	then goto option_routine (option_num);
+      368 
+      369 	call et_util$convert_decimal (state_ptr, start, size, dec_num, code);
+      370 
+      371 	if code ^= 0
+      372 	then do;
+      373 	     call com_err_ (0, "ET", "^d Illegal term for ""^a"" option in ""desc ^d"" statement.",
+      374 		code, option_name, dx);
+      375 	     return;
+      376 	end;
+      377 
+      378 	goto option_routine (option_num);
+      379 						/*  */
+      380 option_routine (1):					/*  -cp  */
+      381 
+      382 	if instr_type ^= 3				/* Must be  bit string  type. */
+      383 	then goto illegal_option;
+      384 
+      385 	if (dec_num < 0) | (dec_num > 3)
+      386 	then goto illegal_term;
+      387 
+      388 	desc_ptr -> desc_bit_map.c = substr (bit_word, 35, 2);
+      389 
+      390 	goto option_loop;
+      391 
+      392 
+      393 
+      394 option_routine (2):					/*  -bp  */
+      395 
+      396 	if instr_type ^= 3				/* Must be  bit string  type.  */
+      397 	then goto illegal_option;
+      398 
+      399 	if (dec_num < 0) | (dec_num > 8)
+      400 	then goto illegal_term;
+      401 
+      402 	desc_ptr -> desc_bit_map.b = substr (bit_word, 33, 4);
+      403 
+      404 	goto option_loop;
+      405 
+      406 
+      407 
+      408 option_routine (3):					/*  -cn  */
+      409 
+      410 	if instr_type = 3				/* All but bit string type. */
+      411 	then goto illegal_option;
+      412 
+      413 	if (dec_num < 0) | (dec_num > 8)
+      414 	then goto illegal_term;
+      415 
+      416 	cn_value = dec_num;				/* Save character number.  We don't know
+      417*						   *  character size yet.  */
+      418 	goto option_loop;
+      419 
+      420 
+      421 
+      422 option_routine (4):					/*  -ta  */
+      423 
+      424 	if instr_type ^= 1				/* Must be  alphanumeric  type.  */
+      425 	then goto illegal_option;
+      426 
+      427 /*	Check to see if it is legal to specify a character size.  */
+      428 
+      429 	if num_chars (dx) = -1
+      430 	then do;
+      431 	     code = 305;
+      432 	     call com_err_ (0, "ET", "^d ""-ta"" option illegal - must use ""ta"" from descriptor 1.",
+      433 		code);
+      434 	     return;
+      435 	end;
+      436 
+      437 	if num_chars (dx) = 1
+      438 	then do;
+      439 	     code = 306;
+      440 	     call com_err_ (0, "ET", "^d ""-ta"" option illegal - descriptor may only reference words.",
+      441 		code);
+      442 	     return;
+      443 	end;
+      444 
+      445 /*	We will wet up the  "ta" field in the descriptor now.  We will check for valid
+      446*   *	input and convert the character size to the correct bits.   We must also change the
+      447*   *	num_chars entry if the character size is not the default:  9 bits.
+      448**/
+      449 
+      450 	if dec_num = 9				/* 9 is the default value.  */
+      451 	then goto option_loop;
+      452 
+      453 	if dec_num = 6
+      454 	then do;					/* 6  6 bit  characters per word. */
+      455 	     num_chars (dx) = 6;
+      456 	     desc_ptr -> desc_alpha_map.ta = "01"b;
+      457 	     goto option_loop;
+      458 	end;
+      459 
+      460 	if dec_num = 4
+      461 	then do;					/* 8  4 bit  characters per word. */
+      462 	     num_chars (dx) = 8;
+      463 	     desc_ptr -> desc_alpha_map.ta = "10"b;
+      464 	     goto option_loop;
+      465 	end;
+      466 
+      467 	goto illegal_term;				/* "ta" term must be 9,6, or 4. */
+      468 
+      469 
+      470 
+      471 option_routine (5):					/*  -tn  */
+      472 
+      473 /*	Must be type  numeric or conversion.  */
+      474 
+      475 	if (instr_type = 1) | (instr_type = 3)
+      476 	then goto illegal_option;
+      477 
+      478 	num_chars (dx) = dec_num;
+      479 
+      480 	if dec_num = 9
+      481 	then goto option_loop;
+      482 
+      483 	if dec_num = 4
+      484 	then do;
+      485 	     desc_ptr -> desc_num_map.tn = "1"b;
+      486 	     goto option_loop;
+      487 	end;
+      488 
+      489 	goto illegal_term;
+      490 
+      491 
+      492 
+      493 
+      494 option_routine (6):					/*  -sd  */
+      495 
+      496 /*	Must be  numeric or conversion type.  */
+      497 
+      498 	if (instr_type = 1) | (instr_type = 3)
+      499 	then goto illegal_option;
+      500 
+      501 	do dec_num = 0 to 3;			/* Look for a valid term. */
+      502 
+      503 	     if sd_table (dec_num) = substr (window, 1, 1)
+      504 
+      505 	     then do;				/* Found valid term. */
+      506 		desc_ptr -> desc_num_map.s = substr (bit_word, 35, 2);
+      507 		goto option_loop;
+      508 	     end;
+      509 	end;
+      510 
+      511 	code = 307;
+      512 	call com_err_ (0, "ET", "^d Illegal term for option ""-sd"": ^a", code, substr (window, 1, 1));
+      513 
+      514 	return;
+      515 
+      516 
+      517 
+      518 option_routine (7):					/*  -sf  */
+      519 
+      520 /*	Must be  numeric or conversion  type.  */
+      521 
+      522 	if (instr_type = 1) | (instr_type = 3)
+      523 	then goto illegal_option;
+      524 
+      525 	if (dec_num < -32) | (dec_num > 31)
+      526 	then goto illegal_term;
+      527 
+      528 	desc_ptr -> desc_num_map.sf = substr (bit_word, 31, 6);
+      529 
+      530 	goto option_loop;
+      531 
+      532 
+      533 
+      534 option_routine (8):					/*  -ns  */
+      535 
+      536 /*	Must be  alphanumeric or bit string  type.  */
+      537 
+      538 	if (instr_type = 2) | (instr_type = 4)
+      539 	then goto illegal_option;
+      540 
+      541 	if (dec_num < 0) | (dec_num > 4096)
+      542 	then goto illegal_term;
+      543 
+      544 	desc_ptr -> desc_bit_map.n = substr (bit_word, 25, 12);
+      545 
+      546 	goto check_rl_mod;
+      547 
+      548 
+      549 
+      550 option_routine (9):					/*  -nn  */
+      551 
+      552 /*	Must be  numeric or conversion  type.  */
+      553 
+      554 	if (instr_type = 1) | (instr_type = 3)
+      555 	then goto illegal_option;
+      556 
+      557 	if (dec_num < 0) | (dec_num > 63)
+      558 	then goto illegal_term;
+      559 
+      560 	desc_ptr -> desc_num_map.n = substr (bit_word, 31, 6);
+      561 
+      562 
+      563 /*	For options  "ns" and "nn" we will check that the user has not also specified
+      564*   *	RL  modification.
+      565**/
+      566 
+      567 check_rl_mod:
+      568 
+      569 	if mf_ptrs (dx) ^= null ()
+      570 
+      571 	then if mf_ptrs (dx) -> mf_map.rl
+      572 
+      573 	     then do;
+      574 		code = 308;
+      575 		call com_err_ (0, "ET", "^d An ""^a"" option is illegal with RL modification.",
+      576 		     code, option_name);
+      577 		return;
+      578 	     end;
+      579 	goto option_loop;
+      580 						/* 	*/
+      581 						/*	We come here when all of the options have been processed.  If a  "-cn" option was
+      582*						   *	entered we will figure out what value we should put in the descriptor  "cn"  field.
+      583*						   *	It depends upon the character size.
+      584*						   */
+      585 
+      586 setup_cn_field:
+      587 
+      588 
+      589 /*	If the  "cn"  field was never specified then we don't have to set it up.
+      590*   *	Either it is not used for this type of instruction or the user wants the default
+      591*   *	value.  An exception, however, must be made if this is descriptor 2 of one
+      592*   *	of the instructions that must use the  "ta" value from descriptor 1.  If we find
+      593*   *	this to be the case we will just change to use the values for descriptor 1.
+      594**/
+      595 
+      596 	if cn_value = - 1				/* No  -cn  option entered. */
+      597 	then return;
+      598 
+      599 
+      600 	if num_chars (dx) = -1
+      601 	then dx = 1;
+      602 
+      603 
+      604 	dec_num = cn_value;				/* Move value to where bit_word will
+      605*						   *  reference it.  */
+      606 
+      607 	if num_chars (dx) = 4			/* "ta" or "tn" fields specify 9 bit characters.
+      608*						   *  This is the default value.  */
+      609 	then do;
+      610 	     if cn_value > 3
+      611 	     then goto illegal_cn_term;
+      612 	     dec_num = dec_num * 2;
+      613 	end;
+      614 
+      615 	else if num_chars (dx) = 6
+      616 
+      617 	then if cn_value > 5
+      618 	     then goto illegal_cn_term;
+      619 
+      620 /*	If  4 bit characters  we just come here.  Any  cn  value from  0 - 7  is
+      621*   *	valid.
+      622**/
+      623 
+      624 	desc_ptr -> desc_alpha_map.cn = substr (bit_word, 34, 3);
+      625 
+      626 	return;
+      627 
+      628 
+      629 
+      630 
+      631 
+      632 illegal_option:
+      633 
+      634 	code = 320 + option_num;
+      635 
+      636 	call com_err_ (0, "ET", "^d "" ^a "" option is illegal for ^a type instruction.",
+      637 	     code, option_name, instr_type_names (instr_type));
+      638 
+      639 	return;
+      640 
+      641 
+      642 
+      643 
+      644 illegal_term:
+      645 
+      646 	code = 330 + option_num;
+      647 
+      648 	call com_err_ (0, "ET", "^d Decimal term  ^d  not valid for option ""^a"".",
+      649 	     code, dec_num, option_name);
+      650 
+      651 	return;
+      652 
+      653 
+      654 
+      655 illegal_cn_term:
+      656 
+      657 	code = 312;
+      658 
+      659 	call com_err_ (0, "ET", "^d cn value  ^d  illegal for character size ^d",
+      660 	     code, cn_value, num_chars (dx));
+      661 
+      662 
+      663 
+      664      end et_desc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/03/82  1021.4  et_desc.pl1                       >spec>on>phx-dir>et_desc.pl1
+247          1    05/06/74  1741.2  et_instr_data_map.incl.pl1        >ldd>include>et_instr_data_map.incl.pl1
+249          2    06/02/82  1246.3  et_setup_data.incl.pl1            >spec>on>phx-dir>et_setup_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 240 ref 255 304 388 402 506 528 544 560 624
+arg_et_data_ptr                        parameter       pointer                  dcl 90 ref 11 258
+b                         0(20)        based           bit(4)                   level 2 packed unaligned dcl 182 set ref 402*
+bit_word                               based           bit(36)                  dcl 166 ref 388 402 506 528 544 560 624
+c                         0(18)        based           bit(2)                   level 2 packed unaligned dcl 182 set ref 388*
+cn                        0(18)        based           bit(3)                   level 2 packed unaligned dcl 188 set ref 624*
+cn_value                        000115 automatic       fixed bin(17,0)          dcl 139 set ref 310* 416* 586 604 610 615 659*
+code                                   parameter       fixed bin(35,0)          dcl 90 set ref 11 279* 280* 296* 297* 345* 347* 369*
+                                                                                  371 373* 431* 432* 439* 440* 511* 512* 574* 575*
+                                                                                  632* 636* 644* 648* 655* 659*
+com_err_                        000024 constant        entry                    external dcl 232 ref 280 297 347 373 432 440 512 575
+                                                                                  636 648 659
+dec_num                         000105 automatic       fixed bin(17,0)          dcl 124 set ref 369* 385 385 388 399 399 402 413 413
+                                                                                  416 450 453 460 478 480 483 501* 503 506* 525 525
+                                                                                  528 541 541 544 557 557 560 604* 612* 612 624 648*
+desc_3_flag               1(29) 000034 external static bit(1)                   array level 2 packed unaligned dcl 1-15 ref 291
+desc_alpha_map                         based           structure                level 1 dcl 188
+desc_bit_map                           based           structure                level 1 dcl 182
+desc_num_map                           based           structure                level 1 dcl 195
+desc_ptr                        000110 automatic       pointer                  dcl 124 set ref 304* 388 402 456 463 485 506 528 544
+                                                                                  560 624
+desc_statement                         based           structure                level 1 packed unaligned dcl 154
+descriptors              31            based           bit(36)                  array level 2 dcl 2-14 set ref 304
+dx                              000114 automatic       fixed bin(17,0)          dcl 139 set ref 274* 291 304 347* 373* 429 437 455
+                                                                                  462 478 567 567 600 600* 607 615 659
+et_data_ptr                     000116 automatic       pointer                  dcl 2-11 set ref 258* 291 304 380 394 408 422 429
+                                                                                  437 455 462 471 471 478 494 494 518 518 534 534
+                                                                                  550 550 567 567 600 607 615 636 659
+et_instr_data$instructions      000034 external static structure                array level 1 dcl 1-15
+et_setup_data                          based           structure                level 1 dcl 2-14
+et_util$convert_decimal         000032 constant        entry                    external dcl 232 ref 369
+et_util$get_next                000026 constant        entry                    external dcl 232 ref 320
+et_util$skip                    000030 constant        entry                    external dcl 232 ref 267 364
+fixed                                                  builtin function         dcl 240 ref 274
+instr_num                26            based           fixed bin(17,0)          level 2 dcl 2-14 ref 291
+instr_type               27            based           fixed bin(17,0)          level 2 dcl 2-14 ref 380 394 408 422 471 471 494 494
+                                                                                  518 518 534 534 550 550 636
+instr_type_names                000010 internal static char(12)                 initial array dcl 219 set ref 636*
+len                             000106 automatic       fixed bin(17,0)          dcl 124 set ref 272* 274 320* 330
+length                                                 builtin function         dcl 240 ref 256
+mf_map                                 based           structure                level 1 packed unaligned dcl 171
+mf_ptrs                  46            based           pointer                  array level 2 dcl 2-14 ref 567 567
+n                         0(30)        based           bit(6)                   level 2 in structure "desc_num_map" packed unaligned
+                                                                                  dcl 195 in procedure "et_desc" set ref 560*
+n                         0(24)        based           bit(12)                  level 2 in structure "desc_bit_map" packed unaligned
+                                                                                  dcl 182 in procedure "et_desc" set ref 544*
+next_statement_x                000104 automatic       fixed bin(17,0)          dcl 107 set ref 256* 262
+null                                                   builtin function         dcl 240 ref 567
+num_chars                54            based           fixed bin(17,0)          array level 2 dcl 2-14 set ref 429 437 455* 462*
+                                                                                  478* 600 607 615 659*
+option_name                     000112 automatic       char(3)                  unaligned dcl 124 set ref 336* 339 347* 366 373*
+                                                                                  575* 636* 648*
+option_names                    000012 constant        char(3)                  initial array unaligned dcl 209 ref 339
+option_num                      000113 automatic       fixed bin(17,0)          dcl 124 set ref 338* 339* 366 378 632 644
+rl                        0(01)        based           bit(1)                   level 2 packed unaligned dcl 171 ref 567
+s                         0(22)        based           bit(2)                   level 2 packed unaligned dcl 195 set ref 506*
+sd_table                        000011 constant        char(1)                  initial array unaligned dcl 213 ref 503
+sf                        0(24)        based           bit(6)                   level 2 packed unaligned dcl 195 set ref 528*
+size                            000103 automatic       fixed bin(35,0)          dcl 107 set ref 262* 267* 272 274 280 280 308* 308
+                                                                                  320* 336 362* 362 364* 369* 503 512 512
+start                           000102 automatic       fixed bin(35,0)          dcl 107 set ref 261* 267* 272 274 280 280 307* 307
+                                                                                  320* 336 359* 359 364* 369* 503 512 512
+state_ptr                       000100 automatic       pointer                  dcl 107 set ref 255* 267* 272 274 280 280 320* 336
+                                                                                  364* 369* 503 512 512
+statement                              parameter       char                     unaligned dcl 90 set ref 11 255 256
+substr                                                 builtin function         dcl 240 ref 272 274 280 280 336 388 402 503 506 512
+                                                                                  512 528 544 560 624
+ta                        0(21)        based           bit(2)                   level 2 packed unaligned dcl 188 set ref 456* 463*
+tn                        0(21)        based           bit(1)                   level 2 packed unaligned dcl 195 set ref 485*
+verify                                                 builtin function         dcl 240 ref 272
+window                                 based           char                     level 2 packed unaligned dcl 154 ref 272 274 280 280
+                                                                                  336 503 512 512
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+et_instr_data$num_instructions         external static fixed bin(17,0)          dcl 1-12
+i                                      automatic       fixed bin(17,0)          dcl 124
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check_rl_mod                    001377 constant        label                    dcl 567 ref 546
+et_desc                         000273 constant        entry                    external dcl 11
+found_option                    000651 constant        label                    dcl 359 ref 339
+illegal_cn_term                 001643 constant        label                    dcl 655 ref 610 615
+illegal_option                  001521 constant        label                    dcl 632 ref 380 394 408 422 471 494 518 534 550
+illegal_term                    001573 constant        label                    dcl 644 ref 385 399 413 467 489 525 541 557
+option_loop                     000524 constant        label                    dcl 320 ref 390 404 418 450 457 464 480 486 507 530
+                                                                                  579
+option_routine                  000000 constant        label                    array(9) dcl 380 ref 366 378
+setup_cn_field                  001457 constant        label                    dcl 586 ref 330
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2004        2042    1713        2014
+Length      2256    1713        36         177      70          14
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+et_desc                             270 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 instr_type_names            et_desc
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+et_desc                  000100 state_ptr                   et_desc
+                         000102 start                       et_desc
+                         000103 size                        et_desc
+                         000104 next_statement_x            et_desc
+                         000105 dec_num                     et_desc
+                         000106 len                         et_desc
+                         000110 desc_ptr                    et_desc
+                         000112 option_name                 et_desc
+                         000113 option_num                  et_desc
+                         000114 dx                          et_desc
+                         000115 cn_value                    et_desc
+                         000116 et_data_ptr                 et_desc
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return              ext_entry_desc      any_to_any_tr
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      et_util$convert_decimal       et_util$get_next              et_util$skip
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+et_instr_data$instructions
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000267       255 000306       256 000311       258 000312       261 000315       262 000317       267 000322
+    272 000334       274 000346       279 000366       280 000371       282 000432       291 000433       296 000446
+    297 000451       298 000503       304 000504       307 000510       308 000514       310 000522       320 000524
+    330 000556       336 000560       338 000566       339 000573       341 000600       345 000602       347 000605
+    350 000650       359 000651       362 000655       364 000663       366 000676       369 000704       371 000724
+    373 000727       375 000772       378 000773       380 000775       385 001001       388 001005       390 001012
+    394 001013       399 001017       402 001023       404 001030       408 001031       413 001035       416 001041
+    418 001042       422 001043       429 001047       431 001053       432 001056       434 001111       437 001112
+    439 001114       440 001117       442 001152       450 001153       453 001156       455 001160       456 001162
+    457 001166       460 001167       462 001171       463 001173       464 001177       467 001200       471 001201
+    478 001207       480 001212       483 001215       485 001217       486 001221       489 001222       494 001223
+    501 001231       503 001235       506 001243       507 001250       509 001251       511 001253       512 001256
+    514 001323       518 001324       525 001332       528 001337       530 001343       534 001344       541 001352
+    544 001356       546 001361       550 001362       557 001370       560 001374       567 001377       574 001413
+    575 001416       577 001455       579 001456       586 001457       600 001462       604 001471       607 001473
+    610 001477       612 001502       613 001505       615 001506       624 001513       626 001520       632 001521
+    636 001525       639 001572       644 001573       648 001577       651 001642       655 001643       659 001646
+    664 001710
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,646 @@
+	COMPILATION LISTING OF SEGMENT et_util
+	Compiled by: Multics PL/I Compiler, Release 27b, of September 15, 1981
+	Compiled at: Honeywell LISD Phoenix, System M
+	Compiled on: 06/03/82  1024.4 mst Thu
+	    Options: optimize map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 et_util: procedure;
+       12 
+       13 
+       14 /*	Modified Aug, 1980 to add capability to run the new ets scripts.
+       15*   *	Accomplished by changing declaration of most fixed bin variables to
+       16*   *	fixed bin (35).
+       17**/
+       18 
+       19 
+       20 /*	This procedure contains code which performs utility jobs for  ET.
+       21*   *
+       22*   *
+       23*   *
+       24*   *	The following data items are parameters to the various utility entries
+       25*   *	and procedures.
+       26**/
+       27 
+       28 
+       29 dcl  script_ptr ptr,				/* Pointer to input data segment. */
+       30 
+       31      start fixed bin (35),				/* The number of script characters
+       32*						   *  allready processed.  The next
+       33*						   *  character is the start of the
+       34*						   *  window.  */
+       35 
+       36      size fixed bin (35),				/* The current size ( in characters )
+       37*						   *  of the window on the script seg. */
+       38 
+       39      next_statement_x fixed bin (35),			/* The number of the last character in
+       40*						   *  the current statement.  */
+       41 
+       42      arg_test_string char (*),			/* The character string searched for
+       43*						   *  by  get_next. */
+       44 
+       45      len fixed bin (35),				/* A temporary string length.  It is returned
+       46*						   *  by  get_next.  */
+       47 
+       48      ptr_data ptr,					/* Pointer to be adjusted in call to char_rel. */
+       49 
+       50      rel fixed bin,					/* Number of characters to adjust above pointer. */
+       51 
+       52      dec_num fixed bin,				/* Holds converted decimal number. */
+       53 
+       54      code fixed bin (35);				/* Error code. */
+       55 
+       56 
+       57 
+       58 
+       59 /*	The following data items are work variables used by the various utility
+       60*   *	entries and procedures.  */
+       61 
+       62 dcl  save fixed bin (35),				/* Used to save the start of the
+       63*						   *  current window.  */
+       64 
+       65      field_len fixed bin (35),			/* A work variable which indicates
+       66*						   *  the size of a character string. */
+       67 
+       68      i fixed bin (35),				/* Temporary index. */
+       69 
+       70      sign fixed bin,				/* The sign of a decimal number.  */
+       71 
+       72      test_string char (8) aligned,			/* Contains the string searched for by
+       73*						   *  get_next.  */
+       74 
+       75      ptr_ptr ptr,					/* Points to the pointer being adjusted.  */
+       76 
+       77      bit_count fixed bin,				/* Work variable used by  char_rel.  */
+       78 
+       79      word_count fixed bin,				/* Number of words used when adjusting a pointer. */
+       80 
+       81      workx fixed bin;
+       82 
+       83 
+       84 
+       85 dcl 1 script based (script_ptr),			/* Used to access the input data segment
+       86*						   *  as a stream of characters. */
+       87 
+       88     2 offset char (start),				/* The part of the segment which we have
+       89*						   *  allready processed. */
+       90 
+       91     2 window char (size);				/* The part of the segment which we are
+       92*						   *  currently accessing.  */
+       93 
+       94 
+       95 dcl  based_offset fixed bin (17) based unaligned,
+       96 
+       97      based_bit_offset fixed bin (5) based unaligned;
+       98 
+       99 
+      100 
+      101 
+      102 dcl  com_err_ entry options (variable),
+      103      ioa_ entry options (variable);
+      104 
+      105 
+      106 dcl (addr,
+      107      divide,
+      108      fixed,
+      109      index,
+      110      length,
+      111      search,
+      112      substr,
+      113      verify) builtin;
+      114 						/* 	*/
+  1     1 /* BEGIN INCLUDE FILE its.incl.pl1
+  1     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  1     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  1     4 
+  1     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  1     6     2 pad1 bit (3) unaligned,
+  1     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  1     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  1     9     2 pad2 bit (9) unaligned,
+  1    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  1    11 
+  1    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  1    13     2 pad3 bit (3) unaligned,
+  1    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  1    15     2 pad4 bit (3) unaligned,
+  1    16     2 mod bit (6) unaligned;				/* further modification */
+  1    17 
+  1    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  1    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  1    20     2 pad1 bit (27) unaligned,
+  1    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  1    22 
+  1    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  1    24     2 pad2 bit (3) unaligned,
+  1    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  1    26     2 pad3 bit (3) unaligned,
+  1    27     2 mod bit (6) unaligned;				/* further modification */
+  1    28 
+  1    29 
+  1    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  1    31     2 pad1 bit (3) unaligned,
+  1    32     2 segno fixed bin (15) unsigned unaligned,
+  1    33     2 ringno fixed bin (3) unsigned unaligned,
+  1    34     2 pad2 bit (9) unaligned,
+  1    35     2 its_mod bit (6) unaligned,
+  1    36 
+  1    37     2 offset fixed bin (18) unsigned unaligned,
+  1    38     2 pad3 bit (3) unaligned,
+  1    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  1    40     2 pad4 bit (3) unaligned,
+  1    41     2 mod bit (6) unaligned;
+  1    42 
+  1    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  1    44     2 pr_no fixed bin (3) unsigned unaligned,
+  1    45     2 pad1 bit (27) unaligned,
+  1    46     2 itp_mod bit (6) unaligned,
+  1    47 
+  1    48     2 offset fixed bin (18) unsigned unaligned,
+  1    49     2 pad2 bit (3) unaligned,
+  1    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  1    51     2 pad3 bit (3) unaligned,
+  1    52     2 mod bit (6) unaligned;
+  1    53 
+  1    54 
+  1    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  1    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  1    57 
+  1    58 /* END INCLUDE FILE   its.incl.pl1 */
+      115 
+      116 /*  */
+      117 get_next:	entry (script_ptr, start, size, arg_test_string, len);
+      118 
+      119 
+      120 
+      121 /*	This  entry  searches the current window for a specified character
+      122*   *	string.  The trick is to ignore any such occurrences of the
+      123*   *	specified string which are within comment fields.  Otherwize
+      124*   *	we could have used the  index  built-in.
+      125**/
+      126 
+      127 
+      128 
+      129 	field_len = length (arg_test_string);
+      130 
+      131 	test_string = arg_test_string;
+      132 
+      133 
+      134 	do while (field_len > -1);			/* Loop on some imposible condition. */
+      135 
+      136 	     call skip_proc;
+      137 
+      138 /*	If there are no non skip characters in the window we won't find
+      139*   *	our test_string. */
+      140 
+      141 	     if workx = 0
+      142 	     then do;
+      143 		len = 0;
+      144 		return;
+      145 	     end;
+      146 
+      147 
+      148 /*	We have found a  DATA  field.  We must be sure that we don't look for our test string
+      149*   *	inside of quotes.  If the data field begins with a quote then we must perform some
+      150*   *	special processing.  If the test string is a quote then we have found it and will return.
+      151*   *	If it is not then we will look for the right hand quote and skip the whole string.
+      152*   *	Note, imbedded quotes will be handled OK.  They just take an extra pass through this
+      153*   *	loop.
+      154**/
+      155 
+      156 	     if substr (window, 1, 1) = """"		/* Do we have a quote ? */
+      157 
+      158 
+      159 	     then do;				/* YES, we must do some special work.  */
+      160 
+      161 		if test_string = """"
+      162 		then return;
+      163 
+      164 		start = start + 1;			/* We want to skip this quote string. */
+      165 		size = size - 1;			/* Skip over the left hand quote. */
+      166 
+      167 		len = search (window, """");		/* Get right hand quote. */
+      168 
+      169 		if len = 0			/* No right hand quote is an error. */
+      170 		then return;
+      171 
+      172 		start = start + len;		/* Move window past quote string. */
+      173 		size = size - len;
+      174 
+      175 		goto end_search_loop;		/* Keep searching. */
+      176 
+      177 	     end;
+      178 
+      179 
+      180 /*	We have a data field that is not inside quotes.  Find out its length.  We will look
+      181*   *	for the next skip character.  Note, a "/" is not a valid character in any
+      182*   *	data field except a comment field.  Thus if we find a "/" we will assume
+      183*   *	that it is the start of a comment field and thus the end of the non skip
+      184*   *	field.  The  "...." field below contains a  ( NL character, a TAB,
+      185*   *	a BLANK, and a "/" ).
+      186**/
+      187 
+      188 	     len = search (window, "
+      189 	 /");
+      190 
+      191 /*	If no SKIP character was found then we must test the rest of the window.
+      192*   *	Otherwise test just the  NON SKIP character field.
+      193**/
+      194 
+      195 	     if len = 0
+      196 
+      197 	     then len = size;
+      198 
+      199 	     else len = len - 1;
+      200 
+      201 
+      202 /*	Make sure the NON SKIP field is at least as long as the test string we
+      203*   *	are looking for.  If it is we will begin searching down the string for
+      204*   *	our test string.
+      205**/
+      206 
+      207 	     if len ^< field_len
+      208 
+      209 
+      210 	     then do i = 1 to (len - field_len + 1);
+      211 
+      212 		if substr (window, i, field_len) = test_string
+      213 
+      214 /*	If we find the test string then we will set the beginning of the
+      215*   *	window to the beginning of the test string in the NON SKIP field.
+      216**/
+      217 
+      218 		then do;
+      219 		     start = start + i - 1;
+      220 		     size = size - i + 1;
+      221 		     return;
+      222 		end;
+      223 
+      224 	     end;					/* END of the search loop.  */
+      225 
+      226 
+      227 /*	The test_string was not within this string.  So lets move the window
+      228*   *	to after this string and search for the next non skip string. */
+      229 
+      230 	     start = start + len;
+      231 	     size = size - len;
+      232 
+      233 end_search_loop:
+      234 	end;					/* End of the major do loop. */
+      235 
+      236 
+      237 	return;
+      238 						/*  */
+      239 skip:	entry (script_ptr, start, size);
+      240 
+      241 
+      242 /*	This entry is called from  other ET procedures.   However, the same function
+      243*   *	must be performed for the  et_util$get_next  entry.  Thus this entry is
+      244*   *	simply a call to an internal procedure which does the real work.
+      245**/
+      246 
+      247 	call skip_proc;
+      248 
+      249 	return;					/* End of the  skip  entry.  */
+      250 
+      251 
+      252 
+      253 skip_proc: procedure;
+      254 
+      255 
+      256 /*	This internal procedure will search the window for the first character
+      257*   *	that is not a skip character.  The skip characters are:
+      258*   *
+      259*   *	1.  Blanks.
+      260*   *
+      261*   *	2.  Tabs.
+      262*   *
+      263*   *	3.  New line characters.
+      264*   *
+      265*   *	4.  Any comment fields which  begin with a  "/*"
+      266*   *	    and  end with a  "* /".
+      267**/
+      268 
+      269 
+      270 
+      271 
+      272 /*	Look for a character that is not a blank, tab, or new_line. */
+      273 
+      274 
+      275 	     do while (start > -1);			/* Loop on a condition that will
+      276*						   *  always be true.  */
+      277 		workx = verify (window, "
+      278 	 ");
+      279 
+      280 /*	If workx = 0 then all the characters in the current window are skip
+      281*   *	characters. */
+      282 
+      283 		if workx = 0 then return;
+      284 
+      285 /*	We know that there is a non skip character at start + workx. */
+      286 
+      287 		start = start + workx - 1;		/* Move window to 1st non skip */
+      288 		size = size - workx + 1;		/* character. */
+      289 
+      290 /*	Now we will test for a comment field.  If we don't find one then we
+      291*   *	have found a valid non skip field. */
+      292 
+      293 		if substr (window, 1, 2) ^= "/*" then return;
+      294 
+      295 /*	We found the beginning of a comment.  Search for the end of the
+      296*   *	comment */
+      297 
+      298 		workx = index (window, "*/");
+      299 
+      300 /*	If the end of the comment field can not be found then type a warning
+      301*   *	message to the user and move the window  to just before the last
+      302*   *	character in the window. */
+      303 
+      304 		if workx = 0
+      305 		then do;
+      306 		     call ioa_ ("WARNING: The end of a comment was not found. ");
+      307 		     call ioa_ ("Comment is: ^a", window);
+      308 		     start = start + size - 1;
+      309 		     size = 1;
+      310 		     return;
+      311 		end;
+      312 
+      313 /*	If found then move the window to after the "* /". */
+      314 
+      315 		start = start + workx + 1;		/* Note, workx indicates "*" */
+      316 		size = size - workx - 1;
+      317 
+      318 /*	Now we will keep skipping.  To do this we must go back to the
+      319*   *	beginning of the loop.
+      320**/
+      321 
+      322 	     end;					/* End of the  do loop.  */
+      323 
+      324 
+      325 
+      326 	end skip_proc;
+      327 						/* 	*/
+      328 char_rel:	entry (ptr_data, rel);
+      329 
+      330 
+      331 /*	This entry will adjust the pointer passed in ptr_data the number of characters
+      332*   *	specified in  rel.
+      333**/
+      334 
+      335 
+      336 
+      337 	ptr_ptr = addr (ptr_data);
+      338 
+      339 	bit_count = rel * 9 + fixed (ptr_ptr -> its.bit_offset, 6);
+      340 
+      341 	if bit_count ^< 0
+      342 
+      343 	then do;
+      344 	     word_count = divide (bit_count, 36, 17, 0);
+      345 	     addr (ptr_ptr -> its.offset) -> based_offset =
+      346 		fixed (ptr_ptr -> its.offset, 17) + word_count;
+      347 	     addr (ptr_ptr -> its.bit_offset) -> based_bit_offset =
+      348 		(bit_count - word_count*36);
+      349 	end;
+      350 
+      351 	else do;
+      352 	     bit_count = -bit_count - 1;
+      353 	     word_count = divide (bit_count, 36, 17, 0);
+      354 	     addr (ptr_ptr -> its.offset) -> based_offset =
+      355 		fixed (ptr_ptr -> its.offset, 17) -1 -word_count;
+      356 	     addr (ptr_ptr -> its.bit_offset) -> based_bit_offset =
+      357 		36 - ((bit_count + 1) - (word_count * 36));
+      358 	end;
+      359 
+      360 	return;
+      361 						/*  */
+      362 convert_decimal: entry (script_ptr, start, size, dec_num, code);
+      363 
+      364 
+      365 
+      366 /*	This entry will convert a character string number starting in the
+      367*   *	first position of the window to a decimal number which will be
+      368*   *	returned in the fixed bin(17) variable:  "dec_num".
+      369**/
+      370 
+      371 
+      372 
+      373 /*	Check for an explicit sign before the decimal number.  */
+      374 
+      375 	sign = 1;					/* Assume a positive number.  */
+      376 
+      377 	if substr (window, 1, 1) = "+"
+      378 	then goto skip_sign;
+      379 
+      380 	if substr (window, 1, 1) = "-"
+      381 	then do;
+      382 	     sign = -1;
+      383 
+      384 skip_sign:
+      385 
+      386 	     start = start + 1;			/* Move window past sign. */
+      387 	     size = size - 1;
+      388 
+      389 	end;
+      390 
+      391 
+      392 /*	Find the first character in the string that is not a decimal digit.
+      393*   *	It is an error if there is not at least one such decimal digit.
+      394*   *	This also tells us the length of the decimal number string.
+      395**/
+      396 
+      397 	field_len = verify (window, "0123456789");
+      398 
+      399 	if field_len = 1
+      400 	then do;
+      401 	     code = 701;
+      402 	     call com_err_ (0, "ET", "^d Decimal conversion failed - ^a",
+      403 		code, substr (window, 1, 1));
+      404 	     return;
+      405 	end;
+      406 
+      407 	if field_len ^= 0
+      408 
+      409 	then field_len = field_len - 1;
+      410 	else field_len = size ;
+      411 
+      412 /*	Use the character - decimal conversion feature. */
+      413 
+      414 	dec_num = sign * fixed (substr (window, 1, field_len), 17);
+      415 
+      416 /*	Move the window to after the number character string. */
+      417 
+      418 	start = start + field_len;
+      419 	size = size - field_len;
+      420 
+      421 
+      422 	return;					/* The end of the convert decimal entry.  */
+      423 
+      424 
+      425 
+      426      end et_util;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/03/82  1024.5  et_util.pl1                       >spec>on>phx-dir>et_util.pl1
+115          1    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 106 ref 337 345 347 354 356
+arg_test_string                        parameter       char                     unaligned dcl 29 ref 117 129 131
+based_bit_offset                       based           fixed bin(5,0)           unaligned dcl 95 set ref 347* 356*
+based_offset                           based           fixed bin(17,0)          unaligned dcl 95 set ref 345* 354*
+bit_count                       000110 automatic       fixed bin(17,0)          dcl 62 set ref 339* 341 344 347 352* 352 353 356
+bit_offset                1(21)        based           bit(6)                   level 2 packed unaligned dcl 1-5 set ref 339 347 356
+code                                   parameter       fixed bin(35,0)          dcl 29 set ref 362 401* 402*
+com_err_                        000010 constant        entry                    external dcl 102 ref 402
+dec_num                                parameter       fixed bin(17,0)          dcl 29 set ref 362 414*
+divide                                                 builtin function         dcl 106 ref 344 353
+field_len                       000100 automatic       fixed bin(35,0)          dcl 62 set ref 129* 134 207 207 212 397* 399 407
+                                                                                  407* 407 410* 414 418 419
+fixed                                                  builtin function         dcl 106 ref 339 345 354 414
+i                               000101 automatic       fixed bin(35,0)          dcl 62 set ref 207* 212 219 220*
+index                                                  builtin function         dcl 106 ref 298
+ioa_                            000012 constant        entry                    external dcl 102 ref 306 307
+its                                    based           structure                level 1 dcl 1-5
+len                                    parameter       fixed bin(35,0)          dcl 29 set ref 117 143* 167* 169 172 173 188* 195
+                                                                                  195* 199* 199 207 207 230 231
+length                                                 builtin function         dcl 106 ref 129
+offset                    1            based           bit(18)                  level 2 packed unaligned dcl 1-5 set ref 345 345 354
+                                                                                  354
+ptr_data                               parameter       pointer                  dcl 29 set ref 328 337
+ptr_ptr                         000106 automatic       pointer                  dcl 62 set ref 337* 339 345 345 347 354 354 356
+rel                                    parameter       fixed bin(17,0)          dcl 29 ref 328 339
+script                                 based           structure                level 1 packed unaligned dcl 85
+script_ptr                             parameter       pointer                  dcl 29 ref 117 156 167 188 212 239 277 293 298 307
+                                                                                  362 377 380 397 402 402 414
+search                                                 builtin function         dcl 106 ref 167 188
+sign                            000102 automatic       fixed bin(17,0)          dcl 62 set ref 375* 382* 414
+size                                   parameter       fixed bin(35,0)          dcl 29 set ref 117 156 165* 165 167 173* 173 188 195
+                                                                                  212 220* 220 231* 231 239 277 288* 288 293 298 307
+                                                                                  307 308 309* 316* 316 362 377 380 387* 387 397 402
+                                                                                  402 410 414 419* 419
+start                                  parameter       fixed bin(35,0)          dcl 29 set ref 117 156 164* 164 167 172* 172 188 212
+                                                                                  219* 219 230* 230 239 275 277 287* 287 293 298 307
+                                                                                  308* 308 315* 315 362 377 380 384* 384 397 402 402
+                                                                                  414 418* 418
+substr                                                 builtin function         dcl 106 ref 156 212 293 377 380 402 402 414
+test_string                     000104 automatic       char(8)                  dcl 62 set ref 131* 161 212
+verify                                                 builtin function         dcl 106 ref 277 397
+window                                 based           char                     level 2 packed unaligned dcl 85 set ref 156 167 188
+                                                                                  212 277 293 298 307* 377 380 397 402 402 414
+word_count                      000111 automatic       fixed bin(17,0)          dcl 62 set ref 344* 345 347 353* 354 356
+workx                           000112 automatic       fixed bin(17,0)          dcl 62 set ref 141 277* 283 287 288 298* 304 315 316
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ITP_MODIFIER                           internal static bit(6)                   initial unaligned dcl 1-56
+ITS_MODIFIER                           internal static bit(6)                   initial unaligned dcl 1-55
+itp                                    based           structure                level 1 dcl 1-18
+itp_unsigned                           based           structure                level 1 dcl 1-43
+its_unsigned                           based           structure                level 1 dcl 1-30
+next_statement_x                       automatic       fixed bin(35,0)          dcl 29
+save                                   automatic       fixed bin(35,0)          dcl 62
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+char_rel                        000337 constant        entry                    external dcl 328
+convert_decimal                 000437 constant        entry                    external dcl 362
+end_search_loop                 000316 constant        label                    dcl 233 ref 175
+et_util                         000052 constant        entry                    external dcl 11
+get_next                        000065 constant        entry                    external dcl 117
+skip                            000324 constant        entry                    external dcl 239
+skip_proc                       000632 constant        entry                    internal dcl 253 ref 136 247
+skip_sign                       000464 constant        label                    dcl 384 ref 377
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2106        2122    2017        2116
+Length      2310    2017        14         152      66           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+et_util                             299 external procedure  is an external procedure.  
+skip_proc                               internal procedure  shares stack frame of external procedure et_util.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+et_util                  000100 field_len                   et_util
+                         000101 i                           et_util
+                         000102 sign                        et_util
+                         000104 test_string                 et_util
+                         000106 ptr_ptr                     et_util
+                         000110 bit_count                   et_util
+                         000111 word_count                  et_util
+                         000112 workx                       et_util
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return              mpfx2               ext_entry           ext_entry_desc      any_to_any_tr
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      ioa_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000051       117 000057       129 000100       131 000102       134 000107       136 000112       141 000113
+    143 000115       144 000117       156 000120       161 000130       164 000135       165 000141       167 000147
+    169 000163       172 000164       173 000170       175 000176       188 000177       195 000212       199 000216
+    207 000224       212 000244       219 000257       220 000266       221 000275       224 000276       230 000303
+    231 000310       233 000316       237 000317       239 000320       247 000331       249 000332       328 000333
+    337 000344       339 000347       341 000357       344 000360       345 000362       347 000367       349 000400
+    352 000401       353 000404       354 000406       356 000414       360 000431       362 000432       375 000444
+    377 000446       380 000460       382 000462       384 000464       387 000470       397 000476       399 000512
+    401 000514       402 000516       404 000562       407 000563       410 000574       414 000576       418 000617
+    419 000623       422 000631       253 000632       275 000633       277 000637       283 000654       287 000656
+    288 000665       293 000674       298 000702       304 000714       306 000715       307 000731       308 000761
+    309 000771       310 000773       315 000774       316 001001       322 001012       326 001013
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved
