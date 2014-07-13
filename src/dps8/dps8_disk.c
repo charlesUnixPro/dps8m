@@ -15,6 +15,7 @@
 #include "dps8_disk.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_cpu.h"
 #include "sim_disk.h"
 
 //-- // XXX We use this where we assume there is only one unit

@@ -1,17 +1,16 @@
-#undef sim_debug
-#define sim_debug(dbits, dptr, ...) \
-  if (sim_timell () >= sim_deb_start && \
-      (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
-      sim_deb && \
-      ((dptr)->dctrl & dbits)) \
-        _sim_debug (dbits, dptr, __VA_ARGS__); \
-  else \
-    (void) 0
 #define if_sim_debug(dbits, dptr) \
   if (sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
       sim_deb && \
-     ((dptr)->dctrl & dbits))
+      ((dptr)->dctrl & dbits) && \
+      ((sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR)) 
+
+#undef sim_debug
+#define sim_debug(dbits, dptr, ...) \
+  if_sim_debug(dbits, dptr) \
+    _sim_debug (dbits, dptr, __VA_ARGS__); \
+  else \
+    (void) 0
 
 /* scp Debug flags */
 

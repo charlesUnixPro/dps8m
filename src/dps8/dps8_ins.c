@@ -2383,7 +2383,7 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-//#define DIV_TRACE
+#define DIV_TRACE
         /// Fixed-Point Division
         case 0506:  ///< div
             /// C(Q) / (Y) integer quotient -> C(Q), integer remainder -> C(A)
@@ -2406,17 +2406,17 @@ static t_stat DoBasicInstruction (void)
                 t_int64 divisor = (t_int64) (SIGNEXT36(CY));
 
 #ifdef DIV_TRACE
-                sim_printf("\r\n");
-                sim_printf(">>> dividend rQ %lld (%012llo)\r\n", dividend, rQ);
-                sim_printf(">>> divisor  CY %lld (%012llo)\r\n", divisor, CY);
+                sim_debug (DBG_CAC, & cpu_dev, "\r\n");
+                sim_debug (DBG_CAC, & cpu_dev, ">>> dividend rQ %lld (%012llo)\r\n", dividend, rQ);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> divisor  CY %lld (%012llo)\r\n", divisor, CY);
 #endif
 
                 t_int64 quotient = dividend / divisor;
                 t_int64 remainder = dividend % divisor;
 
 #ifdef DIV_TRACE
-                sim_printf(">>> quot 1 %lld\r \n", quotient);
-                sim_printf(">>> rem 1 %lld\r\n", remainder);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> quot 1 %lld\r \n", quotient);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> rem 1 %lld\r\n", remainder);
 #endif
 
 // Evidence is that DPS8 rounds toward zero; if it turns out that it
@@ -2431,35 +2431,34 @@ static t_stat DoBasicInstruction (void)
                     quotient -= 1;
 
 #ifdef DIV_TRACE
-                    sim_printf(">>> quot 2 %lld\r \n", quotient);
-                    sim_printf(">>> rem 2 %lld\r\n", remainder);
+                    sim_debug (DBG_CAC, & cpu_dev, ">>> quot 2 %lld\r \n", quotient);
+                    sim_debug (DBG_CAC, & cpu_dev, ">>> rem 2 %lld\r\n", remainder);
 #endif
                   }
 #endif
 
 #ifdef DIV_TRACE
                 //  (a/b)*b + a%b is equal to a.
-                sim_printf ("dividend was                   = %lld\r\n", dividend);
-                sim_printf ("quotient * divisor + remainder = %lld\r\n", quotient * divisor + remainder);
+                sim_debug (DBG_CAC, & cpu_dev, "dividend was                   = %lld\r\n", dividend);
+                sim_debug (DBG_CAC, & cpu_dev, "quotient * divisor + remainder = %lld\r\n", quotient * divisor + remainder);
                 if (dividend != quotient * divisor + remainder)
                   {
-                    sim_printf ("---------------------------------^^^^^^^^^^^^^^^\r\n");
+                    sim_debug (DBG_CAC, & cpu_dev, "---------------------------------^^^^^^^^^^^^^^^\r\n");
                   }
 #endif
 
 
                 if (dividend != quotient * divisor + remainder)
                   {
-                    // XXX make this sim_debug when we are confident in the code
-                    sim_printf ("Internal division error; rQ %012llo CY %012llo\n", rQ, CY);
+                    sim_debug (DBG_ERR, & cpu_dev, "Internal division error; rQ %012llo CY %012llo\n", rQ, CY);
                   }
 
                 rA = remainder & DMASK;
                 rQ = quotient & DMASK;
 
 #ifdef DIV_TRACE
-                sim_printf ("rA (rem)  %012llo\n", rA);
-                sim_printf ("rQ (quot) %012llo\n", rQ);
+                sim_debug (DBG_CAC, & cpu_dev, "rA (rem)  %012llo\n", rA);
+                sim_debug (DBG_CAC, & cpu_dev, "rQ (quot) %012llo\n", rQ);
 #endif
 
                 SCF(rQ == 0, cu.IR, I_ZERO);
@@ -6697,7 +6696,7 @@ static int emCall (void)
                t0 |= SIGNEXT; // propagte word36 sign to 64 bits
             __int128_t AQ = ((__int128_t) t0) << 36;
             AQ |= (rQ & DMASK);
-            print_int128 (AQ);
+            print_int128 (AQ, NULL);
             break;
         }
 

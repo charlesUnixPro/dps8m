@@ -14,6 +14,7 @@
 #include "dps8_console.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_cpu.h"
 
 /*
  console.c -- operator's console

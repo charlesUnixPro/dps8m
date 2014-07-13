@@ -21,7 +21,7 @@ typedef struct __attribute__ ((__packed__)) map
           {
             uint size : 18;
             uint offset : 18;
-          } pathname;
+          };
         word36 align1;
       };
     word36 uid;

@@ -12,6 +12,7 @@
 #include "dps8_mt.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_cpu.h"
 
 /*
  mt.c -- mag tape

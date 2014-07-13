@@ -112,6 +112,8 @@
 #include "stack_header.incl.pl1.h"
 #include "system_link_names.incl.pl1.h"
 #include "area_info.incl.pl1.h"
+#include "std_symbol_header.incl.pl1.h"
+#include "bind_map.incl.pl1.h"
 
 
 //
@@ -192,6 +194,21 @@ static void printNChars (word36 * p, word24 cnt)
       }
   }
 #endif
+
+static char * sprintNChars (word36 * p, word24 cnt)
+  {
+    static char buf [257];
+    char * bp = buf;
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = i / 4;
+        uint coffset = i % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        * bp ++ = (char) (ch & 0177);
+      }
+    * bp ++ = '\0';
+    return buf;
+  }
 
 static char * sprintACC (word36 * p)
   {
@@ -814,6 +831,87 @@ static void printLineNumbers (int segIdx)
      }
   }
 #endif
+
+static int lookupOffset (int segIdx, word18 offset, 
+                         char * * compname, word18 * compoffset)
+  {
+    KSTEntry * e = KST + segIdx;
+    word24 segAddr = lookupSegAddrByIdx (segIdx);
+    word36 * segp = M + segAddr;
+    def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
+
+    word36 * defBase = (word36 *) oip_defp;
+
+    definition * p = (definition *) (defBase +
+                                     oip_defp -> def_list_relp);
+    // Search for the bindmap
+
+    definition * symDef = NULL;
+    word18 value = 0;
+    while (* (word36 *) p)
+      {
+        if (p -> ignore != 0)
+          goto next;
+        if (p -> class != 2)  // Not a symbol section reference
+          goto next;
+        if (accCmp (defBase + p -> symbol, "bind_map"))
+          {
+            //sim_printf ("hit\n");
+            break;
+          }
+next:;
+        p = (definition *) (defBase + p -> forward);
+      }
+    if (! (* (word36 *) p))
+      {
+        sim_printf ("can't find bind_map\n");
+        return 0;
+      }
+
+    //sim_printf ("bind map at %o\n", value);
+
+    std_symbol_header * sshp = (std_symbol_header *) (segp + e -> symbol_offset + value);
+    //sim_printf ("sshp identifier ");
+    //printNChars (& sshp -> identifier [0], 8);
+    //sim_printf ("\n");
+
+    //sim_printf ("source_map offset %u\n", sshp -> source_map);
+    //source_map * smp = (source_map *) (segp + e -> symbol_offset + sshp -> source_map);
+    //sim_printf ("source map number %llu\n", smp -> number);
+
+    //map * mp = & smp -> firstMap;
+    //for (uint i = 0; i < smp -> number; i ++)
+      //{
+        //sim_printf ("%3d ", i);
+        //printNChars (segp + e -> symbol_offset + mp [i] . offset, mp [i] . size);
+        //sim_printf ("\n");
+      //}
+
+    //sim_printf ("bind_map offset %u\n", sshp -> area_pointer);
+
+    bindmap * bmp = (bindmap *) (segp + e -> symbol_offset + sshp -> area_pointer);
+    //sim_printf ("n_components %lld\n", bmp -> n_components);
+    component * cp = & bmp -> firstComponent;
+    for (uint i = 0; i < bmp -> n_components; i ++)
+      {
+        //sim_printf ("%3d ", i);
+        //printNChars (segp + e -> symbol_offset + cp [i] . name_ptr, cp [i] . name_len);
+        //sim_printf (" %6o %6o\n", cp [i] . text_start, cp [i] . text_lng);
+        if (offset >= cp [i] . text_start && 
+            offset < cp [i] . text_start + cp [i] . text_lng)
+          {
+            char * cname =
+              sprintNChars (segp + e -> symbol_offset + cp [i] . name_ptr, cp [i] . name_len);
+sim_printf ("returning %s\n", cname);
+            if (compname)
+              * compname = cname;
+            if (compoffset)
+              * compoffset = offset - cp [i] . text_start;
+            return 1;
+          }
+      }
+    return 0;
+  }
 
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
@@ -3443,8 +3541,10 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         maddr ++;
         seglen ++;
       }
-    //sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
-                //(bitcnt + 35) / 36);
+    sim_debug (DBG_CAC, & cpu_dev,
+      "initiate_segment <%s> flen %ld seglen %d bitcnt %d %d\n", 
+      entry, flen, seglen, bitcnt, (bitcnt + 35) / 36);
+
     * bitcntp = bitcnt;
     KST [segIdx] . loaded = true;
     if_sim_debug (DBG_TRACE, & fxe_dev)
@@ -3637,6 +3737,9 @@ static void trapHCS_InitiateCount (void)
     if (status == 0 && arg3)
       addRNTRef (segnoMap [segno], arg3);
     M [ap4] = bitcnt & MASK24;
+    sim_debug (DBG_CAC, & cpu_dev,
+               "initiateSegment setting bitcnt %d at addr %06o\n",
+               bitcnt & MASK24, ap4);
     M [ap6] = ptr [0];
     M [ap6 + 1] = ptr [1];
     M [t [ARG7] . argAddr] = code;
@@ -4085,6 +4188,9 @@ static void trapHCS_StatusMins (void)
     // Argument 3: bit_count
     word24 ap3 = t [ARG3] . argAddr;
     M [ap3] = KST [idx] . seglen * 36u;
+sim_debug (DBG_CAC, & cpu_dev, 
+ "status_mins segno %o <%s> seglen %u bitcount %u\n", 
+ segno, KST [idx] . segname, KST [idx] . seglen, KST [idx] . seglen * 36u);
 done:;
 
     word24 ap4 = t [ARG4] . argAddr;
@@ -4337,6 +4443,10 @@ static void trapHCS_SetBcSeg (void)
 
     KST [idx] . bit_count = bit_count;
     KST [idx] . seglen = (bit_count + 35) / 36;
+
+sim_debug (DBG_CAC, & cpu_dev, 
+ "set_bc_seg segno %o seglen %u bitcount %u\n", 
+ segno, KST [idx] . seglen, KST [idx] . bit_count);
 
 done:;
     word24 codePtr = t [ARG3] . argAddr;
@@ -4833,11 +4943,14 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
       {
         if (KST [i] . allocated && KST [i] . segno == segno)
           {
-            if (compname)
-                * compname = KST [i] . segname;
-            if (compoffset)
-                * compoffset = 0;  
-            sprintf (buf, "%s:+0%0o", KST [i] . segname, offset);
+            if (! lookupOffset (i, offset, compname, compoffset))
+              {
+                if (compname)
+                    * compname = KST [i] . segname;
+                if (compoffset)
+                    * compoffset = 0;  
+              }
+            sprintf (buf, "%s:+0%0o", compname ? * compname : KST [i] . segname, compoffset ? * compoffset : offset);
             return buf;
           }
       }

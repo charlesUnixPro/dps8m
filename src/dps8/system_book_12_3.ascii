@@ -630,9 +630,9 @@ User ring pages:               510 pages.
 Combined linkage usage:  Active Wired (in words)
 -----------------------|------|------
                   init:   1974      0
-                   sup:   1224   2184
+                   sup:   1224   2186
 
-Definitions Used: 38959 words.
+Definitions Used: 38965 words.
 Name Table Used:   4077 words.
 
 Begin collection 1.2: WIRED ENVIROMNENT
@@ -1150,7 +1150,6 @@ protocol_ring0_iso_               177  (0, 0, 5) read execute encacheable gate
      re  *.SysAdmin.*
      re  *.SysMaint.*
      re  *.SysDaemon.*
-     re  Internet.Daemon.*
 
 
 
@@ -1255,10 +1254,10 @@ Wired paged storage:           1 pages.
 Combined linkage usage:  Active Wired (in words)
 -----------------------|------|------
                   init:    412      0
-                   sup:  10818    648
+                   sup:  10820    648
 
-Definitions Used: 44238 words.
-Name Table Used:   3850 words.
+Definitions Used: 44240 words.
+Name Table Used:   3839 words.
 
 Begin collection 3.0:
 
@@ -1484,18 +1483,18 @@ Wired Environment Usage
      ai_linkage             4096     2884
      wi_linkage             1024        0
      as_linkage             2048     2040
-     ws_linkage             3072     2184
-     definitions           47104    46595
+     ws_linkage             3072     2186
+     definitions           47104    46601
      name table             6144     5550
 
 Paged Environment Usage
      Name                 Size            Used
      ai_linkage             7168     3296
      wi_linkage             1024        0
-     as_linkage            16384    12858
-     ws_linkage             3072     2832
-     definitions           91136    90833
-     name table            12288     3674
+     as_linkage            16384    12860
+     ws_linkage             3072     2834
+     definitions           91136    90841
+     name table            12288     3663
 
 Begin Crossreference:
 
@@ -1561,7 +1560,7 @@ bound_qedx_
 command_query_$yes_no expand_pathname_$component expand_pathname_$component_add_suffix expand_pathname_$expand_pathname_
 initiate_file_$component initiate_file_$create iox_$control iox_$get_line iox_$modes iox_$put_chars iox_$user_input iox_$user_io
 iox_$user_output pathname_$component pathname_$pathname_ terminate_file_$terminate_file_ user_info_$process_type
-
+
 
 
 
@@ -1581,17 +1580,16 @@ iox_$user_output pathname_$component pathname_$pathname_ terminate_file_$termina
 	*					*
 	***************************************************
 
-
 
 
 
 
 
 
-		bound_355_wired    10/26/92  2212.4 mst Mon
+		bound_355_wired    11/13/89  1832.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_355_wired
+Bindmap for >ldd>hard>e>bound_355_wired
 Created on 11/11/89  1133.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_355_wired.archive
@@ -1622,17 +1620,17 @@ fnp_util                         43324  10016    204      0   4012    434
 Bindfile
 
 bound_355_wired.bind              
- 
+  
 
 
 
 
 
 
-		bound_active_1    10/26/92  2212.4 mst Mon
+		bound_active_1    11/13/89  1832.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_active_1
+Bindmap for >ldd>hard>e>bound_active_1
 Created on 11/11/89  1133.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_active_1.archive
@@ -1665,17 +1663,17 @@ delete_segs                       7712    252     10      0   3054    166
 Bindfile
 
 bound_active_1.bind               
-
+ 
 
 
 
 
 
 
-		bound_bce_dump_    10/26/92  2212.4 mst Mon
+		bound_bce_dump_    11/13/89  1832.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_dump_
+Bindmap for >ldd>hard>e>bound_bce_dump_
 Created on 11/11/89  1133.7 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_dump_.archive
@@ -1695,17 +1693,17 @@ bce_create_sstnt                  4606   1006      2      0    476    270
 Bindfile
 
 bound_bce_dump_.bind              
-   
+
 
 
 
 
 
 
-		bound_bce_exec_com_    10/26/92  2212.4 mst Mon
+		bound_bce_exec_com_    11/13/89  1832.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_exec_com_
+Bindmap for >ldd>hard>e>bound_bce_exec_com_
 Created on 11/11/89  1134.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_exec_com_.archive
@@ -1725,17 +1723,17 @@ bce_exec_com_input                2764  10014      0      0    262    162
 Bindfile
 
 bound_bce_exec_com_.bind          
-   
+
 
 
 
 
 
 
-		bound_bce_paged    10/26/92  2212.4 mst Mon
+		bound_bce_paged    11/13/89  1832.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_paged
+Bindmap for >ldd>hard>e>bound_bce_paged
 Created on 11/11/89  1134.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_paged.archive
@@ -1770,17 +1768,17 @@ init_clocks                      25252   1420    470      0   3744    236
 Bindfile
 
 bound_bce_paged.bind              
- 
+  
 
 
 
 
 
 
-		bound_bce_probe_    10/26/92  2212.4 mst Mon
+		bound_bce_probe_    11/13/89  1832.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_probe_
+Bindmap for >ldd>hard>e>bound_bce_probe_
 Created on 11/11/89  1135.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_probe_.archive
@@ -1805,17 +1803,17 @@ bce_name_to_segnum_              26176   2510      0      0   1544    176
 Bindfile
 
 bound_bce_probe_.bind             
-  
+   
 
 
 
 
 
 
-		bound_bce_save_    10/26/92  2212.4 mst Mon
+		bound_bce_save_    11/13/89  1832.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_save_
+Bindmap for >ldd>hard>e>bound_bce_save_
 Created on 11/11/89  1135.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_save_.archive
@@ -1836,17 +1834,17 @@ tape_error_data                  47466   1140     10      0   1402    130
 Bindfile
 
 bound_bce_save_.bind              
- 
+  
 
 
 
 
 
 
-		bound_bce_wired    10/26/92  2212.4 mst Mon
+		bound_bce_wired    11/13/89  1832.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bce_wired
+Bindmap for >ldd>hard>e>bound_bce_wired
 Created on 11/11/89  1136.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bce_wired.archive
@@ -1883,17 +1881,17 @@ init_bce                         14572    164     72      0   3660    154
 Bindfile
 
 bound_bce_wired.bind              
- 
+  
 
 
 
 
 
 
-		bound_bootload_0    10/26/92  2212.4 mst Mon
+		bound_bootload_0    11/13/89  1832.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_bootload_0
+Bindmap for >ldd>hard>e>bound_bootload_0
 Created on 11/11/89  1136.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_bootload_0.archive
@@ -1928,17 +1926,17 @@ template_slt_                    16236   2330      0      0   4432    172
 Bindfile
 
 bound_bootload_0.bind             
-  
+   
 
 
 
 
 
 
-		bound_date_time_    10/26/92  2212.4 mst Mon
+		bound_date_time_    11/13/89  1832.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_date_time_
+Bindmap for >ldd>hard>e>bound_date_time_
 Created on 11/11/89  1137.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_date_time_.archive
@@ -1964,24 +1962,24 @@ set_system_time_zone_            63252    250    130      0   1530    166
 Bindfile
 
 bound_date_time_.bind             
-
+ 
 
 
 
 
 
 
-		bound_dir_control    10/26/92  2211.9 mst Mon
+		bound_dir_control    11/13/89  1832.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_dir_control
-Created on 08/21/90  1412.7 mst Tue, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_dir_control
+Created on 11/11/89  1137.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1030>bound_dir_control.archive
+>special_ldd>install>MR12.3-1114>bound_dir_control.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   17160   21470   21736   21500
-Length   26470   17160    2310     246    4516       0
+Start        0       0   17166   21474   21742   21504
+Length   26506   17166    2306     246    4530       0
 
 
 Component                            Text        Int-Stat       Symbol
@@ -2004,25 +2002,25 @@ get_kstep                        10754    112      0      0   2534    122
 sum                              11066    722      0      0   2656    242
 vtoc_attributes                  12010   3070      0      0   3120    222
 change_dtem                      15100    114      0      0   3342    142
-ref_name_                        15214   1366      0      0   3504    134
-get_pathname_                    16602    312      0      0   3640    156
-getuid                           17114     44      0      0   4016    122
+ref_name_                        15214   1374      0      0   3504    140
+get_pathname_                    16610    312      0      0   3644    156
+getuid                           17122     44      0      0   4022    122
 
 
 Bindfile
 
 bound_dir_control.bind            
-   
+  
 
 
 
 
 
 
-		bound_disk_util_1    10/26/92  2212.4 mst Mon
+		bound_disk_util_1    11/13/89  1832.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_disk_util_1
+Bindmap for >ldd>hard>e>bound_disk_util_1
 Created on 11/11/89  1138.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_disk_util_1.archive
@@ -2045,17 +2043,17 @@ stock_man                         2226   1114      4      0    764    154
 Bindfile
 
 bound_disk_util_1.bind            
-   
+
 
 
 
 
 
 
-		bound_disk_util_2    10/26/92  2212.4 mst Mon
+		bound_disk_util_2    11/13/89  1832.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_disk_util_2
+Bindmap for >ldd>hard>e>bound_disk_util_2
 Created on 11/11/89  1138.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_disk_util_2.archive
@@ -2081,17 +2079,17 @@ partition_io                      7464    724    116      0   1654    152
 Bindfile
 
 bound_disk_util_2.bind            
- 
+  
 
 
 
 
 
 
-		bound_error_active_1    10/26/92  2212.3 mst Mon
+		bound_error_active_1    11/13/89  1832.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_error_active_1
+Bindmap for >ldd>hard>e>bound_error_active_1
 Created on 11/11/89  1138.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_error_active_1.archive
@@ -2112,17 +2110,17 @@ cache_tester                      1344   2626      0      0    550    170
 Bindfile
 
 bound_error_active_1.bind         
-  
+   
 
 
 
 
 
 
-		bound_error_active_2    10/26/92  2212.3 mst Mon
+		bound_error_active_2    11/13/89  1832.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_error_active_2
+Bindmap for >ldd>hard>e>bound_error_active_2
 Created on 11/11/89  1139.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_error_active_2.archive
@@ -2142,17 +2140,17 @@ syserr_seg_manager                1414   1764      0      0    330    202
 Bindfile
 
 bound_error_active_2.bind         
-
+ 
 
 
 
 
 
 
-		bound_error_handlers_    10/26/92  2212.3 mst Mon
+		bound_error_handlers_    11/13/89  1832.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_error_handlers_
+Bindmap for >ldd>hard>e>bound_error_handlers_
 Created on 11/11/89  1139.3 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_error_handlers_.archive
@@ -2180,17 +2178,17 @@ cv_error_                        22316    326      4      0   2556    110
 Bindfile
 
 bound_error_handlers_.bind        
- 
+  
 
 
 
 
 
 
-		bound_error_wired_2    10/26/92  2212.3 mst Mon
+		bound_error_wired_2    11/13/89  1832.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_error_wired_2
+Bindmap for >ldd>hard>e>bound_error_wired_2
 Created on 11/11/89  1139.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_error_wired_2.archive
@@ -2212,17 +2210,17 @@ syserr_log_daemon                 1570     70      2      0    576    164
 Bindfile
 
 bound_error_wired_2.bind          
-   
+
 
 
 
 
 
 
-		bound_expand_path_    10/26/92  2212.3 mst Mon
+		bound_expand_path_    11/13/89  1832.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_expand_path_
+Bindmap for >ldd>hard>e>bound_expand_path_
 Created on 11/11/89  1139.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >special_ldd>install>MR12.3-1114>bound_expand_path_.archive
@@ -2242,24 +2240,24 @@ absolute_pathname_                1506    304      0      0    212    114
 Bindfile
 
 bound_expand_path_.bind           
-  
+   
 
 
 
 
 
 
-		bound_file_system    10/26/92  2211.9 mst Mon
+		bound_file_system    11/13/89  1832.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_file_system
-Created on 08/22/90  0744.8 mst Wed, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_file_system
+Created on 11/11/89  1133.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>inst>1030>bound_file_system.archive
+>spec>install>1110>bound_file_system.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0  120066  133066  134454  133076
-Length  152564  120066   13000    1366   16074       0
+Start        0       0  120122  133134  134524  133144
+Length  152636  120122   13012    1370   16076       0
 
 
 Component                            Text        Int-Stat       Symbol
@@ -2281,56 +2279,56 @@ status_                          33466   6372      0      0   3666    316
 set                              42060   4150      0      0   4204    234
 asd_                             46230   6122      0      0   4440    220
 chname                           54352   1216      0      0   4660    276
-fs_get                           55570   1440      0      0   5156    244
-ringbr_                          57230   1154      0      0   5422    216
-star_                            60404   3014      0      0   5640    330
-fs_move                          63420   1044      0      0   6170    102
-initiate_search_rules            64464   1442      0      0   6272    254
-trap_caller_caller_              66126    370      0      0   6546    170
-acl                              66516   2430      0      0   6736    216
-list_inacl_all                   71146   1240      0      0   7154    174
-set_stack_ptr                    72406     12      0      0   7350    104
-get_defname_                     72420    376      0      0   7454    202
-stack_oob_handler                73016    322      0      0   7656    154
-access_class_check               73340   1624      0      0  10032    244
-reclassify                       75164   3414      0      0  10276    300
-hc_page_trace                   100600    422      0      0  10576    140
-copy_fdump                      101222   2230      0      0  10736    170
-correct_qused                   103452   1256      0      0  11126    234
-demand_deactivate               104730    204      0      0  11362    136
-ips_                            105134    116      0      0  11520    114
-kst_info                        105252    110      0      0  11634    116
-level_0_                        105362   1026      0      0  11752    102
-other_process_info              106410    170      0      0  12054    140
-proc_info                       106600    120      0      0  12214    104
-quota_util                      106720     24      0      0  12320    104
-ring0_init                      106744    346      0      0  12424    104
-ring_0_peek                     107312    442      0      0  12530    162
-set_disk_table_loc              107754    116      0      0  12712    154
-set_kst_attributes              110072    232      0      0  13066    154
-set_privileges                  110324   1774      0      0  13242    224
-set_sons_lvid                   112320    606      0      0  13466    236
-shutdown                        113126    410      0      0  13724    166
-tc_shutdown                     113536     72      0      0  14112    120
-template_address_space          113630   2664      0      0  14232    172
-uid_path_util                   116514    666      0      0  14424    166
-vacate_pv                       117402    464      0      0  14612    216
+fs_get                           55570   1474      0      0   5156    244
+ringbr_                          57264   1154      0      0   5422    216
+star_                            60440   3014      0      0   5640    330
+fs_move                          63454   1044      0      0   6170    102
+initiate_search_rules            64520   1442      0      0   6272    254
+trap_caller_caller_              66162    370      0      0   6546    170
+acl                              66552   2430      0      0   6736    216
+list_inacl_all                   71202   1240      0      0   7154    174
+set_stack_ptr                    72442     12      0      0   7350    104
+get_defname_                     72454    376      0      0   7454    202
+stack_oob_handler                73052    322      0      0   7656    154
+access_class_check               73374   1624      0      0  10032    244
+reclassify                       75220   3414      0      0  10276    300
+hc_page_trace                   100634    422      0      0  10576    140
+copy_fdump                      101256   2230      0      0  10736    170
+correct_qused                   103506   1256      0      0  11126    234
+demand_deactivate               104764    204      0      0  11362    136
+ips_                            105170    116      0      0  11520    114
+kst_info                        105306    110      0      0  11634    116
+level_0_                        105416   1026      0      0  11752    102
+other_process_info              106444    170      0      0  12054    140
+proc_info                       106634    120      0      0  12214    104
+quota_util                      106754     24      0      0  12320    104
+ring0_init                      107000    346      0      0  12424    104
+ring_0_peek                     107346    442      0      0  12530    162
+set_disk_table_loc              110010    116      0      0  12712    154
+set_kst_attributes              110126    232      0      0  13066    154
+set_privileges                  110360   1774      0      0  13242    224
+set_sons_lvid                   112354    606      0      0  13466    236
+shutdown                        113162    410      0      0  13724    166
+tc_shutdown                     113572     72      0      0  14112    120
+template_address_space          113664   2664      0      0  14232    172
+uid_path_util                   116550    666      0      0  14424    166
+vacate_pv                       117436    464      0      0  14612    216
 
 
 Bindfile
 
 bound_file_system.bind            
-  
+
 
 
 
 
 
 
-		bound_fsim_    10/26/92  2212.3 mst Mon
+		bound_fsim_    11/13/89  1833.0 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_fsim_
+Bindmap for >ldd>hard>e>bound_fsim_
 Created on 11/11/89  1133.7 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_fsim_.archive
@@ -2353,17 +2351,17 @@ make_msf_                        15064   3616    232      2    646    156
 Bindfile
 
 bound_fsim_.bind                  
-   
+
 
 
 
 
 
 
-		bound_hc_backup    10/26/92  2212.3 mst Mon
+		bound_hc_backup    11/13/89  1833.0 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_hc_backup
+Bindmap for >ldd>hard>e>bound_hc_backup
 Created on 11/11/89  1134.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_hc_backup.archive
@@ -2385,17 +2383,17 @@ retv_util                        11752   2112      2      0   1376    246
 Bindfile
 
 bound_hc_backup.bind              
- 
+  
 
 
 
 
 
 
-		bound_hc_data_wired    10/26/92  2212.3 mst Mon
+		bound_hc_data_wired    11/13/89  1833.0 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_hc_data_wired
+Bindmap for >ldd>hard>e>bound_hc_data_wired
 Created on 11/11/89  1134.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_hc_data_wired.archive
@@ -2416,24 +2414,24 @@ wired_hardcore_data                606   2246      0      0    322    110
 Bindfile
 
 bound_hc_data_wired.bind          
-   
+
 
 
 
 
 
 
-		bound_hc_initlzr_auxl_    10/26/92  2212.0 mst Mon
+		bound_hc_initlzr_auxl_    11/13/89  1833.0 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_hc_initlzr_auxl_
-Created on 08/16/90  1129.2 mst Thu, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_hc_initlzr_auxl_
+Created on 11/11/89  1134.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1024>bound_hc_initlzr_auxl_.archive
+>spec>install>1110>bound_hc_initlzr_auxl_.archive
 
         Object    Text    Defs    Link    Symb  Static
 Start        0       0   10024   11020   12034   11030
-Length   13164   10024     774    1014    1114     644
+Length   13166   10024     774    1014    1116     644
 
 
 Component                            Text        Int-Stat       Symbol
@@ -2448,17 +2446,17 @@ lv_request_                       2642   5162    636      6    516    240
 Bindfile
 
 bound_hc_initlzr_auxl_.bind       
-
+ 
 
 
 
 
 
 
-		bound_hc_reconfig    10/26/92  2212.3 mst Mon
+		bound_hc_reconfig    11/13/89  1833.0 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_hc_reconfig
+Bindmap for >ldd>hard>e>bound_hc_reconfig
 Created on 11/11/89  1135.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_hc_reconfig.archive
@@ -2484,42 +2482,6 @@ fv_iv_template                   16172   4000      0      0   2134    104
 Bindfile
 
 bound_hc_reconfig.bind            
-   
-
-
-
-
-
-
-		bound_hc_tuning    10/26/92  2211.9 mst Mon
-
-
-Bindmap for >ldd>h>e>bound_hc_tuning
-Created on 10/23/92  0927.8 mst Fri, by WAAnderson.SysMaint.a
-using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1040>bound_hc_tuning.archive
-
-        Object    Text    Defs    Link    Symb  Static
-Start        0       0   15234   17626   20224   17636
-Length   22240   15234    2372     376    2000       0
-
-
-Component                            Text        Int-Stat       Symbol
-                                 Start Length  Start Length  Start Length
-
-force_write                          0   1122      0      0    100    170
-user_wire                         1122    402      0      0    270    150
-trace_mc                          1524    632      0      0    440    132
-tc                                2356   2630      0      0    572    160
-hc_tune                           5206   5260      0      0    752    140
-set_procs_required               12466   1204      0      0   1112    200
-tc_util                          13672   1250      0      0   1312    166
-history_reg_save                 15142     72      0      0   1500    106
-
-
-Bindfile
-
-bound_hc_tuning.bind              
 
 
 
@@ -2527,10 +2489,46 @@ bound_hc_tuning.bind
 
 
 
-		bound_init_1    10/26/92  2212.3 mst Mon
+		bound_hc_tuning    11/13/89  1833.1 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_init_1
+Bindmap for >ldd>hard>e>bound_hc_tuning
+Created on 11/11/89  1136.3 mst Sat, by Hirneisen.SysMaint.a
+using Multics Binder, Version 12 of Tuesday, March 26, 1985
+>spec>install>1110>bound_hc_tuning.archive
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0   15234   17626   20224   17636
+Length   22252   15234    2372     376    2012       0
+
+
+Component                            Text        Int-Stat       Symbol
+                                 Start Length  Start Length  Start Length
+
+force_write                          0   1122      0      0    100    202
+user_wire                         1122    402      0      0    302    150
+trace_mc                          1524    632      0      0    452    132
+tc                                2356   2630      0      0    604    160
+hc_tune                           5206   5260      0      0    764    140
+set_procs_required               12466   1204      0      0   1124    200
+tc_util                          13672   1250      0      0   1324    166
+history_reg_save                 15142     72      0      0   1512    106
+
+
+Bindfile
+
+bound_hc_tuning.bind              
+  
+
+
+
+
+
+
+		bound_init_1    11/13/89  1833.1 mst Mon
+
+
+Bindmap for >ldd>hard>e>bound_init_1
 Created on 11/11/89  1138.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_init_1.archive
@@ -2561,17 +2559,17 @@ hc_load_mpc                      17400   3342     40      0   3406    330
 Bindfile
 
 bound_init_1.bind                 
-
+ 
 
 
 
 
 
 
-		bound_init_2    10/26/92  2212.3 mst Mon
+		bound_init_2    11/13/89  1833.1 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_init_2
+Bindmap for >ldd>hard>e>bound_init_2
 Created on 11/11/89  1139.3 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_init_2.archive
@@ -2592,17 +2590,17 @@ load_system                       6374   1116      0      0    654    220
 Bindfile
 
 bound_init_2.bind                 
-
+ 
 
 
 
 
 
 
-		bound_interceptors    10/26/92  2212.3 mst Mon
+		bound_interceptors    11/13/89  1833.1 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_interceptors
+Bindmap for >ldd>hard>e>bound_interceptors
 Created on 11/11/89  1139.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_interceptors.archive
@@ -2625,17 +2623,17 @@ sys_trouble                       3470    366      0      4   1212    252
 Bindfile
 
 bound_interceptors.bind           
-  
+   
 
 
 
 
 
 
-		bound_io_active    10/26/92  2212.3 mst Mon
+		bound_io_active    11/13/89  1833.1 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_io_active
+Bindmap for >ldd>hard>e>bound_io_active
 Created on 11/11/89  1140.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_io_active.archive
@@ -2664,17 +2662,17 @@ ioi_verify_lock                  11234    350      2      0   2120    154
 Bindfile
 
 bound_io_active.bind              
-   
+
 
 
 
 
 
 
-		bound_io_wired    10/26/92  2212.3 mst Mon
+		bound_io_wired    11/13/89  1833.1 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_io_wired
+Bindmap for >ldd>hard>e>bound_io_wired
 Created on 11/11/89  1140.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_io_wired.archive
@@ -2699,17 +2697,17 @@ trace                            10164     16     10      0   1420    102
 Bindfile
 
 bound_io_wired.bind               
-  
+   
 
 
 
 
 
 
-		bound_iom_support    10/26/92  2212.3 mst Mon
+		bound_iom_support    11/13/89  1833.2 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_iom_support
+Bindmap for >ldd>hard>e>bound_iom_support
 Created on 11/11/89  1143.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_iom_support.archive
@@ -2735,17 +2733,17 @@ iom_unassign                      3546    132      0      0   1414    136
 Bindfile
 
 bound_iom_support.bind            
-   
+
 
 
 
 
 
 
-		bound_ios_    10/26/92  2212.2 mst Mon
+		bound_ios_    11/13/89  1833.2 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_ios_
+Bindmap for >ldd>hard>e>bound_ios_
 Created on 11/11/89  1143.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_ios_.archive
@@ -2767,17 +2765,17 @@ ios_signal_                      11674    114      6      0    522    124
 Bindfile
 
 bound_ios_.bind                   
-
+ 
 
 
 
 
 
 
-		bound_ipc_    10/26/92  2212.2 mst Mon
+		bound_ipc_    11/13/89  1833.2 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_ipc_
+Bindmap for >ldd>hard>e>bound_ipc_
 Created on 11/11/89  1144.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_ipc_.archive
@@ -2805,17 +2803,17 @@ wkp_signal_handler_              16040     52     52      0   2032    126
 Bindfile
 
 bound_ipc_.bind                   
-
+ 
 
 
 
 
 
 
-		bound_library_1_    10/26/92  2212.2 mst Mon
+		bound_library_1_    11/13/89  1833.2 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_library_1_
+Bindmap for >ldd>hard>e>bound_library_1_
 Created on 11/11/89  1145.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_library_1_.archive
@@ -2875,17 +2873,17 @@ display_access_class_            57412    256    646      0   7244    126
 Bindfile
 
 bound_library_1_.bind             
-  
+   
 
 
 
 
 
 
-		bound_library_2_    10/26/92  2212.2 mst Mon
+		bound_library_2_    11/13/89  1833.2 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_library_2_
+Bindmap for >ldd>hard>e>bound_library_2_
 Created on 11/11/89  1146.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_library_2_.archive
@@ -2928,17 +2926,17 @@ ipc_validate_                    25476    370      0      0   4552    124
 Bindfile
 
 bound_library_2_.bind             
-
+ 
 
 
 
 
 
 
-		bound_library_3_    10/26/92  2212.2 mst Mon
+		bound_library_3_    11/13/89  1833.3 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_library_3_
+Bindmap for >ldd>hard>e>bound_library_3_
 Created on 11/11/89  1146.3 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1110>bound_library_3_.archive
@@ -2957,93 +2955,93 @@ access_audit_r1_                     0     56      0      0    100    104
 Bindfile
 
 bound_library_3_.bind             
-
+ 
 
 
 
 
 
 
-		bound_library_wired_    10/26/92  2211.9 mst Mon
+		bound_library_wired_    11/13/89  1833.3 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_library_wired_
-Created on 10/04/90  1421.0 mst Thu, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_library_wired_
+Created on 11/11/89  1151.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->special_ldd>install>MR12.4-1035>bound_library_wired_.archive
+>spec>install>1110>bound_library_wired_.archive
 
         Object    Text    Defs    Link    Symb  Static
 Start        0       0   71104  100574  101420  100604
-Length  112642   71104    7470     624   11206       2
+Length  112634   71104    7470     624   11200       2
 
 
 Component                            Text        Int-Stat       Symbol
                                  Start Length  Start Length  Start Length
 
-PNOTICE_exec                         0     46      0      0    100    110
-clock_                              46     12      0      2    210    102
-config_                             60   3014      2      0    312    170
-formline_                         3074   3224      2      0    502    170
-pc_check_tables_                  6320   4042      2      0    672    300
-oc_trans_output_                 12362    360      2      0   1172    106
-wired_utility_                   12742     56      2      0   1300    136
-char_bit_offset_fcns_            13020    122      2      0   1436    106
-mvt_                             13142    274      2      0   1544    102
-mrl_                             13436     32      2      0   1646    102
-find_bit_                        13470   1250      2      0   1750    116
-find_char_                       14740    512      2      0   2066    104
-ioa_                             15452   1332      2      0   2172    170
-template_area_header             17004     30      2      0   2362    126
-alloc_                           17034   1254      2      0   2510    152
-pl1_operators_                   20310  25042      2      0   2662    320
-any_to_any_                      45352  10754      2      0   3202    202
-dec_ops_                         56326    202      2      0   3404    134
-cplx_dec_ops_                    56530    350      2      0   3540    104
-record_io_                       57100    316      2      0   3644    164
-put_field_                       57416    720      2      0   4030    200
-put_format_                      60336   1752      2      0   4230    264
-math_routines_                   62310      2      2      0   4514    104
-square_root_                     62312    142      2      0   4620    104
-double_square_root_              62454    156      2      0   4724    106
-sine_                            62632    220      2      0   5032    102
-double_sine_                     63052    246      2      0   5134    104
-tangent_                         63320    224      2      0   5240    102
-double_tangent_                  63544    252      2      0   5342    104
-logarithm_                       64016    236      2      0   5446    104
-double_logarithm_                64254    252      2      0   5552    104
-exponential_                     64526    220      2      0   5656    104
-double_exponential_              64746    224      2      0   5762    106
-arc_tangent_                     65172    446      2      0   6070    104
-double_arc_tangent_              65640    446      2      0   6174    106
-arc_sine_                        66306    324      2      0   6302    102
-double_arc_sine_                 66632    534      2      0   6404    104
-integer_power_integer_           67366    102      2      0   6510    106
-power_integer_                   67470     74      2      0   6616    104
-power_                           67564    134      2      0   6722    102
-math_constants_                  67720     70      2      0   7024    104
-call_math_error_                 70010     42      2      0   7130    136
-fort_math_ops_                   70052    156      2      0   7266    122
-bfp_to_hfp_                      70230     22      2      0   7410    104
-hfp_to_bfp_                      70252     32      2      0   7514    104
-principal_angle_                 70304    264      2      0   7620    104
-double_principal_angle_          70570    312      2      0   7724    106
-math_routines_end_               71102      2      2      0  10032    106
+PNOTICE_exec                         0     46      0      0    100    104
+clock_                              46     12      0      2    204    102
+config_                             60   3014      2      0    306    170
+formline_                         3074   3224      2      0    476    170
+pc_check_tables_                  6320   4042      2      0    666    300
+oc_trans_output_                 12362    360      2      0   1166    106
+wired_utility_                   12742     56      2      0   1274    136
+char_bit_offset_fcns_            13020    122      2      0   1432    106
+mvt_                             13142    274      2      0   1540    102
+mrl_                             13436     32      2      0   1642    102
+find_bit_                        13470   1250      2      0   1744    116
+find_char_                       14740    512      2      0   2062    104
+ioa_                             15452   1332      2      0   2166    170
+template_area_header             17004     30      2      0   2356    126
+alloc_                           17034   1254      2      0   2504    152
+pl1_operators_                   20310  25042      2      0   2656    320
+any_to_any_                      45352  10754      2      0   3176    202
+dec_ops_                         56326    202      2      0   3400    134
+cplx_dec_ops_                    56530    350      2      0   3534    104
+record_io_                       57100    316      2      0   3640    164
+put_field_                       57416    720      2      0   4024    200
+put_format_                      60336   1752      2      0   4224    264
+math_routines_                   62310      2      2      0   4510    104
+square_root_                     62312    142      2      0   4614    104
+double_square_root_              62454    156      2      0   4720    106
+sine_                            62632    220      2      0   5026    102
+double_sine_                     63052    246      2      0   5130    104
+tangent_                         63320    224      2      0   5234    102
+double_tangent_                  63544    252      2      0   5336    104
+logarithm_                       64016    236      2      0   5442    104
+double_logarithm_                64254    252      2      0   5546    104
+exponential_                     64526    220      2      0   5652    104
+double_exponential_              64746    224      2      0   5756    106
+arc_tangent_                     65172    446      2      0   6064    104
+double_arc_tangent_              65640    446      2      0   6170    106
+arc_sine_                        66306    324      2      0   6276    102
+double_arc_sine_                 66632    534      2      0   6400    104
+integer_power_integer_           67366    102      2      0   6504    106
+power_integer_                   67470     74      2      0   6612    104
+power_                           67564    134      2      0   6716    102
+math_constants_                  67720     70      2      0   7020    104
+call_math_error_                 70010     42      2      0   7124    136
+fort_math_ops_                   70052    156      2      0   7262    122
+bfp_to_hfp_                      70230     22      2      0   7404    104
+hfp_to_bfp_                      70252     32      2      0   7510    104
+principal_angle_                 70304    264      2      0   7614    104
+double_principal_angle_          70570    312      2      0   7720    106
+math_routines_end_               71102      2      2      0  10026    106
 
 
 Bindfile
 
 bound_library_wired_.bind         
-
+   
 
 
 
 
 
 
-		bound_log_active_    10/26/92  2212.2 mst Mon
+		bound_log_active_    11/13/89  1833.3 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_log_active_
+Bindmap for >ldd>hard>e>bound_log_active_
 Created on 11/11/89  1058.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_log_active_.archive
@@ -3067,17 +3065,17 @@ log_wakeup_                       3620    714      0      0    762    136
 Bindfile
 
 bound_log_active_.bind            
-   
+
 
 
 
 
 
 
-		bound_log_support_    10/26/92  2212.2 mst Mon
+		bound_log_support_    11/13/89  1833.3 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_log_support_
+Bindmap for >ldd>hard>e>bound_log_support_
 Created on 11/11/89  1100.3 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_log_support_.archive
@@ -3102,17 +3100,17 @@ log_move_                        22412    236      0      0   1562    120
 Bindfile
 
 bound_log_support_.bind           
-  
+   
 
 
 
 
 
 
-		bound_mcs_util    10/26/92  2212.2 mst Mon
+		bound_mcs_util    11/13/89  1833.3 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_mcs_util
+Bindmap for >ldd>hard>e>bound_mcs_util
 Created on 11/11/89  1100.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_mcs_util.archive
@@ -3134,17 +3132,17 @@ priv_mcs_trace                    4752    464      0      0    770    206
 Bindfile
 
 bound_mcs_util.bind               
-
+ 
 
 
 
 
 
 
-		bound_mdir_control    10/26/92  2212.2 mst Mon
+		bound_mdir_control    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_mdir_control
+Bindmap for >ldd>hard>e>bound_mdir_control
 Created on 11/11/89  1102.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_mdir_control.archive
@@ -3173,17 +3171,17 @@ mdc_init_                        22662     14     56      0   1720    104
 Bindfile
 
 bound_mdir_control.bind           
-  
+   
 
 
 
 
 
 
-		bound_mdxhdx_    10/26/92  2212.2 mst Mon
+		bound_mdxhdx_    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_mdxhdx_
+Bindmap for >ldd>hard>e>bound_mdxhdx_
 Created on 11/11/89  1102.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_mdxhdx_.archive
@@ -3213,17 +3211,17 @@ volume_registration_cmds_        57214  11756    442      2   2544    166
 Bindfile
 
 bound_mdxhdx_.bind                
-   
+
 
 
 
 
 
 
-		bound_multics_bce_    10/26/92  2212.2 mst Mon
+		bound_multics_bce_    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_multics_bce_
+Bindmap for >ldd>hard>e>bound_multics_bce_
 Created on 11/11/89  1104.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_multics_bce_.archive
@@ -3257,17 +3255,17 @@ relocate_instruction_            61634    314    350      0   2564    130
 Bindfile
 
 bound_multics_bce_.bind           
-
+ 
 
 
 
 
 
 
-		bound_oc_    10/26/92  2212.2 mst Mon
+		bound_oc_    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_oc_
+Bindmap for >ldd>hard>e>bound_oc_
 Created on 11/11/89  1104.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_oc_.archive
@@ -3286,24 +3284,24 @@ ocd_                                 0   2316      0      0    100    244
 Bindfile
 
 bound_oc_.bind                    
- 
+  
 
 
 
 
 
 
-		bound_page_control    10/26/92  2211.9 mst Mon
+		bound_page_control    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_page_control
-Created on 10/01/90  1530.2 mst Mon, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_page_control
+Created on 11/11/89  1105.9 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1035>bound_page_control.archive
+>spec>install>1111>bound_page_control.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   46522   53616   54454   53626
-Length   65720   46522    5074     636   11230      20
+Start        0       0   46544   53646   54506   53656
+Length   65760   46544    5102     640   11236      20
 
 
 Component                            Text        Int-Stat       Symbol
@@ -3321,40 +3319,40 @@ pc                               11746   5442      0      0   3112    252
 pc_abs                           17410   1372      0      0   3364    150
 pc_wired                         21002    632      0      0   3534    132
 get_ptrs_                        21634    104      0      0   3666    242
-disk_control                     21740  10422      0      0   4130    426
-disk_error_data                  32362   1166      0      0   4556    120
-thread                           33550     70      0      0   4676    102
-pc_trace                         33640    374      0      0   5000    150
-pc_trace_pl1                     34234   1462      0     20   5150    104
-evict_page                       35716    330     20      0   5254    334
-core_queue_man                   36246    222     20      0   5610    170
-cam_cache                        36470    150     20      0   6000    134
-lock_volmap                      36640    206     20      0   6134    176
-stock                            37046    370     20      0   6332    242
-volmap                           37436    334     20      0   6574    164
-volmap_page                      37772    466     20      0   6760    226
-pc_deposit                       40460   2106     20      0   7206    166
-volmap_util                      42566    576     20      0   7374    152
-hc_dm_util                       43364   2312     20      0   7546    160
-page_synch                       45676    266     20      0   7726    216
-pc_signal                        46164    204     20      0  10144    200
-bootload_disk_post               46370    132     20      0  10344    144
+disk_control                     21740  10454      0      0   4130    426
+disk_error_data                  32414   1156      0      0   4556    124
+thread                           33572     70      0      0   4702    102
+pc_trace                         33662    374      0      0   5004    150
+pc_trace_pl1                     34256   1462      0     20   5154    104
+evict_page                       35740    330     20      0   5260    334
+core_queue_man                   36270    222     20      0   5614    170
+cam_cache                        36512    150     20      0   6004    134
+lock_volmap                      36662    206     20      0   6140    176
+stock                            37070    370     20      0   6336    242
+volmap                           37460    334     20      0   6600    164
+volmap_page                      40014    466     20      0   6764    226
+pc_deposit                       40502   2106     20      0   7212    166
+volmap_util                      42610    576     20      0   7400    152
+hc_dm_util                       43406   2312     20      0   7552    160
+page_synch                       45720    266     20      0   7732    216
+pc_signal                        46206    204     20      0  10150    200
+bootload_disk_post               46412    132     20      0  10350    144
 
 
 Bindfile
 
 bound_page_control.bind           
-
+ 
 
 
 
 
 
 
-		bound_priv_1    10/26/92  2212.2 mst Mon
+		bound_priv_1    11/13/89  1833.4 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_priv_1
+Bindmap for >ldd>hard>e>bound_priv_1
 Created on 11/11/89  1106.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_priv_1.archive
@@ -3378,17 +3376,17 @@ wire_stack                        3626    172     10      4   1414    150
 Bindfile
 
 bound_priv_1.bind                 
-  
+   
 
 
 
 
 
 
-		bound_priv_mpx    10/26/92  2212.1 mst Mon
+		bound_priv_mpx    11/13/89  1833.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_priv_mpx
+Bindmap for >ldd>hard>e>bound_priv_mpx
 Created on 11/11/89  1107.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_priv_mpx.archive
@@ -3411,17 +3409,17 @@ priv_polled_vip_mpx              13156   2340      6      2   1744    342
 Bindfile
 
 bound_priv_mpx.bind               
-  
+   
 
 
 
 
 
 
-		bound_process_creation    10/26/92  2212.1 mst Mon
+		bound_process_creation    11/13/89  1833.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_process_creation
+Bindmap for >ldd>hard>e>bound_process_creation
 Created on 11/11/89  1107.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_process_creation.archive
@@ -3450,17 +3448,17 @@ copy_stack_0                     11562    172      0      0   2146    122
 Bindfile
 
 bound_process_creation.bind       
-  
+   
 
 
 
 
 
 
-		bound_process_env_    10/26/92  2212.1 mst Mon
+		bound_process_env_    11/13/89  1833.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_process_env_
+Bindmap for >ldd>hard>e>bound_process_env_
 Created on 11/11/89  1108.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_process_env_.archive
@@ -3495,46 +3493,17 @@ pathname_                        25424    642    134      0   2626    104
 Bindfile
 
 bound_process_env_.bind           
-  
+   
 
 
 
 
 
 
-		bound_protocol_mpx    10/26/92  2212.1 mst Mon
+		bound_qedx_    11/13/89  1833.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_protocol_mpx
-Created on 11/11/89  1109.1 mst Sat, by Hirneisen.SysMaint.a
-using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1111>bound_protocol_mpx.archive
-
-        Object    Text    Defs    Link    Symb  Static
-Start        0       0   10046   10730   11034   10740
-Length   11666   10046     662     104     616       4
-
-
-Component                            Text        Int-Stat       Symbol
-                                 Start Length  Start Length  Start Length
-
-protocol_mpx                         0  10046      0      4    100    426
-
-
-Bindfile
-
-bound_protocol_mpx.bind           
-  
-
-
-
-
-
-
-		bound_qedx_    10/26/92  2212.1 mst Mon
-
-
-Bindmap for >ldd>h>e>bound_qedx_
+Bindmap for >ldd>hard>e>bound_qedx_
 Created on 11/11/89  1109.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_qedx_.archive
@@ -3558,17 +3527,17 @@ qedx                             25432   2576     70      2   1050    150
 Bindfile
 
 bound_qedx_.bind                  
- 
+  
 
 
 
 
 
 
-		bound_rcp_    10/26/92  2212.1 mst Mon
+		bound_rcp_    11/13/89  1833.5 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_rcp_
+Bindmap for >ldd>hard>e>bound_rcp_
 Created on 11/11/89  1111.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_rcp_.archive
@@ -3639,24 +3608,24 @@ rcp_match_user_name_             77536    274    550      0  14642    110
 Bindfile
 
 bound_rcp_.bind                   
-  
+   
 
 
 
 
 
 
-		bound_rcprm_    10/29/92  1548.6 mst Thu
+		bound_rcprm_    11/13/89  1833.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_rcprm_
-Created on 10/27/92  1455.9 mst Tue, by WAAnderson.SysMaint.a
+Bindmap for >ldd>hard>e>bound_rcprm_
+Created on 11/11/89  1112.7 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1041>bound_rcprm_.archive
+>spec>install>1111>bound_rcprm_.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   52070   56212   56764   56222
-Length   65156   52070    4122     552    6156     102
+Start        0       0   52022   56144   56716   56154
+Length   65106   52022    4122     552    6154     102
 
 
 Component                            Text        Int-Stat       Symbol
@@ -3665,35 +3634,35 @@ Component                            Text        Int-Stat       Symbol
 rcprm_find_resource_                 0  14414      0     24    100    470
 rcprm_find_op                    14414    312     24      0    570    176
 rcprm_registry_util_             14726   3102     24      0    766    244
-rcprm_journalize_                20030   5136     24      2   1232    436
-rcprm_list_resource_             25166   2636     26     52   1670    360
-rcprm_registry_mgr_              30024   6112    100      0   2250    402
-rcprm_verify_registries_         36136    450    100      0   2652    212
-rcprm_journal_file_              36606   3632    100      2   3064    754
-commit                           42440    412    102      0   4040    152
-rollback                         43052   1712    102      0   4212    202
-write_record                     44764    330    102      0   4414    154
-delete_record                    45314    462    102      0   4570    172
-add_key                          45776    230    102      0   4762    152
-delete_key                       46226    226    102      0   5134    154
-record_status                    46454    474    102      0   5310    172
-print_data                       47150   2720    102      0   5502    122
+rcprm_journalize_                20030   5070     24      2   1232    434
+rcprm_list_resource_             25120   2636     26     52   1666    360
+rcprm_registry_mgr_              27756   6112    100      0   2246    402
+rcprm_verify_registries_         36070    450    100      0   2650    212
+rcprm_journal_file_              36540   3632    100      2   3062    754
+commit                           42372    412    102      0   4036    152
+rollback                         43004   1712    102      0   4210    202
+write_record                     44716    330    102      0   4412    154
+delete_record                    45246    462    102      0   4566    172
+add_key                          45730    230    102      0   4760    152
+delete_key                       46160    226    102      0   5132    154
+record_status                    46406    474    102      0   5306    172
+print_data                       47102   2720    102      0   5500    122
 
 
 Bindfile
 
 bound_rcprm_.bind                 
- 
+   
 
 
 
 
 
 
-		bound_reloader_    10/26/92  2212.1 mst Mon
+		bound_reloader_    11/13/89  1833.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_reloader_
+Bindmap for >ldd>hard>e>bound_reloader_
 Created on 11/11/89  1113.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1111>bound_reloader_.archive
@@ -3721,17 +3690,17 @@ reload                           40774   2112   1540      0   2132    146
 Bindfile
 
 bound_reloader_.bind              
- 
+  
 
 
 
 
 
 
-		bound_salvager    10/26/92  2212.1 mst Mon
+		bound_salvager    11/13/89  1833.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_salvager
+Bindmap for >ldd>hard>e>bound_salvager
 Created on 11/11/89  1059.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_salvager.archive
@@ -3760,17 +3729,17 @@ salv_check_vtoce_                36672   1562    576      0   3350    224
 Bindfile
 
 bound_salvager.bind               
-  
+   
 
 
 
 
 
 
-		bound_scavenger    10/26/92  2212.1 mst Mon
+		bound_scavenger    11/13/89  1833.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_scavenger
+Bindmap for >ldd>hard>e>bound_scavenger
 Created on 11/11/89  1100.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_scavenger.archive
@@ -3790,24 +3759,24 @@ scavenge_volume                   2420  10174      0      0    336    410
 Bindfile
 
 bound_scavenger.bind              
- 
+  
 
 
 
 
 
 
-		bound_segment_control    10/26/92  2211.9 mst Mon
+		bound_segment_control    11/13/89  1833.6 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_segment_control
-Created on 10/23/92  0928.1 mst Fri, by WAAnderson.SysMaint.a
+Bindmap for >ldd>hard>e>bound_segment_control
+Created on 11/11/89  1102.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1040>bound_segment_control.archive
+>spec>install>1112>bound_segment_control.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   27066   33334   34200   33344
-Length   42466   27066    4246     644    6252       0
+Start        0       0   27042   33310   34154   33320
+Length   42440   27042    4246     644    6250       0
 
 
 Component                            Text        Int-Stat       Symbol
@@ -3823,42 +3792,42 @@ activate                          4416   1574      0      0   1412    312
 lock                              6212   4332      0      0   1724    242
 meter_ast_lock                   12544     72      0      0   2166    140
 get_aste                         12636   1360      0      0   2326    176
-segment_mover                    14216   2610      0      0   2524    312
-deactivate                       17026    244      0      0   3036    120
-put_aste                         17272    156      0      0   3156    146
-limit_covert_channel             17450    260      0      0   3324    130
-deactivate_for_demount           17730   1024      0      0   3454    156
-shutdown_file_system             20754    532      0      0   3632    172
-switch_shutdown_file_system      21506     30      0      0   4024    124
-access_viol                      21536     50      0      0   4150    104
-boundfault                       21606   1056      0      0   4254    244
-outward_call_handler             22664    232      0      0   4520    216
-hc_exponent_control              23116    400      0      0   4736    126
-verify_lock                      23516   3236      0      0   5064    364
-flush_ast_pool                   26754    112      0      0   5450    134
+segment_mover                    14216   2564      0      0   2524    310
+deactivate                       17002    244      0      0   3034    120
+put_aste                         17246    156      0      0   3154    146
+limit_covert_channel             17424    260      0      0   3322    130
+deactivate_for_demount           17704   1024      0      0   3452    156
+shutdown_file_system             20730    532      0      0   3630    172
+switch_shutdown_file_system      21462     30      0      0   4022    124
+access_viol                      21512     50      0      0   4146    104
+boundfault                       21562   1056      0      0   4252    244
+outward_call_handler             22640    232      0      0   4516    216
+hc_exponent_control              23072    400      0      0   4734    126
+verify_lock                      23472   3236      0      0   5062    364
+flush_ast_pool                   26730    112      0      0   5446    134
 
 
 Bindfile
 
 bound_segment_control.bind        
-
+  
 
 
 
 
 
 
-		bound_system_control_    10/26/92  2211.9 mst Mon
+		bound_system_control_    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_system_control_
-Created on 03/03/92  1551.9 mst Tue, by Schroth.SysMaint.a
+Bindmap for >ldd>hard>e>bound_system_control_
+Created on 11/11/89  1103.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1010>bound_system_control_.archive
+>spec>install>1112>bound_system_control_.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   51550   57270   60634   57300
-Length   67404   51550    5520    1344    6534     356
+Start        0       0   51544   57264   60630   57274
+Length   67410   51544    5520    1344    6544     356
 
 
 Component                            Text        Int-Stat       Symbol
@@ -3875,40 +3844,40 @@ sc_get_error_name_               11764    336      0      0   2204    210
 sc_edit_motd_                    12322    240      0      0   2414    136
 sc_exec_request_                 12562    340      0      0   2552    156
 sc_ipc_mask_                     13122     72      0      0   2730    104
-sc_init_                         13214   5656      0      0   3034    310
-sc_requests_                     21072   5476      0      0   3344    336
-sc_shutdown_                     26570     46      0      0   3702    140
-sc_signal_handler_               26636    512      0      0   4042    230
-sys_log_                         27350   3164      0      2   4272    210
-sc_command                       32534    530      2      0   4502    120
-sc_admin_command_                33264   4250      2      0   4622    412
-sc_request_table_                37534   4636      2      0   5234    140
-sc_stat_                         44372      0      2    354   5374    102
-lock_mca                         44372   1142    356      0   5476    140
-call_ec_                         45534   4014    356      0   5636    240
+sc_init_                         13214   5652      0      0   3034    310
+sc_requests_                     21066   5476      0      0   3344    336
+sc_shutdown_                     26564     46      0      0   3702    140
+sc_signal_handler_               26632    512      0      0   4042    230
+sys_log_                         27344   3164      0      2   4272    210
+sc_command                       32530    530      2      0   4502    120
+sc_admin_command_                33260   4250      2      0   4622    422
+sc_request_table_                37530   4636      2      0   5244    140
+sc_stat_                         44366      0      2    354   5404    102
+lock_mca                         44366   1142    356      0   5506    140
+call_ec_                         45530   4014    356      0   5646    240
 
 
 Bindfile
 
 bound_system_control_.bind        
- 
+
 
 
 
 
 
 
-		bound_system_security    10/26/92  2211.9 mst Mon
+		bound_system_security    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_system_security
-Created on 10/14/90  0945.6 mst Sun, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_system_security
+Created on 11/11/89  1104.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1042>bound_system_security.archive
+>spec>install>1112>bound_system_security.archive
 
         Object    Text    Defs    Link    Symb  Static
 Start        0       0   35234   41174   41622   41204
-Length   45534   35234    3740     426    3676       0
+Length   45536   35234    3740     426    3700       0
 
 
 Component                            Text        Int-Stat       Symbol
@@ -3930,17 +3899,17 @@ set_sys_audit_thresholds_        34550    464      0      0   3274    134
 Bindfile
 
 bound_system_security.bind        
- 
+  
 
 
 
 
 
 
-		bound_system_startup_    10/26/92  2212.1 mst Mon
+		bound_system_startup_    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_system_startup_
+Bindmap for >ldd>hard>e>bound_system_startup_
 Created on 11/11/89  1104.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_system_startup_.archive
@@ -3961,17 +3930,17 @@ system_startup_                   4534  11644      2     62    776    412
 Bindfile
 
 bound_system_startup_.bind        
- 
+  
 
 
 
 
 
 
-		bound_tape_label_util_    10/26/92  2212.1 mst Mon
+		bound_tape_label_util_    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_tape_label_util_
+Bindmap for >ldd>hard>e>bound_tape_label_util_
 Created on 11/11/89  1105.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_tape_label_util_.archive
@@ -3994,17 +3963,17 @@ ebcdic8_to_ascii_                 2100     72      0      0    570    110
 Bindfile
 
 bound_tape_label_util_.bind       
-  
+   
 
 
 
 
 
 
-		bound_tape_mult_    10/26/92  2212.0 mst Mon
+		bound_tape_mult_    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_tape_mult_
+Bindmap for >ldd>hard>e>bound_tape_mult_
 Created on 11/11/89  1106.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_tape_mult_.archive
@@ -4043,17 +4012,17 @@ parse_tape_reel_name_            41404    654      6      0   5460    112
 Bindfile
 
 bound_tape_mult_.bind             
-
+ 
 
 
 
 
 
 
-		bound_tc_priv    10/26/92  2212.0 mst Mon
+		bound_tc_priv    11/13/89  1833.7 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_tc_priv
+Bindmap for >ldd>hard>e>bound_tc_priv
 Created on 11/11/89  1106.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_tc_priv.archive
@@ -4073,17 +4042,17 @@ meter_response_time               6420    200      0      0    552    204
 Bindfile
 
 bound_tc_priv.bind                
-   
+
 
 
 
 
 
 
-		bound_tc_wired    10/26/92  2212.0 mst Mon
+		bound_tc_wired    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_tc_wired
+Bindmap for >ldd>hard>e>bound_tc_wired
 Created on 11/11/89  1106.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_tc_wired.archive
@@ -4104,17 +4073,17 @@ ring_alarm                         752   1026      0      0    454    250
 Bindfile
 
 bound_tc_wired.bind               
-  
+   
 
 
 
 
 
 
-		bound_temp_1    10/26/92  2212.0 mst Mon
+		bound_temp_1    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_temp_1
+Bindmap for >ldd>hard>e>bound_temp_1
 Created on 11/11/89  1108.0 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_temp_1.archive
@@ -4165,17 +4134,17 @@ bce_abs_seg                      63774    146    646    102  13050    122
 Bindfile
 
 bound_temp_1.bind                 
-
+ 
 
 
 
 
 
 
-		bound_temp_2    10/26/92  2212.0 mst Mon
+		bound_temp_2    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_temp_2
+Bindmap for >ldd>hard>e>bound_temp_2
 Created on 11/11/89  1108.8 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_temp_2.archive
@@ -4209,24 +4178,24 @@ fnp_init                         12044   1540      0      0   4052    416
 Bindfile
 
 bound_temp_2.bind                 
-  
+   
 
 
 
 
 
 
-		bound_tty_active    10/26/92  2212.0 mst Mon
+		bound_tty_active    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_tty_active
-Created on 08/16/90  1126.2 mst Thu, by Fudge.SysMaint.a
+Bindmap for >ldd>hard>e>bound_tty_active
+Created on 11/11/89  1109.2 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1024>bound_tty_active.archive
+>spec>install>1112>bound_tty_active.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   41530   44426   45042   44436
-Length   51206   41530    2676     414    4130      10
+Start        0       0   41412   44302   44716   44312
+Length   51046   41412    2670     414    4114      10
 
 
 Component                            Text        Int-Stat       Symbol
@@ -4237,30 +4206,30 @@ hc_ipc                             202   1644      0      2    236    224
 truncate_stacks                   2046    252      2      0    462    202
 try_to_unlock_lock                2320    134      2      0    664    124
 mcs_timer_daemon                  2454    126      2      0   1010    156
-tty_write                         2602   6502      2      0   1166    322
-tty_util_                        11304    270      2      0   1510    102
-tty_read                         11574   6402      2      0   1612    354
-tty_overstrike_canon             20176    732      2      4   2166    110
-tty_replace_canon                21130    674      6      0   2276    110
-tty_index                        22024  13154      6      2   2406    636
-tty_modes                        35200   3304     10      0   3244    256
-tty_tables_mgr                   40504   1024     10      0   3522    122
+tty_write                         2602   6364      2      0   1166    304
+tty_util_                        11166    270      2      0   1472    102
+tty_read                         11456   6402      2      0   1574    354
+tty_overstrike_canon             20060    732      2      4   2150    110
+tty_replace_canon                21012    674      6      0   2260    110
+tty_index                        21706  13154      6      2   2370    636
+tty_modes                        35062   3304     10      0   3226    256
+tty_tables_mgr                   40366   1024     10      0   3504    122
 
 
 Bindfile
 
 bound_tty_active.bind             
-
+ 
 
 
 
 
 
 
-		bound_uncp_wired    10/26/92  2212.0 mst Mon
+		bound_uncp_wired    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_uncp_wired
+Bindmap for >ldd>hard>e>bound_uncp_wired
 Created on 11/11/89  1109.5 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_uncp_wired.archive
@@ -4282,17 +4251,17 @@ uncp_util                        16536   6010      0      0   1516    446
 Bindfile
 
 bound_uncp_wired.bind             
-  
+   
 
 
 
 
 
 
-		bound_unencacheable    10/26/92  2212.0 mst Mon
+		bound_unencacheable    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_unencacheable
+Bindmap for >ldd>hard>e>bound_unencacheable
 Created on 11/11/89  1109.7 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1112>bound_unencacheable.archive
@@ -4311,57 +4280,57 @@ cache_priv                           0    206      0      0    100    104
 Bindfile
 
 bound_unencacheable.bind          
-   
+
 
 
 
 
 
 
-		bound_volume_reloader_    10/26/92  2211.9 mst Mon
+		bound_volume_reloader_    11/13/89  1833.8 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_volume_reloader_
-Created on 10/21/92  1525.0 mst Wed, by WAAnderson.SysMaint.a
+Bindmap for >ldd>hard>e>bound_volume_reloader_
+Created on 11/11/89  1129.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
->spec>install>1039>bound_volume_reloader_.archive
+>spec>install>1115>bound_volume_reloader_.archive
 
         Object    Text    Defs    Link    Symb  Static
-Start        0       0   35326   37014   37224   37024
-Length   43556   35326    1466     210    4316       4
+Start        0       0   35172   36660   37070   36670
+Length   43442   35172    1466     210    4336       4
 
 
 Component                            Text        Int-Stat       Symbol
                                  Start Length  Start Length  Start Length
 
-reload_volume_                       0   1774      0      0    100    170
-rldr_volume_map_                  1774   1506      0      0    270    232
-rldr_vtoc_header_                 3502   1322      0      0    522    262
-rldr_input_                       5024  10104      0      2   1004    502
-rldr_check_pvol_                 15130   1650      2      0   1506    246
-rldr_label_                      17000    732      2      0   1754    226
-rldr_report_                     17732   1002      2      2   2202    136
-rldr_arg_reader_                 20734   2536      4      0   2340    200
-rldr_output_                     23472   1742      4      0   2540    242
-reloader                         25434   6552      4      0   3002    360
-rldr_vtoc_buffer_                34206    440      4      0   3362    242
-rldr_finish_                     34646    460      4      0   3624    212
+reload_volume_                       0   1610      0      0    100    172
+rldr_volume_map_                  1610   1474      0      0    272    236
+rldr_vtoc_header_                 3304   1316      0      0    530    272
+rldr_input_                       4622  10154      0      2   1022    504
+rldr_check_pvol_                 14776   1650      2      0   1526    246
+rldr_label_                      16646    740      2      0   1774    226
+rldr_report_                     17606   1002      2      2   2222    136
+rldr_arg_reader_                 20610   2526      4      0   2360    200
+rldr_output_                     23336   1742      4      0   2560    242
+reloader                         25300   6552      4      0   3022    360
+rldr_vtoc_buffer_                34052    440      4      0   3402    242
+rldr_finish_                     34512    460      4      0   3644    212
 
 
 Bindfile
 
 bound_volume_reloader_.bind       
-   
+ 
 
 
 
 
 
 
-		bound_volume_rldr_ut_    10/26/92  2212.0 mst Mon
+		bound_volume_rldr_ut_    11/13/89  1833.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_volume_rldr_ut_
+Bindmap for >ldd>hard>e>bound_volume_rldr_ut_
 Created on 11/11/89  1129.7 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1115>bound_volume_rldr_ut_.archive
@@ -4382,17 +4351,17 @@ recover_volume_log               22646   5546     12      0    612    336
 Bindfile
 
 bound_volume_rldr_ut_.bind        
- 
+  
 
 
 
 
 
 
-		bound_vtoc_man    10/26/92  2212.0 mst Mon
+		bound_vtoc_man    11/13/89  1833.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_vtoc_man
+Bindmap for >ldd>hard>e>bound_vtoc_man
 Created on 11/11/89  1130.1 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1115>bound_vtoc_man.archive
@@ -4418,17 +4387,17 @@ priv_delete_vtoce                14574    616      0      0   1746    206
 Bindfile
 
 bound_vtoc_man.bind               
-
+ 
 
 
 
 
 
 
-		bound_wired_1    10/26/92  2212.0 mst Mon
+		bound_wired_1    11/13/89  1833.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_wired_1
+Bindmap for >ldd>hard>e>bound_wired_1
 Created on 11/11/89  1130.4 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1115>bound_wired_1.archive
@@ -4454,17 +4423,17 @@ pc_recover_sst                   25732    760      2      0   2016    206
 Bindfile
 
 bound_wired_1.bind                
-   
+
 
 
 
 
 
 
-		bound_x25_mpx    10/29/92  1548.9 mst Thu
+		bound_x25_mpx    11/13/89  1833.9 mst Mon
 
 
-Bindmap for >ldd>h>e>bound_x25_mpx
+Bindmap for >ldd>hard>e>bound_x25_mpx
 Created on 11/11/89  1130.6 mst Sat, by Hirneisen.SysMaint.a
 using Multics Binder, Version 12 of Tuesday, March 26, 1985
 >spec>install>1115>bound_x25_mpx.archive
@@ -4485,7 +4454,36 @@ lap_simplex                      15766   4450     10      2    656    370
 Bindfile
 
 bound_x25_mpx.bind                
- 
+  
+
+
+
+
+
+
+		bound_protocol_mpx    11/13/89  1833.5 mst Mon
+
+
+Bindmap for >ldd>hard>e>bound_protocol_mpx
+Created on 11/11/89  1109.1 mst Sat, by Hirneisen.SysMaint.a
+using Multics Binder, Version 12 of Tuesday, March 26, 1985
+>spec>install>1111>bound_protocol_mpx.archive
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0   10046   10730   11034   10740
+Length   11666   10046     662     104     616       4
+
+
+Component                            Text        Int-Stat       Symbol
+                                 Start Length  Start Length  Start Length
+
+protocol_mpx                         0  10046      0      4    100    426
+
+
+Bindfile
+
+bound_protocol_mpx.bind           
+   
 
 
 
@@ -4506,7 +4504,7 @@ bound_x25_mpx.bind
 	*					*
 	***************************************************
 
-		Generation of System MR12.5 on Tape MR12.5-118-6_MST,den=1600 at 92-10-29_2334.00_Thu_mst
+		Generation of System MR12.3mu on Tape m3745_mastmult,den=1600 at 11/14/89  0931.4 mst Tue
 
 
 	NAME		     DATE CHANGED	      AUTHOR	      LANG	PATHNAME
@@ -4694,8 +4692,8 @@ bound_library_1_                  11/11/89  1145.4  Hirneisen.SysMaint.a    bind
   get_temp_segments_              11/11/89  1005.3  Hirneisen.SysMaint.a    PL/I        
   display_access_class_           11/11/89  1006.4  Hirneisen.SysMaint.a    PL/I        
  
-bound_library_wired_              10/04/90  1421.0  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
-  PNOTICE_exec                    11/14/89  1127.9  Hirneisen.SysMaint.a    alm         
+bound_library_wired_              11/11/89  1151.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  PNOTICE_exec                    11/11/89  0948.2  Hirneisen.SysMaint.a    alm         
   clock_                          11/11/89  0946.5  Hirneisen.SysMaint.a    alm         
   config_                         11/11/89  0954.8  Hirneisen.SysMaint.a    PL/I        
   formline_                       11/11/89  0944.3  Hirneisen.SysMaint.a    alm         
@@ -4711,7 +4709,7 @@ bound_library_wired_              10/04/90  1421.0  Fudge.SysMaint.a        bind
   template_area_header            11/11/89  1059.3  Hirneisen.SysMaint.a    cds         
   alloc_                          11/11/89  0948.0  Hirneisen.SysMaint.a    alm         
   pl1_operators_                  11/11/89  0941.3  Hirneisen.SysMaint.a    alm         
-  any_to_any_                     10/01/90  1526.2  Fudge.SysMaint.a        alm         
+  any_to_any_                     11/11/89  0947.3  Hirneisen.SysMaint.a    alm         
   dec_ops_                        11/11/89  0946.2  Hirneisen.SysMaint.a    alm         
   cplx_dec_ops_                   11/11/89  0946.4  Hirneisen.SysMaint.a    alm         
   record_io_                      11/11/89  0940.5  Hirneisen.SysMaint.a    alm         
@@ -4744,7 +4742,7 @@ bound_library_wired_              10/04/90  1421.0  Fudge.SysMaint.a        bind
   double_principal_angle_         11/11/89  0945.5  Hirneisen.SysMaint.a    alm         
   math_routines_end_              11/11/89  0943.4  Hirneisen.SysMaint.a    alm         
  
-bound_page_control                10/01/90  1530.2  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_page_control                11/11/89  1105.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   page_fault                      11/11/89  0925.1  Hirneisen.SysMaint.a    alm         
   page                            11/11/89  0926.5  Hirneisen.SysMaint.a    alm         
   post_purge                      11/11/89  0924.2  Hirneisen.SysMaint.a    alm         
@@ -4757,8 +4755,8 @@ bound_page_control                10/01/90  1530.2  Fudge.SysMaint.a        bind
   pc_abs                          11/11/89  1026.4  Hirneisen.SysMaint.a    PL/I        
   pc_wired                        11/11/89  1026.1  Hirneisen.SysMaint.a    PL/I        
   get_ptrs_                       11/11/89  0927.0  Hirneisen.SysMaint.a    alm         
-  disk_control                    10/01/90  1526.8  Fudge.SysMaint.a        PL/I        
-  disk_error_data                 10/01/90  1527.8  Fudge.SysMaint.a        cds         
+  disk_control                    11/11/89  1009.9  Hirneisen.SysMaint.a    PL/I        
+  disk_error_data                 11/11/89  1027.9  Hirneisen.SysMaint.a    cds         
   thread                          11/11/89  0923.8  Hirneisen.SysMaint.a    alm         
   pc_trace                        11/11/89  0924.6  Hirneisen.SysMaint.a    alm         
   pc_trace_pl1                    11/11/89  1008.9  Hirneisen.SysMaint.a    PL/I        
@@ -4998,7 +4996,7 @@ bound_uncp_wired                  11/11/89  1109.5  Hirneisen.SysMaint.a    bind
   uncp_boot_interrupt             11/11/89  0930.5  Hirneisen.SysMaint.a    PL/I        
   uncp_util                       11/11/89  0929.1  Hirneisen.SysMaint.a    PL/I        
  
-bound_dir_control                 08/21/90  1412.7  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_dir_control                 11/11/89  1137.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   check_gate_acl_                 11/11/89  1010.3  Hirneisen.SysMaint.a    PL/I        
   acc_list_                       11/11/89  1011.3  Hirneisen.SysMaint.a    PL/I        
   acl_                            11/11/89  1010.8  Hirneisen.SysMaint.a    PL/I        
@@ -5016,7 +5014,7 @@ bound_dir_control                 08/21/90  1412.7  Fudge.SysMaint.a        bind
   sum                             11/11/89  1007.8  Hirneisen.SysMaint.a    PL/I        
   vtoc_attributes                 11/11/89  1004.8  Hirneisen.SysMaint.a    PL/I        
   change_dtem                     11/11/89  1010.5  Hirneisen.SysMaint.a    PL/I        
-  ref_name_                       08/21/90  1349.0  Fudge.SysMaint.a        PL/I        
+  ref_name_                       11/11/89  1008.3  Hirneisen.SysMaint.a    PL/I        
   get_pathname_                   11/11/89  1009.8  Hirneisen.SysMaint.a    PL/I        
   getuid                          11/11/89  0933.6  Hirneisen.SysMaint.a    alm         
  
@@ -5040,7 +5038,7 @@ bound_error_wired_2               11/11/89  1139.4  Hirneisen.SysMaint.a    bind
   syserr_copy_wired_log           11/11/89  0956.5  Hirneisen.SysMaint.a    PL/I        
   syserr_log_daemon               11/11/89  0956.4  Hirneisen.SysMaint.a    PL/I        
  
-bound_file_system                 08/22/90  0744.8  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_file_system                 11/11/89  1133.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   truncate                        11/11/89  1040.1  Hirneisen.SysMaint.a    PL/I        
   terminate_                      11/11/89  1040.5  Hirneisen.SysMaint.a    PL/I        
   delentry                        11/11/89  1047.2  Hirneisen.SysMaint.a    PL/I        
@@ -5057,7 +5055,7 @@ bound_file_system                 08/22/90  0744.8  Fudge.SysMaint.a        bind
   set                             11/11/89  1042.8  Hirneisen.SysMaint.a    PL/I        
   asd_                            11/11/89  1048.4  Hirneisen.SysMaint.a    PL/I        
   chname                          11/11/89  1048.2  Hirneisen.SysMaint.a    PL/I        
-  fs_get                          08/21/90  1349.2  Fudge.SysMaint.a        PL/I        
+  fs_get                          11/11/89  1046.9  Hirneisen.SysMaint.a    PL/I        
   ringbr_                         11/11/89  1043.1  Hirneisen.SysMaint.a    PL/I        
   star_                           11/11/89  1041.4  Hirneisen.SysMaint.a    PL/I        
   fs_move                         11/11/89  1046.8  Hirneisen.SysMaint.a    PL/I        
@@ -5108,8 +5106,8 @@ bound_hc_reconfig                 11/11/89  1135.6  Hirneisen.SysMaint.a    bind
   io_reconfig                     11/11/89  1027.9  Hirneisen.SysMaint.a    PL/I        
   fv_iv_template                  11/11/89  0953.0  Hirneisen.SysMaint.a    alm         
  
-bound_hc_tuning                   10/23/92  0927.8  WAAnderson.SysMaint.a   binder      >ldd>hard>execution                         
-  force_write                     10/23/92  0926.2  WAAnderson.SysMaint.a   PL/I        
+bound_hc_tuning                   11/11/89  1136.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  force_write                     11/11/89  1026.4  Hirneisen.SysMaint.a    PL/I        
   user_wire                       11/11/89  1023.0  Hirneisen.SysMaint.a    PL/I        
   trace_mc                        11/11/89  1023.2  Hirneisen.SysMaint.a    PL/I        
   tc                              11/11/89  1023.7  Hirneisen.SysMaint.a    PL/I        
@@ -5204,7 +5202,7 @@ bound_scavenger                   11/11/89  1100.2  Hirneisen.SysMaint.a    bind
   scavenger                       11/11/89  1026.1  Hirneisen.SysMaint.a    PL/I        
   scavenge_volume                 11/11/89  1026.5  Hirneisen.SysMaint.a    PL/I        
  
-bound_segment_control             10/23/92  0928.1  WAAnderson.SysMaint.a   binder      >ldd>hard>execution                         
+bound_segment_control             11/11/89  1102.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   alm_syserr_caller               11/11/89  1024.4  Hirneisen.SysMaint.a    PL/I        
   mountedp                        11/11/89  1022.2  Hirneisen.SysMaint.a    PL/I        
   private_logical_volume          11/11/89  1021.9  Hirneisen.SysMaint.a    PL/I        
@@ -5215,7 +5213,7 @@ bound_segment_control             10/23/92  0928.1  WAAnderson.SysMaint.a   bind
   lock                            11/11/89  1022.3  Hirneisen.SysMaint.a    PL/I        
   meter_ast_lock                  11/11/89  0929.0  Hirneisen.SysMaint.a    alm         
   get_aste                        11/11/89  1023.1  Hirneisen.SysMaint.a    PL/I        
-  segment_mover                   10/23/92  0925.0  WAAnderson.SysMaint.a   PL/I        
+  segment_mover                   11/11/89  1021.0  Hirneisen.SysMaint.a    PL/I        
   deactivate                      11/11/89  1023.9  Hirneisen.SysMaint.a    PL/I        
   put_aste                        11/11/89  1021.7  Hirneisen.SysMaint.a    PL/I        
   limit_covert_channel            11/11/89  1022.7  Hirneisen.SysMaint.a    PL/I        
@@ -5229,13 +5227,13 @@ bound_segment_control             10/23/92  0928.1  WAAnderson.SysMaint.a   bind
   verify_lock                     11/11/89  1020.1  Hirneisen.SysMaint.a    PL/I        
   flush_ast_pool                  11/11/89  1023.4  Hirneisen.SysMaint.a    PL/I        
  
-bound_system_security             10/14/90  0945.6  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_system_security             11/11/89  1104.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   level_error                     11/11/89  1011.3  Hirneisen.SysMaint.a    PL/I        
   access_audit_util_              11/11/89  1013.8  Hirneisen.SysMaint.a    PL/I        
   access_audit_                   11/11/89  1014.5  Hirneisen.SysMaint.a    PL/I        
   level                           11/11/89  0927.5  Hirneisen.SysMaint.a    alm         
   access_audit_check_ep_          11/11/89  0927.6  Hirneisen.SysMaint.a    alm         
-  dc_find                         10/14/90  0942.1  Fudge.SysMaint.a        PL/I        
+  dc_find                         11/11/89  1012.7  Hirneisen.SysMaint.a    PL/I        
   access_mode                     11/11/89  1013.6  Hirneisen.SysMaint.a    PL/I        
   update_kste_access              11/11/89  1011.0  Hirneisen.SysMaint.a    PL/I        
   fs_modes                        11/11/89  1012.5  Hirneisen.SysMaint.a    PL/I        
@@ -5265,13 +5263,13 @@ bound_temp_2                      11/11/89  1108.8  Hirneisen.SysMaint.a    bind
   dir_lock_init                   11/11/89  0948.7  Hirneisen.SysMaint.a    PL/I        
   fnp_init                        11/11/89  0948.4  Hirneisen.SysMaint.a    PL/I        
  
-bound_tty_active                  08/16/90  1126.2  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_tty_active                  11/11/89  1109.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   fast_hc_ipc                     11/11/89  0925.4  Hirneisen.SysMaint.a    alm         
   hc_ipc                          11/11/89  0938.5  Hirneisen.SysMaint.a    PL/I        
   truncate_stacks                 11/11/89  0938.2  Hirneisen.SysMaint.a    PL/I        
   try_to_unlock_lock              11/11/89  0938.1  Hirneisen.SysMaint.a    PL/I        
   mcs_timer_daemon                11/11/89  0938.4  Hirneisen.SysMaint.a    PL/I        
-  tty_write                       08/16/90  1122.6  Fudge.SysMaint.a        PL/I        
+  tty_write                       11/11/89  0934.6  Hirneisen.SysMaint.a    PL/I        
   tty_util_                       11/11/89  0925.2  Hirneisen.SysMaint.a    alm         
   tty_read                        11/11/89  0935.8  Hirneisen.SysMaint.a    PL/I        
   tty_overstrike_canon            11/11/89  0936.4  Hirneisen.SysMaint.a    PL/I        
@@ -5358,11 +5356,11 @@ bound_fsim_                       11/11/89  1133.7  Hirneisen.SysMaint.a    bind
   msf_manager_                    11/11/89  1031.5  Hirneisen.SysMaint.a    PL/I        
   make_msf_                       11/11/89  1032.0  Hirneisen.SysMaint.a    PL/I        
  
-bound_hc_initlzr_auxl_            08/16/90  1129.2  Fudge.SysMaint.a        binder      >ldd>hard>execution                         
+bound_hc_initlzr_auxl_            11/11/89  1134.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   hc_initlzr_auxl_init_           11/11/89  1029.6  Hirneisen.SysMaint.a    PL/I        
   hc_device_acct_                 11/11/89  1029.8  Hirneisen.SysMaint.a    PL/I        
   rcp_mount_timer_poll_           11/11/89  1029.0  Hirneisen.SysMaint.a    PL/I        
-  lv_request_                     08/16/90  1123.2  Fudge.SysMaint.a        PL/I        
+  lv_request_                     11/11/89  1029.1  Hirneisen.SysMaint.a    PL/I        
  
 bound_ios_                        11/11/89  1143.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   get_at_entry_                   11/11/89  1013.3  Hirneisen.SysMaint.a    PL/I        
@@ -5498,11 +5496,11 @@ bound_rcp_                        11/11/89  1111.5  Hirneisen.SysMaint.a    bind
   rcp_reserve_                    11/11/89  0943.2  Hirneisen.SysMaint.a    PL/I        
   rcp_match_user_name_            11/11/89  0947.9  Hirneisen.SysMaint.a    PL/I        
  
-bound_rcprm_                      10/27/92  1455.9  WAAnderson.SysMaint.a   binder      >ldd>hard>execution                         
+bound_rcprm_                      11/11/89  1112.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   rcprm_find_resource_            11/11/89  0939.6  Hirneisen.SysMaint.a    PL/I        
   rcprm_find_op                   11/11/89  0940.4  Hirneisen.SysMaint.a    PL/I        
   rcprm_registry_util_            11/11/89  0936.8  Hirneisen.SysMaint.a    PL/I        
-  rcprm_journalize_               10/27/92  1453.8  WAAnderson.SysMaint.a   PL/I        
+  rcprm_journalize_               11/11/89  0938.8  Hirneisen.SysMaint.a    PL/I        
   rcprm_list_resource_            11/11/89  0937.6  Hirneisen.SysMaint.a    PL/I        
   rcprm_registry_mgr_             11/11/89  0937.1  Hirneisen.SysMaint.a    PL/I        
   rcprm_verify_registries_        11/11/89  0936.6  Hirneisen.SysMaint.a    PL/I        
@@ -5528,7 +5526,7 @@ bound_reloader_                   11/11/89  1113.2  Hirneisen.SysMaint.a    bind
   backup_control_mgr_             11/11/89  0935.6  Hirneisen.SysMaint.a    PL/I        
   reload                          11/11/89  0932.6  Hirneisen.SysMaint.a    PL/I        
  
-bound_system_control_             03/03/92  1551.9  Schroth.SysMaint.a      binder      >ldd>hard>execution                         
+bound_system_control_             11/11/89  1103.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
   system_control_                 11/11/89  1015.1  Hirneisen.SysMaint.a    PL/I        
   sc_process_command_line_        11/11/89  1016.8  Hirneisen.SysMaint.a    PL/I        
   sc_execute_command_line_        11/11/89  1017.7  Hirneisen.SysMaint.a    PL/I        
@@ -5540,13 +5538,13 @@ bound_system_control_             03/03/92  1551.9  Schroth.SysMaint.a      bind
   sc_edit_motd_                   11/11/89  1018.1  Hirneisen.SysMaint.a    PL/I        
   sc_exec_request_                11/11/89  1018.0  Hirneisen.SysMaint.a    PL/I        
   sc_ipc_mask_                    11/11/89  1017.1  Hirneisen.SysMaint.a    PL/I        
-  sc_init_                        10/17/90  1037.5  Fudge.SysMaint.a        PL/I        
+  sc_init_                        11/11/89  1017.2  Hirneisen.SysMaint.a    PL/I        
   sc_requests_                    11/11/89  1016.3  Hirneisen.SysMaint.a    PL/I        
   sc_shutdown_                    11/11/89  1016.1  Hirneisen.SysMaint.a    PL/I        
   sc_signal_handler_              11/11/89  1015.9  Hirneisen.SysMaint.a    PL/I        
   sys_log_                        11/11/89  1015.4  Hirneisen.SysMaint.a    PL/I        
   sc_command                      11/11/89  1018.4  Hirneisen.SysMaint.a    PL/I        
-  sc_admin_command_               03/03/92  1548.5  Schroth.SysMaint.a      PL/I        
+  sc_admin_command_               11/11/89  1018.8  Hirneisen.SysMaint.a    PL/I        
   sc_request_table_               11/11/89  0928.0  Hirneisen.SysMaint.a    alm         
   sc_stat_                        11/11/89  0927.9  Hirneisen.SysMaint.a    alm         
   lock_mca                        11/11/89  1019.7  Hirneisen.SysMaint.a    PL/I        
@@ -5587,15 +5585,15 @@ bound_tape_mult_                  11/11/89  1106.1  Hirneisen.SysMaint.a    bind
   tape_dim_data_                  11/11/89  0927.2  Hirneisen.SysMaint.a    alm         
   parse_tape_reel_name_           11/11/89  1008.7  Hirneisen.SysMaint.a    PL/I        
  
-bound_volume_reloader_            10/21/92  1525.0  WAAnderson.SysMaint.a   binder      >ldd>hard>execution                         
-  reload_volume_                  10/14/90  0943.1  Fudge.SysMaint.a        PL/I        
-  rldr_volume_map_                04/27/92  1229.6  Schroth.SysMaint.a      PL/I        
-  rldr_vtoc_header_               04/27/92  1229.3  Schroth.SysMaint.a      PL/I        
-  rldr_input_                     10/17/90  1036.5  Fudge.SysMaint.a        PL/I        
+bound_volume_reloader_            11/11/89  1129.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  reload_volume_                  11/11/89  1000.9  Hirneisen.SysMaint.a    PL/I        
+  rldr_volume_map_                11/11/89  0957.5  Hirneisen.SysMaint.a    PL/I        
+  rldr_vtoc_header_               11/11/89  0956.9  Hirneisen.SysMaint.a    PL/I        
+  rldr_input_                     11/11/89  0958.4  Hirneisen.SysMaint.a    PL/I        
   rldr_check_pvol_                11/11/89  0959.4  Hirneisen.SysMaint.a    PL/I        
-  rldr_label_                     10/21/92  1523.8  WAAnderson.SysMaint.a   PL/I        
+  rldr_label_                     11/11/89  0958.1  Hirneisen.SysMaint.a    PL/I        
   rldr_report_                    11/11/89  0957.8  Hirneisen.SysMaint.a    PL/I        
-  rldr_arg_reader_                10/21/92  1523.5  WAAnderson.SysMaint.a   PL/I        
+  rldr_arg_reader_                11/11/89  0959.8  Hirneisen.SysMaint.a    PL/I        
   rldr_output_                    11/11/89  0957.9  Hirneisen.SysMaint.a    PL/I        
   reloader                        11/11/89  1000.2  Hirneisen.SysMaint.a    PL/I        
   rldr_vtoc_buffer_               11/11/89  0957.2  Hirneisen.SysMaint.a    PL/I        
@@ -5652,7 +5650,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 	***************************************************
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -5711,7 +5709,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -5770,7 +5768,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -5829,7 +5827,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -5888,7 +5886,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -5909,23 +5907,23 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 		                    pc_wired                   21002
 		                    get_ptrs_                  21634
 		                    disk_control               21740
-		                    disk_error_data            32362
-		                    thread                     33550
-		                    pc_trace                   33640
-		                    pc_trace_pl1               34234
-		                    evict_page                 35716
-		                    core_queue_man             36246
-		                    cam_cache                  36470
-		                    lock_volmap                36640
-		                    stock                      37046
-		                    volmap                     37436
-		                    volmap_page                37772
-		                    pc_deposit                 40460
-		                    volmap_util                42566
-		                    hc_dm_util                 43364
-		                    page_synch                 45676
-		                    pc_signal                  46164
-		                    bootload_disk_post         46370
+		                    disk_error_data            32414
+		                    thread                     33572
+		                    pc_trace                   33662
+		                    pc_trace_pl1               34256
+		                    evict_page                 35740
+		                    core_queue_man             36270
+		                    cam_cache                  36512
+		                    lock_volmap                36662
+		                    stock                      37070
+		                    volmap                     37460
+		                    volmap_page                40014
+		                    pc_deposit                 40502
+		                    volmap_util                42610
+		                    hc_dm_util                 43406
+		                    page_synch                 45720
+		                    pc_signal                  46206
+		                    bootload_disk_post         46412
 		bound_priv_1                       43  (0, 0, 0)
 		                    privileged_mode_ut             0
 		                    absadr                      1056
@@ -5947,7 +5945,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6006,7 +6004,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6044,8 +6042,8 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 		                    vtoc_attributes            12010
 		                    change_dtem                15100
 		                    ref_name_                  15214
-		                    get_pathname_              16602
-		                    getuid                     17114
+		                    get_pathname_              16610
+		                    getuid                     17122
 		bound_disk_util_2                 125  (0, 0, 0)
 		                    accept_fs_disk                 0
 		                    demount_pv                   652
@@ -6065,7 +6063,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6095,49 +6093,49 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 		                    asd_                       46230
 		                    chname                     54352
 		                    fs_get                     55570
-		                    ringbr_                    57230
-		                    star_                      60404
-		                    fs_move                    63420
-		                    initiate_search_rules      64464
-		                    trap_caller_caller_        66126
-		                    acl                        66516
-		                    list_inacl_all             71146
-		                    set_stack_ptr              72406
-		                    get_defname_               72420
-		                    stack_oob_handler          73016
-		                    access_class_check         73340
-		                    reclassify                 75164
-		                    hc_page_trace                   100600
-		                    copy_fdump                      101222
-		                    correct_qused                   103452
-		                    demand_deactivate               104730
-		                    ips_                            105134
-		                    kst_info                        105252
-		                    level_0_                        105362
-		                    other_process_info              106410
-		                    proc_info                       106600
-		                    quota_util                      106720
-		                    ring0_init                      106744
-		                    ring_0_peek                     107312
-		                    set_disk_table_loc              107754
-		                    set_kst_attributes              110072
+		                    ringbr_                    57264
+		                    star_                      60440
+		                    fs_move                    63454
+		                    initiate_search_rules      64520
+		                    trap_caller_caller_        66162
+		                    acl                        66552
+		                    list_inacl_all             71202
+		                    set_stack_ptr              72442
+		                    get_defname_               72454
+		                    stack_oob_handler          73052
+		                    access_class_check         73374
+		                    reclassify                 75220
+		                    hc_page_trace                   100634
+		                    copy_fdump                      101256
+		                    correct_qused                   103506
+		                    demand_deactivate               104764
+		                    ips_                            105170
+		                    kst_info                        105306
+		                    level_0_                        105416
+		                    other_process_info              106444
+		                    proc_info                       106634
+		                    quota_util                      106754
+		                    ring0_init                      107000
+		                    ring_0_peek                     107346
+		                    set_disk_table_loc              110010
+		                    set_kst_attributes              110126
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
 		                    ENTRY NAME                OFFSET
 
 
-		                    set_privileges                  110324
-		                    set_sons_lvid                   112320
-		                    shutdown                        113126
-		                    tc_shutdown                     113536
-		                    template_address_space          113630
-		                    uid_path_util                   116514
-		                    vacate_pv                       117402
+		                    set_privileges                  110360
+		                    set_sons_lvid                   112354
+		                    shutdown                        113162
+		                    tc_shutdown                     113572
+		                    template_address_space          113664
+		                    uid_path_util                   116550
+		                    vacate_pv                       117436
 		bound_hc_backup                   131  (0, 0, 0)
 		                    hc_dmpr_primitives             0
 		                    dbm_man                     5040
@@ -6183,7 +6181,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6242,7 +6240,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6285,23 +6283,23 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 		                    meter_ast_lock             12544
 		                    get_aste                   12636
 		                    segment_mover              14216
-		                    deactivate                 17026
-		                    put_aste                   17272
-		                    limit_covert_channel       17450
-		                    deactivate_for_demount     17730
-		                    shutdown_file_system       20754
-		                    switch_shutdown_file_system21506
-		                    access_viol                21536
-		                    boundfault                 21606
-		                    outward_call_handler       22664
-		                    hc_exponent_control        23116
-		                    verify_lock                23516
-		                    flush_ast_pool             26754
+		                    deactivate                 17002
+		                    put_aste                   17246
+		                    limit_covert_channel       17424
+		                    deactivate_for_demount     17704
+		                    shutdown_file_system       20730
+		                    switch_shutdown_file_system21462
+		                    access_viol                21512
+		                    boundfault                 21562
+		                    outward_call_handler       22640
+		                    hc_exponent_control        23072
+		                    verify_lock                23472
+		                    flush_ast_pool             26730
 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6331,13 +6329,13 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 		                    try_to_unlock_lock          2320
 		                    mcs_timer_daemon            2454
 		                    tty_write                   2602
-		                    tty_util_                  11304
-		                    tty_read                   11574
-		                    tty_overstrike_canon       20176
-		                    tty_replace_canon          21130
-		                    tty_index                  22024
-		                    tty_modes                  35200
-		                    tty_tables_mgr             40504
+		                    tty_util_                  11166
+		                    tty_read                   11456
+		                    tty_overstrike_canon       20060
+		                    tty_replace_canon          21012
+		                    tty_index                  21706
+		                    tty_modes                  35062
+		                    tty_tables_mgr             40366
 		bound_vtoc_man                    150  (0, 0, 0)
 		                    vtoc_man                       0
 		                    vtoc_search                 5060
@@ -6360,7 +6358,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6419,7 +6417,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 
@@ -6478,7 +6476,7 @@ template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm 
 
 
 
-		                HARDCORE SEGMENTS   SYSTEM MR12.5
+		                HARDCORE SEGMENTS   SYSTEM MR12.3
 
 		   SEGMENT NAME                  SEG #
 

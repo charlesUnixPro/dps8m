@@ -5089,6 +5089,9 @@ void tct(DCDstruct *ins)
     e->srcCN = e->CN1;    // starting at char pos CN
     e->srcTA = e->TA1;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
+
     switch(e->TA1)
     {
         case CTA4:
@@ -5109,22 +5112,36 @@ void tct(DCDstruct *ins)
     // fetch 2nd operand ...
     
     word36 xlat = e->OP2;   //op[1];                 // 2nd word is a pointer to a translation table
-    int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
-    int xREG = xlat & 0xf;
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT OP2: %012llo\n", e -> OP2);
+
+    //int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
+    word1 xA = GET_A (xlat);
+
+    //int xREG = xlat & 0xf;
+    word4 xREG = GET_TD (xlat);
+
+    //word18 r = (word18)getMFReg(xREG, true, false);
+    // XXX I am not sure about this; the documentation is vague about 18/36
+    // bit usage here.
+    word36 r = getMFReg (xREG, false, false);
     
-    word18 r = (word18)getMFReg(xREG, true, false);
-    
-    word18 xAddress = GETHI(xlat);
+    word18 xAddress = GETHI (xlat);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     if (xA)
     {
         // if 2nd operand contains A (bit-29 set) then it Means Y-char92 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(xAddress, 15, 3);
-        int offset = xAddress & 077777;  // 15-bit signed number
-        xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+        //int n = (int)bitfieldExtract36(xAddress, 15, 3);
+        word3 n = GET_ARN (xlat);
+        //int offset = xAddress & 077777;  // 15-bit signed number
+        word18 offset = SIGNEXT15 (xAddress & MASK15);  // 15-bit signed number
+        xAddress = (AR [n] . WORDNO + offset) & AMASK;
         
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "TCT OP2 is indirect; offset %06o AR[%d].WORDNO %06o\n",
+                   offset, n, AR [n] . WORDNO);
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
@@ -5132,18 +5149,22 @@ void tct(DCDstruct *ins)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-            e->ADDR2.SNR = PR[n].SNR;
-            e->ADDR2.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            e->ADDR2.SNR = AR[n].SNR;
+            e->ADDR2.RNR = max3(AR[n].RNR, TPR.TRR, PPR.PRR);
             
             e->ADDR2.mat = viaPR;
         }
     }
     
-    xAddress +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
+    // XXX Watch for 36u*r overflow here
+    xAddress +=  ((9u*ARn_CHAR + 36u*r + ARn_BITNO) / 36u);
     xAddress &= AMASK;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT OP2 final address %06o\n",
+               xAddress);
     e->ADDR2.address = xAddress;
-    
+
     // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
     // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
@@ -5154,8 +5175,8 @@ void tct(DCDstruct *ins)
     // 6-BIT CHARACTER     16 WORDS
     // 9-BIT CHARACTER    128 WORDS
     
-    int xlatSize = 0;   // size of xlation table in words .....
-    switch(e->TA1)
+    uint xlatSize = 0;   // size of xlation table in words .....
+    switch(e -> TA1)
     {
         case CTA4:
             xlatSize = 4;
@@ -5168,62 +5189,68 @@ void tct(DCDstruct *ins)
             break;
     }
     
-    word36 xlatTbl[128];
-    memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
+    word36 xlatTbl [128];
+    memset (xlatTbl, 0, sizeof (xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
     //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
-    EISReadN(&e->ADDR2, xlatSize, xlatTbl);
+    EISReadN (& e -> ADDR2, xlatSize, xlatTbl);
     
     // fetch 3rd operand ...
     
-    word18 y3 = GETHI(e->OP3);
-    int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
-    int y3REG = e->OP3 & 0xf;
+    word18 y3 = GETHI (e -> OP3);
+    //int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
+    word1 y3A = GET_A (e -> OP3);
+    //int y3REG = e->OP3 & 0xf;
+    word4 y3REG = GET_TD (e -> OP3);
     
-    r = (word18)getMFReg(y3REG, true, false);
+    //r = (word18)getMFReg(y3REG, true, false);
+    // XXX I am not sure about this; the documentation is vague about 18/36
+    // bit usage here.
+    r = getMFReg (y3REG, false, false);
     
     ARn_CHAR = 0;
     ARn_BITNO = 0;
     if (y3A)
-    {
+      {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3, 15, 3);
-        int offset = y3 & 077777;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+        //int n = (int)bitfieldExtract36(y3, 15, 3);
+        word3 n = GET_ARN (e -> OP3);
+        //int offset = y3 & 077777;  // 15-bit signed number
+        word18 offset = SIGNEXT15 (y3 & MASK15);  // 15-bit signed number
+        y3 = (AR [n] . WORDNO + offset) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_mode)
-        {
+        if (get_addr_mode () == APPEND_mode)
+          {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-            e->ADDR3.SNR = PR[n].SNR;
-            e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            e -> ADDR3 . SNR = PR [n] . SNR;
+            e -> ADDR3 . RNR = max3 (PR [n] . RNR, TPR . TRR, PPR . PRR);
             
-            e->ADDR3.mat = viaPR;
-        }
-    }
+            e -> ADDR3 . mat = viaPR;
+          }
+      }
     
-    y3 +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
+    // XXX Watch for 36u*r overflow here
+    y3 +=  ((9u*ARn_CHAR + 36u*r + ARn_BITNO) / 36u);
     y3 &= AMASK;
 
-    e->ADDR3.address = y3;
+    e -> ADDR3 . address = y3;
     
     
     word36 CY3 = 0;
     
     //get469(NULL, 0, 0, 0);    // initialize char getter
 
-#ifdef DBGX
-sim_printf ("TCTR N1 %d\n", e -> N1);
-#endif
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT N1 %d\n", e -> N1);
 
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
-        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
         int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
 
         int m = 0;
@@ -5242,11 +5269,10 @@ sim_printf ("TCTR N1 %d\n", e -> N1);
         }
         
         unsigned int cout = xlate(xlatTbl, e->srcTA, m);
-#ifdef DBGX
-sim_printf ("TCT c %03o %c cout %03o %c\n",
-            m, iscntrl (m) ? '?' : m, 
-            cout, iscntrl (cout) ? '?' : cout);
-#endif
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "TCT c %03o %c cout %03o %c\n",
+                   m, isprint (m) ? '?' : m, 
+                   cout, isprint (cout) ? '?' : cout);
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
@@ -5260,7 +5286,10 @@ sim_printf ("TCT c %03o %c cout %03o %c\n",
     
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT y3 %012llo\n", CY3);
     EISWrite(&e->ADDR3, CY3);
+   
 }
 
 /*
@@ -5573,30 +5602,41 @@ unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
     SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
     if_sim_debug (DBG_CAC, & cpu_dev)
-    if (e -> N1 < 80 && e -> N2 < 80)
       {
-        sim_printf ("[%lld]\n", sim_timell ());
-        sim_printf ("s1: <");
-        for (int i = 0; i < e -> N1; i ++)
+        if (e -> N1 < 80 && e -> N2 < 80)
           {
-            unsigned char c = (unsigned char) EIScac (& e -> ADDR1, e -> srcCN + i, e -> srcTA);
-            if (isprint (c))
-              sim_printf ("%c", c);
-            else
-              sim_printf ("\\%03o", c);
+            char buffer [4 * 80 + 1];
+            buffer [0] = '\0';
+
+            //sim_printf ("[%lld]\n", sim_timell ());
+            //sim_printf ("s1: <");
+            for (int i = 0; i < e -> N1; i ++)
+              {
+                char * bp = buffer + strlen (buffer);
+                unsigned char c = (unsigned char) EIScac (& e -> ADDR1, e -> srcCN + i, e -> srcTA);
+                if (isprint (c))
+                  sprintf (bp, "%c", c);
+                else
+                  sprintf (bp, "\\%03o", c);
+              }
+            //sim_printf (">\n");
+
+            //sim_printf ("s2: <");
+            char buffer2 [4 * 80 + 1];
+            buffer2 [0] = '\0';
+            for (int i = 0; i < e -> N2; i ++)
+              {
+                char * bp = buffer2 + strlen (buffer2);
+                unsigned char c = (unsigned char) EIScac (& e -> ADDR2, e -> srcCN2 + i, e -> srcTA);
+                if (isprint (c))
+                  sprintf (bp, "%c", c);
+                else
+                  sprintf (bp, "\\%03o", c);
+              }
+            //sim_printf (">\n");
+            sim_debug (DBG_CAC, & cpu_dev, "s1: <%s>\n", buffer);
+            sim_debug (DBG_CAC, & cpu_dev, "s2: <%s>\n", buffer2);
           }
-        sim_printf (">\n");
-    
-        sim_printf ("s2: <");
-        for (int i = 0; i < e -> N2; i ++)
-          {
-            unsigned char c = (unsigned char) EIScac (& e -> ADDR2, e -> srcCN2 + i, e -> srcTA);
-            if (isprint (c))
-              sim_printf ("%c", c);
-            else
-              sim_printf ("\\%03o", c);
-          }
-        sim_printf (">\n");
       }
 
 #ifdef DBGX

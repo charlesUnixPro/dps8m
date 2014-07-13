@@ -1695,30 +1695,43 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_
     return 0;
   }
 
-static void print_uint128_r (__uint128_t n)
-{
-    if (n == 0) {
-      return;
-    }
-
-    print_uint128_r(n/10);
-    sim_printf("%c", (int) (n%10+0x30));
-}
-
-void print_int128 (__int128_t n)
-{
+static void print_uint128_r (__uint128_t n, char * p)
+  {
     if (n == 0)
-    {
-        sim_printf ("0");
+      return;
+
+    print_uint128_r(n / 10, p);
+    if (p)
+      {
+        char s [2];
+        s [0] = n % 10 + '0';
+        s [1] = '\0';
+        strcat (p, s);
+      }
+    else
+      sim_printf("%c", (int) (n%10+0x30));
+  }
+
+void print_int128 (__int128_t n, char * p)
+  {
+    if (n == 0)
+      {
+        if (p)
+          strcat (p, "0");
+        else
+          sim_printf ("0");
         return;
-    }
+      }
     if (n < 0)
-    {
-        sim_printf ("-");
+      {
+        if (p)
+          strcat (p, "-");
+        else
+          sim_printf ("-");
         n = -n;
-    }
-    print_uint128_r ((__uint128_t)n);
-}
+      }
+    print_uint128_r ((__uint128_t) n, p);
+  }
 
 // Return simh's gtime as a long long.
 uint64 sim_timell (void)

@@ -81,5 +81,5 @@ t_uint64 extr (void * bits, int offset, int nbits);
 void put36 (word36 val, uint8 * bits, uint woffset);
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp);
 int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 wordp);
-void print_int128 (__int128_t n);
+void print_int128 (__int128_t n, char * p);
 uint64 sim_timell (void);

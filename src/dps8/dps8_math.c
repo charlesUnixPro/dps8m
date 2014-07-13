@@ -1749,10 +1749,10 @@ void dvf (void)
     word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
     word72 m2 = SIGNEXT72(SIGNEXT36(CY));
 
-//sim_printf ("[%lld]\n", sim_timell ());
-//sim_printf ("m1 "); print_int128 (m1); sim_printf ("\n");
-//sim_printf ("-----------------\n");
-//sim_printf ("m2 "); print_int128 (m2); sim_printf ("\n");
+sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
+sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
+sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
+sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
 
     if (m2 == 0)
     {
@@ -1911,10 +1911,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 // MM code
 #ifdef DVF_CAC
 
-//sim_printf ("dvf [%lld]\n", sim_timell ());
-//sim_printf ("rA %llu\n", rA);
-//sim_printf ("rQ %llu\n", rQ);
-//sim_printf ("CY %llu\n", CY);
+sim_debug (DBG_CAC, & cpu_dev, "dvf [%lld]\n", sim_timell ());
+sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", rA);
+sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", rQ);
+sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
     if (CY == 0)
       {
@@ -1927,8 +1927,6 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         
         return;
     }
-// http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
-// slide 10: sequential algorithim
 
     // dividend format
     // 0  1     70 71
@@ -1951,7 +1949,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         sign = - sign;
       }
     zFrac &= MASK70;
-//sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
+
+    char buf [128] = "";
+    print_int128 (zFrac, buf);
+    sim_debug (DBG_CAC, & cpu_dev, "zFrac %s\n", buf);
 
     // Get the 35 bits of the divisor (36 bits less the sign bit)
 
@@ -1965,11 +1966,18 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         sign = - sign;
       }
     dFrac &= MASK35;
-//sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
+
+    char buf2 [128] = "";
+    print_int128 (dFrac, buf2);
+    sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
 
 
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
+
+    char buf3 [128] = "";
+    print_int128 (remainder, buf3);
+    sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
 
     if (sign == -1)
       quot = ~quot + 1;
@@ -1982,8 +1990,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
  
 #endif
 
-//sim_printf ("Quotient %lld (%llo)\n", rA, rA);
-//sim_printf ("Remainder %lld\n", rQ);
+sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", rA, rA);
+sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", rQ);
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }
