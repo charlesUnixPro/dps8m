@@ -902,7 +902,6 @@ next:;
           {
             char * cname =
               sprintNChars (segp + e -> symbol_offset + cp [i] . name_ptr, cp [i] . name_len);
-sim_printf ("returning %s\n", cname);
             if (compname)
               * compname = cname;
             if (compoffset)
