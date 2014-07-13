@@ -6031,41 +6031,80 @@ static t_stat DoEISInstruction (void)
             
         case 0503:  ///< abd         Add   bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                // 3-bit register specifier
+                uint ARn = bitfieldExtract36 (cu . IWB, 33, 3);
+
+//sim_printf ("ABD AR%d was WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
+//ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
+//sim_printf ("ABD A %d address %05llo reg %llo cr %d (%06o)\n",
+//GET_A (cu . IWB) ? 1 : 0, getbits36 (cu . IWB, 3, 15), getbits36 (cu . IWB, 32, 4), getCrAR (getbits36 (cu . IWB, 32, 4)), getCrAR (getbits36 (cu . IWB, 32, 4)));
+
+                // 4-bit register modification (None except au, qu, al, ql, xn)
+                uint reg = getbits36 (cu . IWB, 32, 4);
                 
-                int r = SIGNEXT18(getCrAR(reg));
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   ADDRESS + C(REG) / 36 -> C(ARn.WORDNO)
-                    //   (C(REG)mod36) / 9 -> C(ARn.CHAR)
-                    //   C(REG)mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = address + r / 36;
-                    // AR[ARn].CHAR = (r % 36) / 9;
-                    // AR[ARn].ABITNO = r % 9;
-                    SET_AR_CHAR_BIT (ARn, (r % 36) / 9, r % 9);
-                }
+// The bit string count in the register specified in the DR field is divided by
+// 36. The quotient is taken as the word count and the remainder is taken as
+// the bit count. The word count is added to the y field for which bit 3 of the
+// instruction word is extended and the sum is taken.
+
+                word18 bitStringCnt = getCrAR (reg);
+                word18 wordCnt = bitStringCnt / 36u;
+                word18 bitCnt = bitStringCnt % 36u;
+
+                word18 address = 
+                  SIGNEXT15 (getbits36 (cu . IWB, 3, 15)) & AMASK;
+                address += wordCnt;
+
+                if (! GET_A (cu . IWB))
+                  {
+
+// If bit 29=0, the sum is loaded into bits 0-17 of the specified AR, and the
+// character portion and the bit portion of the remainder are loaded into bits
+// 18-23 of the specified AR.
+
+                    AR [ARn] . WORDNO = address;
+                    SET_AR_CHAR_BIT (ARn, bitCnt / 9u, bitCnt % 9u);
+                  }
                 else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                    //   (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
-                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 36) / 9;
-                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn)) % 9);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
+                  {
+// If bit 29=1, the sum is added to bits 0-17 of the specified AR.
+                    AR [ARn] . WORDNO += address;
+
+//  The CHAR and BIT fields (bits 18-23) of the specified AR are added to the 
+//  character portion and the bit portion of the remainder. 
+
+                    word18 charPortion = bitCnt / 9;
+                    word18 bitPortion = bitCnt % 9;
+
+                    charPortion += GET_AR_CHAR (ARn);
+                    bitPortion += GET_AR_BITNO (ARn);
+
+// WORD, CHAR and BIT fields generated in this manner are loaded into bits 0-23
+// of the specified AR. With this addition, carry from the BIT field (bit 20)
+// and the CHAR field (bit 18) is transferred (when BIT field >8, CHAR field
+// >3).
+
+                    while (bitPortion > 8)
+                      {
+                        bitPortion -= 9;
+                        charPortion += 1;
+                      }
+
+                    while (charPortion > 3)
+                      {
+                        charPortion -= 3;
+                        AR [ARn] . WORDNO += 1;
+                      }
+
+
+                    SET_AR_CHAR_BIT (ARn, charPortion, bitPortion);
+                  }
+                AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
                 // AR[ARn].CHAR &= 03;
                 // AR[ARn].ABITNO &= 077;
+//sim_printf ("ABD AR%d is  WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
+//ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
             }
             break;
             
