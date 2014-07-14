@@ -5726,7 +5726,7 @@ void scd(DCDstruct *ins)
     setupOperandDescriptor(2, e);
     
     parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(2, e, 1);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
