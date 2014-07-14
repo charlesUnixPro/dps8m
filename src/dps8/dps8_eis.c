@@ -5695,7 +5695,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
         if (c1 != c2)
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
-            SCF (c1 < c2, cu . IR, I_CARRY);
+            SCF (c1 > c2, cu . IR, I_CARRY);
 #ifdef DBGX
 sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
 #endif
@@ -5726,7 +5726,7 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
             if (c1 != c2)
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
-                SCF (c1 < c2, cu . IR, I_CARRY);
+                SCF (c1 > c2, cu . IR, I_CARRY);
 #ifdef DBGX
 sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
 #endif
@@ -5759,7 +5759,7 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
               {
                 CLRF(cu.IR, I_ZERO);  // an inequality found
                 
-                SCF(c1 < c2, cu.IR, I_CARRY);
+                SCF(c1 > c2, cu.IR, I_CARRY);
                 
 #ifdef DBGX
 sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
