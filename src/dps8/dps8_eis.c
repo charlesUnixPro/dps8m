@@ -4762,7 +4762,7 @@ void scm(DCDstruct *ins)
     setupOperandDescriptor(2, e);
   
     parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(2, e, 1);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -4771,35 +4771,18 @@ void scm(DCDstruct *ins)
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
 
-    switch(e->TA1)
+    switch(e->srcTA)
     {
         case CTA4:
-            //e->srcAddr = e->YChar41;
             e->srcSZ = 4;
             break;
         case CTA6:
-            //e->srcAddr = e->YChar61;
             e->srcSZ = 6;
             break;
         case CTA9:
-            //e->srcAddr = e->YChar91;
             e->srcSZ = 9;
             break;
     }
-    
-    switch(e->TA1)      // assumed same type
-    {
-        case CTA4:
-            //e->srcAddr2 = e->YChar42;
-            break;
-        case CTA6:
-            //e->srcAddr2 = e->YChar62;
-            break;
-        case CTA9:
-            //e->srcAddr2 = e->YChar92;
-            break;
-    }
-    //e->srcAddr2 = GETHI(e->OP2);
     
     // get 'mask'
     int mask = (int)bitfieldExtract36(e->op0, 27, 9);
@@ -4828,8 +4811,6 @@ void scm(DCDstruct *ins)
     }
     else
     {
-        //get469(NULL, 0, 0, 0);
-        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
         ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
     }
     switch(e->srcTA2)
@@ -4903,7 +4884,6 @@ sim_printf ("SCM mask %06o ctest %06o\n", mask, ctest);
     int i = 0;
     for(; i < e->N1; i += 1)
     {
-        //int yCharn1 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
         int yCharn1 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         
         int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
@@ -4955,7 +4935,7 @@ void scmr(DCDstruct *ins)
     setupOperandDescriptor(2, e);
     
     parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -4964,18 +4944,15 @@ void scmr(DCDstruct *ins)
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
     
-    switch(e->TA1)
+    switch(e->srcTA)
     {
         case CTA4:
-            //e->srcAddr = e->YChar41;
             e->srcSZ = 4;
             break;
         case CTA6:
-            //e->srcAddr = e->YChar61;
             e->srcSZ = 6;
             break;
         case CTA9:
-            //e->srcAddr = e->YChar91;
             e->srcSZ = 9;
             break;
     }
@@ -4987,19 +4964,6 @@ void scmr(DCDstruct *ins)
 
     //word18 newSrcAddr = e->srcAddr + nSrcWords;
     e->ADDR1.address += nSrcWords;
-    
-    switch(e->TA1)      // assumed same type
-    {
-        case CTA4:
-            //e->srcAddr2 = e->YChar42;
-            break;
-        case CTA6:
-            //e->srcAddr2 = e->YChar62;
-            break;
-        case CTA9:
-            //e->srcAddr2 = e->YChar92;
-            break;
-    }
     
     // get 'mask'
     int mask = (int)bitfieldExtract36(e->op0, 27, 9);
@@ -5032,9 +4996,7 @@ void scmr(DCDstruct *ins)
         //    int y2offset = getMF2Reg(e->MF2 & MFkREGMASK, (word18)bitfieldExtract36(e->OP2, 27, 9));
         //    e->srcAddr2 += y2offset;
         //}
-        //get469(NULL, 0, 0, 0);
-        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
-        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
+        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->srcTA2);
     }
     switch(e->srcTA2)
     {
@@ -5708,6 +5670,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
 // CANFAULT
 void scd(DCDstruct *ins)
 {
+//sim_printf ("SCD %lld\n", sim_timell ());
     EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1-1
@@ -5720,66 +5683,52 @@ void scd(DCDstruct *ins)
     //      N1-1→ C(Y3)12,35
     //
     
-    // The REG field of MF1 is checked for a legal code. If DU is specified in the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and the character or characters are arranged within the 18 bits of the word address portion of the operand descriptor.
+    // The REG field of MF1 is checked for a legal code. If DU is specified in
+    // the REG field of MF2 in one of the four multiword instructions (SCD,
+    // SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and
+    // the character or characters are arranged within the 18 bits of the word
+    // address portion of the operand descriptor.
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
     parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 1); // use TA1
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    // Both the string and the test character pair are treated as the data type
+    // given for the string, TA1. A data type given for the test character
+    // pair, TA2, is ignored.
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
     
-    switch(e->TA1)
-    {
-        case CTA4:
-            //e->srcAddr = e->YChar41;
-            break;
-        case CTA6:
-            //e->srcAddr = e->YChar61;
-            break;
-        case CTA9:
-            //e->srcAddr = e->YChar91;
-            break;
-    }
-    
-    //e->srcAddr2 = GETHI(e->OP2);
-    //e->ADDR2.address = GETHI(e->OP2);
     
     // fetch 'test' char - double
-    //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.
+    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // instruction word does not contain an operand descriptor for the test
+    // character; instead, it contains the test character as a direct upper
+    // operand in bits 0,8.
     
     int c1 = 0;
     int c2 = 0;
     
-#ifndef QUIET_UNUSED
-    int ctest = 0;
-#endif
     if (!(e->MF2 & MFkID) && ((e->MF2 & MFkREGMASK) == 3))  // MF2.du
     {
+//sim_printf ("Bull\n");
         // per Bull RJ78, p. 5-45
         switch(e->srcTA)
         {
             case CTA4:
-                //c1 = (e->srcAddr2 >> 13) & 017;
-                //c2 = (e->srcAddr2 >>  9) & 017;
                 c1 = (e->ADDR2.address >> 13) & 017;
                 c2 = (e->ADDR2.address >>  9) & 017;
                 break;
             case CTA6:
-                //c1 = (e->srcAddr2 >> 12) & 077;
-                //c2 = (e->srcAddr2 >>  6) & 077;
                 c1 = (e->ADDR2.address >> 12) & 077;
                 c2 = (e->ADDR2.address >>  6) & 077;
                 break;
             case CTA9:
-                //c1 = (e->srcAddr2 >> 9) & 0777;
-                //c2 = (e->srcAddr2     ) & 0777;
                 c1 = (e->ADDR2.address >> 9) & 0777;
                 c2 = (e->ADDR2.address     ) & 0777;
                 break;
@@ -5787,30 +5736,32 @@ void scd(DCDstruct *ins)
     }
     else
     {
+//sim_printf ("!Bull\n");
         if (!(e->MF2 & MFkID))  // if id is set then we don't bother with MF2 reg as an address modifier
         {
             int y2offset = getMF2Reg(e->MF2 & MFkREGMASK, (word18)bitfieldExtract36(e->OP2, 27, 9));
-            //e->srcAddr2 += y2offset;
+//sim_printf ("n %o data %llo y2offset %o\n", e->MF2 & MFkREGMASK, bitfieldExtract36(e->OP2, 27, 9), y2offset);
+
             e->ADDR2.address += y2offset;
         }
-        //get469(NULL, 0, 0, 0);
-        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
-        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
-        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
-        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
-
+        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->srcTA2);
+        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->srcTA2);
     }
+
     switch(e->srcTA2)
     {
         case CTA4:
+//sim_printf ("CTA4\n");
             c1 &= 017;    // keep 4-bits
             c2 &= 017;    // keep 4-bits
             break;
         case CTA6:
+//sim_printf ("CTA6\n");
             c1 &= 077;    // keep 6-bits
             c2 &= 077;    // keep 6-bits
             break;
         case CTA9:
+//sim_printf ("CTA9\n");
             c1 &= 0777;   // keep 9-bits
             c2 &= 0777;   // keep 9-bits
             break;
@@ -5826,7 +5777,9 @@ void scd(DCDstruct *ins)
     word6 ARn_BITNO = 0;
     if (y3A)
     {
-        // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
+	// if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not
+	// the memory address of the data but is a reference to a pointer
+	// register pointing to the data.
         int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
@@ -5836,8 +5789,6 @@ void scd(DCDstruct *ins)
         
         if (get_addr_mode() == APPEND_mode)
         {
-            //TPR.TSR = PR[n].SNR;
-            //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
             e->ADDR3.SNR = PR[n].SNR;
             e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
             
@@ -5850,9 +5801,6 @@ void scd(DCDstruct *ins)
     
     e->ADDR3.address = y3;
     
-    
-    //get469(NULL, 0, 0, 0);    // initialize char getter
-    
     int yCharn11 = 0;
     int yCharn12 = 0;
     
@@ -5862,18 +5810,15 @@ void scd(DCDstruct *ins)
         
         if (i == 0)
         {
-            //yCharn11 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
-            //yCharn12 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
             yCharn11 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
             yCharn12 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         }
         else
         {
             yCharn11 = yCharn12;
-            //yCharn12 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
             yCharn12 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         }
-        
+//sim_printf ("yCharn11 %o c1 %o yCharn12 %o c2 %o\n", yCharn11, c1, yCharn12, c2);
         if (yCharn11 == c1 && yCharn12 == c2)
             break;
     }
@@ -5910,7 +5855,7 @@ void scdr(DCDstruct *ins)
     setupOperandDescriptor(2, e);
     
     parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -5918,19 +5863,6 @@ void scdr(DCDstruct *ins)
     //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
-    
-    switch(e->TA1)
-    {
-        case CTA4:
-            //e->srcAddr = e->YChar41;
-            break;
-        case CTA6:
-            //e->srcAddr = e->YChar61;
-            break;
-        case CTA9:
-            //e->srcAddr = e->YChar91;
-            break;
-    }
     
     // adjust addresses & offsets for reading in reverse ....
     int nSrcWords = 0;
@@ -5950,30 +5882,21 @@ void scdr(DCDstruct *ins)
     int c1 = 0;
     int c2 = 0;
     
-#ifndef QUIET_UNUSED
-    int ctest = 0;
-#endif
     if (!(e->MF2 & MFkID) && ((e->MF2 & MFkREGMASK) == 3))  // MF2.du
     {
         // per Bull RJ78, p. 5-45
         switch(e->srcTA)
         {
             case CTA4:
-                //c1 = (e->srcAddr2 >> 13) & 017;
-                //c2 = (e->srcAddr2 >>  9) & 017;
                 c1 = (e->ADDR2.address >> 13) & 017;
                 c2 = (e->ADDR2.address >>  9) & 017;
                 break;
             case CTA6:
-                //c1 = (e->srcAddr2 >> 12) & 077;
-                //c2 = (e->srcAddr2 >>  6) & 077;
                 c1 = (e->ADDR2.address >> 12) & 077;
                 c2 = (e->ADDR2.address >>  6) & 077;
 
                 break;
             case CTA9:
-                //c1 = (e->srcAddr2 >> 9) & 0777;
-                //c2 = (e->srcAddr2     ) & 0777;
                 c1 = (e->ADDR2.address >> 9) & 0777;
                 c2 = (e->ADDR2.address     ) & 0777;
                 
@@ -5988,11 +5911,8 @@ void scdr(DCDstruct *ins)
             //e->srcAddr2 += y2offset;
             e->ADDR2.address += y2offset;
         }
-        //get469(NULL, 0, 0, 0);    // initialize char getter
-        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
-        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
-        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
-        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
+        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->srcTA2);
+        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->srcTA2);
     }
     switch(e->srcTA2)
     {
@@ -6055,15 +5975,12 @@ void scdr(DCDstruct *ins)
         // since we're going in reverse things are a bit different
         if (i == 0)
         {
-            //yCharn12 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
-            //yCharn11 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
             yCharn12 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
             yCharn11 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
         }
         else
         {
             yCharn12 = yCharn11;
-            //yCharn11 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
             yCharn11 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
         }
         
