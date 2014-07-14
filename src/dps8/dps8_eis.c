@@ -1153,7 +1153,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
     }
 }
 
-static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
+static void parseAlphanumericOperandDescriptor(uint k, EISstruct *e, uint useTA)
 {
     word18 MFk = e->MF[k-1];
     
@@ -1162,18 +1162,27 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
-    int address = SIGNEXT18(GETHI(opDesc));
+    word18 address = GETHI (opDesc);
     
+    if (useTA != k)
+      e -> TA [k - 1] = e -> TA [useTA - 1];
+    else
+      e -> TA [k - 1] = (int)bitfieldExtract36(opDesc, 13, 2);    // type alphanumeric
+//bool xx = e -> TA [k - 1] == CTA6;
+//if (xx) sim_printf ("CTA6 address %06o\n", address);
+
     if (MFk & MFkAR)
     {
         // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(address, 15, 3);
-        int offset = SIGNEXT15(address & 077777);  // 15-bit signed number
-        address = SIGNEXT18((AR[n].WORDNO + offset) & 0777777);
+        uint n = bitfieldExtract36(address, 15, 3);
+        word18 offset = SIGNEXT15 (address & MASK15);  // 15-bit signed number
+        address = (AR [n] . WORDNO + offset) & AMASK;
+//if (xx) sim_printf ("CTA6 AR%d offset %06o address now %06o\n", n, offset, address);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+//if (xx) sim_printf ("CTA6 CHAR %d BITNO %d\n", ARn_CHAR, ARn_BITNO);
         if (get_addr_mode() == APPEND_mode)
         {
             e->addr[k-1].SNR = PR[n].SNR;
@@ -1183,10 +1192,10 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
         }
     }
 
-    int CN = (int)bitfieldExtract36(opDesc, 15, 3);    ///< character number
+    uint CN = bitfieldExtract36(opDesc, 15, 3);    ///< character number
 sim_debug (DBG_TRACEEXT, & cpu_dev, "old CN%u %u\n", k, CN);
     
-    e->TA[k-1] = (int)bitfieldExtract36(opDesc, 13, 2);    // type alphanumeric
+//if (xx) sim_printf ("CTA6 initial CN %d\n", CN);
     
     if (MFk & MFkRL)
     {
@@ -1195,9 +1204,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "old CN%u %u\n", k, CN);
         switch (e->TA[k-1])
         {
             case CTA4:
+//sim_printf ("CTA4\n");
                 e->N[k-1] &= 017777777; ///< 22-bits of length
                 break;
             case CTA6:
+//sim_printf ("CTA6\n");
             case CTA9:
                 e->N[k-1] &= 07777777;  ///< 21-bits of length.
                 break;
@@ -1210,7 +1221,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "old CN%u %u\n", k, CN);
         e->N[k-1] = opDesc & 07777;
     
 sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
-    int r = SIGNEXT18((word18)getMFReg(MFk & 017, true, false));
+    word36 r = getMFReg (MFk & 017, false, false);
     
 //sim_debug (DBG_TRACEEXT, & cpu_dev, "reg offset %d\n", r);
 
@@ -1222,12 +1233,51 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
         address += r;
+        address &= AMASK;
         r = 0;
     }
 
-    e->effBITNO = 0;
-    e->effCHAR = 0;
+#if 0
+// The character count contained in the register is divided by 4, 6, or 8
+// (depending upon the data type), which gives a word count with a character
+// remainder. The word and character counts are then appropriately arranged in
+// 21 bits (18-word address and 3 for character position) and added to the
+// modified descriptor operand address. The appropriate carries occur from the
+// character positions to the word when the summed character counts exceed the
+// number of characters in a 36-bit word. When the A- or Q-registers are
+// specified, large counts can cause the result of the division to be greater
+// than 2**18-1, which is interpreted modulo 2**18, the same as for bit
+// addressing.
+
+    uint nCharsWord = 4u;
+    switch (e->TA[k-1])
+      {
+        case CTA4: nCharsWord = 8u; break;
+        case CTA6: nCharsWord = 6u; break;
+        case CTA9: nCharsWord = 4u; break;
+      }
+
+    uint wordCnt = r / nCharsWord;
+    wordCnt &= AMASK;
+    uint charCnt = r % nCharsWord;
+
+    ARn_CHAR += charCnt + CN;
+    address += wordCnt;
+
+    while (ARn_CHAR > nCharsWord)
+      {
+        ARn_CHAR -= nCharsWord;
+        address += 1;
+      }
+
+    address &= AMASK;
+
+    e -> effBITNO = ARn_BITNO;
+    e -> effCHAR = ARn_CHAR;
+    e -> effWORDNO = address;
+    e -> CN [k - 1] = e -> effCHAR;
   
+#else
     // If seems that the effect address calcs given in AL39 p.6-27 are not quite right.
     // E.g. For CTA4/CTN4 because of the 4 "slop" bits you need to do 32-bit calcs not 36-bit!
     switch (e->TA[k-1])
@@ -1238,7 +1288,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             e->effWORDNO = address + (4*CN + 9*ARn_CHAR + 4*r + ARn_BITNO) / 32;    // 36
             e->effWORDNO &= AMASK;
             
-            e->YChar4[k-1] = e->effWORDNO;
+            //e->YChar4[k-1] = e->effWORDNO;
             //e->CN[k-1] = CN;    //e->effCHAR;
             e->CN[k-1] = e->effCHAR;
             break;
@@ -1248,7 +1298,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             e->effWORDNO = address + (6*CN + 9*ARn_CHAR + 6*r + ARn_BITNO) / 36;
             e->effWORDNO &= AMASK;
             
-            e->YChar6[k-1] = e->effWORDNO;
+            //e->YChar6[k-1] = e->effWORDNO;
             e->CN[k-1] = e->effCHAR;   // ??????
             break;
         case CTA9:
@@ -1259,13 +1309,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             e->effWORDNO = address + ((9*CN + 9*ARn_CHAR + 9*r + ARn_BITNO) / 36);
             e->effWORDNO &= AMASK;
             
-            e->YChar9[k-1] = e->effWORDNO;
+            //e->YChar9[k-1] = e->effWORDNO;
             e->CN[k-1] = e->effCHAR;   // ??????
             break;
         default:
             sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
             break;
     }
+#endif
     
     EISaddr *a = &e->addr[k-1];
     a->address = e->effWORDNO;
@@ -1347,7 +1398,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             e->effWORDNO &= AMASK;
             
             e->CN[k-1] = e->effCHAR;        // ?????
-            e->YChar4[k-1] = e->effWORDNO;
+            //e->YChar4[k-1] = e->effWORDNO;
             
             break;
         case CTN9:
@@ -1358,7 +1409,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             e->effWORDNO = address + (9*CN + 9*ARn_CHAR + 9*r + ARn_BITNO) / 36;
             e->effWORDNO &= AMASK;
             
-            e->YChar9[k-1] = e->effWORDNO;
+            //e->YChar9[k-1] = e->effWORDNO;
             e->CN[k-1] = e->effCHAR;        // ?????
             
             break;
@@ -3816,8 +3867,8 @@ void mvne(DCDstruct *ins)
     setupOperandDescriptor(3, e);
     
     parseNumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
-    parseAlphanumericOperandDescriptor(3, e);
+    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(3, e, 3);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -3894,9 +3945,9 @@ void mve(DCDstruct *ins)
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
-    parseAlphanumericOperandDescriptor(3, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(3, e, 3);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4000,8 +4051,8 @@ void mlr(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
@@ -4213,8 +4264,8 @@ void mrl(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
@@ -4410,8 +4461,8 @@ void mvt(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
@@ -4710,8 +4761,8 @@ void scm(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
   
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -4903,8 +4954,8 @@ void scmr(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -5084,7 +5135,7 @@ void tct(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->srcTA = e->TA1;
@@ -5318,7 +5369,7 @@ void tctr(DCDstruct *ins)
     
     
     setupOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(1, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->srcTA = e->TA1;
@@ -5549,47 +5600,15 @@ void cmpc(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 1);
     
-#ifdef DBGF
-
     du . TAk [1] = du . TAk [0]; // TA2 = TA1
-    myEISParse (2, EOP_ALPHA);
 
-// debug
-if (e->TA1 != du . TAk [0]) sim_printf ("TA1 %d %d\n", e -> TA1, du . TAk [0]);
-if (e->TA2 != du . TAk [1]) sim_printf ("TA2 %d %d\n", e -> TA2, du . TAk [1]);
-if (e->N1 != (int) du . D1_RES) sim_printf ("%lld N1 %d %u\n", sim_timell (), e -> N1, du . D1_RES);
-if (e->N2 != (int) du . D2_RES) sim_printf ("N2 %d %u\n", e -> N2, du . D2_RES);
-//if (e->addr[0].address != du . Dk_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sim_timell (), e->addr[0].address, du . Dk_PTR_W [0]);
-//if (e->addr[1].address != du . Dk_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sim_timell (), e->addr[1].address, du . Dk_PTR_W [1]);
-#if 0
-uint du_CN1, du_BITNO1, du_CN2, du_BITNO2;
-unpackCharBit (du . Dk_PTR_B [0], du . TAk [0], & du_CN1, & du_BITNO1);
-unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
-#else
-//uint du_CN1, du_CN2;
-//du_CN1 = du . Dk_PTR_B [0];
-//du_CN2 = du . Dk_PTR_B [1];
-#endif
-//if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sim_timell (), e->CN1, du_CN1);
-//if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sim_timell (), e->CN2, du_CN2);
-#endif
-
-#ifdef DBGF
-    //e -> srcCN = du_CN1;  // starting at char pos CN
-    //e -> srcCN2= du_CN2;  // character number
-    e->srcCN = e->CN1;  ///< starting at char pos CN
-    e->srcCN2= e->CN2;  ///< character number
-
-    e -> srcTA = du . TAk [0];
-#else
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
     e->srcTA = e->TA1;
-#endif
     
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
@@ -5639,120 +5658,37 @@ unpackCharBit (du . Dk_PTR_B [1], du . TAk [1], & du_CN2, & du_BITNO2);
           }
       }
 
-#ifdef DBGX
-char c1buf [1024];
-char c2buf [1024];
-char * c1p = c1buf;
-char * c2p = c2buf;
-*c1p = '\0';
-*c2p = '\0';
-#endif
 
-#ifdef DBGF
-    uint i = 0;
-    for (; i < min (du . D1_RES, du . D2_RES); i ++)
-#else
     int i = 0;
     for (; i < min (e->N1, e->N2); i += 1)
-#endif
       {
-#ifdef DBGF
-sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc i %u\n", i);
-        int c1_ = EISget469(&e->ADDR1,  &e->srcCN,  du . TAk [0]);   // get Y-char1n
-        int c1 = myEISget469 (1, i);
-        //du_CN1 ++;
-if_sim_debug (DBG_TRACEEXT, & cpu_dev)
-if (c1!=c1_){
-sim_printf ("i %u c1 %o c1_ %o TA %u pos %u\n", i, c1, c1_, du . TAk [0], e->srcCN);
-sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
-sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sim_timell ());
-}
-        int c2_ = EISget469(&e->ADDR2, &e->srcCN2, du . TAk [1]);   // get Y-char2n
-        int c2 = myEISget469 (2, i);
-        //du_CN2 ++;
-if_sim_debug (DBG_TRACEEXT, & cpu_dev)
-if (c2!=c2_){
-sim_printf ("i %u c2 %o c2_ %o\n", i, c2, c2_);
-sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
-sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sim_timell ());
-}
-if (dbgAddr0 != dbgAddr1 || dbgData0 != dbgData1) {
-sim_printf ("old: a0 %08o d0 %012llo\n", dbgAddr0, dbgData0);
-sim_printf ("new: a1 %08o d1 %012llo\n", dbgAddr1, dbgData1);
-sim_printf ("[%lld]\n", sim_timell ());
-}
-#else
         int c1 = EISget469(&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
-        int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);   // get Y-char2n
-#endif
-#ifdef DBGX
-*(c1p++)=c1; *c1p=0;    
-*(c2p++)=c2; *c2p=0;    
-#endif
+        int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA1);   // get Y-char2n
 sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
         if (c1 != c2)
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
             SCF (c1 > c2, cu . IR, I_CARRY);
-#ifdef DBGX
-sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
-#endif
             return;
         }
       }
-#ifdef DBGF
-    if (du . D1_RES < du . D2_RES)
-      {
-#else
     if (e->N1 < e->N2)
-#endif
-#ifdef DBGF
-        for (; i < du . D2_RES; i ++)
-#else
         for(; i < e->N2; i += 1)
-#endif
           {
             int c1 = fill;     // use fill for Y-char1n
-#ifdef DBGF
-            //int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TAk [1]); // get Y-char2n
-            int c2 = myEISget469 (2, i);
-            //du_CN2 ++;
-#else
-            int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2); // get Y-char2n
-#endif
+            int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA1); // get Y-char2n
             
             if (c1 != c2)
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 > c2, cu . IR, I_CARRY);
-#ifdef DBGX
-sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
-#endif
                 return;
               }
           }
-#ifdef DBGF
-      }
-    else if (du . D1_RES > du . D2_RES)
-      {
-#else
     else if (e->N1 > e->N2)
-#endif
-#ifdef DBGF
-        for(; i < du . D1_RES; i ++)
-#else
         for(; i < e->N1; i ++)
-#endif
           {
-#ifdef DBGF
-            //int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  du . TAk [0]);   // get Y-char1n
-            int c1 = myEISget469 (1, i);
-            //du_CN1 ++;
-#else
             int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
-#endif
             int c2 = fill;   // use fill for Y-char2n
             
             if (c1 != c2)
@@ -5761,20 +5697,10 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
                 
                 SCF(c1 > c2, cu.IR, I_CARRY);
                 
-#ifdef DBGX
-sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
-#endif
                 return;
               }
           }
-#ifdef DBGF
-      }
-#endif
-#ifdef DBGX
-sim_printf ("cmpc <%s> <%s> =\n", c1buf, c2buf);
-#endif
   }
-//#undef DBGX
 
 /*
  * SCD - Scan Characters Double
@@ -5799,8 +5725,8 @@ void scd(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
@@ -5983,8 +5909,8 @@ void scdr(DCDstruct *ins)
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
-    parseAlphanumericOperandDescriptor(1, e);
-    parseAlphanumericOperandDescriptor(2, e);
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
     
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number

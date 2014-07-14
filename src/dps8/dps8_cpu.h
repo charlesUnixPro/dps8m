@@ -469,6 +469,7 @@ struct EISstruct
 #define MF2    MF [1]      // Modification field for operand descriptor 2
 #define MF3    MF [2]      // Modification field for operand descriptor 3
 
+#if 0
     word18  YChar9 [3];
 #define YChar91 YChar9 [0]
 #define YChar92 YChar9 [1]
@@ -483,6 +484,7 @@ struct EISstruct
 #define YChar41 YChar4 [0]
 #define YChar42 YChar4 [1]
 #define YChar43 YChar4 [2]
+#endif
 
     word18  YBit [3];
 #define YBit1 YBit [0]
