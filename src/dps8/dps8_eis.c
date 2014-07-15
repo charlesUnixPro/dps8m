@@ -4119,6 +4119,8 @@ void mlr(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
+    if (e->N1 > e->N2 && e -> T)
+      doFault(overflow_fault, 0, "mlr truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -4592,6 +4594,9 @@ void mvt(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
+    //if (e->N1 > e->N2 && e -> T)
+      ////doFault(overflow_fault, 0, "mvt truncation fault");
+
     SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
