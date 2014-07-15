@@ -4346,6 +4346,8 @@ void mrl(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
+    if (e->N1 > e->N2 && e -> T)
+      doFault(overflow_fault, 0, "mrl truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -4570,6 +4572,8 @@ void mvt(DCDstruct *ins)
     //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
+    e->T = bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    
     int fill = (int)bitfieldExtract36(e->op0, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
@@ -4594,10 +4598,10 @@ void mvt(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    //if (e->N1 > e->N2 && e -> T)
-      ////doFault(overflow_fault, 0, "mvt truncation fault");
+    if (e->N1 > e->N2 && e -> T)
+      doFault(overflow_fault, 0, "mvt truncation fault");
 
-    SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
+    //SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
