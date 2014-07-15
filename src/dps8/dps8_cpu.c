@@ -1443,7 +1443,9 @@ syncFaultReturn:;
 
                 sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
     
-                if (switches . report_faults)
+                if (switches . report_faults == 1 ||
+                    (switches . report_faults == 2 &&
+                     cpu . faultNumber == FAULT_OFL))
                   {
                     emCallReportFault ();
                     clearFaultCycle ();
@@ -2233,6 +2235,9 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
 //           bullet_time = n
 //           disable_kbd_bkpt = n
 //           report_faults = n
+//               n = 0 don't
+//               n = 1 report
+//               n = 2 report overflow
 //           tro_enable = n
 
 static config_value_list_t cfg_multics_fault_base [] =
@@ -2328,7 +2333,7 @@ static config_list_t cpu_config_list [] =
     /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
-    /* 25 */ { "report_faults", 0, 1, cfg_on_off },
+    /* 25 */ { "report_faults", 0, 2, NULL },
     /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
