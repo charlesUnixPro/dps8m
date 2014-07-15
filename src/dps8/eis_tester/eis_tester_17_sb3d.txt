@@ -1,0 +1,2699 @@
+
+/*		sb3d1
+*		a simple test
+*		no modification used
+ - 		9 bit - 9 bit to 9 bit
+*
+*/
+
+inst	sb3d	-nt"9bit-9bit->9bit"
+-io 2;
+
+desc1 -sd l -cn 1 -nn 10;
+desc2 -sd l -cn 1 -nn 10;
+desc3 -sd l -cn 1 -nn 10;
+
+data 1 " -" (9) "1";
+data 2 " +" (9) "1";
+data 3 000 "+" (9) "2";
+
+page -all;
+
+
+
+
+/*		sb3d2
+*		9 bit - 9 bit to 9 bit
+*		negative indicator on
+*		all page faults taken
+*
+*/
+
+inst	sb3d	-nt "9 bit - 9bit to 9 bit"
+-io 1 -ir ng
+-mf1 ar rl 23 idb reg
+-mf2 ar rl 24 idb reg
+-mf3 ar rl 24 idb reg;
+
+desc1 -sd t -cn 2;
+desc2 -sd t -cn 1;
+desc3 -sd l -cn 3;
+
+data 1 -do -9 "  " (5) "0" (8) "12" "1+";
+data 2 -do -11 " " (6) "0" (8) "23" "2-";
+data 3 000000000 "-"  (6) "0" (8) "35" "3";
+
+page -all;
+
+
+
+
+/*		sb3d3
+*		9 bit scaled to 4 bit float to
+*		 4 bit float
+*
+*/
+
+inst	sb3d	-nt "4bit float-9bit to 4bit"
+-io 2 -ir ng
+-mf1 ar rl 10 idb reg
+-mf2 ar rl 10 idb
+-mf3 ar rl 10 idb;
+
+desc1 -sd t -cn 1;
+desc2 -sd f -tn 4;
+desc3 -sd f -tn 4;
+
+data 1 -do -10 " " (5) "0" (4) "2" "+";
+data 2 -do -4 300 000 021 021 000;
+data 3  -do -4 320 000 021 021 000;
+
+page -all;
+
+
+
+
+/*		sb3d4
+*		9 bit scaled - 9 bit scaled to
+*		9 bit scaled
+*		all page faults taken
+*		truncation indicator set
+*
+*/
+
+inst	sb3d	-nt "9bit-9bit to 9bit"
+-io 2 -ir tn
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 63 idb reg
+-mf3 ar rl 63 idb reg;
+
+desc1 -cn 1 -sd l -sf 5;
+desc2 -cn 2 -sd l -sf 10;
+desc3 -cn 3 -sd l -sf 10;
+
+data 1 -do 4033 " -" (5) "0" (19) "543";
+data 2 -do 4034 "  +" (5) "0" (19) "765";
+data 3 -do 4035 (3) 000 "+"  (5) "0" "76577" (17) "120" "0";
+
+page -all;
+
+
+
+
+/*		sb3d5
+*		9 bit scaled - 9 bit scaled tp
+*		9 bit scaled
+*		 all page faults taken
+*		rounding desired, therefore no truncation
+*
+*/
+
+inst	sb3d	-nt "no truncation"
+-io 3
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 63 idb reg
+-mf3 ar rl 63 idb reg
+-rb;
+
+desc1 -cn 1 -sd l -sf 5;
+desc2 -cn 2 -sd l -sf 10;
+desc3 -cn 1 -sd l -sf 10;
+
+data 1 -do 4033 " -" (5) "0" (19) "543";
+data 2 -do 4034 "  +" (5) "0" (19) "765";
+data 3 -do 4033 000 "+" (5) "0" "76577" (17) "120" "0";
+
+page -all;
+
+
+
+
+/*		sb3d6
+*		all operands 4 bit scaled
+*		all page faults taken
+*		 negative indicator set
+*
+*/
+
+inst	sb3d	-nt "4 bit-4bit to 4bit scaled"
+-io 1 -ir ng
+-mf1 ar rl 63 idb
+-mf2 ar rl 63 idb
+-mf3 ar rl 63 idb;
+
+desc1 -sd l -tn 4 -cn 1;
+desc2 -sd l -tn 4 -cn 1;
+desc3 -sd l -tn 4 -cn 1;
+
+data 1 " " 300 (26) 000 (4) 105 (8) 000;
+data 2 " " 300 (26) 000 (3) 105 104 (7) 000;
+data 3 000320 (29) 000 001 (8) 000;
+
+page -all;
+
+
+
+
+/*		sb3d7
+*		9 bit scaled - 9 bit scaled to
+*		9 bit scaled
+*		all page faults taken
+*		 rounding desired and it occurs
+*
+*/
+
+inst	sb3d	-nt "rounded result"
+-io 2 -rb
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 63 idb reg
+-mf3 ar rl 63 idb reg;
+
+desc1 -cn 1 -sd l -sf 5;
+desc2 -cn 1 -sd l -sf 10;
+desc3 -sd l -cn 1 -sf 10;
+
+data 1 -do 4033 " -" (5) "0" (17) "543" "043543";
+data 2 -do 4033 " +" (5) "0" (19) "765";
+data 3 -do 4033 000 "+" (5) "0" "76577" (16) "120" "1195";
+
+page -all;
+
+
+
+
+/*		sb3d8
+*		all operands 9 bit float
+*		all page faults taken
+*		no rounding needed
+:
+*/
+
+inst	sb3d	-nt "9 bit floating"
+-io 1
+-mf1 ar rl 10 idb reg
+-mf2 ar rl 10 idb reg
+-mf3 ar rl 10 idb reg;
+
+desc1 -sd f -cn 1;
+desc2 -sd f -cn 1;
+desc3 -sd f -cn 1;
+
+data 1 -do -10 " -" (8) "1" 001;
+data 2 -do -10 " +" (8) "2" 001;
+data 3 -do -10 000 "+" (8) "3" 001;
+
+page -all;
+
+
+
+
+/*		sb3d9
+*		all operands 9 bit floating
+*		rounding not desired, but required
+*		set round bit
+*
+*/
+
+inst	sb3d	-nt "round floating"
+-io 2 -rb
+-mf1 ar rl 10 ida
+-mf2 ar rl 10 ida
+-mf3 ar rl 10 ida;
+
+desc1 -cn 1 -sd f;
+desc2 -cn 1 -sd f;
+desc3 -sd f;
+
+data 1 " +" (8) "3" 000;
+data 2 " +" (8) "9" 001;
+data 3 "+" "9" (7) "6" 001;
+
+page -all;
+
+
+
+
+/*		sb3d10
+*		all operands 9 bit floating
+*		truncation will occur
+*
+*/
+
+inst	sb3d	-nt "truncation"
+-io 3 -ir tn
+-mf1 ar rl 10
+-mf2 ar rl 10
+-mf3 ar rl 10;
+
+desc1 -sd f;
+desc2 -sd f;
+desc3 -sd f;
+
+data 1 "+" (8) "3" 000;
+data 2 "+" (8) "9" 001;
+data 3 "+" "9" (6) "6" "5" 001;
+
+page -all;
+
+
+
+
+/*		sb3d11
+*		all operands 9 bit floating
+*		truncation will occur
+:
+*/
+
+inst	sb3d	-nt "truncation"
+-ir ng tn 
+-mf1 ar rl 10
+-mf2 ar rl 10
+-mf3 ar rl 10;
+
+desc1 -sd f;
+desc2 -sd f;
+desc3 -sd f;
+
+data 1 -do -4 "+" (8) "3" 000;
+data 2 -do -4 "-" (8) "9" 001;
+data 3 -do -4 "-" "10" (6) "3" 002;
+
+page -all;
+
+
+
+
+/*		sb3d12
+*		4 scaled - 4 scaled to 4 float
+*
+*/
+
+inst	sb3d	-nt "4sc-4sc->4float"
+-io 3
+-mf1 ar rl 4 idb
+-mf2 ar rl 4 idb
+-mf3 ar rl 6 idb;
+
+desc 1 -tn 4 -sd l;
+desc 2 -tn 4 -sd l;
+desc 3 -tn 4 -sd f;
+
+data 1 -do -1  323 063;
+data 2 -do -1 302 042;
+data 3 -do -1  305 125 000;
+
+page -all;
+
+
+
+
+/*		sb3d13
+*		4 scaled -4 float to 4 scaled
+*
+*/
+
+inst	sb3d	-nt "4scaled-4float to 4 scaled"
+-io 2
+-mf1 ar rl 6 idb
+-mf2 ar rl 4 idb
+-mf3 ar rl 4 idb;
+
+desc 1 -tn 4 -sd f;
+desc 2 -tn 4 -sd l;
+desc 3 -tn 4 -sd l;
+
+data 1 -do -1 323 063 000;
+data 2 -do -1 302 042;
+data 3 -do -1 305 125;
+
+page -all;
+
+
+
+
+/*		sb3d14
+*		4 floating - 9 scaled to 9 floating
+*
+*/
+
+inst	sb3d	 -nt "4float-9scaled->9float"
+-io 1
+-mf1 ar  rl 4 idb reg
+-mf2 ar rl 6 idb
+-mf3 ar rl 5 idb reg;
+
+desc 1 -sd t;
+desc 2 -sd f -tn 4;
+desc 3 -sd f;
+
+data 1 -do -3 "333-";
+data 2 -do -2 302 042 000;
+data 3 -do -4 "+555" 000;
+
+page -all;
+
+
+
+
+/*		sb3d15
+*		9 scaled - 4 bit to 9 scaled
+*
+*/
+
+inst	sb3d	-nt "9bit-4bit->9bit"
+-io 1
+-mf1 ar rl 5 idb
+-mf2 ar rl 5 idb reg
+-mf3 ar rl 5 idb reg;
+
+desc 1 -tn 4 -sd l;
+desc 2 -sd n;
+desc 3 -sd n;
+
+data 1 -do -1 321 02100;
+data 2 -do 4 "02222";
+data 3 -do -1 "03332";
+
+page -all;
+
+
+
+
+/*		sb3d16
+*		4float-9float to 4 float
+*
+*/
+
+inst	sb3d	-nt "4flo-9flo->4flo"
+-io 1
+-mf1 ar rl 5 idb reg
+-mf2 ar rl 7 idb
+-mf3 ar rl 7 idb;
+
+desc 1 -sd f;
+desc 2 -sd f -tn 4;
+desc 3 -sd f -tn 4;
+
+data 1 -do -1 "-" (3) "1" 000;
+data 2 -do -1 300 042 040 00;
+data 3 -do -1 30006306000;
+
+page -all;
+
+
+
+
+
+/*		sb3d17
+*		9 float - 4 float to 9 float
+*
+*/
+
+inst	sb3d	-nt "9flo-4flo->9flo"
+-io 1
+-mf1 ar rl 7 idb
+-mf2 ar rl 7 idb reg
+-mf3 ar rl 7 idb reg;
+
+desc 1 -sd f -tn 4 ;
+desc 2 -sd f;
+desc 3 -sd f;
+
+data 1 -do -1 320 042 040 00;
+data 2 -do -1 "+0" (3) "1" "0" 000;
+data 3 -do -1 "+01332" 000;
+
+page -all;
+
+
+
+
+
+/*		sb3d18
+*		9 float-9 scaled to 9 float
+*
+*/
+
+inst	sb3d	-nt "9flo-9sca->9flo"
+-io 2
+-mf1 ar rl 5 idb reg
+-mf2 ar rl 6 idb reg
+-mf3 ar rl 6 idb reg;
+
+desc1 -sd l;
+desc2 -sd f;
+
+data 1 -do -1 "-" (4) "3";
+data 2  -do -1 "+" "0" (3) "2" 000;
+data  3 -do -1 "+" "3555" 000;
+
+page -all;
+
+
+
+
+/*		sb3d19
+*		9scaled - 9 floating to 9 scaled
+*
+*/
+
+inst	sb3d	-nt "9sca-9flo->9sca"
+-io 2
+-mf1 ar rl 6 idb reg
+-mf2 ar rl 5 idb reg
+-mf3 ar rl 5 idb reg;
+
+desc1 -sd f;
+desc2 -sd l;
+desc 3 -sd l;
+
+data 1 -do -1 "-" "0" (3) "2" 000;
+data 2  -do -1 "+" (4) "3";
+data 3  -do -1 "+"  "3555";
+
+page -all;
+
+
+
+
+/*		sb3d20
+*		4 float - 9 scaled to 4 float
+*
+*/
+
+inst	sb3d	-nt "4flo-9sca->9sca"
+-io 2
+
+-mf1 ar rl 5 idb reg
+-mf2 ar rl 6 idb
+-mf3 ar rl 6 idb;
+
+desc 1 -sd l;
+desc 2 -sd f -tn 4;
+desc 3 -sd f -tn 4;
+
+data 1 -do -1 "-0" (3) "2";
+data 2 -do -1 303063 000;
+data 3 -do -1 305125000;
+
+page -all;
+
+
+
+
+/*		sb3d21
+*		4scaled - 9 float to 4 scaled
+*
+*/
+
+inst	sb3d	-nt "4sca-9flo->4sca"
+-io 1
+-mf1 ar rl 6 idb reg
+-mf2 ar rl 4 idb
+-mf3 ar rl 4 idb;
+
+desc 1 -sd f;
+desc 2 -sd l -tn 4;
+desc 3 -sd l -tn 4;
+
+data 1 -do -1 "-0" (3) "2" 000;
+data 2 -do -2 303 063;
+data 3 305125;
+
+page -all;
+
+
+
+
+/*		sb3d22
+*		9 float - 4 scaled to 9 float
+*
+*/
+
+inst	sb3d	-nt "9flo-4sca->9flo"
+-io 1
+-mf1 ar rl 4 idb
+-mf2 ar rl 6 idb reg
+-mf3 ar rl 6 idb reg;
+
+desc 1 -sd l -tn 4;
+desc 2 -sd f;
+desc 3 -sd f;
+
+data 1 -do -1 323063;
+data 2 -do -1 "+0" (3) "2" 000;
+data 3 "+0" (3) "5" 000;
+
+page -all;
+
+
+
+
+/*		sb3d23
+*		9 scaled - 4 floating to 9 scaled
+*
+*/
+
+inst	sb3d	 -nt "9sca-4flo->9sca"
+-io 1
+-mf1 ar rl 6 idb
+-mf2 ar rl 5 idb reg
+-mf3 ar rl 5 idb reg;
+
+desc 1 -sd f -tn 4;
+desc 2 -sd n;
+desc 3 -sd n;
+
+data 1 -do -1 323 063 000;
+data 2 -do -2 "00" "555";
+data 3 "00" "888";
+
+page -all;
+
+
+
+
+/*		sb3d24
+*		4 float - 4 scaled to 4 float
+*
+*/
+
+inst	sb3d	-nt "4flo-4sca->4flo"
+-io 1
+-mf1 ar rl 4 idb
+-mf2 ar rl 6 idb
+-mf3 ar rl 6 idb;
+
+desc 1 -tn 4 -sd l;
+desc 2 -tn 4 -sd f;
+desc 3 -tn 4 -sd f;
+
+data 1 -do -1 323 063;
+data 2 -do -1 302042000;
+data 3 305125 000;
+
+page -all;
+
+
+
+
+/*		sb3d25
+*		4 scaled - 4 floatint to 4 scaled
+*
+*/
+
+inst	sb3d	-nt "4sca-4flo->4flo"
+-io 2
+-mf1 ar rl 6 idb
+-mf2 ar rl 4 idb
+-mf3 ar rl 4 idb;
+
+desc 1 -tn 4 -sd f;
+desc 2 -tn 4 -sd l;
+desc 3 -tn 4 -sd l;
+
+data 1 -do -1 322042000;
+data 2 -do -1 303 063;
+data 3 305125;
+
+page -all;
+
+
+
+
+/*		sb3d26
+*
+*	Subtraction yields a zero number.
+*/
+
+inst	sb3d	-nt "Result = zero"  -io 1
+	-ir	zr
+	-mf1	ar
+	-mf2	ida
+	-mf3	ar reg idb  rl 12;
+
+desc 1	-sd l	-nn 7	-sf 2;
+
+desc 2	-sd t	-nn 6	-sf 3;
+
+desc 3	-sd n	-sf -4;
+
+
+data 1	-do -3	053 "55"  "5550";
+
+data 2	-do -4	"5555"  "5" 053;
+
+data 3	-do -2	"00"  "0000000000";
+
+
+page	-all;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

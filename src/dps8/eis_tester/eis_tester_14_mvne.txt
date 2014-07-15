@@ -1,0 +1,3347 @@
+
+
+/*               mvne1
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst    mvne   -nt "simple test no mod 9-9"
+          -mf2 rl 29;
+
+desc 1    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne2
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset inst and desc mod 9-9"   -io 3
+          -mf1 idr reg
+          -mf2 reg rl 29
+          -mf3 idb;
+
+desc 1    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne3
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset inst and d1 offset 9-9"   -io 3
+          -mf1 idr reg
+          -mf2 reg rl 29
+          -mf3 idb;
+
+desc 1    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne4
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 offset 9-9"   -io 3
+          -mf1 idr reg
+          -mf2 reg rl 29
+          -mf3 idb;
+
+desc 1    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne5
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 and d3 9-9"   -io 3
+          -mf1 idr reg
+          -mf2 reg rl 29
+          -mf3 idb;
+
+desc 1    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+    
+/*               mvne6
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 and d3 9-9"   -io 3
+          -mf1 idr reg
+          -mf2 reg rl 29
+          -mf3 idb;
+
+desc 1    -cn 3     -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "***"  /* for cn */   "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne7
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d1 totally on p0 9-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg rl 29
+          -mf3 ida ar reg;
+
+desc 1    -cn 3     -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -24
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "***"  /* for cn */   "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+
+/*               mvne8
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d2 totally on p0 9-9"    -io 2
+          -mf1 idr ar
+          -mf2 ar reg rl 29
+          -mf3 ida ar reg;
+
+desc 1    -cn 3     -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -20
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "***"  /* for cn */   "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -30
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne9
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d3 totally on p0 9-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg ar rl 29
+          -mf3 ida ar reg;
+
+desc 1    -cn 3     -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -20
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "***"  /* for cn */   "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -10
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -34
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne10
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "all data totally on p0 9-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg ar rl 29
+          -mf3 ida ar reg;
+
+desc 1    -cn 3     -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -30
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        "***"  /* for cn */   "001200123456345600123456";
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -30
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -34
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne11
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst    mvne   -nt "simple test no mod 4-9"
+          -mf2 rl 29;
+
+desc 1     -tn 4    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne12
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset inst and desc mod 4-9"   -io 2
+          
+          -mf2 reg rl 29
+          -mf3 ida;
+
+desc 1     -tn 4    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne13
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset inst and d1 offset 4-9"   -io 3
+          
+          -mf2 reg rl 29
+          -mf3 ida;
+
+desc 1     -tn 4    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne14
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 offset 4-9"   -io 3
+          
+          -mf2 reg rl 29
+          -mf3 ida;
+
+desc 1     -tn 4    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+/*               mvne15
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 and d3 4-9"   -io 3
+          
+          -mf2 reg rl 29
+          -mf3 ida;
+
+desc 1     -tn 4    -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+        000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+    
+/*               mvne16
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst     mvne    -nt "offset d2 and d1 and d3 4-9"   -io 3
+          
+          -mf2 reg rl 29
+          -mf3 ida;
+
+desc 1     -tn 4         -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -16
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+           000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne17
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d1 totally on p0 4-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg rl 29
+          -mf3 ida ar reg;
+
+desc 1     -tn 4         -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -24
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+           000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -20
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+
+/*               mvne18
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d2 totally on p0 4-9"    -io 2
+          -mf1 idr ar
+          -mf2 ar reg rl 29
+          -mf3 ida ar reg;
+
+desc 1     -tn 4         -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -20
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+           000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -30
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -8
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne19
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "d3 totally on p0 4-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg ar rl 29
+          -mf3 ida ar reg;
+
+desc 1     -tn 4         -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -20
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+           000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -10
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -34
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+ 
+/*               mvne20
+
+*       these tests exercise the mvne instruction
+*       using the 4 to 9 bit option and the 9 to 9
+*       bit options on the data.  the same template
+*       for the mop sequence will be used for all
+*       tests with various desc and data mod.
+*
+*/
+
+inst      mvne      -nt "all data totally on p0 4-9"    -io 2
+          -mf1 idr ar
+          -mf2 reg ar rl 29
+          -mf3 ida ar reg;
+
+desc 1     -tn 4         -nn 24  -sd n;
+
+
+desc 3    -nn 33  ;
+
+
+data 1 /* the 9 bit data arranged in sequence of use */
+          -do -30
+          /* the strings are 0012 0012 3456 3456 0012 3456 */
+
+           000022000022064126064126000022064126;
+
+data 2  /* ***mop sequence arranged in order *** */
+          -do -30
+
+       104    /* mvzb */
+       060    /* ses es reset */
+       124    /* mvza */
+       064    /* ses es reset bz set */
+       144    /* mfls */
+       064    /* ses */
+       040    /* enf for "+" insert. */
+       200 "="  /* insb */
+          220 "q"   /* insa insert "q" */
+       260 "q"  /* insp */
+       304    /* ign */
+       344    /* mvc */
+       420 "12345678"   /* change table with string shown */
+       024    /* insm */
+       401 "2"   /* load table entry 1 with "2" */
+       024    /* insm */
+       364    /* mors */
+      /* end of mop string */;
+
+data 3  /* arranged in order */
+          -do -34
+
+       "  12"
+       "**12"
+       "+3456"
+       "+"
+       "="
+       "q"
+       "q"
+       "0012"
+      "1111"
+       "2222"
+       "3777";
+
+page   -all;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
