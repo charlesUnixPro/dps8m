@@ -62,7 +62,8 @@ static
 decContext * decContextDefaultDPS8(decContext *context)
 {
     decContextDefault(context, DEC_INIT_BASE);
-    
+    context->traps=0;
+
     context->digits = 65;
     
     return context;
@@ -786,6 +787,7 @@ void ad2d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -1050,6 +1052,7 @@ void ad3d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -1326,6 +1329,7 @@ void sb2d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -1590,6 +1594,7 @@ void sb3d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -1866,6 +1871,7 @@ void mp2d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -2129,6 +2135,7 @@ void mp3d (void)
     
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //set.traps=0;
     decContextDefaultDPS8(&set);
     
     decNumber _1, _2, _3;
@@ -2396,6 +2403,7 @@ void dv2d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -2648,6 +2656,7 @@ void dv3d (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -2927,6 +2936,7 @@ void cmpn (void)
     
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -3021,7 +3031,7 @@ void cmpn (void)
 
     SCF(cSigned == 0, cu.IR, I_ZERO);
     SCF(cSigned == 1, cu.IR, I_NEG);
-    SCF(cMag == 1, cu.IR, I_CARRY);
+    SCF(cMag != 1, cu.IR, I_CARRY);
 }
 
 /*
@@ -3062,6 +3072,7 @@ void mvn (void)
 
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
     
     decNumber _1;
     
