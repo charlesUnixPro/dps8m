@@ -1781,9 +1781,9 @@ static int EISget469(EISaddr *p, int *pos, int ta)
     //if (p->lastAddress != p->address)                 // read from memory if different address
     //    p->data = EISRead(p);   // read data word from memory
     
-    if (*pos > maxPos)        // overflows to next word?
+    while (*pos > maxPos)        // overflows to next word?
     {   // yep....
-        *pos = 0;        // reset to 1st byte
+        *pos -= (maxPos + 1);        // reset to 1st byte
         p->address = (p->address + 1) & AMASK;          // bump source to next address
         //p->data = EISRead(p);    // read it from memory
     }
@@ -1807,7 +1807,7 @@ dbgData0 = p -> data;
             c = (word9)get9(p->data, *pos);
             break;
     }
-//sim_printf ("old: k: %u TAk %u coffset %u c %o \n", 0, ta, * pos, c);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "EISGet469 : k: %u TAk %u coffset %u c %o \n", 0, ta, * pos, c);
     
     *pos += 1;
     //p->lastAddress = p->address;
@@ -5290,11 +5290,13 @@ void tct(DCDstruct *ins)
                 break;              // should already be 0-filled
         }
         
-        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, CTA9, m);
+
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT c %03o %c cout %03o %c\n",
                    m, isprint (m) ? '?' : m, 
                    cout, isprint (cout) ? '?' : cout);
+
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
@@ -5514,7 +5516,8 @@ sim_printf ("TCTR N1 %d\n", e -> N1);
                 break;          // should already be 0-filled
         }
         
-        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
+        //unsigned int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, CTA9, m);
 #ifdef DBGX
 sim_printf ("TCT c %03o %c cout %03o %c\n",
             m, iscntrl (m) ? '?' : m, 
