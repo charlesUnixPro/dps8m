@@ -6520,9 +6520,6 @@ void csr(DCDstruct *ins)
         e->ADDR2.mode = eRWreadBit;
         bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
-        if (b2)
-            CLRF(cu.IR, I_ZERO);
-        
         if (!b1 && !b2)
             bR = B5;
         else if (!b1 && b2)
@@ -6531,6 +6528,9 @@ void csr(DCDstruct *ins)
             bR = B7;
         else if (b1 && b2)
             bR = B8;
+        
+        if (bR)
+            CLRF(cu.IR, I_ZERO);
         
         // write out modified bit
         e->ADDR2.bit = bR;              // set bit contents to write
@@ -6550,9 +6550,6 @@ void csr(DCDstruct *ins)
             e->ADDR2.mode = eRWreadBit;
             bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
-            if (b1)
-                CLRF(cu.IR, I_ZERO);
-            
             if (!b1 && !b2)
                 bR = B5;
             else if (!b1 && b2)
@@ -6562,6 +6559,9 @@ void csr(DCDstruct *ins)
             else if (b1 && b2)
                 bR = B8;
             
+            if (bR)
+                CLRF(cu.IR, I_ZERO);
+        
             // write out modified bit
             e->ADDR2.bit = bR;
             
