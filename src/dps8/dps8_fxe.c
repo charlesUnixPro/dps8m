@@ -3497,7 +3497,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
-    word24 bitcnt = flen * 8;
+    word24 bitcnt = flen * 9; // 8 bit ascii gets mapped to 9-bit ascii
     word18 wordcnt = nbits2nwords (bitcnt);
     int segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
                                   RINGS_FFF, P_RW);
