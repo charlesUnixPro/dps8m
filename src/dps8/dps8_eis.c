@@ -6265,9 +6265,11 @@ void csl(DCDstruct *ins)
     //     Zero If C(Y-bit2) = 00...0, then ON; otherwise OFF
     //     Truncation If N1 > N2, then ON; otherwise OFF
     //
-    // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not processed and the truncation indicator is set ON.
+    // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
+    // processed and the truncation indicator is set ON.
     //
-    // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
+    // If T = 1 and the truncation indicator is set ON by execution of the
+    // instruction, then a truncation (overflow) fault occurs.
     //
     // BOLR
     // If first operand    and    second operand    then result
@@ -6341,9 +6343,6 @@ void csl(DCDstruct *ins)
         e->ADDR2.mode = eRWreadBit;
         bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
-        if (b2)
-            CLRF(cu.IR, I_ZERO);
-        
         if (!b1 && !b2)
             bR = B5;
         else if (!b1 && b2)
@@ -6356,6 +6355,9 @@ void csl(DCDstruct *ins)
         // write out modified bit
         e->ADDR2.bit = bR;              // set bit contents to write
    
+        if (bR)
+            CLRF(cu.IR, I_ZERO);
+        
         e->ADDR2.incr = true;           // we want address incrementing
         e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
         EISgetBitRW(&e->ADDR2);            // write bit w/ addr increment to memory
@@ -6371,9 +6373,6 @@ void csl(DCDstruct *ins)
             e->ADDR2.mode = eRWreadBit;
             bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
-            if (b1)
-                CLRF(cu.IR, I_ZERO);
-            
             if (!b1 && !b2)
                 bR = B5;
             else if (!b1 && b2)
@@ -6386,6 +6385,9 @@ void csl(DCDstruct *ins)
             // write out modified bit
             e->ADDR2.bit = bR;
             
+            if (bR)
+                CLRF(cu.IR, I_ZERO);
+        
             e->ADDR2.mode = eRWwriteBit;
             e->ADDR2.incr = true;
             EISgetBitRW(&e->ADDR2);
@@ -6400,7 +6402,6 @@ void csl(DCDstruct *ins)
         if (e->T)
         {
             doFault(overflow_fault, 0, "csl truncation fault");
-            //sim_printf("fault: 0 0 'csl truncation fault'\n");
         }
     }
 }
