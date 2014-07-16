@@ -846,7 +846,7 @@ static int lookupOffset (int segIdx, word18 offset,
                                      oip_defp -> def_list_relp);
     // Search for the bindmap
 
-    definition * symDef = NULL;
+    //definition * symDef = NULL;
     word18 value = 0;
     while (* (word36 *) p)
       {
