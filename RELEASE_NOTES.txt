@@ -6,3 +6,14 @@
 16Feb14: Many simulator commands have been added or enhanced. The file
          'docs/ImplementationNotes.ps' has been updated to reflect the changes.
 
+15July2014:
+
+  The MR12.3 tree can be found at:
+
+  https://drive.google.com/file/d/0BxMJyk--V8yWZXJlYWpXTDAzQ28/edit?usp=sharing
+
+  Download the file and untar it in the src/dps8 directory, or whatever
+  directory you execute FXE from.
+
+
+
