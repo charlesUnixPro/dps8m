@@ -6250,7 +6250,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2fill %d\n", i, b1, b2);
 }
 
 // CANFAULT
-void csl(DCDstruct *ins)
+void csl(DCDstruct *ins, bool isSZTL)
 {
     EISstruct *e = &ins->e;
 
@@ -6339,7 +6339,9 @@ void csl(DCDstruct *ins)
     {
         bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
         
-        e->ADDR2.incr = false;
+        // If we are a SZTL, addr2 is read only, increment here.
+        // If we are a CSL, addr2 will be incremented below in the write cycle
+        e->ADDR2.incr = isSZTL;
         e->ADDR2.mode = eRWreadBit;
         bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
@@ -6352,15 +6354,21 @@ void csl(DCDstruct *ins)
         else if (b1 && b2)
             bR = B8;
         
-        // write out modified bit
-        e->ADDR2.bit = bR;              // set bit contents to write
-   
         if (bR)
+        {
             CLRF(cu.IR, I_ZERO);
-        
-        e->ADDR2.incr = true;           // we want address incrementing
-        e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
-        EISgetBitRW(&e->ADDR2);            // write bit w/ addr increment to memory
+            if (isSZTL)
+                break;
+        }
+
+        if (! isSZTL)
+        {
+            // write out modified bit
+            e->ADDR2.bit = bR;              // set bit contents to write
+            e->ADDR2.incr = true;           // we want address incrementing
+            e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
+            EISgetBitRW(&e->ADDR2);    // write bit w/ addr increment to memory
+        }
     }
     
     if (e->N1 < e->N2)
@@ -6369,7 +6377,9 @@ void csl(DCDstruct *ins)
         {
             bool b1 = e->F;
             
-            e->ADDR2.incr = false;
+            // If we are a SZTL, addr2 is read only, increment here.
+            // If we are a CSL, addr2 will be incremented below in the write cycle
+            e->ADDR2.incr = isSZTL;
             e->ADDR2.mode = eRWreadBit;
             bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
@@ -6382,15 +6392,21 @@ void csl(DCDstruct *ins)
             else if (b1 && b2)
                 bR = B8;
             
-            // write out modified bit
-            e->ADDR2.bit = bR;
-            
             if (bR)
+            {
                 CLRF(cu.IR, I_ZERO);
+                if (isSZTL)
+                  break;
+            }
         
-            e->ADDR2.mode = eRWwriteBit;
-            e->ADDR2.incr = true;
-            EISgetBitRW(&e->ADDR2);
+            if (! isSZTL)
+            {
+                // write out modified bit
+                e->ADDR2.bit = bR;
+                e->ADDR2.mode = eRWwriteBit;
+                e->ADDR2.incr = true;
+                EISgetBitRW(&e->ADDR2);
+            }
         }
     } else if (e->N1 > e->N2)
     {
@@ -6420,7 +6436,8 @@ static void getBitOffsets(int length, int initC, int initB, int *nWords, int *ne
     
     int endBit = (length + 9 * initC + initB - 1) % 36;
     
-    int numWords = (length + 35) / 36;  ///< how many additional words will the bits take up?
+    //int numWords = (length + 35) / 36;  ///< how many additional words will the bits take up?
+    int numWords = (length + 9 * initC + initB + 35) / 36;  ///< how many additional words will the bits take up?
     int lastWordOffset = numWords - 1;
     
     if (lastWordOffset > 0)          // more that the 1 word needed?
@@ -6433,7 +6450,7 @@ static void getBitOffsets(int length, int initC, int initB, int *nWords, int *ne
 }
 
 // CANFAULT
-void csr(DCDstruct *ins)
+void csr(DCDstruct *ins, bool isSZTR)
 {
     EISstruct *e = &ins->e;
 
@@ -6490,7 +6507,13 @@ void csr(DCDstruct *ins)
     getBitOffsets(e->N1, e->C1, e->B1, &numWords1, &e->ADDR1.cPos, &e->ADDR1.bPos);
     e->ADDR1.address += numWords1;
         
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "CSR N1 %d C1 %d B1 %d numWords1 %d cPos %d bPos %d\n",
+               e->N1, e->C1, e->B1, numWords1, e->ADDR1.cPos, e->ADDR1.bPos);
     getBitOffsets(e->N2, e->C2, e->B2, &numWords2, &e->ADDR2.cPos, &e->ADDR2.bPos);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "CSR N2 %d C2 %d B2 %d numWords2 %d cPos %d bPos %d\n",
+               e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
     e->F = (bool)bitfieldExtract36(e->op0, 35, 1);   // fill bit
@@ -6514,11 +6537,13 @@ void csr(DCDstruct *ins)
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
     {
-        bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
+        bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt decr from src 1
         
-        e->ADDR2.decr = false;
+        // If we are a SZTR, addr2 is read only, decrement here.
+        // If we are a CSR, addr2 will be decremented below in the write cycle
+        e->ADDR2.decr = isSZTR;
         e->ADDR2.mode = eRWreadBit;
-        bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
+        bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr decr from src2 to in anticipation of a write
         
         if (!b1 && !b2)
             bR = B5;
@@ -6530,14 +6555,20 @@ void csr(DCDstruct *ins)
             bR = B8;
         
         if (bR)
+        {
             CLRF(cu.IR, I_ZERO);
+            if (isSZTR)
+                break;
+        }
         
-        // write out modified bit
-        e->ADDR2.bit = bR;              // set bit contents to write
-        
-        e->ADDR2.decr = true;           // we want address incrementing
-        e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
-        EISgetBitRW(&e->ADDR2);         // write bit w/ addr increment to memory
+        if (! isSZTR)
+        {
+            // write out modified bit
+            e->ADDR2.bit = bR;              // set bit contents to write
+            e->ADDR2.decr = true;           // we want address incrementing
+            e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
+            EISgetBitRW(&e->ADDR2);  // write bit w/ addr increment to memory
+        }
     }
     
     if (e->N1 < e->N2)
@@ -6546,9 +6577,11 @@ void csr(DCDstruct *ins)
         {
             bool b1 = e->F;
             
-            e->ADDR2.decr = false;
+            // If we are a SZTR, addr2 is read only, decrement here.
+            // If we are a CSR, addr2 will be decremented below in the write cycle
+            e->ADDR2.decr = isSZTR;
             e->ADDR2.mode = eRWreadBit;
-            bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
+            bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr decr from src2 to in anticipation of a write
             
             if (!b1 && !b2)
                 bR = B5;
@@ -6560,14 +6593,20 @@ void csr(DCDstruct *ins)
                 bR = B8;
             
             if (bR)
+            {
                 CLRF(cu.IR, I_ZERO);
+                if (isSZTR)
+                  break;
+            }
         
-            // write out modified bit
-            e->ADDR2.bit = bR;
-            
-            e->ADDR2.mode = eRWwriteBit;
-            e->ADDR2.decr = true;
-            EISgetBitRW(&e->ADDR2);
+            if (! isSZTR)
+            {
+                // write out modified bit
+                e->ADDR2.bit = bR;
+                e->ADDR2.mode = eRWwriteBit;
+                e->ADDR2.decr = true;
+                EISgetBitRW(&e->ADDR2);
+            }
         }
     } else if (e->N1 > e->N2)
     {
@@ -6585,6 +6624,7 @@ void csr(DCDstruct *ins)
 }
 
 
+#if 0
 // CANFAULT
 void sztl(DCDstruct *ins)
 {
@@ -6714,8 +6754,10 @@ void sztl(DCDstruct *ins)
         }
     }
 }
+#endif
 
 
+#if 0
 // CANFAULT
 void sztr(DCDstruct *ins)
 {
@@ -6855,6 +6897,7 @@ void sztr(DCDstruct *ins)
         }
     }
 }
+#endif
 
 /*
  * EIS decimal arithmetic routines are to be found in dps8_decimal.c .....

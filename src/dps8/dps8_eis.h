@@ -19,9 +19,9 @@ void cmpc(DCDstruct *i);
 void scd(DCDstruct *i);
 void scdr(DCDstruct *i);
 void cmpb(DCDstruct *i);
-void csl(DCDstruct *i);
-void csr(DCDstruct *i);
-void sztl(DCDstruct *i);
-void sztr(DCDstruct *i);
+void csl(DCDstruct *ins, bool isSZTL);
+void csr(DCDstruct *ins, bool isSZTR);
+//void sztl(DCDstruct *i);
+//void sztr(DCDstruct *i);
 
 
