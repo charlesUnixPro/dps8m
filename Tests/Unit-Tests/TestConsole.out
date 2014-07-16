@@ -11,6 +11,7 @@ CONSOLE: ALERT
 Expect "Hello, world"
 CONSOLE: Hello, world
 
+
 cpuCycles = 20
 TestConsole-8> g 0
 
