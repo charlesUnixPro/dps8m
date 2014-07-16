@@ -340,8 +340,10 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               }
             if (ret != 0)
               {
+                * disc = true;
                 if (ret == MTSE_TMK)
                   {
+                    tape_statep -> rec_num ++;
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
                     stati = 04423; // EOF category EOF file mark
@@ -480,39 +482,8 @@ sim_printf ("uncomfortable with this\n");
 //--             sim_debug (DBG_INFO, &tape_dev, "mt_iom_cmd: Reset status is %02o,%02o.\n",
 //--                     *majorp, *subp);
 //--             return 0;
-//--         case 046: {             // BSR
-//--             // BUG: Do we need to clear the buffer?
-//--             // BUG? We don't check the channel data for a count
-//--             t_mtrlnt tbc;
-//--             int ret;
-//--             if ((ret = sim_tape_sprecr(unitp, &tbc)) == 0) {
-//--                 sim_debug (DBG_NOTIFY, &tape_dev, "mt_iom_cmd: Backspace one record\n");
-//--                 // XXX put unit number in here...
-//--                 if (unitp->flags & UNIT_WATCH)
-//--                   sim_printf ("Tape %ld backspaces over record %d\n",
-//--                               MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-//-- 
-//--                 tape_statep -> rec_num --;
-//--                 devinfop->have_status = 1;  // TODO: queue
-//--                 *majorp = 0;
-//--                 *subp = 0;
-//--                 if (sim_tape_wrp(unitp)) *subp |= 1;
-//--             } else {
-//--                 sim_debug (DBG_ERR, &tape_dev, "mt_iom_cmd: Cannot backspace record: %d - %s\n", ret, simh_tape_msg(ret));
-//--                 devinfop->have_status = 1;
-//--                 if (ret == MTSE_BOT) {
-//--                     *majorp = 05;
-//--                     *subp = 010;
-//--                 } else {
-//--                     sim_debug (DBG_ERR, &tape_dev, "mt_iom_cmd: Returning arbitrary error code\n");
-//--                     *majorp = 010;  // BUG: arbitrary error code; config switch
-//--                     *subp = 1;
-//--                 }
-//--                 return 1;
-//--             }
-//--             return 0;
-//--         }
 
+#if 0
         case 057:               // CMD 057 -- Survey devices
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -522,7 +493,8 @@ sim_printf ("uncomfortable with this\n");
 sim_printf ("got survey devices\n");
             break;
           }
-            
+#endif
+ 
         case 040:               // CMD 040 -- Reset Status
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset status\n");
@@ -537,6 +509,91 @@ sim_printf ("got survey devices\n");
                        "%s: Reset status is %04o.\n",
                        __func__, stati);
             break;
+
+        case 046: // 046 Backspace Record
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Backspace Record\n");
+            // BUG: Do we need to clear the buffer?
+            // BUG? We don't check the channel data for a count
+            t_mtrlnt tbc;
+
+            // XXX Why does this command have a DDCW?
+
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+            sim_debug (DBG_DEBUG, & tape_dev, 
+                       "mt_iom_cmd: Backspace record tally %d\n", tally);
+
+            t_stat ret;
+            int nbs = 0;
+
+            while (tally)
+              {
+                ret = sim_tape_sprecr (unitp, & tbc);
+//sim_printf ("ret %d\n", ret);
+                if (ret != MTSE_OK && ret != MTSE_TMK)
+                  break;
+                if (tape_statep -> rec_num > 0)
+                  tape_statep -> rec_num --;
+                nbs ++;
+              }
+
+            sim_debug (DBG_NOTIFY, & tape_dev, 
+                       "mt_iom_cmd: Backspace %d records\n", nbs);
+            if (unitp -> flags & UNIT_WATCH)
+              sim_printf ("Tape %ld backspaces to record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
+            stati = 04000;
+            if (sim_tape_wrp (unitp))
+              stati |= 1;
+            if (sim_tape_bot (unitp))
+              stati |= 2;
+            if (sim_tape_eom (unitp))
+              stati |= 0340;
+            break;
+          }
 
 // Okay, this is convoluted. Multics locates the console by sending CMD 051
 // to devices in the PCW, with the understanding that only the console 
