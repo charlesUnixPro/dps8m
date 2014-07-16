@@ -864,7 +864,7 @@ next:;
       }
     if (! (* (word36 *) p))
       {
-        sim_printf ("can't find bind_map\n");
+        //sim_printf ("can't find bind_map\n");
         return 0;
       }
 
