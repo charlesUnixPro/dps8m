@@ -2070,7 +2070,7 @@ struct ic_hist_t {
     //enum hist_enum { instruction, fault, intr } htype;
     enum hist_enum htype;
     union {
-        int intr;
+        //int intr;
         int fault;
         //instr_t instr;
     } detail;

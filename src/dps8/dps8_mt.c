@@ -540,10 +540,10 @@ sim_printf ("got survey devices\n");
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
+            //uint daddr = dcw.fields.ddcw.daddr;
             // uint cp = dcw.fields.ddcw.cp;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
+            //if (pcwp -> mask)
+              //daddr |= ((pcwp -> ext) & MASK6) << 18;
             if (type == 0) // IOTD
               * disc = true;
             else if (type == 1) // IOTP
@@ -565,12 +565,11 @@ sim_printf ("uncomfortable with this\n");
             sim_debug (DBG_DEBUG, & tape_dev, 
                        "mt_iom_cmd: Backspace record tally %d\n", tally);
 
-            t_stat ret;
             int nbs = 0;
 
             while (tally)
               {
-                ret = sim_tape_sprecr (unitp, & tbc);
+                t_stat ret = sim_tape_sprecr (unitp, & tbc);
 //sim_printf ("ret %d\n", ret);
                 if (ret != MTSE_OK && ret != MTSE_TMK)
                   break;

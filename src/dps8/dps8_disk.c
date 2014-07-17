@@ -580,7 +580,7 @@ sim_printf ("uncomfortable with this\n");
               }
 
             uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
+            // uint tally = dcw.fields.ddcw.tally;
             // uint daddr = dcw.fields.ddcw.daddr;
             // if (pcwp -> mask)
               // daddr |= ((pcwp -> ext) & MASK6) << 18;
@@ -603,6 +603,7 @@ sim_printf ("uncomfortable with this\n");
                            __func__, tally);
               }
 #endif
+#if 0
             if (tally == 0)
               {
                 sim_debug (DBG_DEBUG, & iom_dev,
@@ -610,7 +611,7 @@ sim_printf ("uncomfortable with this\n");
                            __func__);
                 tally = 4096;
               }
-
+#endif
 //sim_printf ("tally %d\n", tally);
             stati = 04000;
           }

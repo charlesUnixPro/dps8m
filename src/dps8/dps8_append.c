@@ -94,7 +94,7 @@ void setAPUStatus (apuStatusBits status)
 
 static char *strSDW(_sdw *SDW);
 
-static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
+static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNOWN;
 
 /**
 
@@ -1186,7 +1186,7 @@ G:;
     
     if (!fetchPTWfromPTWAM(SDW->POINTER, address))  //TPR.CA))
     {
-        appendingUnitCycleType = PTWfetch;
+        appendingUnitCycleType = apuCycle_PTWfetch;
         //fetchPTW(SDW, TPR.CA);
         fetchPTW(SDW, address);
         if (!PTW0.F)
@@ -1222,7 +1222,7 @@ G:;
     
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
-    appendingUnitCycleType = FANP;
+    appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, address);
@@ -1254,7 +1254,7 @@ I:;
     }
     
     // final address paged
-    appendingUnitCycleType = FAP;
+    appendingUnitCycleType = apuCycle_FAP;
     setAPUStatus (apuStatus_FAP);
     
     //word24 y2 = TPR.CA % 1024;

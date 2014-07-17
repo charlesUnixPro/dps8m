@@ -254,10 +254,10 @@ static struct unit_data unit_data [N_IOM_UNITS_MAX];
 
 typedef struct
   {
-    uint iom_num;
+    //uint iom_num;
     int ports [N_IOM_PORTS]; // CPU/IOM connectivity; designated a..h; 
                              // negative to disable
-    int scu_port; // which port on the SCU(s) are we connected to?
+    //int scu_port; // which port on the SCU(s) are we connected to?
     struct channels
       {
         enum dev_type type;
@@ -523,7 +523,7 @@ static char * lpw2text (const lpw_t * p, int conn)
             p->dcw_ptr, p->ires, p->hrel, p->ae, p->nc, p->trunout, p->srel, 
             p->tally);
     if (! conn)
-      sprintf(buf+strlen(buf), " [lbnd=0%o size=0%o(%d) idcw=0%o]",
+      sprintf(buf+strlen(buf), " [lbnd=0%o size=0%o(%u) idcw=0%o]",
                 p->lbnd, p->size, p->size, p->idcw);
     return buf;
   }
@@ -1753,6 +1753,7 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
         return 1;
       }
     
+#if 0
     iom_cmd * iom_cmd = iom [iom_unit_num] .channels [chan] [dev_code] . 
                         iom_cmd;
     if (! iom_cmd)
@@ -1764,6 +1765,7 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
         iom_fault (iom_unit_num, chan, __func__, 0, 0);
         return 1;
       }
+#endif
 
     UNIT * unitp = iom [iom_unit_num] .channels [chan] [dev_code] . board;
 #if 1

@@ -467,13 +467,12 @@ sim_printf ("uncomfortable with this\n");
               }
 
             sim_printf ("CONSOLE: ");
-            word36 datum;
 
             // Tally is in words, not chars.
 
             while (tally)
               {
-                datum = M [daddr ++];
+                word36 datum = M [daddr ++];
                 tally --;
 
                 for (int i = 0; i < 4; i ++)

@@ -2339,15 +2339,14 @@ void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
 // CANFAULT
 static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
 {
-    /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
+    // first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
-    static int N = 0;           ///< length of output buffer in native chars (4, 6 or 9-bit chunks)
-    static int CN = 0;          ///< character number 0-7 (4), 0-5 (6), 0-3 (9)
-    static int TN = 0;          ///< type code
-    //static word18 address  = 0; ///< current write address
-    static int pos = 0;         ///< current character position
-    static int size = 0;        ///< size of char
-    static int _k = -1;         ///< k of MFk
+    static int N = 0;           // length of output buffer in native chars (4, 6 or 9-bit chunks)
+    static int CN = 0;          // character number 0-7 (4), 0-5 (6), 0-3 (9)
+    static int TN = 0;          // type code
+    static int pos = 0;         // current character position
+    //static int size = 0;        // size of char
+    static int _k = -1;         // k of MFk
 
     if (k)
     {
@@ -2357,30 +2356,34 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
         CN = e->CN[k-1];    // character number (position) 0-7 (4), 0-5 (6), 0-3 (9)
         TN = e->TN[k-1];    // type code
         
-        int chunk = 0;
+        //int chunk = 0;
         int maxPos;
         switch (TN)
         {
             case CTN4:
                 //address = e->addr[k-1].address;
-                size = 4;
-                chunk = 32;
+                //size = 4;
+                //chunk = 32;
                 maxPos = 8;
                 break;
             case CTN9:
                 //address = e->addr[k-1].address;
-                size = 9;
-                chunk = 36;
+                //size = 9;
+                //chunk = 36;
                 maxPos = 4;
                 break;
         }
         
-        /// since we want to write the data in reverse (since it's right justified) we need to determine
-        /// the final address/CN for the type and go backwards from there
+        // since we want to write the data in reverse (since it's right 
+        // justified) we need to determine the final address/CN for the 
+        // type and go backwards from there
         
-        //int numBits = size * N;               ///< 8 4-bit digits, 4 9-bit bytes / word
-        ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
-        //int numWords = numBits / ((TN == CTN4) ? 32 : 36);      ///< how many additional words will the N chars take up?
+        //int numBits = size * N;      // 8 4-bit digits, 4 9-bit bytes / word
+        // (remember there are 4 slop bits in a 36-bit word when dealing with 
+        // BCD)
+
+        // how many additional words will the N chars take up?
+        //int numWords = numBits / ((TN == CTN4) ? 32 : 36);      
 
 // CN+N    numWords  (CN+N+3)/4   lastChar
 //   1       1                      0
@@ -2391,7 +2394,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
 
         int numWords = (CN + N + (maxPos - 1)) / maxPos;
         int lastWordOffset = numWords - 1;
-        int lastChar = (CN + N - 1) % maxPos;   ///< last character number
+        int lastChar = (CN + N - 1) % maxPos;   // last character number
         
         if (lastWordOffset > 0)           // more that the 1 word needed?
             //address += lastWordOffset;    // highest memory address
@@ -2406,7 +2409,6 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     // any room left in output string?
     if (N == 0)
     {
-        //SETF(e->_flags, I_OFLOW); // HWR 26 Jan 14 - Don't think we need to fault it here.
         return;
     }
     

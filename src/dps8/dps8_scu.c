@@ -753,7 +753,7 @@ typedef struct {
     // The ports[] array should indicate which SCU each of the CPU's 8
     // ports are connected to.
     int ports[8]; // SCU connectivity; designated a..h
-    int scu_port; // What port num are we connected to (same for all SCUs)
+    //int scu_port; // What port num are we connected to (same for all SCUs)
 } cpu_ports_t;
 
 
