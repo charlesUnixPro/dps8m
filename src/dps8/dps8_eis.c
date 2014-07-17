@@ -6,6 +6,19 @@
  * \brief EIS support code...
 */
 
+#define V3
+
+#ifdef V1
+// This makes MVE 1-28 and all of MVNE work
+// Fails MVE 29-37 (6->6)
+#define decimalZero (e->srcTA != CTA4 ? '0' : 0)
+#endif
+
+#ifdef V2
+// This makes MVE 1-10 and 20-37 and all of MVNE work
+// Fails MVE 11-19 (6->9)
+#define decimalZero (e->srcTA == CTA9 ? '0' : 0)
+#endif
 
 #include <stdio.h>
 //#define DBGF // page fault debugging
@@ -2734,8 +2747,12 @@ static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int sz
 
 
 /*!
- * Load the entire sending string number (maximum length 63 characters) into the decimal unit input buffer as 4-bit digits (high-order truncating 9-bit data). Strip the sign and exponent characters (if any), put them aside into special holding registers and decrease the input buffer count accordingly.
+ * Load the entire sending string number (maximum length 63 characters) into
+ * the decimal unit input buffer as 4-bit digits (high-order truncating 9-bit
+ * data). Strip the sign and exponent characters (if any), put them aside into
+ * special holding registers and decrease the input buffer count accordingly.
  */
+
 // CANFAULT
 void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 {
@@ -2886,8 +2903,12 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 }
 
 /*!
- * Load decimal unit input buffer with sending string characters. Data is read from main memory in unaligned units (not modulo 8 boundary) of Y-block8 words. The number of characters loaded is the minimum of the remaining sending string count, the remaining receiving string count, and 64.
+ * Load decimal unit input buffer with sending string characters. Data is read
+ * from main memory in unaligned units (not modulo 8 boundary) of Y-block8
+ * words. The number of characters loaded is the minimum of the remaining
+ * sending string count, the remaining receiving string count, and 64.
  */
+
 // CANFAULT
 static void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
 {
@@ -3464,7 +3485,14 @@ static int mopMFLC(EISstruct *e)
         if (!e->mopES) { // e->mopES is OFF
             //if (c == 0) {
             // XXX See srcTA comment in MVNE
-            if (c == (e->srcTA == CTA9 ? '0' : 0)) {
+
+
+#ifdef V3
+            if ((c & 017) == 0)
+#else
+            if (c == decimalZero)
+#endif
+                {
 		// edit insertion table entry 1 is moved to the receiving field
 		// in place of the character.
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
@@ -3567,7 +3595,12 @@ static int mopMFLS(EISstruct *e)
         if (!e->mopES) { // e->mopES is OFF
             //if (c == 0) {
             // XXX See srcTA comment in MVNE
-            if (c == (e->srcTA == CTA9 ? '0' : 0)) {
+#ifdef V3
+            if ((c & 017) == 0)
+#else
+            if (c == decimalZero)
+#endif
+            {
 		// edit insertion table entry 1 is moved to the receiving field
 		// in place of the character.
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
@@ -3856,7 +3889,11 @@ static int mopMVZA(EISstruct *e)
         
         //if (!e->mopES && c == 0)
         // XXX See srcTA comment in MVNE
-        if (!e->mopES && c == (e->srcTA == CTA9 ? '0' : 0))
+#ifdef V3
+        if (!e->mopES && (c & 017) == 0)
+#else
+        if (!e->mopES && c == decimalZero)
+#endif
         {
 	    //If ES is OFF and the character is zero, then edit insertion table
 	    //entry 2 is moved to the receiving field in place of the
@@ -3864,7 +3901,12 @@ static int mopMVZA(EISstruct *e)
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
-        } else if (!e->mopES && c != (e->srcTA == CTA9 ? '0' : 0))
+        }
+#ifdef V3
+        else if (!e->mopES && (c & 017) != 0)
+#else
+        else if (!e->mopES && c != decimalZero)
+#endif
         {
 	    //If ES is OFF and the character is not zero, then the character is
 	    //moved to the receiving field and ES is set ON.
@@ -3923,7 +3965,11 @@ static int mopMVZB(EISstruct *e)
         
         //if (!e->mopES && c == 0)
         // XXX See srcTA comment in MVNE
-        if (!e->mopES && c == (e->srcTA == CTA9 ? '0' : 0))
+#ifdef V3
+        if (!e->mopES && (c & 017) == 0)
+#else
+        if (!e->mopES && c == decimalZero)
+#endif
         {
 	    //If ES is OFF and the character is zero, then edit insertion table
 	    //entry 1 is moved to the receiving field in place of the
@@ -3931,7 +3977,12 @@ static int mopMVZB(EISstruct *e)
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
-        } else if (!e->mopES && c != (e->srcTA == CTA9 ? '0' : 0))
+        }
+#ifdef V3
+        else if (!e->mopES && (c & 017) != 0)
+#else
+        else if (!e->mopES && c != decimalZero)
+#endif
         {
 	    //If ES is OFF and the character is not zero, then the character is
 	    //moved to the receiving field and ES is set ON.
@@ -4111,11 +4162,13 @@ void mvne(DCDstruct *ins)
     
     e->srcTN = e->TN1;    // type of chars in src
 
+#if defined(V1) || defined(V2)
 // XXX Temp hack to get MOP to work. Merge TA/TN?
 // The MOP operators look at srcTA to make 9bit/not 9-bit decisions about
 // the contents of inBuffer; parseNumericOperandDescriptor() always puts
 // 4 bit data in inBuffer, so signal the MOPS code of that.
     e->srcTA = CTA4;    // type of chars in src
+#endif
 
     e->srcCN = e->CN1;    // starting at char pos CN
     switch(e->srcTN)
