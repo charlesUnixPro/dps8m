@@ -5912,10 +5912,11 @@ static t_stat DoEISInstruction (void)
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
             {
                 word3 ARn = GET_ARN (cu . IWB); // 3-bit register specifier
-                word18 address = GET_OFFSET (cu . IWB); // 15-bit Address
+                word15 address = GET_OFFSET (cu . IWB); // 15-bit Address
                 // 4-bit register modification (None except au, qu, al, ql, xn)
                 word4 reg = GET_TAG (cu . IWB); 
 
+                // The contents of the register is a 9-bit character count
                 word18 r = getCrAR (reg);
 
                 // The a bit is zero if IGN_B29 is set;
@@ -5935,10 +5936,12 @@ static t_stat DoEISInstruction (void)
                     //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 
                     //     4 -> C(ARn.WORDNO)
                     //   (C(ARn.CHAR) + C(REG))mod4 -> C(ARn.CHAR)
+                    // (r and AR_CHAR are 18 bit values, but we want not to 
+                    // lose most significant digits in the addition.
                     AR [ARn] . WORDNO += 
-                      (address + (r + GET_AR_CHAR (ARn)) / 4);
+                      (address + (((word36) r) + ((word36) GET_AR_CHAR (ARn))) / 4);
                     // AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) + r) % 4, 0);
+                    SET_AR_CHAR_BIT (ARn, (((word36) GET_AR_CHAR (ARn)) + ((word36) r)) % 4, 0);
                   }
                 AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
