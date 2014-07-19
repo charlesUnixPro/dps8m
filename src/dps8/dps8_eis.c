@@ -6,7 +6,7 @@
  * \brief EIS support code...
 */
 
-#define V3
+#define V4
 
 #ifdef V1
 // This makes MVE 1-28 and all of MVNE work
@@ -18,6 +18,12 @@
 // This makes MVE 1-10 and 20-37 and all of MVNE work
 // Fails MVE 11-19 (6->9)
 #define decimalZero (e->srcTA == CTA9 ? '0' : 0)
+#endif
+
+#ifdef V4
+#define isDecimalZero(c) ((e->srcTA == CTA9) ? \
+                            ((c) == '0') : \
+                            (((c) & 017) == 0)) 
 #endif
 
 #include <stdio.h>
@@ -3544,7 +3550,9 @@ static int mopMFLC(EISstruct *e)
             // XXX See srcTA comment in MVNE
 
 
-#ifdef V3
+#ifdef V4
+            if (isDecimalZero (c))
+#elif defined (V3)
             if ((c & 017) == 0)
 #else
             if (c == decimalZero)
@@ -3652,7 +3660,10 @@ static int mopMFLS(EISstruct *e)
         if (!e->mopES) { // e->mopES is OFF
             //if (c == 0) {
             // XXX See srcTA comment in MVNE
-#ifdef V3
+
+#ifdef V4
+            if (isDecimalZero (c))
+#elif defined (V3)
             if ((c & 017) == 0)
 #else
             if (c == decimalZero)
@@ -3946,7 +3957,9 @@ static int mopMVZA(EISstruct *e)
         
         //if (!e->mopES && c == 0)
         // XXX See srcTA comment in MVNE
-#ifdef V3
+#ifdef V4
+        if (!e->mopES && isDecimalZero (c))
+#elif defined (V3)
         if (!e->mopES && (c & 017) == 0)
 #else
         if (!e->mopES && c == decimalZero)
@@ -3959,7 +3972,9 @@ static int mopMVZA(EISstruct *e)
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
         }
-#ifdef V3
+#ifdef V4
+        else if ((! e->mopES) && (! isDecimalZero (c)))
+#elif defined (V3)
         else if (!e->mopES && (c & 017) != 0)
 #else
         else if (!e->mopES && c != decimalZero)
@@ -4022,7 +4037,9 @@ static int mopMVZB(EISstruct *e)
         
         //if (!e->mopES && c == 0)
         // XXX See srcTA comment in MVNE
-#ifdef V3
+#ifdef V4
+        if ((!e->mopES) && isDecimalZero (c))
+#elif defined (V3)
         if (!e->mopES && (c & 017) == 0)
 #else
         if (!e->mopES && c == decimalZero)
@@ -4035,7 +4052,9 @@ static int mopMVZB(EISstruct *e)
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
         }
-#ifdef V3
+#ifdef V4
+        if ((! e->mopES) && (! isDecimalZero (c)))
+#elif defined (V3)
         else if (!e->mopES && (c & 017) != 0)
 #else
         else if (!e->mopES && c != decimalZero)
@@ -4219,7 +4238,7 @@ void mvne(DCDstruct *ins)
     
     e->srcTN = e->TN1;    // type of chars in src
 
-#if defined(V1) || defined(V2)
+#if defined(V1) || defined(V2) || defined(V4)
 // XXX Temp hack to get MOP to work. Merge TA/TN?
 // The MOP operators look at srcTA to make 9bit/not 9-bit decisions about
 // the contents of inBuffer; parseNumericOperandDescriptor() always puts
