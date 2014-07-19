@@ -696,7 +696,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "TRUNC\n");
                     trunc = true;
                     
-                } else if (r->digits > adjLen)
+                } else if ((r->digits-sf) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
                 {
                     // OVR
                     decBCDFromNumber(out, r->digits, &scale, r);
@@ -890,14 +890,14 @@ void ad2d (void)
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -930,14 +930,14 @@ void ad2d (void)
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -973,7 +973,7 @@ void ad2d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -1174,14 +1174,14 @@ void ad3d (void)
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
                 //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
             }
             break;
@@ -1214,14 +1214,14 @@ void ad3d (void)
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
                 //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
             }
             break;
@@ -1258,7 +1258,7 @@ void ad3d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -1432,14 +1432,14 @@ void sb2d (void)
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -1472,14 +1472,14 @@ void sb2d (void)
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -1516,7 +1516,7 @@ void sb2d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -1716,14 +1716,14 @@ void sb3d (void)
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
                 //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
         }
             break;
@@ -1756,14 +1756,14 @@ void sb3d (void)
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
                         //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -1800,7 +1800,7 @@ void sb3d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -1972,14 +1972,14 @@ void mp2d (void)
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
                 //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
         }
             break;
@@ -2012,14 +2012,14 @@ void mp2d (void)
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
                     //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
                 //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
         }
             break;
@@ -2056,7 +2056,7 @@ void mp2d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -2257,12 +2257,12 @@ void mp3d (void)
         {
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN,  (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
         }
             break;
@@ -2292,12 +2292,12 @@ void mp3d (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -2324,13 +2324,14 @@ void mp3d (void)
     // set flags, etc ...
     if (e->S3 == CSFL)
     {
+        //sim_printf("exp=%d\n", op3->exponent);
         if (op3->exponent > 127)
             SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -2503,12 +2504,12 @@ void dv2d (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -2538,12 +2539,12 @@ void dv2d (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -2576,7 +2577,7 @@ void dv2d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -2796,12 +2797,12 @@ void dv3d (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
             break;
@@ -2831,12 +2832,12 @@ void dv3d (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR3, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
+                    EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
             }
             break;
@@ -2869,7 +2870,7 @@ void dv3d (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
@@ -3170,12 +3171,12 @@ void mvn (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 013);  // special +
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 013);  // special +
                     else
-                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 014);  // default +
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 014);  // default +
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
                     break;
             }
             break;
@@ -3205,13 +3206,13 @@ void mvn (void)
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  013);  // special +
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  013);  // special +
                     else
-                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  014);  // default +
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  014);  // default +
                     break;
             
                 case CTN9:
-                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
                     break;
             }
             break;
@@ -3244,7 +3245,7 @@ void mvn (void)
             SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op1), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF((decNumberIsNegative(op1) && !decNumberIsZero(op1)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
     SCF(decNumberIsZero(op1), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
