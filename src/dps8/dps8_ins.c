@@ -147,7 +147,7 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
  * get register value indicated by reg for Address Register operations
  * (not for use with address modifications)
  */
-static word18 getCrAR(word4 reg)
+static word36 getCrAR(word4 reg)
 {
     if (reg == 0)
         return 0;
@@ -159,16 +159,16 @@ static word18 getCrAR(word4 reg)
     {
         case TD_N:
             return 0;
-        case TD_AU: ///< C(A)0,17
+        case TD_AU: // C(A)0,17
             return GETHI(rA);
-        case TD_QU: ///<  C(Q)0,17
+        case TD_QU: //  C(Q)0,17
             return GETHI(rQ);
-        case TD_IC: ///< C(PPR.IC)
+        case TD_IC: // C(PPR.IC)
             return PPR.IC;
-        case TD_AL: ///< C(A)18,35
-            return GETLO(rA);
-        case TD_QL: ///< C(Q)18,35
-            return GETLO(rQ);
+        case TD_AL: // C(A)18,35
+            return rA; // See AL36, Table 4-1
+        case TD_QL: // C(Q)18,35
+            return rQ; // See AL36, Table 4-1
     }
     return 0;
 }
@@ -2383,7 +2383,7 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-#define DIV_TRACE
+//#define DIV_TRACE
         /// Fixed-Point Division
         case 0506:  ///< div
             /// C(Q) / (Y) integer quotient -> C(Q), integer remainder -> C(A)
@@ -5917,7 +5917,7 @@ static t_stat DoEISInstruction (void)
                 word4 reg = GET_TAG (cu . IWB); 
 
                 // The contents of the register is a 9-bit character count
-                word18 r = getCrAR (reg);
+                word36 r = getCrAR (reg);
 
                 // The a bit is zero if IGN_B29 is set;
                 //if (! i -> a)
@@ -5939,9 +5939,9 @@ static t_stat DoEISInstruction (void)
                     // (r and AR_CHAR are 18 bit values, but we want not to 
                     // lose most significant digits in the addition.
                     AR [ARn] . WORDNO += 
-                      (address + (((word36) r) + ((word36) GET_AR_CHAR (ARn))) / 4);
+                      (address + (r + ((word36) GET_AR_CHAR (ARn))) / 4);
                     // AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (((word36) GET_AR_CHAR (ARn)) + ((word36) r)) % 4, 0);
+                    SET_AR_CHAR_BIT (ARn, (r + ((word36) GET_AR_CHAR (ARn))) % 4, 0);
                   }
                 AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
@@ -5959,7 +5959,8 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                //int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // If A = 0, then
                 //   ADDRESS + C(REG) / 6 -> C(ARn.WORDNO)
@@ -5999,7 +6000,8 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                //int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6019,11 +6021,11 @@ static t_stat DoEISInstruction (void)
                     //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
                     //   ((9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
                     //   4 * (C(ARn.CHAR) + 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) + 4 * r + GET_AR_BITNO (ARn)) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9;
                     // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     4 * (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     4 * (GET_AR_CHAR (ARn) + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
@@ -6050,9 +6052,9 @@ static t_stat DoEISInstruction (void)
 // the bit count. The word count is added to the y field for which bit 3 of the
 // instruction word is extended and the sum is taken.
 
-                word18 bitStringCnt = getCrAR (reg);
-                word18 wordCnt = bitStringCnt / 36u;
-                word18 bitCnt = bitStringCnt % 36u;
+                word36 bitStringCnt = getCrAR (reg);
+                word36 wordCnt = bitStringCnt / 36u;
+                word36 bitCnt = bitStringCnt % 36u;
 
                 word18 address = 
                   SIGNEXT15 (getbits36 (cu . IWB, 3, 15)) & AMASK;
@@ -6076,8 +6078,8 @@ static t_stat DoEISInstruction (void)
 //  The CHAR and BIT fields (bits 18-23) of the specified AR are added to the 
 //  character portion and the bit portion of the remainder. 
 
-                    word18 charPortion = bitCnt / 9;
-                    word18 bitPortion = bitCnt % 9;
+                    word36 charPortion = bitCnt / 9;
+                    word36 bitPortion = bitCnt % 9;
 
                     charPortion += GET_AR_CHAR (ARn);
                     bitPortion += GET_AR_BITNO (ARn);
@@ -6086,6 +6088,8 @@ static t_stat DoEISInstruction (void)
 // of the specified AR. With this addition, carry from the BIT field (bit 20)
 // and the CHAR field (bit 18) is transferred (when BIT field >8, CHAR field
 // >3).
+
+// XXX replace with modulus arithmetic
 
                     while (bitPortion > 8)
                       {
@@ -6129,9 +6133,9 @@ static t_stat DoEISInstruction (void)
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
                 if (! GET_A (cu. IWB))
-                    AR[ARn].WORDNO = (address + SIGNEXT18(getCrAR(reg)));
+                    AR[ARn].WORDNO = (address + getCrAR(reg));
                 else
-                    AR[ARn].WORDNO += (address + SIGNEXT18(getCrAR(reg)));
+                    AR[ARn].WORDNO += (address + getCrAR(reg));
                 
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // AR[ARn].CHAR = 0;
@@ -6146,7 +6150,7 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
-                int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6164,9 +6168,9 @@ static t_stat DoEISInstruction (void)
                     // If A = 1, then
                     //   C(ARn.WORDNO) - ADDRESS + (C(ARn.CHAR) - C(REG)) / 4 -> C(ARn.WORDNO)
                     //   (C(ARn.CHAR) - C(REG))mod4 -> C(ARn.CHAR)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) / 4;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (GET_AR_CHAR (ARn) - r) / 4;
                     // AR[ARn].CHAR = (AR[ARn].CHAR - r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) % 4, 0);
+                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) - r) % 4, 0);
                 }
                 
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
@@ -6184,7 +6188,7 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6205,11 +6209,11 @@ static t_stat DoEISInstruction (void)
                     //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
                     //   ((9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
                     //   (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) / 36;
                     //AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 36) / 9;
                     //AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn)) % 9);
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
@@ -6224,7 +6228,7 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6246,11 +6250,11 @@ static t_stat DoEISInstruction (void)
                     //   ((9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
                     //   4 * (C(ARn.CHAR) - 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
 
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 4 * r + GET_AR_BITNO (ARn)) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) % 36) / 9;
                     // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR - 2 * r + AR[ARn].ABITNO / 4) % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     4 * (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 2 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */ / 4) % 2 + 1);
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     4 * (GET_AR_CHAR (ARn) - 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
@@ -6265,7 +6269,7 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -6286,11 +6290,11 @@ static t_stat DoEISInstruction (void)
                     //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
                     //  ((9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
                     //  (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) / 36;
                     // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 36) / 9;
                     // AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn)) % 9);
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
@@ -6305,7 +6309,7 @@ static t_stat DoEISInstruction (void)
                 int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = SIGNEXT18(getCrAR(reg));
+                word36 r = getCrAR(reg);
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)

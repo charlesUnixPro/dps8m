@@ -1223,10 +1223,11 @@ void setupOperandDescriptor(int k, EISstruct *e)
 	// dl may be used. If the ic modifier is used, then ADDRESS is an
 	// 18-bit offset relative to value of the instruction counter for the
 	// instruction word. C(REG) is always interpreted as a word offset. REG 
+
         uint reg = opDesc & 017;
         address += getMFReg18(reg, false);
         address &= AMASK;
-        
+
         e->addr[k-1].address = address;
         
         e->op[k-1] = EISRead(&e->addr[k-1]);  // read EIS operand .. this should be an indirectread
@@ -5498,8 +5499,8 @@ void tct(DCDstruct *ins)
     // bit usage here.
     word36 r = getMFReg36 (xREG, false);
     
-    sim_debug (DBG_CAC, & cpu_dev,
-               "TCT xREG %o r %llo\n", xREG, r);
+    //sim_debug (DBG_CAC, & cpu_dev,
+               //"TCT xREG %o r %llo\n", xREG, r);
 
     word18 xAddress = GETHI (xlat);
     
@@ -5514,9 +5515,9 @@ void tct(DCDstruct *ins)
         word18 offset = SIGNEXT15 (xAddress & MASK15);  // 15-bit signed number
         xAddress = (AR [n] . WORDNO + offset) & AMASK;
         
-        sim_debug (DBG_CAC, & cpu_dev,
-                   "TCT OP2 is indirect; offset %06o AR[%d].WORDNO %06o\n",
-                   offset, n, AR [n] . WORDNO);
+        //sim_debug (DBG_CAC, & cpu_dev,
+                   //"TCT OP2 is indirect; offset %06o AR[%d].WORDNO %06o\n",
+                   //offset, n, AR [n] . WORDNO);
 
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT OP2 is indirect; offset %06o AR[%d].WORDNO %06o\n",
@@ -5535,16 +5536,16 @@ void tct(DCDstruct *ins)
         }
     }
     
-    sim_debug (DBG_CAC, & cpu_dev,
-               "TCT xAddress %06o ARn_CHAR %o r %llo ARn_BITno %o\n",
-               xAddress, ARn_CHAR, r, ARn_BITNO);
+    //sim_debug (DBG_CAC, & cpu_dev,
+               //"TCT xAddress %06o ARn_CHAR %o r %llo ARn_BITno %o\n",
+               //xAddress, ARn_CHAR, r, ARn_BITNO);
     // XXX Watch for 36u*r overflow here
     xAddress +=  ((9u*ARn_CHAR + 36u*r + ARn_BITNO) / 36u);
     xAddress &= AMASK;
     
-    sim_debug (DBG_CAC, & cpu_dev,
-               "TCT OP2 final address %06o\n",
-               xAddress);
+    //sim_debug (DBG_CAC, & cpu_dev,
+               //"TCT OP2 final address %06o\n",
+               //xAddress);
 
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT OP2 final address %06o\n",
@@ -5959,6 +5960,7 @@ void cmpc(DCDstruct *ins)
     SETF (cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
     SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
+#if 0
     if_sim_debug (DBG_CAC, & cpu_dev)
       {
         if (e -> N1 < 80 && e -> N2 < 80)
@@ -5996,6 +5998,7 @@ void cmpc(DCDstruct *ins)
             sim_debug (DBG_CAC, & cpu_dev, "s2: <%s>\n", buffer2);
           }
       }
+#endif
 
 
     uint i = 0;
