@@ -1,9 +1,11 @@
 #define if_sim_debug(dbits, dptr) \
-  if (sim_timell () >= sim_deb_start && \
-      (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
+  if ( \
       sim_deb && \
       ((dptr)->dctrl & dbits) && \
-      ((sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR)) 
+      ((sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR) && \
+      sim_timell () >= sim_deb_start && \
+      (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) \
+    ) 
 
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
