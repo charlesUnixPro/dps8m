@@ -62,6 +62,23 @@
 
 //-- // extern t_stat disk_svc(UNIT *up);
 
+// From IBM GA27-1661-3_IBM_3880_Storage_Control_Description_May80, pg 4.4:
+//
+//  The Seek command transfers the six-byte seek address from the channel to
+//  the storage director....
+//
+//     Bytes 0-5: 0 0 C C 0 H
+//
+//       Model       Cmax   Hmax
+//       3330-1       410     18
+//       3330-11      814     18
+//       3340 (35MB)  348     11
+//       3340 (70MB)  697     11
+//       3344         697     11
+//       3350         559     29
+//
+//  Search Identifier Equal  [CC HH R]
+//    
 
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
@@ -169,6 +186,17 @@ static struct
     int dev_code;
   } cables_from_ioms_to_disk [N_DISK_UNITS_MAX];
 
+static int findDiskUnit (int iom_unit_num, int chan_num, int dev_code)
+  {
+    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
+      {
+        if (iom_unit_num == cables_from_ioms_to_disk [i] . iom_unit_num &&
+            chan_num     == cables_from_ioms_to_disk [i] . chan_num     &&
+            dev_code     == cables_from_ioms_to_disk [i] . dev_code)
+          return i;
+      }
+    return -1;
+  }
 
 /*
  * disk_init()
@@ -257,7 +285,6 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             sim_debug (DBG_NOTIFY, & disk_dev, "Read\n");
 //sim_printf ("disk read [%lld]\n", sim_timell ());
             // Get the DDCW
-
             dcw_t dcw;
             int rc = iomListService (iom_unit_num, chan, & dcw);
 
@@ -434,7 +461,7 @@ sim_printf ("uncomfortable with this\n");
               }
 
             word36 seekData = M [daddr];
-//sim_printf ("seekData %012llo\n", seekData);
+//sim_printf ("dev_code %02o seekData %012llo\n", pcwp -> dev_code, seekData);
 // Observations about the seek/write stream
 // the stream is seek512 followed by a write 1024.
 // the seek data is:  000300nnnnnn
@@ -807,9 +834,21 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 //sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
-//sim_printf ("not instr\n");
+// 04501 : COMMAND REJECTED, invalid command
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true);
             break;
           }
+
+// The dcw does not necessarily have the same dev_code as the pcw....
+
+        disk_unit_num = findDiskUnit (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code);
+        if (disk_unit_num < 0)
+          {
+// 04502 : COMMAND REJECTED, invalid device code
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true);
+            break;
+          }
+        unitp = & disk_unit [disk_unit_num];
         disk_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
       }

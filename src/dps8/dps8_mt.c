@@ -225,6 +225,19 @@ static struct
     int dev_code;
   } cables_from_ioms_to_mt [N_MT_UNITS_MAX];
 
+
+static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
+  {
+    for (int i = 0; i < N_MT_UNITS_MAX; i ++)
+      {
+        if (iom_unit_num == cables_from_ioms_to_mt [i] . iom_unit_num &&
+            chan_num     == cables_from_ioms_to_mt [i] . chan_num     &&
+            dev_code     == cables_from_ioms_to_mt [i] . dev_code)
+          return i;
+      }
+    return -1;
+  }
+
 void mt_init(void)
   {
     memset(tape_state, 0, sizeof(tape_state));
@@ -677,9 +690,22 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
           }
         if (dcw . type != idcw)
           {
-sim_printf ("not instr\n");
+// 04501 : COMMAND REJECTED, invalid command
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true);
             break;
           }
+
+
+// The dcw does not necessarily have the same dev_code as the pcw....
+
+        mt_unit_num = findTapeUnit (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code);
+        if (mt_unit_num < 0)
+          {
+// 04502 : COMMAND REJECTED, invalid device code
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true);
+            break;
+          }
+        unitp = & mt_unit [mt_unit_num];
         mt_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
       }
