@@ -43,7 +43,9 @@
 #define SIGN18          0400000U
 #define MASK36          0777777777777LLU                   /*!< data mask */
 #define DMASK           MASK36
-#define MASK18          0777777U                     ///< 18-bit data mask
+#define MASK16          0177777U                     // 16-bit data mask
+#define MASK17          0377777U                     // 17-bit data mask
+#define MASK18          0777777U                     // 18-bit data mask
 #define WMASK           MASK18                             // WORDNO mask
 #define MASKLO18        0000000777777LLU
 #define MASKHI18        0777777000000LLU

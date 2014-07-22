@@ -466,7 +466,8 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-            sim_printf ("CONSOLE: ");
+            //sim_printf ("CONSOLE: ");
+            //sim_puts ("CONSOLE: ");
 
             // Tally is in words, not chars.
 
@@ -480,18 +481,23 @@ sim_printf ("uncomfortable with this\n");
                     word36 wide_char = datum >> 27; // slide leftmost char into low byte
                     datum = datum << 9; // lose the leftmost char
                     char ch = wide_char & 0x7f;
+                    if (ch != 0177 && ch != 0)
+                      sim_putchar (ch);
+#if 0
                     if (isprint (ch))
-                      sim_printf ("%c", ch);
+                      {
+                        sim_printf ("%c", ch);
+                      }
                     else
                       {
-                        if (ch && ch != '\015' && ch != '\012' && ch != '\177')
-                          sim_printf ("\\%03o", ch);
+                        sim_printf ("\\%03o", ch);
                       }
+#endif
                     //if (ch == '\r')
-                      //sim_printf ("\n");
+                      //sim_putchar ('\n');
                   }
               }
-            sim_printf ("\n");
+            // sim_printf ("\n");
             stati = 04000;
           }
           break;
@@ -509,7 +515,8 @@ sim_printf ("uncomfortable with this\n");
           {
             is_read = false;
             // AN70-1 says only console channels respond to this command
-            sim_printf ("CONSOLE: ALERT\n");
+            //sim_printf ("CONSOLE: ALERT\n");
+            sim_puts ("CONSOLE: ALERT\r\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write Alert cmd received\n", __func__);
             sim_putchar('\a');
@@ -909,7 +916,8 @@ static void check_keyboard (void)
               }
             if (announce)
               {
-                sim_printf ("[auto-input] ");
+                //sim_printf ("[auto-input] ");
+                sim_puts ("[auto-input] ");
                 announce = 0;
               }
             if (c == '\005')
@@ -958,8 +966,8 @@ poll:
           }
         if (c == '\014')  // Form Feed, \f, ^L
           {
-            sim_putchar('\r');
             sim_putchar('\n');
+            sim_putchar('\r');
             for (const char * p = console_state . buf; p < console_state . tailp; ++p)
               sim_putchar (* p);
           }
@@ -973,8 +981,8 @@ poll:
             *console_state . tailp++ = 012;
 #endif
             // sim_putchar(c);
-            sim_putchar ('\r');
             sim_putchar ('\n');
+            sim_putchar ('\r');
             console_state . have_eol = 1;
             sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL\n");
             return;

@@ -59,6 +59,7 @@ typedef uint16      word10;
 typedef uint16      word12;
 typedef uint16      word14;
 typedef uint16      word15;
+typedef uint16      word16;
 typedef uint32      word18;
 typedef int32       word18s;
 typedef uint32      word24;

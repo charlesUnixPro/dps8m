@@ -719,7 +719,7 @@ void traceInstruction (uint flag)
         if (where)
           {
             sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
-            listSource (compname, compoffset);
+            listSource (compname, compoffset, false);
           }
 
         if (get_addr_mode() == ABSOLUTE_mode)
@@ -6590,7 +6590,8 @@ static int emCall (void)
             char c = rA & 0x7f;
             if (c)  // ignore NULL chars. 
                 // putc(c, stdout);
-                sim_putchar(c);
+                //sim_putchar(c);
+                sim_printf("%c", c);
             break; 
         }
         case 0100:     ///< putc9 - put 9-bit char in A(0) to stdout
@@ -6598,7 +6599,8 @@ static int emCall (void)
             char c = (rA >> 27) & 0x7f;
             if (isascii(c))  // ignore NULL chars.
                 //putc(c, stdout);
-                sim_putchar(c);
+                //sim_putchar(c);
+                sim_printf("%c", c);
             else
                 sim_printf("\\%03o", c);
             break;
@@ -6610,7 +6612,8 @@ static int emCall (void)
             {
                 if (isascii(c))  // ignore NULL chars.
                     //putc(c, stdout);
-                    sim_putchar(c);
+                    //sim_putchar(c);
+                    sim_printf("%c", c);
                 else
                     sim_printf("\\%3o", c);
             }

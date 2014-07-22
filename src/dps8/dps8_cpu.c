@@ -2561,20 +2561,23 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
     int seg = PAR [6].SNR;
 
     uint curr_frame;
-    t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
+    char * msg;
+    //t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
+    int rc = dbgLookupAddress (seg, PAR [6].WORDNO, & curr_frame, & msg);
     if (rc)
       {
-        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address.\n",
-            __func__, PAR [6].SNR, PAR [6].WORDNO);
+        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
+            __func__, PAR [6].SNR, PAR [6].WORDNO, msg);
         return 1;
       }
 
     // The stack header will be at offset 0 within the stack segment.
     int offset = 0;
     word24 hdr_addr;  // 24bit main memory address
-    if (computeAbsAddrN (& hdr_addr, seg, offset))
+    //if (computeAbsAddrN (& hdr_addr, seg, offset))
+    if (dbgLookupAddress (seg, offset, & hdr_addr, & msg))
       {
-        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address.\n", __func__, seg);
+        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address becuase %s.\n", __func__, seg, msg);
         return 1;
       }
 
@@ -2625,12 +2628,13 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
         // Might find ourselves in a different page while moving from frame to frame...
         // BUG: We assume a stack frame doesn't cross page boundries
         uint addr;
-        if (computeAbsAddrN (& addr, seg, framep))
+        //if (computeAbsAddrN (& addr, seg, framep))
+        if (dbgLookupAddress (seg, offset, & addr, & msg))
           {
             if (finished)
               break;
             //if (output)
-              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address.\n", __func__, seg, framep);
+              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address because %s.\n", __func__, seg, framep, msg);
             return 1;
           }
 
@@ -2714,7 +2718,7 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
                 if (where)
                   {
                     sim_printf ("%s\n", where);
-                    listSource (compname, compoffset);
+                    listSource (compname, compoffset, true);
                   }
 
 //---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {

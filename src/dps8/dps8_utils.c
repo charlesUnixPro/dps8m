@@ -1185,6 +1185,7 @@ char *bin2text(t_uint64 word, int n)
 
 #include <ctype.h>
 
+#if 0
 //
 // simh puts the tty in raw mode when the sim is running;
 // this means that test output to the console will lack CR's and
@@ -1247,6 +1248,70 @@ void sim_printf( const char * format, ... )
 
     va_end (args);
 }
+#endif
+
+// Rework sim_printf.
+//
+// Distinguish between the console device and the window in which dps8 is
+// running.
+//
+// There are (up to) three outputs:
+//
+//   - the window in which dps8 is running (stdout)
+//   - the log file (which may be stdout or stderr)
+//   - the console device
+//
+// sim_debug --
+//   prints time stamped strings to the logfile.
+// sim_printf --
+//   prints strings to logfile and stdout
+// sim_putchar/sim_os_putchar/sim_puts
+//   prints char/string to the console
+
+void sim_printf (const char * format, ...)
+  {
+    char buffer [4096];
+    bool bOut = (sim_deb != stdout);
+
+    va_list args;
+    va_start (args, format);
+    vsnprintf (buffer, sizeof (buffer), format, args);
+    
+    for (uint i = 0 ; i < sizeof (buffer); i ++)
+      {
+        if (! buffer [i])
+          break;
+
+        // stdout
+
+        if (bOut)
+          {
+            if (sim_is_running && buffer [i] == '\n')
+              putchar  ('\r');
+            putchar (buffer [i]);
+          }
+
+        // logfile
+
+        if (sim_deb)
+          {
+            if (sim_is_running && buffer [i] == '\n')
+              fputc  ('\r', sim_deb);
+            fputc (buffer [i], sim_deb);
+          }
+    }
+    va_end (args);
+    fflush (sim_deb);
+    if (bOut)
+      fflush (stdout);
+}
+
+void sim_puts (char * str)
+  {
+    char * p = str;
+    while (* p)
+      sim_putchar (* (p ++));
+  }
 
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
@@ -1393,6 +1458,12 @@ void cfgparse_done (config_state_t * state)
 //
 //   \e   (end simulation)
 //
+//  the simh parser doesn't handle these very well...
+//
+//   \_  space
+//   \c  comma
+//   \s  semicolon
+//
 //  all others silently ignored and left unprocessed
 //
 
@@ -1419,6 +1490,12 @@ char * strdupesc (const char * str)
           * p = '\r';
         else if (p [1] == 'e')
           * p = '\005';
+        else if (p [1] == '_')
+          * p = ' ';
+        else if (p [1] == 'c')
+          * p = ',';
+        else if (p [1] == 's')
+          * p = ';';
         else
           {
             p ++;

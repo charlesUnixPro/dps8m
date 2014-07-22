@@ -62,6 +62,8 @@
 
 //-- // extern t_stat disk_svc(UNIT *up);
 
+// ./library_dir_dir/include/fs_dev_types.incl.alm
+//
 // From IBM GA27-1661-3_IBM_3880_Storage_Control_Description_May80, pg 4.4:
 //
 //  The Seek command transfers the six-byte seek address from the channel to
@@ -80,6 +82,56 @@
 //  Search Identifier Equal  [CC HH R]
 //    
 
+// ./library_dir_dir/system_library_1/source/bound_page_control.s.archive/disk_control.pl1
+//
+// dcl     devadd             fixed bin (18);              /* record number part of device address */
+//
+//  /* Compute physical sector address from input info.  Physical sector result
+//   accounts for unused sectors per cylinder. */
+//
+//        if pvte.is_sv then do;                  /* convert the subvolume devadd to the real devadd */
+//             record_offset = mod (devadd, pvte.records_per_cyl);
+//             devadd = ((devadd - record_offset) * pvte.num_of_svs) + pvte.record_factor + record_offset;
+//        end;
+//        sector = devadd * sect_per_rec (pvte.device_type);/* raw sector. */
+//        cylinder = divide (sector, pvtdi.usable_sect_per_cyl, 12, 0);
+//        sector = sector + cylinder * pvtdi.unused_sect_per_cyl;
+//        sector = sector + sect_off;                     /* sector offset, if any. */
+//
+
+// DB37rs DSS190 Disk Subsystem, pg. 27:
+//
+//   Seek instruction:
+//     Sector count limit, bits 0-11: These bits define the binary sector count.
+//     All zeros is a maximum count of 4096.
+//   Track indicator, bits 12-13:
+//     These bits inidicate a complete track as good, defective, or alternate.
+//       00 = primary track - good
+//       01 = alternate track - good
+//       10 = defective track - alternate track assigned
+//       11 = defective track - no alternate track assigned
+//
+//   Sector address, bits 16-35
+//
+//      0                                                  35
+//      XXXX  XXXX | XXXX XXXX | XXXX XXXX | XXXX XXXX | XXXX 0000 
+//        BYTE 0         1           2           3           4
+//
+//  Seek        011100
+//  Read        010101
+//  Read ASCII  010011
+//  Write       011001
+//  Write ASCII 011010
+//  Write and compare
+//              011011
+//  Request status
+//              000000
+//  reset status
+//              100000
+//  bootload control store
+//              001000
+//  itr boot    001001
+//
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -461,7 +513,7 @@ sim_printf ("uncomfortable with this\n");
               }
 
             word36 seekData = M [daddr];
-//sim_printf ("dev_code %02o seekData %012llo\n", pcwp -> dev_code, seekData);
+//sim_printf ("seekData %012llo\n", seekData);
 // Observations about the seek/write stream
 // the stream is seek512 followed by a write 1024.
 // the seek data is:  000300nnnnnn
