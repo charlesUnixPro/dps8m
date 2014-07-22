@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
 Writing SDW to address 00007000 (DSBR.ADDR+2*0 offset) 
@@ -19,8 +21,6 @@ Seg 4 - *** Uninitialized ***
 Seg 5 - *** Uninitialized ***
 Seg 6 - *** Uninitialized ***
 Seg 7 - *** Uninitialized ***
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 PR[0]/ap: SNR=00000 RNR=0 WORDNO=000000 BITNO:00
 PR[1]/ab: SNR=00001 RNR=0 WORDNO=000000 BITNO:00
 PR[2]/bp: SNR=00002 RNR=0 WORDNO=000000 BITNO:00
@@ -29,24 +29,25 @@ PR[4]/lp: SNR=00004 RNR=0 WORDNO=000000 BITNO:00
 PR[5]/lb: SNR=00005 RNR=0 WORDNO=000000 BITNO:00
 PR[6]/sp: SNR=00006 RNR=0 WORDNO=000000 BITNO:00
 PR[7]/sb: SNR=00007 RNR=0 WORDNO=000000 BITNO:00
-Hello world from TestAppend0 ...
+Hello world from TestAppend0 ...
 000042 000042
 000001 000002
 000003 000004
 000005 000006
-This is from Segment 1 ...
-From Segment 2 This is ...
+This is from Segment 1 ...
+From Segment 2 This is ...
 000000 000616
-Back at segment 0 we are!
+Back at segment 0 we are!
 000060 235000
 000000 000006
 000000 000001
-More stuff (from Segment 3) ...
+More stuff (from Segment 3) ...
 000000 000616
 000000 000123
 000000 000456
 012345 654321
 
+simCycles = 1024
 
 cpuCycles = 512
 TestAppend-17> g 0

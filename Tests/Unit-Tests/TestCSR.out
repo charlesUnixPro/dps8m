@@ -1,16 +1,17 @@
-430 (000656) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestCSR...
-Hello from ioa ...
-^o      Zero sup octal... 12345654321
-^n      Octal w/no spaces... 000006160616
-^w      octal w/ spaces... 314100 271000
-^d      decimal... 12252012
-^a      Ascii... 'ABCD'
-^g      GE code... 'GE BCD'
-This is a test of CALL/SAVE/RETURN w/ multiple saves ...
+430 (000656) words loaded
+This is TestCSR...
+Hello from ioa ...
+^o      Zero sup octal... 12345654321
+^n      Octal w/no spaces... 000006160616
+^w      octal w/ spaces... 314100 271000
+^d      decimal... 12252012
+^a      Ascii... 'ABCD'
+^g      GE code... 'GE BCD'
+This is a test of CALL/SAVE/RETURN w/ multiple saves ...
 Error return 2
+simCycles = 4114
 
 cpuCycles = 2057
 TestCSR-10> g 0

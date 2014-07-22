@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 zero-initialized segments 0 .. 15
 zero-initialized SDWAM
 segment created for 'main'
@@ -108,29 +110,28 @@ LOT => PR[5]: SNR=00022 RNR=0 WORDNO=000000 BITNO:00
 Writing SDW to address 00001040 (DSBR.ADDR+2*16 offset) 
       49152 (140000) words loaded into segment 16 (20) at address 215340
 snapping lot_ links...
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	205340 + 0 => 000000000150
 	205340 + 23 => 000023000302
 	205340 + 24 => 000024000056
-This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 6/19 10:06 '
-BBG-1 ...
-ORSQ test 0 ... 0 (Should be 0)
-ORSQ test 1 ... 1234567 (Should be 1234567)
-ORSQ test 2 ... 1234567 (Should be 1234567)
-ORSQ test 3 ... 1237567 (Should be 1237567)
-ORSQ test 4 ... 7777777 (Should be 7777777)
-ORSQ bug >squished<
-TRA test ... trying 'tra seg|0,x0'...
-    TRA test 0 ... Q=1726354... (pass)
-    TRA test 1 ... back frpm TestBugsB...
-EPP test 1 ...
-BBG-2 ...
-ITS test 1 ...
-    Result is: 500000 764101 (Should be  5 00000 7641 01)
+This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 7/21 19:31 '
+BBG-1 ...
+ORSQ test 0 ... 0 (Should be 0)
+ORSQ test 1 ... 1234567 (Should be 1234567)
+ORSQ test 2 ... 1234567 (Should be 1234567)
+ORSQ test 3 ... 1237567 (Should be 1237567)
+ORSQ test 4 ... 7777777 (Should be 7777777)
+ORSQ bug >squished<
+TRA test ... trying 'tra seg|0,x0'...
+    TRA test 0 ... Q=1726354... (pass)
+    TRA test 1 ... back frpm TestBugsB...
+EPP test 1 ...
+BBG-2 ...
+ITS test 1 ...
+    Result is: 500000 764101 (Should be  5 00000 7641 01)
 T-H-A-T-S all folks (from 0|main) !!! 
+simCycles = 25480
 
-cpuCycles = 12739
+cpuCycles = 12740
 TestBugs-31> g
 
 DIS instruction, IC: main|66 (00000066) (000000616000)

@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
 segment created for 'Play'
@@ -26,27 +28,26 @@ Seg 4 - *** Uninitialized ***
 Seg 5 - *** Uninitialized ***
 Seg 6 - *** Uninitialized ***
 Seg 7 - *** Uninitialized ***
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-Date : ' 6/19 10:06 '
-froms0=123
-Thur, 19 Jun  2014 10:6:49 Pst 
-Date 0: ' 6/19 10:06 '
-This is A1... 3457623 -42 ASDF 000116 000045 | 000000 000043 000017 000000
-desc1:1: 000116 000045, PR2: saved: 000000 000017, modified:000000 000116
-1: If this works, I'll be surprised...
-2: If this works, I'll be surprised...
-This is the new ioa! -1234567890 123456 654321 7654321 12 345670 QwEr ABC123
-4-bit decimal '0123456789+-'...
-9-bit ASCII descriptor 'This is a test of the new inter-segment ioa!'
-6-bit GEBCD descriptor 'THIS IS A TEST OF THE NEW INTER-SEGMENT IOA!'
-'This is a test of the new inter-segment ioa!'
-'THIS IS A TEST OF THE NEW INTER-SEGMENT IOA!'
-'0123456789+-'
-Well, I'll be ....
+Date : ' 7/21 19:31 '
+froms0=123
+Mon , 21 Jul  2014 19:31:2 Pst 
+Date 0: ' 7/21 19:31 '
+This is A1... 3457623 -42 ASDF 000116 000045 | 000000 000043 000017 000000
+desc1:1: 000116 000045, PR2: saved: 000000 000017, modified:000000 000116
+1: If this works, I'll be surprised...
+2: If this works, I'll be surprised...
+This is the new ioa! -1234567890 123456 654321 7654321 12 345670 QwEr ABC123
+4-bit decimal '0123456789+-'...
+9-bit ASCII descriptor 'This is a test of the new inter-segment ioa!'
+6-bit GEBCD descriptor 'THIS IS A TEST OF THE NEW INTER-SEGMENT IOA!'
+'This is a test of the new inter-segment ioa!'
+'THIS IS A TEST OF THE NEW INTER-SEGMENT IOA!'
+'0123456789+-'
+Well, I'll be ....
 
+simCycles = 17430
 
-cpuCycles = 8712
+cpuCycles = 8715
 TestAppendA-16> g 0
 
 DIS instruction, IC: Play|114 (00000114) (000000616000)

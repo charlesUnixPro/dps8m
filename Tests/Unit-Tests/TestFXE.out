@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
 segment created for 'main'
@@ -108,19 +110,18 @@ LOT => PR[5]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
 Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset) 
       49152 (140000) words loaded into segment 8 (10) at address 214640
 snapping lot_ links...
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	204640 + 0 => 000000000304
 	204640 + 15 => 000015000240
-Howdy world! - It's ' 6/19 10:06 '
-We did it!!! 2**9=512
-We did it again!!! 2**11=2048
-Q=1050402 (Should be Q=1050402)
-Q=60606 (Should be Q=60606)
-Q=10703020107 (Should be Q=010703020107)
+Howdy world! - It's ' 7/21 19:31 '
+We did it!!! 2**9=512
+We did it again!!! 2**11=2048
+Q=1050402 (Should be Q=1050402)
+Q=60606 (Should be Q=60606)
+Q=10703020107 (Should be Q=010703020107)
 
+simCycles = 8644
 
-cpuCycles = 4321
+cpuCycles = 4322
 TestFXE-28> g 0
 
 DIS instruction, IC: main|162 (00000162) (000000616000)

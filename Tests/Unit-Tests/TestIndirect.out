@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
 segment created for 'main'
@@ -154,136 +156,134 @@ LOT => PR[5]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
 Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset) 
       49152 (140000) words loaded into segment 8 (10) at address 221560
 snapping lot_ links...
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	211560 + 0 => 000000000232
 	211560 + 13 => 000013001756
 	211560 + 14 => 000014002570
 	211560 + 15 => 000015000422
-Howdy world this is 'TestIndirect'! - It's ' 6/19 10:06 '
-TINDC$magicC was = 2718281828 (Should be 2718281828)
-TestIndirectA: magicA: 14 000043 2324 000000
-
-R mods ...
-'If this works, that means were in TAM$...'
-Should be ... 006000 0100 03 is 6000010003
-Should be ... 006000 0100 03 is 6000010003
-Should be ... 400000000003 is 400000000003
-Should be ... 000000000012 is 12
-Should be ... 000005 000004 is 000005 000004
-Should be ... 5 is 5
-Should be ... 17 is 17
-Should be ... 000006777776 (6,-2) is 000006 777776
-Should be ... 3 is 3
-Should be ... 700 is 700
-Should be ... 000000235004 is 000000 235004
-Should be ... 123456000000/000000543210 is 123456000000/543210
-RI mods ...
-Should be ... 42/400000000002 is 42/400000000002
-Should be ... 616 is 616
-Should be ... 77 is 77
-Should be ... 2012 is 2012
-Should be ... ??? (since l+2 & m move) is 1623000000
-Should be ... 400000000003 is 400000000003
-Should be ... 3 is 3
-Should be ... 42 is 42
-IR mods ...
-Should be ... 400000000001 is 400000000001
-Should be ... ??? (this will move as x moves) is 000000 001647
-Should be ... 377777777523 is 377777777523
-Should be ... 000000000222 is 222
-Should be ... 000000000333 is 333
-Should be ... 00000000042 is 42
-Should be ... ??? is 1643 (Yup, &w. But, &w will change)
-Should be ... 616 is 616
-Should be ... 00000000013 is 13
-Should be ... 0000000002012 is 2012
-Should be ... 34359738195 is 34359738195
-Should be ... 000007777777 is 7777777
-IT mods ...
-Should be ... 000000000046 .. 000000000034 is 46
-Should be ... 000000000046 .. 000000000034 is 44
-Should be ... 000000000046 .. 000000000034 is 42
-Should be ... 000000000046 .. 000000000034 is 40
-Should be ... 000000000046 .. 000000000034 is 36
-Should be ... 000000000046 .. 000000000034 is 34
-Should be ... 000000000013 .. 000000000025 is 13
-Should be ... 000000000013 .. 000000000025 is 15
-Should be ... 000000000013 .. 000000000025 is 17
-Should be ... 000000000013 .. 000000000025 is 21
-Should be ... 000000000013 .. 000000000025 is 23
-Should be ... 000000000013 .. 000000000025 is 25
-Should be ... 'This ' is 'T'
-Should be ... 'This ' is 'h'
-Should be ... 'This ' is 'i'
-Should be ... 'This ' is 's'
-Should be ... 'This ' is ' '
-Should be ... 'gfedc' is 'g'
-Should be ... 'gfedc' is 'f'
-Should be ... 'gfedc' is 'e'
-Should be ... 'gfedc' is 'd'
-Should be ... 'gfedc' is 'c'
-Should be ... '000I' is '00000I'
-Should be ... '000B' is '00000B'
-Should be ... '000M' is '00000M'
-Should be ... 42 is 42
-Should be ... 616,42,5,4,3,2,1 is 616
-Should be ... 616,42,5,4,3,2,1 is 42
-Should be ... 616,42,5,4,3,2,1 is 5
-Should be ... 616,42,5,4,3,2,1 is 4
-Should be ... 616,42,5,4,3,2,1 is 3
-Should be ... 616,42,5,4,3,2,1 is 2
-Should be ... 616,42,5,4,3,2,1 is 1
-Should be ... 100, 200, ..., 700, 7777 is 100
-Should be ... 100, 200, ..., 700, 7777 is 200
-Should be ... 100, 200, ..., 700, 7777 is 300
-Should be ... 100, 200, ..., 700, 7777 is 400
-Should be ... 100, 200, ..., 700, 7777 is 500
-Should be ... 100, 200, ..., 700, 7777 is 600
-Should be ... 100, 200, ..., 700, 7777 is 700
-Should be ... 100, 200, ..., 700, 7777 is 7777
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000001
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000002
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000003
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 0
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 1
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 2
-Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 3
-Should be ... 100 .. 700 is 100
-Should be ... 100 .. 700 is 200
-Should be ... 100 .. 700 is 300
-Should be ... 100 .. 700 is 400
-Should be ... 100 .. 700 is 500
-Should be ... 100 .. 700 is 600
-Should be ... 100 .. 700 is 700
-Should be ... -1, 0, o13 is 400000000001
-Should be ... -1, 0, o13 is 0
-Should be ... -1, 0, o13 is 13
-Should be ... 012, 345, o-255, 670 is 12
-Should be ... 012, 345, o-255, 670 is 345
-Should be ... 012, 345, o-255, 670 is 400000000255
-Should be ... 012, 345, o-255, 670 is 670
-That's all folks!!! (TAM$_main)
-   3.1415927   2.7182818   8.5397341
-This is from TAM$_print ...
-   3.1415927   2.7182818   -123.4567
-TestIndirect: magicM: 000013 000043 000004 000020
-
-Hallooooo from TIND$_main...
-main$Data_1 a: 12345654321 (Should be 12345654321)
-main$Data_1 b: 666 (Should be 666)
-main$Data_1 c: 49510627 (Should be 49510627 [Thanks Lexi!])
-main$Data_1 d: 982187 (Should be 982187 [Thanks Lydia!])
-main$magicM 1: 3141592653 (Should be 3141592653)
-main$magicM 2: 412345654321 (Should be 412345654321)
-Now leaving TIND$_main ...
-This is TINC$_main_C...
-_main_C:1: magicC = 31415926536 (Should be 31415926536)
-_main_C:1: t1 2718271828 (addr:Even:000010 000043 Odd:000230 000000)
-_main_C:2: d1 236776060576 265223074736 (addr:Even:000010 000043 Odd:000246 000000)
-_main_C:3: addr t2 Even:000010 000043 Odd:000231 000000)
-_main_C:4: filling t2 with 13 values from 30..42 : 30 31 32 33 34 35 36 37 38 39 40 41 42 
-_main_C:5: addr d2 Even:000010 000043 Odd:000250 000000)
+Howdy world this is 'TestIndirect'! - It's ' 7/21 19:31 '
+TINDC$magicC was = 2718281828 (Should be 2718281828)
+TestIndirectA: magicA: 14 000043 2324 000000
+
+R mods ...
+'If this works, that means were in TAM$...'
+Should be ... 006000 0100 03 is 6000010003
+Should be ... 006000 0100 03 is 6000010003
+Should be ... 400000000003 is 400000000003
+Should be ... 000000000012 is 12
+Should be ... 000005 000004 is 000005 000004
+Should be ... 5 is 5
+Should be ... 17 is 17
+Should be ... 000006777776 (6,-2) is 000006 777776
+Should be ... 3 is 3
+Should be ... 700 is 700
+Should be ... 000000235004 is 000000 235004
+Should be ... 123456000000/000000543210 is 123456000000/543210
+RI mods ...
+Should be ... 42/400000000002 is 42/400000000002
+Should be ... 616 is 616
+Should be ... 77 is 77
+Should be ... 2012 is 2012
+Should be ... ??? (since l+2 & m move) is 1623000000
+Should be ... 400000000003 is 400000000003
+Should be ... 3 is 3
+Should be ... 42 is 42
+IR mods ...
+Should be ... 400000000001 is 400000000001
+Should be ... ??? (this will move as x moves) is 000000 001647
+Should be ... 377777777523 is 377777777523
+Should be ... 000000000222 is 222
+Should be ... 000000000333 is 333
+Should be ... 00000000042 is 42
+Should be ... ??? is 1643 (Yup, &w. But, &w will change)
+Should be ... 616 is 616
+Should be ... 00000000013 is 13
+Should be ... 0000000002012 is 2012
+Should be ... 34359738195 is 34359738195
+Should be ... 000007777777 is 7777777
+IT mods ...
+Should be ... 000000000046 .. 000000000034 is 46
+Should be ... 000000000046 .. 000000000034 is 44
+Should be ... 000000000046 .. 000000000034 is 42
+Should be ... 000000000046 .. 000000000034 is 40
+Should be ... 000000000046 .. 000000000034 is 36
+Should be ... 000000000046 .. 000000000034 is 34
+Should be ... 000000000013 .. 000000000025 is 13
+Should be ... 000000000013 .. 000000000025 is 15
+Should be ... 000000000013 .. 000000000025 is 17
+Should be ... 000000000013 .. 000000000025 is 21
+Should be ... 000000000013 .. 000000000025 is 23
+Should be ... 000000000013 .. 000000000025 is 25
+Should be ... 'This ' is 'T'
+Should be ... 'This ' is 'h'
+Should be ... 'This ' is 'i'
+Should be ... 'This ' is 's'
+Should be ... 'This ' is ' '
+Should be ... 'gfedc' is 'g'
+Should be ... 'gfedc' is 'f'
+Should be ... 'gfedc' is 'e'
+Should be ... 'gfedc' is 'd'
+Should be ... 'gfedc' is 'c'
+Should be ... '000I' is '00000I'
+Should be ... '000B' is '00000B'
+Should be ... '000M' is '00000M'
+Should be ... 42 is 42
+Should be ... 616,42,5,4,3,2,1 is 616
+Should be ... 616,42,5,4,3,2,1 is 42
+Should be ... 616,42,5,4,3,2,1 is 5
+Should be ... 616,42,5,4,3,2,1 is 4
+Should be ... 616,42,5,4,3,2,1 is 3
+Should be ... 616,42,5,4,3,2,1 is 2
+Should be ... 616,42,5,4,3,2,1 is 1
+Should be ... 100, 200, ..., 700, 7777 is 100
+Should be ... 100, 200, ..., 700, 7777 is 200
+Should be ... 100, 200, ..., 700, 7777 is 300
+Should be ... 100, 200, ..., 700, 7777 is 400
+Should be ... 100, 200, ..., 700, 7777 is 500
+Should be ... 100, 200, ..., 700, 7777 is 600
+Should be ... 100, 200, ..., 700, 7777 is 700
+Should be ... 100, 200, ..., 700, 7777 is 7777
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000001
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000002
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 400000000003
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 0
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 1
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 2
+Should be ... o-1, o-2, o-3, 0, 1, 2, 3 is 3
+Should be ... 100 .. 700 is 100
+Should be ... 100 .. 700 is 200
+Should be ... 100 .. 700 is 300
+Should be ... 100 .. 700 is 400
+Should be ... 100 .. 700 is 500
+Should be ... 100 .. 700 is 600
+Should be ... 100 .. 700 is 700
+Should be ... -1, 0, o13 is 400000000001
+Should be ... -1, 0, o13 is 0
+Should be ... -1, 0, o13 is 13
+Should be ... 012, 345, o-255, 670 is 12
+Should be ... 012, 345, o-255, 670 is 345
+Should be ... 012, 345, o-255, 670 is 400000000255
+Should be ... 012, 345, o-255, 670 is 670
+That's all folks!!! (TAM$_main)
+   3.1415927   2.7182818   8.5397341
+This is from TAM$_print ...
+   3.1415927   2.7182818   -123.4567
+TestIndirect: magicM: 000013 000043 000004 000020
+
+Hallooooo from TIND$_main...
+main$Data_1 a: 12345654321 (Should be 12345654321)
+main$Data_1 b: 666 (Should be 666)
+main$Data_1 c: 49510627 (Should be 49510627 [Thanks Lexi!])
+main$Data_1 d: 982187 (Should be 982187 [Thanks Lydia!])
+main$magicM 1: 3141592653 (Should be 3141592653)
+main$magicM 2: 412345654321 (Should be 412345654321)
+Now leaving TIND$_main ...
+This is TINC$_main_C...
+_main_C:1: magicC = 31415926536 (Should be 31415926536)
+_main_C:1: t1 2718271828 (addr:Even:000010 000043 Odd:000230 000000)
+_main_C:2: d1 236776060576 265223074736 (addr:Even:000010 000043 Odd:000246 000000)
+_main_C:3: addr t2 Even:000010 000043 Odd:000231 000000)
+_main_C:4: filling t2 with 13 values from 30..42 : 30 31 32 33 34 35 36 37 38 39 40 41 42 
+_main_C:5: addr d2 Even:000010 000043 Odd:000250 000000)
    8.5397342
    26.828366
    84.283798
@@ -300,26 +300,27 @@ _main_C:5: addr d2 Even:000010 000043 Odd:000250 000000)
     24796632
     77900917
 2.4473295e+08
-
-_printTemps:1: t1 2718271828 (Should be: 2718271828)
-_printTemps:2: d1 236776060576 265223074736 (Should be: 236776060576 265223074736)
-_printTemps:3: t2(0)=30
-_printTemps:3: t2(1)=31
-_printTemps:3: t2(2)=32
-_printTemps:3: t2(3)=33
-_printTemps:3: t2(4)=34
-_printTemps:3: t2(5)=35
-_printTemps:3: t2(6)=36
-_printTemps:3: t2(7)=37
-_printTemps:3: t2(8)=38
-_printTemps:3: t2(9)=39
-_printTemps:3: t2(10)=40
-_printTemps:3: t2(11)=41
-_printTemps:3: t2(12)=42
-Now leaving TINC$_main_C ...
-T-H-A-T-S all folks (from 0|main) !!! 
 
-cpuCycles = 118430
+_printTemps:1: t1 2718271828 (Should be: 2718271828)
+_printTemps:2: d1 236776060576 265223074736 (Should be: 236776060576 265223074736)
+_printTemps:3: t2(0)=30
+_printTemps:3: t2(1)=31
+_printTemps:3: t2(2)=32
+_printTemps:3: t2(3)=33
+_printTemps:3: t2(4)=34
+_printTemps:3: t2(5)=35
+_printTemps:3: t2(6)=36
+_printTemps:3: t2(7)=37
+_printTemps:3: t2(8)=38
+_printTemps:3: t2(9)=39
+_printTemps:3: t2(10)=40
+_printTemps:3: t2(11)=41
+_printTemps:3: t2(12)=42
+Now leaving TINC$_main_C ...
+T-H-A-T-S all folks (from 0|main) !!! 
+simCycles = 236862
+
+cpuCycles = 118431
 TestIndirect-29> g 1 
 
 DIS instruction, IC: main|145 (00000145) (000000616000)
