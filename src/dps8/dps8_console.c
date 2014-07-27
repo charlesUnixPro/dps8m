@@ -181,20 +181,28 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
 
 static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) val, char *  cptr, void * __attribute__((unused)) desc)
   {
-    if (console_state . auto_input)
-      {
-        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Discarding prior auto-input., __func__\n", __func__);
-        free (console_state . auto_input);
-        console_state . auto_input = NULL;
-      }
     if (cptr)
       {
-        console_state . auto_input = strdupesc (cptr);
+        char * new = strdupesc (cptr);
+        if (console_state . auto_input)
+          {
+            size_t nl = strlen (new);
+            size_t ol = strlen (console_state . auto_input);
+
+            char * old = realloc (console_state . auto_input, nl + ol + 1);
+            strcpy (old + ol, new);
+            console_state . auto_input = old;
+            free (new);
+          }
+        else
+          console_state . auto_input = new;
         //console_state . auto_input = strdup (cptr);
         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", __func__, cptr);
       }
     else
       {
+        if (console_state . auto_input)
+          free (console_state . auto_input);
         console_state . auto_input = NULL;
         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
       }

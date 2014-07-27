@@ -446,6 +446,14 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
 
+#if 0
+if (faultNumber == 10 && sys_stats . total_cycles > 10000)
+  {
+    stop_reason = STOP_HALT;
+    longjmp (jmpMain, JMP_STOP);
+  }
+#endif
+
     // some debugging support stuff
     fault_psr = PPR.PSR;
     fault_ic = PPR.IC;
@@ -515,9 +523,13 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
     longjmp (jmpMain, JMP_REENTRY);
 }
 
-/*
- * return true if group 7 faules are pending ...
- */
+//
+// return true if group 7 faules are pending ...
+//
+
+// Note: The DIS code assumes that the only G7 fault is TRO. Adding any
+// other G7 faults will potentailly require changing the DIS code.
+ 
 bool bG7Pending()
 {
     return g7Faults != 0;

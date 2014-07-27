@@ -1725,6 +1725,9 @@ void dfdi (void)
 // CANFAULT 
 void dvf (void)
 {
+//#ifdef DBGCAC
+//sim_printf ("DVF %lld %06o:%06o\n", sim_timell (), PPR.PSR, PPR.IC);
+//#endif
     // C(AQ) / (Y)
     //  fractional quotient → C(A)
     //  fractional remainder → C(Q)
@@ -1749,10 +1752,10 @@ void dvf (void)
     word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
     word72 m2 = SIGNEXT72(SIGNEXT36(CY));
 
-sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
-sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
-sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
-sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
+//sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
+//sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
+//sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
+//sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
 
     if (m2 == 0)
     {
@@ -1911,10 +1914,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 // MM code
 #ifdef DVF_CAC
 
-sim_debug (DBG_CAC, & cpu_dev, "dvf [%lld]\n", sim_timell ());
-sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", rA);
-sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", rQ);
-sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
+//sim_debug (DBG_CAC, & cpu_dev, "dvf [%lld]\n", sim_timell ());
+//sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", rA);
+//sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", rQ);
+//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
     if (CY == 0)
       {
@@ -1952,7 +1955,7 @@ sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
     char buf [128] = "";
     print_int128 (zFrac, buf);
-    sim_debug (DBG_CAC, & cpu_dev, "zFrac %s\n", buf);
+    //sim_debug (DBG_CAC, & cpu_dev, "zFrac %s\n", buf);
 
     // Get the 35 bits of the divisor (36 bits less the sign bit)
 
@@ -1969,7 +1972,7 @@ sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
     char buf2 [128] = "";
     print_int128 (dFrac, buf2);
-    sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
+    //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
 
 
     uint128 quot = zFrac / dFrac;
@@ -1977,7 +1980,7 @@ sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
     char buf3 [128] = "";
     print_int128 (remainder, buf3);
-    sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
+    //sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
 
     if (sign == -1)
       quot = ~quot + 1;
@@ -1990,8 +1993,8 @@ sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
  
 #endif
 
-sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", rA, rA);
-sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", rQ);
+//sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", rA, rA);
+//sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", rQ);
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }

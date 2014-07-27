@@ -332,6 +332,74 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
           break;
 
+        case 022: // CMD 22 Read Status Resgister
+          {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Read Status Register\n");
+            // Get the DDCW
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+//sim_printf ("read  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
+            // uint cp = dcw.fields.ddcw.cp;
+
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            if (tally != 4)
+              {
+                sim_debug (DBG_ERR, &iom_dev, 
+                  "%s: RSR expected tally of 4, is %d\n",
+                   __func__, tally);
+              }
+#if 0
+            if (type == 3 && tally != 1)
+              {
+                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                           __func__, tally);
+              }
+#endif
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+// XXX need status register data format 
+            for (uint i = 0; i < tally; i ++)
+              M [daddr + i] = 0;
+
+            stati = 04000;
+          }
+          break;
+
         case 025: // CMD 25 READ
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Read\n");

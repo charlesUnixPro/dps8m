@@ -2963,6 +2963,12 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
           sim_debug (DBG_TRACEEXT, & cpu_dev, " %02o", * q);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "\n");
       }
+#if 0
+sim_printf ("inBuffer:");
+        for (word9 *q = e->inBuffer; q < p; q ++)
+          sim_printf (" %02o", * q);
+        sim_printf ("\n");
+#endif
 }
 
 /*!
@@ -6069,7 +6075,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
 // CANFAULT
 void scd(DCDstruct *ins)
 {
-//sim_printf ("SCD %lld\n", sim_timell ());
+//sim_printf ("SCD %lld\n", sys_stats . total_cycles);
     EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1-1

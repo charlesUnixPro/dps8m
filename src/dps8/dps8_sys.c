@@ -8,6 +8,11 @@
 
 #include <stdio.h>
 
+#ifdef MULTIPASS
+#include <sys/shm.h>
+#include <sys/stat.h>
+#endif
+
 #include "dps8.h"
 #include "dps8_console.h"
 #include "dps8_clk.h"
@@ -23,7 +28,10 @@
 #include "dps8_utils.h"
 #include "dps8_fxe.h"
 #include "dps8_append.h"
-
+#include "dps8_faults.h"
+#ifdef MULTIPASS
+#include "dps8_mp.h"
+#endif
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -55,11 +63,13 @@ static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
 static t_stat setSearchPath (int32 arg, char * buf);
 static t_stat absAddrN (int segno, uint offset);
-static t_stat test (int32 arg, char * buf);
 static t_stat virtAddrN (uint address);
 static t_stat virtAddr (int32 arg, char * buf);
 static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
+static t_stat listSourceAt (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf);
+static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
+static void multipassInit (void);
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
 static t_stat dfx1exit (int32 arg, char * buf);
@@ -87,7 +97,7 @@ static CTAB dps8_cmds[] =
     {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL},
     {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
-    {"TEST", test, 0, "test: internal testing\n", NULL},
+    {"TEST", brkbrk, 0, "test: internal testing\n", NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
 #define SSH_SH          1                               /* show */
@@ -97,6 +107,8 @@ static CTAB dps8_cmds[] =
     {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
     {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
+    {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
+    {"EXF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
 #ifdef DVFDBG
     // dvf debugging
     {"DFX1ENTRY", dfx1entry, 0, "", NULL},
@@ -139,6 +151,9 @@ static void dps8_init(void)    //CustomCmds(void)
     //mpc_init ();
     scu_init ();
     cpu_init ();
+#ifdef MULTIPASS
+    multipassInit ();
+#endif
 }
 
 static int getval (char * * save, char * text)
@@ -458,13 +473,32 @@ static t_stat setSearchPath (int32 __attribute__((unused)) arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat test (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf)
+t_stat brkbrk (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf)
   {
     //listSource (buf, 0);
     return SCPE_OK;
   }
 
-void listSource (char * compname, word18 offset, bool print)
+static t_stat listSourceAt (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf)
+  {
+    // list seg:offset
+    int segno;
+    uint offset;
+    if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
+      return SCPE_ARG;
+    char * compname;
+    word18 compoffset;
+    char * where = lookupAddress (segno, offset,
+                                  & compname, & compoffset);
+    if (where)
+      {
+        sim_printf ("%05o:%06o %s\n", segno, offset, where);
+        listSource (compname, compoffset, 0);
+      }
+    return SCPE_OK;
+  }
+
+void listSource (char * compname, word18 offset, uint dflag)
   {
     const int offset_str_len = 10;
     //char offset_str [offset_str_len + 1];
@@ -513,10 +547,10 @@ void listSource (char * compname, word18 offset, bool print)
                     fgets (line, 132, listing);
                     if (strncmp (line, offset_str, offset_str_len) == 0)
                       {
-                        if (print)
+                        if (! dflag)
                           sim_printf ("%s", line);
                         else
-                          sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
+                          sim_debug (dflag, & cpu_dev, "%s", line);
                         //break;
                       }
                     if (strcmp (line, "\fLITERALS\n") == 0)
@@ -540,21 +574,40 @@ void listSource (char * compname, word18 offset, bool print)
                     // Found the table
                     // Table lines look like
                     //     "     13 000705       275 000713  ...
+                    // But some times
+                    //     "     10 000156   21   84 000164
+                    //     "      8 000214        65 000222    4   84 000225    
+                    //
+                    //     "    349 001442       351 001445       353 001454    1    9 001456    1   11 001461    1   12 001463    1   13 001470
+                    //     " 1   18 001477       357 001522       361 001525       363 001544       364 001546       365 001547       366 001553
+
+                    //  I think the numbers refer to include files...
+                    //   But of course the format is slightly off...
+                    //    table    ".1...18
+                    //    listing  ".1....18
                     int best = -1;
-                    int bestLine = -1;
+                    char bestLines [8] = {0, 0, 0, 0, 0, 0, 0};
                     while (! feof (listing))
                       {
-                        int lineno [7], loc [7];
+                        int loc [7];
+                        char linenos [7] [8];
+                        memset (linenos, 0, sizeof (linenos));
                         fgets (line, 132, listing);
+                        // sometimes the leading columns are blank...
+                        while (strncmp (line, "                 ", 8 + 6 + 3) == 0)
+                          memmove (line, line + 8 + 6 + 3, strlen (line + 8 + 6 + 3));
+                        // deal with the extra numbers...
+
                         int cnt = sscanf (line,
-                          " %d %o %d %o %d %o %d %o %d %o %d %o %d %o", 
-                          & lineno [0], & loc [0], 
-                          & lineno [1], & loc [1], 
-                          & lineno [2], & loc [2], 
-                          & lineno [3], & loc [3], 
-                          & lineno [4], & loc [4], 
-                          & lineno [5], & loc [5], 
-                          & lineno [6], & loc [6]);
+                          // " %d %o %d %o %d %o %d %o %d %o %d %o %d %o", 
+                          "%8c%o%*3c%8c%o%*3c%8c%o%*3c%8c%o%*3c%8c%o%*3c%8c%o%*3c%8c%o", 
+                          (char *) & linenos [0], & loc [0], 
+                          (char *) & linenos [1], & loc [1], 
+                          (char *) & linenos [2], & loc [2], 
+                          (char *) & linenos [3], & loc [3], 
+                          (char *) & linenos [4], & loc [4], 
+                          (char *) & linenos [5], & loc [5], 
+                          (char *) & linenos [6], & loc [6]);
                         if (! (cnt == 2 || cnt == 4 || cnt == 6 ||
                                cnt == 8 || cnt == 10 || cnt == 12 ||
                                cnt == 14))
@@ -565,7 +618,7 @@ void listSource (char * compname, word18 offset, bool print)
                             if (loc [n] > best && loc [n] <= (int) offset)
                               {
                                 best = loc [n];
-                                bestLine = lineno [n];
+                                memcpy (bestLines, linenos [n], sizeof (bestLines));
                               }
                           }
                         if (best == (int) offset)
@@ -573,6 +626,25 @@ void listSource (char * compname, word18 offset, bool print)
                       }
                     if (best == -1)
                       goto fileDone; // Not found in table
+
+                    //   But of course the format is slightly off...
+                    //    table    ".1...18
+                    //    listing  ".1....18
+                    // bestLines "21   84 "
+                    // listing   " 21    84 "
+                    char searchPrefix [10];
+                    searchPrefix [ 0] = ' ';
+                    searchPrefix [ 1] = bestLines [ 0];
+                    searchPrefix [ 2] = bestLines [ 1];
+                    searchPrefix [ 3] = ' ';
+                    searchPrefix [ 4] = bestLines [ 2];
+                    searchPrefix [ 5] = bestLines [ 3];
+                    searchPrefix [ 6] = bestLines [ 4];
+                    searchPrefix [ 7] = bestLines [ 5];
+                    searchPrefix [ 8] = bestLines [ 6];
+                    // ignore trailing space; some times its a tab
+                    // searchPrefix [ 9] = bestLines [ 7];
+                    searchPrefix [9] = '\0';
 
                     // Look for the line in the listing
                     rewind (listing);
@@ -584,20 +656,14 @@ void listSource (char * compname, word18 offset, bool print)
                         char prefix [10];
                         strncpy (prefix, line, 9);
                         prefix [9] = '\0';
-                        char * endptr;
-                        long lno = strtol (prefix, & endptr, 10);
-                        if (endptr != prefix + 9)
-                          continue;
-                        if (lno > bestLine)
-                          break;
-                        if (lno != bestLine)
+                        if (strcmp (prefix, searchPrefix) != 0)
                           continue;
                         // Got it
-                        if (print)
+                        if (!dflag)
                           sim_printf ("%s", line);
                         else
-                          sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
-                        break;
+                          sim_debug (dflag, & cpu_dev, "%s", line);
+                        //break;
                       }
                     goto fileDone;
                   } // if table start
@@ -610,10 +676,10 @@ void listSource (char * compname, word18 offset, bool print)
                         fgets (line, 132, listing);
                         if (strncmp (line, offset_str + 4, offset_str_len - 4) == 0)
                           {
-                            if (print)
+                            if (! dflag)
                               sim_printf ("%s", line);
                             else
-                              sim_debug (DBG_TRACE, & cpu_dev, "%s", line);
+                              sim_debug (dflag, & cpu_dev, "%s", line);
                             //break;
                           }
                         //if (strcmp (line, "\fLITERALS\n") == 0)
@@ -634,7 +700,7 @@ static t_stat absAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     int segno;
     uint offset;
-    if (sscanf (buf, "%i:%u", & segno, & offset) != 2)
+    if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
       return SCPE_ARG;
     return absAddrN (segno, offset);
   }
@@ -856,6 +922,14 @@ static t_stat absAddrN (int segno, uint offset)
     return SCPE_OK;
   }
 
+// EXF
+
+static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
+  {
+    setG7fault (15);
+    return SCPE_OK;
+  }
+
 // STK 
 
 t_stat dbgStackTrace (void)
@@ -879,7 +953,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
     if (where)
       {
         sim_printf ("%05o:%06o %s\n", icSegno, icOffset, where);
-        listSource (compname, compoffset, true);
+        listSource (compname, compoffset, 0);
       }
     sim_printf ("\n");
 
@@ -927,7 +1001,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
                 if (where)
                   {
                     sim_printf ("%05o:%06o %s\n", icSegno, rX [7] - 1, where);
-                    listSource (compname, compoffset, true);
+                    listSource (compname, compoffset, 0);
                   }
               }
           }
@@ -938,7 +1012,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
             if (where)
               {
                 sim_printf ("%05o:%06o %s\n", returnSegno, returnOffset - 1, where);
-                listSource (compname, compoffset, true);
+                listSource (compname, compoffset, 0);
               }
           }
 
@@ -952,7 +1026,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
         if (where)
           {
             sim_printf ("%05o:%06o %s\n", entrySegno, entryOffset, where);
-            listSource (compname, compoffset, true);
+            listSource (compname, compoffset, 0);
           }
     
         word15 argSegno = (word15) ((M [fp + 26] >> 18) & MASK15);
@@ -1033,7 +1107,7 @@ static t_stat sbreak (int32 arg, char * buf)
     //printf (">> <%s>\n", buf);
     int segno, offset;
     int where;
-    int cnt = sscanf (buf, "%i:%i%n", & segno, & offset, & where);
+    int cnt = sscanf (buf, "%o:%o%n", & segno, & offset, & where);
     if (cnt != 2)
       {
         return SCPE_ARG;
@@ -1051,7 +1125,7 @@ static t_stat sbreak (int32 arg, char * buf)
 static t_stat virtAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     uint address;
-    if (sscanf (buf, "%u", & address) != 1)
+    if (sscanf (buf, "%o", & address) != 1)
       return SCPE_ARG;
     return virtAddrN (address);
   }
@@ -1190,9 +1264,9 @@ static t_stat lookupSystemBook (int32  __attribute__((unused)) arg, char * buf)
     //sim_printf ("w3 <%s>\n", w3);
 
     char * end1;
-    segno = strtol (w1, & end1, 0);
+    segno = strtol (w1, & end1, 8);
     char * end2;
-    offset = strtol (w2, & end2, 0);
+    offset = strtol (w2, & end2, 8);
 
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
@@ -1205,7 +1279,7 @@ static t_stat lookupSystemBook (int32  __attribute__((unused)) arg, char * buf)
         if (* w3)
           {
             char * end3;
-            offset = strtol (w3, & end3, 0);
+            offset = strtol (w3, & end3, 8);
             if (* end3 != '\0')
               return SCPE_ARG;
           }
@@ -1222,7 +1296,7 @@ static t_stat lookupSystemBook (int32  __attribute__((unused)) arg, char * buf)
         absAddrN  (segno, comp_offset + offset);
       }
 /*
-    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+    if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
       return SCPE_ARG;
     char * ans = lookupAddress (segno, offset);
     sim_printf ("%s\n", ans ? ans : "not found");
@@ -1946,9 +2020,31 @@ DEVICE * sim_devices [] =
     NULL
   };
 
-//// This is simh's sim_gtime, but returns total_cycles instead of sim_time.
-//t_uint64 sim_ctime (void)
-//  {
-//    return sys_stats . total_cycles;
-//  }
+#ifdef MULTIPASS
 
+static int mpStatsSegID;
+multipassStats * multipassStatsPtr;
+
+// Once only initialization
+static void multipassInit (void)
+  {
+#if 0
+    multipassStatsPtr = NULL;
+    mpStatsSegID = shmget (0x6180 + switches . cpu_num, sizeof (multipassStats),
+                         IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+    if (mpStatsSegID == -1)
+      {
+        perror ("multipassInit shmget");
+        return;
+      }
+    multipassStatsPtr = (multipassStats *) shmat (mpStatsSegID, 0, 0);
+    if (multipassStatsPtr == (void *) -1)
+      {
+        perror ("multipassInit shmat");
+        return;
+      }
+    shmctl (mpStatsSegID, IPC_RMID, 0);
+#endif
+
+  }
+#endif

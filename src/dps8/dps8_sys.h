@@ -44,7 +44,8 @@ extern uint64 sim_deb_segno;
 extern DEVICE *sim_devices[];
 
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
-void listSource (char * compname, word18 offset, bool print);
+void listSource (char * compname, word18 offset, uint dflag);
 //t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset);
 
+t_stat brkbrk (int32 arg, char * buf);
 

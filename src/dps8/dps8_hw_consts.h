@@ -21,6 +21,16 @@
 // scpages is:
 #define N_SCPAGES ((MAXMEMSIZE) / (SCPAGE))
 
+//#define N_SCU_UNITS_MAX 4
+#define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
+                          // [CAC] I believe that this is because the
+                          // 4MW SCU supported much more memory then
+                          // the earlier units, and two fully loaded
+                          // 4MW's maxed out memory.
+                          // 4MW lower store max size: 4M words
+                          //     + upper store = 8M
+                          //     * 2 SCUs = 16M 
+                          // The phys addr width is 24 bits, and 2^24 = 16M
 
 //
 // Memory addressing
@@ -43,6 +53,8 @@
 #define SIGN18          0400000U
 #define MASK36          0777777777777LLU                   /*!< data mask */
 #define DMASK           MASK36
+#define MASK10          0001777U                     // 10-bit data mask
+#define MASK14          0037777U                     // 14-bit data mask
 #define MASK16          0177777U                     // 16-bit data mask
 #define MASK17          0377777U                     // 17-bit data mask
 #define MASK18          0777777U                     // 18-bit data mask

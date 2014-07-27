@@ -19,6 +19,9 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
+#ifdef MULTIPASS
+#include "dps8_mp.h"
+#endif
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -99,6 +102,7 @@ const char *sim_stop_messages[] = {
     "BUG",                     // STOP_BUG
     "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
+    "Illegal Opcode",          // STOP_ILLOP
 };
 
 /* End of simh interface */
@@ -645,6 +649,12 @@ static t_stat cpu_reset (DEVICE *dptr)
 
     tidy_cu ();
 
+    cpu . wasXfer = false;
+    cpu . wasInhibited = false;
+
+    cpu . interrupt_flag = false;
+    cpu . g7_flag = false;
+
     return SCPE_OK;
 }
 
@@ -700,7 +710,7 @@ word8 tCF; /*!< character position field [3b] */
 
 ///* H6180; L68; DPS-8M */
 //
-word8 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
+word3 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
 
 // end h6180 stuff
 
@@ -968,23 +978,29 @@ static uint get_highest_intr (void)
   {
 // XXX In theory there needs to be interlocks on this?
     for (int int_num = N_INTERRUPTS - 1; int_num >= 0; int_num --)
-      if (events . interrupts [int_num])
-        {
-          events . interrupts [int_num] = 0;
+      for (uint scu_num = 0; scu_num < N_SCU_UNITS_MAX; scu_num ++)
+        if (events . interrupts [scu_num] [int_num])
+          {
+            events . interrupts [scu_num] [int_num] = 0;
+            scu_clear_interrupt (scu_num, int_num);
 
-          int cnt = 0;
-          for (int i = 0; i < N_INTERRUPTS; i ++)
-            if (events . interrupts [i])
-              cnt ++;
-          events . int_pending = !!cnt;
+            int cnt = 0;
+            for (uint i = 0; i < N_INTERRUPTS; i ++)
+              for (uint s = 0; s < N_SCU_UNITS_MAX; s ++)
+                if (events . interrupts [s] [i])
+                  {
+                    cnt ++;
+//sim_printf ("%u %u\n", s, i);
+                  }
+            events . int_pending = !!cnt;
 
-          for (int i = 0; i < N_FAULT_GROUPS; i ++)
-            if (events . fault [i])
-              cnt ++;
-          events . any = !! cnt;
-          //sim_printf ("int num %d (%o), pair_addr %o\n", int_num, int_num, int_num * 2);
-          return int_num * 2;
-        }
+            for (int i = 0; i < N_FAULT_GROUPS; i ++)
+              if (events . fault [i])
+                cnt ++;
+            events . any = !! cnt;
+            //sim_printf ("int num %d (%o), pair_addr %o pend %d any %d\n", int_num, int_num, int_num * 2, events . int_pending, events . any);
+            return int_num * 2;
+          }
     return 1;
   }
 
@@ -1120,9 +1136,6 @@ t_stat sim_instr (void)
     //static DCDstruct _ci;
     static DCDstruct * ci = & currentInstruction;
     
-    cpu . interrupt_flag = false;
-    cpu . g7_flag = false;
-
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
 
@@ -1148,6 +1161,15 @@ t_stat sim_instr (void)
         case JMP_SYNC_FAULT_RETURN:
             goto syncFaultReturn;
         case JMP_REFETCH:
+
+            // Not necessarily so, but the only times
+            // this path is taken is after an RCU returning
+            // from an interrupt, which could only happen if
+            // was xfer was false; or in a DIS cycle, in
+            // which case we want it false so interrupts 
+            // can happen.
+            cpu . wasXfer = false;
+             
             setCpuCycle (FETCH_cycle);
             break;
         case JMP_RESTART:
@@ -1201,8 +1223,7 @@ t_stat sim_instr (void)
                 // port for which there is a bit set in the interrupt 
                 // present register.  
 
-                uint intr_pair_addr;
-                intr_pair_addr = get_highest_intr ();
+                uint intr_pair_addr = get_highest_intr ();
                 cu . FI_ADDR = intr_pair_addr / 2;
                 cu_safe_store ();
 
@@ -1223,10 +1244,20 @@ t_stat sim_instr (void)
 
                     if (intr_pair_addr != 1) // no interrupts 
                       {
+
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
-//sim_printf ("intr_pair_addr %u [%lld]\n", intr_pair_addr, sim_timell ());
 
+                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u]\n", intr_pair_addr);
+                        if_sim_debug (DBG_INTR, & cpu_dev) 
+                          traceInstruction (DBG_INTR);
+
+#ifdef MULTIPASS
+                        if (multipassStatsPtr)
+                          {
+                            multipassStatsPtr -> PPR_PSR_IC = intr_pair_addr;
+                          }
+#endif
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
 
@@ -1238,9 +1269,13 @@ t_stat sim_instr (void)
 
                 // If we get here, there was no interrupt
 
+                cpu . interrupt_flag = false;
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 // Restores addressing mode 
                 cu_safe_restore ();
+                // We can only get here if wasXfer was
+                // false, so we can assume it still is.
+                cpu . wasXfer = false;
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
                 setCpuCycle (FETCH_cycle);
@@ -1257,6 +1292,9 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1267,6 +1305,7 @@ t_stat sim_instr (void)
 
                 if (ret == CONT_TRA)
                   {
+                     cpu . wasXfer = true; 
                      setCpuCycle (FETCH_cycle);
                      if (!clear_TEMPORARY_ABSOLUTE_mode ())
                        set_addr_mode (ABSOLUTE_mode);
@@ -1275,6 +1314,12 @@ t_stat sim_instr (void)
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
                   {
+#ifdef MULTIPASS
+                    if (multipassStatsPtr)
+                      {
+                        multipassStatsPtr -> PPR_PSR_IC ++;
+                      }
+#endif
                     setCpuCycle (INTERRUPT_EXEC2_cycle);
                     break;
                   }
@@ -1282,10 +1327,21 @@ t_stat sim_instr (void)
                 cu_safe_restore ();
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
+                // We can only get here if wasXfer was
+                // false, so we can assume it still is.
+                cpu . wasXfer = false;
                 setCpuCycle (FETCH_cycle);
                 break;
 
             case FETCH_cycle:
+
+// "If the interrupt inhibit bit is not set in the currect instruction 
+// word at the point of the next sequential instruction pair virtual
+// address formation, the processor samples the [group 7 and interrupts]."
+
+// Since we do not do concurrent instruction fetches, we must remember 
+// the inhibit bits (cpu . wasInhibited).
+
 
 // If the instruction pair virtual address being formed is the result of a 
 // transfer of control condition or if the current instruction is 
@@ -1293,9 +1349,39 @@ t_stat sim_instr (void)
 // or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
 // not sampled.
 
+                if ((! cpu . wasInhibited) &&
+                    (PPR . IC % 2) == 0 &&
+                    (! cpu . wasXfer) &&
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+                  {
+                    cpu . interrupt_flag = sample_interrupts ();
+                    cpu . g7_flag = bG7Pending ();
+                  }
+
+                // The cpu . wasInhibited accumulates across the even and 
+                // odd intruction. If the IC is even, reset it for
+                // the next pair.
+
+                if ((PPR . IC % 2) == 0)
+                  cpu . wasInhibited = false;
+
+                if (cpu . interrupt_flag)
+                  {
+// This is the only place cycle is set to INTERRUPT_cycle; therefore
+// return from interrupt can safely assume the it should set the cycle
+// to FETCH_cycle.
+                    setCpuCycle (INTERRUPT_cycle);
+                    break;
+                  }
+                if (cpu . g7_flag)
+                  {
+                    cpu . g7_flag = false;
+                    doG7Fault ();
+                  }
+#if 0
                 if (cpu . interrupt_flag && 
-                   ((PPR . IC % 2) == 0) &&
-                   (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+                    ((PPR . IC % 2) == 0) &&
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
@@ -1309,6 +1395,7 @@ t_stat sim_instr (void)
                     //setCpuCycle (FAULT_cycle);
                     doG7Fault ();
                   }
+#endif
 
                 // If we have done the even of an XED, do the odd
                 if (cu . xde == 0 && cu . xdo == 1)
@@ -1337,13 +1424,26 @@ t_stat sim_instr (void)
                   }
 
 
+#ifdef MULTIPASS
+                if (multipassStatsPtr)
+                  {
+                    multipassStatsPtr -> PPR_PSR_IC = PPR . PSR << 18 || PPR . IC;
+                  }
+#endif
+#if 0
                 // XXX The conditions are more rigorous: see AL39, pg 327
            // ci is not set up yet; check the inhibit bit in the IWB!
                 //if (PPR.IC % 2 == 0 && // Even address
                     //ci -> i == 0) // Not inhibited
-                //if (PPR.IC % 2 == 0 && // Even address
-                    //GET_I (cu . IWB) == 0) // Not inhibited
-                if (GET_I (cu . IWB) == 0) // Not inhibited
+                //if (GET_I (cu . IWB) == 0) // Not inhibited
+// If the instruction pair virtual address being formed is the result of a 
+// transfer of control condition or if the current instruction is 
+// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
+// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
+// not sampled.
+                if (PPR.IC % 2 == 0 && // Even address
+                    GET_I (cu . IWB) == 0 &&  // Not inhibited
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
                   {
                     cpu . interrupt_flag = sample_interrupts ();
                     cpu . g7_flag = bG7Pending ();
@@ -1353,6 +1453,7 @@ t_stat sim_instr (void)
                     cpu . interrupt_flag = false;
                     cpu . g7_flag = false;
                   }
+#endif
 
                 setCpuCycle (EXEC_cycle);
                 break;
@@ -1360,6 +1461,10 @@ t_stat sim_instr (void)
             case EXEC_cycle:
               {
                 xec_side_effect = 0;
+
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1370,9 +1475,11 @@ t_stat sim_instr (void)
                 if (ret == CONT_TRA)
                   {
                     cu . xde = cu . xdo = 0;
+                    cpu . wasXfer = true;
                     setCpuCycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
                   }
+                cpu . wasXfer = false;
 
                 if (ret < 0)
                   {
@@ -1384,6 +1491,7 @@ t_stat sim_instr (void)
                   {
                     if (! cu . rpt)
                       -- PPR.IC;
+                    cpu . wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
                   }
@@ -1402,6 +1510,7 @@ t_stat sim_instr (void)
 #endif
                 if (cu . xde || cu . xdo) // we are starting or are in an XEC/XED
                   {
+                    cpu . wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
                   }
@@ -1413,6 +1522,7 @@ t_stat sim_instr (void)
                 PPR.IC += xec_side_effect;
                 xec_side_effect = 0;
 
+                cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
                 break;
 
@@ -1420,12 +1530,20 @@ nextInstruction:;
 syncFaultReturn:;
                 PPR.IC ++;
                 xec_side_effect = 0;
+                cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
               break;
 
             case FAULT_cycle:
               {
+#if 0
+                // Interrupts need to be processed at the beginning of the
+                // FAULT CYCLE as part of the H/W 'fetch instruction pair.'
+
+                cpu . interrupt_flag = sample_interrupts ();
+                cpu . g7_flag = bG7Pending ();
+#endif
                 // In the FAULT CYCLE, the processor safe-stores the Control
                 // Unit Data (see Section 3) into program-invisible holding
                 // registers in preparation for a Store Control Unit ( scu)
@@ -1441,7 +1559,7 @@ syncFaultReturn:;
                 // normal EXECUTE CYCLE but in the FAULT CYCLE with the
                 // processor in temporary absolute mode.
 
-                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
+                //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
     
                 if (switches . report_faults == 1 ||
                     (switches . report_faults == 2 &&
@@ -1449,6 +1567,7 @@ syncFaultReturn:;
                   {
                     emCallReportFault ();
                     clearFaultCycle ();
+                    cpu . wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     PPR.IC += ci->info->ndes;
                     PPR.IC ++;
@@ -1469,6 +1588,12 @@ syncFaultReturn:;
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * cpu . faultNumber;
   
+#ifdef MULTIPASS
+                if (multipassStatsPtr)
+                  {
+                    multipassStatsPtr -> PPR_PSR_IC = addr;
+                  }
+#endif
                 core_read2 (addr, instr_buf, instr_buf + 1);
 
                 setCpuCycle (FAULT_EXEC_cycle);
@@ -1487,6 +1612,9 @@ syncFaultReturn:;
                 else
                   cu . IWB = instr_buf [1];
 
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1497,6 +1625,7 @@ syncFaultReturn:;
 
                 if (ret == CONT_TRA)
                   {
+                    cpu . wasXfer = true; 
                     setCpuCycle (FETCH_cycle);
                     clearFaultCycle ();
                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
@@ -1505,6 +1634,12 @@ syncFaultReturn:;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
                   {
+#ifdef MULTIPASS
+                    if (multipassStatsPtr)
+                      {
+                        multipassStatsPtr -> PPR_PSR_IC ++;
+                      }
+#endif
                     setCpuCycle (FAULT_EXEC2_cycle);
                     break;
                   }
@@ -1512,8 +1647,11 @@ syncFaultReturn:;
                 // Restores cpu.cycle and addressing mode
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
+                cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
                 clearFaultCycle ();
+
+// XXX Is this needed? Are EIS instructions allowed in fault pairs?
 
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
@@ -2204,6 +2342,8 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
     sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
     sim_printf("Report faults:            %01o(8)\n", switches . report_faults);
     sim_printf("TRO faults enabled:       %01o(8)\n", switches . tro_enable);
+    sim_printf("Y2K enabled:              %01o(8)\n", switches . y2k);
+    sim_printf("drl fatal enabled:        %01o(8)\n", switches . drl_fatal);
     return SCPE_OK;
 }
 
@@ -2239,6 +2379,8 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
 //               n = 1 report
 //               n = 2 report overflow
 //           tro_enable = n
+//           y2k
+//           drl_fatal
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2335,6 +2477,8 @@ static config_list_t cpu_config_list [] =
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
     /* 25 */ { "report_faults", 0, 2, NULL },
     /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
+    /* 27 */ { "y2k", 0, 1, cfg_on_off },
+    /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
 
@@ -2473,6 +2617,14 @@ static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, 
 
             case 26: // TRO_ENABLE
               switches . tro_enable = v;
+              break;
+
+            case 27: // Y2K
+              switches . y2k = v;
+              break;
+
+            case 28: // DRL_FATAL
+              switches . drl_fatal = v;
               break;
 
             default:
@@ -2718,7 +2870,7 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
                 if (where)
                   {
                     sim_printf ("%s\n", where);
-                    listSource (compname, compoffset, true);
+                    listSource (compname, compoffset, 0);
                   }
 
 //---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {

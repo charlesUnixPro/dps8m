@@ -100,7 +100,7 @@ static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-#define N_MT_UNITS_MAX 16
+#define N_MT_UNITS_MAX 32
 #define N_MT_UNITS 1 // default
 
 static t_stat mt_svc (UNIT *up);

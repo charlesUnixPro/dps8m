@@ -410,7 +410,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     
     if (flagsToSet & I_NEG)
     {
-        if (res & SIGN18)            // if negative (things seem to want this even if unsigned ops)
+        if (res & SIGN72)            // if negative (things seem to want this even if unsigned ops)
             SETF(*flags, I_NEG);
         else
             CLRF(*flags, I_NEG);
@@ -1271,7 +1271,7 @@ void sim_printf( const char * format, ... )
 void sim_printf (const char * format, ...)
   {
     char buffer [4096];
-    bool bOut = (sim_deb != stdout);
+    bool bOut = (sim_deb ? fileno (sim_deb) != fileno (stdout) : true);
 
     va_list args;
     va_start (args, format);
@@ -1454,6 +1454,7 @@ void cfgparse_done (config_state_t * state)
 //   \f
 //   \r
 //
+// \\ doesn't seem to work...
 //  Also, a simh specific:
 //
 //   \e   (end simulation)
@@ -1463,6 +1464,8 @@ void cfgparse_done (config_state_t * state)
 //   \_  space
 //   \c  comma
 //   \s  semicolon
+//   \d  dollar
+//   \w  \
 //
 //  all others silently ignored and left unprocessed
 //
@@ -1480,6 +1483,8 @@ char * strdupesc (const char * str)
           }
         if (p [1] == '\\')
           * p = '\\';
+        else if (p [1] == 'w')
+          * p = '\\';
         else if (p [1] == 'n')
           * p = '\n';
         else if (p [1] == 't')
@@ -1496,13 +1501,17 @@ char * strdupesc (const char * str)
           * p = ',';
         else if (p [1] == 's')
           * p = ';';
+        else if (p [1] == 's')
+          * p = '$';
         else
           {
             p ++;
             continue;
           }
         p ++;
+//sim_printf ("was <%s>\n", buf);
         memmove (p, p + 1, strlen (p + 1) + 1);
+//sim_printf ("is  <%s>\n", buf);
       }
     return buf;
   }

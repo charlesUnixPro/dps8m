@@ -73,7 +73,7 @@ extern word24   rY;     // address operand
 extern word8    rTAG;   // instruction tag
 extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]
 extern word8    tCF;    // character position field [3b]
-extern word8    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
+extern word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
 
 extern struct _tpr
   {
@@ -659,7 +659,7 @@ typedef struct
     bool int_pending;
     int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
-    bool interrupts [N_INTERRUPTS];
+    bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
   } events_t;
 
 extern events_t events;
@@ -702,6 +702,8 @@ typedef struct
     uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
+    uint y2k;
+    uint drl_fatal;
   } switches_t;
 
 extern switches_t switches;
@@ -736,6 +738,11 @@ typedef struct
     bool g7_flag;            // a g7 fault is pending in this cycle;
     _fault faultNumber;      // fault number saved by doFault
     _fault_subtype subFault; // saved by doFault
+
+    bool wasXfer;  // The previous instruction was a transfer
+
+    bool wasInhibited; // One or both of the previous instruction 
+                       // pair was interrupr inhibited.
   } cpu_state_t;
 
 extern cpu_state_t cpu;

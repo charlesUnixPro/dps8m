@@ -719,7 +719,7 @@ void traceInstruction (uint flag)
         if (where)
           {
             sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
-            listSource (compname, compoffset, false);
+            listSource (compname, compoffset, flag);
           }
 
         if (get_addr_mode() == ABSOLUTE_mode)
@@ -1207,6 +1207,7 @@ static t_stat DoEISInstruction (void);
 // Return values
 //  CONT_TRA
 //  STOP_UNIMP
+//  STOP_ILLOP
 //  emCall()
 //     STOP_HALT
 //  scu_sscr()
@@ -1468,7 +1469,7 @@ static t_stat DoBasicInstruction (void)
             
             break;
 
-        case 0220:  ///< ldx0Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
+        case 0220:  ///< ldx0
         case 0221:  ///< ldx1
         case 0222:  ///< ldx2
         case 0223:  ///< ldx3
@@ -1658,7 +1659,7 @@ static t_stat DoBasicInstruction (void)
             // C(IR) -> C(Y)18,31
             // 00...0 -> C(Y)32,35
             
-	    /// The contents of the indicator register after address
+            /// The contents of the indicator register after address
             /// preparation are stored in C(Y)18,31  C(Y)18,31 reflects the 
             /// state of the tally runout indicator prior to address 
             /// preparation. The relation between C(Y)18,31 and the indicators 
@@ -1678,10 +1679,8 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0454:  ///< stt
-            /// XXX need to implement timer
-            
-            return STOP_UNIMP;
-            // break;
+             CY = (rTR & MASK27) << 9;
+             break;
             
             
         case 0740:  ///< stx0
@@ -3430,13 +3429,10 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0577:  ///< dfsb
-            // The dfsb instruction is identical to the dfad instruction with the exception that
-            // the twos complement of the mantissa of the operand from main memory is used.
-            //return STOP_UNIMP;
+	    // The dfsb instruction is identical to the dfad instruction with
+	    // the exception that the twos complement of the mantissa of the
+	    // operand from main memory is used.
             
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
-
             dufs ();
             fno ();
             break;
@@ -4422,8 +4418,16 @@ static t_stat DoBasicInstruction (void)
             }
             break;
         
-        case 0002:   ///< drl
-            /// Causes a fault which fetches and executes, in absolute mode, the instruction pair at main memory location C+(14)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
+        case 0002:   // drl
+            // Causes a fault which fetches and executes, in absolute mode, the
+            // instruction pair at main memory location C+(14)8. The value of C
+            // is obtained from the FAULT VECTOR switches on the processor
+            // configuration panel.
+
+            if (switches . drl_fatal)
+              {
+                return STOP_HALT;
+              }
             doFault (derail_fault, 0, "drl");
             // break;
          
@@ -4835,7 +4839,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
 
                 default:
                   {
-                    return STOP_UNIMP;
+                    doFault(illproc_fault, ill_mod, "SCPR Illegal register select value");
                   }
               }
           }
@@ -4909,9 +4913,26 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
               // For the rscr instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
               // 2 bits for the DPS8M.
-              int scu_unit_num = getbits36 (TPR.CA, 0, 2);
 
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, TPR.CA, & rA, & rQ);
+              // According to DH02:
+              //   XXXXXX0X  SCU Mode Register (Level 66 only)
+              //   XXXXXX1X  Configuration switches
+              //   XXXXXn2X  Interrupt mask port n
+              //   XXXXXX3X  Interrupt cells
+              //   XXXXXX4X  Elapsed time clock
+              //   XXXXXX5X  Elapsed time clock
+              //   XXXXXX6X  Mode register
+              //   XXXXXX7X  Mode register
+
+              // According to privileged_mode_ut,
+              //   port*1024 + scr_input*8
+
+//sim_debug (DBG_TRACE, & cpu_dev, "CA %06d\n", TPR . CA);
+
+              //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+              uint scu_unit_num = (TPR.CA >> 10) & MASK8;
+
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, TPR.CA & MASK10, & rA, & rQ);
               if (rc)
                 return rc;
             }
@@ -5131,9 +5152,26 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             // For the sscr instruction, the first 2 or 3 bits of the addr
             // field of the instruction are used to specify which SCU.
             // 2 bits for the DPS8M.
-            int scu_unit_num = getbits36 (TPR.CA, 0, 2);
 
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA, rA, rQ);
+            // According to DH02:
+            //   XXXXXX0X  SCU Mode Register (Level 66 only)
+            //   XXXXXX1X  Configuration switches
+            //   XXXXXn2X  Interrupt mask port n
+            //   XXXXXX3X  Interrupt cells
+            //   XXXXXX4X  Elapsed time clock
+            //   XXXXXX5X  Elapsed time clock
+            //   XXXXXX6X  Mode register
+            //   XXXXXX7X  Mode register
+
+            // According to privileged_mode_ut,
+            //   port*1024 + scr_input*8
+
+//sim_debug (DBG_TRACE, & cpu_dev, "CA %06d\n", TPR . CA);
+
+            //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+            uint scu_unit_num = (TPR.CA >> 10) & MASK8;
+
+            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA & MASK10, rA, rQ);
             if (rc == CONT_FAULT)
               doFault(store_fault, 0, "(sscr)");
             if (rc)
@@ -5154,19 +5192,10 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
           }
           break;
             
-        case 0616:  ///< dis
-
-// New dis logic.
-// No DIS cycle.
-// The DIS instruction hangs until an interrupt sensed. When it returns, 
-// the interrupt will be processed normally; The difference between DIS
-// with or without interrupt inhibit set is irrelevant. It only controls
-// the checking of interrupts prior to instruction execution.
+        case 0616:  // dis
 
             if (! switches . dis_enable)
               {
-                //stop_reason = STOP_DIS;
-                //longjmp (jmpMain, JMP_STOP);
                 return STOP_DIS;
               }
 
@@ -5241,7 +5270,17 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             break;
 #else
             if (sample_interrupts ())
-              break;
+              {
+                cpu . interrupt_flag = true;
+                break;
+              }
+            // Currently, the only G7 fault we recognize is TRO, so
+            // this code suffices for "all other G7 faults."
+            else if (GET_I (cu . IWB) && bG7Pending ())
+              {
+                cpu . g7_flag = true;
+                break;
+              }
             else
               {
                 sys_stats . total_cycles ++;
@@ -5252,7 +5291,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             
         default:
             if (switches . halt_on_unimp)
-                return STOP_UNIMP;
+                return STOP_ILLOP;
             else
                 doFault(illproc_fault, ill_op, "Illegal instruction");
     }
@@ -6490,7 +6529,8 @@ static t_stat DoEISInstruction (void)
             doFault(illproc_fault, ill_proc, "lptp is illproc on DPS8M");
 
         case 0774:  ///< lra
-            return STOP_UNIMP;
+            rRALR = CY & MASK3;
+            break;
 
         case 0557:  ///< sptp
           {
@@ -6561,7 +6601,7 @@ static t_stat DoEISInstruction (void)
             
         default:
             if (switches . halt_on_unimp)
-                return STOP_UNIMP;
+                return STOP_ILLOP;
             else
                 doFault(illproc_fault, ill_op, "Illegal instruction");
     }

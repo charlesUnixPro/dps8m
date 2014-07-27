@@ -13,6 +13,7 @@ CFLAGS += -std=c99 -U__STRICT_ANSI__
 CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
 CFLAGS += -Wall 
 CFLAGS += -DUSE_INT64
+#CFLAGS += -DMULTIPASS
 
 CFLAGS += -Wunused-argument \
 -Wunused-function \
@@ -256,6 +257,7 @@ H_SRCS += dps8_iom.h
 H_SRCS += dps8_loader.h
 H_SRCS += dps8_math.h
 H_SRCS += dps8_mt.h
+H_SRCS += dps8_mp.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
@@ -291,7 +293,7 @@ locallibs_then_dps8 :
 # Other Targets
 
 tags : $(C_SRCS) $(H_SRCS)
-	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/*.[ch]
+	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : clean cleaner 
 
