@@ -27,7 +27,6 @@
     void setOmode();
     
     tuple *newTuple();
-    list *newList();
     
     //yydebug = 1;
     
@@ -56,15 +55,16 @@
 
 %start input
 %token LABEL SYMBOL PSEUDOOP OCT SEGDEF SEGREF VFD STROP PSEUDOOP2 DEC DESC DESC2 PSEUDOOPD2 BOOL EQU BSS
-%token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
+%token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE SAVEH SAVEM RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC OPCODEX OPCODER
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
 %token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER LINK INHIBIT ENTRYPOINT
+%token DUP DUPEND
 
 %type <s> SYMBOL STRING LABEL TERMCOND
 %type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
-%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM INTEGER
+%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM INTEGER SAVE SAVEH SAVEM
 %type <i72> DOUBLEINT DECLIT2
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
@@ -157,9 +157,10 @@ instr
     | OPCODERPT     expr ',' expr ','   {bTermCond = true;} rptlst  { doRPT($1, $2->value, $4->value, $7); }
     | OPCODERPT          ',' expr                                   { doRPT($1, 0, $3->value, NULL);       }
     | OPCODERPT     expr          ','   {bTermCond = true;} rptlst  { doRPT($1, 0, $2->value, $5);         }
+    | OPCODERPT     expr ',' expr                                   { doRPT($1, $2->value, $4->value, NULL); }
 
     | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2->value, $5->value, -1);        }
-    | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2);   }
+    | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2 & 07);   }
     | OPCODEX       expr ',' operands                               { opnd.o = $1; doOpcodeX(&opnd, $2);  }
     | OPCODER       expr ',' operands                               { opnd.o = $1; doOpcodeR(&opnd, $2);  }
     ;
@@ -447,7 +448,10 @@ pop
     | CALLH          SYMBOL ',' modifier '(' optarglist ')' opterrlist { doHCall($2, $4,   $6,   $8); }
     | CALLH          SYMBOL              '(' optarglist ')' opterrlist { doHCall($2,  0,   $4,   $6); }
 
-    | SAVE           optintlist                                        { doSave ($2);                }
+    | SAVEM           expr                                             { doPush($2->value);           }
+    | SAVEM                                                            { doPush(0);                   }
+
+    | SAVEH           optintlist                                        { doSave ($2);                }
 
     | RETURN         SYMBOL                                            { doReturn($2, 0);            }
     | RETURN         SYMBOL ',' integer                                { doReturn($2, $4);           }
@@ -484,6 +488,9 @@ pop
     
     | INHIBIT        SYMBOL                          { doInhibit($2);               }
     | ENTRYPOINT     expr                            { doEntryPoint($2);            }
+
+    | DUP            expr                            { doDup($2);                   }
+    | DUPEND                                         { doDup(NULL);                 } /**/
     ;
 
 entry

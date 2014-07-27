@@ -19,20 +19,17 @@
 
 main:
 
-    "epp2	l43170,n*
-
 
     tsx2    setupFXE
-    "tra     call_main
 
     LDA     I
     tsp2	pr4|I, *        " ioa
     acc     /This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's /
 
-    tsp2    rd_clockA
+    "tsp2    rd_clockA
     "tsp2    <UtilsA>|[rd_clockA]
     "tsp2    lp|D,*
-    "tsp2    UtilsA$rd_clockA
+    tsp2    UtilsA$rd_clockA
 
     staq	Date        " MM/DD HH:MM
         

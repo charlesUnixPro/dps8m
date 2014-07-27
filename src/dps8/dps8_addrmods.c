@@ -405,7 +405,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
         
-            Write(i, TPR.CA, CY, STORE_OPERAND, i->a); //TM_IT);
+            Write(i, TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
             return;
         

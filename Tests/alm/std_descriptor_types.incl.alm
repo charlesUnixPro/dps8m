@@ -1,0 +1,119 @@
+"     BEGIN INCLUDE FILE std_descriptor_types.incl.alm
+
+"     Defines values of all standard pl1 and cobol descriptor types
+"     Prepared September 1978 by Larry Johnson
+"     Based on the include file std_descriptor_types.incl.pl1
+"     Modified January 1984 by Tom Oke to add hexadecimal data types, float
+"	decimal extended, float decimal generic and float binary generic.
+
+	equ	real_fix_bin_1_dtype,1
+	equ	real_fix_bin_2_dtype,2
+	equ	real_flt_bin_1_dtype,3
+	equ	real_flt_bin_2_dtype,4
+	equ	cplx_fix_bin_1_dtype,5
+	equ	cplx_fix_bin_2_dtype,6
+	equ	cplx_flt_bin_1_dtype,7
+	equ	cplx_flt_bin_2_dtype,8
+	equ	real_fix_dec_9bit_ls_dtype,9
+	equ	real_flt_dec_9bit_dtype,10
+	equ	cplx_fix_dec_9bit_ls_dtype,11
+	equ	cplx_flt_dec_9bit_dtype,12
+	equ	pointer_dtype,13
+	equ	offset_dtype,14
+	equ	label_dtype,15
+	equ	entry_dtype,16
+	equ	structure_dtype,17
+	equ	area_dtype,18
+	equ	bit_dtype,19
+	equ	varying_bit_dtype,20
+	equ	char_dtype,21
+	equ	varying_char_dtype,22
+	equ	file_dtype,23
+	equ	real_fix_dec_9bit_ls_ovrp_dtype,29
+	equ	real_fix_dec_9bit_ts_ovrp_dtype,30
+	equ	real_fix_bin_1_uns_dtype,33
+	equ	real_fix_bin_2_uns_dtype,34
+	equ	real_fix_dec_9bit_uns_dtype,35
+	equ	real_fix_dec_9bit_ts_dtype,36
+	equ	real_fix_dec_4bit_uns_dtype,38
+	equ	real_fix_dec_4bit_ts_dtype,39
+	equ	real_fix_dec_4bit_ls_dtype,41
+	equ	real_flt_dec_4bit_dtype,42
+	equ	real_fix_dec_4bit_ba_ls_dtype,43	" (ba means byte aligned)
+	equ	real_flt_dec_4bit_ba_dtype,44
+	equ	cplx_fix_dec_4bit_ba_ls_dtype,45
+	equ	cplx_flt_dec_4bit_ba_dtype,46
+	equ	real_flt_hex_1_dtype,47
+	equ	real_flt_hex_2_dtype,48
+	equ	cplx_flt_hex_1_dtype,49
+	equ	cplx_flt_hex_2_dtype,50
+	equ	real_flt_dec_extended_dtype,81
+	equ	cplx_flt_dec_extended_dtype,82
+	equ	real_flt_dec_generic_dtype,83
+	equ	cplx_flt_dec_generic_dtype,84
+	equ	real_flt_bin_generic_dtype,85
+	equ	cplx_flt_bin_generic_dtype,86
+
+	equ	cobol_comp_6_dtype,1
+	equ	cobol_comp_7_dtype,1
+	equ	cobol_display_ls_dtype,9
+	equ	cobol_structure_dtype,17
+	equ	cobol_char_string_dtype,21
+	equ	cobol_display_ls_overp_dtype,29
+	equ	cobol_display_ts_overp_dtype,30
+	equ	cobol_display_uns_dtype,35
+	equ	cobol_display_ts_dtype,36
+	equ	cobol_comp_5_uns_dtype,38
+	equ	cobol_comp_8_uns_dtype,38
+	equ	cobol_comp_5_ts_dtype,39
+	equ	cobol_comp_8_ls_dtype,41
+	equ	max_dtype,86	" we now include flt bin generic
+
+
+numeric_dtype_mask:		" mask defining numeric descriptor types
+	vfd	o12/7777,o16/0,o2/3,o2/0,o4/17	" 1 - 36
+	vfd	o1/0,o13/17777,o4/0,o18/0		"37 - 72
+	vfd	o8/0,o6/77,o4/0,o18/000000		"73 -108
+
+binary_dtype_mask: 		" mask defining binary descriptor types
+	vfd	o18/776000,o18/000014		" 1 - 36
+	vfd	o18/000360,o18/000000		"37 - 72
+	vfd	o8/000,o4/0,o2/3,o4/0,o18/000000	"73 -108
+
+"     END INCLUDE FILE std_descriptor_types.incl.alm
+
+"
+"
+"                                          -----------------------------------------------------------
+"
+"
+"
+" Historical Background
+"
+" This edition of the Multics software materials and documentation is provided and donated
+" to Massachusetts Institute of Technology by Group Bull including Bull HN Information Systems Inc. 
+" as a contribution to computer science knowledge.  
+" This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+" Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell Bull Inc., Groupe Bull
+" and Bull HN Information Systems Inc. to the development of this operating system. 
+" Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+" renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+" of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture for
+" managing computer hardware properly and for executing programs. Many subsequent operating systems
+" incorporated Multics principles.
+" Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+" as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+"
+"                                          -----------------------------------------------------------
+"
+" Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+" fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+" and that both the copyright notice and historical background and this permission notice appear in supporting
+" documentation, and that the names of MIT, HIS, Bull or Bull HN not be used in advertising or publicity pertaining
+" to distribution of the programs without specific prior written permission.
+"    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+"    Copyright 2006 by Bull HN Information Systems Inc.
+"    Copyright 2006 by Bull SAS
+"    All Rights Reserved
+"
+"

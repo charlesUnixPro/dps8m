@@ -3166,9 +3166,9 @@ void mlr(DCDstruct *ins)
     }
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, 
-      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d ADDR1:%06o ADDR2:%06o\n",
       __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
-      fill, fillT, e -> N1, e -> N2);
+      fill, fillT, e -> N1, e -> N2, e->ADDR1.address, e->ADDR2.address);
 
     // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved and the truncation indicator is set ON.
     // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
@@ -3962,7 +3962,7 @@ void scm(DCDstruct *ins)
         //int yCharn1 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
         int yCharn1 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
@@ -4142,7 +4142,7 @@ void scmr(DCDstruct *ins)
         //int yCharn1 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
         int yCharn1 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
@@ -4317,7 +4317,7 @@ void tct(DCDstruct *ins)
     word36 CY3 = 0;
     
     //get469(NULL, 0, 0, 0);    // initialize char getter
-    
+
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
@@ -4726,7 +4726,7 @@ void scd(DCDstruct *ins)
     }
     
     //e->srcAddr2 = GETHI(e->OP2);
-    e->ADDR2.address = GETHI(e->OP2);
+    //e->ADDR2.address = GETHI(e->OP2);
     
     // fetch 'test' char - double
     //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.
@@ -4918,7 +4918,7 @@ void scdr(DCDstruct *ins)
 
     
     //e->srcAddr2 = GETHI(e->OP2);
-    e->ADDR2.address = GETHI(e->OP2);
+    //e->ADDR2.address = GETHI(e->OP2);
     
     // fetch 'test' char - double
     //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.

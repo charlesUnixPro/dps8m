@@ -929,7 +929,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
                 SETF(rIR, I_OFLOW);
-            else if (Ypair[1] == 0 && Ypair[1] == 0)
+            else if (Ypair[0] == 0 && Ypair[1] == 0)
             {
                 rA = 0;
                 rQ = 0;

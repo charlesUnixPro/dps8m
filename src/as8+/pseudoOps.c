@@ -13,6 +13,8 @@
 
 #include "y.tab.h"
 
+void setState(int state);
+
 extern int yylineno;
 extern char* yytext;
 
@@ -935,7 +937,7 @@ void doAc4(char *str, int sz)
 
 void doStrop(pseudoOp *p, char *str, expr *val)
 {
-    int sz = val ? val->value : 0;
+    int sz = val ? (int)val->value : 0;
     if (strcasecmp(p->name, "acc") == 0)
         return doAcc(str, sz);
     if (strcasecmp(p->name, "aci") == 0)
@@ -2930,9 +2932,9 @@ int fillinEntrySequences()
             e->extValue = addr + beginningOfEntrySequences;         // this is the symbols external entry point
         } else {
             if (e->intValue != sym->Value->value)                   // this is the symbols interal entry point
-                yyprintf("phase error for entrypoint <%s> intValue %06o/%06o", e->intValue, sym->Value->value);
+                yyprintf("phase error for entrypoint <%s> intValue %06o/%06o", sym->name, e->intValue, sym->Value->value);
             if (e->extValue != addr + beginningOfEntrySequences)    // this is the symbols interal entry point
-                yyprintf("phase error for entrypoint <%s> extValue %06o/%06o", e->extValue, beginningOfEntrySequences);
+                yyprintf("phase error for entrypoint <%s> extValue %06o/%06o", sym->name,  e->extValue, beginningOfEntrySequences);
         }
         beginningOfEntrySequences += 2;                             // each entry sequence takes uf 2 words
     }
@@ -3016,6 +3018,11 @@ void doPush(word36 size)                       // multics CSR Push Pseudo-op
     } else
         stack_frame_size = (int)size;
     
+    // HWR 14 March 2014
+    // round to nearest 8-words(because this is the way alm seems todo it)
+    if (stack_frame_size % 8)
+        stack_frame_size += 8 - (stack_frame_size % 8);
+
     sprintf(w, "%06o%06o", (word18)(stack_frame_size & AMASK), getEncoding("eax7"));
     outas8Stri(w, addr, LEXline);
     addr += 1;
@@ -3194,33 +3201,34 @@ void doEntryPoint(expr *entry)
 
 }
 
-int getmod(const char *arg_in);
+/*
+ * do DUP/DUPEND processing ...
+ */
+extern bool bGetFromElsewhere;
+extern int nDupCount;
+extern list* dupList;
 
-#ifdef DEPRECIATED
-void doFmt1(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
+void doDup(expr *e)
 {
-    
-    switch (nPass)
+    if (e == NULL)  // dupend
     {
-        case 1:
-            (*addr)++;
-            break;
-        case 2:
-        {
-            word18 entry = (arg1 ? Eval(arg1) : 0) & AMASK;
-            word4      t = (arg2 ? getmod(arg2) : 0) & 017;
-            word14   blk = (arg3 ? Eval(arg3) : 0) & 07777;
-            
-            word36 fmt1 = (entry << 18) | (blk << 6) | t;
-            
-            fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, fmt1, inLine);
-
-        }
-        break;
+        bGetFromElsewhere = true;
+        setState(0);
+        return;
     }
     
+    if (e->type != eExprAbsolute)
+    {
+        yyerror("argument to DUP must be an absolute value");
+        return;
+    }
+    nDupCount = (int)e->value;
+    dupList = 0;
+    setState(1);    // lexical tie-in. Set start state to InDUP
 }
-#endif
+
+
+int getmod(const char *arg_in);
 
 /**
  * pseudo-op framework ......
@@ -3341,8 +3349,10 @@ pseudoOp pseudoOps[] =
     {"link",        0, NULL,    LINK},
     {"inhibit",     0, NULL,    INHIBIT},
     
-    {"entrypoint",  epUnknown,      NULL,   ENTRYPOINT  },
-
+    {"entrypoint",  epUnknown,  NULL,   ENTRYPOINT  },
+    
+    {"dup",         epDup,      NULL,   DUP     },
+    
     { 0, 0, 0 } ///< end marker do not remove
 };
 

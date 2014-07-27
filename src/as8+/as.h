@@ -669,6 +669,7 @@ enum pFlags
     epRPT = 8,          // for RPT style arguments
     epDEC = 16,         // decimal numbers only
     epDESC= 32,         // a descriptor descN
+    epDup = 64,         // a DUP pseudoop
 };
 
 typedef enum pFlags pFlags;
@@ -806,6 +807,8 @@ void doInhibit(char *);
 
 void doEntryPoint(expr *);                      // for the ENTRYPOINT pseudo-op
 
+void doDup(expr *);                             // for DUP/DUPEND
+
 void emitSegdefs();
 void emitSegrefs();
 void writeSegrefs();
@@ -856,6 +859,8 @@ char *Strdup(char *s, int size);
 char *strrev(char *s);
 int strcpyWhile(char *dst, char *src, int (*f)(int));
 char *strlower(char *q);
+
+list *newList();
 
 #define strsep  "Replaced w/ Strsep()"
 
