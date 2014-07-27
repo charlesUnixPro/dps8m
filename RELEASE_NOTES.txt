@@ -58,7 +58,8 @@
 
        ./dps8 format.ini
 
-    3). Initialize the RPV with a cold boot:
+    3). Initialize the RPV with a cold boot: (takes about 3 1/2 minutes on
+        a 2GHz laptop).
 
        ./dps8 cold.ini
 
