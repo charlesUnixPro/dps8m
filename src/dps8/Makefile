@@ -295,6 +295,14 @@ locallibs_then_dps8 :
 tags : $(C_SRCS) $(H_SRCS)
 	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
 
+.PHONY : tapes
+
+tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 99020.tap 93085.tap 98570.tap 99019.tap 98580_1er.tap 98576_1er.tap 98577.tap 20184.tap 20185.tap 20186.tap 20187.tap 20188.tap t4d_b.2.tap
+
+%.tap:
+	wget bitsavers.trailing-edge.com/bits/Honeywell/multics/tape/$@.gz
+	gunzip $@.gz
+
 .PHONY : clean cleaner 
 
 clean:
