@@ -8,12 +8,73 @@
 
 15July2014:
 
+  The FXE subsystem requires an installed Multics tape image tree.
+
   The MR12.3 tree can be found at:
 
   https://drive.google.com/file/d/0BxMJyk--V8yWZXJlYWpXTDAzQ28/edit?usp=sharing
 
   Download the file and untar it in the src/dps8 directory, or whatever
-  directory you execute FXE from.
+  directory you execute FXE from. The uncompressed tree will occupy ~ 245MB
+  of disk space.
+
+27July2014:
+
+  The faults branch can now successfully boot to "bce (boot)". The tarball is
+  built from the faults branch.
+
+  Building:
+
+    A 64 bit processor and OS is needed.
+
+    The build environment used by unused0 is:
+
+        Fedora Core 20.
+        clang 3.4
+        (gcc 4.8 also works)
+
+    The build enviroment used by doon386 is Eclipse, running under MacOS.
+
+  Building from git:
+
+    git checkout fault
+    cd src/dps8
+    make
+
+  Building from the tarball:
+
+    cd src/dps8
+    make
+
+  Booting Multics:
+
+    From the directory src/dps8:
+
+    1). Fetch the Multics tapes:
+
+        make tapes
+
+    2). Format a boot disk
+
+       ./dps8 format.ini
+
+    3). Initialize the RPV with a cold boot:
+
+       ./dps8 cold.ini
+
+    4). Add a config deck
+
+       ./dps8 establish_config_deck.ini
+
+    5). Start "bce(boot)"
+
+       ./dps8 bce.ini
+
+        Use the bce command "die" to exit bce and the emulator.
 
 
+    Notes:
+
+      The created disk will occupy ~ 1GB of disk space.
+      The tape image files will occupy ~ .5 GB of disk space.
 
