@@ -976,6 +976,19 @@ void cancel_run(t_stat reason)
 
 static uint get_highest_intr (void)
   {
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+      {
+        if (events . XIP [scuUnitNum])
+          {
+            return scuGetHighestIntr (scuUnitNum);
+          }
+      }
+    return -1;
+  }
+
+#if 0
+static uint get_highest_intr (void)
+  {
 // XXX In theory there needs to be interlocks on this?
     for (int int_num = N_INTERRUPTS - 1; int_num >= 0; int_num --)
       for (uint scu_num = 0; scu_num < N_SCU_UNITS_MAX; scu_num ++)
@@ -990,23 +1003,38 @@ static uint get_highest_intr (void)
                 if (events . interrupts [s] [i])
                   {
                     cnt ++;
+                    break;
 //sim_printf ("%u %u\n", s, i);
                   }
             events . int_pending = !!cnt;
 
+            cnt = 0;
             for (int i = 0; i < N_FAULT_GROUPS; i ++)
               if (events . fault [i])
-                cnt ++;
-            events . any = !! cnt;
+                {
+                  cnt ++;
+                  break;
+//sim_printf ("%u %u\n", s, i);
+                }
+            //events . any = !! cnt;
+            events . fault_pending = !! cnt;
             //sim_printf ("int num %d (%o), pair_addr %o pend %d any %d\n", int_num, int_num, int_num * 2, events . int_pending, events . any);
             return int_num * 2;
           }
     return 1;
   }
+#endif
 
 bool sample_interrupts (void)
   {
-    return events . int_pending;
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+      {
+        if (events . XIP [scuUnitNum])
+          {
+            return true;
+          }
+      }
+    return false;
   }
 
 t_stat simh_hooks (void)

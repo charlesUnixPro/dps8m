@@ -484,8 +484,8 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
         cpu . subFault = 0; // XXX ???
         if (bTroubleFaultCycle)
           {
-            if (events . int_pending == 0 &&
-                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+            if ((! sample_interrupts ()) &&
+                (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);

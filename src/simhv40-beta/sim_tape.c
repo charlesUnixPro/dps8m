@@ -1813,7 +1813,7 @@ return (uptr->pos <= fmts[f].bot)? TRUE: FALSE;
 
 t_bool sim_tape_eom (UNIT *uptr)
 {
-uint32 f = MT_GET_FMT (uptr);
+//uint32 f = MT_GET_FMT (uptr);
 
 return (feof (uptr->fileref)) ? TRUE: FALSE;
 }

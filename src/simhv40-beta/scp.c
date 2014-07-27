@@ -467,7 +467,7 @@ t_bool sim_brk_pend[SIM_BKPT_N_SPC] = { FALSE };
 t_addr sim_brk_ploc[SIM_BKPT_N_SPC] = { 0 };
 int32 sim_quiet = 0;
 int32 sim_step = 0;
-static double sim_time;
+static t_int64 sim_time;
 static uint32 sim_rtime;
 static int32 noqueue_time;
 volatile int32 stop_cpu = 0;
@@ -2940,10 +2940,10 @@ int32 accum;
 if (cptr && (*cptr != 0))
     return SCPE_2MARG;
 if (sim_clock_queue == QUEUE_LIST_END)
-    fprintf (st, "%s event queue empty, time = %.0f, executing %.0f instructios/sec\n",
+    fprintf (st, "%s event queue empty, time = %lld, executing %.0f instructios/sec\n",
              sim_name, sim_time, sim_timer_inst_per_sec ());
 else {
-    fprintf (st, "%s event queue status, time = %.0f, executing %.0f instructions/sec\n",
+    fprintf (st, "%s event queue status, time = %lld, executing %.0f instructions/sec\n",
              sim_name, sim_time, sim_timer_inst_per_sec ());
     accum = 0;
     for (uptr = sim_clock_queue; uptr != QUEUE_LIST_END; uptr = uptr->next) {
@@ -2962,10 +2962,10 @@ else {
 #if defined (SIM_ASYNCH_IO)
 pthread_mutex_lock (&sim_timer_lock);
 if (sim_wallclock_queue == QUEUE_LIST_END)
-    fprintf (st, "%s wall clock event queue empty, time = %.0f\n",
+    fprintf (st, "%s wall clock event queue empty, time = %lld\n",
              sim_name, sim_time);
 else {
-    fprintf (st, "%s wall clock event queue status, time = %.0f\n",
+    fprintf (st, "%s wall clock event queue status, time = %lld\n",
              sim_name, sim_time);
     for (uptr = sim_wallclock_queue; uptr != QUEUE_LIST_END; uptr = uptr->a_next) {
         if ((dptr = find_dev_from_unit (uptr)) != NULL) {
@@ -2980,7 +2980,7 @@ else {
         }
     }
 if (sim_clock_cosched_queue != QUEUE_LIST_END) {
-    fprintf (st, "%s clock (%s) co-schedule event queue status, time = %.0f\n",
+    fprintf (st, "%s clock (%s) co-schedule event queue status, time = %lld\n",
              sim_name, sim_uname(sim_clock_unit), sim_time);
     for (uptr = sim_clock_cosched_queue; uptr != QUEUE_LIST_END; uptr = uptr->a_next) {
         if ((dptr = find_dev_from_unit (uptr)) != NULL) {
@@ -3019,7 +3019,7 @@ t_stat show_time (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, char *cptr)
 {
 if (cptr && (*cptr != 0))
     return SCPE_2MARG;
-fprintf (st, "Time:\t%.0f\n", sim_time);
+fprintf (st, "Time:\t%lld\n", sim_time);
 return SCPE_OK;
 }
 
@@ -3379,7 +3379,9 @@ if (dir) {
     char FileName[PATH_MAX + 1], *MatchName;
     char *c;
     struct tm *local;
+#if defined (HAVE_GLOB)
     int i;
+#endif
 
     MatchName = 1 + strrchr (cptr, '/');
     printf (" Directory of %s\n\n", DirName[0] ? DirName : "/");
@@ -3675,7 +3677,7 @@ if (dptr == NULL)                                       /* found dev? */
     return SCPE_NXDEV;
 if (uptr == NULL)                                       /* valid unit? */
     return SCPE_NXUN;
-if (uptr->flags & UNIT_ATT)                             /* already attached? */
+if (uptr->flags & UNIT_ATT) {                           /* already attached? */
     if (!(uptr->dynflags & UNIT_ATTMULT) &&             /* and only single attachable */
         !(dptr->flags & DEV_DONTAUTO)) {                /* and auto detachable */
         r = scp_detach_unit (dptr, uptr);               /* detach it */
@@ -3683,8 +3685,11 @@ if (uptr->flags & UNIT_ATT)                             /* already attached? */
             return r;
         }
     else
-        if (!(uptr->dynflags & UNIT_ATTMULT))
-            return SCPE_ALATT;                          /* Already attached */
+        {
+          if (!(uptr->dynflags & UNIT_ATTMULT))
+              return SCPE_ALATT;                          /* Already attached */
+        }
+}
 sim_trim_endspc (cptr);                                 /* trim trailing spc */
 return scp_attach_unit (dptr, uptr, cptr);              /* attach */
 }
@@ -4028,7 +4033,7 @@ REG *rptr;
 
 #define WRITE_I(xx) sim_fwrite (&(xx), sizeof (xx), 1, sfile)
 
-fprintf (sfile, "%s\n%s\n%s\n%s\n%s\n%.0f\n",
+fprintf (sfile, "%s\n%s\n%s\n%s\n%s\n%lld\n",
     save_vercur,                                        /* [V2.5] save format */
     sim_name,                                           /* sim name */
     sim_si64, sim_sa64, sim_snet,                       /* [V3.5] options */
@@ -4208,7 +4213,7 @@ if (v35) {                                              /* [V3.5+] options */
     }
 if (v32) {                                              /* [V3.2+] time as string */
     READ_S (buf);
-    sscanf (buf, "%lf", &sim_time);
+    sscanf (buf, "%lld", &sim_time);
     }
 else READ_I (sim_time);                                 /* sim time */
 READ_I (sim_rtime);                                     /* [V2.6+] sim rel time */
@@ -6497,7 +6502,7 @@ return 0;
         time    =       global time
 */
 
-double sim_gtime (void)
+t_int64 sim_gtime (void)
 {
 if (AIO_MAIN_THREAD) {
     UPDATE_SIM_TIME;
@@ -6909,7 +6914,7 @@ return debtab_nomatch;
 static const char *sim_debug_prefix (uint32 dbits, DEVICE* dptr)
 {
 char* debug_type = get_dbg_verb (dbits, dptr);
-static const char* debug_fmt     = "DBG(%.0f)%s> %s %s: ";
+//static const char* debug_fmt     = "DBG(%.0f)%s> %s %s: ";
 char tim_t[32] = "";
 char tim_a[32] = "";
 char pc_s[64] = "";
@@ -6934,7 +6939,7 @@ if (sim_deb_switches & SWMASK ('P')) {
     sprintf(pc_s, "-%s:", sim_deb_PC->name);
     sprint_val (&pc_s[strlen(pc_s)], val, sim_deb_PC->radix, sim_deb_PC->width, sim_deb_PC->flags & REG_FMT);
     }
-sprintf(debug_line_prefix, "DBG(%s%s%.0f%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
+sprintf(debug_line_prefix, "DBG(%s%s%lld%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
 return debug_line_prefix;
 }
 
@@ -7014,7 +7019,7 @@ if (sim_deb && (dptr->dctrl & dbits)) {
     char *buf = stackbuf;
     va_list arglist;
     int32 i, j, len;
-    char* debug_type = get_dbg_verb (dbits, dptr);
+    //char* debug_type = get_dbg_verb (dbits, dptr);
     const char* debug_prefix = sim_debug_prefix(dbits, dptr);   /* prefix to print if required */
 
     buf[bufsize-1] = '\0';

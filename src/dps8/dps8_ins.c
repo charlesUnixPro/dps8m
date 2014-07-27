@@ -5200,8 +5200,8 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
               }
 
             if ((! switches . tro_enable) &&
-                events . int_pending == 0 &&
-                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+                (! sample_interrupts ()) &&
+                (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
                 sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);

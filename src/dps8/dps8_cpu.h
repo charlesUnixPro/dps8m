@@ -655,11 +655,13 @@ extern DCDstruct currentInstruction;
 
 typedef struct
   {
-    bool any;             // true if any of the below are true
-    bool int_pending;
+    //bool any;             // true if any of the below are true
+    //bool int_pending;
+    bool fault_pending;
     int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
-    bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
+    //bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
+    bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
 extern events_t events;

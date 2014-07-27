@@ -1256,12 +1256,17 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 
     if (! scu [scu_unit_num] . port_enable [scu_port_num])
       {
-        sim_debug (DBG_ERR, & scu_dev, "scu_cioc: Connect sent to disabled port; dropping\n");
+        sim_debug (DBG_ERR, & scu_dev, 
+                   "scu_cioc: Connect sent to disabled port; dropping\n");
+        sim_debug (DBG_ERR, & scu_dev, 
+                   "scu_cioc: scu_unit_num %u scu_port_num %u\n",
+                   scu_unit_num, scu_port_num);
         return 1;
       }
     if (portp -> type != ADEV_IOM)
       {
-        sim_debug (DBG_ERR, & scu_dev, "scu_cioc: Connect sent to not-an-IOM; dropping\n");
+        sim_debug (DBG_ERR, & scu_dev, 
+                   "scu_cioc: Connect sent to not-an-IOM; dropping\n");
         return 1;
       }
     int iom_unit_num = portp -> idnum;
@@ -1270,7 +1275,9 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
     if (sys_opts.iom_times.connect < 0)
         iom_interrupt(iom_unit_num);
     else {
-        sim_debug (DBG_INFO, &scu_dev, "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", sys_opts.iom_times.connect);
+        sim_debug (DBG_INFO, &scu_dev, 
+                   "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", 
+                   sys_opts.iom_times.connect);
         if (sim_activate(&iom_dev.units[iom_unit_num], sys_opts.iom_times.connect) != SCPE_OK) {
             cancel_run(STOP_UNK);
             ret = 1;
@@ -1393,9 +1400,7 @@ sim_debug (DBG_TRACE, & scu_dev, "Update SCU unit %u inum %u cells %s\n", scu_un
 
 static void deliverInterrupts (uint scu_unit_num)
   {
-// XXX ASSUME CPU 0
-    events . int_pending = 0;
-    memset (events . interrupts, 0, sizeof (events . interrupts));
+// XXX ASSUME0 CPU 0
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
@@ -1404,23 +1409,49 @@ static void deliverInterrupts (uint scu_unit_num)
             if (scu [scu_unit_num] . mask_enable [pima] == 0)
               continue;
             uint mask = scu [scu_unit_num] . exec_intr_mask [pima];
-            uint port = scu [scu_unit_num ] . mask_assignment [pima];
+            uint port = scu [scu_unit_num] . mask_assignment [pima];
             if (scu [scu_unit_num] . ports [port] . type != ADEV_CPU)
               continue;
             if (scu [scu_unit_num] . cells [inum] &&
                 (mask & (1 << (31 - inum))) != 0)
               {
-                events . int_pending = 1;
-                events . interrupts [scu_unit_num] [inum] = 1;
+                events . XIP [scu_unit_num] = true;
+                return;
               }
           }
       }
-    // XXX events . any not updated.
+    events . XIP [scu_unit_num] = false;
   }
 
+#if 0
 void scu_clear_interrupt (uint scu_unit_num, uint inum)
   {
     scu [scu_unit_num] . cells [inum] = 0;
+  }
+#endif
+
+uint scuGetHighestIntr (uint scuUnitNum)
+  {
+    //for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
+    for (int inum = N_CELL_INTERRUPTS - 1; inum >= 0; inum --)
+      {
+        for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
+          {
+            if (scu [scuUnitNum] . mask_enable [pima] == 0)
+              continue;
+            uint mask = scu [scuUnitNum] . exec_intr_mask [pima];
+            uint port = scu [scuUnitNum] . mask_assignment [pima];
+            if (scu [scuUnitNum] . ports [port] . type != ADEV_CPU)
+              continue;
+            if (scu [scuUnitNum] . cells [inum] &&
+                (mask & (1 << (31 - inum))) != 0)
+              {
+                scu [scuUnitNum] . cells [inum] = false;
+                return inum * 2;
+              }
+          }
+      }
+    return 1;
   }
 
 // ============================================================================
