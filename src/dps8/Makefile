@@ -211,7 +211,13 @@ CFLAGS += -DQUIET_UNUSED
 
 LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
-LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence 
+# simh requires -ldl
+LIBS = $(LOCALLIBS)  -lm -ldl
+
+# efence is Electric Fence, a malloc debugger.
+#LIBS +- -lefence
+
+#LIBS = -lrt -lpthread 
 
 C_SRCS  = ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
@@ -291,6 +297,9 @@ locallibs_then_dps8 :
 	$(MAKE) dps8
 
 # Other Targets
+
+# If you do not have ctags in your build environment, change 'ctags' to 
+# '#ctags' below.
 
 tags : $(C_SRCS) $(H_SRCS)
 	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
