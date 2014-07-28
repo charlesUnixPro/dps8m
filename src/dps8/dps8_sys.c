@@ -926,7 +926,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (15);
+    setG7fault (exf_fault);
     return SCPE_OK;
   }
 

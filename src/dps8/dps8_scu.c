@@ -533,6 +533,7 @@
 #include "dps8_utils.h"
 #include "dps8_sys.h"
 #include "dps8_iom.h"
+#include "dps8_faults.h"
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -1248,8 +1249,6 @@ maskContents);
 
 int scu_cioc (uint scu_unit_num, uint scu_port_num)
 {
-    int ret = 0;
-
     sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to unit %d port %d\n", scu_unit_num, scu_port_num);
 
     struct ports * portp = & scu [scu_unit_num] . ports [scu_port_num];
@@ -1263,28 +1262,45 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
                    scu_unit_num, scu_port_num);
         return 1;
       }
-    if (portp -> type != ADEV_IOM)
+    if (portp -> type == ADEV_IOM)
       {
-        sim_debug (DBG_ERR, & scu_dev, 
-                   "scu_cioc: Connect sent to not-an-IOM; dropping\n");
+        int iom_unit_num = portp -> idnum;
+        //int iom_port_num = portp -> dev_port;
+
+        if (sys_opts . iom_times . connect < 0)
+          {
+            iom_interrupt (iom_unit_num);
+            return 0;
+          }
+        else
+          {
+            sim_debug (DBG_INFO, & scu_dev, 
+                       "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", 
+                       sys_opts . iom_times . connect);
+            if (sim_activate (& iom_dev . units [iom_unit_num], 
+                sys_opts . iom_times.connect) != SCPE_OK) 
+              {
+                cancel_run (STOP_UNK);
+                return 1;
+              }
+            return 0;
+          }
+      }
+    else if (portp -> type == ADEV_CPU)
+      {
+        // XXX ASSUME0 assume CPU 0
+        // XXX properly, trace the cable from scu_port to the cpu to determine
+        // XXX the cpu number.
+        // XXX ticket #20
+        setG7fault (connect_fault);
         return 1;
       }
-    int iom_unit_num = portp -> idnum;
-    //int iom_port_num = portp -> dev_port;
-
-    if (sys_opts.iom_times.connect < 0)
-        iom_interrupt(iom_unit_num);
-    else {
-        sim_debug (DBG_INFO, &scu_dev, 
-                   "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", 
-                   sys_opts.iom_times.connect);
-        if (sim_activate(&iom_dev.units[iom_unit_num], sys_opts.iom_times.connect) != SCPE_OK) {
-            cancel_run(STOP_UNK);
-            ret = 1;
-        }
-    }
-    
-    return ret;
+    else
+      {
+        sim_debug (DBG_ERR, & scu_dev, 
+                   "scu_cioc: Connect sent to not-an-IOM or CPU; dropping\n");
+        return 1;
+      }
 }
 
 

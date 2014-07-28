@@ -530,10 +530,15 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
 // Note: The DIS code assumes that the only G7 fault is TRO. Adding any
 // other G7 faults will potentailly require changing the DIS code.
  
-bool bG7Pending()
-{
+bool bG7Pending (void)
+  {
     return g7Faults != 0;
-}
+  }
+
+bool bG7PendingNoTRO (void)
+  {
+    return (g7Faults & (~ (1u << timer_fault))) != 0;
+  }
 
 void setG7fault (_fault faultNo)
   {
@@ -548,5 +553,13 @@ void doG7Fault (void)
 
          doFault (timer_fault, 0, "Timer runout"); 
        }
+
+     if (g7Faults & (1u << connect_fault))
+       {
+         g7Faults &= ~(1u << connect_fault);
+
+         doFault (connect_fault, 0, "Connect"); 
+       }
+
      doFault (trouble_fault, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
   }

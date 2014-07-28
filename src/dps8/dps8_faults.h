@@ -68,8 +68,10 @@ void cu_safe_restore (void);
 
 void doG7Fault(void) NO_RETURN;
 
-void doFault(_fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) NO_RETURN; ///< fault handler
-bool bG7Pending();
+void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
+              const char * faultMsg) NO_RETURN;
+bool bG7PendingNoTRO (void);
+bool bG7Pending (void);
 void setG7fault (_fault faultNo);
 void doG7Fault (void);
 

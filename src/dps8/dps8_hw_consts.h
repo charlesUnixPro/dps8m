@@ -454,6 +454,7 @@ enum _fault {
     startup_fault = FAULT_SUF,
     overflow_fault = FAULT_OFL,
     div_fault = FAULT_DIV,
+    exf_fault = FAULT_EXF,
     dir_flt0_fault = FAULT_DF0,
     dir_flt1_fault = FAULT_DF1,
     dir_flt2_fault = FAULT_DF2,

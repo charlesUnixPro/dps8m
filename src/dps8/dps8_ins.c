@@ -5098,7 +5098,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
 
         // Privileged -- System Control
 
-        case 0015:  ///< cioc
+        case 0015:  // cioc
           {
             // cioc The system controller addressed by Y (i.e., contains 
             // the word at Y) sends a connect signal to the port specified 
@@ -5111,7 +5111,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
                 sim_debug (DBG_DEBUG, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", TPR.CA);
                 cpu_port_num = 0;
               }
-            uint scu_port_num = CY & 03;
+            uint scu_port_num = CY & MASK3;
             scu_cioc ((uint) cpu_port_num, scu_port_num);
           }
           break;
@@ -5276,7 +5276,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
               }
             // Currently, the only G7 fault we recognize is TRO, so
             // this code suffices for "all other G7 faults."
-            else if (GET_I (cu . IWB) && bG7Pending ())
+            if (GET_I (cu . IWB) ? bG7PendingNoTRO () : bG7Pending ())
               {
                 cpu . g7_flag = true;
                 break;
@@ -7153,7 +7153,7 @@ void doRCU (bool fxeTrap)
     if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
-    if (cu . FI_ADDR == FAULT_TRO)  // g7 fault
+    if (cu . FI_ADDR == FAULT_TRO || cu . FI_ADDR == FAULT_CON)  // g7 fault
       {
         longjmp (jmpMain, JMP_REFETCH);
       }
