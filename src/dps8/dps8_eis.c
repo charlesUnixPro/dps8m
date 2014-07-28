@@ -1462,7 +1462,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
     else
         e->N[k-1] = opDesc & 077;
     
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %u\n", k, e->N[k-1]);
 
     word36 r = getMFReg36(MFk & 017, false);
     if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
@@ -1515,6 +1515,9 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
     
     a->_type = eisTN;
     a->TN = e->TN[k-1];
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): address:%06o cPos:%d bPos:%d N%u %u\n", a->address, a->cPos, a->bPos, k, e->N[k-1]);
+
 }
 
 
