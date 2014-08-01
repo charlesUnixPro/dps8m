@@ -4503,6 +4503,60 @@ void mlr(DCDstruct *ins)
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
+//
+// Multics frequently uses certain code sequences which are easily detected
+// and optimized; eg. it uses the MLR instruction to copy or zeros segments.
+//
+// The MLR implementation is correct, not efficent. Copy invokes 12 append
+// cycles per word, and fill 8.
+//
+
+// Test for the case of aligned word move; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 % 4 == 0 &&  // a whole number of words in the src
+        e -> N2 == e -> N1 && // the src is the same size as the dest.
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
+        uint nwords = e -> N2 / 4;
+        for (uint i = 0 ; i < nwords; i ++)
+          {
+            word36 w = EISRead (& e -> ADDR1);
+            e -> ADDR1 . address += 1;
+            e -> ADDR1 . address &= AMASK;
+            EISWrite (& e -> ADDR2, w);
+            e -> ADDR2 . address += 1;
+            e -> ADDR2 . address &= AMASK;
+          }
+        return;
+      }
+
+// Test for the case of aligned word fill; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 && // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 == 0 && // the source is entirely fill
+        e -> N2 % 4 == 0 && // a whole number of words in the dest
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
+        word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
+        uint nwords = e -> N2 / 4;
+        for (uint i = 0; i < nwords; i ++)
+          {
+            EISWrite (& e -> ADDR2, w);
+            e -> ADDR2 . address += 1;
+            e -> ADDR2 . address &= AMASK;
+          }
+        return;
+      }
+
     for(uint i = 0 ; i < min(e->N1, e->N2); i += 1)
     {
         //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
