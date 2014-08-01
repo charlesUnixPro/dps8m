@@ -9,8 +9,8 @@
 #include <stdio.h>
 
 #include "dps8.h"
-#include "dps8_append.h"
 #include "dps8_cpu.h"
+#include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
@@ -376,6 +376,7 @@ static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 #endif
 static _fault g7Faults = 0;
+static _fault_subtype  g7SubFaults [N_FAULTS];
 
 // We stash a few things for debugging; they are accessed by emCall.
 static word18 fault_ic; 
@@ -540,9 +541,10 @@ bool bG7PendingNoTRO (void)
     return (g7Faults & (~ (1u << timer_fault))) != 0;
   }
 
-void setG7fault (_fault faultNo)
+void setG7fault (_fault faultNo, _fault_subtype subFault)
   {
     g7Faults |= (1u << faultNo);
+    g7SubFaults [faultNo] = subFault;
   }
 
 void doG7Fault (void)
@@ -558,7 +560,8 @@ void doG7Fault (void)
        {
          g7Faults &= ~(1u << connect_fault);
 
-         doFault (connect_fault, 0, "Connect"); 
+         cu . CNCHN = g7SubFaults [connect_fault] & MASK3;
+         doFault (connect_fault, g7SubFaults [connect_fault], "Connect"); 
        }
 
      doFault (trouble_fault, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");

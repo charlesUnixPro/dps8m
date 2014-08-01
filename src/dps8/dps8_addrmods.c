@@ -11,6 +11,7 @@
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_cpu.h"
+#include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
@@ -228,10 +229,12 @@ static void doITP (void)
 
     word3 n = GET_ITP_PRNUM (itxPair);
     TPR . TSR = PR [n] . SNR;
-    TPR . TRR = max3 (PR [n] . RNR, SDW -> R1, TPR . TRR);
+    //TPR . TRR = max3 (PR [n] . RNR, SDW -> R1, TPR . TRR);
+    TPR . TRR = max3 (PR [n] . RNR, RSDWH_R1, TPR . TRR);
     TPR . TBR = GET_ITP_BITNO (itxPair);
     TPR . CA = SIGNEXT18 (PAR [n] . WORDNO) +
                SIGNEXT18 (GET_ITP_WORDNO (itxPair));
+    TPR . CA &= AMASK;
     rY = TPR.CA;
 
     rTAG = GET_ITP_MOD (itxPair);
@@ -259,9 +262,17 @@ static void doITS(void)
     //    segment C(TPR.TSR) (see Section 8).
 
     TPR . TSR = GET_ITS_SEGNO (itxPair);
-    TPR . TRR = max3 (GET_ITS_RN (itxPair), SDW -> R1, TPR . TRR);
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "ITS Pair Ring: RN %o RSDWH_R1 %o TRR %o max %o\n",
+               GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR,
+               max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR));
+
+    //TPR . TRR = max3 (GET_ITS_RN (itxPair), SDW -> R1, TPR . TRR);
+    TPR . TRR = max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR);
     TPR . TBR = GET_ITS_BITNO (itxPair);
     TPR . CA = GET_ITS_WORDNO (itxPair);
+    TPR . CA &= AMASK;
 
     rY = TPR . CA;
 

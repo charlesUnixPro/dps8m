@@ -100,6 +100,7 @@ void do_camp (word36 Y);
 void do_cams (word36 Y);
 int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
                       char * * msg);
+_sdw0 * getSDW (word15 segno);
 
 
 

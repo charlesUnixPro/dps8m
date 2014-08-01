@@ -472,22 +472,29 @@ enum _fault {
 typedef enum _fault _fault;
 
 enum _fault_subtype {
-    fault_subtype_unknown = 0,
-    fault_subtype_not_specified = 0,
+    //fault_subtype_unknown = 0,
+    //fault_subtype_not_specified = 0,
     no_fault_subtype = 0,
+
     ill_op,     // IPR fault. An illegal operation code has been detected.
     ill_mod,    // IPR fault. An illegal address modifier has been detected.
     ill_slv,    // IPR fault. An illegal BAR mode procedure has been encountered.
     ill_proc,   // IPR fault. An illegal procedure other than the three above has been encountered.
+
     nem,        // ONC fault. A nonexistent main memory address has been requested.
+
     oob,        // STR fault. A BAR mode boundary violation has occurred.
+
     ill_dig,    // IPR fault. An illegal decimal digit or sign has been detected by the decimal unit.
+
     proc_paru,  // PAR fault. A parity error has been detected in the upper 36 bits of data. (Yeah, right)
     proc_parl,  // PAR fault. A parity error has been detected in the lower 36 bits of data. (Yeah, right)
+
     con_a,      // CON fault. A $CONNECT signal has been received through port A.
     con_b,      // CON fault. A $CONNECT signal has been received through port B.
     con_c,      // CON fault. A $CONNECT signal has been received through port C.
     con_d,      // CON fault. A $CONNECT signal has been received through port D.
+
     da_err,     // ONC fault. Operation not complete. Processor/system controller interface sequence error 1 has been detected. (Yeah, right)
     da_err2,    // ONC fault. Operation not completed. Processor/system controller interface sequence error 2 has been detected.
     cpar_dir,   // A parity error has been detected in the cache memory directory. (Not likely)
@@ -518,27 +525,27 @@ enum _fault_subtype {
     par_ptwam,  // A parity error has been detected in the PTWAM.
     
     // Access violation fault subtypes
-    ACV0 = (1U << 0),   ///< 15.Illegal ring order (ACV0=IRO)
-    ACV1 = (1U << 1),   ///< 3. Not in execute bracket (ACV1=OEB)
-    ACV2 = (1U << 2),   ///< 6. No execute permission (ACV2=E-OFF)
-    ACV3 = (1U << 3),   ///< 1. Not in read bracket (ACV3=ORB)
-    ACV4 = (1U << 4),   ///< 4. No read permission (ACV4=R-OFF)
-    ACV5 = (1U << 5),   ///< 2. Not in write bracket (ACV5=OWB)
-    ACV6 = (1U << 6),   ///< 5. No write permission (ACV6=W-OFF)
-    ACV7 = (1U << 7),   ///< 8. Call limiter fault (ACV7=NO GA)
-    ACV8 = (1U << 8),   ///< 16.Out of call brackets (ACV8=OCB)
-    ACV9 = (1U << 9),   ///< 9. Outward call (ACV9=OCALL)
-    ACV10= (1U << 10),   ///< 10.Bad outward call (ACV10=BOC)
-    ACV11= (1U << 11),   ///< 11.Inward return (ACV11=INRET) XXX ??
-    ACV12= (1U << 12),   ///< 7. Invalid ring crossing (ACV12=CRT)
-    ACV13= (1U << 13),   ///< 12.Ring alarm (ACV13=RALR)
-    AME  = (1U << 14), ///< 13.Associative memory error XXX ??
-    ACV15 =(1U << 15), ///< 14.Out of segment bounds (ACV15=OOSB)
+    ACV0 = (1U << 15),   ///< 15.Illegal ring order (ACV0=IRO)
+    ACV1 = (1U << 14),   ///< 3. Not in execute bracket (ACV1=OEB)
+    ACV2 = (1U << 13),   ///< 6. No execute permission (ACV2=E-OFF)
+    ACV3 = (1U << 12),   ///< 1. Not in read bracket (ACV3=ORB)
+    ACV4 = (1U << 11),   ///< 4. No read permission (ACV4=R-OFF)
+    ACV5 = (1U << 10),   ///< 2. Not in write bracket (ACV5=OWB)
+    ACV6 = (1U <<  9),   ///< 5. No write permission (ACV6=W-OFF)
+    ACV7 = (1U <<  8),   ///< 8. Call limiter fault (ACV7=NO GA)
+    ACV8 = (1U <<  7),   ///< 16.Out of call brackets (ACV8=OCB)
+    ACV9 = (1U <<  6),   ///< 9. Outward call (ACV9=OCALL)
+    ACV10= (1U <<  5),   ///< 10.Bad outward call (ACV10=BOC)
+    ACV11= (1U <<  4),   ///< 11.Inward return (ACV11=INRET) XXX ??
+    ACV12= (1U <<  3),   ///< 7. Invalid ring crossing (ACV12=CRT)
+    ACV13= (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
+    AME  = (1U <<  1), ///< 13.Associative memory error XXX ??
+    ACV15 =(1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
     
-    ACDF0  = ( 1U << 16), ///< directed fault 0
-    ACDF1  = ( 1U << 17), ///< directed fault 1
-    ACDF2  = ( 1U << 18), ///< directed fault 2
-    ACDF3  = ( 1U << 19), ///< directed fault 3
+    // ACDF0  = ( 1U << 16), ///< directed fault 0
+    // ACDF1  = ( 1U << 17), ///< directed fault 1
+    // ACDF2  = ( 1U << 18), ///< directed fault 2
+    // ACDF3  = ( 1U << 19), ///< directed fault 3
     
     IRO = ACV0,
     OEB = ACV1,

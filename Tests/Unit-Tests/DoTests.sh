@@ -47,7 +47,8 @@ BASE=../../src/
 DPS8=${BASE}/dps8/dps8
 AS8=${BASE}/as8+/as8+
 
-SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs TestConsole TestFault"
+#SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs TestConsole TestFault"
+SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs TestFault"
 
 
 #EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")

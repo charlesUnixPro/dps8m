@@ -358,7 +358,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -438,7 +438,7 @@ sim_printf ("uncomfortable with this\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {

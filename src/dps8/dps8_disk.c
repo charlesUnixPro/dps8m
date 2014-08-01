@@ -337,7 +337,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             sim_debug (DBG_NOTIFY, & disk_dev, "Read Status Register\n");
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -406,7 +406,7 @@ sim_printf ("uncomfortable with this\n");
 //sim_printf ("disk read [%lld]\n", sim_timell ());
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -523,7 +523,7 @@ sim_printf ("uncomfortable with this\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -606,7 +606,7 @@ sim_printf ("uncomfortable with this\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -710,7 +710,7 @@ sim_printf ("uncomfortable with this\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -945,7 +945,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       {
 //sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw);
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, NULL);
         if (rc)
           {
 //sim_printf ("list service denies!\n");

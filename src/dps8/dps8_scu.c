@@ -1292,7 +1292,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (connect_fault);
+        setG7fault (connect_fault, cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else

@@ -100,7 +100,8 @@ static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-#define N_MT_UNITS_MAX 32
+// Survey devices only has 16 slots, so...
+#define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
 
 static t_stat mt_svc (UNIT *up);
@@ -295,7 +296,7 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
     return SCPE_OK;
   }
  
-static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
+static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc, word24 dcw_addr)
 //static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
     int mt_unit_num = MT_UNIT_NUM (unitp);
@@ -323,8 +324,9 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               stati |= 2;
             if (sim_tape_eom (unitp))
               stati |= 0340;
-            break;
           }
+          break;
+
         case 5: // CMD 05 -- Read Binary Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -402,7 +404,7 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -484,8 +486,9 @@ sim_printf ("uncomfortable with this\n");
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Read %d bytes from simulated tape\n",
                        __func__, (int) tbc);
-            break;
           }
+          break;
+
 //--         case 040:               // CMD 040 -- Reset Status
 //--             devinfop->have_status = 1;
 //--             *majorp = 0;
@@ -496,19 +499,8 @@ sim_printf ("uncomfortable with this\n");
 //--                     *majorp, *subp);
 //--             return 0;
 
-#if 0
-        case 057:               // CMD 057 -- Survey devices
-          {
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Survey devices\n");
-            stati = 04000; // have_status = 1
-            //* need_data = true;
-sim_printf ("got survey devices\n");
-            break;
-          }
-#endif
- 
         case 040:               // CMD 040 -- Reset Status
+          {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset status\n");
             stati = 04000;
@@ -521,7 +513,8 @@ sim_printf ("got survey devices\n");
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, stati);
-            break;
+          }
+          break;
 
         case 046: // 046 Backspace Record
           {
@@ -536,7 +529,7 @@ sim_printf ("got survey devices\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw);
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -604,8 +597,8 @@ sim_printf ("uncomfortable with this\n");
               stati |= 2;
             if (sim_tape_eom (unitp))
               stati |= 0340;
-            break;
           }
+          break;
 
 // Okay, this is convoluted. Multics locates the console by sending CMD 051
 // to devices in the PCW, with the understanding that only the console 
@@ -615,6 +608,7 @@ sim_printf ("uncomfortable with this\n");
 // Since it's diffcult here to test for PCW/IDCW, assume that the PCW case
 // has been filtered out at a higher level
         case 051:               // CMD 051 -- Reset device status
+          {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset device status\n");
             stati = 04000;
@@ -624,9 +618,100 @@ sim_printf ("uncomfortable with this\n");
               stati |= 2;
             if (sim_tape_eom (unitp))
               stati |= 0340;
-            break;
+          }
+          break;
 
+        case 057:               // CMD 057 -- Survey devices
+          {
+
+// According to rcp_tape_survey_.pl1:
+//
+//       2 survey_data,
+//         3 handler (16) unaligned,
+//           4 pad1 bit (1),               400000
+//           4 reserved bit (1),           200000
+//           4 operational bit (1),        100000
+//           4 ready bit (1),               40000
+//           4 number uns fixed bin (5),    37000
+//           4 pad2 bit (1),                  400
+//           4 speed uns fixed bin (3),       240
+//           4 nine_track bit (1),             20
+//           4 density uns fixed bin (4);      17
+
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Survey devices\n");
+            stati = 04000; // have_status = 1
+            //* need_data = true;
+
+            // Get the DDCW
+            // It appears that survey commands uses a non-standard DDCW;
+            // the parser sees a transfer DCW.
+
+
+            word36 dcw;
+            fetch_abs_word (dcw_addr + 1, & dcw);
+            //int rc = iomListServiceNoParse (iom_unit_num, chan, & dcw);
+
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "dcw_addr %08o dcw %012llo\n", dcw_addr, dcw);
+
+#if 0
+            uint tally = dcw & MASK12;
+            uint daddr = GETHI (dcw);
+#else
+            uint tally = 8;
+            uint daddr = dcw_addr + 2;
+#endif
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "tally %04o daddr %06o\n", tally, daddr);
+            
+            * disc = true;
+
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+            int cnt = 0;
+            for (uint i = 0; i < 8; i ++)
+              store_abs_word (dcw_addr + 2 + i, 0);
+            
+            for (uint i = 0; i < N_MT_UNITS_MAX; i ++)
+              {
+                if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
+                  {
+                    word18 handler = 0;
+                    handler |= 0100000; // operational
+                    handler |= 0040000; // ready
+                    handler |= (cables_from_ioms_to_mt [i] . dev_code & 037) << 9; // number
+                    handler |= 0000040; // 200 ips
+                    handler |= 0000020; // 9 track
+                    handler |= 0000003; // 800/1600/6250
+                    sim_debug (DBG_DEBUG, & tape_dev,
+                               "unit %d handler %06o\n", i, handler);
+                    if (cnt % 2 == 0)
+                      {
+                        store_abs_word (dcw_addr + 2 + cnt / 2, ((word36) handler) << 18);
+                      }
+                    else
+                      {
+                        word36 temp;
+                        fetch_abs_word (dcw_addr + 2 + cnt / 2, & temp);
+                        temp |= handler;
+                        store_abs_word (dcw_addr + 2 + cnt / 2, temp);
+                      }
+                    cnt ++;
+                  }
+              }
+            stati = 04000; // BUG: do we need to detect end-of-record?
+          }
+          break;
+ 
         case 070:              // CMD 070 -- Rewind.
+          {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Rewind\n");
             stati = 04000;
@@ -636,8 +721,9 @@ sim_printf ("uncomfortable with this\n");
               stati |= 2;
             if (sim_tape_eom (unitp))
               stati |= 0340;
-            break;
-            
+          }
+          break;
+   
         default:
           {
             stati = 04501;
@@ -673,7 +759,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     if (pcwp -> dev_cmd == 051)
       return 1;
     bool disc;
-    mt_cmd (unitp, pcwp, & disc);
+    mt_cmd (unitp, pcwp, & disc, 0);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
     // list so ignore that and force it to 2.
@@ -683,7 +769,8 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     while ((! disc) && ctrl == 2)
       {
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw);
+        word24 dcw_addr;
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & dcw_addr);
         if (rc)
           {
             break;
@@ -706,7 +793,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             break;
           }
         unitp = & mt_unit [mt_unit_num];
-        mt_cmd (unitp, & dcw . fields . instr, & disc);
+        mt_cmd (unitp, & dcw . fields . instr, & disc, dcw_addr);
         ctrl = dcw . fields . instr . control;
       }
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);

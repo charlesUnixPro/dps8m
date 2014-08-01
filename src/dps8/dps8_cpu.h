@@ -74,6 +74,7 @@ extern word8    rTAG;   // instruction tag
 extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]
 extern word8    tCF;    // character position field [3b]
 extern word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
+extern word3    RSDWH_R1; // Track the ring number of the last SDW
 
 extern struct _tpr
   {
@@ -830,7 +831,7 @@ typedef struct
                    // 19    ONC2      Operation not complete fault error #2
                    // 20-23 IA        System controll illegal action lines
                    // 24-26 IACHN     Illegal action processor port
-                   // 27-29 CNCHN     Connect fault - connect processor port
+    word3 CNCHN;   // 27-29 CNCHN     Connect fault - connect processor port
     word5 FI_ADDR; // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
     word1 FLT_INT; // 35    F/I       0 = interrupt; 1 = fault
 

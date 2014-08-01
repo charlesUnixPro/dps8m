@@ -1501,7 +1501,7 @@ char * strdupesc (const char * str)
           * p = ',';
         else if (p [1] == 's')
           * p = ';';
-        else if (p [1] == 's')
+        else if (p [1] == 'd')
           * p = '$';
         else
           {

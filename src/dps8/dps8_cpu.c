@@ -9,8 +9,8 @@
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
-#include "dps8_append.h"
 #include "dps8_cpu.h"
+#include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_loader.h"
 #include "dps8_math.h"
@@ -621,7 +621,8 @@ static t_stat cpu_reset (DEVICE *dptr)
     PPR.PRR = 0;
     PPR.PSR = 0;
     PPR.P = 1;
-   
+    RSDWH_R1 = 0;
+
     rTR = 0;
  
     processorCycle = UNKNOWN_CYCLE;
@@ -729,6 +730,8 @@ struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
+
+word3    RSDWH_R1; // Track the ring number of the last SDW
 
 _cache_mode_register CMR;
 _mode_register MR;
@@ -1231,7 +1234,7 @@ t_stat sim_instr (void)
         if (rTR == MASK27) // passing thorugh 0...
           {
             if (switches . tro_enable)
-              setG7fault (timer_fault);
+              setG7fault (timer_fault, 0);
           }
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
@@ -1260,6 +1263,7 @@ t_stat sim_instr (void)
 
                 // Set to ring 0
                 PPR . PRR = 0;
+                TPR . TRR = 0;
 
                 // Check that an interrupt is actually pending
                 if (cpu . interrupt_flag)
@@ -1276,7 +1280,6 @@ t_stat sim_instr (void)
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
 
-                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u]\n", intr_pair_addr);
                         if_sim_debug (DBG_INTR, & cpu_dev) 
                           traceInstruction (DBG_INTR);
 
@@ -1312,6 +1315,7 @@ t_stat sim_instr (void)
 
             case INTERRUPT_EXEC_cycle:
             case INTERRUPT_EXEC2_cycle:
+              {
                 //     execute instruction in instruction buffer
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
@@ -1359,10 +1363,11 @@ t_stat sim_instr (void)
                 // false, so we can assume it still is.
                 cpu . wasXfer = false;
                 setCpuCycle (FETCH_cycle);
-                break;
+              }
+              break;
 
             case FETCH_cycle:
-
+              {
 // "If the interrupt inhibit bit is not set in the currect instruction 
 // word at the point of the next sequential instruction pair virtual
 // address formation, the processor samples the [group 7 and interrupts]."
@@ -1448,7 +1453,7 @@ t_stat sim_instr (void)
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
-                    fetchInstruction(PPR.IC);
+                    fetchInstruction (PPR . IC);
                   }
 
 
@@ -1484,7 +1489,8 @@ t_stat sim_instr (void)
 #endif
 
                 setCpuCycle (EXEC_cycle);
-                break;
+              }
+              break;
 
             case EXEC_cycle:
               {
@@ -1609,6 +1615,7 @@ syncFaultReturn:;
 
                 // Set to ring 0
                 PPR . PRR = 0;
+                TPR . TRR = 0;
 
                 // (12-bits of which the top-most 7-bits are used)
                 int fltAddress = (switches.FLT_BASE << 5) & 07740;

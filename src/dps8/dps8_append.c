@@ -7,11 +7,11 @@
 
 #include <stdio.h>
 #include "dps8.h"
-#include "dps8_append.h"
 #include "dps8_cpu.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_append.h"
 
 /**
  * \brief the appending unit ...
@@ -769,10 +769,10 @@ static char *strACV(_fault_subtype acv)
         case ACV13: return "Ring alarm (ACV13=RALR)";
         case AME:   return "Associative memory error XXX ??";
         case ACV15: return "Out of segment bounds (ACV15=OOSB)";
-        case ACDF0: return "Directed fault 0";
-        case ACDF1: return "Directed fault 1";
-        case ACDF2: return "Directed fault 2";
-        case ACDF3: return "Directed fault 3";
+        //case ACDF0: return "Directed fault 0";
+        //case ACDF1: return "Directed fault 1";
+        //case ACDF2: return "Directed fault 2";
+        //case ACDF3: return "Directed fault 3";
         default:
             break;
     }
@@ -788,7 +788,7 @@ void acvFault(_fault_subtype acvfault, char * msg)
     char temp[256];
     sprintf(temp, "group 6 ACV fault %s(%d): %s\n", strACV(acvfault), acvfault, msg);
 
-    sim_printf("%s", temp);
+    sim_debug (DBG_APPENDING, & cpu_dev, "%s", temp);
     
     //acvFaults |= (1 << acvfault);   // or 'em all together
     acvFaults |= acvfault;   // or 'em all together
@@ -825,6 +825,36 @@ static char *strPCT(_processor_cycle_type t)
   
 }
 
+// CANFAULT
+_sdw0 * getSDW (word15 segno)
+  {
+     sim_debug (DBG_APPENDING, & cpu_dev, "getSDW for segment %05o\n", segno);
+     sim_debug (DBG_APPENDING, & cpu_dev, "getSDW DSBR.U=%o\n", DSBR . U);
+        
+    if (DSBR . U == 0)
+      {
+        fetchDSPTW (segno);
+            
+        if (! PTW0 . F)
+          doFault (dir_flt0_fault + PTW0.FC, 0, "getSDW PTW0.F == 0");
+            
+        if (! PTW0 . U)
+          modifyDSPTW (segno);
+            
+        fetchPSDW (segno);
+      }
+    else
+      fetchNSDW (segno);
+        
+    if (SDW0 . F == 0)
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "getSDW SDW0.F == 0! Initiating directed fault\n");
+        doFault (dir_flt0_fault + SDW0 . FC, 0, "SDW0.F == 0");
+     }
+   return & SDW0;
+  }
+
 static bool bPrePageMode = false;
 
 /*
@@ -851,7 +881,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    int RSDWH_R1 = 0;
+    RSDWH_R1 = 0;
     
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
@@ -967,7 +997,8 @@ A:;
             // load SDWAM .....
             loadSDWAM(TPR.TSR);
     }
-    
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(A) R1 %o R2 %o R3 %o\n", SDW -> R1, SDW -> R1, SDW -> R3);
     // Yes...
     RSDWH_R1 = SDW->R1;
 
@@ -1051,12 +1082,21 @@ A:;
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
     
-    // instruction fetch
+    // transfer or instruction fetch
+
+    // AL39, pg 31, RING ALARM REGISTER:
+    // "...and the instruction for which an absolute main memory address is 
+    //  being prepared is a transfer instruction..."
+    if (instructionFetch)
+      goto G;
+
     if (rRALR == 0)
         goto G;
     
     // C(PPR.PRR) < RALR?
     if (!(PPR.PRR < rRALR)) {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", PPR . PRR, rRALR);
         acvFaults |= ACV13;
         acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
     }
@@ -1122,10 +1162,12 @@ E1:
             acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
         }
     
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", TPR . TRR, SDW -> R2);
     // C(TPR.TRR) > SDW.R2?
     if (TPR.TRR > SDW->R2)
         // ￼SDW.R2 → C(TPR.TRR)
         TPR.TRR = SDW->R2;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o\n", TPR . TRR);
     
     goto G;
     
@@ -1135,12 +1177,16 @@ F:;
 
     // C(TPR.TRR) < C(SDW .R1)?
     if (TPR.TRR < SDW->R1) {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", TPR . TRR, SDW -> R1);
         acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
     }
     
     //C(TPR.TRR) > C(SDW .R2)?
     if (TPR.TRR > SDW->R2) {
+        sim_debug (DBG_TRACE, & cpu_dev,
+                   "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", TPR . TRR, SDW -> R2);
         acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
     }
@@ -1155,7 +1201,7 @@ F:;
     if (PPR.PRR != TPR.TRR) {
         //Set fault ACV12 = CRT
         acvFaults |= ACV12;
-        acvFaultsMsg = "acvFaults(F) C(PPR.PRR) = C(TPR.TRR)";
+        acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";
     }
     
     goto D;

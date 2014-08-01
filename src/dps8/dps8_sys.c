@@ -25,6 +25,7 @@
 #include "dps8_sys.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
+#include "dps8_dn355.h"
 #include "dps8_utils.h"
 #include "dps8_fxe.h"
 #include "dps8_append.h"
@@ -59,6 +60,7 @@ static t_stat dps_debug_stop (int32 arg, char * buf);
 static t_stat dps_debug_break (int32 arg, char * buf);
 static t_stat dps_debug_segno (int32 arg, char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
+static t_stat addSystemBookEntry (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
 static t_stat setSearchPath (int32 arg, char * buf);
@@ -92,6 +94,7 @@ static CTAB dps8_cmds[] =
     {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
+    {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL},
     {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL},
     {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL},
@@ -108,7 +111,7 @@ static CTAB dps8_cmds[] =
     {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
     {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
-    {"EXF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
+    {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
 #ifdef DVFDBG
     // dvf debugging
     {"DFX1ENTRY", dfx1entry, 0, "", NULL},
@@ -926,7 +929,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (exf_fault);
+    setG7fault (exf_fault, 0);
     return SCPE_OK;
   }
 
@@ -1301,6 +1304,33 @@ static t_stat lookupSystemBook (int32  __attribute__((unused)) arg, char * buf)
     char * ans = lookupAddress (segno, offset);
     sim_printf ("%s\n", ans ? ans : "not found");
 */
+    return SCPE_OK;
+  }
+
+static t_stat addSystemBookEntry (int32  __attribute__((unused)) arg, char * buf)
+  {
+    // asbe segname compname seg txt_start txt_len intstat_start intstat_length symbol_start symbol_length
+    char segname [bookSegmentNameLen];
+    char compname [bookSegmentNameLen];
+    uint segno;
+    uint txt_start, txt_len;
+    uint  intstat_start, intstat_length;
+    uint  symbol_start, symbol_length;
+
+    // 32 is bookSegmentNameLen - 1
+    if (sscanf (buf, "%32s %32s %o %o %o %o %o %o %o", 
+                segname, compname, & segno, 
+                & txt_start, & txt_len, & intstat_start, & intstat_length, 
+                & symbol_start, & symbol_length) != 9)
+      return SCPE_ARG;
+
+    int idx = addBookSegment (segname, segno);
+    if (idx < 0)
+      return SCPE_ARG;
+
+    if (addBookComponent (idx, compname, txt_start, txt_len, intstat_start, intstat_length, symbol_start, symbol_length) < 0)
+      return SCPE_ARG;
+
     return SCPE_OK;
   }
 
@@ -2014,7 +2044,7 @@ DEVICE * sim_devices [] =
     & clk_dev,
     // & mpc_dev,
     & opcon_dev,
-    & disk_dev, // Not hooked up yet
+    & dn355_dev,
     & sys_dev,
     & fxe_dev,
     NULL

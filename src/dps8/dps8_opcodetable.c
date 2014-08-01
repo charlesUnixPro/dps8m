@@ -495,7 +495,10 @@ struct opCode NonEISopcodes[01000] = {
     {"tra", PREPARE_CA | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
-    {"call6", PREPARE_CA | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
+    // CALL6 must fetch the destination instruction to force doAppendCycle
+    // to do all of the ring checks and processing.
+    //{"call6", PREPARE_CA | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
+    {"call6", READ_OPERAND | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
     {"tss", PREPARE_CA | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
     {"xec", READ_OPERAND | NO_RPT, NO_DDCSS, 0},

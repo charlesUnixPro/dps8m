@@ -56,7 +56,7 @@ typedef struct
   } lpw_t;
  
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
-enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
+enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC, DEVT_DN355 };
 typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
 
 typedef int iom_cmd (UNIT * unitp, pcw_t * p);
@@ -66,7 +66,7 @@ void iom_interrupt (int iom_unit_num);
 void iom_init (void);
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd);
-int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp);
+int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp, word24 * dcw_addr);
 uint mbx_loc (int iom_unit_num, uint chan_num);
 void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service(int iom_unit_num, uint chan, uint dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, bool is_read);
@@ -74,3 +74,6 @@ int send_terminate_interrupt (int iom_unit_num, uint chan);
 void decode_idcw (int iom_unit_num, pcw_t *p, bool is_pcw, 
                   word36 word0, word36 word1);
 void fetch_abs_pair (word24 addr, word36 * even, word36 * odd);
+int iomListServiceNoParse (int iom_unit_num, int chan_num, word36 * wp);
+void fetch_abs_word (word24 addr, word36 *data);
+void store_abs_word (word24 addr, word36 data);

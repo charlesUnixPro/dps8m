@@ -352,12 +352,12 @@ enum iom_imw_pics
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static void fetch_abs_word (word24 addr, word36 *data)
+void fetch_abs_word (word24 addr, word36 *data)
   {
     core_read (addr, data);
   }
 
-static void store_abs_word (word24 addr, word36 data)
+void store_abs_word (word24 addr, word36 data)
   {
     core_write (addr, data);
   }
@@ -1428,7 +1428,7 @@ int send_terminate_interrupt (int iom_unit_num, uint chan)
 // iomListService
 //   NOT connect channel!
 
-int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp)
+int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp, word24 * dcw_addr_ptr)
   {
 
     lpw_t lpw; 
@@ -1515,7 +1515,9 @@ int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp)
         
     // XXX check 1 bit; read_only
     fetch_and_parse_dcw (iom_unit_num, chan_num, dcwp, dcw_addr, 1);
-    
+    if (dcw_addr_ptr)
+      * dcw_addr_ptr = (word24) dcw_addr;
+
     // 4.3.1b: C
     
     // 4.3.1b: IDCW?
@@ -1668,6 +1670,118 @@ D:;
     return 0;
   }
 
+int iomListServiceNoParse (int iom_unit_num, int chan_num, word36 * wp)
+  {
+
+    lpw_t lpw; 
+    int user_fault_flag = iom_cs_normal;
+    int tdcw_count = 0;
+
+    uint chanloc = mbx_loc (iom_unit_num, chan_num);
+
+    // Eliding scratchpad, so always first service.
+
+    // 4.3.1a: FIRST_SERVICE == YES
+
+    fetch_and_parse_lpw (& lpw, chanloc, false);
+
+    // 4.3.1a: CONNECT_CHANNEL == NO
+        
+    // 4.3.1a: LPW 21,22 == ?
+    
+    if (lpw . nc == 0 && lpw . trunout == 0)
+      {
+        // 4.3.1a: LPW 21,22 == 00
+        // 4.3.1a: 256K OVERFLOW?
+        if (lpw . ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000)
+          {
+            iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, 
+                       iom_256K_of);
+            return 1;
+          }
+      }
+    
+    if (lpw . nc == 0 && lpw . trunout == 1)
+      {
+    A:
+        // 4.3.1a: LPW 21,22 == 01
+    
+        // 4.3.1a: TALLY?
+    
+        if (lpw . tally == 0)
+          {
+            // 4.3.1a: TALLY == 0
+            // 4.3.1a: SET USER FAULT FLAG
+            //iom_fault (iom_unit_num, chan_num, __func__, 0, 1);
+            return 1;
+          }
+        else if (lpw . tally > 1)
+          {
+            if (lpw . ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000)
+              {
+                iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_256K_of);
+                return 1;
+              }
+          }
+        else // tally == 1
+          {
+// Turning this code on does not fix bug of 2nd IDCW @ 78
+// because the tally is 3
+            //ptro = true;
+            //sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (a)\n", __func__);
+          }
+
+      }
+    
+    // 4.3.1a: LPW 20?
+    
+    uint dcw_addr = lpw . dcw_ptr;
+    
+    if (lpw . ae)
+      {
+        // 4.3.1a: LPW 20 == 1
+        // XXX IF STD_GCOS
+    
+        dcw_addr += lpw . lbnd;
+      }
+    else
+      {
+        // 4.3.1a: LPW 20 == 1
+ 
+        // 4.3.1a: PULL DCW FROM CORE USING ADDRESS EXTENSION = ZEROS
+        // dcw_addr += 0;
+      }
+    
+    sim_debug (DBG_DEBUG, & iom_dev, "%s: DCW @ 0%06o\n", 
+               __func__, dcw_addr);
+        
+    (void) fetch_abs_word (dcw_addr, wp);
+    
+    // 4.3.1c: LPW 21?
+    
+    if (lpw . nc == 0)
+      {
+    
+        // 4.3.1c: LPW 21 == 0 (UPDATE)
+    
+        // 4.3.1c: UPDATE LPW ADDRESS AND TALLY
+    
+        -- lpw . tally;
+        lpw . dcw_ptr ++;
+    
+      }
+          
+    // 4.3.1c: IDCW OR FIRST_LIST?
+    
+    // Always first list
+
+    // 4.3.1c:  WRITE LPW AND LPWX INTO MAILBOXES (scratch and core)
+    
+    lpw_write (chan_num, chanloc, & lpw);
+
+    return 0;
+  }
+
 static int send_flags_to_channel (void)
   {
     // XXX
@@ -1740,6 +1854,9 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
 
 //if (chan == 012) iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
 //if (chan == 012) sim_printf ("[%lld]\n", sim_timell ());
+
+    if_sim_debug (DBG_DEBUG, & iom_dev)
+      iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
 
     sim_debug (DBG_NOTIFY, & iom_dev, "IOM dispatch to chan %o\n", chan);
     if (devp == NULL)

@@ -10,13 +10,13 @@
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
+#include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_eis.h"
 #include "dps8_ins.h"
 #include "dps8_math.h"
 #include "dps8_opcodetable.h"
 #include "dps8_scu.h"
-#include "dps8_cpu.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_decimal.h"
@@ -181,11 +181,14 @@ static void scu2words(word36 *words)
     
     // words [0]
 
-    putbits36 (& words [0],  0,  3, PPR.PRR);
-    putbits36 (& words [0],  3, 15, PPR.PSR);
-    putbits36 (& words [0], 18,  1, PPR.P);
-    putbits36 (& words [0], 21,  1, cu.SD_ON);
-    putbits36 (& words [0], 23,  1, cu.PT_ON);
+    putbits36 (& words [0],  0,  3, PPR . PRR);
+    putbits36 (& words [0],  3, 15, PPR . PSR);
+    putbits36 (& words [0], 18,  1, PPR . P);
+    // 19, 1 XSF External segment flag
+    // 20, 1 SDWAMM Match on SDWAM
+    putbits36 (& words [0], 21,  1, cu . SD_ON);
+    // 22, 1 PTWAMM Match on PTWAM
+    putbits36 (& words [0], 23,  1, cu . PT_ON);
     putbits36 (& words [0], 24,  1, cu . PI_AP);   // 24    PI-AP
     putbits36 (& words [0], 25,  1, cu . DSPTW);   // 25    DSPTW
     putbits36 (& words [0], 26,  1, cu . SDWNP);   // 26    SDWNP
@@ -199,36 +202,57 @@ static void scu2words(word36 *words)
 //sim_printf ("scu2words wrote %012llo @ %08o\n", words [0], words);
     // words [1]
     
-    putbits36 (& words [1], 30, 5, cu.FI_ADDR);
+    putbits36 (& words [1],  0, 16, cpu . subFault & MASK16);
+    // 16, 1 PARU  processor parity upper
+    // 17, 1 PARL  processor parity lower
+    // 18, 1 ONC1  operation not complete error #1
+    // 19, 1 ONC2  operation not complete error #2
+    // 20, 4 IA    system controller illegal action lines
+    // 24, 3 IACHN Illegal action processor port
+    putbits36 (& words [1], 27, 3, cu .  CNCHN);
+    putbits36 (& words [1], 30, 5, cu .  FI_ADDR);
 //sim_printf ("setting F/I to %d; cycle %d\n", cpu . cycle == INTERRUPT_cycle ? 0 : 1, cpu . cycle);
     putbits36 (& words [1], 35, 1, cpu . cycle == INTERRUPT_cycle ? 0 : 1);
 
     // words [2]
     
-    putbits36 (& words [2],  0,  3, TPR.TRR);
-    putbits36 (& words [2],  3, 15, TPR.TSR);
-    putbits36 (& words [2], 27,  3, switches.cpu_num);
-    putbits36 (& words [2], 30,  6, cu.delta);
+    putbits36 (& words [2],  0,  3, TPR . TRR);
+    putbits36 (& words [2],  3, 15, TPR . TSR);
+    // 18, 4 PTWAM levels enabled
+    // 22, 4 SDWAM levels enabled
+    // 26, 1 0
+    putbits36 (& words [2], 27,  3, switches . cpu_num);
+    putbits36 (& words [2], 30,  6, cu . delta);
     
     // words [3]
 
-    putbits36 (& words [3], 30, 6, TPR.TBR);
+    //  0, 18 0
+    // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
+    // 22, 4 TSNB pointer register number for EIS operand #2
+    // 26, 4 TSNC pointer register number for EIS operand #3
+    putbits36 (& words [3], 30, 6, TPR . TBR);
     
     // words [4]
 
-    putbits36 (& words [4],  0, 18, PPR.IC);
-    putbits36 (& words [4], 18, 18, cu.IR); // HWR
+    putbits36 (& words [4],  0, 18, PPR . IC);
+    putbits36 (& words [4], 18, 18, cu . IR); // HWR
     
     // words [5]
 
-    putbits36 (& words [5],  0, 18, TPR.CA);
-    putbits36 (& words [5], 18,  1, cu.repeat_first);
-    putbits36 (& words [5], 19,  1, cu.rpt);
-    putbits36 (& words [5], 20,  1, cu.rd);
-    putbits36 (& words [5], 24,  1, cu.xde);
-    putbits36 (& words [5], 25,  1, cu.xdo);
-    putbits36 (& words [5], 29,  1, cu.FIF);
-    putbits36 (& words [5], 30,  6, cu.CT_HOLD);
+    putbits36 (& words [5],  0, 18, TPR . CA);
+    putbits36 (& words [5], 18,  1, cu . repeat_first);
+    putbits36 (& words [5], 19,  1, cu . rpt);
+    putbits36 (& words [5], 20,  1, cu . rd);
+    // 21, 1 RL repeat link
+    // 22, 1 POT Prepare operand tally
+    // 23, 1 PON Prepare operand no tally
+    putbits36 (& words [5], 24,  1, cu . xde);
+    putbits36 (& words [5], 25,  1, cu . xdo);
+    // 26, 1 ITP Execute ITP indirect cycle
+    // 27, 1 RFI Restart this instruction
+    // 28, 1 ITS Execute ITS indirect cycle
+    putbits36 (& words [5], 29,  1, cu . FIF);
+    putbits36 (& words [5], 30,  6, cu . CT_HOLD);
     
     // words [6]
 
@@ -658,6 +682,11 @@ void fetchInstruction (word18 addr)
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
 
+    if (get_addr_mode() == ABSOLUTE_mode)
+      {
+        TPR . TRR = 0;
+        RSDWH_R1 = 0;
+      }
 #if 0
     if (get_addr_mode() == ABSOLUTE_mode)
       sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %06o\n", PPR . IC);
@@ -990,7 +1019,15 @@ restart_1:
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               doPtrReg ();
             else
-              clr_went_appending ();
+              {
+                if (get_addr_mode () == ABSOLUTE_mode)
+                  {
+                    TPR . TSR = PPR . PSR;
+                    TPR . TRR = 0;
+                    RSDWH_R1 = 0;
+                  }
+                clr_went_appending ();
+              }
             // Setup for ABUSE_CT_HOLD code
             // This must not happen on instruction restart
             cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
@@ -3627,7 +3664,8 @@ static t_stat DoBasicInstruction (void)
             PPR.PRR = TPR.TRR;
             PPR.PSR = TPR.TSR;
             PPR.IC = TPR.CA;
-            
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "call6 PPR.PRR %o\n", PPR . PRR);
             return CONT_TRA;
             
             
@@ -3672,18 +3710,25 @@ static t_stat DoBasicInstruction (void)
             /// otherwise 0 -> C(PPR.P)
             /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             
-            processorCycle = RTCD_OPERAND_FETCH;
+            //processorCycle = RTCD_OPERAND_FETCH;
+
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RTCD even %012llo odd %012llo\n", Ypair [0], Ypair [1]);
 
             /// C(Y-pair)3,17 -> C(PPR.PSR)
             PPR.PSR = GETHI(Ypair[0]) & 077777LL;
             
             // XXX ticket #16
             /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-            PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, SDW->R1);
+            //PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, SDW->R1);
+            PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, RSDWH_R1);
             
             /// C(Y-pair)36,53 -> C(PPR.IC)
             PPR.IC = GETHI(Ypair[1]);
             
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RTCD %05o:%06o\n", PPR . PSR, PPR . IC);
+
             /// If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
             /// otherwise 0 -> C(PPR.P)
             if (PPR.PRR == 0)
@@ -3691,6 +3736,9 @@ static t_stat DoBasicInstruction (void)
             else
                 PPR.P = 0;
             
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RTCD PPR.PRR %o PPR.P %o\n", PPR . PRR, PPR . P);
+
             /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             //for(int n = 0 ; n < 8 ; n += 1)
             //  PR[n].RNR = PPR.PRR;
@@ -4941,6 +4989,16 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             
         case 0231:  ///< rsw
           {
+            if (i -> tag == TD_DL)
+              {
+                static unsigned char PROM [1024] =
+                  "DPS8/70M Emul" //  0-12 CPU Model number
+                  "1            " // 13-25 CPU Serial number
+                  "140730  "      // 26-33 Ship date (YYMMDD)
+                  ;
+                rA = PROM [TPR . CA & 1023];
+                break;
+              }
             uint select = TPR.CA & 0x7;
             switch (select)
               {
@@ -5295,7 +5353,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             else
                 doFault(illproc_fault, ill_op, "Illegal instruction");
     }
-    return 0;
+    return SCPE_OK;
 }
 
 // CANFAULT 
@@ -6606,7 +6664,7 @@ static t_stat DoEISInstruction (void)
                 doFault(illproc_fault, ill_op, "Illegal instruction");
     }
 
-    return 0;
+    return SCPE_OK;
 
 }
 
@@ -7158,8 +7216,10 @@ void doRCU (bool fxeTrap)
         longjmp (jmpMain, JMP_REFETCH);
       }
 
-    if (cu . FI_ADDR == FAULT_DF1 || 
+    if (cu . FI_ADDR == FAULT_DF0 || 
+        cu . FI_ADDR == FAULT_DF1 || 
         cu . FI_ADDR == FAULT_DF3 || 
+        cu . FI_ADDR == FAULT_ACV || 
         cu . FI_ADDR == FAULT_F2 || 
         cu . FI_ADDR == FAULT_F3)
       {
