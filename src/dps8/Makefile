@@ -304,7 +304,7 @@ locallibs_then_dps8 :
 # '#ctags' below.
 
 tags : $(C_SRCS) $(H_SRCS)
-	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
+	-xctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 
