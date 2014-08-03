@@ -32,6 +32,10 @@
                           //     * 2 SCUs = 16M 
                           // The phys addr width is 24 bits, and 2^24 = 16M
 
+// Hardware limit
+#define N_IOM_UNITS_MAX 4
+#define MAX_CHANNELS 64
+
 //
 // Memory addressing
 //

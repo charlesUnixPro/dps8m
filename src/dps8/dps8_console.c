@@ -27,17 +27,33 @@
  
  */
 
+#define N_OPCON_UNITS_MAX 1
+#define N_OPCON_UNITS 1 // default
 /* config switch -- The bootload console has a 30-second timer mechanism. When
 reading from the console, if no character is typed within 30 seconds, the read
 operation is terminated. The timer is controlled by an enable switch, must be
 set to enabled during Multics and BCE */
 
+static t_stat opcon_reset (DEVICE * dptr);
+static t_stat opcon_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat opcon_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
 static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
+
 static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
         opcon_autoinput_set, opcon_autoinput_show, NULL, NULL },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      opcon_set_nunits, /* validation routine */
+      opcon_show_nunits, /* display routine */
+      "Number of OPCON units in the system", /* value descriptor */
+      NULL // Help
+    },
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 };
 
@@ -57,7 +73,8 @@ static DEBTAB opcon_dt [] =
 // Multics only supports a single operator console
 
 #define N_OPCON_UNITS 1
-#define OPCON_UNIT_NUM 0
+//#define OPCON_UNIT_NUM 0
+#define OPCON_UNIT_NUM(uptr) ((uptr) - opcon_unit)
 
 static t_stat opcon_svc (UNIT * unitp);
 
@@ -65,8 +82,6 @@ static UNIT opcon_unit [N_OPCON_UNITS] =
   {
     { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
-
-static t_stat opcon_reset (DEVICE * dptr);
 
 DEVICE opcon_dev = {
     "OPCON",       /* name */
@@ -131,6 +146,7 @@ static struct
   {
     int iom_unit_num;
     int chan_num;
+    int dev_code;
   } cables_from_ioms_to_con [N_OPCON_UNITS];
 
 static void check_keyboard (void);
@@ -160,21 +176,28 @@ void console_init()
     console_state . autop = NULL;
 }
 
-t_stat cable_opcon (int iom_unit_num, int chan_num)
+t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_code)
   {
-    if (cables_from_ioms_to_con [OPCON_UNIT_NUM] . iom_unit_num != -1)
+    if (con_unit_num < 0 || con_unit_num >= (int) opcon_dev . numunits)
+      {
+        sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", con_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables_from_ioms_to_con [con_unit_num] . iom_unit_num != -1)
       {
         sim_printf ("cable_opcon: socket in use\n");
         return SCPE_ARG;
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, chan_type_CPI, OPCON_UNIT_NUM, & opcon_dev, & opcon_unit [OPCON_UNIT_NUM], con_iom_cmd);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_CON, chan_type_CPI, con_unit_num, & opcon_dev, & opcon_unit [con_unit_num], con_iom_cmd);
     if (rc)
       return rc;
 
-    cables_from_ioms_to_con [OPCON_UNIT_NUM] . iom_unit_num = iom_unit_num;
-    cables_from_ioms_to_con [OPCON_UNIT_NUM] . chan_num = chan_num;
+    cables_from_ioms_to_con [con_unit_num] . iom_unit_num = iom_unit_num;
+    cables_from_ioms_to_con [con_unit_num] . chan_num = chan_num;
+    cables_from_ioms_to_con [con_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -291,7 +314,7 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
-    int con_unit_num = OPCON_UNIT_NUM;
+    int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
     
     word12 stati = 0;
@@ -568,7 +591,7 @@ sim_printf ("uncomfortable with this\n");
 
 static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
   {
-    int con_unit_num = OPCON_UNIT_NUM;
+    int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
 
     // Execute the command in the PCW.
@@ -585,7 +608,10 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
 static t_stat opcon_svc (UNIT * unitp)
   {
 #if 1
-    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    int conUnitNum = OPCON_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_con [conUnitNum] . iom_unit_num;
+    int chanNum = cables_from_ioms_to_con [conUnitNum] . chan_num;
+    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     con_iom_cmd (unitp, pcwp);
 #else
     int con_unit_num = OPCON_UNIT_NUM;
@@ -599,6 +625,21 @@ static t_stat opcon_svc (UNIT * unitp)
     con_iom_cmd (unitp, & pcw);
 #endif
  
+    return SCPE_OK;
+  }
+
+static t_stat opcon_show_nunits (FILE * UNUSED st, UNIT * UNUSED uptr, int UNUSED val, void * UNUSED desc)
+  {
+    sim_printf("Number of OPCON units in system is %d\n", opcon_dev . numunits);
+    return SCPE_OK;
+  }
+
+static t_stat opcon_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * cptr, void * UNUSED desc)
+  {
+    int n = atoi (cptr);
+    if (n < 1 || n > N_OPCON_UNITS_MAX)
+      return SCPE_ARG;
+    opcon_dev . numunits = n;
     return SCPE_OK;
   }
 

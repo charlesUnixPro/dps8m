@@ -175,7 +175,7 @@ t_stat cable_dn355 (int dn355_unit_num, int iom_unit_num, int chan_num, int dev_
     return SCPE_OK;
   }
 
-static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
+static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, bool * UNUSED disc)
   {
     int dn355_unit_num = DN355_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_dn355 [dn355_unit_num] . iom_unit_num;
@@ -612,11 +612,16 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
     // It looks like the dn355 controller ignores IOTD and olny obeys ctrl...
     //while ((! disc) && ctrl == 2)
+    int ptro = 0;
+#ifdef PTRO
+    while (ctrl == 2 && ! ptro)
+#else
     while (ctrl == 2)
+#endif
       {
 //sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, NULL);
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
 //sim_printf ("list service denies!\n");
@@ -651,7 +656,10 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
 static t_stat dn355_svc (UNIT * unitp)
   {
-    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    int dn355UnitNum = DN355_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_dn355 [dn355UnitNum] . iom_unit_num;
+    int chanNum = cables_from_ioms_to_dn355 [dn355UnitNum] . chan_num;
+    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     dn355_iom_cmd (unitp, pcwp);
     return SCPE_OK;
   }

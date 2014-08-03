@@ -459,6 +459,7 @@ static int calcSF(int sf1, int sf2, int sf3)
     return sf3;
 }
 
+#if 0
 static char *formatDecimalOLD(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     
@@ -788,6 +789,7 @@ sim_printf ("OK\n");
     decNumberCopy(r, r2);
     return (char *) out;
 }
+#endif
 
 
 

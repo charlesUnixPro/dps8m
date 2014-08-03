@@ -71,7 +71,9 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
+#ifdef MULTIPASS
 static void multipassInit (void);
+#endif
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
 static t_stat dfx1exit (int32 arg, char * buf);
@@ -242,7 +244,7 @@ static t_stat sys_cable (int32 __attribute__((unused)) arg, char * buf)
       }
     else if (strcasecmp (name, "OPCON") == 0)
       {
-        rc = cable_opcon (n1, n2);
+        rc = cable_opcon (n1, n2, n3, n4);
       }
     else if (strcasecmp (name, "IOM") == 0)
       {
@@ -1337,6 +1339,9 @@ static t_stat addSystemBookEntry (int32  __attribute__((unused)) arg, char * buf
 static t_stat loadSystemBook (int32  __attribute__((unused)) arg, char * buf)
   {
   
+    // Multics 12.5 assigns segment number to collection 3 starting at 0244.
+    uint c3 = 0244;
+
 #define bufSz 257
     char filebuf [bufSz];
     int current = -1;
@@ -1371,7 +1376,27 @@ static t_stat loadSystemBook (int32  __attribute__((unused)) arg, char * buf)
               }
             continue;
           }
-
+        else
+          {
+            // Check for collection 3 segment
+            // 32 is bookSegmentNameLen - 1
+            cnt = sscanf (filebuf, "%32s  (%o, %o, %o)", name, 
+              & p0, & p1, & p2);
+            if (filebuf [0] != '\t' && cnt == 4)
+              {
+                if (strstr (name, "fw.") || strstr (name, ".ec"))
+                  continue;
+                //sim_printf ("A: %s %d\n", name, segno);
+                int rc = addBookSegment (name, c3 ++);
+                if (rc < 0)
+                  {
+                    sim_printf ("error adding segment name\n");
+                    fclose (fp);
+                    return SCPE_ARG;
+                  }
+                continue;
+              }
+          }
         cnt = sscanf (filebuf, "Bindmap for >ldd>h>e>%32s", name);
         if (cnt == 1)
           {

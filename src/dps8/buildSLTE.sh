@@ -5,9 +5,17 @@ sed -n < system_book_12_3.ascii \
   '/Begin collection /,/[Cc]ollection/{
      /^[a-z]/,+2 p
    }' | \
-awk '{ segname = $1;
+awk '
+    BEGIN { c3 = 0244 }
+    { segname = $1;
        if (substr ($2, 1, 1) == "(") { 
-         segno = 0;
+         if (substr ($1, 1, 3) == "fw." || 
+             index ($1, ".ec")) {
+           segno = 0;
+         } else {
+           segno = c3;
+           c3 = c3 + 1;
+         }
          R1 = substr ($2, 2, 1);
          R2 = substr ($3, 1, 1);
          R3 = substr ($4, 1, 1);

@@ -941,11 +941,16 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
     // It looks like the disk controller ignores IOTD and olny obeys ctrl...
     //while ((! disc) && ctrl == 2)
+    int ptro = 0;
+#ifdef PTRO
+    while (ctrl == 2 && ! ptro)
+#else
     while (ctrl == 2)
+#endif
       {
 //sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, NULL);
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
 //sim_printf ("list service denies!\n");
@@ -981,7 +986,10 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 static t_stat disk_svc (UNIT * unitp)
   {
 #if 1
-    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    int diskUnitNum = DISK_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_disk [diskUnitNum] . iom_unit_num;
+    int chanNum = cables_from_ioms_to_disk [diskUnitNum] . chan_num;
+    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     disk_iom_cmd (unitp, pcwp);
 #else
     int disk_unit_num = DISK_UNIT_NUM (unitp);

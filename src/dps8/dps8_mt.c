@@ -296,8 +296,7 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
     return SCPE_OK;
   }
  
-static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc, word24 dcw_addr)
-//static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
+static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int mt_unit_num = MT_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
@@ -643,41 +642,79 @@ sim_printf ("uncomfortable with this\n");
             stati = 04000; // have_status = 1
             //* need_data = true;
 
-            // Get the DDCW
-            // It appears that survey commands uses a non-standard DDCW;
-            // the parser sees a transfer DCW.
+#if 1
+sim_printf ("get the idcw\n");
+            // Get the IDCW
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
-
-            word36 dcw;
-            fetch_abs_word (dcw_addr + 1, & dcw);
-            //int rc = iomListServiceNoParse (iom_unit_num, chan, & dcw);
-
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "dcw_addr %08o dcw %012llo\n", dcw_addr, dcw);
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (dcw . type != idcw)
+              {
+                sim_printf ("not idcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#endif
 
 #if 0
-            uint tally = dcw & MASK12;
-            uint daddr = GETHI (dcw);
-#else
-            uint tally = 8;
-            uint daddr = dcw_addr + 2;
+sim_printf ("get the ddcw\n");
+            // Get the DDCW
+            rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
 #endif
+
+#if 0
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+
             sim_debug (DBG_DEBUG, & tape_dev,
                        "tally %04o daddr %06o\n", tally, daddr);
             
-            * disc = true;
-
-            if (tally == 0)
+            if (tally != 8)
               {
                 sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
+                           "%s: Expected tally of 8; got %d\n",
+                           __func__, tally);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
               }
 
             int cnt = 0;
             for (uint i = 0; i < 8; i ++)
-              store_abs_word (dcw_addr + 2 + i, 0);
+              store_abs_word (daddr + i, 0);
             
             for (uint i = 0; i < N_MT_UNITS_MAX; i ++)
               {
@@ -694,19 +731,20 @@ sim_printf ("uncomfortable with this\n");
                                "unit %d handler %06o\n", i, handler);
                     if (cnt % 2 == 0)
                       {
-                        store_abs_word (dcw_addr + 2 + cnt / 2, ((word36) handler) << 18);
+                        store_abs_word (daddr + cnt / 2, ((word36) handler) << 18);
                       }
                     else
                       {
                         word36 temp;
-                        fetch_abs_word (dcw_addr + 2 + cnt / 2, & temp);
+                        fetch_abs_word (daddr + cnt / 2, & temp);
                         temp |= handler;
-                        store_abs_word (dcw_addr + 2 + cnt / 2, temp);
+                        store_abs_word (daddr + cnt / 2, temp);
                       }
                     cnt ++;
                   }
               }
-            stati = 04000; // BUG: do we need to detect end-of-record?
+#endif
+            stati = 04000;
           }
           break;
  
@@ -759,18 +797,24 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     if (pcwp -> dev_cmd == 051)
       return 1;
     bool disc;
-    mt_cmd (unitp, pcwp, & disc, 0);
+//sim_printf ("1 st call to mt_cmd\n");
+    mt_cmd (unitp, pcwp, & disc);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
     // list so ignore that and force it to 2.
     //uint ctrl = pcwp -> control;
     uint ctrl = 2;
 
+    int ptro = 0;
+//#define PTRO
+#ifdef PTRO
+    while ((! disc) /* && ctrl == 2 */ && ! ptro)
+#else
     while ((! disc) && ctrl == 2)
+#endif
       {
         dcw_t dcw;
-        word24 dcw_addr;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & dcw_addr);
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
             break;
@@ -793,8 +837,10 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             break;
           }
         unitp = & mt_unit [mt_unit_num];
-        mt_cmd (unitp, & dcw . fields . instr, & disc, dcw_addr);
+//sim_printf ("next call to mt_cmd\n");
+        mt_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
+//sim_printf ("disc %d ctrl %d\n", disc, ctrl);
       }
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
 
@@ -803,20 +849,11 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
 static t_stat mt_svc (UNIT * unitp)
   {
-#if 1
-    pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    int mtUnitNum = MT_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_mt [mtUnitNum] . iom_unit_num;
+    int chanNum = cables_from_ioms_to_mt [mtUnitNum] . chan_num;
+    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     mt_iom_cmd (unitp, pcwp);
-#else
-    int mt_unit_num = MT_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
-    word24 dcw_ptr = (word24) (unitp -> u3);
-    pcw_t pcw;
-    word36 word0, word1;
-
-    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
-    decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
-    mt_iom_cmd (unitp, & pcw);
-#endif
     return SCPE_OK;
   }
     

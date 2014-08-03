@@ -59,6 +59,7 @@ struct MOPstruct
 };
 
 
+#ifdef DBGF
 static word36 EIScac (EISaddr * p, int offset, int ta)
   {
     word36 data;
@@ -115,6 +116,8 @@ static word36 EIScac (EISaddr * p, int offset, int ta)
       }
     return c;
   }
+#endif
+
 #ifdef DBGF
 static void packCharBit (word6 * D_PTR_B, word3 TAk, uint effCHAR, uint effBITNO)
   {
@@ -1012,7 +1015,7 @@ static void EISReadN(EISaddr *p, int N, word36 *dst)
 //  1n        xn      xn          xn                      xn
 //
 
-static word18 getMFReg18 (uint n, bool allowDUL)
+static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
   {
     switch (n)
       {
@@ -1055,7 +1058,7 @@ static word18 getMFReg18 (uint n, bool allowDUL)
   }
 
 
-static word36 getMFReg36 (uint n, bool allowDUL)
+static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
   {
     switch (n)
       {
@@ -5138,6 +5141,7 @@ void mvt(DCDstruct *ins)
     }
 }
 
+#if 0 // UNUSED
 static word18 getMF2Reg(int n, word18 data)
 {
     switch (n)
@@ -5171,6 +5175,8 @@ static word18 getMF2Reg(int n, word18 data)
     //sim_printf ("getMF2Reg(): How'd we get here? n=%d\n", n);
     //return 0;
 }
+#endif
+
 
 /*
  * SCM - Scan with Mask
