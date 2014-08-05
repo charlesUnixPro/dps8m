@@ -635,7 +635,7 @@ int loadDeferredSegments(bool bVerbose)
 /*
  * create a linkage Offset Table segment ...
  */
-t_stat createLOT(bool __attribute__((unused)) bVerbose)
+t_stat createLOT(UNUSED bool bVerbose)
 {
     segment *s;
     
@@ -819,7 +819,8 @@ t_stat setupFXE()
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool __attribute__((unused)) bVerbose)
+static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, 
+                             UNUSED bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -1037,7 +1038,8 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool __attrib
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
  */
-static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool __attribute__((unused)) bVerbose)
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, 
+                        bool bDeferred, UNUSED bool bVerbose)
 {
     /*
      * we'll support the following type of loads
@@ -1136,7 +1138,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                 maxaddr = max(maddr, maxaddr);
             }
         }
-        word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
+        word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
         //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
         if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
@@ -1156,7 +1158,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
 //
 
 static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr, 
-                         bool bDeferred, bool __attribute__((unused)) bVerbose)
+                         bool bDeferred, UNUSED bool bVerbose)
   {
     char buff[132] = "";
     int fno = fileno (fileref);
@@ -1241,7 +1243,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             maddr ++;
             words++;
           }
-        word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
+        word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
         //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
         if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
@@ -1369,7 +1371,8 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     return NULL;
 }
 
-t_stat sim_dump (FILE *fileref, char * __attribute__((unused)) cptr, char * __attribute__((unused)) fnam, int __attribute__((unused)) flag)
+t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam, 
+                 UNUSED int flag)
 {
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)

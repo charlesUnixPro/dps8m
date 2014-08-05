@@ -183,7 +183,7 @@ char *getModString(int32 tag)
 
 // XXX ticket #3 isSigned
 // CANFAULT
-word36 AddSub36b(char op, bool __attribute__((unused)) isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
+word36 AddSub36b(char op, UNUSED bool  isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
     word36 res = 0;
     op1 &= ZEROEXT;
@@ -269,7 +269,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
 
 // XXX ticket #3 isSigned
 // CANFAULT
-word18 AddSub18b(char op, bool __attribute__((unused)) isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
+word18 AddSub18b(char op, UNUSED bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
 {
     word18 res = 0;
     op1 &= ZEROEXT18;
@@ -357,7 +357,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
 
 // XXX ticket #3 isSigned
 // CANFAULT
-word72 AddSub72b(char op, bool __attribute__((unused)) isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
+word72 AddSub72b(char op, UNUSED bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
 {
     word72 res = 0;
     op1 &= ZEROEXT72;
@@ -1448,7 +1448,7 @@ void cfgparse_done (config_state_t * state)
 //  strdupesc ("foo\nbar") --> 'f' 'o' 'o' 012 'b' 'a' 'r'
 //
 //  Handles:
-//   \\
+//   <backslash><backslash>
 //   \n
 //   \t
 //   \f
@@ -1465,7 +1465,7 @@ void cfgparse_done (config_state_t * state)
 //   \c  comma
 //   \s  semicolon
 //   \d  dollar
-//   \w  \
+//   \w  <backslash>
 //
 //  all others silently ignored and left unprocessed
 //

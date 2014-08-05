@@ -188,6 +188,8 @@ zzzCFLAGS += \
 
 LDFLAGS = -g
 #LDFLAGS += -Wl,--cref -Wl,-Map=dps8.map
+#CFLAGS += -pg
+#LDFLAGS += -pg
 
 # Dese make debugging hard; also, I don't belive that -fwhole-program is appropriate
 # CFLAGS += -flto -fwhole-program
@@ -274,6 +276,9 @@ H_SRCS += dps8_utils.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
+
+H_SRCS += area_info.incl.pl1.h
+H_SRCS += bind_map.incl.pl1.h
 H_SRCS += definition_dcls.incl.pl1.h
 H_SRCS += iocbx.incl.pl1.h
 H_SRCS += linkdcl.incl.pl1.h
@@ -281,7 +286,9 @@ H_SRCS += object_map.incl.pl1.h
 H_SRCS += pl1_symbol_block.incl.pl1.h
 H_SRCS += source_map.incl.pl1.h
 H_SRCS += stack_header.incl.pl1.h
+H_SRCS += std_symbol_header.incl.pl1.h
 H_SRCS += symbol_block.incl.pl1.h
+H_SRCS += system_link_names.incl.pl1.h
 
 
 

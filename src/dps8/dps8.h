@@ -45,7 +45,7 @@ typedef t_uint64    u_int64_t;
 typedef uint32          a8;                           ///< DSP8 addr (18/24b)
 typedef t_uint64        d8;                           ///< DSP8 data (36b)
 
-typedef bool        word1;
+typedef uint8       word1;
 typedef uint8       word2;
 typedef uint8       word3;
 typedef uint8       word4;
@@ -92,7 +92,8 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))
 #define CLRBIT(dst, bitno)      ((dst) & ~(1LLU << (bitno)))
-#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
+//#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
+#define TSTBIT(dst, bitno)      (((dst) &  (1LLU << (bitno))) ? 1: 0)
 
 /////
 

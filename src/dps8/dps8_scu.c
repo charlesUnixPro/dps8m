@@ -710,7 +710,7 @@ typedef struct
 
 static scu_t scu [N_SCU_UNITS_MAX];
 
-static t_stat scu_reset (DEVICE * __attribute__((unused)) dptr)
+static t_stat scu_reset (UNUSED DEVICE * dptr)
   {
     // On reset, instantiate the config switch settings
 
@@ -830,7 +830,7 @@ sim_debug (DBG_TRACE, & scu_dev, "SMIC high: Unit %d Cells: %s\n", scu_unit_num,
 // x = any octal digit
 //
 
-t_stat scu_sscr (uint scu_unit_num, uint __attribute__((unused)) cpu_unit_num, word18 addr, word36 rega, word36 regq)
+t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, word18 addr, word36 rega, word36 regq)
   {
     // Only valid for a 4MW SCU
 
@@ -1472,13 +1472,15 @@ uint scuGetHighestIntr (uint scuUnitNum)
 
 // ============================================================================
 
-static t_stat scu_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static t_stat scu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                               UNUSED int val, UNUSED void * desc)
   {
     sim_printf("Number of SCU units in system is %d\n", scu_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat scu_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
+static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
+                              char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
@@ -1489,7 +1491,8 @@ static t_stat scu_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attri
     return SCPE_OK;
   }
 
-static t_stat scu_show_state (FILE * __attribute__((unused)) st, UNIT *uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val, 
+                              UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
@@ -1534,7 +1537,8 @@ static t_stat scu_show_state (FILE * __attribute__((unused)) st, UNIT *uptr, int
     return SCPE_OK;
   }
 
-static t_stat scu_show_config(FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                               UNUSED int val, UNUSED void * desc)
 {
     static const char * map [N_SCU_PORTS] = {"0", "1", "2", "3", "4", "5", "6", "7" };
     long scu_unit_num = UNIT_NUM (uptr);
@@ -1662,7 +1666,8 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
+static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+                              UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)

@@ -925,7 +925,7 @@ static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * va
                                      oip_defp -> def_list_relp);
     // Search for the segment
 
-    definition * symDef = NULL;
+    //definition * symDef = NULL;
 
     while (* (word36 *) p)
       {
@@ -950,7 +950,7 @@ next:
     // A null symbol name means we want the base of the segment
     if (! symbolName)
       {
-        symDef = p;
+        //symDef = p;
         //sim_printf ("hit2\n");
         * value =  0;
         return 1;
@@ -969,7 +969,7 @@ next:
 
         if (accCmp (defBase + p -> symbol, symbolName))
           {
-            symDef = p;
+            //symDef = p;
             //sim_printf ("hit2\n");
             * value =  p -> value;
             return 1;
@@ -994,7 +994,7 @@ static int lookupEntry (int segIdx, char * entryName, word18 * value)
                                      oip_defp -> def_list_relp);
     // Search for the segment
 
-    definition * symDef = NULL;
+    //definition * symDef = NULL;
 
     while (* (word36 *) p)
       {
@@ -1029,7 +1029,7 @@ next:
 
         if (accCmp (defBase + p -> symbol, entryName))
           {
-            symDef = p;
+            //symDef = p;
             //sim_printf ("hit2\n");
             * value =  p -> value;
             return 1;
@@ -2241,8 +2241,7 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
 
   }
 
-t_stat fxeDump (int32 __attribute__((unused)) arg, 
-                char * __attribute__((unused)) buf)
+t_stat fxeDump (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("\nSegment table\n------- -----\n\n");
     for (int idx = 0; idx < (int) N_SEGS; idx ++)
@@ -2284,7 +2283,7 @@ static word18 lookupErrorCode (char * name)
 // fxe - load a segment into memory and execute it
 //
 
-t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
+t_stat fxe (UNUSED int32 arg, char * buf)
   {
     t_stat run_boot_prep (void);
     if_sim_debug (DBG_TRACE, & fxe_dev)
@@ -3481,7 +3480,7 @@ static void trapHCS_FSSearchGetWdir (void)
     doRCU (true); // doesn't return
   }
 
-static int initiateSegment (char * __attribute__((unused)) dir, char * entry, 
+static int initiateSegment (UNUSED char * dir, char * entry, 
                             word24 * bitcntp, word36 * segptrp, 
                             word15 * segnop)
   {

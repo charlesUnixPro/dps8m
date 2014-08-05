@@ -2453,7 +2453,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
         TN = e->TN[k-1];    // type code
         
         //int chunk = 0;
-        int maxPos;
+        int maxPos = 4;
         switch (TN)
         {
             case CTN4:
@@ -2704,8 +2704,10 @@ void dtb(DCDstruct *ins)
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
+    {
         ; // generate ill proc fault
-    
+    }
+
     e->_flags = cu.IR;
     
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
@@ -2722,8 +2724,9 @@ void dtb(DCDstruct *ins)
     cu.IR = e->_flags;
 
     if (TSTF(cu.IR, I_OFLOW))
+    {
         ;   // XXX generate overflow fault
-    
+    }
 }
 
 /*!

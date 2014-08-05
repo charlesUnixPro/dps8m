@@ -1034,13 +1034,13 @@ static int disk_iom_io (UNIT * UNUSED unitp, uint UNUSED chan, uint UNUSED dev_c
   }
 #endif
 
-static t_stat disk_show_nunits (FILE * UNUSED st, UNIT * UNUSED uptr, int UNUSED val, void * UNUSED desc)
+static t_stat disk_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
     sim_printf("Number of DISK units in system is %d\n", disk_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat disk_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * cptr, void * UNUSED desc)
+static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_DISK_UNITS_MAX)

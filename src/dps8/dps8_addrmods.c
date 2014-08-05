@@ -402,6 +402,7 @@ t_stat doComputedAddressFormation (void)
     word6 Td = 0;
     didITSITP = false;
 
+#if 0 // Unused
     eCAFoper operType;
     if (RMWOP (i))
       operType = rmwCY;           // r/m/w cycle
@@ -411,6 +412,7 @@ t_stat doComputedAddressFormation (void)
       operType = writeCY;         // write cycle
     else
       operType = prepareCA;
+#endif
 
     int iTAG;   // tag of word preceeding an indirect fetch
 

@@ -366,7 +366,7 @@ static t_stat dpsCmd_DumpSegmentTable()
                 //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0 . BOUND; offset += 1024)
                 if (SDW0.U == 0)
                 {
-                    for (word18 offset = 0; offset < 16 * (SDW0.BOUND + 1); offset += 1024)
+                    for (word18 offset = 0; offset < 16u * (SDW0.BOUND + 1u); offset += 1024u)
                     {
                         word24 y2 = offset % 1024;
                         word24 x2 = (offset - y2) / 1024;
@@ -396,7 +396,7 @@ static t_stat dpsCmd_DumpSegmentTable()
 }
 
 //! custom command "dump"
-t_stat dpsCmd_Dump (int32 __attribute__((unused)) arg, char *buf)
+t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
 {
     char cmds [256][256];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -411,7 +411,7 @@ t_stat dpsCmd_Dump (int32 __attribute__((unused)) arg, char *buf)
 }
 
 //! custom command "init"
-t_stat dpsCmd_Init (int32 __attribute__((unused)) arg, char *buf)
+t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -428,7 +428,7 @@ t_stat dpsCmd_Init (int32 __attribute__((unused)) arg, char *buf)
 }
 
 //! custom command "segment" - stuff to do with deferred segments
-t_stat dpsCmd_Segment (int32 __attribute__((unused)) arg, char *buf)
+t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -451,7 +451,7 @@ t_stat dpsCmd_Segment (int32 __attribute__((unused)) arg, char *buf)
 }
 
 //! custom command "segments" - stuff to do with deferred segments
-t_stat dpsCmd_Segments (int32 __attribute__((unused)) arg, char *buf)
+t_stat dpsCmd_Segments (UNUSED int32 arg, char *buf)
 {
     bool bVerbose = !sim_quiet;
 
@@ -492,7 +492,7 @@ t_stat dpsCmd_Segments (int32 __attribute__((unused)) arg, char *buf)
 
 static void ic_history_init(void);
 /*! Reset routine */
-static t_stat cpu_reset_mm (DEVICE * __attribute__((unused)) dptr)
+static t_stat cpu_reset_mm (UNUSED DEVICE * dptr)
 {
     
 #ifdef USE_IDLE
@@ -527,7 +527,7 @@ static t_stat cpu_reset_mm (DEVICE * __attribute__((unused)) dptr)
     return 0;
 }
 
-static t_stat cpu_boot (int32 __attribute__((unused)) unit_num, DEVICE * __attribute__((unused)) dptr)
+static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 {
     // The boot button on the cpu is conneted to the boot button on the IOM
     // XXX is this true? Which IOM is it connected to?
@@ -665,7 +665,7 @@ static t_stat cpu_reset (DEVICE *dptr)
 //  variable has bit<n> set if the n’th letter was specified as a switch to the examine command. 
 // Not true...
 
-static t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) sw)
+static t_stat cpu_ex (t_value *vptr, t_addr addr, UNUSED UNIT * uptr, UNUSED int32 sw)
 {
     if (addr>= MEMSIZE)
         return SCPE_NXM;
@@ -677,7 +677,8 @@ static t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT * __attribute__((unused))
 }
 
 /*! Memory deposit */
-static t_stat cpu_dep (t_value val, t_addr addr, UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) sw)
+static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr, 
+                       UNUSED int32 sw)
 {
     if (addr >= MEMSIZE) return SCPE_NXM;
     M[addr] = val & DMASK;
@@ -1095,7 +1096,7 @@ static char * cycleStr (cycles_t cycle)
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
-          return "XXX unknwon cycle";
+          return "XXX unknown cycle";
 #endif
      }
   }
@@ -1828,7 +1829,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 }
 
 // write instruction operands
-t_stat WriteOP(word18 addr, _processor_cycle_type __attribute__((unused)) cyctyp, bool b29)
+t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -2304,7 +2305,8 @@ static void cpu_reset_array (void)
 //  from it's port scu_unit_num, scu_port_num
 //
 
-t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int __attribute__((unused)) scu_port_num)
+t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, 
+                     UNUSED int scu_port_num)
   {
     if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
@@ -2336,7 +2338,8 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int _
     return SCPE_OK;
   }
 
-static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
+                               UNUSED int val, UNUSED void * desc)
 {
     int unit_num = UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= (int) cpu_dev . numunits)
@@ -2517,7 +2520,8 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
+static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+                              UNUSED void * desc)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
@@ -2733,7 +2737,7 @@ static void print_frame (
 #endif
 }
 
-static int walk_stack (int output, void * __attribute__((unused)) frame_listp /* list<seg_addr_t>* frame_listp */)
+static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
     // Trace through the Multics stack frames
     // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
 {
@@ -2949,7 +2953,7 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
     return 0;
 }
 
-static int cmd_stack_trace (int32 __attribute__((unused)) arg, char * __attribute__((unused)) buf)
+static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
   {
     walk_stack (1, NULL);
     sim_printf ("\n");
@@ -2966,7 +2970,8 @@ static int cmd_stack_trace (int32 __attribute__((unused)) arg, char * __attribut
   }
 
 
-static int cpu_show_stack(FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                           UNUSED int val, UNUSED void * desc)
   {
     // FIXME: use FILE *st
     return cmd_stack_trace(0, NULL);

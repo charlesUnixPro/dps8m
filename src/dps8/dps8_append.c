@@ -224,7 +224,7 @@ void do_sdbr (word36 * Ypair)
  * implement camp instruction
  */
 
-void do_camp (word36 __attribute__((unused)) Y)
+void do_camp (UNUSED word36 Y)
   {
     // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
     // This may be done to either or both halves.
@@ -243,7 +243,7 @@ void do_camp (word36 __attribute__((unused)) Y)
  * implement cams instruction
  */
 
-void do_cams (word36 __attribute__((unused)) Y)
+void do_cams (UNUSED word36 Y)
   {
     // The full/empty bit of each SDWAM register is set to zero and the LRU
     // counters are initialized. The remainder of the contents of the registers
@@ -322,13 +322,15 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
+    int nwam = 64;
     if (switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
-        return NULL;
+        nwam = 1;
+	return NULL;
     }
     
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < nwam ; _n++)
     {
         // make certain we initialize SDWAM prior to use!!!
         //if (SDWAM[_n]._initialized && segno == SDWAM[_n].POINTER)
@@ -341,7 +343,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
             /*
              If the SDWAM match logic circuitry indicates a hit, all usage counts (SDWAM.USE) greater than the usage count of the register hit are decremented by one, the usage count of the register hit is set to 15 (63?), and the contents of the register hit are read out into the address preparation circuitry. 
              */
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < nwam ; _h++)
             {
                 if (SDWAM[_h].USE > SDW->USE)
                     SDWAM[_h].USE -= 1;
@@ -579,13 +581,15 @@ static void loadSDWAM(word15 segno)
 
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
+    int nwam = 64;
     if (switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
-        return NULL;
+        nwam = 1;
+	return NULL;
     }
     
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < nwam ; _n++)
     {
         if (((CA >> 10) & 0377) == ((PTWAM[_n].PAGENO >> 4) & 0377) && PTWAM[_n].POINTER == segno && PTWAM[_n].F)   //_initialized)
         {
@@ -594,7 +598,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
             /*
              * If the PTWAM match logic circuitry indicates a hit, all usage counts (PTWAM.USE) greater than the usage count of the register hit are decremented by one, the usage count of the register hit is set to 15 (63?), and the contents of the register hit are read out into the address preparation circuitry.
              */
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < nwam ; _h++)
             {
                 if (PTWAM[_h].USE > PTW->USE)
                     PTWAM[_h].USE -= 1; //PTW->USE -= 1;
@@ -1376,7 +1380,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     struct _ptw0 PTW1;
     struct _sdw0 SDW1;
 
-   if (2 * segno >= 16 * (DSBR.BND + 1))
+   if (2u * segno >= 16u * (DSBR.BND + 1u))
      {
        if (msg)
          * msg = "DSBR boundary violation.";

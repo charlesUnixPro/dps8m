@@ -156,7 +156,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p);
 static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 #endif
 
-static t_stat opcon_reset (DEVICE * __attribute__((unused)) dptr)
+static t_stat opcon_reset (UNUSED DEVICE * dptr)
   {
     console_state . io_mode = no_mode;
     console_state . tailp = console_state . buf;
@@ -202,7 +202,7 @@ t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_co
     return SCPE_OK;
   }
 
-static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) val, char *  cptr, void * __attribute__((unused)) desc)
+static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cptr, UNUSED void * desc)
   {
     if (cptr)
       {
@@ -233,7 +233,8 @@ static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attr
     return SCPE_OK;
   }
 
-static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                                 UNUSED int val, UNUSED void * desc)
   {
     sim_debug (DBG_NOTIFY, & opcon_dev,
                "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
@@ -311,7 +312,6 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //-- // ============================================================================
 //-- 
 
-//static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
@@ -401,7 +401,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             uint daddr = dcw.fields.ddcw.daddr;
             if (pcwp -> mask)
               daddr |= ((pcwp -> ext) & MASK6) << 18;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type != 0 && type != 1) //IOTD, IOTP
               {
@@ -428,7 +428,7 @@ sim_printf ("uncomfortable with this\n");
                     unsigned char c = * console_state . readp ++;
                     M [daddr] = setbits36 (M [daddr], charno * 9, 9, c);
                   }
-                cp = charno % 4;
+                // cp = charno % 4;
 
                 daddr ++;
                 tally --;
@@ -589,7 +589,7 @@ sim_printf ("uncomfortable with this\n");
 
 // The console is a CPI device; only the PCW command is executed.
 
-static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
+static int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
@@ -628,13 +628,13 @@ static t_stat opcon_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-static t_stat opcon_show_nunits (FILE * UNUSED st, UNIT * UNUSED uptr, int UNUSED val, void * UNUSED desc)
+static t_stat opcon_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
     sim_printf("Number of OPCON units in system is %d\n", opcon_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat opcon_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * cptr, void * UNUSED desc)
+static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_OPCON_UNITS_MAX)
@@ -651,7 +651,7 @@ static t_stat opcon_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * c
  * Handle an I/O request.  Invoked by the IOM while processing a DDCW.
  */
 
-static int con_iom_io (UNIT * __attribute__((unused)) unitp, uint chan, uint __attribute__((unused)) dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
+static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
     

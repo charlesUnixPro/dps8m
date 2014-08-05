@@ -618,7 +618,7 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
     theMatrix [_opcode] [_opcodeX] [_a] [_tag] ++;
 }
 
-t_stat displayTheMatrix (int32 __attribute__((unused)) arg, char * __attribute__((unused)) buf)
+t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
 {
     long long count;
     for (int opcode = 0; opcode < 01000; opcode ++)
@@ -6791,7 +6791,7 @@ static int emCall (void)
               addr = rA >> 18;
             else // 21
               addr = rA >> 12;
-            word36 chunk;
+            word36 chunk = 0;
             int i;
             bool is_escape = false;
             int cnt = 0;
@@ -6812,7 +6812,9 @@ static int emCall (void)
                     else if (ch == 'n')
                         ch = '\n';
                     else
+                    {
                         /* ch = ch */;
+                    }
                     is_escape = false;
                     buf [cnt ++] = ch;
                     if (ch == '\0')
@@ -6918,8 +6920,8 @@ static int doABSA (word36 * result)
 
         // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
-        word14 BOUND = (SDWo >> (35 - 14)) & 037777;
-        if (TPR . CA >= 16 * (BOUND + 1))
+        word14 BOUND = (SDWo >> (35u - 14u)) & 037777u;
+        if (TPR . CA >= 16u * (BOUND + 1u))
           {
             doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
           }

@@ -175,7 +175,7 @@ t_stat cable_dn355 (int dn355_unit_num, int iom_unit_num, int chan_num, int dev_
     return SCPE_OK;
   }
 
-static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, bool * UNUSED disc)
+static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
   {
     int dn355_unit_num = DN355_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_dn355 [dn355_unit_num] . iom_unit_num;
@@ -599,7 +599,7 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 // Ignore a CMD 051 in the PCW
     if (pcwp -> dev_cmd == 051)
       return 1;
-    bool disc;
+    bool disc = false;
     dn355_cmd (unitp, pcwp, & disc);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
@@ -664,13 +664,13 @@ static t_stat dn355_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-static t_stat dn355_show_nunits (FILE * UNUSED st, UNIT * UNUSED uptr, int UNUSED val, void * UNUSED desc)
+static t_stat dn355_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
     sim_printf("Number of DN355 units in system is %d\n", dn355_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat dn355_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * cptr, void * UNUSED desc)
+static t_stat dn355_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_DN355_UNITS_MAX)
