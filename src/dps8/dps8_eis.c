@@ -580,9 +580,53 @@ void doEIS_CAF (void)
   }
 #endif
 
+#ifdef EIS_CACHE
+// CANFAULT
+static void EISWriteCache(EISaddr *p)
+{
+    if (p -> cacheValid && p -> cacheDirty)
+      {
+        if (p->mat == viaPR)
+        {
+            TPR.TRR = p->RNR;
+            TPR.TSR = p->SNR;
+        
+            sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                       "%s: writeCache %012llo@%o:%06o\n", 
+                       __func__, p -> cachedWord, p -> SNR, p -> address);
+            Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, true); // write data
+        }
+        else
+        {
+            if (get_addr_mode() == APPEND_mode)
+            {
+                TPR.TRR = PPR.PRR;
+                TPR.TSR = PPR.PSR;
+            }
+        
+            sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                       "%s: writeCache %012llo@%o:%06o\n", 
+                       __func__, p -> cachedWord, TPR . TSR, p -> address);
+            Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, false); // write data
+        }
+    }
+    p -> cacheDirty = false;
+  }
+#endif
+
 // CANFAULT
 static void EISWrite(EISaddr *p, word36 data)
 {
+#ifdef EIS_CACHE
+    if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != p -> address)
+      {
+        EISWriteCache (p);
+      }
+    p -> cacheValid = true;
+    p -> cacheDirty = true;
+    p -> cachedAddr = p -> address;
+    p -> cachedWord = data;
+#else
     if (p->mat == viaPR)
     {
         TPR.TRR = p->RNR;
@@ -602,6 +646,7 @@ static void EISWrite(EISaddr *p, word36 data)
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
         Write (p->address, data, EIS_OPERAND_STORE, false); // write data
     }
+#endif
 }
 
 #ifdef DBGF
@@ -960,6 +1005,21 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "myEISRead %u coffset %u\n", k, coffset);
 static word36 EISRead(EISaddr *p)
 {
     word36 data;
+
+#ifdef EIS_CACHE
+#ifndef EIS_CACHE_READTEST
+    if (p -> cacheValid && p -> cachedAddr == p -> address)
+      {
+        return p -> cachedWord;
+      }
+    if (p -> cacheValid && p -> cacheDirty)
+      {
+        EISWriteCache (p);
+      }
+    p -> cacheDirty = false;
+#endif
+#endif
+
     if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
     {
         TPR.TRR = p->RNR;
@@ -980,6 +1040,21 @@ static word36 EISRead(EISaddr *p)
         Read (p->address, &data, EIS_OPERAND_READ, false);  // read operand
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
+#ifdef EIS_CACHE
+#ifdef EIS_CACHE_READTEST
+    if (p -> cacheValid && p -> cachedAddr == p -> address)
+      {
+        if (p -> cachedData != * data)
+          {
+            sim_printf ("cache read data fail %012llo %012llo %08o\n",
+                        p -> cachedData, * data, p -> address);
+          }
+      }
+#endif
+    p -> cacheValid = true;
+    p -> cachedAddr = p -> address;
+    p -> cachedWord = data;
+#endif
     return data;
 }
 
@@ -1100,6 +1175,12 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
     return 0;
   }
 
+#ifdef EIS_CACHE
+void setupOperandDescriptorCache(int k, EISstruct *e)
+  {
+    e -> addr [k - 1] .  cacheValid = false;
+  }
+#endif
 
 
 //
@@ -1241,7 +1322,23 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         e->op[k-1] = EISRead(&e->addr[k-1]);  // read EIS operand .. this should be an indirectread
     }
+
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache (k, e);
+#endif
 }
+
+#ifdef EIS_CACHE
+// CANFAULT
+void cleanupOperandDescriptor(int k, EISstruct *e)
+  {
+    if (e -> addr [k - 1] . cacheValid && e -> addr [k - 1] . cacheDirty)
+      {
+        EISWriteCache(& e -> addr [k - 1]);
+      }
+    e -> addr [k - 1] . cacheDirty = false;
+  }
+#endif
 
 static void parseAlphanumericOperandDescriptor(uint k, EISstruct *e, uint useTA)
 {
@@ -2684,10 +2781,14 @@ void btd(DCDstruct *ins)
 
     _btd(e);
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+    
     cu.IR = e->_flags;
     if (TSTF(cu.IR, I_OFLOW))
         doFault(overflow_fault, 0, "btd() overflow!");   // XXX generate overflow fault
-    
 }
 
 // CANFAULT
@@ -2727,6 +2828,10 @@ void dtb(DCDstruct *ins)
     {
         ;   // XXX generate overflow fault
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 /*!
@@ -4315,6 +4420,11 @@ void mvne(DCDstruct *ins)
     e->dstTally = e->N3;  // restore dstTally for output
     
     EISwriteOutputBufferToMemory(&e->ADDR3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 // CANFAULT
@@ -4386,6 +4496,11 @@ void mve(DCDstruct *ins)
     e->dstTally = e->N3;  // restore dstTally for output
     
     EISwriteOutputBufferToMemory(&e->ADDR3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*!
@@ -4538,6 +4653,10 @@ void mlr(DCDstruct *ins)
             e -> ADDR2 . address += 1;
             e -> ADDR2 . address &= AMASK;
           }
+#ifdef EIS_CACHE
+        cleanupOperandDescriptor(1, e);
+        cleanupOperandDescriptor(2, e);
+#endif
         return;
       }
 
@@ -4560,6 +4679,10 @@ void mlr(DCDstruct *ins)
             e -> ADDR2 . address += 1;
             e -> ADDR2 . address &= AMASK;
           }
+#ifdef EIS_CACHE
+        cleanupOperandDescriptor(1, e);
+        cleanupOperandDescriptor(2, e);
+#endif
         return;
       }
 
@@ -4634,6 +4757,10 @@ void mlr(DCDstruct *ins)
                 //write469(e, &e->dstAddr, &e->dstCN, e->TA2, fillT);
                 EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, fillT);
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 /*
@@ -4857,6 +4984,10 @@ void mrl(DCDstruct *ins)
             else
                 EISwrite469r(&e->ADDR2, &newDstCN, e->dstTA, fillT);
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 static word9 xlate(word36 *xlatTbl, int dstTA, int c)
@@ -4899,6 +5030,9 @@ void mvt(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 2);
@@ -5142,6 +5276,11 @@ void mvt(DCDstruct *ins)
             //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cfill);
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cfill);
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 #if 0 // UNUSED
@@ -5207,7 +5346,10 @@ void scm(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
-  
+#ifdef EIS_CACHE  
+    setupOperandDescriptorCache(3, e);
+#endif
+
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 1);
     
@@ -5352,6 +5494,11 @@ sim_printf ("SCM %03o %c %03o\n", yCharn1, iscntrl (yCharn1) ? '?' : yCharn1, c)
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*
@@ -5380,7 +5527,10 @@ void scmr(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
-    
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif    
+
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
     
@@ -5515,6 +5665,11 @@ void scmr(DCDstruct *ins)
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*
@@ -5547,6 +5702,10 @@ void tct(DCDstruct *ins)
     
     
     setupOperandDescriptor(1, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(2, e);
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseAlphanumericOperandDescriptor(1, e, 1);
     
@@ -5770,6 +5929,11 @@ void tct(DCDstruct *ins)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT y3 %012llo\n", CY3);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
    
 }
 
@@ -5799,6 +5963,10 @@ void tctr(DCDstruct *ins)
     
     
     setupOperandDescriptor(1, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(2, e);
+    setupOperandDescriptorCache(3, e);
+#endif
     parseAlphanumericOperandDescriptor(1, e, 1);
     
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -5994,6 +6162,11 @@ sim_printf ("TCT c %03o %c cout %03o %c\n",
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 
@@ -6102,6 +6275,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
             SCF (c1 > c2, cu . IR, I_CARRY);
+#ifdef EIS_CACHE
+            cleanupOperandDescriptor(1, e);
+            cleanupOperandDescriptor(2, e);
+#endif
             return;
         }
       }
@@ -6115,6 +6292,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 > c2, cu . IR, I_CARRY);
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
                 return;
               }
           }
@@ -6130,9 +6311,17 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpc c1 %u c2 %u\n", c1, c2);
                 
                 SCF(c1 > c2, cu.IR, I_CARRY);
                 
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
                 return;
               }
           }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
   }
 
 /*
@@ -6162,6 +6351,9 @@ void scd(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 1); // use TA1
@@ -6302,6 +6494,11 @@ void scd(DCDstruct *ins)
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 /*
  * SCDR - Scan Characters Double Reverse
@@ -6325,7 +6522,10 @@ void scdr(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
-    
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
+
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
     
@@ -6470,6 +6670,11 @@ void scdr(DCDstruct *ins)
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*
@@ -6671,6 +6876,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2 %d\n", i, b1, b2);
             CLRF(cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
                 CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+            cleanupOperandDescriptor(1, e);
+            cleanupOperandDescriptor(2, e);
+#endif
             return;
         }
         
@@ -6689,6 +6898,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1fill %d b2 %d\n", i, b1, b2);
                 CLRF(cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
                 return;
             }
         }   
@@ -6706,10 +6919,18 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2fill %d\n", i, b1, b2);
                 CLRF(cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
                 return;
             }
         }
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 // CANFAULT
@@ -6880,9 +7101,17 @@ void csl(DCDstruct *ins, bool isSZTL)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
+#ifdef EIS_CACHE
+            cleanupOperandDescriptor(1, e);
+            cleanupOperandDescriptor(2, e);
+#endif
             doFault(overflow_fault, 0, "csl truncation fault");
         }
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 
@@ -7080,10 +7309,18 @@ void csr(DCDstruct *ins, bool isSZTR)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
+#ifdef EIS_CACHE
+            cleanupOperandDescriptor(1, e);
+            cleanupOperandDescriptor(2, e);
+#endif
             doFault(overflow_fault, 0, "csr truncation fault");
             //sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 

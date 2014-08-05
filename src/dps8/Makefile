@@ -181,6 +181,7 @@ CFLAGS += -DQUIET_UNUSED
 #CFLAGS += -DNEWCAF
 #CFLAGS += -DDBGF
 #CFLAGS += -DDBGX
+CFLAGS += -DEIS_CACHE
 
 LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 

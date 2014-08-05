@@ -429,7 +429,26 @@ typedef struct EISaddr
     //bool    bUsesAR;    ///< true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
     
     MemoryAccessType    mat;    // memory access type for operation
-    
+
+#ifdef EIS_CACHE    
+    // Cache
+
+    // There is a cache for each operand, but they do not cross check;
+    // this means that if one of them has a cached dirty word, the
+    // others will not check for a hit, and will use the old value.
+    // AL39 warns that overlapping operands can cause unexpected behavior
+    // due to caching issues, so the this behavior is closer to the actual
+    // h/w then to the theoretical need for cache consistancy.
+
+    // We don't need to cache mat or TPR because they will be constant
+    // across an instruction.
+
+    bool cacheValid;
+    bool cacheDirty;
+    word36 cachedWord;
+    word18 cachedAddr;
+#endif
+
     EISstruct *e;      
 } EISaddr;
 

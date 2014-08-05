@@ -1124,6 +1124,9 @@ sim_printf ("AD2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     EISstruct *e = &i->e;
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
@@ -1358,6 +1361,12 @@ sim_printf ("AD2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -1646,6 +1655,11 @@ sim_printf ("AD3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -1674,6 +1688,9 @@ sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
@@ -1907,6 +1924,12 @@ sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -2194,6 +2217,12 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -2222,6 +2251,9 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
@@ -2453,6 +2485,12 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -2465,7 +2503,6 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"mp2d overflow fault");
     }
-    
 }
 
 /*
@@ -2741,6 +2778,12 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -2771,6 +2814,9 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
@@ -3002,6 +3048,11 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"dv2d overflow fault");
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*
@@ -3308,6 +3359,11 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"dv3d overflow fault");
     }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
 }
 
 /*
@@ -3454,6 +3510,10 @@ void cmpn (void)
     SCF(cSigned == 0, cu.IR, I_ZERO);
     SCF(cSigned == 1, cu.IR, I_NEG);
     SCF(cMag != 1, cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 /*
@@ -3719,6 +3779,10 @@ sim_printf ("res %s\n", res);
           doFault(overflow_fault, 0,"mvn overflow fault");
     }
 
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
 }
 
 
