@@ -1079,9 +1079,7 @@ A:;
         }
         
     }
-    
     goto G;
-
     
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
@@ -1328,7 +1326,6 @@ HI:
     
     if (thisCycle == RTCD_OPERAND_FETCH)
         goto KL;
-    
     
     //if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
     if (instructionFetch || (i && (i->info->flags & TRANSFER_INS)))

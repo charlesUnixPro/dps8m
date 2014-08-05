@@ -6175,7 +6175,6 @@ void scd(DCDstruct *ins)
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
     
-    
     // fetch 'test' char - double
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
     // instruction word does not contain an operand descriptor for the test
