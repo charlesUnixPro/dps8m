@@ -3036,6 +3036,12 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
@@ -3048,11 +3054,6 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"dv2d overflow fault");
     }
-#ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
-#endif
 }
 
 /*
@@ -3346,6 +3347,12 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
     
     if (e->T && Trunc)
     {
@@ -3359,11 +3366,6 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"dv3d overflow fault");
     }
-#ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
-#endif
 }
 
 /*
@@ -3763,6 +3765,11 @@ sim_printf ("res %s\n", res);
     SCF(decNumberIsZero(op1), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
     
     if (e->T && Trunc)
     {
@@ -3778,11 +3785,6 @@ sim_printf ("res %s\n", res);
         if (! TSTF (cu.IR, I_OMASK))
           doFault(overflow_fault, 0,"mvn overflow fault");
     }
-
-#ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-#endif
 }
 
 
