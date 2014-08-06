@@ -265,7 +265,7 @@ void do_cams (UNUSED word36 Y)
  * fetch descriptor segment PTW ...
  */
 // CANFAULT
-static _ptw0* fetchDSPTW(word15 segno)
+static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     if (2 * segno >= 16 * (DSBR.BND + 1))
@@ -287,7 +287,6 @@ static _ptw0* fetchDSPTW(word15 segno)
     PTW0.FC = PTWx1 & 3;
     
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, DSBR.ADDR, PTWx1, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
-    return &PTW0;
 }
 
 
@@ -295,7 +294,7 @@ static _ptw0* fetchDSPTW(word15 segno)
  * modify descriptor segment PTW (Set U=1) ...
  */
 // CANFAULT
-static _ptw0* modifyDSPTW(word15 segno)
+static void modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
@@ -312,8 +311,6 @@ static _ptw0* modifyDSPTW(word15 segno)
     core_write((DSBR.ADDR + x1) & PAMASK, PTWx1);
     
     PTW0.U = 1;
-    
-    return &PTW0;
 }
 
 
@@ -362,20 +359,16 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
  * Fetches an SDW from a paged descriptor segment.
  */
 // CANFAULT
-static _sdw0* fetchPSDW(word15 segno)
+static void fetchPSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
     
-    _ptw0 *p = fetchDSPTW(segno); // XXX [CAC] is this redundant?? ticket #19
-
-    //    sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(1):PTW:%s\n",
-
     setAPUStatus (apuStatus_SDWP);
     word24 y1 = (2 * segno) % 1024;
     
     word36 SDWeven, SDWodd;
     
-    core_read2(((p->ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd);
+    core_read2(((PTW0.ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -399,14 +392,13 @@ static _sdw0* fetchPSDW(word15 segno)
     //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
- y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
-    return &SDW0;
+ y1, PTW0.ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
 }
 
 /// \brief Nonpaged SDW Fetch
 /// Fetches an SDW from an unpaged descriptor segment.
 // CANFAULT
-static _sdw0 *fetchNSDW(word15 segno)
+static void fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
 
@@ -445,7 +437,6 @@ static _sdw0 *fetchNSDW(word15 segno)
     //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
     
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
-    return &SDW0;
 }
 
 static char *strSDW(_sdw *SDW)
@@ -613,7 +604,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     return NULL;    // segment not referenced in SDWAM
 }
 
-static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
+static void fetchPTW(_sdw *sdw, word18 offset)
 {
 
     setAPUStatus (apuStatus_PTW);
@@ -634,7 +625,6 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     PTW0.FC = PTWx2 & 3;
     
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
-    return &PTW0;
 }
 
 static void loadPTWAM(word15 segno, word18 offset)
@@ -699,7 +689,7 @@ static void loadPTWAM(word15 segno, word18 offset)
 /**
  * modify target segment PTW (Set M=1) ...
  */
-static _ptw* modifyPTW(_sdw *sdw, word18 offset)
+static void modifyPTW(_sdw *sdw, word18 offset)
 {
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
@@ -717,8 +707,6 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
             //TSTBIT(PTWx2, 6), TSTBIT(PTWx2, 2), PTWx2 & 3);
    
     PTW->M = 1;
-    
-    return PTW;
 }
 
 
