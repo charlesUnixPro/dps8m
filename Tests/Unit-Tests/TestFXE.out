@@ -112,16 +112,16 @@ Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset)
 snapping lot_ links...
 	204640 + 0 => 000000000304
 	204640 + 15 => 000015000240
-Howdy world! - It's ' 7/21 19:31 '
+Howdy world! - It's ' 8/06 09:40 '
 We did it!!! 2**9=512
 We did it again!!! 2**11=2048
 Q=1050402 (Should be Q=1050402)
 Q=60606 (Should be Q=60606)
 Q=10703020107 (Should be Q=010703020107)
 
-simCycles = 8644
+simCycles = 8646
 
-cpuCycles = 4322
+cpuCycles = 4323
 TestFXE-28> g 0
 
 DIS instruction, IC: main|162 (00000162) (000000616000)

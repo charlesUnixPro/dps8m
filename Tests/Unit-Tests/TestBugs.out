@@ -113,7 +113,7 @@ snapping lot_ links...
 	205340 + 0 => 000000000150
 	205340 + 23 => 000023000302
 	205340 + 24 => 000024000056
-This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 7/21 19:31 '
+This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 8/06 09:40 '
 BBG-1 ...
 ORSQ test 0 ... 0 (Should be 0)
 ORSQ test 1 ... 1234567 (Should be 1234567)
@@ -129,9 +129,9 @@ BBG-2 ...
 ITS test 1 ...
     Result is: 500000 764101 (Should be  5 00000 7641 01)
 T-H-A-T-S all folks (from 0|main) !!! 
-simCycles = 25480
+simCycles = 25482
 
-cpuCycles = 12740
+cpuCycles = 12741
 TestBugs-31> g
 
 DIS instruction, IC: main|66 (00000066) (000000616000)

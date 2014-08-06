@@ -160,7 +160,7 @@ snapping lot_ links...
 	211560 + 13 => 000013001756
 	211560 + 14 => 000014002570
 	211560 + 15 => 000015000422
-Howdy world this is 'TestIndirect'! - It's ' 7/21 19:31 '
+Howdy world this is 'TestIndirect'! - It's ' 8/06 09:40 '
 TINDC$magicC was = 2718281828 (Should be 2718281828)
 TestIndirectA: magicA: 14 000043 2324 000000
 
@@ -318,9 +318,9 @@ _printTemps:3: t2(11)=41
 _printTemps:3: t2(12)=42
 Now leaving TINC$_main_C ...
 T-H-A-T-S all folks (from 0|main) !!! 
-simCycles = 236862
+simCycles = 236864
 
-cpuCycles = 118431
+cpuCycles = 118432
 TestIndirect-29> g 1 
 
 DIS instruction, IC: main|145 (00000145) (000000616000)
