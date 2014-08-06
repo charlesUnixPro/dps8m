@@ -642,7 +642,7 @@ sim_printf ("uncomfortable with this\n");
             stati = 04000; // have_status = 1
             //* need_data = true;
 
-#if 1
+#if 0
 sim_printf ("get the idcw\n");
             // Get the IDCW
             dcw_t dcw;
@@ -752,6 +752,8 @@ sim_printf ("uncomfortable with this\n");
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Rewind\n");
+            sim_tape_rewind (unitp);
+            tape_statep -> rec_num = 0;
             stati = 04000;
             if (sim_tape_wrp (unitp))
               stati |= 1;

@@ -1,3 +1,4 @@
+//#define IOMDBG
 //
 // \file dps8_iom.c
 // \project dps8
@@ -518,7 +519,9 @@ void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
   {
     word36 word0;
     fetch_abs_word (addr, & word0);
+#ifdef IOMDBG
 sim_printf ("lpw %012llo\n", word0);
+#endif
     p -> dcw_ptr = word0 >> 18;
     p -> ires = getbits36 (word0, 18, 1);
     p -> hrel = getbits36 (word0, 19, 1);
@@ -586,8 +589,10 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
           }
         p -> pge = getbits36 (word1, 28, 1);
         p -> aux = getbits36 (word1, 29, 1);
+#ifdef IOMDBG
 if (p -> ptp)
 sim_printf ("IOMB pcw ptPtr %06o pge %o aux %o\n", p -> ptPtr, p -> pge, p -> aux);
+#endif
 if (p -> ptp)
     iomFault (iomUnitNum, 2, "cac", 1, iomFsrList, 016);
         if (p -> pge)
@@ -596,7 +601,9 @@ if (p -> ptp)
                        __func__);
           }
 
+#ifdef IOMDBG
 sim_printf ("IOMB pcw ptPtr %06o pge %o aux %o\n", p -> ptPtr, p -> pge, p -> aux);
+#endif
         // Don't need to bounds check p->chan; getbits36 masked it to 6 bits,
         // so it must be 0..MAX_CHANNELS - 1
         iomChannelData [iomUnitNum] [p -> chan] . ptPtr = p -> ptPtr;
@@ -669,7 +676,9 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
     sim_debug (DBG_DEBUG, & iom_dev, "%s: addr: 0%06o\n", __func__, addr);
     fetch_abs_word (addr, & word);
     sim_debug (DBG_DEBUG, & iom_dev, "%s: dcw: 0%012llo\n", __func__, word);
+#ifdef IOMDBG
 sim_printf ("dcw: %012llo\n", word);
+#endif
 
     uint cp = getbits36 (word, 18, 3);
     if (cp == 7U)
@@ -1285,12 +1294,16 @@ static void iomFault (uint iomUnitNum, uint chanNum, const char * who,
           {
             sim_debug (DBG_ERR, & iom_dev,
                        "%s: expected a DDCW; fail\n", __func__);
+#ifdef IOMDBG
 sim_printf ("%s: expected a DDCW; fail\n", __func__);
+#endif
             return;
           }
         // XXX Assuming no address extension or paging non-sense
         uint addr = dcw . fields . ddcw . daddr;
+#ifdef IOMDBG
 sim_printf ("%s: storing fault code @ %06o\n", __func__, addr);
+#endif
         store_abs_word (addr, faultWord);
 
         send_general_interrupt (iomUnitNum, 1, imwSystemFaultPic);
@@ -1305,7 +1318,9 @@ sim_printf ("%s: storing fault code @ %06o\n", __func__, addr);
       }
     else
       {
+#ifdef IOMDBG
 sim_printf ("iom user fault ignored"); // XXX
+#endif
       }
   }
 
@@ -1673,8 +1688,10 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
         // 4.3.1a: LPW 20 == 1
         // XXX IF STD_GCOS
     
+#ifdef IOMDBG
 sim_printf ("adding addressExtension %o to dcw_addr %o\n", 
             iomChannelData [iomUnitNum] [chanNum] . addressExtension, dcw_addr);
+#endif
         dcw_addr += 
           iomChannelData [iomUnitNum] [chanNum] . addressExtension;
         dcw_addr &= MASK18;
@@ -1699,7 +1716,9 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
                __func__, dcwp -> type);
     // 4.3.1b: IDCW?
         
+#ifdef IOMDBG
 sim_printf ("dcw type %o\n", dcwp -> type);
+#endif
     if (dcwp -> type == idcw)
       {
         // 4.3.1b: IDCW == YES
@@ -1715,8 +1734,10 @@ sim_printf ("dcw type %o\n", dcwp -> type);
         // In this context, mask is ec.
         if (dcwp -> fields . instr . mask)
           {
+#ifdef IOMDBG
 sim_printf ("setting addressExtension to %o from IDCW\n",
   dcwp -> fields . instr . ext);
+#endif
             iomChannelData [iomUnitNum] [chanNum] . addressExtension =
               dcwp -> fields . instr . ext;
           }
@@ -1780,7 +1801,9 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
         // 4.3.1b: PUT ADDRESS IN LPW
         //         OR TDCW 33, 34, 35 INTO LPW 20, 18, 23
         //         DECREMENT TALLY
+#ifdef IOMDBG
 sim_printf ("transfer to %o\n", addr); 
+#endif
         lpw . dcw_ptr = addr;
         // Not for Paged
         //lpw . ae |= dcwp -> fields . xfer . ec;
@@ -1888,14 +1911,18 @@ static int doPayloadChannel (uint iomUnitNum, word24 dcw_ptr)
     word36 word0, word1;
     
     (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+#ifdef IOMDBG
 sim_printf ("pcw %012llo %012llo\n", word0, word1);
+#endif
     decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
     uint chanNum = pcw . chan;
     uint dev_code = pcw . dev_code;
     DEVICE * devp = iom [iomUnitNum] . channels [chanNum] [dev_code] . dev;
 
+#ifdef IOMDBG
 sim_printf ("setting addressExtension to %o from PCW\n",
   pcw . ext);
+#endif
     iomChannelData [iomUnitNum] [chanNum] . addressExtension = pcw . ext;
 
 //if (chanNum == 012) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
