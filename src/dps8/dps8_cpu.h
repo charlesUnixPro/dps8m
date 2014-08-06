@@ -786,6 +786,8 @@ typedef struct
     word1 SD_ON;   // 21    SDWAM enabled
                    // 22    PTWAMM Match on PTWAM -- not implemented
     word1 PT_ON;   // 23    PTWAM enabled
+
+#if 0
     word1 PI_AP;   // 24    PI-AP Instruction fetch append cycle
     word1 DSPTW;   // 25    DSPTW Fetch descriptor segment PTW
     word1 SDWNP;   // 26    SDWNP Fetch SDW non paged
@@ -795,6 +797,10 @@ typedef struct
     word1 FAP;     // 30    FAP   Fetch final address - paged
     word1 FANP;    // 31    FANP  Fetch final address - nonpaged
     word1 FABS;    // 32    FABS  Fetch final address - absolute
+#else
+    word12 APUCycleBits;
+#endif
+
                    // 33-35 FCT   Fault counter - counts retries
 
     /* word 1 */

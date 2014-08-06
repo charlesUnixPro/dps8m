@@ -189,6 +189,7 @@ static void scu2words(word36 *words)
     putbits36 (& words [0], 21,  1, cu . SD_ON);
     // 22, 1 PTWAMM Match on PTWAM
     putbits36 (& words [0], 23,  1, cu . PT_ON);
+#if 0
     putbits36 (& words [0], 24,  1, cu . PI_AP);   // 24    PI-AP
     putbits36 (& words [0], 25,  1, cu . DSPTW);   // 25    DSPTW
     putbits36 (& words [0], 26,  1, cu . SDWNP);   // 26    SDWNP
@@ -198,7 +199,14 @@ static void scu2words(word36 *words)
     putbits36 (& words [0], 30,  1, cu . FAP);     // 30    FAP
     putbits36 (& words [0], 31,  1, cu . FANP);    // 31    FANP
     putbits36 (& words [0], 32,  1, cu . FABS);    // 32    FABS
-
+#else
+    // XXX Only the top 9 bits are used in APUCycleBits, so this is
+    // zeroing the 3 FTC bits at the end of the word; on the
+    // other hand this keeps the values in apuStatusBits clearer. 
+    // If FTC is ever used, be sure to put it's save code after this
+    // line.
+    putbits36 (& words [0], 24, 12, cu . APUCycleBits);
+#endif
 //sim_printf ("scu2words wrote %012llo @ %08o\n", words [0], words);
     // words [1]
     
@@ -301,6 +309,7 @@ static void words2scu (word36 * words)
     PPR.P           = getbits36(words[0], 18, 1);
     cu.SD_ON        = getbits36(words[0], 21, 1);
     cu.PT_ON        = getbits36(words[0], 23, 1);
+#if 0
     cu.PI_AP        = getbits36(words[0], 24, 1);
     cu.DSPTW        = getbits36(words[0], 25, 1);
     cu.SDWNP        = getbits36(words[0], 26, 1);
@@ -310,6 +319,9 @@ static void words2scu (word36 * words)
     cu.FAP          = getbits36(words[0], 30, 1);
     cu.FANP         = getbits36(words[0], 31, 1);
     cu.FABS         = getbits36(words[0], 32, 1);
+#else
+    cu . APUCycleBits = getbits36 (words [0], 24, 12) & 07770;
+#endif
     
     // words[1]
 

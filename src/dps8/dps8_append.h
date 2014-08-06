@@ -72,20 +72,26 @@ enum _appendingUnit_cycle_type {
                 // in other than a descriptor segment page table.
 };
 
-
+// These bits are aligned to match the CU word 0 APU status bit positions.
+// This produces some oddness in the scu save/restore code.
 typedef enum apuStatusBits
   {
-    apuStatus_PI_AP,
-    apuStatus_DSPTW,
-    apuStatus_SDWNP,
-    apuStatus_SDWP,
-    apuStatus_PTW,
-    apuStatus_PTW2,
-    apuStatus_FAP,
-    apuStatus_FANP,
-    apuStatus_FABS,
-    apuStatus_MDSPTW,
-    apuStatus_MPTW,
+    apuStatus_PI_AP  = 1u << (35 - 24), //  -AP Instruction fetch append cycle
+    apuStatus_DSPTW  = 1u << (35 - 25), //  Fetch descriptor segment PTW
+    apuStatus_SDWNP  = 1u << (35 - 26), //  Fetch SDW non paged
+    apuStatus_SDWP   = 1u << (35 - 27), //  Fetch SDW paged
+    apuStatus_PTW    = 1u << (35 - 28), //  Fetch PTW
+    apuStatus_PTW2   = 1u << (35 - 29), //  Fetch prepage PTW
+    apuStatus_FAP    = 1u << (35 - 30), //  Fetch final address - paged
+    apuStatus_FANP   = 1u << (35 - 31), //  Fetch final address - nonpaged
+    apuStatus_FABS   = 1u << (35 - 32), //  Fetch final address - absolute
+
+    // XXX these don't seem like the right solution.
+    // XXX there are MDSPTW and MPTW bits in the APU history
+    // register, but not in the CU.
+
+    apuStatus_MDSPTW = 1u << (35 - 25), //  Fetch descriptor segment PTW
+    apuStatus_MPTW   = 1u << (35 - 28)  //  Fetch PTW
   } apuStatusBits;
 
 void setAPUStatus (apuStatusBits status);

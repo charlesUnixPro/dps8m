@@ -45,6 +45,9 @@ static const apuStatusBits apuStatusAll =
 
 void setAPUStatus (apuStatusBits status)
   {
+#if 1
+    cu . APUCycleBits = status & 07770;
+#else
     cu . PI_AP = 0;
     cu . DSPTW = 0;
     cu . SDWNP = 0;
@@ -90,6 +93,7 @@ void setAPUStatus (apuStatusBits status)
           cu . FABS  = 1;
           break;
       }
+#endif
   }
 
 static char *strSDW(_sdw *SDW);
