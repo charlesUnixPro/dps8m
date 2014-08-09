@@ -266,6 +266,14 @@ H_SRCS += system_link_names.incl.pl1.h
 
 all: tags locallibs_then_dps8 
 
+# # Multipass stuff
+# CFLAGS += -DMULTIPASS
+# LDFLAGS += -lrt
+# blinkenLights : blinkenLights.c
+# 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights `pkg-config --cflags --libs gtk+-3.0`
+# 
+# all : blinkenLights
+
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	

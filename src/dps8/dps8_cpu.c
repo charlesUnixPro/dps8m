@@ -1225,6 +1225,22 @@ t_stat sim_instr (void)
           //return reason;
           break;
 
+#ifdef MULTIPASS
+       if (multipassStatsPtr) 
+         {
+           multipassStatsPtr -> A = rA;
+           multipassStatsPtr -> Q = rQ;
+           multipassStatsPtr -> E = rE;
+           for (int i = 0; i < 8; i ++)
+             {
+               multipassStatsPtr -> X [i] = rX [i];
+               multipassStatsPtr -> PAR [i] = PAR [i];
+             }
+           multipassStatsPtr -> IR = cu . IR;
+           multipassStatsPtr -> TR = rTR;
+           multipassStatsPtr -> RALR = rRALR;
+         }
+#endif
 
         // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
                                      // simh clock clyce; move down...
@@ -1287,11 +1303,11 @@ t_stat sim_instr (void)
 #ifdef MULTIPASS
                         if (multipassStatsPtr)
                           {
-                            multipassStatsPtr -> PPR_PSR_IC = intr_pair_addr;
+                            multipassStatsPtr -> intr_pair_addr = intr_pair_addr;
                           }
 #endif
                         // get interrupt pair
-                        core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
+                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1);
 
                         cpu . interrupt_flag = false;
                         setCpuCycle (INTERRUPT_EXEC_cycle);
@@ -1347,12 +1363,6 @@ t_stat sim_instr (void)
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
                   {
-#ifdef MULTIPASS
-                    if (multipassStatsPtr)
-                      {
-                        multipassStatsPtr -> PPR_PSR_IC ++;
-                      }
-#endif
                     setCpuCycle (INTERRUPT_EXEC2_cycle);
                     break;
                   }
@@ -1461,7 +1471,7 @@ t_stat sim_instr (void)
 #ifdef MULTIPASS
                 if (multipassStatsPtr)
                   {
-                    multipassStatsPtr -> PPR_PSR_IC = PPR . PSR << 18 || PPR . IC;
+                    multipassStatsPtr -> PPR = PPR;
                   }
 #endif
 #if 0
@@ -1627,7 +1637,7 @@ syncFaultReturn:;
 #ifdef MULTIPASS
                 if (multipassStatsPtr)
                   {
-                    multipassStatsPtr -> PPR_PSR_IC = addr;
+                    multipassStatsPtr -> faultNumber = cpu . faultNumber;
                   }
 #endif
                 core_read2 (addr, instr_buf, instr_buf + 1);
@@ -1670,12 +1680,6 @@ syncFaultReturn:;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
                   {
-#ifdef MULTIPASS
-                    if (multipassStatsPtr)
-                      {
-                        multipassStatsPtr -> PPR_PSR_IC ++;
-                      }
-#endif
                     setCpuCycle (FAULT_EXEC2_cycle);
                     break;
                   }
@@ -2057,6 +2061,10 @@ void decodeInstruction (word36 inst, DCDstruct * p)
             p->e.op0 = inst;
         }
     }
+#ifdef MULTIPASS
+    if (multipassStatsPtr)
+      multipassStatsPtr -> inst = inst;
+#endif
 }
 
 // MM stuff ...

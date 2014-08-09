@@ -11,6 +11,10 @@
 #ifdef MULTIPASS
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <fcntl.h>           /* For O_* constants */
 #endif
 
 #include "dps8.h"
@@ -2081,12 +2085,32 @@ DEVICE * sim_devices [] =
 
 #ifdef MULTIPASS
 
-static int mpStatsSegID;
 multipassStats * multipassStatsPtr;
 
 // Once only initialization
 static void multipassInit (void)
   {
+    //sim_printf ("Session %d\n", getsid (0));
+    int fd = shm_open ("/multipass", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+      {
+        sim_printf ("multipass shm_open fail %d\n", errno);
+        return;
+      }
+
+    if (ftruncate (fd, sizeof (multipassStats)) == -1)
+      {
+        sim_printf ("multipass ftruncate  fail %d\n", errno);
+        return;
+      }
+
+    multipassStatsPtr = (multipassStats *) mmap (NULL, sizeof (multipassStats),
+                                                 PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (multipassStatsPtr == MAP_FAILED)
+      {
+        sim_printf ("multipass mmap  fail %d\n", errno);
+        return;
+      }
 #if 0
     multipassStatsPtr = NULL;
     mpStatsSegID = shmget (0x6180 + switches . cpu_num, sizeof (multipassStats),
