@@ -353,7 +353,7 @@ void ufa (void)
     int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     word72 m2 = (word72)bitfieldExtract36(op2, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
     
-    int8 e3 = -1;
+    int e3 = -1;
     word72 m3 = 0;
     
 //    if (m1 == 0) // op1 is 0
@@ -804,7 +804,7 @@ void ufm (void)
         sign = -sign;
     }
     
-    int8 e3 = e1 + e2;
+    int e3 = e1 + e2;
     
     word72 m3 = ((word72)m1) * ((word72)m2);
     word72 m3a = m3 >> 63;
@@ -920,7 +920,7 @@ static void fdvX(bool bInvert)
     }
     
         
-    int8 e3 = e1 - e2;
+    int e3 = e1 - e2;
         
     word72 m3 = (((word72)m1) << 35) / ((word72)m2);
     word36 m3b = m3 & (0777777777777LL);
@@ -1160,7 +1160,7 @@ void fcmp(void)
     word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
     int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
-    //int8 e3 = -1;
+    //int e3 = -1;
        
     //which exponent is smaller???
     
@@ -1226,7 +1226,7 @@ void fcmg ()
     word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
     int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
-    //int8 e3 = -1;
+    //int e3 = -1;
     
     //which exponent is smaller???
     
@@ -1328,7 +1328,7 @@ void dufa (void)
     
     YPairToExpMant(Ypair, &m2, &e2);
     
-    int8 e3 = -1;
+    int e3 = -1;
     word72 m3 = 0;
     
     //which exponent is smaller???
@@ -1545,7 +1545,7 @@ void dufm (void)
         sign = -sign;
     }
     
-    int8 e3 = e1 + e2;
+    int e3 = e1 + e2;
     
     uint128 m3 = ((uint128)m1) * ((uint128)m2);
     uint128 m3a = m3 >> 63;
