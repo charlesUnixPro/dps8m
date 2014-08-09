@@ -161,7 +161,7 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
     console_state . io_mode = no_mode;
     console_state . tailp = console_state . buf;
     console_state . readp = console_state . buf;
-    console_state . have_eol = 0;
+    console_state . have_eol = false;
     return SCPE_OK;
   }
 
@@ -300,7 +300,7 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
 //--         console_state . io_mode = no_mode;
 //--         console_state . tailp = console_state . buf;
 //--         console_state . readp = console_state . buf;
-//--         console_state . have_eol = 0;
+//--         console_state . have_eol = false;
 //--         console_state . auto_input = NULL;
 //--         console_state . autop = NULL;
 //--     }
@@ -347,7 +347,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             // TODO: discard any buffered chars from SIMH?
             console_state . tailp = console_state . buf;
             console_state . readp = console_state . buf;
-            console_state . have_eol = 0;
+            console_state . have_eol = false;
 
             // Read keyboard if we don't have an EOL from the operator
             // yet
@@ -439,7 +439,7 @@ sim_printf ("uncomfortable with this\n");
               }
             console_state . readp = console_state . buf;
             console_state . tailp = console_state . buf;
-            console_state . have_eol = 0;
+            console_state . have_eol = false;
 
             stati = 04000;
           }
@@ -734,7 +734,7 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
               {
                 console_state . readp = console_state . buf;
                 console_state . tailp = console_state . buf;
-                // console_state . have_eol = 0;
+                // console_state . have_eol = false;
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Entire line now transferred.\n");
                 ret = 1;    // FIXME: out of band request to return
               }
@@ -782,7 +782,7 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
               }
             console_state . readp = console_state . buf;
             console_state . tailp = console_state . buf;
-            console_state . have_eol = 0;
+            console_state . have_eol = false;
 #endif
             * stati = 04000;
             return 0;
@@ -956,7 +956,7 @@ static void check_keyboard (void)
             c = * (console_state . autop);
             if (c == 0)
               {
-                //console_state . have_eol = 1;
+                //console_state . have_eol = true;
                 free(console_state . auto_input);
                 console_state . auto_input = NULL;
                 console_state . autop = NULL;
@@ -1032,7 +1032,7 @@ poll:
             // sim_putchar(c);
             sim_putchar ('\n');
             sim_putchar ('\r');
-            console_state . have_eol = 1;
+            console_state . have_eol = true;
             sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL\n");
             return;
           }

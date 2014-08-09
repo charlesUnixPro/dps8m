@@ -4585,7 +4585,7 @@ void mlr(DCDstruct *ins)
             break;
     }
     
-    e->T = bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
     
     int fill = (int)bitfieldExtract36(e->op0, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
@@ -4883,7 +4883,7 @@ void mrl(DCDstruct *ins)
     e->ADDR1.address += nSrcWords;
     e->ADDR2.address += nDstWords;
     
-    e->T = bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
     
     int fill = (int)bitfieldExtract36(e->op0, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
@@ -5141,7 +5141,7 @@ void mvt(DCDstruct *ins)
     //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
-    e->T = bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
     
     int fill = (int)bitfieldExtract36(e->op0, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
@@ -6853,7 +6853,7 @@ void cmpb(DCDstruct *ins)
     int bitPosn1 = e->B1;
     int bitPosn2 = e->B2;
     
-    e->F = (bool)bitfieldExtract36(e->op0, 25, 1) & 1;     // fill bit
+    e->F = bitfieldExtract36(e->op0, 25, 1) != 0;     // fill bit
 
     SETF(cu.IR, I_ZERO);  // assume all =
     SETF(cu.IR, I_CARRY); // assume all >=
@@ -6988,8 +6988,8 @@ void csl(DCDstruct *ins, bool isSZTL)
     e->ADDR1.bPos = e->B1;
     e->ADDR2.bPos = e->B2;
     
-    e->F = (bool)bitfieldExtract36(e->op0, 35, 1);   // fill bit
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);   // T (enablefault) bit
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
     
     e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
@@ -7208,8 +7208,8 @@ void csr(DCDstruct *ins, bool isSZTR)
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
-    e->F = (bool)bitfieldExtract36(e->op0, 35, 1);   // fill bit
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);   // T (enablefault) bit
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
     
     e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
@@ -7378,8 +7378,8 @@ void sztl(DCDstruct *ins)
     e->ADDR1.bPos = e->B1;
     e->ADDR2.bPos = e->B2;
     
-    e->F = (bool)bitfieldExtract36(e->op0, 35, 1);   // fill bit
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);   // T (enablefault) bit
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
     
     e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
@@ -7521,8 +7521,8 @@ void sztr(DCDstruct *ins)
     getBitOffsets(e->N2, e->C2, e->B2, &numWords2, &e->ADDR2.cPos, &e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
-    e->F = (bool)bitfieldExtract36(e->op0, 35, 1);   // fill bit
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);   // T (enablefault) bit
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
     
     e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
