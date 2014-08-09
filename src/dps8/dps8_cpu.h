@@ -49,6 +49,7 @@ typedef enum
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
+#ifndef QUIET_UNUSED
 // MF fields of EIS multi-word instructions -- 7 bits 
 
 typedef struct
@@ -58,6 +59,7 @@ typedef struct
     bool id;
     uint reg;  // 4 bits
   } eis_mf_t;
+#endif
 
 extern int xec_side_effect;
 
