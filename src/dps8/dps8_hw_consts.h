@@ -14,12 +14,12 @@
 #define MEMSIZE         INIMEMSIZE                      /*!< fixed, KISS */
 
 // The minimum allocation size of a SCU is 64K (2^16) 
-// (2 banks of 32K). Call it an SCPAGE
-#define SCPAGE (1U << 16)
+// (2 banks of 32K). Call it an SCBANK
+#define SCBANK (1U << 16)
 
 // Maximum memory size is MAXMEMSIZE, number of
-// scpages is:
-#define N_SCPAGES ((MAXMEMSIZE) / (SCPAGE))
+// scbanks is:
+#define N_SCBANKS ((MAXMEMSIZE) / (SCBANK))
 
 //#define N_SCU_UNITS_MAX 4
 #define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs

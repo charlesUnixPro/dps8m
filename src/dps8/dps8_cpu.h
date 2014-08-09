@@ -1068,6 +1068,28 @@ typedef struct du_unit_data_t
 extern du_unit_data_t du;
 
 
+
+// XXX when multiple cpus are supported, make the cpu  data structure
+// an array and merge the unit state info into here; coding convention
+// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
+// is taken. It should probably be merged into here, and then this
+// should then be renamed.
+
+#define N_CPU_UNITS_MAX 1
+
+extern struct cpu_array
+  {
+    struct
+      {
+        bool inuse;
+        int scu_unit_num; // 
+        DEVICE * devp;
+      } ports [N_CPU_PORTS];
+
+  } cpu_array [N_CPU_UNITS_MAX];
+
+
+
 extern int stop_reason;     // sim_instr return value for JMP_STOP
 
 
@@ -1102,7 +1124,7 @@ t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
 _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
-int query_scpage_map (word24 addr);
+int query_scbank_map (word24 addr);
 void cpu_init (void);
 //t_uint64 sim_ctime (void);
 

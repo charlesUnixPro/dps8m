@@ -819,19 +819,19 @@ static int writeLPW (uint chanNum, word24 chanloc, const lpw_t * p, bool UNUSED 
 
 // Map memory to port
 // -1 -- no mapping
-static int iomScpageMap [N_IOM_UNITS_MAX] [N_SCPAGES];
+static int iomScbankMap [N_IOM_UNITS_MAX] [N_SCBANKS];
 
-static void setup_iom_scpage_map (void)
+static void setup_iom_scbank_map (void)
   {
     sim_debug (DBG_DEBUG, & cpu_dev,
-      "%s: setup_iom_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", 
-      __func__, SCPAGE, N_SCPAGES, MAXMEMSIZE);
+      "%s: setup_iom_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", 
+      __func__, SCBANK, N_SCBANKS, MAXMEMSIZE);
 
     for (uint iomUnitNum = 0; iomUnitNum < iom_dev . numunits; iomUnitNum ++)
       {
         // Initalize to unmapped
-        for (int pg = 0; pg < (int) N_SCPAGES; pg ++)
-          iomScpageMap [iomUnitNum] [pg] = -1;
+        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
+          iomScbankMap [iomUnitNum] [pg] = -1;
     
         struct unitData * p = unitData + iomUnitNum;
         // For each port (which is connected to a SCU
@@ -847,9 +847,9 @@ static void setup_iom_scpage_map (void)
             uint assignment = switches . assignment [port_num];
             uint base = assignment * sz;
     
-            // Now convert to SCPAGES
-            sz = sz / SCPAGE;
-            base = base / SCPAGE;
+            // Now convert to SCBANKs
+            sz = sz / SCBANK;
+            base = base / SCBANK;
     
             sim_debug (DBG_DEBUG, & cpu_dev,
               "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
@@ -859,22 +859,22 @@ static void setup_iom_scpage_map (void)
             for (uint pg = 0; pg < sz; pg ++)
               {
                 uint scpg = base + pg;
-                if (/*scpg >= 0 && */ scpg < N_SCPAGES)
-                  iomScpageMap [iomUnitNum] [scpg] = port_num;
+                if (/*scpg >= 0 && */ scpg < N_SCBANKS)
+                  iomScbankMap [iomUnitNum] [scpg] = port_num;
               }
           }
       }
     for (uint iomUnitNum = 0; iomUnitNum < iom_dev . numunits; iomUnitNum ++)
-        for (int pg = 0; pg < (int) N_SCPAGES; pg ++)
+        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
-            __func__, pg, iomScpageMap [iomUnitNum] [pg]);
+            __func__, pg, iomScbankMap [iomUnitNum] [pg]);
   }
    
-static int queryIomScpageMap (uint iomUnitNum, word24 addr)
+static int queryIomScbankMap (uint iomUnitNum, word24 addr)
   {
-    uint scpg = addr / SCPAGE;
-    if (scpg < N_SCPAGES)
-      return iomScpageMap [iomUnitNum] [scpg];
+    uint scpg = addr / SCBANK;
+    if (scpg < N_SCBANKS)
+      return iomScbankMap [iomUnitNum] [scpg];
     return -1;
   }
 
@@ -1553,7 +1553,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     // calculated from the Port Configuration Address Assignment switches
     // For now, however, the same information is in the CPU config. switches, so
     // this should result in the same values.
-    int cpu_port_num = queryIomScpageMap (iomUnitNum, base_addr);
+    int cpu_port_num = queryIomScbankMap (iomUnitNum, base_addr);
     int scuUnitNum;
     if (cpu_port_num >= 0)
       scuUnitNum = query_scu_unit_num (ASSUME_CPU_0, cpu_port_num);
@@ -2330,7 +2330,7 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
       }
     
 
-    setup_iom_scpage_map ();
+    setup_iom_scbank_map ();
 
     return SCPE_OK;
   }

@@ -13,12 +13,15 @@
 #include "dps8_iefp.h"
 #include "dps8_utils.h"
 
+word24 iefpFinalAddress;
 
 // new Read/Write stuff ...
 
 t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
-    word24 finalAddress;
+    //word24 finalAddress;
+    iefpFinalAddress = address;
+
     if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
@@ -35,19 +38,19 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
         case BAR_MODE:
         
             setAPUStatus (apuStatus_FABS); // XXX maybe...
-            finalAddress = getBARaddress(address);
+            iefpFinalAddress = getBARaddress(address);
         
-            core_read(finalAddress, result);
+            core_read(iefpFinalAddress, result);
 
             return SCPE_OK;
         
         case APPEND_MODE:
             //    <generate address from procedure base registers>
-B29:        //finalAddress = doAppendRead(i, accessType, address);
-            finalAddress = doAppendCycle(address, cyctyp);
-            core_read(finalAddress, result);
+B29:        //iefpFinalAddress = doAppendRead(i, accessType, address);
+            iefpFinalAddress = doAppendCycle(address, cyctyp);
+            core_read(iefpFinalAddress, result);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "Read(Actual) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *result);
+            sim_debug(DBG_APPENDING, &cpu_dev, "Read(Actual) Read: iefpFinalAddress=%08o readData=%012llo\n", iefpFinalAddress, *result);
         
             return SCPE_OK;
     }
@@ -57,7 +60,9 @@ B29:        //finalAddress = doAppendRead(i, accessType, address);
 
 t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
-    word24 finalAddress;
+    //word24 finalAddress;
+    iefpFinalAddress = address;
+
     if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
@@ -74,19 +79,19 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
         
         case BAR_MODE:
         
-            finalAddress = getBARaddress(address);
+            iefpFinalAddress = getBARaddress(address);
             setAPUStatus (apuStatus_FABS); // XXX maybe...
-            core_write(finalAddress, data);
+            core_write(iefpFinalAddress, data);
         
             return SCPE_OK;
         
         case APPEND_MODE:
             //    <generate address from procedure base registers>
-B29:        //finalAddress = doAppendDataWrite(i, address);
-            finalAddress = doAppendCycle(address, cyctyp);
-            core_write(finalAddress, data);
+B29:        //iefpFinalAddress = doAppendDataWrite(i, address);
+            iefpFinalAddress = doAppendCycle(address, cyctyp);
+            core_write(iefpFinalAddress, data);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "Write(Actual) Write: finalAddress=%08o data=%012llo\n", finalAddress, data);
+            sim_debug(DBG_APPENDING, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o data=%012llo\n", iefpFinalAddress, data);
         
             return SCPE_OK;
     }

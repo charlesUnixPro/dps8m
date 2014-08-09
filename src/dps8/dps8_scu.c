@@ -843,7 +843,10 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, word18 addr, word3
         return STOP_BUG;
       }
 
-    uint function = (addr >> 3) & 07777;
+    // BCE uses clever addressing schemes to select SCUs; ot appears we need
+    // to be more selecting in picking out the function bits;
+    //uint function = (addr >> 3) & 07777;
+    uint function = (addr >> 3) & 07;
 
     // See scs.incl.pl1
     
@@ -903,15 +906,15 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, word18 addr, word3
           }
 
         case 00002: // Set mask register port 0
-        case 00012: // Set mask register port 1
-        case 00022: // Set mask register port 2
-        case 00032: // Set mask register port 3
-        case 00042: // Set mask register port 4
-        case 00052: // Set mask register port 5
-        case 00062: // Set mask register port 6
-        case 00072: // Set mask register port 7
+        //case 00012: // Set mask register port 1
+        //case 00022: // Set mask register port 2
+        //case 00032: // Set mask register port 3
+        //case 00042: // Set mask register port 4
+        //case 00052: // Set mask register port 5
+        //case 00062: // Set mask register port 6
+        //case 00072: // Set mask register port 7
           {
-            uint port_num = (function >> 3) & 07;
+            uint port_num = (addr >> 6) & 07;
             sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to %012llo,%012llo\n", port_num, rega, regq);
 
             // Find mask reg assigned to specified port
@@ -998,7 +1001,10 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
         return STOP_BUG;
       }
 
-    uint function = (addr >> 3) & 07777;
+    // BCE uses clever addressing schemes to select SCUs; ot appears we need
+    // to be more selecting in picking out the function bits;
+    //uint function = (addr >> 3) & 07777;
+    uint function = (addr >> 3) & 07;
 
     //sim_printf ("rscr %o\n", function);
 
@@ -1213,15 +1219,15 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
 
         // XXX there is no way that this code is right
         case 00002: // mask register
-        case 00012: 
-        case 00022: 
-        case 00032: 
-        case 00042: 
-        case 00052: 
-        case 00062: 
-        case 00072: 
+        //case 00012: 
+        //case 00022: 
+        //case 00032: 
+        //case 00042: 
+        //case 00052: 
+        //case 00062: 
+        //case 00072: 
           {
-            uint portNum = (function >> 3) & MASK3;
+            uint portNum = (addr >> 6) & MASK3;
             scu_t * up = scu + scu_unit_num;
             uint maskContents = 0;
             if (up -> mask_assignment [0] == portNum)
@@ -1463,6 +1469,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
                 (mask & (1 << (31 - inum))) != 0)
               {
                 scu [scuUnitNum] . cells [inum] = false;
+                deliverInterrupts (scuUnitNum);
                 return inum * 2;
               }
           }

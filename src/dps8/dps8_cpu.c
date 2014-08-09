@@ -537,15 +537,15 @@ static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 }
 
 // Map memory to port
-static int scpage_map [N_SCPAGES];
+static int scbank_map [N_SCBANKS];
 
-static void setup_scpage_map (void)
+static void setup_scbank_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", SCBANK, N_SCBANKS, MAXMEMSIZE);
 
     // Initalize to unmapped
-    for (uint pg = 0; pg < N_SCPAGES; pg ++)
-      scpage_map [pg] = -1; 
+    for (uint pg = 0; pg < N_SCBANKS; pg ++)
+      scbank_map [pg] = -1; 
 
     // For each port (which is connected to a SCU
     for (int port_num = 0; port_num < N_CPU_PORTS; port_num ++)
@@ -560,28 +560,28 @@ static void setup_scpage_map (void)
         uint assignment = switches . assignment [port_num];
         uint base = assignment * sz;
 
-        // Now convert to SCPAGES
-        sz = sz / SCPAGE;
-        base = base / SCPAGE;
+        // Now convert to SCBANK
+        sz = sz / SCBANK;
+        base = base / SCBANK;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
         for (uint pg = 0; pg < sz; pg ++)
           {
             uint scpg = base + pg;
-            if (scpg < N_SCPAGES)
-              scpage_map [scpg] = port_num;
+            if (scpg < N_SCBANKS)
+              scbank_map [scpg] = port_num;
           }
       }
-    for (uint pg = 0; pg < N_SCPAGES; pg ++)
-      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: %d:%d\n", pg, scpage_map [pg]);
+    for (uint pg = 0; pg < N_SCBANKS; pg ++)
+      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, scbank_map [pg]);
   }
 
-int query_scpage_map (word24 addr)
+int query_scbank_map (word24 addr)
   {
-    uint scpg = addr / SCPAGE;
-    if (scpg < N_SCPAGES)
-      return scpage_map [scpg];
+    uint scpg = addr / SCBANK;
+    if (scpg < N_SCBANKS)
+      return scbank_map [scpg];
     return -1;
   }
 
@@ -644,7 +644,7 @@ static t_stat cpu_reset (DEVICE *dptr)
 
     cpu_reset_array ();
 
-    setup_scpage_map ();
+    setup_scbank_map ();
 
     initializeTheMatrix();
 
@@ -2273,24 +2273,7 @@ static void ic_history_init(void)
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
 
-// XXX when multiple cpus are supported, make the cpu  data structure
-// an array and merge the unit state info into here; coding convention
-// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
-// is taken. It should probably be merged into here, and then this
-// should then be renamed.
-
-#define N_CPU_UNITS_MAX 1
-
-static struct
-  {
-    struct
-      {
-        bool inuse;
-        int scu_unit_num; // 
-        DEVICE * devp;
-      } ports [N_CPU_PORTS];
-
-  } cpu_array [N_CPU_UNITS_MAX];
+struct cpu_array cpu_array [N_CPU_UNITS_MAX];
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
@@ -2341,7 +2324,7 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num,
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
 
-    setup_scpage_map ();
+    setup_scbank_map ();
 
     return SCPE_OK;
   }

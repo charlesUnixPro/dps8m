@@ -880,6 +880,7 @@ t_stat executeInstruction (void)
       }
 
     TPR.CA = address;
+    iefpFinalAddress = TPR . CA;
     rY = TPR.CA;
 
     if (!switches . append_after)
@@ -1047,11 +1048,14 @@ restart_1:
 
 
         if (ci->info->flags & PREPARE_CA)
-          doComputedAddressFormation ();
-
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
         else if (READOP (ci))
           {
             doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
 #if 0 // test code
 // Test to verify that recalling CAF is stable.
         {
@@ -1099,8 +1103,10 @@ restart_1:
     if (WRITEOP (ci))
       {
         if (! READOP (ci))
-          doComputedAddressFormation ();
-
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
         writeOperands ();
       }
     
@@ -4465,10 +4471,12 @@ static t_stat DoBasicInstruction (void)
             /// 00...0 -> C(AQ)0,19
             /// C(calendar clock) -> C(AQ)20,71
             {
+// XXX see ticket #23
               // For the rccl instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
               // 2 bits for the DPS8M.
-              int cpu_port_num = getbits36 (TPR.CA, 0, 2);
+              //int cpu_port_num = getbits36 (TPR.CA, 0, 2);
+              uint cpu_port_num = (TPR.CA >> 15) & 03;
               int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
               if (scu_unit_num < 0)
                 scu_unit_num = 0; // XXX print message
@@ -4990,9 +4998,16 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
 //sim_debug (DBG_TRACE, & cpu_dev, "CA %06d\n", TPR . CA);
 
               //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
-              uint scu_unit_num = (TPR.CA >> 10) & MASK8;
+              //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
+              int cpu_port_num = query_scbank_map (iefpFinalAddress);
+              if (cpu_port_num < 0)
+                {
+                  sim_debug (DBG_ERR, & cpu_dev, "RSCR: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
+                  cpu_port_num = 0;
+                }
+              uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
 
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, TPR.CA & MASK10, & rA, & rQ);
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, iefpFinalAddress & MASK15, & rA, & rQ);
               if (rc)
                 return rc;
             }
@@ -5174,15 +5189,16 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
 //sim_printf ("cioc [%lld]\n", sim_timell ());
-            int cpu_port_num = query_scpage_map (TPR.CA);
+            int cpu_port_num = query_scbank_map (iefpFinalAddress);
 
             if (cpu_port_num < 0)
               {
-                sim_debug (DBG_DEBUG, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", TPR.CA);
+                sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
                 cpu_port_num = 0;
               }
+            uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
             uint scu_port_num = CY & MASK3;
-            scu_cioc ((uint) cpu_port_num, scu_port_num);
+            scu_cioc ((uint) scu_unit_num, scu_port_num);
           }
           break;
    
@@ -5206,7 +5222,13 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
             // For the smic instruction, the first 2 or 3 bits of the addr
             // field of the instruction are used to specify which SCU.
             // 2 bits for the DPS8M.
-            int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+            //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+
+            // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
+            // specify which processor port (i.e., which system 
+            // controller) is used.
+            uint cpu_port_num = (TPR.CA >> 15) & 03;
+            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
 
             t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, rA);
             if (rc == CONT_FAULT)
@@ -5239,9 +5261,16 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
 //sim_debug (DBG_TRACE, & cpu_dev, "CA %06d\n", TPR . CA);
 
             //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
-            uint scu_unit_num = (TPR.CA >> 10) & MASK8;
-
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA & MASK10, rA, rQ);
+            //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
+            int cpu_port_num = query_scbank_map (iefpFinalAddress);
+            if (cpu_port_num < 0)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "SSCR: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
+                cpu_port_num = 0;
+              }
+            uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+    
+            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, iefpFinalAddress & MASK15, rA, rQ);
             if (rc == CONT_FAULT)
               doFault(store_fault, 0, "(sscr)");
             if (rc)
