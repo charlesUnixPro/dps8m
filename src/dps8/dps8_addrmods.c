@@ -203,7 +203,7 @@ static char * operandSTR(void)
 
 static word36 itxPair[2];   // a Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
 
-static bool didITSITP = false; ///< true after an ITS/ITP processing
+//static bool didITSITP = false; ///< true after an ITS/ITP processing
 
 static void doITP (void)
   {
@@ -333,7 +333,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag)
     else
         doITP ();
 
-    didITSITP = true;
+    //didITSITP = true;
     set_went_appending ();
   }
 
@@ -400,7 +400,7 @@ t_stat doComputedAddressFormation (void)
 #endif
     word6 Tm = 0;
     word6 Td = 0;
-    didITSITP = false;
+    //didITSITP = false;
 
 #if 0 // Unused
     eCAFoper operType;
