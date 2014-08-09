@@ -851,7 +851,7 @@ _sdw0 * getSDW (word15 segno)
    return & SDW0;
   }
 
-static bool bPrePageMode = false;
+//static bool bPrePageMode = false;
 
 /*
  * recoding APU functions to more closely match Fig 5,6 & 8 ...
@@ -1249,6 +1249,7 @@ G:;
     // XXX: don't know what todo with this yet ...
     // XXX: ticket #11
     // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
+#if 0
     if (bPrePageMode)
     {
         //Is PTW.F set ON?
@@ -1258,6 +1259,7 @@ G:;
         
     }
     bPrePageMode = false;   // done with this
+#endif
     goto I;
     
 H:;
