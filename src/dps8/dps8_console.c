@@ -426,7 +426,7 @@ sim_printf ("uncomfortable with this\n");
                     if (console_state . readp >= console_state . tailp)
                       break;
                     unsigned char c = * console_state . readp ++;
-                    M [daddr] = setbits36 (M [daddr], charno * 9, 9, c);
+                    putbits36 (& M [daddr], charno * 9, 9, c);
                   }
                 // cp = charno % 4;
 
@@ -713,7 +713,7 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
                 if (console_state . readp >= console_state . tailp)
                     break;
                 unsigned char c = *console_state . readp++;
-                *wordp = setbits36(*wordp, charno * 9, 9, c);
+                putbits36(wordp, charno * 9, 9, c);
               }
             if (1)
               {
@@ -755,7 +755,7 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
                     if (console_state . readp >= console_state . tailp)
                       break;
                     unsigned char c = * console_state . readp ++;
-                    * wordp = setbits36 (* wordp, charno * 9, 9, c);
+                    putbits36 (wordp, charno * 9, 9, c);
                   }
                 * cp = charno % 4;
                 if (1)

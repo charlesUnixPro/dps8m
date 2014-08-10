@@ -1998,22 +1998,23 @@ int core_write2(word24 addr, word36 even, word36 odd) {
 
 void encode_instr(const instr_t *ip, word36 *wordp)
 {
-    *wordp = setbits36(0, 0, 18, ip->addr);
+    *wordp = 0;
+    putbits36(wordp, 0, 18, ip->addr);
 #if 1
-    *wordp = setbits36(*wordp, 18, 10, ip->opcode);
+    putbits36(wordp, 18, 10, ip->opcode);
 #else
-    *wordp = setbits36(*wordp, 18, 9, ip->opcode & 0777);
-    *wordp = setbits36(*wordp, 27, 1, ip->opcode >> 9);
+    putbits36(*wordp, 18, 9, ip->opcode & 0777);
+    putbits36(*wordp, 27, 1, ip->opcode >> 9);
 #endif
-    *wordp = setbits36(*wordp, 28, 1, ip->inhibit);
+    putbits36(wordp, 28, 1, ip->inhibit);
     if (! is_eis[ip->opcode&MASKBITS(10)]) {
-        *wordp = setbits36(*wordp, 29, 1, ip->mods.single.pr_bit);
-        *wordp = setbits36(*wordp, 30, 6, ip->mods.single.tag);
+        putbits36(wordp, 29, 1, ip->mods.single.pr_bit);
+        putbits36(wordp, 30, 6, ip->mods.single.tag);
     } else {
-        *wordp = setbits36(*wordp, 29, 1, ip->mods.mf1.ar);
-        *wordp = setbits36(*wordp, 30, 1, ip->mods.mf1.rl);
-        *wordp = setbits36(*wordp, 31, 1, ip->mods.mf1.id);
-        *wordp = setbits36(*wordp, 32, 4, ip->mods.mf1.reg);
+        putbits36(wordp, 29, 1, ip->mods.mf1.ar);
+        putbits36(wordp, 30, 1, ip->mods.mf1.rl);
+        putbits36(wordp, 31, 1, ip->mods.mf1.id);
+        putbits36(wordp, 32, 4, ip->mods.mf1.reg);
     }
 }
 #endif

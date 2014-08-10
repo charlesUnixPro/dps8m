@@ -1698,13 +1698,13 @@ static t_stat DoBasicInstruction (void)
             //Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PSR, 18, 15);
             //Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PRR, 15,  3);
             //Ypair[0] = bitfieldInsert36(Ypair[0],     043,  0,  6);
-            Ypair[0] = setbits36 (Ypair [0],  3, 15, PPR.PSR);
-            Ypair[0] = setbits36 (Ypair [0], 18,  3, PPR.PRR);
-            Ypair[0] = setbits36 (Ypair [0], 30,  6,     043);
+            putbits36 (& Ypair [0],  3, 15, PPR.PSR);
+            putbits36 (& Ypair [0], 18,  3, PPR.PRR);
+            putbits36 (& Ypair [0], 30,  6,     043);
             
             Ypair[1] = 0;
             //Ypair[1] = bitfieldInsert36(Ypair[0], PPR.IC + 2, 18, 18);
-            Ypair[1] = setbits36(Ypair [0],  0, 18, PPR.IC + 2);
+            putbits36(& Ypair [0],  0, 18, PPR.IC + 2);
             
             break;
             

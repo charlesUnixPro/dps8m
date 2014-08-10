@@ -1084,13 +1084,14 @@ int bitfieldReverse(int x)
 
 //#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
 
+#if 0
 /*
  * getbits36()
  *
  * Extract a range of bits from a 36-bit word.
  */
 
-inline word36 getbits36(word36 x, uint i, uint n) {
+word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)n+1;
     if (shift < 0 || shift > 35) {
@@ -1109,7 +1110,7 @@ inline word36 getbits36(word36 x, uint i, uint n) {
  * starting at p set to the n lowest bits of val
  */
 
-inline word36 setbits36(word36 x, uint p, uint n, word36 val)
+word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35) {
@@ -1134,7 +1135,7 @@ inline word36 setbits36(word36 x, uint p, uint n, word36 val)
  * starting at p set to the n lowest bits of val
  */
 
-inline void putbits36 (word36 * x, uint p, uint n, word36 val)
+void putbits36 (word36 * x, uint p, uint n, word36 val)
   {
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35)
@@ -1149,8 +1150,7 @@ inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
     return;
   }
-
-
+#endif
 
 /*
  * bin2text()

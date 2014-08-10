@@ -353,8 +353,10 @@ enum iomCentralStatus
     iomCsLpwTro = 01,
     iomCsTwoTdcws = 02,
     iomCsBndyVio = 03,
+    iomCsAcChgRes = 04,
     iomCsIdcwInResMode = 05,
     iomCsCpDiscrepancy = 06,
+    iomCsIOPrtyErr = 07
   };
 
 typedef enum iomFaultServiceRequest
@@ -377,20 +379,34 @@ typedef enum iomFaultServiceRequest
 typedef enum iomSysFaults
   {
     // List from 4.5.1; descr from AN87, 3-9
-    iom_no_fault = 0,
-    iom_ill_chan = 01,      // PCW to chan with chan number >= 40
-    // iom_ill_ser_req=02,
-    // chan requested svc with a service code of zero or bad chan #
-    iom_256K_of=04,
-    // 256K overflow -- address decremented to zero, but not tally
-    iom_lpw_tro_conn = 05,
-    // tally was zero for an update LPW (LPW bit 21==0) when the LPW was
-    // fetched for the connect channel
-    iom_not_pcw_conn=06,    // DCW for conn channel had bits 18..20 != 111b
-    // iom_cp1_data=07,     // DCW was TDCW or had bits 18..20 == 111b
-    iom_ill_tly_cont = 013,
-    // LPW bits 21-22 == 00 when LPW was fetched for the connect channel
-    // 14 LPW had bit 23 on in Multics mode
+    iom_no_fault = 000,
+    iom_ill_chan = 001,     // PCW to chan with chan number >= 40
+    iom_ill_ser_req = 002,  // A channel requested a serice request code
+                            // of zero, a channel number of zero, or
+                            // a channel number >= 40
+    // =003,                // Parity error scratchpad
+    iom_256K_of = 004,      // 256K overflow -- address decremented to zero, 
+                            // but not tally
+    iom_lpw_tro_conn = 005, // tally was zero for an update LPW (LPW bit 
+                            // 21==0) when the LPW was fetched for the 
+                            // connect channel
+    iom_not_pcw_conn = 006, // DCW for conn channel had bits 18..20 != 111b
+    iom_cp1_data = 007,     // DCW was TDCW or had bits 18..20 == 111b
+    // = 010,               // CP/CS-BAD-DATA DCW fetch for a 9 bit channel
+                            // contained an illegal character position
+    // = 011,               // NO-MEM-RES No response to an interrupt from
+                            // a system controller within 16.5 usec.
+    // = 012,               // PRTY-ERR-MEM Parity error on the read
+                            // data when accessing a system controller.
+    iom_ill_tly_cont = 013, // LPW bits 21-22 == 00 when LPW was fetched 
+                            // for the connect channel
+    // = 014,               // PTP-Fault: PTP-Flag= zero or PTP address
+                            // overflow.
+    // = 015,               // PTW-Flag-Fault: Page Present flag zero, or
+                            // Write Control Bit 0, or Housekeeping bit set,
+    // = 016,               // ILL-LPW-STD LPW had bit 20 on in GCOS mode
+    // = 017,               // NO-PRT-SEL No port selected during attempt
+                            // to access memory.
   } iomSysFaults;
 
 static void iomFault (uint iomUnitNum, uint chanNum, const char * who, 
@@ -783,14 +799,14 @@ static int writeLPW (uint chanNum, word24 chanloc, const lpw_t * p, bool UNUSED 
                __func__, chanNum, chanloc, M [chanloc], M [chanloc + 1]);
 
     word36 word0 = 0;
-    word0 = setbits36 (0, 0, 18, p -> dcw_ptr);
-    word0 = setbits36 (word0, 18,  1, p -> ires);
-    word0 = setbits36 (word0, 19,  1, p -> hrel);
-    word0 = setbits36 (word0, 20,  1, p -> ae);
-    word0 = setbits36 (word0, 21,  1, p -> nc);
-    word0 = setbits36 (word0, 22,  1, p -> trunout);
-    word0 = setbits36 (word0, 23,  1, p -> srel);
-    word0 = setbits36 (word0, 24, 12, p -> tally);
+    putbits36 (& word0, 0, 18, p -> dcw_ptr);
+    putbits36 (& word0, 18,  1, p -> ires);
+    putbits36 (& word0, 19,  1, p -> hrel);
+    putbits36 (& word0, 20,  1, p -> ae);
+    putbits36 (& word0, 21,  1, p -> nc);
+    putbits36 (& word0, 22,  1, p -> trunout);
+    putbits36 (& word0, 23,  1, p -> srel);
+    putbits36 (& word0, 24, 12, p -> tally);
     store_abs_word (chanloc, word0);
     
     // In non-paged mode, the LPWx is writtne to reflect p->idcw update;
@@ -800,13 +816,15 @@ static int writeLPW (uint chanNum, word24 chanloc, const lpw_t * p, bool UNUSED 
     if (! is_conn && x)
       {
 #if 0
-        word36 word1 = setbits36 (0, 0, 9, p -> lbnd);
-        word1 = setbits36 (word1, 9, 9, p -> size);
-        word1 = setbits36 (word1, 18, 18, p -> idcw);
+        word36 word1 = 0;
+        putbits36 (& word1, 0, 9, p -> lbnd);
+        putbits36 (& word1, 9, 9, p -> size);
+        putbits36 (& word1, 18, 18, p -> idcw);
 #else
         // Paged mode
-        word36 word1 = setbits36 (0, 0, 18, p -> lbnd);
-        word1 = setbits36 (word1, 18, 18, p -> size);
+        word36 word1 = 0;
+        putbits36 (& word1, 0, 18, p -> lbnd);
+        putbits36 (& word1, 18, 18, p -> size);
 #endif
         store_abs_word (chanloc + 1, word1);
       }
@@ -1352,36 +1370,36 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
     
     word36 word1, word2;
     word1 = 0;
-    //word1 = setbits36 (word1, 0, 1, 1);
-    //word1 = setbits36 (word1, 1, 1, power_off);
-    //word1 = setbits36 (word1, 2, 4, major);
-    //word1 = setbits36 (word1, 6, 6, sub);
-    word1 = setbits36 (word1, 0, 12, stati);
+    //putbits36 (& word1, 0, 1, 1);
+    //putbits36 (& word1, 1, 1, power_off);
+    //putbits36 (& word1, 2, 4, major);
+    //putbits36 (& word1, 6, 6, sub);
+    putbits36 (& word1, 0, 12, stati);
 
-    word1 = setbits36 (word1, 12, 1, 1); // BUG: even/odd
-    word1 = setbits36 (word1, 13, 1, 1); // BUG: marker int
-    word1 = setbits36 (word1, 14, 2, 0);
-    word1 = setbits36 (word1, 16, 1, 0); // BUG: initiate flag
-    word1 = setbits36 (word1, 17, 1, 0);
+    putbits36 (& word1, 12, 1, 1); // BUG: even/odd
+    putbits36 (& word1, 13, 1, 1); // BUG: marker int
+    putbits36 (& word1, 14, 2, 0);
+    putbits36 (& word1, 16, 1, 0); // BUG: initiate flag
+    putbits36 (& word1, 17, 1, 0);
 #if 0
     // BUG: Unimplemented status bits:
-    word1 = setbits36 (word1, 18, 3, chan_status.chan_stat);
-    word1 = setbits36 (word1, 21, 3, chan_status.iom_stat);
-    word1 = setbits36 (word1, 24, 6, chan_status.addr_ext);
+    putbits36 (& word1, 18, 3, chan_status.chan_stat);
+    putbits36 (& word1, 21, 3, chan_status.iom_stat);
+    putbits36 (& word1, 24, 6, chan_status.addr_ext);
 #endif
-    word1 = setbits36 (word1, 30, 6, rcount);
+    putbits36 (& word1, 30, 6, rcount);
     
     word2 = 0;
 #if 0
     // BUG: Unimplemented status bits:
-    word2 = setbits36 (word2, 0, 18, chan_status.addr);
-    word2 = setbits36 (word2, 21, 1, chanp->status.read);
-    word2 = setbits36 (word2, 22, 2, chan_status.type);
-    word2 = setbits36 (word2, 24, 12, chan_status.dcw_residue);
+    putbits36 (& word2, 0, 18, chan_status.addr);
+    putbits36 (& word2, 21, 1, chanp->status.read);
+    putbits36 (& word2, 22, 2, chan_status.type);
+    putbits36 (& word2, 24, 12, chan_status.dcw_residue);
 #endif
-    word2 = setbits36 (word2, 18, 3, char_pos);
-    word2 = setbits36 (word2, 21, 1, is_read);
-    word2 = setbits36 (word2, 24, 12, residue);
+    putbits36 (& word2, 18, 3, char_pos);
+    putbits36 (& word2, 21, 1, is_read);
+    putbits36 (& word2, 24, 12, residue);
     
     // BUG: need to write to mailbox queue
     
@@ -1487,8 +1505,8 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
                    __func__, sc_word);
-        sc_word = setbits36 (sc_word, 24, 12, tally);
-        sc_word = setbits36 (sc_word, 0, 18, addr);
+        putbits36 (& sc_word, 24, 12, tally);
+        putbits36 (& sc_word, 0, 18, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
                    __func__, sc_word);
@@ -1540,7 +1558,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     sim_debug (DBG_DEBUG, & iom_dev, 
                "%s: IMW at %#o was %012llo; setting bit %d\n", 
                __func__, imw_addr, imw, chan_in_group);
-    imw = setbits36 (imw, chan_in_group, 1, 1);
+    putbits36 (& imw, chan_in_group, 1, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012llo\n", __func__, imw_addr, imw);
     (void) store_abs_word (imw_addr, imw);

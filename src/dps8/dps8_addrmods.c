@@ -345,8 +345,8 @@ static void updateIWB (word18 addr, word6 tag)
                cu . IWB, GET_ADDR (cu . IWB),
                extMods [GET_TAG (cu . IWB)] . mod);
 
-    cu . IWB = setbits36 (cu . IWB,  0, 18, addr);
-    cu . IWB = setbits36 (cu . IWB, 30,  6, tag);
+    putbits36 (& cu . IWB,  0, 18, addr);
+    putbits36 (& cu . IWB, 30,  6, tag);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012llo %06o %s\n",
