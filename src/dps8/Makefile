@@ -231,6 +231,7 @@ H_SRCS += dps8_disk.h
 H_SRCS += dps8_dn355.h
 H_SRCS += dps8_eis.h
 H_SRCS += dps8_faults.h
+H_SRCS += dps8_fxe.h
 H_SRCS += dps8.h
 H_SRCS += dps8_hw_consts.h
 H_SRCS += dps8_iefp.h
