@@ -1704,7 +1704,7 @@ static t_stat DoBasicInstruction (void)
             
             Ypair[1] = 0;
             //Ypair[1] = bitfieldInsert36(Ypair[0], PPR.IC + 2, 18, 18);
-            putbits36(& Ypair [0],  0, 18, PPR.IC + 2);
+            putbits36(& Ypair [1],  0, 18, PPR.IC + 2);
             
             break;
             
@@ -3656,7 +3656,8 @@ static t_stat DoBasicInstruction (void)
             /// 00...0 -> C(Y)8,17
             
             //CY = (rE << 28);
-            CY = bitfieldInsert36(CY, ((word36)(rE & 0377) << 10), 18, 8);
+            //CY = bitfieldInsert36(CY, ((word36)(rE & 0377) << 10), 18, 8);
+            putbits36 (& CY, 0, 18, ((word36)(rE & 0377) << 10));
             break;
             
             
