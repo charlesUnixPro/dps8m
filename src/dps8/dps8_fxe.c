@@ -114,6 +114,10 @@
 #include "area_info.incl.pl1.h"
 #include "std_symbol_header.incl.pl1.h"
 #include "bind_map.incl.pl1.h"
+//#include "area_structures.incl.pl1.h"
+#include "area_header_v2pl1.incl.pl1.h"
+#include "aim_template.incl.pl1.h"
+#include "status_structures.incl.pl1.h"
 
 
 //
@@ -168,8 +172,30 @@ static int loadSegment (char * arg);
 //   makeITS - create an ITS pointer
 //   makeNullPtr - equivalent to Multics PL/I null()
 
-#if 0 // unused
-static void printACC (word36 * p)
+#define SEGNAME_LEN 32
+#define PATHNAME_LEN 168
+
+typedef char segnameBuf [SEGNAME_LEN + 1];
+typedef char pathnameBuf [PATHNAME_LEN + 1];
+
+static void cpACC2buf (segnameBuf buf, word36 * p)
+  {
+    word36 cnt = getbits36 (* p, 0, 9);
+    if (cnt > SEGNAME_LEN)
+      cnt = SEGNAME_LEN;
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        buf [i] = (ch & 0177);
+      }
+    for (uint i = cnt; i < SEGNAME_LEN; i ++)
+     buf [i] = ' ';
+    buf [SEGNAME_LEN] = '\0';
+  }
+
+UNUSED static void printACC (word36 * p)
   {
     word36 cnt = getbits36 (* p, 0, 9);
     for (uint i = 0; i < cnt; i ++)
@@ -180,7 +206,6 @@ static void printACC (word36 * p)
         sim_printf ("%c", (char) (ch & 0177));
       }
   }
-#endif
 
 #if 0
 static void printNChars (word36 * p, word24 cnt)
@@ -456,16 +481,10 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 
 #define FXE_RING 5
 
-#define SEGNAME_LEN 32
-#define PATHNAME_LEN 168
-
 
 //
 // pathname mangling
 //
-
-typedef char segnameBuf [SEGNAME_LEN + 1];
-typedef char pathnameBuf [PATHNAME_LEN + 1];
 
 // '>' (root) <-->  ./MR12.3/
 // foo>       <-->  foo/
@@ -483,16 +502,19 @@ typedef struct KSTEntry
     bool allocated;
     bool loaded;
     word15 segno;  // Multics segno
+    word36 uid;
 
     bool wired;
     word3 R1, R2, R3;
     word1 R, E, W, P;
 
     segnameBuf segname;
+    pathnameBuf pathname;
     // This the segment length in words; which means that it's maximum
-    // value 1<<18, which does not fit in a word18. See comments in
+    // value is 1<<18, which does not fit in a word18. See comments in
     // installSDW.
     word24 seglen;
+    word24 allocatedLength;
     word24 physmem;
     word24 bit_count;
 
@@ -500,7 +522,10 @@ typedef struct KSTEntry
 
 // Cache values discovered during parseSegment
 
+    bool parsed; // parsing successfull
+
     word18 entry;
+    segnameBuf entryName;
     bool gated;
     word18 entry_bound;
     word18 definition_offset;
@@ -522,6 +547,12 @@ static KSTEntry KST [N_SEGS];
 // Map segno to KSTIdx
 
 static int segnoMap [N_SEGNOS];
+
+//
+// PDS: process data segment
+//
+
+static int pdsValidationLevel = FXE_RING;
 
 //
 // CLR - Multics segment containing the LOT and ISOT
@@ -603,6 +634,9 @@ static word24 nextPhysmem = 0;
 #define RINGS_ZFF 0, FXE_RING, FXE_RING
 #define P_REW 1, 1, 1, 0
 #define P_RW  1, 0, 1, 0
+
+static word36 nextUID = 0;
+
 static int allocateSegment (uint seglen, char * segname, uint segno,
                             uint R1, uint R2, uint R3, 
                             uint R, uint E, uint W, uint P)
@@ -621,6 +655,7 @@ static int allocateSegment (uint seglen, char * segname, uint segno,
             e -> physmem = nextPhysmem;
             nextPhysmem += seglenpage;
             e -> seglen = seglen;
+            e -> allocatedLength = seglen;
             e -> bit_count = 36 * seglen;
             e -> R1 = R1;
             e -> R2 = R2;
@@ -632,7 +667,8 @@ static int allocateSegment (uint seglen, char * segname, uint segno,
             if (segno)
               setSegno (i, segno);
             strncpy (e -> segname, segname, SEGNAME_LEN + 1);
-
+            e -> uid = nextUID ++;
+            e -> parsed = false;
             return i;
           }
       }
@@ -836,6 +872,8 @@ static int lookupOffset (int segIdx, word18 offset,
                          char * * compname, word18 * compoffset)
   {
     KSTEntry * e = KST + segIdx;
+    if (! e -> parsed)
+      return 0;
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word36 * segp = M + segAddr;
     def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
@@ -915,6 +953,15 @@ next:;
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
     KSTEntry * e = KST + segIdx;
+    if (! e -> parsed)
+      {
+         if (! symbolName && strcmp (segName, e -> segname) == 0)
+           {
+             * value = 0;
+             return 1;
+           }
+         return 0;
+      }
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word36 * segp = M + segAddr;
     def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
@@ -984,6 +1031,8 @@ next2:
 static int lookupEntry (int segIdx, char * entryName, word18 * value)
   {
     KSTEntry * e = KST + segIdx;
+    if (! e -> parsed)
+      return 0;
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word36 * segp = M + segAddr;
     def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
@@ -1081,9 +1130,10 @@ static void installSDW (int segIdx)
     putbits36 (odd,  17,  1, e -> W);
     putbits36 (odd,  18,  1, e -> P);
     putbits36 (odd,  19,  1, 1); // unpaged
-    putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
-    putbits36 (odd,  22, 14, e -> entry_bound >> 4);
-
+    putbits36 (odd,  20,  1, e -> gated ? 0U : 1U);
+    //putbits36 (odd,  22, 14, e -> entry_bound >> 4);
+    putbits36 (odd,  22, 14, e -> entry_bound);
+//if (segno == 0161) sim_printf ("gated %d entry_bound %d\n", e -> gated, e -> entry_bound);
     do_camp (TPR . CA);
     do_cams (TPR . CA);
   }
@@ -1111,11 +1161,23 @@ static void trapHCS_TerminateNoname (void);
 static void trapPHCS_SetKSTAttributes (void);
 static void trapPHCS_Deactivate (void);
 static void trapGetLineLengthSwitch (void);
+static void trapGetSegPtr (void);
+static void trapGetSegment (void);
 static void trapFXE_UnhandledSignal (void);
 static void trapFXE_ReturnToFXE (void);
 static void trapFXE_PutChars (void);
 static void trapFXE_GetLine (void);
 static void trapFXE_Control (void);
+static void trapHCS_cpu_time_and_paging (void);
+static void trapHCS_ProcInfo (void);
+static void trapHCS_GetAuthorization (void);
+static void trapHCS_FsGetPathName (void);
+static void trapHCS_chnameSeg (void);
+static void trapHCS_SetSafetySwSeg (void);
+static void trapHCS_StatusLong (void);
+static void trapHCS_LevelGet (void);
+static void trapHCS_GetRingBrackets (void);
+static void trapHCS_TruncateSeg (void);
 
 // debugging traps
 #if 0
@@ -1137,11 +1199,25 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "high_low_seg_count", trapHCS_HighLowSegCount },
     { "hcs_", "fs_get_mode", trapHCS_FSGetMode },
     { "hcs_", "terminate_noname", trapHCS_TerminateNoname },
+    { "hcs_", "proc_info", trapHCS_ProcInfo },
+    { "hcs_", "get_authorization", trapHCS_GetAuthorization },
+    { "hcs_", "fs_get_path_name", trapHCS_FsGetPathName },
+    { "hcs_", "chname_seg", trapHCS_chnameSeg },
+    { "hcs_", "set_safety_sw_seg", trapHCS_SetSafetySwSeg },
+    { "hcs_", "status_long", trapHCS_StatusLong },
+    { "hcs_", "level_get", trapHCS_LevelGet },
+    { "hcs_", "get_ring_brackets", trapHCS_GetRingBrackets },
+    { "hcs_", "truncate_seg", trapHCS_TruncateSeg },
+    { "cpu_time_and_paging_", "cpu_time_and_paging_", trapHCS_cpu_time_and_paging },
 
     { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
     { "phcs_", "deactivate", trapPHCS_Deactivate },
 
     { "get_line_length_", "switch", trapGetLineLengthSwitch },
+
+    { "slt_manager", "get_seg_ptr", trapGetSegPtr },
+
+    { "tssi_", "get_segment", trapGetSegment },
 
     { "fxe", "unhandled_signal", trapFXE_UnhandledSignal },
     { "fxe", "return_to_fxe", trapFXE_ReturnToFXE },
@@ -1169,9 +1245,24 @@ static int trapName (char * segName, char * symbolName)
     return -1;
   }
 
+static bool whiteList (char * segName)
+  {
+#if 0
+    if (strcmp (segName, "pl1_error_messages_") == 0)
+      return true;
+
+    return false;
+#endif
+    if (strcmp (segName, "hcs_") == 0)
+      return false;
+
+    return true;
+  }
+
 static int resolveName (char * segName, char * symbolName, word15 * segno,
                         word18 * value, int * index)
   {
+    //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int trapNo = trapName (segName, symbolName);
     if (trapNo >= 0)
       {
@@ -1186,7 +1277,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
     if ((idx = searchRNT (segName)))
       {
         KSTEntry * e = KST + idx;
-        if (e -> allocated && e -> loaded && e -> definition_offset &&
+        if (e -> allocated && e -> loaded && e -> parsed && 
+            e -> definition_offset &&
             lookupDef (idx, segName, symbolName, value))
           {
             * segno = e -> segno;
@@ -1205,6 +1297,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
           continue;
         if (! e -> loaded)
           continue;
+        if (! e -> parsed)
+          continue;
         if (e -> definition_offset == 0)
           continue;
         if (e -> RNTRefCount) // Searched this segment already above.
@@ -1218,53 +1312,58 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
           }
       }
 #endif
-    //idx = loadSegmentFromFile (segName);
-    idx = loadSegment (segName);
-    if (idx >= 0)
+
+    if (whiteList (segName))
       {
-        //sim_printf ("got file\n");
-        int slteIdx = -1;
-        KST [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
-        if (! KST [idx] . segno)
+        //idx = loadSegmentFromFile (segName);
+        idx = loadSegment (segName);
+        if (idx >= 0)
           {
-            setSegno (idx, allocateSegno ());
-            // sim_printf ("assigning %d to %s\n", KST [idx] . segno, segName);
-          }
-        if (slteIdx < 0) // segment not in slte
-          {
-            KST [idx] . R1 = FXE_RING;
-            KST [idx] . R2 = FXE_RING;
-            KST [idx] . R3 = FXE_RING;
-            KST [idx] . R = 1;
-            KST [idx] . E = 1;
-            KST [idx] . W = 1;
-            KST [idx] . P = 0;
-          }
-        else // segment in slte
-          {
-            KST [idx] . R1 = SLTE [slteIdx] . R1;
-            KST [idx] . R2 = SLTE [slteIdx] . R2;
-            KST [idx] . R3 = SLTE [slteIdx] . R2;
-            KST [idx] . R = SLTE [slteIdx] . R;
-            KST [idx] . E = SLTE [slteIdx] . E;
-            KST [idx] . W = SLTE [slteIdx] . W;
-            KST [idx] . P = SLTE [slteIdx] . P;
-          }
-        //sim_printf ("made %05o %s len %07o\n", KST [idx] . segno, 
-                    //KST [idx] . segname, KST [idx] . seglen);
-        installLOT (idx);
-        installSDW (idx);
-        if (lookupDef (idx, segName, symbolName, value))
-          {
-            * segno = KST [idx] . segno;
-            * index = idx;
-            // sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
-            return 1;
-          }
-        // sim_printf ("found segment but not symbol\n");
+            //sim_printf ("got file\n");
+            int slteIdx = -1;
+            KST [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
+            if (! KST [idx] . segno)
+              {
+                setSegno (idx, allocateSegno ());
+                // sim_printf ("assigning %d to %s\n", KST [idx] . segno, segName);
+              }
+            if (slteIdx < 0) // segment not in slte
+              {
+                KST [idx] . R1 = FXE_RING;
+                KST [idx] . R2 = FXE_RING;
+                KST [idx] . R3 = FXE_RING;
+                KST [idx] . R = 1;
+                KST [idx] . E = 1;
+                KST [idx] . W = 1;
+                KST [idx] . P = 0;
+              }
+            else // segment in slte
+              {
+                KST [idx] . R1 = SLTE [slteIdx] . R1;
+                KST [idx] . R2 = SLTE [slteIdx] . R2;
+                KST [idx] . R3 = SLTE [slteIdx] . R3;
+                KST [idx] . R = SLTE [slteIdx] . R;
+                KST [idx] . E = SLTE [slteIdx] . E;
+                KST [idx] . W = SLTE [slteIdx] . W;
+                KST [idx] . P = SLTE [slteIdx] . P;
+              }
+            //sim_printf ("made %05o %s len %07o\n", KST [idx] . segno, 
+                        //KST [idx] . segname, KST [idx] . seglen);
+            installLOT (idx);
+            installSDW (idx);
+            if (lookupDef (idx, segName, symbolName, value))
+              {
+                * segno = KST [idx] . segno;
+                * index = idx;
+                // sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+                return 1;
+              }
+            // sim_printf ("found segment but not symbol\n");
 // XXX this segment should be terminated if the symbol was not found
-        return 0; 
-      }
+            return 0; 
+          } // idx >= 0
+      } // whitelist
+
     // sim_printf ("resoveName fail\n");
     return 0;
   }
@@ -1273,6 +1372,7 @@ static void parseSegment (int segIdx)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     KSTEntry * e = KST + segIdx;
+    e -> parsed = false;
     word24 seglen = e -> seglen;
 
     word36 * segp = M + segAddr;
@@ -1373,6 +1473,7 @@ static void parseSegment (int segIdx)
 
     bool entryFound = false;
     word18 entryValue = 0;
+    segnameBuf entryName;
 
     // Walk the definiton
 // oip_defp
@@ -1436,6 +1537,8 @@ static void parseSegment (int segIdx)
               {
                 entryFound = true;
                 entryValue = p -> value;
+                cpACC2buf (entryName, defBase + p -> symbol);
+//sim_printf ("entry name %s\n", entryName);                
               }
           }
         p = (definition *) (defBase + p -> forward);
@@ -1449,6 +1552,8 @@ static void parseSegment (int segIdx)
     else
       {
         e -> entry = entryValue;
+        memcpy (e -> pathname, entryName, sizeof (pathnameBuf));
+    
         //sim_printf ("entry %o\n", entryValue);
       }
 
@@ -1542,6 +1647,7 @@ static void parseSegment (int segIdx)
       }
     while (++ l < end);
 #endif
+    e -> parsed = true;
   }
 
 static void readSegment (int fd, int segIdx/* , off_t flen*/)
@@ -1557,7 +1663,7 @@ static void readSegment (int fd, int segIdx/* , off_t flen*/)
       {
         if (n != 5 && n != 9)
           {
-            sim_printf ("ERROR: garbage at end of segment lost\n");
+            sim_printf ("ERROR: readSegment: garbage at end of segment lost %ld\n", n);
           }
         if (seglen > MAX18)
           {
@@ -1607,7 +1713,7 @@ static int loadSegmentFromFile (char * arg)
     word18 wordcnt = (flen * 8) / 36; 
 // XXX it would be better to be pasing around the segment name as well as the
 // path instead of relying on basename here.
-    int segIdx = allocateSegment (wordcnt, basename (upathname), 0, RINGS_FFF, P_REW);
+    int segIdx = allocateSegment (wordcnt, basename (upathname), 0, RINGS_ZFF, P_REW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
@@ -1678,7 +1784,10 @@ static int loadSegment (char * arg)
 
     idx = loadSegmentFromFile (pathname);
     if (idx >= 0)
-      return idx;
+      {
+        memcpy (KST [idx] . pathname, cwd, sizeof (pathnameBuf));
+        return idx;
+      }
 
 //  4. system libraries
 
@@ -1698,7 +1807,10 @@ static int loadSegment (char * arg)
 
         idx = loadSegmentFromFile (pathname);
         if (idx >= 0)
-          return idx;
+          {
+            memcpy (KST [idx] . pathname, stds [i], sizeof (pathnameBuf));
+            return idx;
+          }
       }
     return -1;
   }
@@ -1769,8 +1881,10 @@ static void initStack (int ssIdx)
     // word  4,  5    odd_lot_ptr
 
     // word  6,  7    combined_stat_ptr
+    makeITS (M + hdrAddr + 6, SSA_SEGNO, 0, 0, 0, 0); 
 
     // word  8,  9    clr_ptr
+    makeITS (M + hdrAddr + 8, SSA_SEGNO, 0, 0, 0, 0); 
 
     // word 10        max_lot_size, run_unit_depth
     M [hdrAddr + 10] = ((word36) LOT_SIZE << 18) | RUN_UNIT_DEPTH;
@@ -1778,10 +1892,11 @@ static void initStack (int ssIdx)
     // word 11        cur_lot_size, pad2
     M [hdrAddr + 11] = ((word36) LOT_SIZE << 18) | 0;
 
-    // word 12, 13    system_storage_ptr
+    // word 12, 13    system_storage_ptr; aka system_free_ptr
     makeITS (M + hdrAddr + 12, SSA_SEGNO, 0, 0, 0, 0); 
 
-    // word 14, 15    user_storage_ptr
+    // word 14, 15    user_storage_ptr; aka user_free_ptr
+    makeITS (M + hdrAddr + 14, SSA_SEGNO, 0, 0, 0, 0); 
 
     // word 16, 17    null_ptr
     makeNullPtr (M + hdrAddr + 16);
@@ -1866,6 +1981,7 @@ static void initStack (int ssIdx)
     makeNullPtr (M + hdrAddr + 52);
 
     // word 54, 55    assign_linkage_ptr
+    makeITS (M + hdrAddr + 54, SSA_SEGNO, 0, 0, 0, 0); 
 
     // word 56, 57    reserved
 
@@ -1972,7 +2088,7 @@ static int installLibrary (char * name)
         setSegno (idx, segno);
         //sim_printf ("assigning %d to %s\n", segno, name);
       }
-    //sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
+    sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
     if (slteIdx < 0) // segment not in slte
       {
         KST [idx] . R1 = FXE_RING;
@@ -1987,7 +2103,7 @@ static int installLibrary (char * name)
       {
         KST [idx] . R1 = SLTE [slteIdx] . R1;
         KST [idx] . R2 = SLTE [slteIdx] . R2;
-        KST [idx] . R3 = SLTE [slteIdx] . R2;
+        KST [idx] . R3 = SLTE [slteIdx] . R3;
         KST [idx] . R = SLTE [slteIdx] . R;
         KST [idx] . E = SLTE [slteIdx] . E;
         KST [idx] . W = SLTE [slteIdx] . W;
@@ -2058,7 +2174,7 @@ static void initSysinfoWord36 (char * segName, char * compName,
 static void initSysinfo (void)
   {
     // Set the flag that applications check to see if Multics is up
-    initSysinfoWord36 ("sys_info", "service_system", (word36) (1));
+    initSysinfoWord36 ("sys_info", "service_system", (word36) (0400000000000llu));
     initSysinfoWord36 ("sys_info", "page_size", (word36) (1024));
     initSysinfoWord36 ("sys_info", "max_seg_size", (word36) (255 * 1024));
     initSysinfoWord36 ("sys_info", "default_max_length", (word36) (255 * 1024));
@@ -2369,8 +2485,57 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 
     word36 * ssaMemory = M + ssaEntry -> physmem;
 
-    for (uint i = 0; i < LOT_SIZE; i ++)
-      ssaMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
+
+    // SSA segment layout
+
+    //     0    +--------
+    //          | area header
+    //          |    areap -> (SSA, 1024)
+    //  1024    +--------
+    //          | area
+    //          |  ...
+
+    area_header * areah = (area_header *) ssaMemory;
+    for (uint i = 0; i < MAX_SEGLEN; i ++)
+      ssaMemory [i] = 0;
+
+#if 0 // Version 2. Yay.
+// From link_man.list, define_area.list
+
+    areah -> allocation_method = STANDARD_ALLOCATION_METHOD;
+    areah -> zero_on_free = 1;
+    areah -> zero_on_alloc = 0;
+    areah -> dont_free = 0;
+    areah -> extend = 0;
+    areah -> system = 1;
+    areah -> defined_by_call = 0;
+#else
+    memset (areah -> area_header, 0, sizeof (areah -> area_header));
+// the first two words are 0 so that the area can be identified as of the new style,
+// the third word contains the size of the area in words,
+    areah -> area_header [2] = MAX_SEGLEN - 1024;
+
+// the fourth word is the high water mark,
+
+//  From buddy_alloc_.pl1:
+//      if area_ptr -> area_header (4) = 0 then do;
+//         /* The following code will convert the area to a new style area 
+//            and then allocate the block therein with the new area management 
+//            code. */
+//
+//  The memset above set area_header (4) to 0.
+
+// the fifth word is the first usable word in the area,
+// the sixth word is the stratum word number corresponding to the largest 
+// possible block in this area,
+// words 7 through 23 are stratum words which point to blocks which are free
+// and whose size is 2**2 through 2**18 */
+
+
+#endif
+
+    //for (uint i = 0; i < LOT_SIZE; i ++)
+      //ssaMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
 
 
 // Setup IOCB
@@ -2404,6 +2569,9 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     installLibrary ("bound_ti_term_");
     installLibrary ("bound_fscom1_");
     installLibrary ("bound_video_"); // for video_data_:terminal_iocb
+    installLibrary ("bound_date_time_");
+    installLibrary ("bound_command_env_");
+    installLibrary ("bound_search_facility_");
     errIdx = installLibrary ("error_table_");
     installLibrary ("sys_info");
     initSysinfo ();
@@ -2422,7 +2590,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     // Create the fxe segment
 
     int fxeIdx = allocateSegment (MAX_SEGLEN, "fxe", FXE_SEGNO, 
-                                  RINGS_FFF, P_REW);
+                                  RINGS_ZFF, P_REW);
     if (fxeIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate fxe segment\n");
@@ -2798,7 +2966,7 @@ static void faultTag2Handler (void)
               }
             else
               {
-                sim_printf ("ERROR: can't resolve %s\n", segStr);
+                sim_printf ("ERROR: tag2 type 3 can't resolve %s\n", segStr);
               }
 
             free (segStr);
@@ -2829,7 +2997,7 @@ static void faultTag2Handler (void)
               }
             else
               {
-                sim_printf ("ERROR: can't resolve %s:%s\n", segStr, extStr);
+                sim_printf ("ERROR: tag2 type 4 can't resolve %s:%s\n", segStr, extStr);
               }
 
             free (segStr);
@@ -2882,7 +3050,7 @@ static void faultTag2Handler (void)
                             iip -> n_words);
                 break;
               }
-                sim_printf ("FXE: snap (5) clr_$%s %05o:%06o\n", sprintACC (defBase + typePair -> ext_ptr), CLR_SEGNO, variableOffset);
+                //sim_printf ("FXE: snap (5) clr_$%s %05o:%06o\n", sprintACC (defBase + typePair -> ext_ptr), CLR_SEGNO, variableOffset);
             makeITS (M + addr, CLR_SEGNO, linkCopy . ringno, variableOffset, 0, 
                      linkCopy . modifier);
             doRCU (false); // doesn't return
@@ -3384,6 +3552,153 @@ static void trapModes (void)
   }
 #endif
 
+static void trapGetSegPtr (void)
+  {
+    // get_seg_ptr: entry (Name) returns (ptr);
+    // dcl  Name char (32) aligned parameter;
+
+    argTableEntry t [2] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 }
+      };
+
+    if (! processArgs (2, 0, t))
+      return;
+
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    char name [33];
+    strcpyC (ap1, 32, name);
+    //sim_printf ("name %s\n", name);
+    trimTrailingSpaces (name);
+    int idx = getSLTEidx (name);
+
+    makeITS (M + ap2, SLTE  [idx] . segno, PPR . PRR, 0, 0, 0);
+    doRCU (true); // doesn't return
+  }
+
+static void trapGetSegment (void)
+  {
+///*  The get_segment entry returns a pointer to segment dirname>ename.  The
+//     segment will have "rw" access to the current user.  If an old acl had to be
+//     changed to do this, aclinfop is set pointing to information for reseting
+//     the acl. */
+// get_segment:
+//        entry(dirname, ename, segp, aclinfop, code);
+// dcl
+//         dirname char(*),
+//         ename char(*),
+//         segp ptr,
+//         aclinfop ptr,
+//         code fixed bin(35),
+
+
+    argTableEntry t [5] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (5, 5, t))
+      return;
+
+    word24 code = 0;
+
+    // Argument 1: dirname (input)
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 dp1 = t [ARG1] . descAddr;
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+
+    char * dirname = malloc (d1size + 1);
+    strcpyC (ap1, d1size, dirname);
+    trimTrailingSpaces (dirname);
+
+    // Argument 2: ename (input)
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 dp2 = t [ARG2] . descAddr;
+    word24 d2size = getbits36 (M [dp2], 12, 24);
+
+    char * ename = malloc (d2size + 1);
+    strcpyC (ap2, d2size, ename);
+    trimTrailingSpaces (ename);
+
+    //sim_printf ("%s>%s\n", dirname, ename);
+
+//  call hcs_$make_seg(dir,enm,"",01100b,segp,code); /* try to make seg */
+
+    word6 mode = 014;
+
+    // Is the segment known?
+
+    word36 ptr [2];
+    int idx = lookupSegname (ename);
+    if (idx >= 0)
+      {
+        KSTEntry * e = KST + idx;
+        makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
+        code = lookupErrorCode ("namedup");
+        goto done;
+      }
+
+    // Does the segment exist?
+    idx = loadSegment (ename); // XXX ignoring dir_name
+    if (idx >= 0)
+      {
+sim_printf ("getSegment likes loadSegment\n");
+        // XXX ignoring term_$nomakeunknown
+        sim_printf ("WARNING: ignoring term_$nomakeunknown\n");
+        // XXX ignoring hcs_$truncate_seg
+        sim_printf ("WARNING: ignoring hcs_$truncate_seg\n");
+      }
+    else
+      {
+sim_printf ("getSegment likes allocateSegment\n");
+         // No, create from whole cloth
+         idx = allocateSegment (MAX_SEGLEN, ename, allocateSegno (), 
+                                RINGS_ZFF, 
+                                (mode & 010) ? 1 : 0,
+                                (mode & 004) ? 1 : 0,
+                                (mode & 002) ? 1 : 0,
+                                0);
+         if (idx < 0)
+           {
+             code = lookupErrorCode ("noalloc");
+             goto done;
+           }
+      }
+    
+    KSTEntry * e = KST + idx;
+    if (! e -> segno)
+      e -> segno = allocateSegno();
+    installSDW (idx);
+
+    sim_printf ("getSegment made %05o %s\n", e -> segno, e -> segname);
+    makeITS (ptr, e -> segno, FXE_RING, 0, 0, 0);
+
+done:;
+
+    // arg 3: segp
+    word24 seg_ptrPtr = t [ARG3] . argAddr;
+    M [seg_ptrPtr] = ptr [0];
+    M [seg_ptrPtr + 1] = ptr [1];
+
+    // arg 4: aclinfop
+    word24 aclinfopPtr = t [ARG4] . argAddr;
+    makeNullPtr (& M [aclinfopPtr]); // XXX punt
+
+    // arg 5: code
+    word24 codePtr = t [ARG5] . argAddr;
+    M [codePtr] = code;
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapGetLineLengthSwitch (void)
   {
     // declare get_line_length_$switch entry (ptr, fixed bin(35)) returns
@@ -3480,13 +3795,26 @@ static void trapHCS_FSSearchGetWdir (void)
     doRCU (true); // doesn't return
   }
 
-static int initiateSegment (UNUSED char * dir, char * entry, 
+static int initiateSegment (char * dir, char * entry, 
                             word24 * bitcntp, word36 * segptrp, 
                             word15 * segnop)
   {
 // XXX dir unused
 
-    int fd = open (entry, O_RDONLY);
+    bool isTxt = strstr (entry, ".txt") != NULL;
+
+    char upathname [UNIX_PATHNAME_LEN + 1];
+    strncpy (upathname, MROOT, UNIX_PATHNAME_LEN + 1);
+    strcat (upathname, ">");
+    strncat (upathname, dir, UNIX_PATHNAME_LEN + 1);
+    strcat (upathname, ">");
+    strncat (upathname, entry, UNIX_PATHNAME_LEN + 1);
+    char * blow;
+    while ((blow = strchr (upathname, '>')))
+      * blow = '/';
+    sim_printf ("tada> %s\n", upathname);
+
+    int fd = open (upathname, O_RDONLY);
     if (fd < 0)
       {
         sim_printf ("ERROR: Unable to open '%s': %d\n", entry, errno);
@@ -3496,10 +3824,10 @@ static int initiateSegment (UNUSED char * dir, char * entry,
     off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
-    word24 bitcnt = flen * 9; // 8 bit ascii gets mapped to 9-bit ascii
+    word24 bitcnt = flen * (isTxt ? 9 : 8); // 8 bit ascii gets mapped to 9-bit ascii
     word18 wordcnt = nbits2nwords (bitcnt);
     int segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
-                                  RINGS_FFF, P_RW);
+                                  RINGS_ZFF, P_RW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment initiate\n");
@@ -3509,6 +3837,7 @@ static int initiateSegment (UNUSED char * dir, char * entry,
 
     KSTEntry * e = KST + segIdx;
 
+    memcpy (e -> pathname, dir, sizeof (pathnameBuf));
     installSDW (segIdx);
 
     makeITS (segptrp, e -> segno, FXE_RING, 0, 0, 0);
@@ -3519,26 +3848,52 @@ static int initiateSegment (UNUSED char * dir, char * entry,
     uint seglen = 0;
     //word24 bitcntRead = 0;
 
-    // 4 bytes at a time; mapped to 9 bit ASCII is one word.
-    uint8 bytes [4];
-    ssize_t n;
-    while ((n = read (fd, bytes, 4)))
+    if (isTxt)
       {
-        if (seglen > MAX18)
+        // 4 bytes at a time; mapped to 9 bit ASCII is one word.
+        uint8 bytes [4];
+        ssize_t n;
+        while ((n = read (fd, bytes, 4)))
           {
-            sim_printf ("ERROR: File too long\n");
-            close (fd);
-            return -1;
+            if (seglen > MAX18)
+              {
+                sim_printf ("ERROR: File too long\n");
+                close (fd);
+                return -1;
+              }
+            M [maddr] = 0;
+            for (uint i = 0; i < n; i ++)
+              {
+                putbits36 (M + maddr, i * 9, 9, bytes [i]);
+                //bitcntRead += 9;
+              }
+            maddr ++;
+            seglen ++;
           }
-        M [maddr] = 0;
-        for (uint i = 0; i < n; i ++)
-          {
-            putbits36 (M + maddr, i * 9, 9, bytes [i]);
-            //bitcntRead += 9;
-          }
-        maddr ++;
-        seglen ++;
       }
+    else
+      {
+        // 9 bytes at a time; mapped to two 36 bit words
+        uint8 bytes [9];
+        ssize_t n;
+        while (memset (bytes, 0, 9), (n = read (fd, bytes, 9)))
+          {
+            if (n != 5 && n != 9)
+              {
+                sim_printf ("ERROR: initiateSegment: garbage at end of segment lost %ld\n", n);
+              }
+            if (seglen > MAX18)
+              {
+                sim_printf ("ERROR: File too long\n");
+                close (fd);
+                return -1;
+              }
+            M [maddr ++] = extr36 (bytes, 0);
+            M [maddr ++] = extr36 (bytes, 1);
+            seglen += 2;
+          }
+      }
+
     sim_debug (DBG_CAC, & cpu_dev,
       "initiate_segment <%s> flen %ld seglen %d bitcnt %d %d\n", 
       entry, flen, seglen, bitcnt, (bitcnt + 35) / 36);
@@ -4059,6 +4414,7 @@ static void trapHCS_MakePtr (void)
     // Argument 1: ref name // XXX ignored
     word24 ap1 = t [ARG1] . argAddr;
     word6 d1size = t [ARG1] . dSize;
+sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
     if ((! isNullPtr (ap1)) && d1size)
       {
         sim_printf ("WARNING: make_ptr ref name ignored\n");
@@ -4092,7 +4448,7 @@ static void trapHCS_MakePtr (void)
     // Argument 4: entry_point_ptr
     word24 ap4 = t [ARG4] . argAddr;
 
-    // Argument 4: entry_point_ptr
+    // Argument 5: code
     word24 ap5 = t [ARG5] . argAddr;
 
     word15 segno;
@@ -4340,7 +4696,7 @@ static void trapHCS_MakeSeg (void)
       }
 
     idx = allocateSegment (MAX_SEGLEN, entryname, allocateSegno (), 
-                           RINGS_FFF, 
+                           RINGS_ZFF, 
                            (mode & 010) ? 1 : 0,
                            (mode & 004) ? 1 : 0,
                            (mode & 002) ? 1 : 0,
@@ -4352,6 +4708,10 @@ static void trapHCS_MakeSeg (void)
       }
 
     KSTEntry * e = KST + idx;
+    if (dir_name)
+      memcpy (e -> pathname, dir_name, sizeof (pathnameBuf));
+    else
+      e -> pathname [0] = 0;
 
     installSDW (idx);
 
@@ -4441,6 +4801,8 @@ static void trapHCS_SetBcSeg (void)
 
     KST [idx] . bit_count = bit_count;
     KST [idx] . seglen = (bit_count + 35) / 36;
+
+    installSDW (idx);
 
 sim_debug (DBG_CAC, & cpu_dev, 
  "set_bc_seg segno %o seglen %u bitcount %u\n", 
@@ -4563,6 +4925,574 @@ static void trapHCS_FSGetMode (void)
     doRCU (true); // doesn't return
   }
 
+static void trapHCS_cpu_time_and_paging (void)
+  {
+// Return the virtual CPU time and page fault count.
+// For FXE, return the cycle count for the time, and 0 for the count
+
+    argTableEntry t [3] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 ap3 = t [ARG3] . argAddr;
+
+    M [ap1] = sys_stats . total_cycles;
+    M [ap2] = 0;
+    M [ap3] = 0;
+    doRCU (true); // doesn't return
+  }
+
+
+static void trapHCS_ProcInfo (void)
+  {
+// proc_info:    proc(process_id,process_group_id,process_dir_name,lock_id_);
+//    declare process_id bit(36) aligned,
+//            process_group_id char(32) aligned,
+//            process_dir_name char(32) aligned,
+//            lock_id_ bit(36) aligned,
+
+    argTableEntry t [4] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 0, t))
+      return;
+
+
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    //word24 ap3 = t [ARG3] . argAddr;
+    word24 ap4 = t [ARG4] . argAddr;
+
+    M [ap1] = 1;
+    M [ap2] = 2;
+    //M [ap3] = 0;
+    M [ap4] = 4;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_GetAuthorization (void)
+  {
+// authorization: entry(auth, max_auth);
+//    declare (auth, max_auth) bit(72) aligned,
+
+    argTableEntry t [2] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (2, 0, t))
+      return;
+
+
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+
+    M [ap1] = 0;
+    M [ap1 + 1] = 0;
+    M [ap2] = 0;
+    M [ap2 + 1] = 0;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_FsGetPathName (void)
+  {
+// -- ->  fs_get$path_name returns the pathname of the directory immediately 
+// superior to, and the entry name of the segment specified by segptr.
+//      
+// USAGE: call fs_get$path_name (segptr, dirname, lnd, ename, code);
+//      
+// 1) segptr ptr - - - pointer to the segment
+// 2) dirname char(168) - - - pathname of superior directory (output)
+// 3) lnd fixed bin - - - number of significant chars in pathname (output)
+// 4) ename char(32) - - - entry name of segment (output)
+// 5) code fixed bin - - - error code (output)
+//      
+// path_name: entry (a_segptr, a_dirname, a_lnd, a_ename, a_code);
+//   dcl  a_segptr                 ptr parameter;
+//   dcl  a_dirname                char (*) parameter;
+//   dcl  a_lnd                    fixed bin (17) parameter;
+//   dcl  a_ename                  char (*) parameter;
+//   dcl  a_code                   fixed bin (35) parameter;
+
+
+    argTableEntry t [5] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (5, 5, t))
+      return;
+
+    word36 code = 0;
+
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+
+    //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
+    word15 segno = getbits36 (M [ap1], 3, 15);
+
+    if (segno >= N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+
+    // a_dirname
+    word24 ap2 = t [ARG2] . argAddr;
+    strcpyNonVarying (ap2, NULL, KST [idx] . pathname);
+
+    // a_lnd
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = strlen (KST [idx] . pathname);
+
+    // entry
+    word24 ap4 = t [ARG4] . argAddr;
+#if 0 // it appears that they mean the "file name", not the entry point name.
+    // XXX buffer overrun?
+    strcpyNonVarying (ap4, NULL, KST [idx] . entryName); // XXX if .parsed?
+#endif
+    strcpyNonVarying (ap4, NULL, KST [idx] . segname); 
+
+//sim_printf ("returning idx %d segno %05o entryName %s\n", idx, segno, KST [idx] . segname);
+done:;
+    // code
+    word24 ap5 = t [ARG5] . argAddr;
+    M [ap5] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_chnameSeg (void)
+  {
+// call chname$cseg(segment_pointer, old_name, new_name, error_code);
+//   segment_pointer pointer         pointer to segment to be changed.
+//   old_name char(*)                name to be deleted from name list of 
+//                                     entry_name.
+//   new_name char(*)                name to be added to name list of 
+//                                     entry_name.
+//   error_code fixed bin(35)        file system error code (Output).
+//
+// cseg: entry (a_sp, a_oldname, a_newname, a_code);
+//   
+
+
+
+    argTableEntry t [4] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 4, t))
+      return;
+
+    word36 code = 0;
+
+    // Process the arguments
+
+    // segment ptr
+    word24 ap1 = t [ARG1] . argAddr;
+
+    //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
+    word15 segno = getbits36 (M [ap1], 3, 15);
+
+    if (segno >= N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+
+    // oldname
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 dp2 = t [ARG2] . descAddr;
+    word24 d2size = getbits36 (M [dp2], 12, 24);
+
+    char * oldname = malloc (d2size + 1);
+    strcpyC (ap2, d2size, oldname);
+    trimTrailingSpaces (oldname);
+
+    // newname
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 dp3 = t [ARG3] . descAddr;
+    word24 d3size = getbits36 (M [dp3], 12, 24);
+
+    char * newname = malloc (d3size + 1);
+    strcpyC (ap3, d3size, newname);
+    trimTrailingSpaces (newname);
+
+    // sim_printf ("segno %05o %s %s->%s\n", segno, KST [idx] . segname, oldname, newname);
+
+    if (strncmp (KST [idx] . segname, oldname, SEGNAME_LEN))
+      sim_printf ("WARNING: chname_seg old (%s) != KST (%s)\n",
+                  oldname, KST [idx] . segname);
+
+    strncpy (KST [idx] . segname, oldname, SEGNAME_LEN);
+    
+done:;
+    // code
+    word24 ap4 = t [ARG4] . argAddr;
+    M [ap4] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_SetSafetySwSeg (void)
+  {
+//  SET$SAFETY_SWITCH_PTR changes the safety switch in the directory entry 
+//    corresponding to the pointer "segptr".
+//  entry (a_segptr, a_safety_sw, a_code);
+
+    argTableEntry t [3] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    word36 code = 0;
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_StatusLong (void)
+  {
+// long:
+//      entry (a_dir_name, a_entryname, a_chase, a_return_struc_ptr, 
+//             a_return_area_ptr, a_code);
+//           dcl     a_dir_name               char (*) parameter;
+//           dcl     a_entryname              char (*) parameter;
+//           dcl     a_chase          fixed bin (1) parameter;
+//           dcl     a_return_struc_ptr       ptr parameter;
+//
+//   a_dir_name is the pathname of the containing directory. (Input)
+//
+//   entryname is the entry name of the segment, dirctory or link. (Input)
+//
+//   chase_sw indicates whether the information returned is about a link
+//            or about the entry to which the link points. (Input)
+//     0 returns link information
+//     1 returns information about the entry to which the link points
+//
+//   status_ptr is a pointer to the structure in which information is returned.
+//              (Input)
+//
+//   status_area_ptr is a pointer to the area in which names are returned. 
+//                   (Input)
+//
+//   code. (Output)
+//
+
+
+    argTableEntry t [6] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (6, 6, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about algebra\n");
+        exit (1);
+      }
+
+    // Argument 4: status_ptr
+    word24 ap4 = t [ARG4] . argAddr;
+    status_branch * status_ptr = (status_branch *) (& M [ap4]);
+
+    status_ptr -> short_ . type = 1; // segment
+
+// The only things translator_info are interested in are dtcm and uid.
+
+    status_ptr -> short_ . nnames = 0;
+    status_ptr -> short_ . names_relp = 0;
+    status_ptr -> short_ . dtcm = 0; // XXX translator_info looks here....
+    status_ptr -> short_ . dtu = 0;
+    status_ptr -> short_ . mode = 0;
+    status_ptr -> short_ . raw_mode = 0;
+    status_ptr -> short_ . records_used = 0;
+    status_ptr -> long_ . dtd = 0;
+    status_ptr -> long_ . dtem = 0;
+    status_ptr -> long_ . lvid = 0;
+    status_ptr -> long_ . current_length = KST [idx] . seglen / 1024u;
+    status_ptr -> long_ . bit_count = KST [idx] . bit_count;
+    status_ptr -> long_ . copy_switch = 0;
+    status_ptr -> long_ . tpd_switch = 0;
+    status_ptr -> long_ . mdir_switch = 0;
+    status_ptr -> long_ . damaged_switch = 0;
+    status_ptr -> long_ . synchronized_switch = 0;
+    status_ptr -> long_ . ring_brackets = 
+      ((KST [idx] . R1 & 077) << 12) |
+      ((KST [idx] . R2 & 077) <<  6) |
+      ((KST [idx] . R3 & 077) <<  0);
+    status_ptr -> long_ . uid = KST [idx] . uid;
+
+    word24 ap6 = t [ARG6] . argAddr;
+    M [ap6] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_LevelGet (void)
+  {
+    argTableEntry t [1] =
+      {
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (1, 0, t))
+      return;
+
+    // Argument 1: lebel 
+    word24 ap1 = t [ARG1] . argAddr;
+    M [ap1] = pdsValidationLevel;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_GetRingBrackets (void)
+  {
+// long:
+//      entry (a_dir_name, a_entryname, rb, code)
+//             a_return_area_ptr, a_code);
+//           dcl     a_dir_name               char (*) parameter;
+//           dcl     a_entryname              char (*) parameter;
+//           dcl     rb          3 fixed bin (3) parameter;
+//           dcl     code fixed bin (35)
+//
+//   a_dir_name is the pathname of the containing directory. (Input)
+//
+//   entryname is the entry name of the segment, dirctory or link. (Input)
+//
+//   rb ring brackets (Output)
+//   code. (Output)
+//
+
+
+    argTableEntry t [4] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 4, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about trig\n");
+        exit (1);
+      }
+
+    // Argument 3: rb
+    word24 ap3 = t [ARG3] . argAddr;
+
+#if 0
+    M [ap3] =
+      ((KST [idx] . R1 & 077) << 12) |
+      ((KST [idx] . R2 & 077) <<  6) |
+      ((KST [idx] . R3 & 077) <<  0);
+#else
+    M [ap3] = KST [idx] . R1;
+    M [ap3 + 1] = KST [idx] . R2;
+    M [ap3 + 2] = KST [idx] . R3;
+#endif
+    word24 ap4 = t [ARG4] . argAddr;
+    M [ap4] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_TruncateSeg (void)
+  {
+//      entry (ptr, fixed bin (19), fixed bin (235))
+//           dcl     ptr
+//           dcl     length fixed bin (19)
+//           dcl     code fixed bin (35)
+//      call hcs_$truncate_seg (seg_ptr, length, code);
+//
+//   length new segment length (Input)
+//
+//   code. (Output)
+//
+// "If the segment is already shorter then the specfied length, no truncation
+// is done. The effect of truncating a segment is to store zeros in the words
+// beyond the specified length"
+
+    argTableEntry t [3] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: seg ptr 
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = getbits36 (M [ap1], 3, 15);
+
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+
+    // Argument 2: length
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 length = M [ap2] & MASK20;
+
+//sim_printf ("seg_ptr %05o length %07o\n", segno, length);
+
+    if (length < KST [idx] . seglen)
+      {
+        word24 physmem = KST [idx] . physmem;
+        for (uint i = length; i < KST [idx] . seglen; i ++)
+          M [physmem + i] = 0;
+        KST [idx] . seglen = length;
+      }
+done:;
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = code;
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapPHCS_SetKSTAttributes (void)
   {
 // set_kst_attributes: proc (a_segno, a_kstap, a_code);
@@ -4591,7 +5521,7 @@ static void trapPHCS_SetKSTAttributes (void)
     word24 ap1 = t [ARG1] . argAddr;
     word15 segno = M [ap1];
 
-    if (segno > N_SEGNOS) // bigger segno then we deal with
+    if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
         sim_printf ("ERROR: too big\n");
         code = lookupErrorCode ("invalidsegno");
