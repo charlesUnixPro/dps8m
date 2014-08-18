@@ -1164,6 +1164,7 @@ static void trapPHCS_Deactivate (void);
 static void trapGetLineLengthSwitch (void);
 static void trapGetSegPtr (void);
 static void trapGetSegment (void);
+static void trapGetType (void);
 static void trapFXE_UnhandledSignal (void);
 static void trapFXE_ReturnToFXE (void);
 static void trapFXE_PutChars (void);
@@ -1179,6 +1180,8 @@ static void trapHCS_StatusLong (void);
 static void trapHCS_LevelGet (void);
 static void trapHCS_GetRingBrackets (void);
 static void trapHCS_TruncateSeg (void);
+static void trapHCS_GetMaxLengthSeg (void);
+static void trapHCS_SetMaxLengthSeg (void);
 
 // debugging traps
 #if 0
@@ -1209,6 +1212,8 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "level_get", trapHCS_LevelGet },
     { "hcs_", "get_ring_brackets", trapHCS_GetRingBrackets },
     { "hcs_", "truncate_seg", trapHCS_TruncateSeg },
+    { "hcs_", "get_max_length_seg", trapHCS_GetMaxLengthSeg },
+    { "hcs_", "set_max_length_seg", trapHCS_SetMaxLengthSeg },
     { "cpu_time_and_paging_", "cpu_time_and_paging_", trapHCS_cpu_time_and_paging },
 
     { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
@@ -1219,6 +1224,8 @@ static trapNameTableEntry trapNameTable [] =
     { "slt_manager", "get_seg_ptr", trapGetSegPtr },
 
     { "tssi_", "get_segment", trapGetSegment },
+
+    { "fs_util_", "get_type", trapGetType },
 
     { "fxe", "unhandled_signal", trapFXE_UnhandledSignal },
     { "fxe", "return_to_fxe", trapFXE_ReturnToFXE },
@@ -3701,6 +3708,56 @@ done:;
     doRCU (true); // doesn't return
   }
 
+static void trapGetType (void)
+  {
+
+
+    argTableEntry t [5] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 4, t))
+      return;
+
+    word24 code = 0;
+
+    // Argument 1: dirname (input)
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 dp1 = t [ARG1] . descAddr;
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+
+    char * dirname = malloc (d1size + 1);
+    strcpyC (ap1, d1size, dirname);
+    trimTrailingSpaces (dirname);
+
+    // Argument 2: entryname (input)
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 dp2 = t [ARG2] . descAddr;
+    word24 d2size = getbits36 (M [dp2], 12, 24);
+
+    char * ename = malloc (d2size + 1);
+    strcpyC (ap2, d2size, ename);
+    trimTrailingSpaces (ename);
+
+    sim_printf ("get_type %s>%s\n", dirname, ename);
+
+    // Argument 3: type (output)
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 dp3 = t [ARG3] . descAddr;
+    word24 d3size = getbits36 (M [dp3], 12, 24);
+    strcpyNonVarying (ap3, NULL, "-segment");
+
+    // arg 4: code
+    word24 codePtr = t [ARG4] . argAddr;
+    M [codePtr] = code;
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapGetLineLengthSwitch (void)
   {
     // declare get_line_length_$switch entry (ptr, fixed bin(35)) returns
@@ -5506,6 +5563,106 @@ static void trapHCS_TruncateSeg (void)
           M [physmem + i] = 0;
         KST [idx] . seglen = length;
       }
+done:;
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_GetMaxLengthSeg (void)
+  {
+// hcs_$get_max_length_seg (seg_ptr, max_length, code)
+//
+//     seg_ptr  ptr (input)
+//     max_length fixed bin (19) (output)
+//     code fixed bin (35) (output)
+
+    argTableEntry t [3] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: seg ptr 
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = getbits36 (M [ap1], 3, 15);
+
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+
+    // Argument 2: length
+    word24 ap2 = t [ARG2] . argAddr;
+    M [ap2] = KST [idx] . allocatedLength;
+sim_printf ("get_max_length_seg %05o length %07o\n", segno, KST [idx] . allocatedLength);
+
+done:;
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_SetMaxLengthSeg (void)
+  {
+// hcs_$get_max_length_seg (seg_ptr, max_length, code)
+//
+//     seg_ptr  ptr (input)
+//     max_length fixed bin (19) (output)
+//     code fixed bin (35) (output)
+
+    argTableEntry t [3] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: seg ptr 
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = getbits36 (M [ap1], 3, 15);
+
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = lookupErrorCode ("invalidsegno");
+        goto done;
+      }
+
+    // Argument 2: length
+    word24 ap2 = t [ARG2] . argAddr;
+//sim_printf ("set_max_length_seg %05o allocated %07o used %07o set %07llo\n", segno, KST [idx] . allocatedLength, KST [idx] . seglen, M [ap2] & 01777777);
+    KST [idx] . seglen = M [ap2] & 01777777; // XXX limit checking?
+
 done:;
     word24 ap3 = t [ARG3] . argAddr;
     M [ap3] = code;
