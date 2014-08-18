@@ -5185,7 +5185,7 @@ static void trapHCS_chnameSeg (void)
     strcpyC (ap3, d3size, newname);
     trimTrailingSpaces (newname);
 
-    sim_printf ("chname segno %05o %s %s->%s\n", segno, KST [idx] . segname, oldname, newname);
+    //sim_printf ("chname segno %05o %s %s->%s\n", segno, KST [idx] . segname, oldname, newname);
 
     if (strncmp (KST [idx] . segname, oldname, SEGNAME_LEN))
       sim_printf ("WARNING: chname_seg old (%s) != KST (%s)\n",
