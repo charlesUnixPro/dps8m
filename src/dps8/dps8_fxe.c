@@ -151,6 +151,7 @@ static bool FXEinitialized = false;
 
 static int libIdx;
 static int errIdx;
+static int slIdx;
 static int ssaIdx;
 static int clrIdx;
 static int dsegIdx;
@@ -2575,6 +2576,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     errIdx = installLibrary ("error_table_");
     installLibrary ("sys_info");
     initSysinfo ();
+    slIdx = installLibrary ("search_list_defaults_");
 
 #define IOCB_USER_INPUT 0
 #define IOCB_USER_OUTPUT 1
@@ -3817,8 +3819,15 @@ static int initiateSegment (char * dir, char * entry,
     int fd = open (upathname, O_RDONLY);
     if (fd < 0)
       {
-        sim_printf ("ERROR: Unable to open '%s': %d\n", entry, errno);
-        return -1;
+
+// Fallback: try the UNIX cwd; maintains compatibility with earlier 
+// version of FXE.
+        fd = open (entry, O_RDONLY);
+        if (fd < 0)
+          {
+            sim_printf ("ERROR: Unable to open '%s': %d\n", entry, errno);
+            return -1;
+          }
       }
 
     off_t flen = lseek (fd, 0, SEEK_END);
@@ -4454,10 +4463,19 @@ sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
     word15 segno;
     word18 value;
     word24 code = 0;
-    int idx;
+    int rc, idx;
     word36 ptr [2];
 
-    int rc = resolveName (arg2, arg3, & segno, & value, & idx);
+    if (strcmp (arg2, "translator.search") == 0)
+      {
+         rc = lookupDef (slIdx, "search_list_defaults_", arg3, & value);
+sim_printf ("lookupDef(search_list_defaults_, %s) returned %d\n", arg3, rc);
+         segno = KST [slIdx] . segno;
+      }
+    else
+      {
+        rc = resolveName (arg2, arg3, & segno, & value, & idx);
+      }
     if (! rc)
       {
         sim_printf ("WARNING: make_ptr resolve fail %s|%s\n", arg2, arg3);
@@ -5088,7 +5106,9 @@ static void trapHCS_FsGetPathName (void)
 #endif
     strcpyNonVarying (ap4, NULL, KST [idx] . segname); 
 
-//sim_printf ("returning idx %d segno %05o entryName %s\n", idx, segno, KST [idx] . segname);
+//sim_printf ("get_pathname returning idx %d segno %05o entryName %s\n", idx, segno, KST [idx] . segname);
+//sim_printf ("get_pathname dsize %d pathname %s\n", t [ARG2] . dSize, KST [idx] . pathname);
+
 done:;
     // code
     word24 ap5 = t [ARG5] . argAddr;
@@ -5165,7 +5185,7 @@ static void trapHCS_chnameSeg (void)
     strcpyC (ap3, d3size, newname);
     trimTrailingSpaces (newname);
 
-    // sim_printf ("segno %05o %s %s->%s\n", segno, KST [idx] . segname, oldname, newname);
+    sim_printf ("chname segno %05o %s %s->%s\n", segno, KST [idx] . segname, oldname, newname);
 
     if (strncmp (KST [idx] . segname, oldname, SEGNAME_LEN))
       sim_printf ("WARNING: chname_seg old (%s) != KST (%s)\n",
