@@ -118,6 +118,7 @@
 #include "area_header_v2pl1.incl.pl1.h"
 #include "aim_template.incl.pl1.h"
 #include "status_structures.incl.pl1.h"
+#include "acl_structures.incl.pl1.h"
 
 
 //
@@ -614,7 +615,7 @@ static int lookupSegname (char * name)
   {
     for (uint i = 0; i < N_SEGS; i ++)
       if (strcmp (name, KST [i] . segname) == 0)
-        return 1;
+        return i;
     return -1;
   }
 
@@ -1102,7 +1103,7 @@ static void installSDW (int segIdx)
         return;
      }
     word15 segno = e -> segno;
-    // sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
+    // sim_printf ("install idx %d segno %o (%s) @ %08o len %d bound %o\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen, (e -> seglen - 1) >> 4);
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     word36 * odd  = M + DESCSEG + 2 * segno + 1;  
 
@@ -1163,7 +1164,7 @@ static void trapPHCS_SetKSTAttributes (void);
 static void trapPHCS_Deactivate (void);
 static void trapGetLineLengthSwitch (void);
 static void trapGetSegPtr (void);
-static void trapGetSegment (void);
+//static void trapGetSegment (void);
 static void trapGetType (void);
 static void trapFXE_UnhandledSignal (void);
 static void trapFXE_ReturnToFXE (void);
@@ -1182,6 +1183,10 @@ static void trapHCS_GetRingBrackets (void);
 static void trapHCS_TruncateSeg (void);
 static void trapHCS_GetMaxLengthSeg (void);
 static void trapHCS_SetMaxLengthSeg (void);
+static void trapHCS_AddAclEntries (void);
+static void trapHCS_DeleteAclEntries (void);
+static void trapHCS_ListAcl (void);
+static void trapHCS_ReplaceAcl (void);
 
 // debugging traps
 #if 0
@@ -1214,6 +1219,10 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "truncate_seg", trapHCS_TruncateSeg },
     { "hcs_", "get_max_length_seg", trapHCS_GetMaxLengthSeg },
     { "hcs_", "set_max_length_seg", trapHCS_SetMaxLengthSeg },
+    { "hcs_", "add_acl_entries", trapHCS_AddAclEntries },
+    { "hcs_", "delete_acl_entries", trapHCS_DeleteAclEntries },
+    { "hcs_", "list_acl", trapHCS_ListAcl },
+    { "hcs_", "replace_acl", trapHCS_ReplaceAcl },
     { "cpu_time_and_paging_", "cpu_time_and_paging_", trapHCS_cpu_time_and_paging },
 
     { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
@@ -1223,7 +1232,7 @@ static trapNameTableEntry trapNameTable [] =
 
     { "slt_manager", "get_seg_ptr", trapGetSegPtr },
 
-    { "tssi_", "get_segment", trapGetSegment },
+    //{ "tssi_", "get_segment", trapGetSegment },
 
     { "fs_util_", "get_type", trapGetType },
 
@@ -1671,7 +1680,7 @@ static void readSegment (int fd, int segIdx/* , off_t flen*/)
       {
         if (n != 5 && n != 9)
           {
-            sim_printf ("ERROR: readSegment: garbage at end of segment lost %ld\n", n);
+            //sim_printf ("ERROR: readSegment: garbage at end of segment lost %ld\n", n);
           }
         if (seglen > MAX18)
           {
@@ -2096,7 +2105,7 @@ static int installLibrary (char * name)
         setSegno (idx, segno);
         //sim_printf ("assigning %d to %s\n", segno, name);
       }
-    sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
+    //sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
     if (slteIdx < 0) // segment not in slte
       {
         KST [idx] . R1 = FXE_RING;
@@ -2563,7 +2572,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 
     // sim_printf ("Loading library segment\n");
 
-    libIdx = installLibrary (">>bound_library_wired_");
+    libIdx = installLibrary ("bound_library_wired_");
     if (libIdx < 0)
       {
         sim_printf ("ERROR: unable to load bound_library_wired_\n");
@@ -3093,6 +3102,7 @@ typedef struct argTableEntry
 #define ARG6 5
 #define ARG7 6
 #define DESC_PTR 13
+#define DESC_BITS 19
 #define DESC_FIXED 1
 #define DESC_CHAR_SPLAT 21
 
@@ -3589,6 +3599,7 @@ static void trapGetSegPtr (void)
     doRCU (true); // doesn't return
   }
 
+#if 0
 static void trapGetSegment (void)
   {
 ///*  The get_segment entry returns a pointer to segment dirname>ename.  The
@@ -3641,7 +3652,8 @@ static void trapGetSegment (void)
 
 //  call hcs_$make_seg(dir,enm,"",01100b,segp,code); /* try to make seg */
 
-    word6 mode = 014;
+    //word6 mode = 014;
+    word6 mode = 012;
 
     // Is the segment known?
 
@@ -3659,15 +3671,18 @@ static void trapGetSegment (void)
     idx = loadSegment (ename); // XXX ignoring dir_name
     if (idx >= 0)
       {
-sim_printf ("getSegment likes loadSegment\n");
+        //sim_printf ("getSegment likes loadSegment\n");
         // XXX ignoring term_$nomakeunknown
         sim_printf ("WARNING: ignoring term_$nomakeunknown\n");
-        // XXX ignoring hcs_$truncate_seg
-        sim_printf ("WARNING: ignoring hcs_$truncate_seg\n");
+        // hcs_$truncate_seg (segp, 0, code)
+        //sim_printf ("get_segment  zeroing segno %05o seglen %07o\n", KST [idx] . segno, KST [idx] . seglen);
+        word24 physmem = KST [idx] . physmem;
+        for (uint i = 0; i < KST [idx] . seglen; i ++)
+          M [physmem + i] = 0;
       }
     else
       {
-sim_printf ("getSegment likes allocateSegment\n");
+         //sim_printf ("getSegment likes allocateSegment\n");
          // No, create from whole cloth
          idx = allocateSegment (MAX_SEGLEN, ename, allocateSegno (), 
                                 RINGS_ZFF, 
@@ -3707,6 +3722,7 @@ done:;
 
     doRCU (true); // doesn't return
   }
+#endif
 
 static void trapGetType (void)
   {
@@ -3743,12 +3759,12 @@ static void trapGetType (void)
     strcpyC (ap2, d2size, ename);
     trimTrailingSpaces (ename);
 
-    sim_printf ("get_type %s>%s\n", dirname, ename);
+    //sim_printf ("get_type %s>%s\n", dirname, ename);
 
     // Argument 3: type (output)
     word24 ap3 = t [ARG3] . argAddr;
-    word24 dp3 = t [ARG3] . descAddr;
-    word24 d3size = getbits36 (M [dp3], 12, 24);
+    //word24 dp3 = t [ARG3] . descAddr;
+    //word24 d3size = getbits36 (M [dp3], 12, 24);
     strcpyNonVarying (ap3, NULL, "-segment");
 
     // arg 4: code
@@ -3871,7 +3887,7 @@ static int initiateSegment (char * dir, char * entry,
     char * blow;
     while ((blow = strchr (upathname, '>')))
       * blow = '/';
-    sim_printf ("tada> %s\n", upathname);
+    //sim_printf ("tada> %s\n", upathname);
 
     int fd = open (upathname, O_RDONLY);
     if (fd < 0)
@@ -3946,7 +3962,7 @@ static int initiateSegment (char * dir, char * entry,
           {
             if (n != 5 && n != 9)
               {
-                sim_printf ("ERROR: initiateSegment: garbage at end of segment lost %ld\n", n);
+                //sim_printf ("ERROR: initiateSegment: garbage at end of segment lost %ld\n", n);
               }
             if (seglen > MAX18)
               {
@@ -4480,7 +4496,7 @@ static void trapHCS_MakePtr (void)
     // Argument 1: ref name // XXX ignored
     word24 ap1 = t [ARG1] . argAddr;
     word6 d1size = t [ARG1] . dSize;
-sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
+    //sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
     if ((! isNullPtr (ap1)) && d1size)
       {
         sim_printf ("WARNING: make_ptr ref name ignored\n");
@@ -4526,7 +4542,7 @@ sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
     if (strcmp (arg2, "translator.search") == 0)
       {
          rc = lookupDef (slIdx, "search_list_defaults_", arg3, & value);
-sim_printf ("lookupDef(search_list_defaults_, %s) returned %d\n", arg3, rc);
+         //sim_printf ("lookupDef(search_list_defaults_, %s) returned %d\n", arg3, rc);
          segno = KST [slIdx] . segno;
       }
     else
@@ -4617,9 +4633,9 @@ static void trapHCS_StatusMins (void)
     // Argument 3: bit_count
     word24 ap3 = t [ARG3] . argAddr;
     M [ap3] = KST [idx] . seglen * 36u;
-sim_debug (DBG_CAC, & cpu_dev, 
- "status_mins segno %o <%s> seglen %u bitcount %u\n", 
- segno, KST [idx] . segname, KST [idx] . seglen, KST [idx] . seglen * 36u);
+    //sim_debug (DBG_CAC, & cpu_dev, 
+     //"status_mins segno %o <%s> seglen %u bitcount %u\n", 
+     //segno, KST [idx] . segname, KST [idx] . seglen, KST [idx] . seglen * 36u);
 done:;
 
     word24 ap4 = t [ARG4] . argAddr;
@@ -4879,9 +4895,11 @@ static void trapHCS_SetBcSeg (void)
 
     installSDW (idx);
 
-sim_debug (DBG_CAC, & cpu_dev, 
- "set_bc_seg segno %o seglen %u bitcount %u\n", 
- segno, KST [idx] . seglen, KST [idx] . bit_count);
+    sim_debug (DBG_CAC, & cpu_dev, 
+     "set_bc_seg segno %o seglen %u bitcount %u\n", 
+     segno, KST [idx] . seglen, KST [idx] . bit_count);
+    //sim_printf ("set_bc_seg segno %o seglen %u bitcount %u\n", 
+     //segno, KST [idx] . seglen, KST [idx] . bit_count);
 
 done:;
     word24 codePtr = t [ARG3] . argAddr;
@@ -5554,11 +5572,11 @@ static void trapHCS_TruncateSeg (void)
     word24 ap2 = t [ARG2] . argAddr;
     word24 length = M [ap2] & MASK20;
 
-//sim_printf ("seg_ptr %05o length %07o\n", segno, length);
-
+//sim_printf ("truncate segno %05o seglen %07o new length %07o\n", segno, KST [idx] . seglen, length);
     if (length < KST [idx] . seglen)
       {
         word24 physmem = KST [idx] . physmem;
+//sim_printf ("truncate zeroing segno %05o seglen %07o new length %07o\n", segno, KST [idx] . seglen, length);
         for (uint i = length; i < KST [idx] . seglen; i ++)
           M [physmem + i] = 0;
         KST [idx] . seglen = length;
@@ -5611,7 +5629,7 @@ static void trapHCS_GetMaxLengthSeg (void)
     // Argument 2: length
     word24 ap2 = t [ARG2] . argAddr;
     M [ap2] = KST [idx] . allocatedLength;
-sim_printf ("get_max_length_seg %05o length %07o\n", segno, KST [idx] . allocatedLength);
+    //sim_printf ("get_max_length_seg %05o length %07o\n", segno, KST [idx] . allocatedLength);
 
 done:;
     word24 ap3 = t [ARG3] . argAddr;
@@ -5666,6 +5684,348 @@ static void trapHCS_SetMaxLengthSeg (void)
 done:;
     word24 ap3 = t [ARG3] . argAddr;
     M [ap3] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_AddAclEntries (void)
+  {
+// hcs_$add_acl_entries (char (*), char (*), ptr, fixed bin, fixed bin (35))
+// call hcs_$add_acl_entries (dir_name, entry_name, acl_ptr, acl_count, code)
+//
+
+    argTableEntry t [5] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (5, 5, t))
+      return;
+
+    word36 code = 0;
+
+
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about difeq\n");
+        exit (1);
+      }
+//sim_printf ("add_acl_entry idx %s$%s %d\n", dir_name, entryname, idx);
+
+    KSTEntry * e = KST + idx;
+
+    // Argument 3: acl_ptr
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 aclPtr = ITSToPhysmem (M + ap3, NULL);
+    segment_acl_entry * acl_ptr = (segment_acl_entry *) & M [aclPtr];
+
+    // Argument 4: acl_count
+    word24 ap4 = t [ARG4] . argAddr;
+    if (M [ap4] != 1)
+      {
+        sim_printf ("WARNING hcs_$add_acl_entry ignoring acl_count != 1 (%llu)\n", M [ap4]);
+      }
+
+    //sim_printf ("add_acl_entry mode %llo\n", acl_ptr -> mode);
+    e -> R = ((acl_ptr -> mode) & 0400000000000llu) ? 1 : 0;
+    e -> E = ((acl_ptr -> mode) & 0200000000000llu) ? 1 : 0;
+    e -> W = ((acl_ptr -> mode) & 0100000000000llu) ? 1 : 0;
+    installSDW (idx);
+
+    word24 ap5 = t [ARG5] . argAddr;
+    M [ap5] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_DeleteAclEntries (void)
+  {
+// hcs_$delete_acl_entries (char (*), char (*), ptr, fixed bin, fixed bin (35))
+// call hcs_$add_acl_entries (dir_name, entry_name, acl_ptr, acl_count, code)
+//
+
+    argTableEntry t [5] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (5, 5, t))
+      return;
+
+    word36 code = 0;
+
+#if 0
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about difeq\n");
+        exit (1);
+      }
+//sim_printf ("add_acl_entry idx %s$%s %d\n", dir_name, entryname, idx);
+
+    KSTEntry * e = KST + idx;
+
+    // Argument 3: acl_ptr
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 aclPtr = ITSToPhysmem (M + ap3, NULL);
+    segment_acl_entry * acl_ptr = (segment_acl_entry *) & M [aclPtr];
+
+    // Argument 4: acl_count
+    word24 ap4 = t [ARG4] . argAddr;
+    if (M [ap4] != 1)
+      {
+        sim_printf ("WARNING hcs_$add_acl_entry ignoring acl_count != 1 (%llu)\n", M [ap4]);
+      }
+#endif
+
+    word24 ap5 = t [ARG5] . argAddr;
+    M [ap5] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_ListAcl (void)
+  {
+// hcs_$list_acl (char (*), char (*), ptr, ptr, ptr, fixed bin, fixed bin (35))
+// call hcs_$list_acl (dir_name, entry_name, area_ptr, area_ret_ptr, acl_ptr, acl_count, code)
+//
+
+    argTableEntry t [7] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (7, 7, t))
+      return;
+
+    word36 code = 0;
+
+#if 0
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about difeq\n");
+        exit (1);
+      }
+    //sim_printf ("acl_list idx %s$%s %d\n", dir_name, entryname, idx);
+
+    KSTEntry * e = KST + idx;
+#endif
+
+    // Argument 3: area_ptr
+    word24 ap3 = t [ARG3] . argAddr;
+//sim_printf ("list_acl area_ptr %012llo %012llo\n", M [ap3], M [ap3 + 1]);
+    if (isNullPtr (ap3))
+      {
+        sim_printf ("WARNING: list_acl ignoring null area_ptr case\n");
+      }
+    else
+      {
+        //word24 areaPtr = ITSToPhysmem (M + ap3, NULL);
+        // Argument 6: acl_count
+        word24 ap6 = t [ARG6] . argAddr;
+        M [ap6] = 0;
+      }
+
+    // Argument 4: area_ret_ptr
+    //word24 ap4 = t [ARG4] . argAddr;
+    //word24 areaRetPtr = ITSToPhysmem (M + ap4, NULL);
+    //sim_printf ("list_acl area_ret_ptr %012llo %012llo\n", M [ap4], M [ap4 + 1]);
+    //makeNullPtr (M + areaRetPtr);
+
+    word24 ap7 = t [ARG7] . argAddr;
+    M [ap7] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_ReplaceAcl (void)
+  {
+// hcs_$replace_acl (char (*), char (*), ptr, fixed bin, bit (1), fixed bin (35))
+// call hcs_$replace_acl (dir_name, entry_name, acl_ptr, acl_count, no_sysdaemon_sw, code)
+//
+
+    argTableEntry t [6] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_BITS, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (6, 6, t))
+      return;
+
+    word36 code = 0;
+
+#if 0
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about difeq\n");
+        exit (1);
+      }
+    //sim_printf ("acl_list idx %s$%s %d\n", dir_name, entryname, idx);
+
+    KSTEntry * e = KST + idx;
+#endif
+
+#if 0
+    // Argument 3: area_ptr
+    word24 ap3 = t [ARG3] . argAddr;
+//sim_printf ("list_acl area_ptr %012llo %012llo\n", M [ap3], M [ap3 + 1]);
+    if (isNullPtr (ap3))
+      {
+        sim_printf ("WARNING: list_acl ignoring null area_ptr case\n");
+      }
+    else
+      {
+        word24 areaPtr = ITSToPhysmem (M + ap3, NULL);
+        // Argument 6: acl_count
+        word24 ap6 = t [ARG6] . argAddr;
+        M [ap6] = 0;
+      }
+#endif
+
+    word24 ap6 = t [ARG6] . argAddr;
+    M [ap6] = code;
 
     doRCU (true); // doesn't return
   }
