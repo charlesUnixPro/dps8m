@@ -1,4 +1,3 @@
-//#define DBGCAC
 //
 //  dps8_decimal.c
 //  dps8
@@ -13,7 +12,6 @@
 //
 
 #include <stdio.h>
-#include <ctype.h>
 
 #include "dps8.h"
 #include "dps8_cpu.h"
@@ -42,24 +40,20 @@
 //decNumber *decBCDToNumber(const uint8_t *bcd, int length, const int scale, decNumber *dn);
 //uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
 
-#ifdef DBGCAC
 #define PRINTDEC(msg, dn) \
     { \
-        char temp[256]; \
-        decNumberToString(dn, temp); \
-        sim_printf("%s:'%s'\n", msg, temp);   \
-    }
-#else
-#define PRINTDEC(msg, dn) \
-    { \
-        if_sim_debug (DBG_TRACEEXT, & cpu_dev) { \
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev) /**/ \
+        { \
             char temp[256]; \
             decNumberToString(dn, temp); \
             sim_printf("%s:'%s'\n", msg, temp);   \
         } \
     }
-#endif
-
+#define PRINTALL(msg, dn, set) \
+    { \
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev) /**/ \
+        sim_printf("%s:'%s E%d'\n", msg, getBCDn(dn, set->digits), dn->exponent);   \
+    }
 
 /* ------------------------------------------------------------------ */
 /* HWR 6/28/14 18:54 derived from ......                              */
@@ -104,7 +98,7 @@ decContext * decContextDefaultDPS8(decContext *context)
 /* no error is possible unless the adjusted exponent is out of range. */
 /* In these error cases, NULL is returned and the decNumber will be 0.*/
 /* ------------------------------------------------------------------ */
-#ifndef QUIET_UNUSED
+//#ifndef QUIET_UNUSED
 static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale, decNumber *dn)
 {
     const uByte *last=bcd+length-1;  // -> last byte
@@ -121,7 +115,7 @@ static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale,
     //else if (nib<=9) return NULL;   // not a sign nibble
     
     // skip leading zero bytes [final byte is always non-zero, due to sign]
-    for (first=bcd; *first==0;) first++;
+    for (first=bcd; *first==0 && first <= last;) first++;
     digits=(last-first)+1;              // calculate digits ..
     //if ((*first & 0xf0)==0) digits--;     // adjust for leading zero nibble
     if (digits!=0) dn->digits=digits;     // count of actual digits [if 0,
@@ -177,19 +171,10 @@ static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale,
     
     return dn;
 } // decBCDToNumber
-#endif
+//#endif
 
 static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn)
 {
-#ifdef DBGCAC2
-sim_printf ("decBCD9ToNumber length %d <", length);
-for (int i = 0; i < length; i ++)
-  if (isprint (bcd [i]))
-    sim_printf ("%c", bcd [i]);
-  else
-    sim_printf ("\\%03o", bcd [i]);
-sim_printf (">\n");
-#endif
     const word9 *last=bcd+length-1;  // -> last byte
     const word9 *first;              // -> first non-zero byte
     uInt  nib;                       // work nibble
@@ -204,7 +189,11 @@ sim_printf (">\n");
     //else if (nib<=9) return NULL;   // not a sign nibble
     
     // skip leading zero bytes [final byte is always non-zero, due to sign]
+    //for (first=bcd; *first==0;) first++;
+    
+    //Also, a bug in decBCD9ToNumber; in the input is all zeros, the skip leading zeros code wanders off the end of the input buffer....
     for (first=bcd; *first==0 && first <= last;) first++;
+    
     digits=(Int)(last-first)+1;              // calculate digits ..
     //if ((*first & 0xf0)==0) digits--;     // adjust for leading zero nibble
     if (digits!=0) dn->digits=digits;     // count of actual digits [if 0,
@@ -230,9 +219,6 @@ sim_printf (">\n");
     // [unrolled]
     for (;last >= bcd;) {                            // forever
         nib=(unsigned)(*last & 0x0f);
-#ifdef DBGCAC1
-sim_printf ("decBCD9ToNumber digits %d nib %d\n", digits, nib);
-#endif
         // got a digit, in nib
         if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
         
@@ -291,7 +277,7 @@ sim_printf ("decBCD9ToNumber digits %d nib %d\n", digits, nib);
 /* ------------------------------------------------------------------ */
 static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
     
-    PRINTDEC("decBCDFromNumber()", dn);
+    //PRINTDEC("decBCDFromNumber()", dn);
     
     const Unit *up=dn->lsu;     // Unit array pointer
     uByte obyte=0, *out;          // current output byte, and where it goes
@@ -303,15 +289,9 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
     uInt temp;                  // ..
 #endif
     
-#ifdef DBGCAC1
-sim_printf ("decBCDFromNumber 1 dn->digits %d length %d\n", dn->digits, length);
-#endif
     if (dn->digits>length                  // too long ..
         ||(dn->bits & DECSPECIAL)) return NULL;   // .. or special -- hopeless
     
-#ifdef DBGCAC1
-sim_printf ("decBCDFromNumber 2\n");
-#endif
     //if (dn->bits&DECNEG) obyte=DECPMINUS;      // set the sign ..
     //else                obyte=DECPPLUS;
     *scale=-dn->exponent;                      // .. and scale
@@ -338,9 +318,6 @@ sim_printf ("decBCDFromNumber 2\n");
             indigs--;
             cut--;
         }
-#ifdef DBGCAC1
-sim_printf ("decBCDFromNumber obyte %d\n", obyte);
-#endif
         *out=obyte;
         obyte=0;                       // assume 0
         //        if (indigs>0) {
@@ -381,7 +358,7 @@ static void printBCD(decNumber *a, decContext *set, int width)
 }
 #endif
 
-static char *getBCD(decNumber *a)
+static unsigned char *getBCD(decNumber *a)
 {
     static uint8_t bcd[256];
     memset(bcd, 0, sizeof(bcd));
@@ -391,9 +368,21 @@ static char *getBCD(decNumber *a)
     for(int i = 0 ; i < a->digits ; i += 1 )
         bcd[i] += '0';
     
+    return (unsigned char *) bcd;
+    
+    
+}
+static char *getBCDn(decNumber *a, int digits)
+{
+    static uint8_t bcd[256];
+    memset(bcd, 0, sizeof(bcd));
+    int scale;
+    
+    decBCDFromNumber(bcd, digits, &scale, a);
+    for(int i = 0 ; i < digits ; i += 1 )
+        bcd[i] += '0';
+    
     return (char *) bcd;
-    
-    
 }
 
 
@@ -459,7 +448,7 @@ static int calcSF(int sf1, int sf2, int sf3)
     return sf3;
 }
 
-#if 0
+#ifndef QUIET_UNUSED
 static char *formatDecimalOLD(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     
@@ -488,11 +477,6 @@ static char *formatDecimalOLD(decContext *set, decNumber *r, int tn, int n, int 
             break;          // no sign to worry about. Use everything
     }
     
-#ifdef DBGCAC2
-sim_printf ("\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
-sim_printf ("formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
-#endif
-
     sim_debug (DBG_TRACEEXT, & cpu_dev,
       "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
     sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -519,9 +503,7 @@ sim_printf ("formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->d
     
     {
         decNumberTrim(r);   // clean up any trailing 0's
-#ifdef DBGCAC2
-PRINTDEC  ("Trimmed ", r);
-#endif
+        
         int scale;
         char out[256], out2[256];
 
@@ -540,9 +522,6 @@ PRINTDEC  ("Trimmed ", r);
             decNumberFromInt32(&_sf, sf);
             
             r2 = decNumberRescale(&_r2, r, &_sf, set);
-#ifdef DBGCAC2
-PRINTDEC  ("Rescale ", r2);
-#endif
             sim_debug (DBG_TRACEEXT, & cpu_dev,
               "formatDecimal: %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
         }
@@ -570,45 +549,30 @@ PRINTDEC  ("Rescale ", r2);
     
     bzero(out, sizeof(out));
     
-#ifdef DBGCAC2
-sim_printf ("r->digits %d sf %d adjLen %d\n", r->digits, sf, adjLen);
-#endif
     bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
     bool trunc = r->digits > r2->digits;     // did we loose something along the way?
     
-#ifdef DBGCAC2
-sim_printf ("ovr %d trunc %d\n", ovr, trunc);
-#endif
     // now let's check for overflows
     if (!ovr && !trunc)
         //if ((r2->digits <= adjLen) && (r->digits == r2->digits))
     {
         sim_debug (DBG_TRACEEXT, & cpu_dev,
           "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
-#ifdef DBGCAC2
-sim_printf ("OK\n");
-#endif
         if (s == CSFL)
             if (r2->digits < adjLen)
             {
-#ifdef DBGCAC2
-                PRINTDEC("Value 1", r2)
-#endif
+                //PRINTDEC("Value 1", r2)
                 
                 decNumber _s, *sc;
                 int rescaleFactor = r2->exponent - (adjLen - r2->digits);
                 sc = decNumberFromInt32(&_s, rescaleFactor); //r2->exponent - (adjLen - r2->digits));
                 //sc = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));
-#ifdef DBGCAC2
-                PRINTDEC("Value sc", sc)
-#endif
+                //PRINTDEC("Value sc", sc)
 
                 if (rescaleFactor > (adjLen - r2->digits))
                     r2 = decNumberRescale(r2, r2, sc, set);
                 
-#ifdef DBGCAC2
-                PRINTDEC("Value 2", r2)
-#endif
+                //PRINTDEC("Value 2", r2)
             }
         decBCDFromNumber(out, adjLen, &scale, r2);
         for(int i = 0 ; i < adjLen ; i += 1 )
@@ -793,7 +757,8 @@ sim_printf ("OK\n");
 
 
 
-static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+#ifndef QUIET_UNUSED
+static char *formatDecimalNEW(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     
     if (s == CSFL)
@@ -1103,6 +1068,881 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
     decNumberCopy(r, r2);
     return (char *) out;
 }
+#endif
+
+static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+{
+    
+    if (s == CSFL)
+        sf = 0;
+    
+    // XXX what happens if we try to write a negative number to an unsigned field?????
+    // Detection of a character outside the range [0,11]8 in a digit position or a character outside the range [12,17]8 in a sign position causes an illegal procedure fault.
+    
+    // adjust output length according to type ....
+    //This implies that an unsigned fixed-point receiving field has a minimum length of 1 character; a signed fixed-point field, 2 characters; and a floating-point field, 3 characters.
+    
+    int adjLen = n;             // adjLen is the adjusted allowed length of the result taking into account signs and/or exponent
+    switch (s)
+    {
+        case CSFL:              // we have a leading sign and a trailing exponent.
+            if (tn == CTN9)
+                adjLen -= 2;    // a sign and an 1 9-bit exponent
+            else
+                adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
+            break;
+        case CSLS:
+        case CSTS:              // take sign into assount. One less char to play with
+            adjLen -= 1;
+            break;
+        case CSNS:
+            break;          // no sign to worry about. Use everything
+    }
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+    
+    if (adjLen < 1)
+    {
+        // adjusted length is too small for anything but sign and/or exponent
+        //*OVR = 1;
+        
+        // XXX what do we fill in here? Sign and exp?
+        *OVR = true;
+        return (char *)"";
+    }
+    
+    // scale result (if not floating)
+    
+    decNumber _r2;
+    decNumberZero(&_r2);
+    
+    decNumber *r2 = &_r2;
+    
+    decNumber _sf;  // scaling factor
+    {
+        //decNumberTrim(r);   // clean up any trailing 0's
+        
+        int scale;
+        char out[256], out2[256];
+        
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            bzero(out, sizeof(out));
+            bzero(out2, sizeof(out2));
+            
+            decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
+            for(int i = 0 ; i < r->digits ; i += 1 )
+                out[i] += '0';
+            sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
+        }
+        
+        if (s != CSFL)// && sf != 0)
+        {
+            decNumberFromInt32(&_sf, sf);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+            r2 = decNumberRescale(&_r2, r, &_sf, set);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+        }
+        else
+            //*r2 = *r;
+            decNumberCopy(r2, r);
+        
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
+            for(int i = 0 ; i < r2->digits ; i += 1 )
+                out2[i] += '0';
+            
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
+        }
+    }
+    
+    int scale;
+    
+    static uint8_t out[256];
+    
+    bzero(out, sizeof(out));
+    
+    //bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
+    bool ovr = r2->digits > adjLen;          // is integer portion too large to fit?
+    bool trunc = r->digits > r2->digits;     // did we loose something along the way?
+    
+    // now let's check for overflows
+    if (!ovr && !trunc)
+    {
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
+        if (s == CSFL)
+            if (r2->digits < adjLen)
+            {
+                PRINTDEC("Value 1", r2)
+                
+                decNumber _s, *sc;
+                int rescaleFactor = r2->exponent - (adjLen - r2->digits);
+                sc = decNumberFromInt32(&_s, rescaleFactor);
+                
+                PRINTDEC("Value sc", sc)
+                if (rescaleFactor > (adjLen - r2->digits))
+                    r2 = decNumberRescale(r2, r2, sc, set);
+                
+                PRINTDEC("Value 2", r2)
+            }
+        decBCDFromNumber(out, adjLen, &scale, r2);
+        for(int i = 0 ; i < adjLen ; i += 1 )
+            out[i] += '0';
+        //sim_printf("out[ot]='%s'\n", out);
+    }
+    else
+    {
+        ovr = false;
+        trunc = false;
+        
+        // if we get here then we have either overflow or truncation....
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "formatDecimal(!OK%s): r2->digits %d adjLen %d\n", R ? " R" : "", r2->digits, adjLen);
+        
+        // so, what do we do?
+        if (R)
+        {
+            // NB even with rounding you can have an overflow...
+            
+            // if we're in rounding mode then we just make things fit and everything is OK - except if we have an overflow.
+            
+            decNumber *ro = r2; //(s == CSFL ? r : r2);
+            
+            int safe = set->digits;
+            
+            if (ro->digits > adjLen)    //(adjLen + 1))
+            {
+                //set->digits = ro->digits + sf + 1;
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
+                           "formatDecimal(!OK R1): ro->digits %d adjLen %d\n", ro->digits, adjLen);
+
+                set->digits = adjLen;
+                decNumberPlus(ro, ro, set);
+                
+                decBCDFromNumber(out, set->digits, &scale, ro);
+                for(int i = 0 ; i < set->digits ; i += 1 )
+                    out[i] += '0';
+                
+                // HWR 24 Oct 2013
+                char temp[256];
+                strcpy(temp, (char *) out+set->digits-adjLen);
+                strcpy((char *) out, temp);
+                
+                //strcpy(out, out+set->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
+                
+                //sim_debug (DBG_TRACEEXT, & cpu_dev, "R OVR\n");
+                //ovr = true; breaks ET MVN 5
+            }
+            else
+            {
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
+                         "formatDecimal(!OK R2): ro->digits %d adjLen %d\n", ro->digits, adjLen);
+
+                if (s==CSFL)
+                {
+                    
+                    set->digits = adjLen;
+                    decNumberPlus(ro, ro, set);
+                    
+                    decBCDFromNumber(out, adjLen, &scale, ro);
+                    for(int i = 0 ; i < adjLen ; i += 1 )
+                        out[i] += '0';
+                    out[adjLen] = 0;
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2a): %s\n", out);
+
+                }
+                else
+                {
+                    int dig = set->digits;
+                    set->digits = adjLen;
+                    ro = decNumberPlus(ro, ro, set);    // round to adjLen digits
+                    decBCDFromNumber((uint8_t *)out, adjLen, &scale, ro);
+                    set->digits = dig;
+
+                    
+//                    decNumber _i;
+//                    decNumber *i = decNumberToIntegralValue(&_i, ro, set);
+//                    decBCDFromNumber((uint8_t *)out, adjLen, &scale, i);
+                    
+                    for(int j = 0 ; j < adjLen; j += 1 )
+                        out[j] += '0';
+                    
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2b): %s\n", out);
+                }
+                ovr = false;    // since we've rounded we can have no overflow ?????
+            }
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(R3): digits:'%s'\n", out);
+            
+            set->digits = safe;
+            
+            // display int of number
+            
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+            {
+                decNumber _i;
+                decNumber *i = decNumberToIntegralValue(&_i, ro, set);
+                char outi[256];
+                bzero(outi, sizeof(outi));
+                decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
+                for(int j = 0 ; j < adjLen; j += 1 )
+                    outi[j] += '0';
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
+            }
+        }
+        else
+        {
+            // if we're not in rounding mode then we can either have a truncation or an overflow
+            
+            if (s == CSFL)
+            {
+                enum rounding safeR = decContextGetRounding(set);         // save rounding mode
+                decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+                
+                int safe = set->digits;
+                set->digits = adjLen;
+                decNumberPlus(r2, r2, set);
+                
+                decBCDFromNumber(out, r2->digits, &scale, r2);
+                for(int i = 0 ; i < adjLen ; i += 1 )
+                    out[i] += '0';
+                out[adjLen] = 0;
+                
+                set->digits = safe;
+                decContextSetRounding(set, safeR);              // restore rounding mode
+                
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "CSFL TRUNC\n");
+                trunc = true;
+            }
+            else
+            {
+                if (r2->digits < r->digits)
+                {
+                    enum rounding safeR = decContextGetRounding(set);         // save rounding mode
+                    decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+                    
+                    // re-rescale r with an eye towards truncation notrounding
+                    
+                    r2 = decNumberRescale(r2, r, &_sf, set);
+                    
+                    if (r2->digits <= adjLen)
+                        decBCDFromNumber(out, adjLen, &scale, r2);
+                    else
+                        decBCDFromNumber(out, r2->digits, &scale, r2);
+                    for(int i = 0 ; i < adjLen; i += 1 )
+                        out[i] += '0';
+                    out[adjLen] = 0;
+                    
+                    decContextSetRounding(set, safeR);              // restore rounding mode
+                    
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "TRUNC\n");
+                    trunc = true;
+                    
+//                } else if ((r2->digits-sf) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                } else if ((r2->digits) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                {
+                    // OVR
+                    decBCDFromNumber(out, r2->digits, &scale, r2);
+                    for(int i = 0 ; i < r2->digits ; i += 1 )
+                        out[i] += '0';
+                    out[r2->digits] = 0;
+                    
+                    // HWR 24 Oct 2013
+                    char temp[256];
+                    strcpy(temp, (char *) out+r2->digits-adjLen);
+                    strcpy((char *) out, temp);
+                    //strcpy(out, out+r->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
+                    
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "OVR\n");
+                    ovr = true;
+                }
+                else
+                    sim_printf("formatDecimal(?): How'd we get here?\n");
+            }
+        }
+    }
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "formatDecimal(END): ovrflow=%d trunc=%d R=%d out[]='%s'\n", ovr, trunc, R, out);
+    *OVR = ovr;
+    *TRUNC = trunc;
+    
+    decNumberCopy(r, r2);
+    return (char *) out;
+}
+
+// If the lhs is less than the rhs in the total order then the number will be set to the value -1. If they are equal, then number is set to 0. If the lhs is greater than the rhs then the number will be set to the value 1.
+int decCompare(decNumber *lhs, decNumber *rhs, decContext *set)
+{
+    decNumber _cmp, *cmp;
+    cmp = decNumberCompareTotal(&_cmp, lhs, rhs, set);
+    
+    if (decNumberIsZero(cmp))
+        return 0;   // lhs == rhs
+    
+    if (decNumberIsNegative(cmp))
+        return -1;  // lhs < rhs
+    
+    return 1;       // lhs > rhs
+}
+int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
+{
+    decNumber _cmpm, *cmpm;
+    cmpm = decNumberCompareTotalMag(&_cmpm, lhs, rhs, set);
+    
+    if (decNumberIsZero(cmpm))
+        return 0;   // lhs == rhs
+    
+    if (decNumberIsNegative(cmpm))
+        return -1;  // lhs < rhs
+    
+    return 1;       // lhs > rhs
+}
+
+int findFirstDigit(unsigned char *bcd)
+{
+    int i = 0;
+    while (bcd[i] == '0' && bcd[i])
+        i += 1;
+    
+    return i;
+}
+
+/*
+ * output formatting for DV?X (divide) instructions ....
+ */
+static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, decNumber *num, decNumber *den, bool *OVR, bool *TRUNC)
+{
+
+//    decNumber _cmp, *cmp;
+//    cmp = decNumberCompareTotal(&_cmp, num, den, set);
+//    bool bAdj = decNumberIsNegative(cmp);  // if denominator is > numerator then remove leading 0
+//    //    if (bAdj)
+//    sim_printf("bAdj == %d denom > num\n", decNumberToInt32(cmp, set));
+    
+//    decNumber _cmpm, *cmpm;
+//    cmpm = decNumberCompareTotalMag(&_cmpm, num, den, set);
+//    //    bool bNgtD = !decNumberIsZero(cmpm) && !decNumberIsNegative(cmpm);
+//    bool bNgtD = decNumberIsNegative(cmpm);  // if denominator is > numerator then remove leading 0
+//    //    if (bNgtD)
+//    sim_printf("bNgtD == %d |denom > num|\n", decNumberToInt32(cmpm, set));
+
+    bool bDgtN = false;
+
+// this is the sane way to do it.....
+//    bool bDgtN = decCompare(num, den, set) == -1;
+//    if (s == CSFL && bDgtN)
+//        sim_printf("den > num\n");
+
+        // 1) Floating-point quotient
+        //NQ = N2, but if the divisor is greater than the dividend after operand alignment, the leading zero digit produced is counted and the effective precision of the result is reduced by one.
+    if (s == CSFL)
+    {
+        //sim_printf("floating result ...\n");
+        
+//            decNumber _4, _5, _6a, _6b, *op4, *op5, *op6a, *op6b;
+//            
+//            // we want to make exponents the same so as to align the operands.
+//            // ... which one has priority? dividend or divisor? >punt<
+//            
+//            op4 = decNumberReduce(&_4, num, set);
+//            op5 = decNumberReduce(&_5, den, set);
+//
+////            op4 = decNumberCopy(&_4, num);
+////            op5 = decNumberCopy(&_5, den);
+//            
+//            op4->exponent = 0;
+//            op5->exponent = 0;
+//            //op6a = decNumberQuantize(&_6a, op4, op5, set);
+//            //op6b = decNumberQuantize(&_6b, op5, op4,  set);
+//            
+//            //PRINTALL("align 4 (num/dividend)", op4, set);
+//            //PRINTALL("align 5 (den/divisor) ", op5, set);
+//            
+//            PRINTDEC("align 4 (num/dividend)", op4);
+//            PRINTDEC("align 5 (den/divisor) ", op5);
+//            //PRINTDEC("align 6a (nd)         ", op6a);
+//            //PRINTDEC("align 6b (dn)         ", op6b);
+//            
+//            decNumber _cmp, *cmp;
+//            cmp = decNumberCompareTotal(&_cmp, op4, op5, set);
+//            bool bAdj2 = decNumberIsNegative(cmp);  // if denominator is > numerator then remove leading 0
+//            //    if (bAdj)
+//            sim_printf("bAdj2 == %d\n", decNumberToInt32(cmp, set));
+//            
+//            
+//        }
+        
+        //  The dividend mantissa C(AQ) is shifted right and the dividend exponent
+        //  C(E) increased accordingly until
+        //  | C(AQ)0,63 | < | C(Y-pair)8,71 |
+        //  | numerator | < |  denominator  |
+        //  | dividend  | < |    divisor    |
+        
+        // start by determining the characteristic(s) of dividend / divisor
+        
+        decNumber _dend, _dvsr, *dividend, *divisor;
+
+        dividend = decNumberCopy(&_dend, num);
+        divisor = decNumberCopy(&_dvsr, den);
+        
+        // set exponents to zero to yield the characteristic
+        dividend->exponent = 0;
+        divisor->exponent = 0;
+//        
+//        decNumber _one, *one = decNumberFromInt32(&_one, -1);
+//        int c = decCompare(dividend, divisor, set);
+//        sim_printf("c0 = %d\n", c);
+
+        
+        // we want to do a funky fractional alignment here so we can compare the mantissa's
+        
+        unsigned char *c1 = getBCD(num);
+        int f1 = findFirstDigit(c1);
+        dividend = decBCDToNumber(c1+f1, 63, 63, &_dend);
+        PRINTDEC("aligned dividend", dividend);
+        
+        unsigned char *c2 = getBCD(den);
+        int f2 = findFirstDigit(c2);
+        divisor = decBCDToNumber(c2+f2, 63, 63, &_dvsr);
+        PRINTDEC("aligned divisor", divisor);
+        
+        
+//        PRINTALL("BCD 1 num/dividend", dividend, set);
+//        PRINTALL("BCD 1 den/divisor ", divisor, set);
+//
+//            decNumberReduce(dividend, dividend, set);
+//            decNumberReduce(divisor, divisor, set);
+//
+//        PRINTDEC("dividend", dividend);
+//        PRINTDEC("divisor ", divisor);
+//        PRINTALL("BCD 2 num/dividend", dividend, set);
+//        PRINTALL("BCD 2 den/divisor ", divisor, set);
+
+        
+        if (decCompareMAG(dividend, divisor, set) == -1)
+        {
+           // sim_printf("dividend < divisor (aligned)\n");
+            bDgtN = true;
+        }
+            
+    }
+
+    if (s == CSFL)
+        sf = 0;
+    
+    // XXX what happens if we try to write a negative number to an unsigned field?????
+    // Detection of a character outside the range [0,11]8 in a digit position or a character outside the range [12,17]8 in a sign position causes an illegal procedure fault.
+    
+    // adjust output length according to type ....
+    //This implies that an unsigned fixed-point receiving field has a minimum length of 1 character; a signed fixed-point field, 2 characters; and a floating-point field, haracters.
+    
+    int adjLen = n;             // adjLen is the adjusted allowed length of the result taking into account signs and/or exponent
+    switch (s)
+    {
+        case CSFL:              // we have a leading sign and a trailing exponent.
+            if (tn == CTN9)
+                adjLen -= 2;    // a sign and an 1 9-bit exponent
+            else
+                adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
+            break;
+        case CSLS:
+        case CSTS:              // take sign into assount. One less char to play with
+            adjLen -= 1;
+            break;
+        case CSNS:
+            break;          // no sign to worry about. Use everything
+    }
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+    
+    PRINTDEC("fd(1:r):", r);
+    PRINTALL("pa(1:r):", r, set);
+    
+    if (adjLen < 1)
+    {
+        // adjusted length is too small for anything but sign and/or exponent
+        //*OVR = 1;
+        
+        // XXX what do we fill in here? Sign and exp?
+        *OVR = true;
+        return (char *)"";
+    }
+    
+    // scale result (if not floating)
+    
+    decNumber _r2;
+    decNumberZero(&_r2);
+    
+    decNumber *r2 = &_r2;
+    
+    decNumber _sf;  // scaling factor
+    {
+        //decNumberTrim(r);   // clean up any trailing 0's
+        
+        int scale;
+        char out[256], out2[256];
+        
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            bzero(out, sizeof(out));
+            bzero(out2, sizeof(out2));
+            
+            decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
+            for(int i = 0 ; i < r->digits ; i += 1 )
+                out[i] += '0';
+            sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
+        }
+        
+        if (s != CSFL)// && sf != 0)
+        {
+            decNumberFromInt32(&_sf, sf);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+            r2 = decNumberRescale(&_r2, r, &_sf, set);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+        }
+        else
+            //*r2 = *r;
+            decNumberCopy(r2, r);
+        
+        PRINTDEC("fd(2:r2):", r2);
+
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
+            for(int i = 0 ; i < r2->digits ; i += 1 )
+                out2[i] += '0';
+            
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+                       "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
+        }
+    }
+    
+    
+    
+    int scale;
+    
+    static uint8_t out[256];
+    
+    bzero(out, sizeof(out));
+    
+    //bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
+    bool ovr = r2->digits > adjLen;          // is integer portion too large to fit?
+    bool trunc = r->digits > r2->digits;     // did we loose something along the way?
+    
+    
+    //sim_printf("GD2:'%s'\n", getBCD(r2));
+    
+    // now let's check for overflows
+    if (!ovr && !trunc)
+    {
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
+        if (s == CSFL)
+        {
+            if (r2->digits < adjLen)
+            {
+                PRINTDEC("Value 1a", r2)
+                
+                decNumber _s, *sc;
+                int rescaleFactor = r2->exponent - (adjLen - r2->digits);
+                sc = decNumberFromInt32(&_s, rescaleFactor);
+                
+                PRINTDEC("Value sc", sc)
+                if (rescaleFactor > (adjLen - r2->digits))
+                    r2 = decNumberRescale(r2, r2, sc, set);
+                
+                PRINTDEC("Value 2a", r2)
+            } else {
+                PRINTDEC("Value 1b", r2)
+            }
+            
+            // if it's floating justify it ...
+            /// <remark>
+            /// The dps88 and afterwards would generate a quotient with the maximim number of significant digits.
+            /// Not so the dps8. According the manuals "if the divisor is greater than the dividend after operand alignment,
+            ///    the leading zero digit produced is counted and the effective precision of the result is reduced by one."
+            /// No problem. However, according to eis_tester
+            ///             desc 1 -sd l -sf 1 -nn 8;
+            ///             desc 2 -sd t -sf 2 -nn 8;
+            ///             desc 3 -sd f -nn 8;
+            ///
+            ///             data 1 "+" (5)"0" "58";
+            ///             data 2 "000" "1234" "+";
+            ///             data 3 "+" "021275" 376;
+            ///            +0001234(00) / +0000058(0) = +021275 e-2
+            /// by as yet an unknown algorithm
+            /// <remark/>
+            // ... if bAdj then we leave a (single?) leading 0
+            
+            if (!decNumberIsZero(r2))
+            {
+                char *q = getBCDn(r2, adjLen) ;
+                int lz = 0; // leading 0's
+                while (*q)
+                {
+                    //sim_printf("fj:'%s'\n", q);
+
+                    if (*q == '0')
+                    {
+                        lz += 1;
+                        q += 1;
+                    }
+                    else
+                        break;
+                }
+                
+                if (lz)
+                {
+                    decNumber _1;
+                    decNumberFromInt32(&_1, lz);
+                    decNumberShift(r2, r2, &_1, set);
+                    r2->exponent -= lz;
+                }
+            }
+        }
+        
+        
+        decBCDFromNumber(out, adjLen, &scale, r2);
+        
+        for(int i = 0 ; i < adjLen ; i += 1 )
+            out[i] += '0';
+        
+        // add leading 0 and reduce precision if needed
+        if (bDgtN)
+        {
+            for(int i = adjLen - 1 ; i >= 0 ; i -= 1 )
+                out[i + 1] = out[i];
+            out[adjLen] = 0;
+            out[0] = '0';
+            r2->exponent += 1;
+        }
+
+        
+        //sim_printf("out[ot A]='%s'\n", out);
+    }
+    else
+    {
+        PRINTDEC("r2(a):", r2);
+
+        ovr = false;
+        trunc = false;
+        
+        // if we get here then we have either overflow or truncation....
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "formatDecimal(!OK%s): r2->digits %d adjLen %d\n", R ? " R" : "", r2->digits, adjLen);
+        
+        // so, what do we do?
+        if (R)
+        {
+            // NB even with rounding you can have an overflow...
+            
+            // if we're in rounding mode then we just make things fit and everything is OK - except if we have an overflow.
+            
+            decNumber *ro = r2; //(s == CSFL ? r : r2);
+            
+            int safe = set->digits;
+            
+            if (ro->digits > adjLen)    //(adjLen + 1))
+            {
+                //set->digits = ro->digits + sf + 1;
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
+                           "formatDecimal(!OK R1): ro->digits %d adjLen %d\n", ro->digits, adjLen);
+                
+                set->digits = adjLen;
+                decNumberPlus(ro, ro, set);
+                
+                decBCDFromNumber(out, set->digits, &scale, ro);
+                for(int i = 0 ; i < set->digits ; i += 1 )
+                    out[i] += '0';
+                
+                // HWR 24 Oct 2013
+                char temp[256];
+                strcpy(temp, (char *) out+set->digits-adjLen);
+                strcpy((char *) out, temp);
+                
+                //strcpy(out, out+set->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
+                
+                //sim_debug (DBG_TRACEEXT, & cpu_dev, "R OVR\n");
+                //ovr = true; breaks ET MVN 5
+            }
+            else
+            {
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
+                           "formatDecimal(!OK R2): ro->digits %d adjLen %d\n", ro->digits, adjLen);
+                
+                if (s==CSFL)
+                {
+                    
+                    set->digits = adjLen;
+                    decNumberPlus(ro, ro, set);
+                    
+                    decBCDFromNumber(out, adjLen, &scale, ro);
+                    for(int i = 0 ; i < adjLen ; i += 1 )
+                        out[i] += '0';
+                    out[adjLen] = 0;
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2a): %s\n", out);
+                    
+                }
+                else
+                {
+                    int dig = set->digits;
+                    set->digits = adjLen;
+                    ro = decNumberPlus(ro, ro, set);    // round to adjLen digits
+                    decBCDFromNumber((uint8_t *)out, adjLen, &scale, ro);
+                    set->digits = dig;
+                    
+                    for(int j = 0 ; j < adjLen; j += 1 )
+                        out[j] += '0';
+                    
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2b): %s\n", out);
+                }
+                ovr = false;    // since we've rounded we can have no overflow ?????
+            }
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(R3): digits:'%s'\n", out);
+            
+            set->digits = safe;
+            
+            // display int of number
+            
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+            {
+                decNumber _i;
+                decNumber *i = decNumberToIntegralValue(&_i, ro, set);
+                char outi[256];
+                bzero(outi, sizeof(outi));
+                decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
+                for(int j = 0 ; j < adjLen; j += 1 )
+                    outi[j] += '0';
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
+            }
+        }
+        else
+        {
+            // if we're not in rounding mode then we can either have a truncation or an overflow
+            
+            if (s == CSFL)
+            {
+                enum rounding safeR = decContextGetRounding(set);         // save rounding mode
+                decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+
+                PRINTDEC("out[1a]:", r2);
+
+                int safe = set->digits;
+                set->digits = adjLen;
+                decNumberPlus(r2, r2, set);
+
+                PRINTDEC("out[1b]:", r2);
+
+                decBCDFromNumber(out, r2->digits, &scale, r2);
+                for(int i = 0 ; i < adjLen ; i += 1 )
+                    out[i] += '0';
+                out[adjLen] = 0;
+
+                
+                // 1) Floating-point quotient
+                //  NQ = N3, but if the divisor is greater than the dividend after operand alignment, the leading zero digit produced is counted and the effective precision of the result is reduced by one.
+                // -or-
+                // With the divisor (den) greater than the dividend (num), the algorithm generates a leading zero in the quotient. 
+
+                if (bDgtN)
+                {
+                    for(int i = adjLen - 1 ; i >= 0 ; i -= 1 )
+                        out[i + 1] = out[i];
+                    out[adjLen] = 0;
+                    out[0] = '0';
+                    r2->exponent += 1;
+                }
+
+                set->digits = safe;
+                decContextSetRounding(set, safeR);              // restore rounding mode
+                
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "CSFL TRUNC\n");
+                //sim_printf("out[1c %lu]='%s'\n", strlen(out), out);
+
+            }
+            else
+            {
+                if (r2->digits < r->digits)
+                {
+                    enum rounding safeR = decContextGetRounding(set);         // save rounding mode
+                    decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+                    
+                    // re-rescale r with an eye towards truncation notrounding
+                    
+                    r2 = decNumberRescale(r2, r, &_sf, set);
+                    
+                    trunc = true;
+
+                    if (r2->digits <= adjLen)
+                    {
+                        decBCDFromNumber(out, adjLen, &scale, r2);
+                        for(int i = 0 ; i < adjLen; i += 1 )
+                            out[i] += '0';
+                        out[adjLen] = 0;
+                        trunc = false;
+                    }
+                    else
+                    {
+                        decBCDFromNumber(out, r2->digits, &scale, r2);
+                        for(int i = 0 ; i < r2->digits; i += 1 )
+                            out[i] += '0';
+                        out[r2->digits] = 0;
+                        
+                        memcpy(out, out + strlen((char *) out) - adjLen, adjLen);
+                        out[adjLen] = 0;
+                        
+                        ovr = true;
+                        trunc = false;
+                    }
+                    decContextSetRounding(set, safeR);              // restore rounding mode
+                    //sim_printf("out[ot %u]='%s'\n", strlen(out), out);
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "TRUNC\n");
+                    
+                    //                } else if ((r2->digits-sf) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                } else if ((r2->digits) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                {
+                    // OVR
+                    decBCDFromNumber(out, r2->digits, &scale, r2);
+                    for(int i = 0 ; i < r2->digits ; i += 1 )
+                        out[i] += '0';
+                    out[r2->digits] = 0;
+                    
+                    // HWR 24 Oct 2013
+                    char temp[256];
+                    strcpy(temp, (char *) out+r2->digits-adjLen);
+                    strcpy((char *) out, temp);
+                    //strcpy(out, out+r->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
+                    
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "OVR\n");
+                    ovr = true;
+                }
+                else
+                    sim_printf("formatDecimal(?): How'd we get here?\n");
+            }
+        }
+    }
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "formatDecimal(END): ovrflow=%d trunc=%d R=%d out[]='%s'\n", ovr, trunc, R, out);
+    *OVR = ovr;
+    *TRUNC = trunc;
+    
+    decNumberCopy(r, r2);
+    return (char *) out;
+}
 
 /*
  * decimal EIS instructions ... 
@@ -1117,9 +1957,6 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
 // CANFAULT
 void ad2d (void)
 {
-#ifdef DBGCAC
-sim_printf ("AD2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * i = & currentInstruction;
     EISstruct *e = &i->e;
     setupOperandDescriptor(1, e);
@@ -1169,7 +2006,9 @@ sim_printf ("AD2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -1388,9 +2227,6 @@ sim_printf ("AD2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void ad3d (void)
 {
-#ifdef DBGCAC
-sim_printf ("AD3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -1443,7 +2279,8 @@ sim_printf ("AD3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 //    }
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -1525,7 +2362,16 @@ sim_printf ("AD3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     bool Ovr = false, Trunc = false;
     
+    int jf = calcSF(e->SF1, e->SF2, e->SF3);    // justification factor
+    
+    
     char *res = formatDecimal(&set, op3, e->dstTN, e->N3, e->S3, e->SF3, e->R, &Ovr, &Trunc);
+    
+    if (decNumberIsZero(op3) && (int) strlen(res) < jf && !e->R)  // may need to move to formatDecimal()
+        Trunc = true;
+    
+    // If S3 indicates a fixed-point format, the results are stored using scale factor SF3, which causes leading or trailing zeros (4 bits - 0000, 9 bits - 000110000) to be supplied and/or most significant digit overflow or least significant digit truncation to occur.
+    
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -1680,9 +2526,6 @@ sim_printf ("AD3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void sb2d (void)
 {
-#ifdef DBGCAC
-sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -1731,7 +2574,8 @@ sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -1809,7 +2653,7 @@ sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-    decNumber *op3 = decNumberSubtract(&_3, op1, op2, &set);
+    decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
     
     bool Ovr = false, Trunc = false;
     
@@ -1950,9 +2794,6 @@ sim_printf ("SB2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void sb3d (void)
 {
-#ifdef DBGCAC
-sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -2005,7 +2846,9 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 //    }
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -2083,7 +2926,7 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-    decNumber *op3 = decNumberSubtract(&_3, op1, op2, &set);
+    decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
     
     bool Ovr = false, Trunc = false;
     
@@ -2092,7 +2935,7 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     if (decNumberIsZero(op3))
         op3->exponent = 127;
     
-    //printf("%s\r\n", res);
+    //sim_printf("%s\r\n", res);
     
     // now write to memory in proper format.....
     switch(e->S3)
@@ -2127,14 +2970,11 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         {
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                    //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
                     EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                 else
-                    //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
                     EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                 break;
             case CTN9:
-                //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
                 EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
         }
@@ -2150,11 +2990,9 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         switch(e->dstTN)
     {
         case CTN4:
-            //write49(e, &dstAddr, &pos, e->dstTN, res[i] - '0');
             EISwrite49(&e->ADDR3, &pos, e->dstTN, res[i] - '0');
             break;
         case CTN9:
-            //write49(e, &dstAddr, &pos, e->dstTN, res[i]);
             EISwrite49(&e->ADDR3, &pos, e->dstTN, res[i]);
             break;
     }
@@ -2167,14 +3005,11 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             {
                 case CTN4:
                     if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  013);  // special +
                         EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
                     else
-                        //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? 015 :  014);  // default +
                         EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  014);  // default +
                     break;
                 case CTN9:
-                        //write49(e, &dstAddr, &pos, e->dstTN, decNumberIsNegative(op3) ? '-' : '+');
                         EISwrite49(&e->ADDR3, &pos, e->dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                     break;
             }
@@ -2185,14 +3020,11 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             switch(e->dstTN)
             {
                 case CTN4:
-                    //write49(e, &dstAddr, &pos, e->dstTN, (op3->exponent >> 4) & 0xf); // upper 4-bits
-                    //write49(e, &dstAddr, &pos, e->dstTN,  op3->exponent       & 0xf); // lower 4-bits
                     EISwrite49(&e->ADDR3, &pos, e->dstTN, (op3->exponent >> 4) & 0xf); // upper 4-bits
                     EISwrite49(&e->ADDR3, &pos, e->dstTN,  op3->exponent       & 0xf); // lower 4-bits
 
                     break;
                 case CTN9:
-                    //write49(e, &dstAddr, &pos, e->dstTN, op3->exponent & 0xff);    // write 8-bit exponent
                     EISwrite49(&e->ADDR3, &pos, e->dstTN, op3->exponent & 0xff);    // write 8-bit exponent
                     break;
             }
@@ -2243,9 +3075,6 @@ sim_printf ("SB3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void mp2d (void)
 {
-#ifdef DBGCAC
-sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -2294,7 +3123,9 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -2503,6 +3334,7 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         if (! TSTF (cu.IR, I_OMASK))
             doFault(overflow_fault, 0,"mp2d overflow fault");
     }
+    
 }
 
 /*
@@ -2511,9 +3343,6 @@ sim_printf ("MP2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void mp3d (void)
 {
-#ifdef DBGCAC
-sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -2575,6 +3404,7 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
+    
     /*
      * Here we need to distinguish between 4 type of numbers.
      *
@@ -2612,9 +3442,6 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
-#ifdef DBGCAC
-    PRINTDEC("op1", op1);
-#endif
     
     
     EISloadInputBufferNumeric(ins, 2);   // according to MF2
@@ -2646,14 +3473,8 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
         op2->bits = DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
-#ifdef DBGCAC
-    PRINTDEC("op2", op2);
-#endif
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
-#ifdef DBGCAC
-    PRINTDEC("op3", op3);
-#endif
     
     bool Ovr = false, Trunc = false;
     
@@ -2662,9 +3483,7 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     if (decNumberIsZero(op3))
         op3->exponent = 127;
     
-#ifdef DBGCAC
-    printf("result %s %d\r\n", res, op3 -> exponent);
-#endif
+    //printf("%s\r\n", res);
     
     // now write to memory in proper format.....
     switch(e->S3)
@@ -2798,7 +3617,6 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     }
 }
 
-
 /*
  * dv2d - Divide Using Two Decimal Operands
  */
@@ -2806,9 +3624,6 @@ sim_printf ("MP3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 // CANFAULT
 void dv2d (void)
 {
-#ifdef DBGCAC
-sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -2857,7 +3672,8 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -2898,7 +3714,7 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);    // divisor
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
@@ -2929,17 +3745,26 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             break;  // no sign wysiwyg
     }
     
-    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);    // dividend
     if (e->sign == -1)
         op2->bits = DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Yes, they're reversed
+    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Quotient (Yes, they're reversed)
+
+    PRINTDEC("op2", op2);
+    PRINTDEC("op1", op1);
+    PRINTDEC("op3", op3);
+
+    // In a floating-point divide operation, the required number of quotient digits is determined as follows. With the divisor greater than the dividend, the algorithm generates a leading zero in the quotient. This characteristic of the algorithm is taken into account along with rounding requirements when determining the required number of digits for the quotient, so that the resulting quotient contains as many significant digits as specified by the quotient operand descriptor.
+    
+    
     
     bool Ovr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, e->dstTN, e->N2, e->S2, e->SF2, e->R, &Ovr, &Trunc);
+    //char *res = formatDecimal(&set, op3, e->dstTN, e->N2, e->S2, e->SF2, e->R, &Ovr, &Trunc);
+    char *res = formatDecimalDIV(&set, op3, e->dstTN, e->N2, e->S2, e->SF2, e->R, op2, op1, &Ovr, &Trunc);
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -3064,9 +3889,6 @@ sim_printf ("DV2D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 void dv3d (void)
 // CANFAULT
 {
-#ifdef DBGCAC
-sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
@@ -3119,15 +3941,17 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
 //    }
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
     set.traps=0;
-    set.digits=65;
+    //set.digits=65;
     
     decNumber _1, _2, _3;
     
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
+    
     /*
      * Here we need to distinguish between 4 type of numbers.
      *
@@ -3161,14 +3985,12 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             break;  // no sign wysiwyg
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    //PRINTDEC("op1", op1);
     
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
-#ifdef DBGCAC
-    PRINTDEC("op1", op1);
-#endif
     
     
     EISloadInputBufferNumeric(ins, 2);   // according to MF2
@@ -3201,9 +4023,6 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-#ifdef DBGCAC
-    PRINTDEC("op2", op2);
-#endif
     // TODO: Need to check/implement this
     // The number of required quotient digits, NQ, is determined before division begins as follows:
     //  1) Floating-point quotient
@@ -3220,22 +4039,21 @@ sim_printf ("DV3D %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     
     
     decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Yes, they're switched
-#ifdef DBGCAC
+    
+    PRINTDEC("op2", op2);
+    PRINTDEC("op1", op1);
     PRINTDEC("op3", op3);
-#endif
     
     bool Ovr = false, Trunc = false;
      
-    int SF = calcSF(e->SF1, e->SF2, e->SF3);
+    //int SF = calcSF(e->SF1, e->SF2, e->SF3);
     
-    char *res = formatDecimal(&set, op3, e->dstTN, e->N3, e->S3, SF, e->R, &Ovr, &Trunc);
+    char *res = formatDecimalDIV(&set, op3, e->dstTN, e->N3, e->S3, e->SF3, e->R, op2, op1, &Ovr, &Trunc);
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
     
-#ifdef DBGCAC
-    printf("result %s %d\r\n", res, op3 -> exponent);
-#endif
+    //printf("%s\r\n", res);
     
     // now write to memory in proper format.....
     switch(e->S3)
@@ -3524,9 +4342,6 @@ void cmpn (void)
 // CANFAULT
 void mvn (void)
 {
-#ifdef DBGCAC2
-sim_printf ("MVN %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
-#endif
     /*
      * EXPLANATION:
      * Starting at location YC1, the decimal number of data type TN1 and sign and decimal type S1 is moved, properly scaled, to the decimal number of data type TN2 and sign and decimal type S2 that starts at location YC2.
@@ -3554,10 +4369,6 @@ sim_printf ("MVN %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
     e->dstTN = e->TN2;    // type of chars in dst
     e->dstCN = e->CN2;    // starting at char pos CN
     
-#ifdef DBGCAC2
-    sim_printf ("mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n", e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
-    sim_printf ("mvn(2): OP1 %012llo OP2 %012llo\n", e->OP1, e->OP2);
-#endif
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n", e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mvn(2): SF1 %d              SF2 %d\n", e->SF1, e->SF2);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mvn(3): OP1 %012llo OP2 %012llo\n", e->OP1, e->OP2);
@@ -3592,34 +4403,25 @@ sim_printf ("MVN %lld %06o:%06o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC);
             else
                 n1 -= 1;    // 1 9-bit digit exponent
             sc1 = 0;        // no scaling factor
-#ifdef DBGCAC2
-sim_printf ("MVN CSFL n1 %d sc1 %d\n", n1, sc1);
-#endif
             break;
         
         case CSLS:
         case CSTS:
             n1 = e->N1 - 1; // only 1 sign
             sc1 = -e->SF1;
-#ifdef DBGCAC2
-sim_printf ("MVN CSLS/CSTS n1 %d sc1 %d\n", n1, sc1);
-#endif
             break;
         
         case CSNS:
             n1 = e->N1;     // no sign
             sc1 = -e->SF1;
-#ifdef DBGCAC2
-sim_printf ("MVN CSNS n1 %d sc1 %d\n", n1, sc1);
-#endif
             break;  // no sign wysiwyg
     }
     
-    sim_debug (DBG_TRACEEXT, & cpu_dev,
-      "n1 %d sc1 %d\n",
-      n1, sc1);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "n1 %d sc1 %d\n", n1, sc1);
 
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    
+    
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
@@ -3632,20 +4434,12 @@ sim_printf ("MVN CSNS n1 %d sc1 %d\n", n1, sc1);
         PRINTDEC("mvn input (op1)", op1);
     }
     
-#ifdef DBGCAC2
-PRINTDEC("op1 ", op1)
-#endif
     bool Ovr = false, Trunc = false;
     
 //    int SF = calcSF(e->SF1, e->SF2, 0);
 //    char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, SF, e->R, &Ovr, &Trunc);
     
     char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, e->SF2, e->R, &Ovr, &Trunc);
-    
-#ifdef DBGCAC2
-sim_printf ("SF1 %d SF2 %d SF %d\n", e->SF1, e->SF2,SF);
-sim_printf ("res %s\n", res);
-#endif
     
     if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         sim_printf("mvn res: '%s'\n", res);
@@ -3785,6 +4579,7 @@ sim_printf ("res %s\n", res);
         if (! TSTF (cu.IR, I_OMASK))
           doFault(overflow_fault, 0,"mvn overflow fault");
     }
+
 }
 
 

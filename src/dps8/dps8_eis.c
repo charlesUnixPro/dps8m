@@ -2806,7 +2806,7 @@ void dtb(DCDstruct *ins)
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
-        ; // generate ill proc fault
+        ; // XXX generate ill proc fault
     }
 
     e->_flags = cu.IR;
@@ -4615,8 +4615,8 @@ void mlr(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    if (e->N1 > e->N2 && e -> T)
-      doFault(overflow_fault, 0, "mlr truncation fault");
+    //if (e->N1 > e->N2 && e -> T)
+      //doFault(overflow_fault, 0, "mlr truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -4657,6 +4657,8 @@ void mlr(DCDstruct *ins)
         cleanupOperandDescriptor(1, e);
         cleanupOperandDescriptor(2, e);
 #endif
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
         return;
       }
 
@@ -4683,17 +4685,17 @@ void mlr(DCDstruct *ins)
         cleanupOperandDescriptor(1, e);
         cleanupOperandDescriptor(2, e);
 #endif
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 <= N2
         return;
       }
 
     for(uint i = 0 ; i < min(e->N1, e->N2); i += 1)
     {
-        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
         int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
         int cout = 0;
         
         if (e->TA1 == e->TA2) 
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA1, c);
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA1, c);
         else
         {
@@ -4732,7 +4734,6 @@ void mlr(DCDstruct *ins)
                 bOvp = isOvp(c, &on);
                 cout = on;      // replace char with the digit the overpunch represents
             }
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cout);
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cout);
         }
     }
@@ -4747,20 +4748,19 @@ void mlr(DCDstruct *ins)
             if (ovp && (i == e->N2-1))    // if there's an overpunch then the sign will be the last of the fill
             {
                 if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                    //write469(e, &e->dstAddr, &e->dstCN, e->TA2, 015);  // 015 is decimal -
                     EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, 015);  // 015 is decimal -
                 else
-                    //write469(e, &e->dstAddr, &e->dstCN, e->TA2, 014);  // 014 is decimal +
                     EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, 014);  // 014 is decimal +
             }
             else
-                //write469(e, &e->dstAddr, &e->dstCN, e->TA2, fillT);
                 EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, fillT);
     }
 #ifdef EIS_CACHE
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
 #endif
+    if (e->N1 > e->N2 && e -> T)
+      doFault(overflow_fault, 0, "mlr truncation fault");
 }
 
 /*
@@ -4908,8 +4908,8 @@ void mrl(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    if (e->N1 > e->N2 && e -> T)
-      doFault(overflow_fault, 0, "mrl truncation fault");
+    //if (e->N1 > e->N2 && e -> T)
+      //doFault(overflow_fault, 0, "mrl truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -4988,6 +4988,8 @@ void mrl(DCDstruct *ins)
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
 #endif
+    if (e->N1 > e->N2 && e -> T)
+      doFault(overflow_fault, 0, "mrl truncation fault");
 }
 
 static word9 xlate(word36 *xlatTbl, int dstTA, int c)
@@ -5181,7 +5183,6 @@ void mvt(DCDstruct *ins)
         int cidx = 0;
     
         if (e->TA1 == e->TA2)
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA1, xlate(xlatTbl, e->dstTA, c));
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA1, xlate(xlatTbl, e->dstTA, c));
         else
         {
@@ -5225,7 +5226,6 @@ void mvt(DCDstruct *ins)
                     break;
             }
             
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cout);
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cout);
         }
     }
@@ -5273,7 +5273,6 @@ void mvt(DCDstruct *ins)
 //        }
         
         for(uint j = e->N1 ; j < e->N2 ; j += 1)
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cfill);
             EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cfill);
     }
 #ifdef EIS_CACHE
