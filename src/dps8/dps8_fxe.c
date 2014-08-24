@@ -1049,14 +1049,28 @@ static int lookupEntry (int segIdx, char * entryName, word18 * value)
 
     while (* (word36 *) p)
       {
+//sim_printf ("ignore %d class %d %s\n", p -> ignore, p -> class, sprintACC (defBase + p -> symbol));
         if (p -> ignore != 0)
           goto next;
-        if (p -> class != 3)  // Not segment name?
-          goto next;
-        if (accCmp (defBase + p -> symbol, entryName))
+        if (p -> class == 3)  // Segment name?
           {
-            //sim_printf ("hit\n");
-            break;
+            if (accCmp (defBase + p -> symbol, entryName))
+              {
+                //sim_printf ("hit segname\n");
+                break;
+              }
+          }
+        else if (p -> class == 0 && p -> entry) // Text section entry point?
+          {
+            //sim_printf ("text section %d <", p -> entry);
+            //printACC (defBase + p -> symbol);
+            //sim_printf (">\n");
+            if (accCmp (defBase + p -> symbol, entryName))
+              {
+                //sim_printf ("hit entryname\n");
+                * value =  p -> value;
+                return 1;
+              }
           }
 next:
         p = (definition *) (defBase + p -> forward);
@@ -3357,6 +3371,12 @@ static void trapFXE_Control (void)
         doRCU (true); // doesn't return
       }
 #endif
+
+    word24 code = 0;
+
+    // arg 4: code
+    word24 codePtr = t [ARG4] . argAddr;
+    M [codePtr] = code;
 
     doRCU (true); // doesn't return
   }
