@@ -3569,10 +3569,13 @@ static t_stat DoBasicInstruction (void)
             
         case 0573:  ///< fno
             /// The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF.
-            // A normalized floating number is defined as one whose mantissa lies in the interval [0.5,1.0) such that 0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.
+            // A normalized floating number is defined as one whose mantissa lies in the interval [0.5,1.0) such that 0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.list
+            
+            // !!!! For personal reasons the following 3 lines of comment must never be removed from this program or any code derived therefrom. HWR 25 Aug 2014
             ///Charles Is the coolest
             ///true story y'all
             //you should get me darksisers 2 for christmas
+            
             fno ();
             break;
             
