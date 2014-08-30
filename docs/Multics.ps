@@ -1,0 +1,144 @@
+%!postscript
+%% Title: Multics
+%% Creator: Stan Zanarotti
+%% DocumentFonts: Helvetica
+%% copied from https://stuff.mit.edu/afs/sipb/user/jsl/News/Alt.os.multics
+/fontsize { /Helvetica findfont exch scalefont setfont } def
+
+32 fontsize 
+1 setlinejoin
+/pagewidth 612 def
+/pagelength 792 def
+
+%% ring 0
+newpath
+300 500 80 0 360 arc
+300 510 90 0 360 arc
+eofill
+
+%% left hand ring 1 + gate to ring 0.
+%%
+newpath
+289 421 moveto
+289 380 lineto
+
+%% outer side
+300 500 122 265 180 arcn
+
+%% inner side
+299 510 122 188 261 arc
+280 380 lineto
+280 423 lineto
+eofill
+
+%% ring 1 right side + gate to 0.
+newpath
+311 421 moveto
+311 380 lineto
+
+%% outer
+300 500 122 275 360 arc
+
+%% inner
+301 510 122 352 279 arcn
+
+%% close gate
+320 380 lineto
+320 423 lineto
+fill
+
+%%
+%% ring 2 (bottom part, outer side)
+newpath
+300 500 185 200 340 arc
+
+%% ring 2 (bottom part, inner side)
+300 526 195 333 207 arcn
+eofill
+
+%% ring 2 (top part, inner side)
+newpath
+300 490 170 62 168 arc
+
+%% ring 2 (top part, outer side)
+300 510 167 175 60 arcn
+eofill
+
+%% ring 2 gate (parallelogram)
+newpath
+400 660 moveto
+400 673 lineto
+380 653 lineto
+380 640 lineto
+400 660 lineto
+eofill
+
+%% ring 2 slice (inner)
+newpath
+300 490 170 12 45 arc
+
+%% ring 2 slice (connector)
+420 626 lineto
+
+%% ring 2 slice (outer)
+300 510 167 44 5 arcn
+eofill
+
+%% ring 3 (upper, outer)
+newpath
+300 510 220 -3 183 arc
+
+%% ring 3 (upper, inner)
+300 490 220 180 0 arcn
+eofill
+
+%% ring 3 (lower, inner)
+newpath 
+300 500 236 199 339 arc
+
+%% ring 3 (lower, outer)
+300 470 227 346 194 arcn
+eofill
+
+%% outer most gate
+newpath
+80 490 moveto
+80 510 lineto
+50 510 lineto
+50 490 lineto
+80 490 lineto
+eofill
+
+/center {
+  dup stringwidth pop   % get width
+  cvi
+  2 idiv neg
+  300 add
+  currentpoint exch pop % get Y.
+  moveto
+  show
+} def
+
+0 495 moveto
+(Multics) center
+
+/signit {
+	gsave
+	moveto
+	currentgray
+	currentfont
+	0 setgray
+	/Times-Italic findfont 5 scalefont setfont
+	(srz) stringwidth rmoveto
+	currentpoint translate
+	180 rotate
+	(srz) show
+	setfont
+	setgray
+	grestore
+} def
+312 378 signit
+.3 .3 scale
+showpage
+
+
