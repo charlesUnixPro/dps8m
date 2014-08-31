@@ -1,3 +1,23 @@
+Sat Aug 30 19:45:48 PDT 2014
+
+EIS code reworked. Now passes all 661 eis_tester tests.
+
+Sun Jul 27 15:54:13 PDT 2014 
+
+Significent improvements to the code; 
+    it now boots to 'bce (boot)'. 
+    * Fixes to the interrupt system. 
+    * Fixes to EIS instructions. 
+    * Fixes to several missing or incomplete instructions. 
+    * Working Disk system. 
+    * Incomplete but functioning FXE. 
+    * Rewrite of tarball creation script. 
+    
+    A new tarball has been created from the faults branch with these fixes. 
+    
+    Read the included RELEASE_NOTES.txt for instructions on booting.
+
+
 Sat Jun 28 20:24:09 PDT 2014
 
 More IOM haking ^H^H^H^H^H^H^H work. 
