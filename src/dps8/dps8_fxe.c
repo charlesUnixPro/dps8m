@@ -103,6 +103,7 @@
 #include "dps8_fxe.h"
 
 #include "object_map.incl.pl1.h"
+#include "object_glop.incl.pl1.h"
 #include "definition_dcls.incl.pl1.h"
 #include "linkdcl.incl.pl1.h"
 #include "symbol_block.incl.pl1.h"
@@ -371,6 +372,35 @@ static void strcpyNonVarying (word24 base, word18 * next, char * str)
       * next = offset;
   }
 
+static void strcpyNonVaryingPad (word24 base, word18 * next, char * str, uint dstlen)
+  {
+    size_t len = strlen (str);
+    word18 offset;
+    if (next)
+      offset = * next;
+    else
+      offset = 0;
+    for (uint i = 0; i < dstlen; i ++)
+      {
+        int woff = i / 4;
+        int choff = i % 4;
+        if (choff == 0)
+          M [base + offset + woff] = 0;
+        if (i >= len)
+          {
+            putbits36 (M + base + offset + woff, choff * 9, 9, ' ');
+          }
+        else
+          {
+            putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+          }
+        //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
+      }
+    offset += (len + 3) / 4;
+    if (next)
+      * next = offset;
+  }
+
 // Copy multics string to C
 
 static void strcpyC (word24 addr, word24 len, char * str)
@@ -483,6 +513,11 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 
 #define FXE_RING 5
 
+#define IOCB_USER_INPUT 0
+#define IOCB_USER_OUTPUT 1
+#define IOCB_ERROR_OUTPUT 2
+#define IOCB_USER_IO 3
+#define N_IOCBS 4
 
 //
 // pathname mangling
@@ -1180,6 +1215,7 @@ static void trapGetLineLengthSwitch (void);
 static void trapGetSegPtr (void);
 //static void trapGetSegment (void);
 static void trapGetType (void);
+static void trapHomedir (void);
 static void trapFXE_UnhandledSignal (void);
 static void trapFXE_ReturnToFXE (void);
 static void trapFXE_PutChars (void);
@@ -1201,6 +1237,7 @@ static void trapHCS_AddAclEntries (void);
 static void trapHCS_DeleteAclEntries (void);
 static void trapHCS_ListAcl (void);
 static void trapHCS_ReplaceAcl (void);
+static void trapHCS_Status (void);
 
 // debugging traps
 #if 0
@@ -1237,6 +1274,8 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "delete_acl_entries", trapHCS_DeleteAclEntries },
     { "hcs_", "list_acl", trapHCS_ListAcl },
     { "hcs_", "replace_acl", trapHCS_ReplaceAcl },
+    { "hcs_", "status_", trapHCS_Status },
+
     { "cpu_time_and_paging_", "cpu_time_and_paging_", trapHCS_cpu_time_and_paging },
 
     { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
@@ -1249,6 +1288,8 @@ static trapNameTableEntry trapNameTable [] =
     //{ "tssi_", "get_segment", trapGetSegment },
 
     { "fs_util_", "get_type", trapGetType },
+
+    { "user_info_", "homedir", trapHomedir },
 
     { "fxe", "unhandled_signal", trapFXE_UnhandledSignal },
     { "fxe", "return_to_fxe", trapFXE_ReturnToFXE },
@@ -1305,7 +1346,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
    
     int idx;
 #if 1
-    if ((idx = searchRNT (segName)))
+    if ((idx = searchRNT (segName)) != -1)
       {
         KSTEntry * e = KST + idx;
         if (e -> allocated && e -> loaded && e -> parsed && 
@@ -1428,257 +1469,284 @@ static void parseSegment (int segIdx)
 
     object_map * mapp = (object_map *) (segp + i);
 
-    if (mapp -> identifier [0] != 0157142152137LLU || // "obj_"
-        mapp -> identifier [1] != 0155141160040LLU) // "map "
+    if (mapp -> identifier [0] == 0157142152137LLU && // "obj_"
+        mapp -> identifier [1] == 0155141160040LLU) // "map "
       {
-        sim_printf ("ERROR: mapID wrong %012llo %012llo\n", 
-                    mapp -> identifier [0], mapp -> identifier [1]);
-        return;
-      }
 
-    if (mapp -> decl_vers != 2)
-      {
-        sim_printf ("ERROR: Can't hack object map version %llu\n", mapp -> decl_vers);
-        return;
-      }
+        if (mapp -> decl_vers != 2)
+          {
+            sim_printf ("ERROR: Can't hack object map version %llu\n", mapp -> decl_vers);
+            return;
+          }
 
 //sim_printf ("text offset %o\n", mapp -> text_offset);
 //sim_printf ("text length %o\n", mapp -> text_length);
 //sim_printf ("definition offset %o\n", mapp -> definition_offset);
 //sim_printf ("definition length %o\n", mapp -> definition_length);
-    e -> definition_offset = mapp -> definition_offset;
+        e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
 //sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
-    e -> linkage_offset = mapp -> linkage_offset;
+        e -> linkage_offset = mapp -> linkage_offset;
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
-    e -> linkage_length = mapp -> linkage_length;
+        e -> linkage_length = mapp -> linkage_length;
 //sim_printf ("static offset %o\n", mapp -> static_offset);
-    e -> isot_offset = mapp -> static_offset;
+        e -> isot_offset = mapp -> static_offset;
 //sim_printf ("static length %o\n", mapp -> static_length);
 //sim_printf ("symbol offset %o\n", mapp -> symbol_offset);
-    e -> symbol_offset = mapp -> symbol_offset;
+        e -> symbol_offset = mapp -> symbol_offset;
 
 //sim_printf ("symbol length %o\n", mapp -> symbol_length);
 
-//    word36 * oip_textp = segp + mapp -> text_offset;
-    def_header * oip_defp = (def_header *) (segp + mapp -> definition_offset);
-    link_header * oip_linkp = (link_header *) (segp + mapp -> linkage_offset);
-//    word36 * oip_statp = segp + mapp -> static_offset;
-//    word36 * oip_symbp = segp + mapp -> symbol_offset;
-//    word36 * oip_bmapp = NULL;
-//    if (mapp -> break_map_offset)
-//      oip_bmapp = segp + mapp -> break_map_offset;
-//    word18 oip_tlng = mapp -> text_length;
-//    word18 oip_dlng = mapp -> definition_length;
-//    word18 oip_llng = mapp -> linkage_length;
-//    word18 oip_ilng = mapp -> static_length;
-//    word18 oip_slng = mapp -> symbol_length;
-//    word18 oip_blng = mapp -> break_map_length;
-//    word1 oip_format_procedure = mapp -> format . procedure;
-//    word1 oip_format_bound = mapp -> format . bound;
-//    if (oip_format_bound)
-//      sim_printf ("Segment is bound.\n");
-//    else
-//      sim_printf ("Segment is unbound.\n");
-//    word1 oip_format_relocatable = mapp -> format . relocatable;
-//    word1 oip_format_standard = mapp -> format . standard; /* could have standard obj. map but not std. seg. */
-    bool oip_format_gate = mapp -> entry_bound != 0;
-//    word1 oip_format_separate_static = mapp -> format . separate_static;
-//    word1 oip_format_links_in_text = mapp -> format . links_in_text;
-//    word1 oip_format_perprocess_static = mapp -> format . perprocess_static;
-    word18 entry_bound = mapp -> entry_bound;
-//    word18 textlinkp = mapp -> text_link_offset;
+//        word36 * oip_textp = segp + mapp -> text_offset;
+        def_header * oip_defp = (def_header *) (segp + mapp -> definition_offset);
+        link_header * oip_linkp = (link_header *) (segp + mapp -> linkage_offset);
+//        word36 * oip_statp = segp + mapp -> static_offset;
+//        word36 * oip_symbp = segp + mapp -> symbol_offset;
+//        word36 * oip_bmapp = NULL;
+//        if (mapp -> break_map_offset)
+//          oip_bmapp = segp + mapp -> break_map_offset;
+//        word18 oip_tlng = mapp -> text_length;
+//        word18 oip_dlng = mapp -> definition_length;
+//        word18 oip_llng = mapp -> linkage_length;
+//        word18 oip_ilng = mapp -> static_length;
+//        word18 oip_slng = mapp -> symbol_length;
+//        word18 oip_blng = mapp -> break_map_length;
+//        word1 oip_format_procedure = mapp -> format . procedure;
+//        word1 oip_format_bound = mapp -> format . bound;
+//        if (oip_format_bound)
+//          sim_printf ("Segment is bound.\n");
+//        else
+//          sim_printf ("Segment is unbound.\n");
+//        word1 oip_format_relocatable = mapp -> format . relocatable;
+//        word1 oip_format_standard = mapp -> format . standard; /* could have standard obj. map but not std. seg. */
+            bool oip_format_gate = mapp -> entry_bound != 0;
+//        word1 oip_format_separate_static = mapp -> format . separate_static;
+//        word1 oip_format_links_in_text = mapp -> format . links_in_text;
+//        word1 oip_format_perprocess_static = mapp -> format . perprocess_static;
+            word18 entry_bound = mapp -> entry_bound;
+//        word18 textlinkp = mapp -> text_link_offset;
 
-    if (oip_format_gate)
-      {
-        //sim_printf ("Segment is gated; entry bound %d.\n", entry_bound);
-        e -> gated = true;
-        e -> entry_bound = entry_bound;
-      }
-    else
-      {
-        //sim_printf ("Segment is ungated.\n");
-        e -> gated = false;
-        e -> entry_bound = 0;
-      }
+        if (oip_format_gate)
+          {
+            //sim_printf ("Segment is gated; entry bound %d.\n", entry_bound);
+            e -> gated = true;
+            e -> entry_bound = entry_bound;
+          }
+        else
+          {
+            //sim_printf ("Segment is ungated.\n");
+            e -> gated = false;
+            e -> entry_bound = 0;
+          }
 
-    bool entryFound = false;
-    word18 entryValue = 0;
-    segnameBuf entryName;
+        bool entryFound = false;
+        word18 entryValue = 0;
+        segnameBuf entryName;
 
-    // Walk the definiton
+        // Walk the definiton
 // oip_defp
-    word36 * defBase = (word36 *) oip_defp;
+        word36 * defBase = (word36 *) oip_defp;
 
-//    sim_printf ("Definitions:\n");
+//        sim_printf ("Definitions:\n");
 //sim_printf ("def_list_relp %u\n", oip_defp -> def_list_relp);
 //sim_printf ("hash_table_relp %u\n", oip_defp -> hash_table_relp);
-    definition * p = (definition *) (defBase +
-                                     oip_defp -> def_list_relp);
-    while (* (word36 *) p)
-      {
-        if (p -> ignore == 0)
+        definition * p = (definition *) (defBase +
+                                         oip_defp -> def_list_relp);
+        while (* (word36 *) p)
           {
-#if 0
-            if (p -> new == 0)
-              sim_printf ("warning: !new\n");
-            sim_printf ("    %lu ", (word36 *) p - defBase);
-            printACC (defBase + p -> symbol);
-            sim_printf ("\n");
-            if (p -> entry)
-              sim_printf ("        entry\n");
-            if (p -> argcount)
-              sim_printf ("        argcount\n");
-            if (p -> descriptors)
-              sim_printf ("        descriptors\n");
-            switch (p -> class)
+            if (p -> ignore == 0)
               {
-                case 0:
-                  sim_printf ("        text section\n");
-                  break;
+#if 0
+                if (p -> new == 0)
+                  sim_printf ("warning: !new\n");
+                sim_printf ("    %lu ", (word36 *) p - defBase);
+                printACC (defBase + p -> symbol);
+                sim_printf ("\n");
+                if (p -> entry)
+                  sim_printf ("        entry\n");
+                if (p -> argcount)
+                  sim_printf ("        argcount\n");
+                if (p -> descriptors)
+                  sim_printf ("        descriptors\n");
+                switch (p -> class)
+                  {
+                    case 0:
+                      sim_printf ("        text section\n");
+                      break;
+                    case 1:
+                      sim_printf ("        linkage section\n");
+                      break;
+                    case 2:
+                      sim_printf ("        symbol section\n");
+                      break;
+                    case 3:
+                      sim_printf ("        segment name\n");
+                      break;
+                    case 4:
+                      sim_printf ("        static section\n");
+                      break;
+                    default:
+                      sim_printf ("        ???? section\n");
+                      break;
+                  }
+                if (p -> class == 3)
+                  {
+                      sim_printf ("        segname_thread %u\n", p -> value);
+                      sim_printf ("        first_relp *%u\n", p -> segname);
+                  }
+                else
+                  {
+                      sim_printf ("        value 0%o\n", p -> value);
+                      sim_printf ("        segname *%u\n", p -> segname);
+                  }
+                sim_printf ("\n");
+#endif
+                if ((! entryFound) && p -> class == 0 && p -> entry)
+                  {
+                    entryFound = true;
+                    entryValue = p -> value;
+                    cpACC2buf (entryName, defBase + p -> symbol);
+//sim_printf ("entry name %s\n", entryName);                
+                  }
+              }
+            p = (definition *) (defBase + p -> forward);
+          }
+
+        if (! entryFound)
+          {
+            //sim_printf ("ERROR: entry point not found\n");
+            e -> entry = 0;
+          }
+        else
+          {
+            e -> entry = entryValue;
+            memcpy (e -> pathname, entryName, sizeof (pathnameBuf));
+    
+            //sim_printf ("entry %o\n", entryValue);
+          }
+
+        // Walk the linkage
+
+        // word36 * linkBase = (word36 *) oip_linkp;
+
+        //sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
+        //sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
+        //sim_printf ("first_ref_relp %o\n", oip_linkp -> first_ref_relp);
+        //sim_printf ("link_begin %o\n", oip_linkp -> link_begin);
+        //sim_printf ("linkage_section_lng %o\n", oip_linkp -> linkage_section_lng);
+        //sim_printf ("segno_pad %o\n", oip_linkp -> segno_pad);
+        //sim_printf ("static_length %o\n", oip_linkp -> static_length);
+    
+        e -> segnoPadAddr = & (oip_linkp -> align4);
+
+#if 0
+        link_ * l = (link_ *) (linkBase + oip_linkp -> link_begin);
+        link_ * end = (link_ *) (linkBase + oip_linkp -> linkage_section_lng);
+
+        do
+          {
+            if (l -> tag != 046)
+              continue;
+            //sim_printf ("  tag %02o\n", l -> tag);
+            if (l -> header_relp != 
+                ((word18) (- (((word36 *) l) - linkBase)) & 0777777))
+              sim_printf ("WARNING:  header_relp wrong %06o (%06o)\n",
+                          l -> header_relp,
+                          (word18) (- (((word36 *) l) - linkBase)) & 0777777);
+            if (l -> run_depth != 0)
+              sim_printf ("WARNING:  run_depth wrong %06o\n", l -> run_depth);
+
+            //sim_printf ("ringno %0o\n", l -> ringno);
+            //sim_printf ("run_depth %02o\n", l -> run_depth);
+            //sim_printf ("expression_relp %06o\n", l -> expression_relp);
+       
+            if (l -> expression_relp >= oip_dlng)
+              sim_printf ("WARNING:  expression_relp too big %06o\n", l -> expression_relp);
+
+            expression * expr = (expression *) (defBase + l -> expression_relp);
+
+            //sim_printf ("  type_ptr %06o  exp %6o\n", 
+                        //expr -> type_ptr, expr -> exp);
+
+            if (expr -> type_ptr >= oip_dlng)
+              sim_printf ("WARNING:  type_ptr too big %06o\n", expr -> type_ptr);
+            type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
+
+            switch (typePair -> type)
+              {
                 case 1:
-                  sim_printf ("        linkage section\n");
-                  break;
-                case 2:
-                  sim_printf ("        symbol section\n");
+                  sim_printf ("    1: self-referencing link\n");
+                  sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
                   break;
                 case 3:
-                  sim_printf ("        segment name\n");
+                  sim_printf ("    3: referencing link\n");
+                  sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
                   break;
                 case 4:
-                  sim_printf ("        static section\n");
+                  sim_printf ("    4: referencing link with offset\n");
+                  sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+                  sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+                  //int dsegIdx = loadDeferred (sprintACC (defBase + typePair -> seg_ptr));
+                  break;
+                case 5:
+                  sim_printf ("    5: self-referencing link with offset\n");
+                  sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
                   break;
                 default:
-                  sim_printf ("        ???? section\n");
+                  sim_printf ("WARNING: unknown type %d\n", typePair -> type);
                   break;
               }
-            if (p -> class == 3)
+
+
+            //sim_printf ("    type %06o\n", typePair -> type);
+            //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
+            //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
+            //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
+
+            if (typePair -> trap_ptr >= oip_dlng)
+              sim_printf ("WARNING:  trap_ptr too big %06o\n", typePair -> trap_ptr);
+            if (typePair -> ext_ptr >= oip_dlng)
+              sim_printf ("WARNING:  ext_ptr too big %06o\n", typePair -> ext_ptr);
+
+            if (typePair -> ext_ptr != 0)
               {
-                  sim_printf ("        segname_thread %u\n", p -> value);
-                  sim_printf ("        first_relp *%u\n", p -> segname);
-              }
-            else
-              {
-                  sim_printf ("        value 0%o\n", p -> value);
-                  sim_printf ("        segname *%u\n", p -> segname);
-              }
-            sim_printf ("\n");
-#endif
-            if ((! entryFound) && p -> class == 0 && p -> entry)
-              {
-                entryFound = true;
-                entryValue = p -> value;
-                cpACC2buf (entryName, defBase + p -> symbol);
-//sim_printf ("entry name %s\n", entryName);                
+                 //sim_printf ("    ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
               }
           }
-        p = (definition *) (defBase + p -> forward);
+        while (++ l < end);
+    #endif
+        e -> parsed = true;
+        return;
       }
 
-    if (! entryFound)
+    word24 ilow = GETLO (lastword);
+    if (ilow + 11u > seglen)
       {
-        //sim_printf ("ERROR: entry point not found\n");
-        e -> entry = 0;
+        sim_printf ("ERROR: glopPtr too big %07u >= %07u\n", i, seglen);
+        return;
       }
-    else
+    object_glop * glopp = (object_glop *) (segp + ilow);
+
+    if (glopp -> idwords [0] == 0525252525252llu &&
+        glopp -> idwords [1] == 0525252525252llu &&
+        glopp -> idwords [2] == 0525252525252llu &&
+        glopp -> idwords [3] == 0525252525252llu)
       {
-        e -> entry = entryValue;
-        memcpy (e -> pathname, entryName, sizeof (pathnameBuf));
-    
-        //sim_printf ("entry %o\n", entryValue);
+sim_printf ("textrel %012llo\n", glopp -> textrel);
+sim_printf ("textbc %012llo %012llo\n", glopp -> textbc, glopp -> textbc / 36ull);
+sim_printf ("linkrel %012llo\n", glopp -> linkrel);
+sim_printf ("linkbc %012llo %012llo\n", glopp -> linkbc, glopp -> linkbc / 36ull);
+sim_printf ("symbolrel %012llo\n", glopp -> symbolrel);
+sim_printf ("symbolbc %012llo %012llo\n", glopp -> symbolbc, glopp -> symbolbc / 36ull);
+sim_printf ("maprel %012llo\n", glopp -> maprel);
+exit(3);
+        return;
       }
 
-    // Walk the linkage
-
-    // word36 * linkBase = (word36 *) oip_linkp;
-
-    //sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
-    //sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
-    //sim_printf ("first_ref_relp %o\n", oip_linkp -> first_ref_relp);
-    //sim_printf ("link_begin %o\n", oip_linkp -> link_begin);
-    //sim_printf ("linkage_section_lng %o\n", oip_linkp -> linkage_section_lng);
-    //sim_printf ("segno_pad %o\n", oip_linkp -> segno_pad);
-    //sim_printf ("static_length %o\n", oip_linkp -> static_length);
-    
-    e -> segnoPadAddr = & (oip_linkp -> align4);
-
-#if 0
-    link_ * l = (link_ *) (linkBase + oip_linkp -> link_begin);
-    link_ * end = (link_ *) (linkBase + oip_linkp -> linkage_section_lng);
-
-    do
-      {
-        if (l -> tag != 046)
-          continue;
-        //sim_printf ("  tag %02o\n", l -> tag);
-        if (l -> header_relp != 
-            ((word18) (- (((word36 *) l) - linkBase)) & 0777777))
-          sim_printf ("WARNING:  header_relp wrong %06o (%06o)\n",
-                      l -> header_relp,
-                      (word18) (- (((word36 *) l) - linkBase)) & 0777777);
-        if (l -> run_depth != 0)
-          sim_printf ("WARNING:  run_depth wrong %06o\n", l -> run_depth);
-
-        //sim_printf ("ringno %0o\n", l -> ringno);
-        //sim_printf ("run_depth %02o\n", l -> run_depth);
-        //sim_printf ("expression_relp %06o\n", l -> expression_relp);
-       
-        if (l -> expression_relp >= oip_dlng)
-          sim_printf ("WARNING:  expression_relp too big %06o\n", l -> expression_relp);
-
-        expression * expr = (expression *) (defBase + l -> expression_relp);
-
-        //sim_printf ("  type_ptr %06o  exp %6o\n", 
-                    //expr -> type_ptr, expr -> exp);
-
-        if (expr -> type_ptr >= oip_dlng)
-          sim_printf ("WARNING:  type_ptr too big %06o\n", expr -> type_ptr);
-        type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
-
-        switch (typePair -> type)
-          {
-            case 1:
-              sim_printf ("    1: self-referencing link\n");
-              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
-              break;
-            case 3:
-              sim_printf ("    3: referencing link\n");
-              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
-              break;
-            case 4:
-              sim_printf ("    4: referencing link with offset\n");
-              sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
-              sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
-              //int dsegIdx = loadDeferred (sprintACC (defBase + typePair -> seg_ptr));
-              break;
-            case 5:
-              sim_printf ("    5: self-referencing link with offset\n");
-              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
-              break;
-            default:
-              sim_printf ("WARNING: unknown type %d\n", typePair -> type);
-              break;
-          }
-
-
-        //sim_printf ("    type %06o\n", typePair -> type);
-        //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
-        //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
-        //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
-
-        if (typePair -> trap_ptr >= oip_dlng)
-          sim_printf ("WARNING:  trap_ptr too big %06o\n", typePair -> trap_ptr);
-        if (typePair -> ext_ptr >= oip_dlng)
-          sim_printf ("WARNING:  ext_ptr too big %06o\n", typePair -> ext_ptr);
-
-        if (typePair -> ext_ptr != 0)
-          {
-             //sim_printf ("    ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
-          }
-      }
-    while (++ l < end);
-#endif
-    e -> parsed = true;
+sim_printf ("i %o\n", i);
+    sim_printf ("ERROR: mapID wrong %012llo %012llo\n", 
+                mapp -> identifier [0], mapp -> identifier [1]);
+    return;
   }
 
 static void readSegment (int fd, int segIdx/* , off_t flen*/)
@@ -2480,6 +2548,39 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 //  -- Attach user_io, user_output, user_input and error_output switches.
 //  -- Call the process overseer.
 
+//#define INIT_PROC
+#ifdef INIT_PROC
+    initializeDSEG ();
+    int segIdx = loadSegment ("bound_process_creation");
+    if (segIdx < 0)
+      {
+        sim_printf ("ERROR: couldn't read bound_process_creation\n");
+        return SCPE_OK;
+      }
+    setSegno (segIdx, allocateSegno ());
+    KST [segIdx] . R1 = 0;
+    KST [segIdx] . R2 = 0;
+    KST [segIdx] . R3 = 0;
+    KST [segIdx] . R = 1;
+    KST [segIdx] . E = 1;
+    KST [segIdx] . W = 0;
+    KST [segIdx] . P = 1;
+
+    installSDW (segIdx);
+    installLOT (segIdx);
+
+    // Default entry point is the first entry
+    word18 entryOffset = KST [segIdx] . entry;
+
+    set_addr_mode (APPEND_mode);
+    PPR . IC = entryOffset;
+    PPR . PRR = 0;
+    PPR . PSR = KST [segIdx] . segno;
+    PPR . P = 0;
+    //DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
+
+    run_cmd (RU_CONT, "");
+#else
     setupWiredSegments ();
 
 // Setup CLR
@@ -2606,13 +2707,8 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     errIdx = installLibrary ("error_table_");
     installLibrary ("sys_info");
     initSysinfo ();
+    //installLibrary ("bound_info_rtns_");
     slIdx = installLibrary ("search_list_defaults_");
-
-#define IOCB_USER_INPUT 0
-#define IOCB_USER_OUTPUT 1
-#define IOCB_ERROR_OUTPUT 2
-#define IOCB_USER_IO 3
-#define N_IOCBS 4
 
     setupIOCB (iocbEntry, "user_input", IOCB_USER_INPUT);
     setupIOCB (iocbEntry, "user_output", IOCB_USER_OUTPUT);
@@ -2859,7 +2955,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("Starting execution...\n");
     run_cmd (RU_CONT, "");
-
+#endif
     return SCPE_OK;
   }
 
@@ -3116,6 +3212,7 @@ typedef struct argTableEntry
 #define ARG6 5
 #define ARG7 6
 #define DESC_PTR 13
+#define DESC_ENTRY 16
 #define DESC_BITS 19
 #define DESC_FIXED 1
 #define DESC_CHAR_SPLAT 21
@@ -3181,9 +3278,13 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
             word6 dt = getbits36 (M [t [i] . descAddr], 1, 6);
             if (dt != t [i] . dType)
               {
-                sim_printf ("ERROR: expected d%dType %u, got %u\n", 
-                            i + 1, t [i] . dType, dt);
-                return 0;
+                // Hack: Treat pointer and entry as synonyms
+                if (! (dt == DESC_ENTRY && t [i] . dType == DESC_PTR))
+                  {
+                    sim_printf ("ERROR: expected d%dType %u, got %u\n", 
+                                i + 1, t [i] . dType, dt);
+                    return 0;
+                  }
               }
             if (dt == DESC_CHAR_SPLAT)
               {
@@ -3790,6 +3891,29 @@ static void trapGetType (void)
     // arg 4: code
     word24 codePtr = t [ARG4] . argAddr;
     M [codePtr] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHomedir (void)
+  {
+// declare user_info_$homedir entry (char(*));
+// call user_info_$homedir (hdir);
+
+
+    argTableEntry t [1] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 }
+      };
+
+    if (! processArgs (1, 1, t))
+      return;
+
+    // Argument 1: hdir (output)
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 dp1 = t [ARG1] . descAddr;
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+    strcpyNonVaryingPad (ap1, NULL, ">udd>fxe", d1size);
 
     doRCU (true); // doesn't return
   }
@@ -5396,8 +5520,128 @@ static void trapHCS_StatusLong (void)
     int idx = lookupSegname (entryname);
     if (idx < 0)
       {
-        sim_printf ("don't know about algebra\n");
+        sim_printf ("don't know about algebra (%s)\n", entryname);
         exit (1);
+      }
+
+    // Argument 4: status_ptr
+    word24 ap4 = t [ARG4] . argAddr;
+    status_branch * status_ptr = (status_branch *) (& M [ap4]);
+
+    status_ptr -> short_ . type = 1; // segment
+
+// The only things translator_info is interested in are dtcm and uid.
+
+    status_ptr -> short_ . nnames = 0;
+    status_ptr -> short_ . names_relp = 0;
+    status_ptr -> short_ . dtcm = 0; // XXX translator_info looks here....
+    status_ptr -> short_ . dtu = 0;
+    status_ptr -> short_ . mode = 0;
+    status_ptr -> short_ . raw_mode = 0;
+    status_ptr -> short_ . records_used = 0;
+    //status_ptr -> long_ . dtd = 0;
+    //status_ptr -> long_ . dtem = 0;
+    //status_ptr -> long_ . lvid = 0;
+    //status_ptr -> long_ . current_length = KST [idx] . seglen / 1024u;
+    //status_ptr -> long_ . bit_count = KST [idx] . bit_count;
+    //status_ptr -> long_ . copy_switch = 0;
+    //status_ptr -> long_ . tpd_switch = 0;
+    //status_ptr -> long_ . mdir_switch = 0;
+    //status_ptr -> long_ . damaged_switch = 0;
+    //status_ptr -> long_ . synchronized_switch = 0;
+    //status_ptr -> long_ . ring_brackets = 
+    //  ((KST [idx] . R1 & 077) << 12) |
+    //  ((KST [idx] . R2 & 077) <<  6) |
+    //  ((KST [idx] . R3 & 077) <<  0);
+    //status_ptr -> long_ . uid = KST [idx] . uid;
+
+    word24 ap6 = t [ARG6] . argAddr;
+    M [ap6] = code;
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHCS_Status (void)
+  {
+// status:
+//      entry (a_dir_name, a_entryname, a_chase, a_return_struc_ptr, 
+//             a_return_area_ptr, a_code);
+//           dcl     a_dir_name               char (*) parameter;
+//           dcl     a_entryname              char (*) parameter;
+//           dcl     a_chase          fixed bin (1) parameter;
+//           dcl     a_return_struc_ptr       ptr parameter;
+//
+//   a_dir_name is the pathname of the containing directory. (Input)
+//
+//   entryname is the entry name of the segment, dirctory or link. (Input)
+//
+//   chase_sw indicates whether the information returned is about a link
+//            or about the entry to which the link points. (Input)
+//     0 returns link information
+//     1 returns information about the entry to which the link points
+//
+//   status_ptr is a pointer to the structure in which information is returned.
+//              (Input)
+//
+//   status_area_ptr is a pointer to the area in which names are returned. 
+//                   (Input)
+//
+//   code. (Output)
+//
+
+
+    argTableEntry t [6] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (6, 6, t))
+      return;
+
+    word36 code = 0;
+
+    // Argument 1: dir_name 
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+// Is ths a known segment?
+
+// XXX ignoring directory....
+
+    int idx = lookupSegname (entryname);
+    if (idx < 0)
+      {
+        sim_printf ("don't know about algebra (%s) (%s)\n", dir_name, entryname);
+        //exit (1);
+        code = lookupErrorCode ("noentry");
+        goto done;
       }
 
     // Argument 4: status_ptr
@@ -5431,6 +5675,7 @@ static void trapHCS_StatusLong (void)
       ((KST [idx] . R3 & 077) <<  0);
     status_ptr -> long_ . uid = KST [idx] . uid;
 
+done:;
     word24 ap6 = t [ARG6] . argAddr;
     M [ap6] = code;
 
