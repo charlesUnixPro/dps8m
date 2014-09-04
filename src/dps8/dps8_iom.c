@@ -249,15 +249,15 @@ static struct unitData unitData [N_IOM_UNITS_MAX];
 
 static struct iom
   {
-    struct channels
+    struct devices
       {
         enum dev_type type;
         enum chan_type ctype;
         DEVICE * dev; // attached device; points into sim_devices[]
         uint devUnitNum; // Which unit of the attached device
-        UNIT * board; 
+        UNIT * board;  // points into iomUnit
         iomCmd * iomCmd;
-      } channels [MAX_CHANNELS] [N_DEV_CODES];
+      } devices [MAX_CHANNELS] [N_DEV_CODES];
     word27 pageTablePtr [MAX_CHANNELS];
   } iom [N_IOM_UNITS_MAX];
 
@@ -538,7 +538,9 @@ void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
 #ifdef IOMDBG
 sim_printf ("lpw %012llo\n", word0);
 #endif
-    p -> dcw_ptr = word0 >> 18;
+sim_debug (DBG_TRACE, & iom_dev, "lpw %012llo\n", word0);
+
+    p -> dcw_ptr = getbits36 (word0, 0, 18);
     p -> ires = getbits36 (word0, 18, 1);
     p -> hrel = getbits36 (word0, 19, 1);
     p -> ae = getbits36 (word0, 20, 1);
@@ -547,6 +549,7 @@ sim_printf ("lpw %012llo\n", word0);
     p -> srel = getbits36 (word0, 23, 1);
     p -> tally = getbits36 (word0, 24, 12); // initial value treated as unsigned
     
+sim_debug (DBG_TRACE, & iom_dev, "lpw ae(20) %o srel(23) %o\n", p -> ae, p -> srel);
     if (! is_conn)
       {
         word36 word1;
@@ -571,6 +574,11 @@ sim_printf ("lpw2 %012llo\n", word1);
         p -> size = 0;
         // XXX Not in paged mode
         //p -> idcw = (uint)-1;
+      }
+    if (p -> ae || p -> srel)
+      {
+        sim_printf ("unhandled LPW bits %o %o\n", p -> ae, p -> srel);
+        exit (1); // XXX
       }
   }
 
@@ -609,8 +617,8 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
 if (p -> ptp)
 sim_printf ("IOMB pcw ptPtr %06o pge %o aux %o\n", p -> ptPtr, p -> pge, p -> aux);
 #endif
-if (p -> ptp)
-    iomFault (iomUnitNum, 2, "cac", 1, iomFsrList, 016);
+//if (p -> ptp)
+    //iomFault (iomUnitNum, 2, "cac", 1, iomFsrList, 016);
         if (p -> pge)
           {
             sim_debug (DBG_ERR, & iom_dev, "%s: AUX set in PCW; fail\n",
@@ -620,6 +628,9 @@ if (p -> ptp)
 #ifdef IOMDBG
 sim_printf ("IOMB pcw ptPtr %06o pge %o aux %o\n", p -> ptPtr, p -> pge, p -> aux);
 #endif
+        sim_debug (DBG_TRACE, & iom_dev, 
+                   "decode_idcw IOMB pcw ptp %o ptPtr %06o pge %o aux %o\n",
+                   p -> ptp, p -> ptPtr, p -> pge, p -> aux);
         // Don't need to bounds check p->chan; getbits36 masked it to 6 bits,
         // so it must be 0..MAX_CHANNELS - 1
         iomChannelData [iomUnitNum] [p -> chan] . ptPtr = p -> ptPtr;
@@ -727,8 +738,10 @@ sim_printf ("dcw: %012llo\n", word);
             // transfer
             p -> type = tdcw;
             p -> fields . xfer . addr = getbits36 (word, 0, 18);
+            // seg and pdta valid if paged and pcw 64 == 1
             p -> fields . xfer . seg = getbits36 (word, 31, 1);
             p -> fields . xfer . pdta = getbits36 (word, 32, 1);
+            // 'pdcw' if paged and pcw 64 == 0; otherwise 'ec'
             p -> fields . xfer . pdcw = getbits36 (word, 33, 1);
             p -> fields . xfer . res = getbits36 (word, 34, 1);
             p -> fields . xfer . rel = getbits36 (word, 35, 1);
@@ -906,7 +919,7 @@ void iom_init (void)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
 
-    // sets iom [iomUnitNum] . channels [chanNum] [dev_code] . type to DEVT_NONE
+    // sets iom [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (& iom, 0, sizeof (iom));
     memset (cablesFromScus, 0, sizeof (cablesFromScus));
   }
@@ -1737,6 +1750,8 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
 #ifdef IOMDBG
 sim_printf ("dcw type %o\n", dcwp -> type);
 #endif
+sim_debug (DBG_TRACE, & iom_dev, "dcw type %o\n", dcwp -> type);
+
     if (dcwp -> type == idcw)
       {
         // 4.3.1b: IDCW == YES
@@ -1806,7 +1821,7 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
     
     if (dcwp -> type == tdcw)
       {
-        sim_debug (DBG_DEBUG, & iom_dev, "%s: TDCW\n", __func__);
+        sim_debug (DBG_TRACE, & iom_dev, "%s: TDCW\n", __func__);
         // 4.3.1b: TDCW == YES
  
         // 4.3.1b: SECOND TDCW?
@@ -1935,7 +1950,7 @@ sim_printf ("pcw %012llo %012llo\n", word0, word1);
     decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
     uint chanNum = pcw . chan;
     uint dev_code = pcw . dev_code;
-    DEVICE * devp = iom [iomUnitNum] . channels [chanNum] [dev_code] . dev;
+    DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [dev_code] . dev;
 
 #ifdef IOMDBG
 sim_printf ("setting addressExtension to %o from PCW\n",
@@ -1963,7 +1978,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
       }
     
 
-    UNIT * unitp = iom [iomUnitNum] .channels [chanNum] [dev_code] . board;
+    UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [dev_code] . board;
 
     // Stash a local copy of the PCW so that it is still valid at activation
     // time
@@ -2257,19 +2272,19 @@ t_stat cable_to_iom (uint iomUnitNum, int chanNum, int dev_code,
         return SCPE_ARG;
       }
 
-    if (iom [iomUnitNum] . channels [chanNum] [dev_code] . type != DEVT_NONE)
+    if (iom [iomUnitNum] . devices [chanNum] [dev_code] . type != DEVT_NONE)
       {
         sim_printf ("cable_to_iom: socket in use\n");
         return SCPE_ARG;
       }
 
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . type = dev_type;
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . ctype = ctype;
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . devUnitNum = devUnitNum;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . type = dev_type;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . ctype = ctype;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . devUnitNum = devUnitNum;
 
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . dev = devp;
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . board  = unitp;
-    iom [iomUnitNum] . channels [chanNum] [dev_code] . iomCmd  = iomCmd;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . dev = devp;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . board  = unitp;
+    iom [iomUnitNum] . devices [chanNum] [dev_code] . iomCmd  = iomCmd;
 
     return SCPE_OK;
   }
@@ -2333,7 +2348,7 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
           {
             for (uint dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
               {
-                DEVICE * devp = iom [iomUnitNum] . channels [chanNum] [dev_code] . dev;
+                DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [dev_code] . dev;
                 if (devp)
                   {
                     if (devp -> units == NULL)

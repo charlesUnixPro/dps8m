@@ -39,8 +39,10 @@ typedef struct dcw_t
           } ddcw;
         struct {
             uint addr;
+            // seg and pdta valid if paged and pcw 64 == 1
             bool seg; // 1 bit at 31
             bool pdta; // 1 bit at 32
+            // 'pdcw' if paged and pcw 64 == 0; otherwise 'ec'
             bool pdcw;  // extension control; ec 1 bit at 33
             bool res;   // IDCW control; res 1 bit at 34
             bool rel;   // relative addressing control; 1 bit at 35

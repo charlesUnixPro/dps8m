@@ -662,10 +662,11 @@ sim_printf ("get the idcw\n");
               }
 #endif
 
-#if 0
+#if 1
 sim_printf ("get the ddcw\n");
             // Get the DDCW
-            rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
 
             if (rc)
               {
