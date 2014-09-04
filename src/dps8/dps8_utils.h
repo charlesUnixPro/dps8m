@@ -125,3 +125,8 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_
 void print_int128 (__int128_t n, char * p);
 uint64 sim_timell (void);
 void sim_puts (char * str);
+void sim_err (const char * format, ...) NO_RETURN
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;

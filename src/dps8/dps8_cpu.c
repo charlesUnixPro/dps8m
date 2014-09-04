@@ -956,6 +956,7 @@ ctl_unit_data_t cu;
 du_unit_data_t du;
 
 
+#if 0
 int stop_reason; // sim_instr return value for JMP_STOP
 
 /*
@@ -977,6 +978,7 @@ void cancel_run(t_stat reason)
         cancel = reason;
     //sim_debug (DBG_DEBUG, & cpu_dev, "CU: Cancel requested: %d\n", reason);
 }
+#endif
 
 static uint get_highest_intr (void)
   {
@@ -2230,7 +2232,7 @@ void set_addr_mode(addr_modes_t mode)
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
-        cancel_run(STOP_BUG);
+        sim_err ("APU: Unable to determine address mode.\n"); // Doesn't return
     }
 }
 
@@ -2336,7 +2338,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     int unit_num = UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= (int) cpu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
+        //sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: invalid unit number %d\n", unit_num);
         return SCPE_ARG;
       }
@@ -2520,7 +2522,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
     int cpu_unit_num = UNIT_NUM (uptr);
     if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
+        //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
         sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
         return SCPE_ARG;
       }
@@ -2659,7 +2661,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             default:
-              sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
+              //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
               sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG; 

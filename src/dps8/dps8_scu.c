@@ -1283,11 +1283,13 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
             sim_debug (DBG_INFO, & scu_dev, 
                        "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", 
                        sys_opts . iom_times . connect);
-            if (sim_activate (& iom_dev . units [iom_unit_num], 
-                sys_opts . iom_times.connect) != SCPE_OK) 
+            int rc;
+            if ((rc = sim_activate (& iom_dev . units [iom_unit_num], 
+                sys_opts . iom_times.connect)) != SCPE_OK) 
               {
-                cancel_run (STOP_UNK);
-                return 1;
+                sim_err ("sim_activate failed (%d)\n", rc); // Dosen't return
+                //cancel_run (STOP_UNK);
+                //return 1;
               }
             return 0;
           }

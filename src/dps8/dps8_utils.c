@@ -1262,7 +1262,10 @@ void sim_printf( const char * format, ... )
 //   - the console device
 //
 // sim_debug --
-//   prints time stamped strings to the logfile.
+//   prints time stamped strings to the logfile; controlled by scp commands.
+// sim_err --
+//   prints sim_debug style messages regardless of scp commands and returns
+//   to scp; not necessarily restartable.
 // sim_printf --
 //   prints strings to logfile and stdout
 // sim_putchar/sim_os_putchar/sim_puts
@@ -1311,6 +1314,15 @@ void sim_puts (char * str)
     char * p = str;
     while (* p)
       sim_putchar (* (p ++));
+  }
+
+void sim_err (const char * format, ...)
+  {
+    va_list arglist;
+    va_start (arglist, format);
+    _sim_err (format, arglist);
+    va_end (arglist);
+    longjmp (jmpMain, JMP_STOP);
   }
 
 // XXX what about config=addr7=123, where clist has a "addr%"?

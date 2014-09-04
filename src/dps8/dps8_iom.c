@@ -608,8 +608,9 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
             unitData [iomUnitNum] . configSwOS != CONFIG_SW_MULTICS)
           {
             sim_debug (DBG_ERR, &iom_dev, 
-                       "%s: Page Table Pointer for model IOM-B detected\n",
+                       "%s: Page Table Pointer for model IOM-B detected but not CONFIG_SW_MULTICS\n",
                        __func__);
+            sim_err ("Page Table Pointer for model IOM-B detected but not CONFIG_SW_MULTICS\n"); // Doesn't return
           }
         p -> pge = getbits36 (word1, 28, 1);
         p -> aux = getbits36 (word1, 29, 1);
@@ -623,6 +624,7 @@ sim_printf ("IOMB pcw ptPtr %06o pge %o aux %o\n", p -> ptPtr, p -> pge, p -> au
           {
             sim_debug (DBG_ERR, & iom_dev, "%s: AUX set in PCW; fail\n",
                        __func__);
+            sim_err ("AUX set in PCW; fail\n"); // Doesn't return
           }
 
 #ifdef IOMDBG

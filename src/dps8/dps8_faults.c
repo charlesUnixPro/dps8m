@@ -353,8 +353,7 @@ static int fault_check_group(int group)
     // Note 1-origin
     if (group < 1 || group > N_FAULT_GROUPS) {
         sim_debug(DBG_ERR, & cpu_dev, "CU fault-check-group: Bad group # %d\n", group);
-        cancel_run(STOP_BUG);
-        return 1;
+        sim_err("CU fault-check-group: Bad group # %d\n", group); // Doesn't return
     }
     
     if (! events.any)
@@ -492,7 +491,7 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
                 sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
-                stop_reason = STOP_FLT_CASCADE;
+                //stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
           }

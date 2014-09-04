@@ -1090,10 +1090,8 @@ extern struct cpu_array
 
 
 
-extern int stop_reason;     // sim_instr return value for JMP_STOP
-
-
-void cancel_run (t_stat reason);
+//extern int stop_reason;     // sim_instr return value for JMP_STOP
+//void cancel_run (t_stat reason);
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);

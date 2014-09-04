@@ -5310,7 +5310,7 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
                 sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
                 sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
-                stop_reason = STOP_DIS;
+                //stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);
               }
 
