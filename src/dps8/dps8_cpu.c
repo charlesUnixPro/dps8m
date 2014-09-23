@@ -762,7 +762,7 @@ static BITFIELD dps8_IR_bits[] = {
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, PPR.IC, VASIZE), 0, 0 },
+    { ORDATA (IC, PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IR, cu.IR, 18), 0, 0 },
     { ORDATADF (IR, cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
