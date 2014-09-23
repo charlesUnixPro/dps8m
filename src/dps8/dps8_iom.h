@@ -16,7 +16,7 @@ typedef struct pcw_t
     // Word 2
     uint chan;       // 6 bits; bits 3..8 of word 2
     uint ptPtr;        // 18 bits; bits 9..26 of word 2
-    uint ptp;    // 1 bit; bit 27 of word 2
+    uint ptp;    // 1 bit; bit 27 of word 2 uint pge;    // 1 bit; bit 28 of word 2
     uint pge;    // 1 bit; bit 28 of word 2
     uint aux;    // 1 bit; bit 29 of word 2
   } pcw_t;
@@ -81,6 +81,24 @@ typedef struct iomChannelData_
     lpw_t lpw;
     word36 PTW_LPW; // DCW List page table word
     word36 PTW_DCW;  // Data page table word
+#if 0
+    enum { cm_REAL_LPW_REAL_DCW_1A,
+           cm_EXT_LPW_REAL_DCW_1B,
+           cm_REAL_LPW_PAGED_DCW_2,
+           cm_REAL_LPW_SEG_DCW_3A,
+           cm_PAGED_LPW_PAGED_DCW_3B,
+           cm_PAGED_LPW_SEG_DCW_4,
+           cm_SEG_LPW_SED_DCW_5 } chan_mode;
+#endif
+    enum 
+      {
+        cm_LPW_init_state, // No TDCWs encountered; state is:
+                           //    PCW64 (pge): on   PAGE CHAN
+                           //    PCW64 (pge): off  EXT MODE CHAN
+        cm_real_LPW_real_DCW,
+        cm_ext_LPW_real_DCW,
+        cm_paged_LPW_seg_DCW
+      } chan_mode;
   } iomChannelData_;
 
 iomChannelData_ iomChannelData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
@@ -99,7 +117,7 @@ t_stat cable_to_iom (uint iomUnitNum, int chanNum, int dev_code, enum dev_type d
 int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro);
 int iomListServiceTape (uint iomUnitNum, int chanNum, dcw_t * dcwp, bool * ptro);
 uint mbx_loc (uint iomUnitNum, uint chanNum);
-void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
+//void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service(uint iomUnitNum, uint chan, uint dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, bool is_read);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw, 
