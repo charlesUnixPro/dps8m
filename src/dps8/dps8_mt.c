@@ -682,7 +682,7 @@ sim_printf ("get the ddcw\n");
               }
 #endif
 
-#if 0
+#if 1
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
@@ -712,7 +712,8 @@ sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-
+#endif
+#if 0
             int cnt = 0;
             for (uint i = 0; i < 8; i ++)
               store_abs_word (daddr + i, 0);

@@ -40,12 +40,12 @@ typedef struct dcw_t
         struct {
             uint addr;
             // seg and pdta valid if paged and pcw 64 == 1
-            bool seg; // 1 bit at 31
+            bool tdcw31_seg; // 1 bit at 31
             bool pdta; // 1 bit at 32
             // 'pdcw' if paged and pcw 64 == 0; otherwise 'ec'
-            bool pdcw;  // extension control; ec 1 bit at 33
+            bool tdcw33_pdcw;  // extension control; ec 1 bit at 33
             bool res;   // IDCW control; res 1 bit at 34
-            bool rel;   // relative addressing control; 1 bit at 35
+            bool tdcw35_rel;   // relative addressing control; 1 bit at 35
           } xfer;
       } fields;
   } dcw_t;
@@ -55,10 +55,10 @@ typedef struct
     uint32 dcw_ptr;     // bits 0..17
     word1 ires;    // bit 18; IDCW restrict
     word1 hrel;    // bit 19; hardware relative addressing
-    word1 ae;      // bit 20; address extension
+    word1 lpw20_ae;      // bit 20; address extension
     word1 nc;      // bit 21; no tally; zero means update tally
     word1 trunout; // bit 22; signal tally runout?
-    word1 srel;    // bit 23; software relative addressing; not for Multics!
+    word1 lpw23_srel;    // bit 23; software relative addressing; not for Multics!
     uint32 tally;    // bits 24..35
     // Using Paged mode LPWx
     uint32 lbnd;
@@ -78,6 +78,7 @@ typedef struct iomChannelData_
     word1 ptp;
     word1 pge;
     word1 aux;
+    word1 seg; // bit 31 of last TDCW
     lpw_t lpw;
     word36 PTW_LPW; // DCW List page table word
     word36 PTW_DCW;  // Data page table word
