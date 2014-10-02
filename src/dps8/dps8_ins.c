@@ -4735,9 +4735,9 @@ static t_stat DoBasicInstruction (void)
             //rTR = (CY & MASK27) << 9;
             //rTR = CY & MASK27;
             rTR = (CY & MASK27) >> 9;
-//sim_printf ("rTR %d\n", rTR);
-if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
-  rTR = 0;
+            sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d\n", rTR);
+//if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
+  //rTR = 0;
             break;
 
         case 0257:  ///< lsdp
