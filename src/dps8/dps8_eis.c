@@ -77,6 +77,8 @@ static word36 EIScac (EISaddr * p, int offset, int ta)
     int woffset = offset / maxChars;
     int coffset = offset % maxChars;
 
+    word3 saveTRR = TPR . TRR;
+
     if (p -> mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
       {
         TPR . TRR = p -> RNR;
@@ -100,6 +102,7 @@ static word36 EIScac (EISaddr * p, int offset, int ta)
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", 
                    __func__, data, TPR . TSR, p -> address);
       }
+    TPR . TRR = saveTRR;
 
     word36 c = 0;
     switch (ta)
@@ -584,6 +587,8 @@ void doEIS_CAF (void)
 // CANFAULT
 static void EISWriteCache(EISaddr *p)
 {
+    word3 saveTRR = TPR . TRR;
+
     if (p -> cacheValid && p -> cacheDirty)
       {
         if (p->mat == viaPR)
@@ -592,7 +597,7 @@ static void EISWriteCache(EISaddr *p)
             TPR.TSR = p->SNR;
         
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                       "%s: writeCache %012llo@%o:%06o\n", 
+                       "%s: writeCache (PR) %012llo@%o:%06o\n", 
                        __func__, p -> cachedWord, p -> SNR, p -> address);
             Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, true); // write data
         }
@@ -611,12 +616,14 @@ static void EISWriteCache(EISaddr *p)
         }
     }
     p -> cacheDirty = false;
+    TPR . TRR = saveTRR;
   }
 #endif
 
 // CANFAULT
 static void EISWrite(EISaddr *p, word36 data)
 {
+    word3 saveTRR = TPR . TRR;
 #ifdef EIS_CACHE
     if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != p -> address)
       {
@@ -647,6 +654,7 @@ static void EISWrite(EISaddr *p, word36 data)
         Write (p->address, data, EIS_OPERAND_STORE, false); // write data
     }
 #endif
+    TPR . TRR = saveTRR;
 }
 
 #ifdef DBGF
@@ -1006,6 +1014,8 @@ static word36 EISRead(EISaddr *p)
 {
     word36 data;
 
+    word3 saveTRR = TPR . TRR;
+
 #ifdef EIS_CACHE
 #ifndef EIS_CACHE_READTEST
     if (p -> cacheValid && p -> cachedAddr == p -> address)
@@ -1055,6 +1065,7 @@ static word36 EISRead(EISaddr *p)
     p -> cachedAddr = p -> address;
     p -> cachedWord = data;
 #endif
+    TPR . TRR = saveTRR;
     return data;
 }
 
@@ -5440,6 +5451,8 @@ void scm(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+sim_debug (DBG_TRACEEXT, & cpu_dev, "SCM y3a n: %o offset: %o y3: %o\n",
+n, offset, y3);
         if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
@@ -5447,6 +5460,8 @@ void scm(DCDstruct *ins)
             e->ADDR3.SNR = PR[n].SNR;
             e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
             
+sim_debug (DBG_TRACEEXT, & cpu_dev, "SCM RNR: %o PR[n].RNR: %o TPR.TRR: %o PPR.PRR: %o\n",
+e->ADDR3.RNR, PR[n].RNR, TPR.TRR, PPR.PRR);
             e->ADDR3.mat = viaPR;
         }
 
