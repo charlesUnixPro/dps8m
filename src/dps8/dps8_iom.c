@@ -125,8 +125,8 @@ static DEBTAB iomDT [] =
     { "ERR", DBG_ERR },
     { "WARN", DBG_WARN },
     { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
     { "TRACE", DBG_TRACE },
+    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
     { NULL, 0 }
   };
 
@@ -489,7 +489,7 @@ static word24 buildIDSPTWaddress (word18 ptPtr, word1 seg, word8 pageNumber)
     return addr;
   }
 
-static void UNUSED fetchIDSPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumber)
+static void fetchIDSPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumber)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     word24 addr = buildIDSPTWaddress (chan_data -> ptPtr, seg, pageNumber);
@@ -527,6 +527,35 @@ static void fetchLPWPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumb
     word24 addr = buildLPWPTWaddress (chan_data -> ptPtr, seg, pageNumber);
 sim_printf ("LPWPTW address %o\n", addr);
     fetch_abs_word (addr, & chan_data -> PTW_LPW);
+  }
+
+void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
+                          void * data, idsType type, bool write)
+  {
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
+    switch (type)
+      {
+        case idsTypeW36:
+          {
+            word36 * dataIn = (word36 *) data;
+            for (uint t = 0; t < tally; t ++)
+              {
+                uint offset = daddr + t;
+                uint pageNumber = offset / 1024u;
+                uint pageOffset = offset % 1024u;
+
+                fetchIDSPTW (iomUnitNum, chanNum, chan_data -> seg, pageNumber);
+                word24 addr = getbits36 (chan_data -> PTW_DCW, 4, 14) << 10 | 
+                              pageOffset;
+sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
+                if (write)
+                  core_write (addr, dataIn [t]);
+                else
+                  core_read (addr, & dataIn [t]);
+              }
+          }
+          break;
+      }
   }
 
 //

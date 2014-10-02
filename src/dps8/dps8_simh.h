@@ -41,7 +41,7 @@
 #define DBG_SIM_USES_18 (1U << 18)
 #define DBG_ERR         (1U << 19)   
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | \
-                 DBG_ERR )
+                 DBG_ERR | DBG_TRACE )
 #define DBG_FAULT       (1U << 20)  ///< follow fault handling
 #define DBG_INTR        (1U << 21)  // follow interrupt handling
 #define DBG_CORE        (1U << 22)

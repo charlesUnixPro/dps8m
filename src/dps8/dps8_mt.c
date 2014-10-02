@@ -622,7 +622,6 @@ sim_printf ("uncomfortable with this\n");
 
         case 057:               // CMD 057 -- Survey devices
           {
-
 // According to rcp_tape_survey_.pl1:
 //
 //       2 survey_data,
@@ -713,10 +712,11 @@ sim_printf ("uncomfortable with this\n");
                 break;
               }
 #endif
-#if 0
+#if 1
+            word36 buffer [8];
             int cnt = 0;
             for (uint i = 0; i < 8; i ++)
-              store_abs_word (daddr + i, 0);
+              buffer [i] = 0;
             
             for (uint i = 0; i < N_MT_UNITS_MAX; i ++)
               {
@@ -733,18 +733,19 @@ sim_printf ("uncomfortable with this\n");
                                "unit %d handler %06o\n", i, handler);
                     if (cnt % 2 == 0)
                       {
-                        store_abs_word (daddr + cnt / 2, ((word36) handler) << 18);
+                        buffer [cnt / 2] = ((word36) handler) << 18;
                       }
                     else
                       {
-                        word36 temp;
-                        fetch_abs_word (daddr + cnt / 2, & temp);
-                        temp |= handler;
-                        store_abs_word (daddr + cnt / 2, temp);
+                        buffer [cnt / 2] |= handler;
                       }
                     cnt ++;
                   }
               }
+iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
+            indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
+                                 idsTypeW36, true);
 #endif
             stati = 04000;
           }

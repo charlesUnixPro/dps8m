@@ -111,6 +111,14 @@ typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
 typedef int iomCmd (UNIT * unitp, pcw_t * p);
 extern DEVICE iom_dev;
 
+// Indirect data service data type
+typedef enum 
+  {
+    idsTypeW36  // Incoming data is array of word36 
+  } idsType;
+void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
+			  void * data, idsType type, bool write);
+
 void iom_interrupt (uint iomUnitNum);
 void iom_init (void);
 t_stat cable_iom (uint iomUnitNum, int iomPortNum, int scuUnitNum, int scuPortNum);
