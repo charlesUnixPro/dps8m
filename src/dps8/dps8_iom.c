@@ -1,4 +1,5 @@
 //#define IOMDBG
+//#define IOMDBG1
 //
 // \file dps8_iom.c
 // \project dps8
@@ -525,7 +526,9 @@ static void fetchLPWPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumb
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     word24 addr = buildLPWPTWaddress (chan_data -> ptPtr, seg, pageNumber);
+#ifdef IOMDBG1
 sim_printf ("LPWPTW address %o\n", addr);
+#endif
     fetch_abs_word (addr, & chan_data -> PTW_LPW);
   }
 
@@ -547,7 +550,9 @@ void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally,
                 fetchIDSPTW (iomUnitNum, chanNum, chan_data -> seg, pageNumber);
                 word24 addr = getbits36 (chan_data -> PTW_DCW, 4, 14) << 10 | 
                               pageOffset;
+#ifdef IOMDBG1
 sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
+#endif
                 if (write)
                   core_write (addr, dataIn [t]);
                 else
@@ -744,17 +749,23 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
 
     if (chan_data -> chan_mode == cm_paged_LPW_seg_DCW)
       {
+#ifdef IOMDBG1
         sim_printf ("DCW is seg; addr = %o lbnd = %o size = %o\n",
                     addr,
                     chan_data -> lpw . lbnd,
                     chan_data -> lpw . size);
         sim_printf ("ptPtr %o\n", chan_data -> ptPtr);
+#endif
         fetchLPWPTW (iomUnitNum, chanNum, chan_data -> seg, addr >> 10);
+#ifdef IOMDBG1
         sim_printf ("PTW %012llo\n", chan_data -> PTW_LPW);
+#endif
         // Calculate effective address
         // PTW 4-17 || LPW 8-17
         addr = getbits36 (chan_data -> PTW_LPW, 4, 14) << 10 | addr;
+#ifdef IOMDBG1
         sim_printf ("addr now %08o\n", addr);
+#endif
       }
     else if (chan_data -> chan_mode == cm_LPW_init_state ||
         chan_data -> chan_mode == cm_real_LPW_real_DCW ||
