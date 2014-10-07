@@ -542,6 +542,7 @@ bool bG7PendingNoTRO (void)
 
 void setG7fault (_fault faultNo, _fault_subtype subFault)
   {
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
     g7Faults |= (1u << faultNo);
     g7SubFaults [faultNo] = subFault;
   }
