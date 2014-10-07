@@ -1156,6 +1156,9 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
                 __uint128_t big = sys_stats . total_cycles;
+                // Sync up the clock and the TR; see wiki page "CAC 03-Oct-2014"
+                big *= 8u;
+                //big /= 100u;
                 if (switches . bullet_time)
                   big *= 50000;
 
@@ -1165,6 +1168,14 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
                 t_uint64 UnixuSecs = UnixSecs * 1000000LL + big;
                 // now determine uSecs since Jan 1, 1901 ...
                 t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+
+                static t_uint64 last = 0;
+                if (last >= MulticsuSecs)
+                  {
+                    sim_debug (DBG_TRACE, & scu_dev, "finagle clock\n");
+                    MulticsuSecs = last + 1;
+                  }
+                last = MulticsuSecs;
 
                 rA = (MulticsuSecs >> 36) & DMASK;
                 rQ = (MulticsuSecs >>  0) & DMASK;
