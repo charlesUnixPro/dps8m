@@ -4487,6 +4487,27 @@ static t_stat DoBasicInstruction (void)
               t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & rA, & rQ);
               if (rc > 0)
                 return rc;
+              if_sim_debug (DBG_TRACE, & cpu_dev)
+                {
+                  // Clock at initialization
+                  // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
+                  // 932686778
+                  t_uint64 UnixSecs = 932686778;
+                  t_uint64 UnixuSecs = UnixSecs * 1000000LL;
+                  // now determine uSecs since Jan 1, 1901 ...
+                  t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+
+                  // Back into 72 bits
+                  __uint128_t big = ((__uint128_t) rA) << 36 | rQ;
+                  // Convert to time since boot
+                  big -= MulticsuSecs;
+
+                  unsigned long uSecs = big % 1000000u;
+                  unsigned long secs = big / 1000000u;
+                  sim_debug (DBG_TRACE, & cpu_dev,
+                             "Clock time since boot %4lu.%06lu seconds\n",
+                             secs, uSecs);
+                }
             }
             break;
         
@@ -4735,7 +4756,7 @@ static t_stat DoBasicInstruction (void)
             //rTR = (CY & MASK27) << 9;
             //rTR = CY & MASK27;
             rTR = (CY & MASK27) >> 9;
-            sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d\n", rTR);
+            sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
 //if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
   //rTR = 0;
             break;
@@ -5372,8 +5393,10 @@ static t_stat DoBasicInstruction (void)
             sim_printf ("left DIS_cycle\n");
             break;
 #else
+//sim_debug (DBG_FAULT, & cpu_dev, "DIS rTR %d (%o)\n", rTR, rTR);
             if (sample_interrupts ())
               {
+//sim_debug (DBG_FAULT, & cpu_dev, "DIS saw interrupt\n");
                 cpu . interrupt_flag = true;
                 break;
               }
@@ -5381,6 +5404,7 @@ static t_stat DoBasicInstruction (void)
             // this code suffices for "all other G7 faults."
             if (GET_I (cu . IWB) ? bG7PendingNoTRO () : bG7Pending ())
               {
+//sim_debug (DBG_TRACE, & cpu_dev, "DIS saw g7 fault\n");
                 cpu . g7_flag = true;
                 break;
               }
@@ -6633,6 +6657,7 @@ static t_stat DoEISInstruction (void)
 
         case 0774:  ///< lra
             rRALR = CY & MASK3;
+            sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", rRALR);
             break;
 
         case 0557:  ///< sptp
