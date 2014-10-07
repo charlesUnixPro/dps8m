@@ -449,7 +449,7 @@ startCA:;
 
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
                 __func__, GET_TM (rTAG));
-    return SCPE_OK;
+    sim_err ("(startCA): unknown Tm\n");
 
 
         //! Register modification. Fig 6-3
