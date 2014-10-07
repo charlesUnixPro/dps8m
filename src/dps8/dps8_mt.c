@@ -1,3 +1,4 @@
+//#define IOMDBG1
 /**
  * \file dps8_mt.c
  * \project dps8
@@ -662,7 +663,9 @@ sim_printf ("get the idcw\n");
 #endif
 
 #if 1
+#ifdef IOMDBG1
 sim_printf ("get the ddcw\n");
+#endif
             // Get the DDCW
             dcw_t dcw;
             int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
@@ -742,8 +745,10 @@ sim_printf ("uncomfortable with this\n");
                     cnt ++;
                   }
               }
+#ifdef IOMDBG1
 iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
 sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
+#endif
             indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
                                  idsTypeW36, true);
 #endif
