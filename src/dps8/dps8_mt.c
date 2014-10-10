@@ -311,6 +311,11 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     * disc = false;
 
     int chan = pcwp-> chan;
+
+    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    if (chan_data -> ptp && pcwp -> dev_cmd != 057 && pcwp -> dev_cmd != 040)
+      sim_err ("PTP in mt\n");
+
     switch (pcwp -> dev_cmd)
       {
         case 0: // CMD 00 Request status

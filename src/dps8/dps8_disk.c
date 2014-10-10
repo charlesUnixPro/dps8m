@@ -322,6 +322,10 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
     int chan = pcwp-> chan;
 //sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
+    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    if (chan_data -> ptp)
+      sim_err ("PTP in disk\n");
+
     switch (pcwp -> dev_cmd)
       {
         case 000: // CMD 00 Request status

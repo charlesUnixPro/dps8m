@@ -410,6 +410,135 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
     return SCPE_OK;
 }
 
+static word36 getKST (word24 offset)
+  {
+    word18 kst_seg = 067; // From system_book
+    char * msg;
+    word24 fa;
+    if (dbgLookupAddress (kst_seg, offset, & fa, & msg))
+      {
+        sim_printf ("address xlate failed for %05o:%06o (%s)\n",
+                    kst_seg, offset, msg);
+        return 0llu;
+      }
+    return M [fa];
+   }
+
+// dcl 1 kst aligned based (kstp),                 /* KST header declaration */
+
+// Word 0: 000000000230
+
+//     2 lowseg fixed bin (17),                            /* lowest segment number described by kst */
+
+// Word 1: 000000007775
+
+//     2 highseg fixed bin (17),                           /* highest segment number described by kst */
+//     2 highest_used_segno fixed bin (17),                /* highest segment number yet used  */
+//     2 lvs fixed bin (8),                                /* number of private LVs this process is connected to */
+
+// Word 2,3: 000000000331 000000000000
+
+//     2 time_of_bootload fixed bin (71),                  /* bootload time during prelinking */
+
+// Word 4: 
+
+//     2 garbage_collections fixed bin (17) unaligned,     /* KST garbage collections */
+//     2 entries_collected fixed bin (17) unaligned,               /* KST entries recovered by garbage collection */
+
+//     2 free_list bit (18) unaligned,                     /* relative pointer to first free kste */
+//     2 prelinked_ring (7) bit (1) unaligned,             /* rings prelinked in process */
+//     2 template bit (1) unaligned,                       /* this is a template kst if set */
+//     2 allow_256K_connect bit (1) unaligned,             /* can use 256K segments */
+//     2 unused_2 bit (9) unaligned,
+//     2 uid_hash_bucket (0 : 127) bit (18) unaligned,     /* hash buckets */
+//     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+//     2 lv (1:256) bit (36),                              /* private logical volume connection list */
+//     2 end_of_kst bit (36);
+
+
+
+
+
+
+// dcl 1 kste based (kstep) aligned,                           /* KST entry declaration */
+
+// word 0:
+
+//     2 fp bit (18) unaligned,                                /* forward rel pointer */
+//     2 segno fixed bin (17) unaligned,                       /* segment number of this kste */
+
+// word 1, 2:
+
+//     2 usage_count (0:7) fixed bin (8) unaligned,            /* outstanding initiates/ring */
+
+/// word 3, 4:
+
+//     2 entryp ptr unaligned,                                 /* branch pointer */
+//                                                             /* See WARNING below for requirements to use entryp. */
+
+// word 5:
+
+//     2 uid bit (36) aligned,                                 /* unique identifier */
+
+
+//     2 access_information unaligned,
+
+// word 6:
+
+//       3 dtbm bit (36),                                      /* date time branch modified */
+
+// word 7:
+
+//       3 extended_access bit (33),                           /* extended access from the branch */
+//       3 access bit (3),                                     /* rew */
+
+// word 8;
+
+//       3 ex_rb (3) bit (3),                                  /* ring brackets from branch */
+//     2 pad1 bit (3) unaligned,
+//     2 flags unaligned,
+//       3 dirsw bit (1),                                      /* directory switch */
+//       3 allow_write bit (1),                                /* set if initiated with write permission */
+//       3 priv_init bit (1),                                  /* privileged initiation */
+//       3 tms bit (1),                                        /* transparent modification switch */
+//       3 tus bit (1),                                        /* transparent usage switch */
+//       3 tpd bit (1),                                        /* transparent paging device switch */
+//       3 audit bit (1),                                      /* audit switch */
+//       3 explicit_deact_ok bit (1),                          /* set if I am willing to have a user force deactivate */
+//       3 pad bit (3),
+//     2 infcount fixed bin (12) unaligned;                    /* _^Hi_^Hf dirsw _^Ht_^Hh_^He_^Hn inferior count _^He_^Hl_^Hs_^He lv index */
+
+// 9 words total
+
+
+
+
+t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
+  {
+#if 0
+    for (word18 offset = 0; offset < 1024 * 64; offset ++)
+      {
+        sim_printf ("%06o %012llo\n", offset, getKST (offset));
+      }
+#endif
+
+    //sim_printf ("lowseg  %06llo\n", getKST (0) >> 18);
+    //sim_printf ("highseg %06llo\n", getKST (0) & MASK18);
+    sim_printf ("lowseg  %06llo\n", getKST (0) & MASK18);
+    sim_printf ("highseg %06llo\n", getKST (1) & MASK18);
+
+    word18 start = 0110;
+    for (word18 i = 0; ; i ++)
+      {
+        word36 w0 = getKST (start + i * 8);
+        if ((w0 & MASK18) == 0)
+          break;
+        sim_printf ("%4d %06llo\n", i, w0 & MASK18);
+        sim_printf ("    %012llo %012llo\n", getKST (start + i * 8 + 3), getKST (start + i * 8 + 4));
+      }
+    return SCPE_OK;
+  }
+
 //! custom command "init"
 t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
 {
@@ -1249,11 +1378,20 @@ t_stat sim_instr (void)
                                      // Acutally have FETCH jump to EXECUTE
                                      // instead of breaking.
 
-        rTR = (rTR - 1) & MASK27;
-        if (rTR == MASK27) // passing thorugh 0...
+        // Sync. the TR with the emulator clock.
+        static uint rTRlsb = 0;
+        rTRlsb ++;
+        // The emulator clock runs about 7x as fast at the Timer Register;
+        // see wiki page "CAC 08-Oct-2014"
+        if (rTRlsb >= 7)
           {
-            if (switches . tro_enable)
-              setG7fault (timer_fault, 0);
+            rTRlsb = 0;
+            rTR = (rTR - 1) & MASK27;
+            if (rTR == MASK27) // passing thorugh 0...
+              {
+                if (switches . tro_enable)
+                  setG7fault (timer_fault, 0);
+              }
           }
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
@@ -1521,6 +1659,24 @@ t_stat sim_instr (void)
                   }
                 if (ret == CONT_TRA)
                   {
+#ifdef AGGRESSIVE_RING_ALARM
+                    //if (rRALR && (PPR.PRR || TPR.TRR))
+                      //sim_printf ("CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
+                                  //PPR.PRR, TPR.TRR, rRALR);
+                    if (rRALR && (PPR.PRR || TPR.TRR))
+                      {
+                        sim_debug (DBG_CAC, & cpu_dev,
+                                   "CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
+                                   PPR.PRR, TPR.TRR, rRALR);
+                        traceInstruction (DBG_CAC);
+                      }
+                    if (rRALR != 0 && ! (PPR . PRR < rRALR))
+                      {
+                        sim_printf ("CAC sez this is a ring alarm\n");
+                        doFault (acc_viol_fault, ACV13,i
+                                 "CAC sez this is a ring alarm");
+                      }
+#endif
                     cu . xde = cu . xdo = 0;
                     cpu . wasXfer = true;
                     setCpuCycle (FETCH_cycle);

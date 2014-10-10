@@ -3788,6 +3788,10 @@ static t_stat DoBasicInstruction (void)
                 PPR.PSR = TPR.TSR;
                 CLRF(cu.IR, I_EOFL);
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -3803,6 +3807,10 @@ static t_stat DoBasicInstruction (void)
                 
                 CLRF(cu.IR, I_EUFL);
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -3817,6 +3825,10 @@ static t_stat DoBasicInstruction (void)
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -3829,6 +3841,10 @@ static t_stat DoBasicInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -3842,6 +3858,10 @@ static t_stat DoBasicInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -3858,6 +3878,10 @@ static t_stat DoBasicInstruction (void)
                 
                 CLRF(cu.IR, I_OFLOW);
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -3870,6 +3894,10 @@ static t_stat DoBasicInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+                
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -3892,6 +3920,10 @@ static t_stat DoBasicInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+                
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -3974,6 +4006,10 @@ static t_stat DoBasicInstruction (void)
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -3987,7 +4023,11 @@ static t_stat DoBasicInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
-                
+
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+
                 return CONT_TRA;
             }
             break;
@@ -5445,6 +5485,11 @@ static t_stat DoEISInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -5458,6 +5503,10 @@ static t_stat DoEISInstruction (void)
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -5470,6 +5519,10 @@ static t_stat DoEISInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+                
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -5486,6 +5539,10 @@ static t_stat DoEISInstruction (void)
                 
                 CLRF(cu.IR, I_TRUNC);
                 
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
+                
                 return CONT_TRA;
             }
             break;
@@ -5499,6 +5556,10 @@ static t_stat DoEISInstruction (void)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
+                
+#ifdef RALR_FIX_0
+                readOperands ();
+#endif
                 
                 return CONT_TRA;
             }
@@ -7304,6 +7365,13 @@ void doRCU (bool fxeTrap)
           {
             // directed page fault during CAF
             cu . IR |= I_MIIF;
+#ifdef AGGRESSIVE_RING_ALARM
+            if (rRALR != 0 && ! (PPR . PRR < rRALR))
+              {
+                sim_printf ("CAC sez this is a RCU ring alarm\n");
+                doFault (acc_viol_fault, ACV13, "CAC sez this is a ring alarm");
+              }
+#endif
             longjmp (jmpMain, JMP_RESTART);
           }
       }

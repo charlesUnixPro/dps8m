@@ -1156,18 +1156,22 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
                 __uint128_t big = sys_stats . total_cycles;
-                // Sync up the clock and the TR; see wiki page "CAC 03-Oct-2014"
-                big *= 8u;
+                // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
+                big *= 4u;
                 //big /= 100u;
                 if (switches . bullet_time)
-                  big *= 50000;
+                  big *= 10000;
 
+                // Boot time
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                 // 932686778
                 t_uint64 UnixSecs = 932686778;
-                t_uint64 UnixuSecs = UnixSecs * 1000000LL + big;
+                t_uint64 UnixuSecs = UnixSecs * 1000000llu + big;
                 // now determine uSecs since Jan 1, 1901 ...
-                t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+                t_uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
+
+                // The get calendar clock function is guaranteed to return
+                // different values on successive calls. 
 
                 static t_uint64 last = 0;
                 if (last >= MulticsuSecs)

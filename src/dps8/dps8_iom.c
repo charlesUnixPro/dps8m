@@ -1694,6 +1694,18 @@ static int send_marker_interrupt (uint iomUnitNum, int chanNum)
 #endif
 
 /*
+ * send_special_interrupt ()
+ *
+ * Send a "special" interrupt to the CPU.
+ *
+ */
+
+int send_special_interrupt (uint iomUnitNum, uint chanNum)
+  {
+    return send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
+  }
+
+/*
  * send_terminate_interrupt ()
  *
  * Send a "terminate" interrupt to the CPU.
@@ -1706,7 +1718,6 @@ int send_terminate_interrupt (uint iomUnitNum, uint chanNum)
   {
     return send_general_interrupt (iomUnitNum, chanNum, imwTerminatePic);
   }
-
 
 //
 // iomListService

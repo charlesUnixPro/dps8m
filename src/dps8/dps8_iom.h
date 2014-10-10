@@ -129,6 +129,7 @@ uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service(uint iomUnitNum, uint chan, uint dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, bool is_read);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
+int send_special_interrupt (uint iomUnitNum, uint chanNum);
 void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw, 
                   word36 word0, word36 word1);
 void fetch_abs_pair (word24 addr, word36 * even, word36 * odd);

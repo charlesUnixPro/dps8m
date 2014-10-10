@@ -127,6 +127,7 @@ static CTAB dps8_cmds[] =
     {"MDFX3ENTRY", mdfx3entry, 0, "", NULL},
     {"SMFX1ENTRY", smfx1entry, 0, "", NULL},
 #endif
+    {"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -371,6 +372,14 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
       * compname = NULL;
     if (compoffset)
       * compoffset = 0;
+
+    // Magic numbers!
+    // Multics seems to have a copy of hpchs_ (segno 0162) in segment 0322;
+    // This little tweak allows source code level tracing for segment 0322,
+    // and has no operational significance to the emulator
+    if (segno == 0322)
+      segno = 0162;
+
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
     if (ret)
       return ret;

@@ -1120,6 +1120,7 @@ t_stat dpsCmd_Dump (int32 arg, char *buf);
 t_stat dpsCmd_Init (int32 arg, char *buf);
 t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
+t_stat dumpKST (int32 arg, char * buf);
 _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);

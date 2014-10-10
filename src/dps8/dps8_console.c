@@ -16,6 +16,8 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 
+#define ASSUME0 0
+
 /*
  console.c -- operator's console
  
@@ -312,6 +314,16 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
 //-- // ============================================================================
 //-- 
 
+static t_stat console_attn (UNUSED UNIT * uptr)
+  {
+    send_special_interrupt (cables_from_ioms_to_con [ASSUME0] . iom_unit_num,
+                            cables_from_ioms_to_con [ASSUME0] . chan_num);
+    return SCPE_OK;
+  }
+
+static UNIT attn_unit = 
+  { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
@@ -324,6 +336,10 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     bool is_read = true;
 
     int chan = pcwp-> chan;
+
+    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    if (chan_data -> ptp)
+      sim_err ("PTP in console\n");
 
     switch (pcwp -> dev_cmd)
       {
@@ -499,6 +515,20 @@ sim_printf ("uncomfortable with this\n");
 
             //sim_printf ("CONSOLE: ");
             //sim_puts ("CONSOLE: ");
+
+
+#ifdef ATTN_HACK
+            // When the console prints out "Command:", press the Attention
+            // key one second later
+            if (tally == 3 &&
+                M [daddr + 0] == 0103157155155llu &&
+                M [daddr + 1] == 0141156144072llu &&
+                M [daddr + 2] == 0040177177177llu)
+              {
+                //sim_printf ("attn!\n");
+                sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+              }
+#endif
 
             // Tally is in words, not chars.
 
