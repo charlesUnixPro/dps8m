@@ -388,7 +388,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                 if (! console_state . have_eol)
                   {
                     stati = 04310;
-                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout\n");
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout)\n");
                   }
               }
             // We have an EOL from the operator
