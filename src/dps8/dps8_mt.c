@@ -314,7 +314,10 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
     iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
     if (chan_data -> ptp && pcwp -> dev_cmd != 057 && pcwp -> dev_cmd != 040)
-      sim_err ("PTP in mt\n");
+      {
+        sim_printf ("PTP in mt; dev_cmd %o\n", pcwp -> dev_cmd);
+        sim_err ("PTP in mt\n");
+      }
 
     switch (pcwp -> dev_cmd)
       {
@@ -732,11 +735,17 @@ sim_printf ("uncomfortable with this\n");
                   {
                     word18 handler = 0;
                     handler |= 0100000; // operational
-                    handler |= 0040000; // ready
+                    //if (find_dev_from_unit (& mt_unit [i]))
+                      //sim_printf ("Unit %d has dev\n", i);
+                    if (mt_unit [i] . filename)
+                      {
+                        handler |= 0040000; // ready
+                        //sim_printf ("Unit %d ready\n", i);
+                      }
                     handler |= (cables_from_ioms_to_mt [i] . dev_code & 037) << 9; // number
                     handler |= 0000040; // 200 ips
                     handler |= 0000020; // 9 track
-                    handler |= 0000003; // 800/1600/6250
+                    handler |= 0000007; // 800/1600/6250
                     sim_debug (DBG_DEBUG, & tape_dev,
                                "unit %d handler %06o\n", i, handler);
                     if (cnt % 2 == 0)
