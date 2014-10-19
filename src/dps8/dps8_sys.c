@@ -34,6 +34,7 @@
 #include "dps8_fxe.h"
 #include "dps8_append.h"
 #include "dps8_faults.h"
+#include "dps8_fnp.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -160,6 +161,7 @@ static void dps8_init(void)    //CustomCmds(void)
     console_init ();
     disk_init ();
     mt_init ();
+    fnpInit ();
     //mpc_init ();
     scu_init ();
     cpu_init ();
@@ -260,6 +262,10 @@ static t_stat sys_cable (UNUSED int32 arg, char * buf)
     else if (strcasecmp (name, "SCU") == 0)
       {
         rc = cable_scu (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "FNP") == 0)
+      {
+        rc = cableFNP (n1, n2, n3, n4);
       }
     else
       {
@@ -2087,6 +2093,7 @@ DEVICE * sim_devices [] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & fnpDev,
     & disk_dev,
     & scu_dev,
     & clk_dev,
