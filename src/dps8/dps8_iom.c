@@ -54,6 +54,7 @@
 #define N_DEV_CODES 64
 
 #define IOM_CONNECT_CHAN 2U
+#define IOM_SPECIAL_STATUS_CHAN 6U
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -550,6 +551,8 @@ void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally,
                 fetchIDSPTW (iomUnitNum, chanNum, chan_data -> seg, pageNumber);
                 word24 addr = getbits36 (chan_data -> PTW_DCW, 4, 14) << 10 | 
                               pageOffset;
+//sim_printf ("daddr %08o t %4d offset %08o pn %04d po %04d addr %08o\n",
+            //daddr, t, offset, pageNumber, pageOffset, addr);
 #ifdef IOMDBG1
 sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
 #endif
@@ -1700,9 +1703,73 @@ static int send_marker_interrupt (uint iomUnitNum, int chanNum)
  *
  */
 
-int send_special_interrupt (uint iomUnitNum, uint chanNum)
+int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 
+                            word8 status0, word8 status1)
   {
-    return send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
+    uint chanloc = mbx_loc (iomUnitNum, IOM_SPECIAL_STATUS_CHAN);
+sim_printf ("special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);
+
+// Multics uses an 12(8) word circular queue, managed by clever manipulation
+// of the LPW and DCW.
+// Rather then goes through the mechanics of parsing the LPW and DCW,
+// we will just assume that everything is set up the way we expect,
+// and update the circular queue.
+#if 1
+#if 0
+    lpw_t lpw;
+    fetch_and_parse_lpw (& lpw, IOM_SPECIAL_STATUS_CHAN, true);
+    if (lpw . lpw23_srel)
+      sim_err ("can't cope with srel in send_special_interrupt\n");
+
+sim_printf ("lpw ae (20) %o\n", lpw . lpw20_ae);
+sim_printf ("lpw nc (21) %o\n", lpw . nc);
+sim_printf ("lpw trunout (22) %o\n", lpw . trunout);
+    if (lpw . lpw20_ae || lpw . nc || lpw . trunout)
+      sim_err ("can't cope with tally control buts in send_special_interrupt\n");
+sim_printf ("lpw tally %o\n", lpw . tally);
+sim_printf ("lpw dcw_ptr %o\n", lpw . dcw_ptr);
+#endif
+#if 1
+    word36 lpw = M [chanloc + 0];
+sim_printf ("lpw %012llo\n", lpw);
+// 001432040000
+//  001432  0 40000 
+//     addr  001432 
+// The lpw points to the special status mbx dcw word
+//     RES/REL/AE 0
+//     NC/TAL/REL 4
+sim_printf ("@lpw %012llo\n", M [(lpw >> 18) & MASK18]);
+#endif
+#endif
+
+    word36 dcw = M [chanloc + 3];
+//sim_printf ("dcw %012llo\n", dcw);
+//  001320010012
+//  001320  0     1  0012
+//  ADDR   CP  IOTP TALLY
+    word36 status = 0400000000000;   
+    status |= (((word36) chanNum) & MASK6) << 27;
+    status |= (((word36) devCode) & MASK8) << 18;
+    status |= (((word36) status0) & MASK8) <<  9;
+    status |= (((word36) status1) & MASK8) <<  0;
+sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);
+    M [(dcw >> 18) & MASK18] = status;
+
+    uint tally = dcw & MASK12;
+    if (tally > 1)
+      {
+        dcw -= 01llu;  // tally --
+        dcw += 01000000llu; // addr ++
+      }
+    else
+      dcw = 001320010012llu; // reset to beginning of queue
+sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());
+    M [chanloc + 3] = dcw;
+
+//    send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
+    send_general_interrupt (iomUnitNum, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
+//    send_general_interrupt (iomUnitNum, IOM_SPECIAL_STATUS_CHAN, imwSystemFaultPic);
+    return 0;
   }
 
 /*
@@ -2112,7 +2179,7 @@ static int doPayloadChannel (uint iomUnitNum, word24 dcw_ptr)
 #ifdef IOMDBG
 sim_printf ("pcw %012llo %012llo\n", word0, word1);
 #endif
-    decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
+    decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     uint chanNum = pcw . chan;
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     uint dev_code = pcw . dev_code;
@@ -2154,7 +2221,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
     pcw_t * pcwp = & chan_data -> pcw;
     * pcwp = pcw;
     //(void) fetch_abs_pair (dcw_ptr, & word0, & word1);
-    //decode_idcw (iomUnitNum, pcwp, 1, word0, word1);
+    //decode_idcw (iomUnitNum, pcwp, true, word0, word1);
     //unitp -> up7 = (void *) pcwp;
     sim_activate (unitp, sys_opts . iom_times . chan_activate);
     return 0;
@@ -2261,7 +2328,7 @@ static int doConnectChan (uint iomUnitNum)
         word36 word0, word1;
     
         (void) fetch_abs_pair (lpwp -> dcw_ptr, & word0, & word1);
-        decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
+        decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     
         sim_debug (DBG_INFO, & iom_dev, "%s: PCW is: %s\n", 
                    __func__, pcw2text (& pcw));
@@ -2451,7 +2518,6 @@ t_stat cable_to_iom (uint iomUnitNum, int chanNum, int dev_code,
         sim_printf ("cable_to_iom: socket in use\n");
         return SCPE_ARG;
       }
-
     iom [iomUnitNum] . devices [chanNum] [dev_code] . type = dev_type;
     iom [iomUnitNum] . devices [chanNum] [dev_code] . ctype = ctype;
     iom [iomUnitNum] . devices [chanNum] [dev_code] . devUnitNum = devUnitNum;
@@ -2830,7 +2896,7 @@ static t_stat iomShowMbx (UNUSED FILE * st,
     pcw_t pcw;
     word36 word0, word1;
     (void) fetch_abs_pair (addr, & word0, & word1);
-    decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
+    decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     sim_printf ("PCW at %#06o: %s\n", addr, pcw2text (& pcw));
 
 

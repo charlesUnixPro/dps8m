@@ -19,6 +19,7 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
+#include "dps8_console.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -90,6 +91,7 @@ static DEBTAB cpu_dt[] = {
     { "CORE",       DBG_CORE        },
     { "CYCLE",      DBG_CYCLE       },
     { "CAC",        DBG_CAC         },
+    { "FINAL",      DBG_FINAL       },
     { NULL,         0               }
 };
 
@@ -145,6 +147,8 @@ const char *sim_stop_messages[] = {
  *
  * BUG: unimplemented instructions may not be represented
  */
+
+static bool watchBits [MEMSIZE];
 
 static int is_eis[1024];    // hack
 
@@ -719,6 +723,7 @@ int query_scbank_map (word24 addr)
 void cpu_init (void)
 {
   memset (& switches, 0, sizeof (switches));
+  memset (& watchBits, 0, sizeof (watchBits));
   switches . FLT_BASE = 2; // Some of the UnitTests assume this
 }
 
@@ -1348,6 +1353,9 @@ t_stat sim_instr (void)
     do
       {
 
+        if_sim_debug (DBG_TRACE, & cpu_dev)
+          sim_printf ("\n");
+
         reason = 0;
 
         // Process deferred events and breakpoints
@@ -1355,6 +1363,17 @@ t_stat sim_instr (void)
         if (reason)
           //return reason;
           break;
+
+        if (sim_gtime () % 1024 == 0)
+          {
+            t_stat ch = sim_poll_kbd ();
+            if (ch != SCPE_OK)
+              {
+                //sim_printf ("%o\n", ch);
+                if (ch == 010033) // Escape
+                  console_attn (NULL);
+              }
+          }
 
 #ifdef MULTIPASS
        if (multipassStatsPtr) 
@@ -2031,6 +2050,31 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
     
 }
 
+t_stat memWatch (int32 arg, char * buf)
+  {
+    //sim_printf ("%d <%s>\n", arg, buf);
+    if (strlen (buf) == 0)
+      {
+        if (arg)
+          {
+            sim_printf ("no argument to watch?\n");
+            return SCPE_ARG;
+          }
+        sim_printf ("Clearing all watch points\n");
+        memset (& watchBits, 0, sizeof (watchBits));
+        return SCPE_OK;
+      }
+    char * end;
+    long int n = strtol (buf, & end, 0);
+    if (* end || n < 0 || n >= MEMSIZE)
+      {
+        sim_printf ("invalid argument to watch?\n");
+        return SCPE_ARG;
+      }
+    watchBits [n] = arg != 0;
+    return SCPE_OK;
+  }
+
 /*!
  * "Raw" core interface ....
  */
@@ -2041,6 +2085,11 @@ int32 core_read(word24 addr, word36 *data)
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+      }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read   %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
       }
     *data = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2053,6 +2102,11 @@ int core_write(word24 addr, word36 data) {
     if(addr >= MEMSIZE)
       doFault (op_not_complete_fault, nem, "core_write nem");
     M[addr] = data & DMASK;
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012llo\n",
                 addr, data);
@@ -2070,6 +2124,11 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
     }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
     *even = M[addr++] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo\n",
@@ -2078,6 +2137,12 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
     }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+
     *odd = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo\n",
@@ -2102,7 +2167,17 @@ int core_write2(word24 addr, word36 even, word36 odd) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
     M[addr++] = even;
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
     M[addr] = odd;
     return 0;
 }

@@ -128,6 +128,8 @@ static CTAB dps8_cmds[] =
     {"SMFX1ENTRY", smfx1entry, 0, "", NULL},
 #endif
     {"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
+    {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL},
+    {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -379,6 +381,10 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     // and has no operational significance to the emulator
     if (segno == 0322)
       segno = 0162;
+    if (segno == 0310)
+      segno = 041;
+    if (segno == 0313)
+      segno = 0161;
 
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
     if (ret)

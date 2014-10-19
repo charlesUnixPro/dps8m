@@ -199,6 +199,9 @@ CFLAGS += -DRALR_FIX_0
 # Enable automatic pressing the operator attention key.
 CFLAGS += -DATTN_HACK
 
+# Enable automatic detection of selected tape mount requests
+CFLAGS += -DMOUNT_HACK
+
 LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
 # simh requires -ldl

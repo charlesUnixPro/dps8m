@@ -443,6 +443,7 @@ For now, at least, we must remember a few things:
 void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+#if 0
     if (faultNumber == acc_viol_fault && subFault == ACV13)
       {
         if_sim_debug (DBG_CAC, & cpu_dev)
@@ -451,6 +452,7 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
             traceInstruction (DBG_CAC);
           }
       }
+#endif
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
 

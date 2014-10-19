@@ -50,7 +50,7 @@ B29:        //iefpFinalAddress = doAppendRead(i, accessType, address);
             iefpFinalAddress = doAppendCycle(address, cyctyp);
             core_read(iefpFinalAddress, result);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "Read(Actual) Read: iefpFinalAddress=%08o readData=%012llo\n", iefpFinalAddress, *result);
+            sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read(Actual) Read: iefpFinalAddress=%08o readData=%012llo\n", iefpFinalAddress, *result);
         
             return SCPE_OK;
     }
@@ -91,7 +91,7 @@ B29:        //iefpFinalAddress = doAppendDataWrite(i, address);
             iefpFinalAddress = doAppendCycle(address, cyctyp);
             core_write(iefpFinalAddress, data);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o data=%012llo\n", iefpFinalAddress, data);
+            sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o data=%012llo\n", iefpFinalAddress, data);
         
             return SCPE_OK;
     }

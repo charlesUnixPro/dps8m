@@ -1,7 +1,7 @@
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
-      ((dptr)->dctrl & dbits) && \
+      (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
       ((sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR) && \
       sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) \
@@ -9,8 +9,8 @@
 
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
-  if_sim_debug(dbits, dptr) \
-    _sim_debug (dbits, dptr, __VA_ARGS__); \
+  if_sim_debug((dbits), dptr) \
+    _sim_debug ((dbits), dptr, __VA_ARGS__); \
   else \
     (void) 0
 
@@ -47,6 +47,7 @@
 #define DBG_CORE        (1U << 22)
 #define DBG_CYCLE       (1U << 23)
 #define DBG_CAC         (1U << 24)
+#define DBG_FINAL       (1U << 25)
 
 // Abort codes, used to sort out longjmp's back to the main loop.
 // Codes > 0 are simulator stop codes

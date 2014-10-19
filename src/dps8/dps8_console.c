@@ -15,6 +15,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
+#include "dps8_mt.h"
 
 #define ASSUME0 0
 
@@ -136,6 +137,8 @@ typedef struct con_state_t
     bool have_eol;
     char *auto_input;
     char *autop;
+    bool once_per_boot;
+
  } con_state_t;
 
 // We only support a single console instance, so this should be okay.
@@ -164,6 +167,7 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
     console_state . tailp = console_state . buf;
     console_state . readp = console_state . buf;
     console_state . have_eol = false;
+    console_state . once_per_boot = false;
     return SCPE_OK;
   }
 
@@ -314,15 +318,25 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
 //-- // ============================================================================
 //-- 
 
-static t_stat console_attn (UNUSED UNIT * uptr)
+t_stat console_attn (UNUSED UNIT * uptr)
   {
     send_special_interrupt (cables_from_ioms_to_con [ASSUME0] . iom_unit_num,
-                            cables_from_ioms_to_con [ASSUME0] . chan_num);
+                            cables_from_ioms_to_con [ASSUME0] . chan_num, 
+                            ASSUME0, 0, 0);
+    return SCPE_OK;
+  }
+
+static t_stat mount_request (UNIT * uptr)
+  {
+    loadTape (1, uptr -> up7);
     return SCPE_OK;
   }
 
 static UNIT attn_unit = 
   { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+
+static UNIT mount_unit = 
+  { UDATA (& mount_request, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
@@ -526,8 +540,76 @@ sim_printf ("uncomfortable with this\n");
                 M [daddr + 2] == 0040177177177llu)
               {
                 //sim_printf ("attn!\n");
-                sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+                if (! console_state . once_per_boot)
+                  {
+                    sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+                    console_state . once_per_boot = true;
+                  }
               }
+#endif
+
+#if 0
+sim_printf ("\ntally %d\n", tally);
+for (uint i = 0; i < tally; i ++)
+  {
+    word36 w = M [daddr + i];
+    sim_printf ("  %012llo  ", w);
+    for (int j = 0; j < 4; j ++)
+      {
+        uint ch = (w >> 27) & 0177;
+        sim_printf ("%c", isprint (ch) ? ch : '.');
+        w = (w << 9) & MASK36;
+      }
+    sim_printf ("\n");
+  }
+#endif
+
+#ifdef MOUNT_HACK
+            // 1642.9  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_00 for Initialize
+            // tally 21
+            //    0 061066064062  1642
+            //    1 056071040040  .9  
+            //    2 122103120072  RCP:
+            //    3 040115157165   Mou
+            //    4 156164040122  nt R
+            //    5 145145154040  eel 
+            //    6 061062056063  12.3
+            //    7 105130105103  EXEC
+            //    8 137103106060  _CF0
+            //    9 060061071137  019_
+            //   10 061040167151  1 wi
+            //   11 164150157165  thou
+            //   12 164040162151  t ri
+            //   13 156147040157  ng o
+            //   14 156040164141  n ta
+            //   15 160141137060  pa_0
+            //   16 060040146157  0 fo
+            //   17 162040111156  r In
+            //   18 151164151141  itia
+            //   19 154151172145  lize
+            //   20 015012177177  ....
+
+            if (tally > 6 &&
+                M [daddr + 2] == 0122103120072llu && // RCP
+                M [daddr + 3] == 0040115157165llu && //  Mou
+                M [daddr + 4] == 0156164040122llu && // nt R
+                M [daddr + 5] == 0145145154040llu)   // eel
+              {
+                if (M [daddr + 6] == 0061062056063llu && // 12/3 
+                    M [daddr + 7] == 0105130105103llu && // EXEC
+                    M [daddr + 8] == 0137103106060llu && // _CF0
+                    M [daddr + 9] == 0060061071137llu && // 019_
+                    (M [daddr + 10] & 0777777000000llu) == 0061040000000) // 01
+sim_printf ("loading 12.3EXEC_CF0019_1\n");
+                mount_unit . up7 = "88534.tap";
+                sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                //sim_activate (& mount_unit, 800000000); // 8M ~= 200 sec
+                //sim_tape_attach (getTapeUnit (0), "88534.tap");
+                //tape_send_special_interrupt (0);
+    //send_special_interrupt (cables_from_ioms_to_con [ASSUME0] . iom_unit_num,
+                            //cables_from_ioms_to_con [ASSUME0] . chan_num);
+              }
+
 #endif
 
             // Tally is in words, not chars.

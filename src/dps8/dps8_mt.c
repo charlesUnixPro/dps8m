@@ -98,10 +98,12 @@
 static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat mt_show_boot_drive (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-// Survey devices only has 16 slots, so...
+// Survey devices only has 16 slots, so 15 drives plus the controller
 #define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
 
@@ -116,7 +118,8 @@ static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // run commands, including CONTINUE.
     // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
-    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+// Unit 0 is the controller
+    {UDATA (& mt_svc,                /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
@@ -169,6 +172,16 @@ static MTAB mt_mod [] =
       mt_set_nunits, /* validation routine */
       mt_show_nunits, /* display routine */
       "Number of TAPE units in the system", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR, /* mask */
+      0,            /* match */
+      "BOOT_DRIVE",     /* print string */
+      "BOOT_DRIVE",         /* match string */
+      mt_set_boot_drive, /* validation routine */
+      mt_show_boot_drive, /* display routine */
+      "Select the boot drive", /* value descriptor */
       NULL          // help
     },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
@@ -227,6 +240,7 @@ static struct
     int dev_code;
   } cables_from_ioms_to_mt [N_MT_UNITS_MAX];
 
+static int boot_drive = 1; // Drive number to boot from
 
 static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
   {
@@ -240,11 +254,40 @@ static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
     return -1;
   }
 
+#if 0
+UNIT * getTapeUnit (uint driveNumber)
+  {
+    return mt_unit + driveNumber;
+  }
+
+void tape_send_special_interrupt (uint driveNumber)
+  {
+    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
+                            cables_from_ioms_to_mt [driveNumber] . chan_num);
+  }
+#endif
+
+void loadTape (uint driveNumber, char * tapeFilename)
+  {
+sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
+    t_stat stat = sim_tape_attach (& mt_unit [driveNumber], tapeFilename);
+    if (stat != SCPE_OK)
+      {
+        sim_printf ("loadTape sim_tape_attach returned %d\n", stat);
+        return;
+      }
+    mt_unit [driveNumber] . flags |= UNIT_RO;
+    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
+                            cables_from_ioms_to_mt [driveNumber] . chan_num,
+                            driveNumber, 0, 020 /* tape drive to ready */);
+  }
+
 void mt_init(void)
   {
     memset(tape_state, 0, sizeof(tape_state));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       cables_from_ioms_to_mt [i] . iom_unit_num = -1;
+    boot_drive = 1;
   }
 
 static t_stat mt_reset (DEVICE * dptr)
@@ -313,7 +356,14 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     int chan = pcwp-> chan;
 
     iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
-    if (chan_data -> ptp && pcwp -> dev_cmd != 057 && pcwp -> dev_cmd != 040)
+    if (chan_data -> ptp &&
+        pcwp -> dev_cmd != 057 && // survey devices
+        pcwp -> dev_cmd != 072 && // rewind/unload
+        pcwp -> dev_cmd != 000 && // Request status
+        pcwp -> dev_cmd != 060 && // set 800 bpi
+        pcwp -> dev_cmd != 070 && // rewind
+        pcwp -> dev_cmd != 005 && // read
+        pcwp -> dev_cmd != 040)   // reset status
       {
         sim_printf ("PTP in mt; dev_cmd %o\n", pcwp -> dev_cmd);
         sim_err ("PTP in mt\n");
@@ -458,6 +508,26 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
+if (chan_data -> ptp)
+  {
+    sim_printf ("XXXX---->>>   PTP in mt read\n");
+    sim_printf ("XXXX---->>>   PTP in mt read\n");
+    sim_printf ("XXXX---->>>   PTP in mt read\n");
+    sim_printf ("XXXX---->>>   PTP in mt read\n");
+
+            word36 buffer [tally];
+
+            for (uint i = 0; i < tally; i ++)
+              {
+                if (extractWord36FromBuffer (tape_statep -> bufp, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i) != 0)
+                  break;
+              }
+
+            indirectDataService (iom_unit_num, chan, daddr, tally, buffer,
+                                 idsTypeW36, true);
+  }
+else
+  {
             while (tally)
               {
                 // read
@@ -487,6 +557,7 @@ sim_printf ("uncomfortable with this\n");
                 daddr ++;
                 tally --;
               }
+  }
             stati = 04000; // BUG: do we need to detect end-of-record?
             if (sim_tape_wrp (unitp))
               stati |= 1;
@@ -734,7 +805,9 @@ sim_printf ("uncomfortable with this\n");
                 if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
                   {
                     word18 handler = 0;
-                    handler |= 0100000; // operational
+// Test hack: unit 0 never operational
+                    if (i != 0)
+                      handler |= 0100000; // operational
                     //if (find_dev_from_unit (& mt_unit [i]))
                       //sim_printf ("Unit %d has dev\n", i);
                     if (mt_unit [i] . filename)
@@ -770,6 +843,18 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
           break;
  
+        case 060:              // CMD 060 -- Set 800 bpi.
+          {
+            stati = 04000;
+            if (sim_tape_wrp (unitp))
+              stati |= 1;
+            if (sim_tape_bot (unitp))
+              stati |= 2;
+            if (sim_tape_eom (unitp))
+              stati |= 0340;
+          }
+          break;
+
         case 070:              // CMD 070 -- Rewind.
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -783,6 +868,19 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               stati |= 2;
             if (sim_tape_eom (unitp))
               stati |= 0340;
+          }
+          break;
+   
+        case 072:              // CMD 072 -- Rewind/Unload.
+          {
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld unloads\n",
+                          MT_UNIT_NUM (unitp));
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Rewind/unload\n");
+            sim_tape_detach (unitp);
+            tape_statep -> rec_num = 0;
+            stati = 04000;
           }
           break;
    
@@ -808,6 +906,12 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
 static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
     int mt_unit_num = MT_UNIT_NUM (unitp);
+    if (mt_unit_num == 0)
+      {
+        mt_unit_num = boot_drive;
+        unitp = mt_unit + mt_unit_num;
+        //sim_printf ("boot unit set to %d\n", mt_unit_num);
+      }
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
 
     // First, execute the command in the PCW, and then walk the 
@@ -854,6 +958,11 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 // The dcw does not necessarily have the same dev_code as the pcw....
 
         mt_unit_num = findTapeUnit (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code);
+        if (mt_unit_num == 0)
+          {
+            mt_unit_num = boot_drive;
+            //sim_printf ("boot unit set to %d\n", mt_unit_num);
+          }
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
@@ -1036,6 +1145,23 @@ static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     if (n < 1 || n > N_MT_UNITS_MAX)
       return SCPE_ARG;
     tape_dev . numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat mt_show_boot_drive (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                              UNUSED int val, UNUSED void * desc)
+  {
+    sim_printf("Tape drive to boot from is %d\n", boot_drive);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             UNUSED char * cptr, UNUSED void * desc)
+  {
+    int n = MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    boot_drive = (uint32) n;
     return SCPE_OK;
   }
 
