@@ -6896,6 +6896,8 @@ static char* debtab_none    = "DEBTAB_ISNULL";
 static char* debtab_nomatch = "DEBTAB_NOMATCH";
 int32 offset = 0;
 
+if (! dbits)
+    return "DBG";
 if (dptr->debflags == 0)
     return debtab_none;
 
@@ -6991,7 +6993,7 @@ for (i = fields-1; i >= 0; i--) {                   /* print xlation, transition
 void sim_debug_bits(uint32 dbits, DEVICE* dptr, BITFIELD* bitdefs,
     uint32 before, uint32 after, int terminate)
 {
-if (sim_deb && (dptr->dctrl & dbits)) {
+if (sim_deb && ((dptr->dctrl & dbits) || dbits == 0)) {
     if (!debug_unterm)
         fprintf(sim_deb, "%s", sim_debug_prefix(dbits, dptr));                      /* print prefix if required */
     fprint_fields (sim_deb, (t_value)before, (t_value)after, bitdefs); /* print xlation, transition */
@@ -7012,7 +7014,7 @@ if (sim_deb && (dptr->dctrl & dbits)) {
 
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
 {
-if (sim_deb && (dptr->dctrl & dbits)) {
+if (sim_deb && ((dptr->dctrl & dbits) || dbits == 0)) {
 
     char stackbuf[STACKBUFSIZE];
     int32 bufsize = sizeof(stackbuf);
