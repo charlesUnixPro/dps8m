@@ -5,6 +5,7 @@ de ppr.prr 0
 de ppr.psr 0
 de ppr.p 1
 load TestAddrMods.oct
+set cpu config=report_faults=1
 ;set debug stderr
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR

@@ -1,0 +1,230 @@
+
+/*     sztl1
+*  Use two maximum length strings (4352 chrs or 39168 bits).
+*  The zero indicator will be on since a bool code of "zer"
+*  is used. Take maximum number of page faults.  */
+
+inst sztl -nt "Both strings are the same length"
+-bo zer
+-ir zr
+-mf1 idb ar reg rl 39168
+-mf2 idb ar reg rl 39168
+-io 1;
+
+data 1 -do -10 (4352)"5";
+data 2 -do -30 (4352)"7";
+
+page -all;
+
+
+
+/*     sztl2
+*  Both the truncation and the zero indicators will be turned
+*  on.  The 1st string will begin on the last bit of a page and
+*  the 2nd string will end on the 1st bit of a page.  */
+
+inst sztl -nt "Both strings cross page bounds"
+-bo zer
+-ir tn zr
+-mf1 ar
+-mf2 ar;
+
+desc 1 -bp 8 -ns 23;
+desc 2 -bp 1 -ns 18;
+
+data 1 -do -1 074 321 64;
+data 2 -do -4 023 776 4;
+
+page -all;
+
+
+
+/*     sztl3
+*  No indicators are turned on. The zero fill bit is used. Bit strings
+*  begin in the middle of a byte  */
+
+inst sztl -nt "Both strings cross page bounds"
+-bo and
+-mf1 ida ar
+-mf2 idb ar;
+
+desc 1 -bp 4 -ns 70;
+desc 2 -bp 5 -ns 80;
+
+data 1 -do -2 "3274" "1958" 0;
+data 2 -do -4 "4875" "7329" 326 0;
+
+page -all;
+
+
+
+/*     sztl4
+*  The zero indicator will be turned on. Both strings
+are of the same length and begin and end on word boundaries.  */
+
+inst sztl -nt "only rl modification is used"
+-bo and
+-ir zr
+-mf1 rl 144
+-mf2 rl 144
+-io 2;
+
+data 1 (4)123 (12)075;
+data 2 (4)654 (12)402;
+
+page -all;
+
+
+
+/*     sztl5
+*  Test the axr bool code.  Set the zero and truncation
+*  indicators. Bit strings begin in the middle of a byte
+*  straddling a page boundary.  */
+
+inst sztl -nt "1st string is longer than 2nd"
+-bo axr
+-ir zr tn
+-mf1 ar reg rl 40
+-mf2 ar idr rl 31;
+
+desc 1 -bp 5;
+desc 2 -bp 5;
+
+data 1 -do -1 074 321 652 403 777;
+data 2 -do -3 777 777 676 603;
+
+page -all;
+
+
+
+/*     sztl6
+*  Test the axr bool code. No indicators will be set  */
+
+inst sztl -nt "Both strings are the same length"
+
+-bo axr
+-mf1 rl 7866
+-mf2 rl 7866;
+
+data 1 (874)"321";
+data 2 (874) "604";
+
+page -all;
+
+
+
+/*     sztl7
+*  Test the mov bool code. Use a maximum length string and the
+*  zero fill bit.  Take the maximum number of page faults.  */
+
+inst sztl -nt "2nd string is longer than 1st"
+-bo mov
+-mf1 ida ar rl 36000
+-mf2 idb ar reg rl 39168
+-io 1;
+
+data 1 -do -40 (1000)"9874";
+data 2 -do -20 (1088) "0000";
+
+page -all;
+
+
+
+/*     sztl8
+*  Test the move bool code. Set the zero indicator.
+*  The first string is all zeroes.  */
+
+inst sztl -nt "2nd string is longer than 1st"
+-bo mov
+-ir zr
+-mf1 ar id
+-mf2 ar
+-io 2;
+
+desc 1 -bp 7 -ns 99;
+desc 2 -bp 1 -ns 100;
+
+data 1 -do 20 (12)000;
+data 2 -do 3 "abcde123456" 4;
+
+page -all;
+
+
+
+/*     sztl9
+*  Test xra bool code. Set zero and truncation indicators.
+*  Use two short bit strings which cross page boundaries.  */
+
+inst sztl -nt "1st string is longer than 2nd"
+-bo xra
+-ir tn zr
+-mf1 ar idr
+-mf2 ar idb;
+
+desc 1 -ns 3 -bp 7;
+desc 2 -ns 2 -bp 8;
+
+data 1 -do -1 777 4;
+data 2 -do -1 235 0;
+
+page -all;
+
+
+
+/*     sztl10
+* Test xra bool code.  Use the zero fill bit. No indicators are set */
+
+inst sztl -nt "2nd string is longer than 1st"
+-bo xra
+-mf1 idr reg
+-mf2 idr
+-io 2;
+
+desc 1 -ns 400;
+desc 2 -ns 500;
+
+data 1 (44)"9" 72;
+data 2 (55)"8" 36;
+
+page -all;
+
+
+
+/*     sztl11
+*  Test ra2 bool code. Set the zero indicator. This means
+*  that the 2nd bit string must be all zeroes.  */
+
+inst sztl -nt "2nd string is longer than 1st"
+-bo ra2
+-mf1 ar rl 36
+-mf2 reg
+-ir zr
+-io 1;
+
+desc 1 -bp 4;
+desc 2 -ns 36;
+
+data 1 -do -1 "abcd" 70;
+data 2 (4)000;
+
+page -all;
+
+
+
+/*     sztl12
+*  Test ra2 bool code. No indicators are set.  */
+
+inst sztl -nt "Both strings are the same length"
+-bo ra2
+-mf1 reg
+-mf2 ar rl 36
+-io 2;
+
+desc 1 -ns 36;
+desc 2 -bp 4;
+
+data 1 (4)000;
+data 2 -do -1 "abcd" 70;
+
+page -all;
+

@@ -1,0 +1,456 @@
+
+/*		mvn1
+*
+*		a simple test to see if it works
+*		9 bit scaled leading sign to 9 bit scaled trailing sign
+*
+*/
+
+inst	mvn	-nt "simple"
+-io 2;
+
+desc1 -nn 13 -sd l;
+desc2 -nn 14 -sd t;
+
+data 1 -do 12 "+" (12) "9";
+data 2 "0" (12) "9" "+";
+
+page -all;
+
+
+
+
+
+/*		mvn2
+*		truncation fault taken
+*		all page faults taken
+*		integer to floating
+*/
+
+inst 	mvn	-nt "truncation fault"
+-io 1 -tby -ir tn
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 63 idb reg;
+
+desc1  -cn 1 -sd l;
+desc2 -cn 1 -sd f;
+
+data 1 -do -63 " " "+98" (15) "7435";
+data 2 000 "+" "98" (14) "7435" "743" 001;
+
+page -all;
+
+
+
+
+
+/*		mvn3
+*		this is a good test
+*		all page faults taken
+*		legal floating word developed
+*		 9 bit scaled to 9 bit float
+*
+*/
+
+inst	mvn	-nt "int -> float"
+-io 1
+
+-mf1 ar rl 23 idb reg
+-mf2 ar rl 28 idb reg;
+
+desc1 -sf 13 -sd l -cn 3;
+desc2 -sd f -cn 2;
+
+data 1 -do 25 "   " "+" (5) "00" (12) "1";
+data 2 000000 "+" (4) "000"  "00" (12) "1" 015;
+
+page -all;
+
+
+
+
+
+/*		mvn4
+*		all page faults taken
+*		float to integer scale factor 12
+*		9 bit to 9 bit
+*
+*/
+
+inst	mvn	-nt "float to int"
+-io 1 -ir ng
+-mf1 ar rl 28 idb reg
+-mf2 ar rl 23 idb reg;
+
+desc1 -sd f -cn 2;
+desc2 -sf 12 -sd l -cn 3;
+
+data 1 -do 27 "  -" (14) "0" (12) "1" 015;
+data 2 000000000 "-" (9) "0" (12) "1" "0";
+
+page -all;
+
+
+
+
+
+/*		mvn5
+*		9 bit scaled to floating 9 bit
+*
+*/
+
+inst	mvn	-nt "scaled to floating"
+-io 1 -rb
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 3 idb reg;
+
+desc1 -sd n -sf 31;
+desc2 -sd f;
+
+data 1 -do 62 "1" (62) "0";
+data 2 "+" "1" 135;
+
+page -all;
+
+
+
+
+
+/*		mvn6
+*		convert float 4 bit to
+*		floating 9 bit
+*
+*/
+
+inst	mvn	-nt "float 9 -> float 4"
+-io 2
+-mf1 ar rl 3 idb reg
+-mf2 ar rl 4 idb;
+
+desc1 -sd f;
+desc2 -sd f -tn 4;
+
+data 1 -do -3 "+1" 135;
+data 2  301135;
+
+page -all;
+
+
+
+
+
+/*		mvn7
+*		9 bit scaled to 4 bit floating
+*		 all page faults taken
+*
+*/
+inst	mvn	-nt "9 scaled to 4 float"
+-io 3 -ir ng
+-mf1 ar rl 25 ida reg
+-mf2 ar rl 23 idb;
+
+desc1 -sd t ;
+desc2 -sd f -cn 3 -tn 4;
+
+data 1 -do -1  (20) "0" (4) "3" "-";
+data 2 (3) 000 320 (7) 000 003 063 0600;
+
+page -all;
+
+
+
+
+
+/*		mvn8
+*		convert 9bit floating point to 4 bit scaled
+*
+*/
+inst	mvn	-nt "9bit float to 4bit scaled"
+-io 2
+-mf1 ar rl 22 idb reg
+-mf2 ar rl 33 ida;
+
+desc1 -sd f;
+desc2 -sd t -sf 5 -tn 4;
+
+data 1 -do -8 "+" (11) "0" (3) "123" 006;
+data 2 (11) 000 022 061043022060 300;
+
+page -all;
+
+
+
+
+
+/*		mvn9
+*		 convert 9 bit floating to 4 bit scaled
+*
+*/
+inst	mvn	-nt "9bitfloat to 4 bit scaled"
+-io 1
+-mf1 ar rl 20 idb reg
+-mf2 ar rl 63 ida;
+
+desc1 -sd f -cn 2;
+desc2 -sd l -tn 4 -cn 1;
+
+data 1 "  +" (9) "0" (4) "45" 060000;
+data 2 000300 (26) 000 105105105105 (8) 000;
+
+page -all;
+
+
+
+
+/*		mvn10
+*		9 bit scaled trailing sign to
+*		9 bit scaled leading sign
+*/
+inst	mvn	-nt "simple"
+-io 1;
+desc1 -nn 14 -sd t;
+desc2 -nn 13 -sd l;
+
+data 1 -do 12 "0" (12) "9" "+";
+data 2 "+" (12) "9";
+
+page -all;
+
+
+
+
+/*		 mvn11
+*		9 bit float to 9 bit scaled leading sign
+*/
+
+inst	mvn	-nt "float to int"
+-io 1
+-mf1 ar rl 63 idb reg
+-mf2 ar rl 63 idb reg;
+
+desc1 -cn 1 -sd f;
+desc2 -cn 1 -sd l;
+
+data 1 -do -63 " " "+98" (14) "7435" "743" 001;
+data 2 000 "+98" (14) "7435" "7430";
+
+page -all;
+
+
+
+
+/*		mvn12
+*		 9 bit float to 9 bit scaled negative indicator
+*/
+
+inst	mvn	-nt "float -> int"
+-io 2
+-mf1 ar rl 28 idb reg
+-mf2 ar rl 23 idb reg;
+
+desc1 -sd f -cn 2;
+desc2 -sf 13 -sd l -cn 3;
+
+data 1 -do 29 "  +" (4) "000" "00" (12) "1" 015;
+data 2 000000000 "+" (5) "00" (12) "1";
+
+page -all;
+
+
+
+
+/*		mvn13
+*		 9 bit scaled to 9 bit float
+*		 negative indicator on
+*/
+
+inst	mvn	-nt "int to float"
+-io 2 -ir ng
+-mf1 ar rl 23 idb reg
+-mf2 ar rl 28 idb reg;
+
+desc1 -sf 12 -sd l -cn 3;
+desc2 -sd f -cn 2;
+
+data 1 -do 25 "   -" (9) "0" (12) "1" "0";
+data 2 000000 "-" (13) "0" (12) "1"  "0" 014;
+
+page -all;
+
+
+
+
+/*		mvn14
+*		9 bit float to 9 bit scaled
+*
+*/
+
+inst	mvn	-nt "float to scaled"
+-io 2 -rb
+-mf1 ar rl 3 idb reg
+-mf2 ar rl 63 idb reg;
+
+desc1 -sd f;
+desc2 -sd n -sf 31;
+
+data 1 "+1" 135;
+data 2 "1" (62) "0";
+
+page -all;
+
+
+
+
+/*		mvn15
+*		4 bit float to 9 bit float
+*
+*/
+
+inst	mvn	-nt "float 4 -> float 9"
+-io 1
+-mf1 ar rl 4 idb
+-mf2 ar rl 3 idb reg;
+
+desc1 -sd f -tn 4;
+desc2 -sd f;
+
+data 1 -do 3 301135;
+data 2 "+1" 135;
+
+page -all;
+
+
+
+
+/*		mvn16
+*		4 bit floating to 9 bit scaled
+*		truncation and negative indicators on
+*
+*/
+
+inst	mvn	-nt "4 float to 9 scaled"
+-io 1 -ir ng tn
+-mf1 ar rl 23 idb 
+-mf2 ar rl 25 ida reg;
+
+desc1 -sd f -cn 3 -tn 4;
+desc2 -sd t -sf 2;
+
+data 1 -do 1 "   " 320 (7) 000 003 063060000;
+data 2 (22) "0" (2) "3" "-";
+
+page -all;
+
+
+
+
+/*		mvn17
+*		4 bit scaled to 9 bit floating
+*
+*/
+
+inst	mvn	-nt "4bit scaled to 9 bit float"
+-io 3
+-mf1 ar rl 33 ida
+-mf2 ar rl 22 idb reg;
+
+desc1 -sd t -sf 5 -tn 4;
+desc2 -sd f;
+
+data 1 (11) 000 022 061043022060 300;
+data 2 "+" (10) "0" (3) "123" "0" 005;
+
+page -all;
+
+
+
+
+/*		mvn18
+*		4 bit scaled to 9 bit floating
+:
+*/
+inst	mvn	-nt "4bit scaled to 9 bit float"
+-io 2
+-mf1 ar rl 63 ida
+-mf2 ar rl 20 idb reg;
+
+desc1 -sd l -tn 4 -cn 1;
+desc2 -sd f -cn 2;
+
+data 1 " " 300 (26) 000 (4) 105 (8) 000;
+data 2 000000 "+" (9) "0" (4) "45" "0" 000;
+
+page -all;
+
+
+
+
+/*		mvn19
+*		9 bit scaled to 4 bit floating
+*
+*/
+
+inst 	mvn	 -nt "9 bit to 4 bit float"
+-io 3
+-mf1 ar rl 10 ida reg
+-mf2 ar rl 10 ;
+
+desc1 -sd l -cn 1;
+desc2 -sd f -tn 4;
+
+data 1 " +" (5) "0" (4) "1";
+data 2 300 000 021 021 000;
+
+page -all;
+
+
+
+
+/*		mvn20
+*		9 bit scaled to 4 bit floating
+*
+*/
+
+inst	mvn	-nt "9bit to 4 bit float"
+-mf1 ar rl 10 idb reg
+-mf2 ar rl 10;
+
+desc1 -sd t -cn 2;
+desc2 -sd f-tn 4;
+
+data 1 "  " (5) "0" (4) "2" "+";
+data 2 300 000 042 042 000;
+
+page -all;
+
+
+
+
+/*		mvn21
+*
+*	Move  +12.34  into  12.3400+.  Length of string 2 will be too short to handle
+*	increased scaling factor so there will be significant digit overflow.
+*/
+
+inst	mvn	-nt "Sig digit overflow"  -io 1
+	-ir	ov
+	-mf1	ar  rl 5
+	-mf2	idr;
+
+
+desc 1	-cn 2	-sd l	-sf -2;
+
+desc 2	-sd t	-sf -3	-nn 5;
+
+
+data 1	-do -5
+	000 000		/* Fill for  cn.  */
+	053 "12"		/* Page 1. */
+	"34";		/* Page 2. */
+
+data 2	-do -4
+	"2340"  053;
+
+
+page	-all;
+

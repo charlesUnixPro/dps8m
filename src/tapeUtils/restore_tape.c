@@ -599,7 +599,7 @@ int main (int argc, char * argv [])
         // let the user post-process as needed
         // int isASCII = check_ASCII( pData, DataStart*4, cntx );
 
-        int isASCII = check_ASCII (data_start * 4, cntx);
+        int isASCII = 0; // check_ASCII (data_start * 4, cntx);
 
         cnt = (bit_count + 8) / 9; /* Num of characters rounded UP */
 

@@ -541,7 +541,7 @@ static int32 rtc_ticks[SIM_NTIMERS] = { 0 };            /* ticks */
 static int32 rtc_hz[SIM_NTIMERS] = { 0 };               /* tick rate */
 static uint32 rtc_rtime[SIM_NTIMERS] = { 0 };           /* real time */
 static uint32 rtc_vtime[SIM_NTIMERS] = { 0 };           /* virtual time */
-static double rtc_gtime[SIM_NTIMERS] = { 0 };           /* instruction time */
+static t_int64 rtc_gtime[SIM_NTIMERS] = { 0 };           /* instruction time */
 static uint32 rtc_nxintv[SIM_NTIMERS] = { 0 };          /* next interval */
 static int32 rtc_based[SIM_NTIMERS] = { 0 };            /* base delay */
 static int32 rtc_currd[SIM_NTIMERS] = { 0 };            /* current delay */
@@ -586,7 +586,7 @@ int32 sim_rtcn_calb (int32 ticksper, int32 tmr)
 {
 uint32 new_rtime, delta_rtime;
 int32 delta_vtime;
-double new_gtime;
+t_int64 new_gtime;
 int32 new_currd;
 
 if ((tmr < 0) || (tmr >= SIM_NTIMERS))
@@ -731,7 +731,7 @@ for (tmr=0; tmr<SIM_NTIMERS; ++tmr) {
         }
     fprintf (st, "  Seconds Running:         %u\n",   rtc_elapsed[tmr]);
     fprintf (st, "  Calibrations:            %u\n",   rtc_calibrations[tmr]);
-    fprintf (st, "  Instruction Time:        %.0f\n", rtc_gtime[tmr]);
+    fprintf (st, "  Instruction Time:        %lld\n", rtc_gtime[tmr]);
     if (!(sim_asynch_enabled && sim_asynch_timer)) {
         fprintf (st, "  Real Time:               %u\n",   rtc_rtime[tmr]);
         fprintf (st, "  Virtual Time:            %u\n",   rtc_vtime[tmr]);

@@ -1,0 +1,539 @@
+
+
+/*		mvt 1
+*
+*	Just a simple test.    Table is "0123".  result = "01233210".
+*/
+
+inst	mvt	-nt  "Simple test with 9 bit chars";
+
+desc 1	-ns	8;
+desc 2	-ns	8;
+
+data 1	000 001 002 003 003 002 001 000;	/* 9 bit characters used as indexes. */
+
+data 2	"01233210";
+
+data 3	"0123";
+
+
+page	-all;
+/*		mvt 2
+*
+*	Same test as  mvt 1 except that the data fields have been move across
+*	a page boundary.
+*/
+
+inst	mvt	-nt  "Same as prev - fields X pg bound"	-io 1;
+
+desc 1	-ns	8;
+desc 2	-ns	8;
+
+data 1	-do -4	000 001 002 003   003 002 001 000;
+
+data 2	-do  -4	"0123"  "3210";
+
+data 3	"0123";
+
+
+page	-all;
+/*		mvt 3
+*
+*	Same test as  mvt 2 except we will add a lot of modification  and adjust
+*	that data fields so that they do not begin on WORD boundaries.
+*/
+
+inst	mvt	-nt  "Same as prev - with mod"	-io 3
+	-mf1	rl  8  ar reg idb
+	-mf2	rl  8  ar reg idb
+	-mf3	ar reg;
+
+/*	No desc statements needed since  rl  mod specified and other defaults OK. */
+
+data 1	-do -2	000 001   002 003 003 002 001 000;
+
+data 2	-do -2	"01"  "233210";
+
+data 3		"0123";
+
+
+page	-all;
+/*		mvt 4
+*
+*	This test will use a fill character.   The table will have  110  characters
+*	but we should only reference  5  of them.
+*/
+
+inst	mvt	-nt  "Use fill characters"
+	-io 1
+	-fce	/* Fill character is "e"  =  145 octal.  */
+	-mf1	ar
+	-mf2	ar
+	-mf3	ar;
+
+desc 1	-ns  3;
+
+desc 2	-ns 8;		/* L2 > L1  =>  use of fill character. */
+
+/*	There are no legal fields we can specify with a  desc 3  statement
+*	for this instruction.
+*/
+
+
+data 1	-do -1	"c"  "ba";
+
+data 2	-do  -5	"32155"  "555";
+
+data 3	-do -100
+	(97) "*"		/* These characters in table never used. */
+	"123"  "45"
+	(9)  "*";
+
+
+page	-all;
+
+/*  mvt 5
+*
+*  Test page faults when first character of desc 1 and 2 are
+*  at  the  end  of  a  page.
+*/
+
+inst mvt -nt"check special page fault 1"
+         -io 1;
+
+desc 1  -ns 9 -cn 3 ;
+desc 2  -ns 9 -cn 3 ;
+
+data 1 -do -4  "   " 000 001 002 003 002 000 004 005 003 ;
+data 2 -do -4 000 000 000  "character" ;
+data 3 "charted" ;
+
+page   -all ;
+
+
+/*   mvt 6
+*
+*  Test page faults when last character of desc 1 and 2 are on a new page.
+*
+*/
+
+inst  mvt  -nt "check special page fault 2"
+           -io 1 ;
+
+desc 1  -ns 9 ;
+
+desc 2  -ns 9 ;
+
+data 1  -do -8  000 001 002 003 002 000 004 005 003 ;
+
+data 2  -do -8  "character" ;
+
+data 3  "charte" ;
+
+page    -all ;
+
+
+/*   mvt 7
+*
+*  Test direct data movement for data 1 and 2 .
+*  Also test moving data across 3 pages.  To move more than
+*  4096 characters of data register length modification must be used.
+*/
+
+inst  mvt  -nt  "dir desc. 3 page move; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -mf1 rl 4112
+         -mf2 rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+/*   mvt 8
+*
+* Test address register usage for data 1 and 2.  Also test moving data across
+* 3 pages.  All descriptors are direct.
+* Also use register length modification.
+*/
+
+inst mvt -nt "tst ar1&ar2. 3 pg move;FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 2
+         -mf1 ar rl 4112
+         -mf2 ar rl 4112 ;
+
+desc 1  -cn 1 ;
+
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/* mvt  9
+* Test ar, reg, and register length modification for data 1 and 2.
+* Also test data movement of three pages.
+*/
+
+inst mvt  -nt "tst ar,rg,rl. 3 pg mv; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 2
+         -mf1 ar reg rl 4112
+         -mf2 ar reg rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/*   mvt 10
+*
+*   Test indirect referencing of descriptors 1 and 2.
+*   Test register length modification and move data from 3 pages.
+*/
+
+inst mvt -nt  "tst ind descs; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 1
+         -mf1 id rl 4112
+         -mf2 id rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+/*   mvt 11
+*
+*  Test indirect referencing of descriptors 1 and 2 with ar modification
+*  of the indirect word.  Also data is moved from 3 pages.
+*/
+
+inst mvt -nt "tst ida. 3 pgs moved; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 2
+         -mf1 ida rl 4112
+         -mf2 ida rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/*   mvt 12
+*
+*  Test indirect referencing of descriptors 1 and 2 with reg modification
+*  of the indirect word.  Also data is moved from 3 pages.
+*/
+
+inst  mvt  -nt  "tst idr, 3 pgs moved; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 1
+         -mf1 idr rl 4112
+         -mf2 idr rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/*   mvt 13
+*
+*  Test indirect referencing of descriptors 1 and 2 with both
+*  ar and reg modification of the indirect word.  Also data is
+*  moved from three pages.
+*/
+
+inst  mvt  -nt  "tst idb. 3 pgs moved; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 2
+         -mf1 idb rl 4112
+         -mf2 idb rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/*   mvt 14
+*
+*  Test indirect referencing of of descriptors 1 and 2 with
+*  ar, reg, and reg length modification of the descriptors.
+*  Data is moved from 3 pages.
+*/
+
+inst  mvt  -nt  "tst ar,reg,rl,id.; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -mf1 id ar reg rl 4112
+         -mf2 id ar reg rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+/*   mvt 15
+*
+*  Test indirect referencing of descriptors 1 and 2 with ar
+*  and reg modification of the indirect word.  Also ar, reg,
+*  and register length modification is applied to the
+*  descriptors.  Three pages of data is moved.
+*/
+
+inst  mvt  -nt  "tst ar,reg,rl,idb; FCOs PHAFPG179 & 181 required on L68 CPU"
+         -io 2
+         -mf1 idb ar reg rl 4112
+         -mf2 idb ar reg rl 4112 ;
+
+desc 1  -cn 1 ;
+
+data 1  -do -4  " " (257) 000001002003004005006007010011012013014015016017 ;
+
+data 2  -do -4  (257) "abcdefghijklmnop" ;
+
+data 3    "abcdefghijklmnop" ;
+
+page    -all ;
+
+
+
+/*   mvt 16
+*
+*  Test translation of 9 bit to 6 bit characters.  Only direct descriptors
+*  with no modification are used.  All forms of modification and
+*  indirection have been tested in previous tests.
+*  This test has no truncation.
+*
+*/
+
+inst  mvt  -nt "9 to 6 bit chars"
+           -fc  ;
+
+desc 1  -ns 50
+        -cn 2  ;
+
+desc 2  -ns 50
+        -cn 5
+        -ta 6  ;
+
+data 1  -do 4068
+        "  " (6) 000001002003004005006007010 ;
+
+data 2  -do 20
+        000000000060 (5) 616263414243440060  61626341 ;
+
+data 3  "0123abcd"  (23) 000  020  ;
+
+page -all;
+
+
+/*   mvt 17
+*
+*  Test translation of 9 to 6 `bit characters.
+*  L1 is less than L2.  String 2 is `blank filled.
+*
+*/
+
+inst  mvt  -nt "9 to 6 bit chars"
+           -fc  ;
+
+desc 1  -ns 28
+        -cn 2  ;
+
+desc 2  -ns 50
+        -cn 5
+        -ta 6  ;
+
+data 1  -do 4068
+        "  " (6) 000001002003004005006007010 ;
+
+data 2  -do 20
+        000000000060 (3) 616263414243440060  (7) 202020  20  ;
+
+data 3  "0123abcd"  (24) 000  020  ;
+
+page -all;
+
+
+
+
+/*   mvt 18
+*
+*  Test translation of 9 to 6 bit characters.
+*  L1 is greater than L2.  Truncation fault is not taken.
+*
+*/
+
+inst  mvt  -nt  "truncation but no fault"
+           -ir tn  ;
+
+
+desc 1  -ns 50
+        -cn 2  ;
+
+desc 2  -ns 28
+        -cn 5
+        -ta 6  ;
+
+data 1  -do 4068
+        "  " (6) 000001002003004005006007010 ;
+
+data 2  -do 20
+        000000000060 (3) 616263414243440060  ;
+
+data 3  "0123abcd"  (24) 000  020  ;
+
+page -all;
+
+
+
+
+/*   mvt 19
+*
+*  Test translation of 6 bit to 9 bit characters.  Only direct
+*  descriptors with no modification are used.
+*  This test has no truncation.
+*
+*/
+
+inst  mvt  -nt "6-9 bit. no truncation"
+           -fc   ;
+
+desc 1  -ns 63
+        -cn 3
+        -ta 6  ;
+
+desc 2  -ns 63 ;
+
+data 1  -do -20
+        000000  (7)  000102030405060710  ;
+
+data 2  -do -28
+        (7)  141142143144060061062063000  ;
+
+data 3  "abcd0123"  (24) 000  040  ;
+
+page -all;
+
+
+
+/*   mvt 20
+*
+*  Test translation of 6 bit to 9 bit characters.
+*  L1 is less than L2.  String 2 is blank filled.
+*
+*/
+
+inst  mvt  -nt "6-9 bit. blank fill"
+           -fc   ;
+
+desc 1  -ns 29
+        -cn 3
+        -ta 6  ;
+
+desc 2  -ns 63 ;
+
+data 1  -do -20
+        000000  (7)  000102030405060710  ;
+
+data 2  -do -28
+        (3)  141142143144060061062063000  141142  (34) 040  ;
+
+data 3  "abcd0123"  (24) 000  040  ;
+
+page -all;
+
+
+
+/*   mvt 21
+*
+*  Test translation of 6 bit to 9 bit characters.
+*  L1 is greater than L2.  Truncation fault is not taken.
+*
+*/
+
+inst  mvt  -nt "6-9 bit. truncation"
+           -ir tn
+           -fc   ;
+
+desc 1  -ns 63
+        -cn 3
+        -ta 6  ;
+
+desc 2  -ns 29 ;
+
+data 1  -do -20
+        000000  (7)  000102030405060710  ;
+
+data 2  -do -28
+        (3)  141142143144060061062063000  141142  ;
+
+data 3  "abcd0123"  (24) 000  040  ;
+
+page -all;
+
+
+
+/*   mvt 22
+*
+*  Test translation of 4 bit characters. The test is made
+*  with full descriptor modification.  Data is placed across a
+*  page boundary.
+*
+*/
+
+inst  mvt  -nt "4 bit char translation"
+           -io 1
+           -mf1 idb ar reg rl 16
+           -mf2 idb ar reg rl 16
+           -mf3 ar reg  ;
+
+desc 1  -ta 4 ;
+
+desc 2  -ta 4 ;
+
+data 1  -do -4  (2) 002215053176  ;
+
+data 2  -do -4  (2) 002215053176  ;
+
+data 3  000 001 002 003 004 005 006 007 010 011 012 013 014 015 016 017  ;
+
+page -all;
+

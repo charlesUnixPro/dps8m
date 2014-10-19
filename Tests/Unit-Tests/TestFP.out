@@ -1,3 +1,5 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 segment created for 'TestFP'
 segdef created for segment TestFP, symbol 'msgHello', addr:000040
 entrypoint created for segment TestFP, symbol 'main_', addr:004356
@@ -7,10 +9,8 @@ segref created for segment 'UtilsB' symbol:Bone, addr:004460
 segref created for segment 'UtilsB' symbol:Btwo, addr:004462
 segref created for segment 'UtilsB' symbol:Bthree, addr:004464
 2303 (004377) words loaded
-
-dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestFP ... 2/21 21:47 
-Arcsin tests ...
+This is TestFP ... 8/06 09:40 
+Arcsin tests ...
    5.7391704
    11.536959
    29.999934
@@ -23,7 +23,7 @@ Arcsin tests ...
    89.990108
           90
    1.7724539
-Arctan tests ...
+Arctan tests ...
    3.1415927
           45
    86.820169
@@ -31,38 +31,38 @@ Arcsin tests ...
    89.012239
    89.265479
    8.8919251
-Exponential tests ...
+Exponential tests ...
    2.7182818
     3.436866
 0.0014398591
-Cotangent tests ...
+Cotangent tests ...
     1.482561
    -1.482561
-Tan tests ...
+Tan tests ...
    1.7320508
            1
   0.21876669
   -1.7320508
           -1
  -0.21876669
-Cos tests ...
+Cos tests ...
          0.5
   0.70710678
   0.97689661
          0.5
   0.70710678
   0.97689661
-Sin tests ...
+Sin tests ...
    0.8660254
   0.70710678
   0.21371244
   -0.8660254
  -0.70710678
  -0.21371244
-Sqrt tests ...
+Sqrt tests ...
    1.7724538
    1.4142136
-Logarithm tests ...
+Logarithm tests ...
    1.1447299
   0.49714987
   0.49714987
@@ -70,7 +70,9 @@ Arcsin tests ...
   0.43429448
   0.99999999
 
-cpuCycles = 4646
+simCycles = 9234
+
+cpuCycles = 4617
 TestFP-11> g 0
 
 DIS instruction, IC: TestFP|746 (00000746) (000000616000)

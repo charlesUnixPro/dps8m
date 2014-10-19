@@ -9,6 +9,11 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_append.h"
+#include "dps8_ins.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 #ifndef QUIET_UNUSED
 static t_uint64 FR;
@@ -63,18 +68,6 @@ static t_uint64 FR;
         27     ;        66     ;           ;   Unassigned           ;          ;
  
 */
-struct dps8faults
-{
-    int         fault_number;
-    int         fault_address;
-    const char *fault_mnemonic;
-    const char *fault_name;
-    int         fault_priority;
-    int         fault_group;
-    bool        fault_pending;        // when true fault is pending and waiting to be processed
-};
-
-typedef struct dps8faults dps8faults;
 
 #ifndef QUIET_UNUSED
 static dps8faults _faultsP[] = { // sorted by priority
@@ -111,7 +104,8 @@ static dps8faults _faultsP[] = { // sorted by priority
     {   -1,     -1,     NULL,   NULL,                       -1,     -1,     false }
 };
 #endif
-dps8faults _faults[] = {    // sorted by number
+#ifndef QUIET_UNUSED
+static dps8faults _faults[] = {    // sorted by number
     //  number  address  mnemonic   name                 Priority    Group
     {   0,       0 ,    "sdf",  "Shutdown",             	27,	     7,     false },
     {   1,       2 ,    "str",  "Store",                	10,	     4,     false },
@@ -148,7 +142,43 @@ dps8faults _faults[] = {    // sorted by number
 
     {   -1,     -1,     NULL,   NULL,                       -1,     -1,     false }
 };
+#endif
 
+char * faultNames [N_FAULTS] =
+  {
+    "Shutdown",
+    "Store",
+    "Master mode entry 1",
+    "Fault tag 1",
+    "Timer runout",
+    "Command",
+    "Derail",
+    "Lockup",
+    "Connect",
+    "Parity",
+    "Illegal procedure",
+    "Operation not complete",
+    "Startup",
+    "Overflow",
+    "Divide check",
+    "Execute",
+    "Directed fault 0",
+    "Directed fault 1",
+    "Directed fault 2",
+    "Directed fault 3",
+    "Access violation",
+    "Master mode entry 2",
+    "Master mode entry 3",
+    "Master mode entry 4",
+    "Fault tag 2",
+    "Fault tag 3",
+    "Unassigned 26",
+    "Unassigned 27",
+    "Unassigned 28",
+    "Unassigned 29",
+    "Unassigned 30",
+    "Trouble"
+  };
 //bool pending_fault = false;     // true when a fault has been signalled, but not processed
 
 
@@ -159,6 +189,7 @@ static bool port_interrupts[8] = {false, false, false, false, false, false, fals
 //-----------------------------------------------------------------------------
 // ***  Constants, unchanging lookup tables, etc
 
+#ifndef QUIET_UNUSED
 static int fault2group[32] = {
     // from AL39, page 7-3
     7, 4, 5, 5, 7, 4, 5, 4,
@@ -174,7 +205,8 @@ static int fault2prio[32] = {
     20, 21, 22, 23, 24, 12, 13, 14,
     18, 19,  0,  0,  0,  0,  0,  3
 };
-
+#endif
+#ifndef QUIET_UNUSED
 // Fault conditions as stored in the "FR" Fault Register
 // C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
 typedef enum {
@@ -185,6 +217,7 @@ typedef enum {
     fr_ill_proc = 1 << 3 // illegal procedure other than the above three
     // fr_ill_dig = 1 << 6 // illegal decimal digit
 } fault_cond_t;
+#endif
 
 #if 0 // DPS8M
 // "MR" Mode Register, L68
@@ -217,6 +250,7 @@ void check_events (void)
     return;
 }
 
+#if 0
 /*
  *  fault_gen()
  *
@@ -242,7 +276,8 @@ void fault_gen(int f)
         return;
     }
     group = fault2group[f];
-    if (group < 1 || group > 7) {
+    // Note 1-base origin
+    if (group < 1 || group > N_FAULT_GROUPS) {
         //sim_debug(DBG_ERR, & cpu_dev, "CU fault: Internal error.\n");
         cancel_run(STOP_BUG);
         return;
@@ -286,6 +321,8 @@ void fault_gen(int f)
             cpu.cycle = FAULT_cycle;
             //cancel_run(STOP_DIS); // BUG: not really
         } else {
+// XXX error? if fault[] 0-origin or 1-origin?
+// XXX ticket #8
             if (events.fault[group]) {
                 // todo: error, unhandled fault
                 sim_debug(DBG_WARN, & cpu_dev, "CU fault: Found unhandled prior fault #%d in group %d.\n", events.fault[group], group);
@@ -300,6 +337,7 @@ void fault_gen(int f)
     if (events.low_group == 0 || group < events.low_group)
         events.low_group = group;   // new highest priority fault group
 }
+#endif
 
 /*
  * fault_check_group
@@ -312,11 +350,10 @@ void fault_gen(int f)
 #ifndef QUIET_UNUSED
 static int fault_check_group(int group)
 {
-    
-    if (group < 1 || group > 7) {
+    // Note 1-origin
+    if (group < 1 || group > N_FAULT_GROUPS) {
         sim_debug(DBG_ERR, & cpu_dev, "CU fault-check-group: Bad group # %d\n", group);
-        cancel_run(STOP_BUG);
-        return 1;
+        sim_err("CU fault-check-group: Bad group # %d\n", group); // Doesn't return
     }
     
     if (! events.any)
@@ -331,50 +368,34 @@ static int fault_check_group(int group)
  * fault handler(s).
  */
 
-#ifdef NOT_USED
-t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
-{
-    // XXX stolen from xed instruction
-    
-    DCDstruct _xip;   // our decoded instruction struct
-    EISstruct _eis;
-
-    word36 insPair[2];
-    Read2(i, fltAddress, &insPair[0], &insPair[1], InstructionFetch, 0);
-    
-    _xip.IWB = insPair[0];
-    _xip.e = &_eis;
-    
-    DCDstruct *xec = decodeInstruction(insPair[0], &_xip);    // fetch instruction into current instruction
-    
-    t_stat ret = executeInstruction(xec);
-    
-    if (ret)
-        return (ret);
-    
-    _xip.IWB = insPair[1];
-    _xip.e = &_eis;
-    
-    xec = decodeInstruction(insPair[1], &_xip);               // fetch instruction into current instruction
-    
-    ret = executeInstruction(xec);
-    
-    //if (ret)
-    //    return (ret);
-    //
-    //return SCPE_OK;
-    return ret;
-}
-#endif
-
-static bool bFaultCycle = false;       // when true then in FAULT CYCLE
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 #ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
-#endif
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
-static int g7Faults = 0;
+#endif
+static _fault g7Faults = 0;
+static _fault_subtype  g7SubFaults [N_FAULTS];
+
+// We stash a few things for debugging; they are accessed by emCall.
+static word18 fault_ic; 
+static word15 fault_psr;
+static char fault_msg [1024];
+
+
+void emCallReportFault (void)
+  {
+           sim_printf ("fault report:\n");
+           sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
+           sim_printf ("  subfault number %d (%o)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
+           sim_printf ("  msg %s\n", fault_msg);
+  }
+
+void clearFaultCycle (void)
+  {
+    bTroubleFaultCycle = false;
+  }
 
 /*
 
@@ -418,174 +439,140 @@ For now, at least, we must remember a few things:
  
 */
 
-void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
+// CANFAULT 
+void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+#if 0
+    if (faultNumber == acc_viol_fault && subFault == ACV13)
+      {
+        if_sim_debug (DBG_CAC, & cpu_dev)
+          {
+            sim_debug (DBG_CAC, & cpu_dev, "RALR fault\n");
+            traceInstruction (DBG_CAC);
+          }
+      }
+#endif
+    if_sim_debug (DBG_FAULT, & cpu_dev)
+      traceInstruction (DBG_FAULT);
+
+#if 0
+if (faultNumber == 10 && sys_stats . total_cycles > 10000)
+  {
+    stop_reason = STOP_HALT;
+    longjmp (jmpMain, JMP_STOP);
+  }
+#endif
+
+    // some debugging support stuff
+    fault_psr = PPR.PSR;
+    fault_ic = PPR.IC;
+    strcpy (fault_msg, faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
-    if (faultNumber & ~037)  // quicker?
+    if (faultNumber & ~037U)  // quicker?
     {
         sim_printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
-        return;
+        /* return;*/ /* doFault Never returns */
+        cpu . faultNumber = FAULT_TRB;
+        cpu . subFault = 0; // XXX ???
     }
 
-    dps8faults *f = &_faults[faultNumber];
+    cpu . faultNumber = faultNumber;
+    cpu . subFault = subFault;
+    sys_stats . total_faults [faultNumber] ++;
+
+//--    dps8faults *f = &_faults[faultNumber];
     
-    nFaultGroup = fault2group[faultNumber];
-    nFaultPriority = fault2prio[faultNumber];
+//--    nFaultGroup = fault2group[faultNumber];
+//--    nFaultPriority = fault2prio[faultNumber];
     
-    if (bFaultCycle) {  // if already in a FAULT CYCLE then signal trouble faule
+    if (cpu . cycle == FAULT_EXEC_cycle ||
+        cpu . cycle == FAULT_EXEC2_cycle)  // if already in a FAULT CYCLE then signal trouble fault
+      {
+        cpu . faultNumber = FAULT_TRB;
+        cpu . subFault = 0; // XXX ???
         if (bTroubleFaultCycle)
           {
-            if (events . int_pending == 0 &&
-                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+            if ((! sample_interrupts ()) &&
+                (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
-                stop_reason = STOP_FLT_CASCADE;
+                sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
+                sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+                //stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
-#ifdef CHASING_BOOT
-            // If we have faulted in a trouble fault, then there is no reason
-            // to return;
-            // RETRY doesn't help; it keeps trying to execute [0]
-            // longjmp(jmpMain, JMP_RETRY);    // retry instruction
-#else
-            return;
-#endif
           }
         else
           {
-            f = &_faults[FAULT_TRB];
+//--            f = &_faults[FAULT_TRB];
             bTroubleFaultCycle = true;
           }
-    }
+      }
     else
-    {
+      {
+        bTroubleFaultCycle = false;
         // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-      cu_safe_store ();
-    }
+        // this in done in FAULT_cycle
+        // cu_safe_store ();
+      }
     
-    if (nFaultGroup == 7) {
-        // Recognition of group 7 faults is delayed and we can have
-        // multiple group 7 faults pending.
-        g7Faults |= (1 << faultNumber);
-        return;
-    }
-    
-    int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
-    word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
-  
-    bFaultCycle = true;                 // enter FAULT CYCLE
-    
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair address %08o\n", addr);
+    // If doInstruction faults, the instruction cycle counter doesn't get 
+    // bumped.
+    if (cpu . cycle == EXEC_cycle)
+      sys_stats . total_cycles += 1; // bump cycle counter
 
-    word36 faultPair[2];
-    core_read2(addr, faultPair, faultPair+1);
-    // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
-    
-    // addr_modes_t am = get_addr_mode();  // save address mode
-    
-    PPR.PRR = 0;
-    
-    set_TEMPORARY_ABSOLUTE_mode ();
-    
-    // MME expects the IC to point to the code being XEDed
-    //if (f == &_faults[FAULT_MME] ||
-        //f == &_faults[FAULT_MME2] ||
-        //f == &_faults[FAULT_MME3] ||
-        //f == &_faults[FAULT_MME4])
-        //PPR.IC = addr;
-    
-     // Don't! T4D says the IC remains pointing at the faulting
-     // instruction
-     // PPR.IC = addr;
+    // Set control unit 'fault occured during instruction fetch' flag
+    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
+    cu . FI_ADDR = faultNumber;
 
-    t_stat xrv = doXED(faultPair);
-    
-    bFaultCycle = false;                // exit FAULT CYCLE
-    bTroubleFaultCycle = false;
+    cpu . cycle = FAULT_cycle;
+    sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
+    longjmp (jmpMain, JMP_REENTRY);
+}
 
-    if (xrv == CONT_TRA)
-    {
-        // set_addr_mode(ABSOLUTE_mode);
-// The tricky case: We entered the fault in appending mode, and the fault
-// pair transfered in absolute mode. According to AL39 and T&D, we should
-// stay in absolute mode, not return to appending mode.
-        if (!clear_TEMPORARY_ABSOLUTE_mode ())
-          set_addr_mode (ABSOLUTE_mode);
-        sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
-        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
-    }
-    
-    // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
-    clear_TEMPORARY_ABSOLUTE_mode ();
-    //set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-    cu_safe_restore ();
-    
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");
-    if (xrv == 0)
-        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-    else if (xrv == CONT_INTR)
-        longjmp(jmpMain, JMP_INTR);     // execute next instruction
-    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
-        longjmp(jmpMain, JMP_RETRY);    // retry instruction
-    
-    
-//    printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
 //
-//    if (f->fault_group == 7 && i && i->a)
-//        return;
+// return true if group 7 faules are pending ...
 //
-//    return;
-//    longjmp(jmpMain, JMP_NEXT); // causes cpuCycles to not count the current instruction
-//
-//    pending_fault = true;
-//    bool retry = false;
-//    
-//    int fltAddress = rFAULTBASE & 07740; // (12-bits of which the top-most 7-bits are used)
-//    fltAddress += 2 * f->fault_number;
-//    
-//    f->fault_pending = true;        // this particular fault is pending, waiting for processing
-//    
-//    _processor_addressing_mode modeTemp = processorAddressingMode;
-//    
-//    processorAddressingMode = ABSOLUTE_MODE;
-//    word24 rIC_temp = PPR.IC;
-//    
-//    t_stat ret = doFaultInstructionPair(i, fltAddress);
-//    
-//    f->fault_pending = false;        
-//    pending_fault = false;
-//    
-//    processorAddressingMode = modeTemp;
-//    
-//    // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
-//    // XXX do it properly - later..
-//    
-//    if (retry)
-//        longjmp(jmpMain, JMP_RETRY);    // this will retry the faulted instruction
-//    
-//    if (ret == CONT_TRA)
-//        longjmp(jmpMain, JMP_TRA);
-}
 
-void fault_gen(int f)
-{
-    doFault(NULL, f, 0, "");
-}
+// Note: The DIS code assumes that the only G7 fault is TRO. Adding any
+// other G7 faults will potentailly require changing the DIS code.
+ 
+bool bG7Pending (void)
+  {
+    return g7Faults != 0;
+  }
 
+bool bG7PendingNoTRO (void)
+  {
+    return (g7Faults & (~ (1u << timer_fault))) != 0;
+  }
 
-/*
- * return true if group 7 faules are pending ...
- */
-bool bG7Pending()
-{
-    return g7Faults;
-}
+void setG7fault (_fault faultNo, _fault_subtype subFault)
+  {
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
+    g7Faults |= (1u << faultNo);
+    g7SubFaults [faultNo] = subFault;
+  }
 
-void doG7Faults()
-{
-    
-}
+void doG7Fault (void)
+  {
+     if (g7Faults & (1u << timer_fault))
+       {
+         g7Faults &= ~(1u << timer_fault);
+
+         doFault (timer_fault, 0, "Timer runout"); 
+       }
+
+     if (g7Faults & (1u << connect_fault))
+       {
+         g7Faults &= ~(1u << connect_fault);
+
+         cu . CNCHN = g7SubFaults [connect_fault] & MASK3;
+         doFault (connect_fault, g7SubFaults [connect_fault], "Connect"); 
+       }
+
+     doFault (trouble_fault, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
+  }

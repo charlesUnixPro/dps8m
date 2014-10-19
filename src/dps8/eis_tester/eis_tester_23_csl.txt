@@ -1,0 +1,293 @@
+
+
+/*   csl 1
+*
+*  Simple test of instruction to see if its functions.
+*  Move 72 bits, cross no boundaries, and use no modification.
+*
+*/
+
+inst  csl  -nt  "simple test"
+           -bo mov ;
+
+desc 1  -ns 72 ;
+
+desc 2  -ns 72 ;
+
+data 1  -do -8  "abcdefgh"  ;
+
+data 2  -do -8  "wwwwwwww"  ;
+
+data 3  "abcdefgh"  ;
+
+page    -all  ;
+
+
+
+/*   csl 2
+*
+*  Move two bits one on each side of a page boundary.
+*  No modification is used.
+*
+*/
+
+inst  csl  -nt  "invert 2 bits across boundary"
+           -bo inv  ;
+
+desc 1  -ns 2  -cp 3  -bp 8  ;
+
+desc 2  -ns 2  -cp 3  -bp 8  ;
+
+data 1  -do 4  000 000 000 001 000  ;
+
+data 2  -do 4  000 000 000 001 000  ;
+
+data 3  000 000 000 000 400  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 3
+*
+*  Test moving data across 3 pages.  This requires register
+*  length modification.
+*
+*/
+
+inst  csl  -nt  "move data across 3 pages"
+           -bo mov
+           -io 1
+           -mf1  rl 36946
+           -mf2  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+page    -all  ;
+
+
+
+/*   csl 4
+*
+*  AND bit strings using ar and reg modification in addition to
+*  reg length modification.  Use data across 3 pages.
+*
+*/
+
+inst  csl  -nt  "ar,reg mod. AND across 3 pages"
+           -bo and
+           -io 2
+           -mf1  ar  reg  rl 36946
+           -mf2  ar  reg  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 006
+        (513)  044111044210421004411104  600  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 5
+*
+*  OR bit strings using indirect modification in addition to register
+*  length modification.  Use data across 3 pages.
+*
+*/
+
+inst  csl  -nt  "id mod.  OR across 3 pages"
+           -bo or 
+           -io 1
+           -mf1  id  rl 36946
+           -mf2  id  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 037
+        (513)  356735677336667356757336  760  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 6
+*
+*  NAND bit strings using indirect ar and reg modification and
+*  reg length modification.  Use data across 3 pages.
+*
+*/
+
+inst  csl  -nt  "idb mod. NAND across 3 pages"
+           -bo nan
+           -mf1  idb  rl 36946
+           -mf2  idb  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 031
+        (513)  733666733567356773366673  160  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 7
+*
+*  XOR bit strings using indirect ar and reg modification and direct
+*  ar, reg, and register length modification.  User data across 3 pages.
+*
+*/
+
+inst  csl  -nt  "idb,ar,reg mod. XOR across 3 pgs"
+           -bo xor
+           -io 2
+           -mf1  idb  ar  reg  rl 36946
+           -mf2  idb  ar  reg  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 031
+        (513)  312624633126246352346232  160  ;
+
+page    -all  ;
+
+/*   csl 8
+*
+*  Test bit string CLEAR operator. Data is moved across 3 pages with
+*  full address modification. The zero indicator will be set.
+*
+*/
+
+inst  csl  -nt "CLEAR string. 3 pages moved"
+           -bo zer
+           -ir zr
+           -io 3
+           -mf1  idb  ar  reg  rl 36946
+           -mf2  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 000
+        (513)  000000000000000000000000
+        000  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 9
+*
+*  Test truncation with INVERT operator.  Use full modification
+*  and move data across 3 pages.
+*
+*/
+
+inst  csl  -nt  "INVERT truncation is set"
+           -bo inv
+           -ir tn
+           -io 1
+           -mf1  idb  ar  reg  rl 36946
+           -mf2  idb  ar  reg  rl 36943  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  700  ;
+
+data 3  000 000 000 031
+        (513)  631246512543154563124651  100  ;
+
+page    -all  ;
+
+
+
+
+/*   csl 10
+*
+*  Test the use of bit file with the COINcidence operator.  Use full
+*  modification across 3 pages.  The fill bit is zero.
+*
+*/
+
+inst  csl  -nt  "COIN. bit fill(0)"
+           -bo nox
+           -mf1  idb  ar  reg  rl 36943
+           -mf2  idb  ar  reg  rl 36946  ;
+
+desc 1  -cp 3  -bp 4  ;
+
+desc 2  -cp 3  -bp 4  ;
+
+data 1  -do -8  000 000 000 006
+        (513)  146531265234623214653126  760  ;
+
+data 2  -do -8  000 000 000 037
+        (513)  254315456312465146515314  600  ;
+
+data 3  000 000 000 006
+        (513)  465153144651531425431545  760  ;
+
+page    -all  ;
+

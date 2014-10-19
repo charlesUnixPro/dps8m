@@ -7,6 +7,7 @@ de ppr.p 1
 dpsinit segment table
 dpsinit SDWAM
 load ./TestEIS.oct segment 0 address  0
+set cpu config=report_faults=1
 ;load Tests/TestEIS.oct
 ;set debug stderr
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod

@@ -671,9 +671,9 @@ struct sim_fileref {
 #define BIT(nm)              {#nm, 0xffffffff, 1}             /* Single Bit definition */
 #define BITNC                {"",  0xffffffff, 1}             /* Don't care Bit definition */
 #define BITF(nm,sz)          {#nm, 0xffffffff, sz}            /* Bit Field definition */
-#define BITNCF(sz)           {"",  0xffffffff, sz}            /* Don't care Bit Field definition */
+#define BITNCF(sz)           {"",  0xffffffff, sz, NULL, NULL}            /* Don't care Bit Field definition */
 #define BITFFMT(nm,sz,fmt)   {#nm, 0xffffffff, sz, NULL, #fmt}/* Bit Field definition with Output format */
-#define BITFNAM(nm,sz,names) {#nm, 0xffffffff, sz, names}     /* Bit Field definition with value->name map */
+#define BITFNAM(nm,sz,names) {#nm, 0xffffffff, sz, names, NULL}     /* Bit Field definition with value->name map */
 #else
 #define ORDATA(nm,loc,wd) "nm", &(loc), 8, (wd), 0, 1, NULL, NULL
 #define DRDATA(nm,loc,wd) "nm", &(loc), 10, (wd), 0, 1, NULL, NULL

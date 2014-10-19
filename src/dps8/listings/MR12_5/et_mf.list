@@ -1,0 +1,1096 @@
+	COMPILATION LISTING OF SEGMENT et_mf
+	Compiled by: Multics PL/I Compiler, Release 27b, of September 15, 1981
+	Compiled at: Honeywell LISD Phoenix, System M
+	Compiled on: 06/03/82  1023.6 mst Thu
+	    Options: optimize map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 et_mf: procedure (option, arg_et_data_ptr, code);
+       12 
+       13 
+       14 
+       15 /*	This procedure will parse the data in a "-mf" option that is part of
+       16*   *	an  "inst"  statement.
+       17*   *
+       18*   *	Originally coded  Feb, 73  by  Bill Silver
+       19*   *
+       20*   *
+       21*   *	An  mf  option has the following format.
+       22*   *
+       23*   *	-mfX	term . . . term
+       24*   *
+       25*   *	1.  The first field in the option is the option name  "-mf".
+       26*   *
+       27*   *	2.  Immediately following it  MUST  be the number of the descriptor to which this
+       28*   *	    mf  field relates.  Below  X  is used to indicate this value.
+       29*   *
+       30*   *	3.  Following the descriptor number may be up to  4  terms.  All are optional.
+       31*   *	    They may be specified in any order.   The valid  terms  are:
+       32*   *
+       33*   *
+       34*   *	a)  ar	This term specifies that the descriptor is to use  Address Register  modification.
+       35*   *		In Multics it is called pointer register modification.  The pointer
+       36*   *		assigned is  prX.   When this term is specified the data referenced by this
+       37*   *		descriptor will be placed in a different segment from the descriptor.
+       38*   *		It will go in segment  etdX.
+       39*   *
+       40*   *	d)  rl L	This term specifies that the descriptor is to use  Register Length  modification.
+       41*   *		This term  MUST  be followed by a decimal number "L" which specifies the
+       42*   *		character length of the data.  This value will be placed in the selected
+       43*   *		register and the  "n"  field of descriptor X will contain the register
+       44*   *		modification tag code.   The registers assigned are:
+       45*   *		X  =  1   -  A
+       46*   *		X  =  2   -  Q
+       47*   *		X  =  3   -  x6
+       48*   *
+       49*   *	c)  idA	This term specifies that descriptor X is to be referenced via an indirect
+       50*   *		word in the instruction.  The character immediately following the the
+       51*   *		"id"  term denotes what modification is to be used in the indirect word.
+       52*   *
+       53*   *		A  =  "a" ( ida )  This implies  Address (pointer) register modification.
+       54*   *			When this is specified the descriptor will be placed in a segment
+       55*   *			other than the segment containing the instruction.  This will
+       56*   *			be segment  etiX.  Note, if the descriptor does not specify  AR
+       57*   *			modification then the data for this descriptor will also be in
+       58*   *			segment  etiX.  The pointers registers assigned to an indirect
+       59*   *			word  are:  indirect word 1  =>  pr4
+       60*   *				  indirect word 2  =>  pr5
+       61*   *				  indirect word 3  =>  pr7
+       62*   *
+       63*   *		A  =  "r" ( idr )  This implies  Register modification.  The indirect
+       64*   *			word will be modified by index registers 4,5, or 7.  Note, this
+       65*   *			modification will be in terms of  WORDS.
+       66*   *
+       67*   *		A  =  "b" ( idb )  This implies both  "a" and "r"  modification as described
+       68*   *			above.
+       69*   *
+       70*   *		If  A  is none of the above then there is no modification in the
+       71*   *		indirect word.
+       72*   *
+       73*   *	b)  reg	This term specifies that descriptor X is to be modified by an index REGister.
+       74*   *		The value in the index register will be a CHARACTER offset and is  (x * 4).
+       75*   *		The index register assigned will be  index register X.  The value placed
+       76*   *		in index register  X  is dependent upon the type of instruction and the
+       77*   *		appropriate character size.  It will be in the following units:
+       78*   *		WORDS	For those descriptors which have no  mf  field in the
+       79*   *			instruction word.
+       80*   *		BITS	For all bit string instructions.
+       81*   *		CHARS	For all others.  The actual units depends upon the character
+       82*   *			size.  The default is a  9 bit character size.
+       83**/
+       84 
+       85 
+       86 
+       87 
+       88 
+       89 
+       90 /*		PARAMETER  DATA		*/
+       91 
+       92 
+       93 dcl  option char (*),				/* The input string containing the  "-mf"
+       94*						   *  option to be parsed. */
+       95 
+       96      arg_et_data_ptr ptr,				/* Input pointer to the  et  data.  */
+       97 
+       98      code fixed bin (35);				/* Error code.  */
+       99 
+      100 
+      101 
+      102 
+      103 
+      104 
+      105 /*		AUTOMATIC  DATA		*/
+      106 
+      107 
+      108 /*	The following data items are used in calls to  et_util.  */
+      109 
+      110 dcl  option_ptr ptr,				/* Pointer to the  "-mf"  input option. */
+      111 
+      112      start fixed bin (35),				/* The number of characters allready
+      113*						   *  processed in this  "-mf"  option.
+      114*						   *  The next character is the start of
+      115*						   *  the window.  */
+      116 
+      117      size fixed bin (35),				/* The current size ( in characters )
+      118*						   *  of the window on the "-mf" option. */
+      119 
+      120      next_option_x fixed bin;				/* Index of the last character in the
+      121*						   *  option - in effect the number of
+      122*						   *  characters in the option.  */
+      123 
+      124 
+      125 /*	These are some temporary variables. */
+      126 
+      127 dcl  dec_num fixed bin,				/* Holds converted decimal number. */
+      128 
+      129      i fixed bin,
+      130 
+      131      len fixed bin,					/* Length of a field. */
+      132 
+      133      desc_ptr ptr,					/* Work pointer to a descriptor word. */
+      134      indw_ptr ptr,
+      135      mf_ptr ptr,
+      136 
+      137      offsetx fixed bin,				/* Used to modify a pointer register or an
+      138*						   *  address field.  */
+      139 
+      140      term_name char (3);				/* Used to temporarily hold a term name.  */
+      141 
+      142 
+      143 /*	The following data items are used when processing descriptors.  */
+      144 
+      145 dcl  dx fixed bin,					/* Index to  those tables that dependent of the
+      146*						   *  three descriptors or indirect words.  */
+      147 
+      148      idx fixed bin,					/* Number of the pointer register and index
+      149*						   *  register used in modification of an
+      150*						   *  indirect word.  */
+      151 
+      152      mf_inst_flag bit (1),				/* On => mf field is in the instruction word.
+      153*						   *  Off => it is in the descriptor word.  */
+      154 
+      155      indw_ar_flag bit (1),				/* On => the current indirect word must use
+      156*						   *  ar  modification.  */
+      157 
+      158      indw_reg_flag bit (1);				/* On => the current indirect word must use
+      159*						   *  reg  modification.  */
+      160 
+      161 
+      162 
+      163 
+      164 
+      165 /*		BASED  DATA		*/
+      166 
+      167 
+      168 /*	This is an overlay of the input  "-mf"  option.  */
+      169 
+      170 dcl 1 mf_option based (option_ptr),			/* Used to access the input data option
+      171*						   *  as a stream of characters. */
+      172 
+      173     2 offset char (start),				/* The part of the "-mf" option which we have
+      174*						   *  allready processed. */
+      175 
+      176     2 window char (size);				/* The part of the "-mf" option which we are
+      177*						   *  currently accessing.  */
+      178 
+      179 
+      180 /*	An overlay of the decimal numbers which hold the input data terms.  */
+      181 
+      182 dcl  bit_word bit (36) based (addr (dec_num)) aligned;
+      183 
+      184 
+      185 /*	An overlay of an  mf  field.  */
+      186 
+      187 dcl 1 mf_map based unaligned,
+      188     2 ar bit (1),
+      189     2 rl bit (1),
+      190     2 id bit (1),
+      191     2 reg bit (4);
+      192 
+      193 
+      194 dcl 1 desc_map based aligned,
+      195    (2 pr_num bit (3),
+      196     2 y fixed bin (14),
+      197     2 pad bit (14),
+      198     2 rl_num bit (4)) unaligned;
+      199 
+      200 
+      201 dcl 1 indw_map based aligned,
+      202    (2 pr_num bit (3),
+      203     2 y fixed bin (14),
+      204     2 pad1 bit (11),
+      205     2 ar bit (1),
+      206     2 pad2 bit (2),
+      207     2 reg bit (4)) unaligned;
+      208 
+      209 
+      210 
+      211 
+      212 
+      213 /*		INTERNAL  STATIC  DATA	*/
+      214 
+      215 
+      216 /*	A table of valid term names for an  mf  option.  */
+      217 
+      218 dcl  term_names (4) char (2) internal static
+      219      init ("ar", "rl", "id", "re");
+      220 
+      221 
+      222 /*	These two tables contain the modification tag codes which are placed in an  mf  field
+      223*   *	or in an  indirect word.  They represent  x1 - x3  and  x4,x5, and x7  respectively.
+      224**/
+      225 
+      226 dcl  mf_reg_tags (3) bit (4) internal static
+      227      init ("1001"b, "1010"b, "1011"b);
+      228 
+      229 dcl  indw_reg_tags (3) bit (4) internal static
+      230      init ("1100"b, "1101"b, "1111"b);
+      231 
+      232 
+      233 /*	These arrays point to the various data area that are used.  */
+      234 
+      235 dcl (init_flag bit (1) init ("0"b),
+      236 
+      237      etx_ind_ptrs (3) ptr,
+      238      eti_ind_ptrs (3) ptr,
+      239      eti_data_ptrs (3) ptr,
+      240      etd_data_ptrs (3) ptr) internal static;
+      241 
+      242 
+      243 
+      244 
+      245 
+      246 
+      247 /*		EXTERNAL  DATA		*/
+      248 
+      249 
+      250 /*	The following declarations reference the procedures called by  et_desc.  */
+      251 
+      252 dcl (etx$ind1, etx$ind2, etx$ind3) external,
+      253     (eti1$ind, eti2$ind, eti3$ind) external,
+      254     (eti1$data, eti2$data, eti3$data) external,
+      255     (etd1$data, etd2$data, etd3$data) external;
+      256 
+      257 
+      258 dcl  com_err_ entry options (variable),
+      259      et_util$skip entry (ptr, fixed bin (35), fixed bin (35)),
+      260      et_util$convert_decimal entry (ptr, fixed bin (35), fixed bin (35), fixed bin,
+      261      fixed bin (35));
+      262 
+      263 
+      264 dcl (addr,
+      265      addrel,
+      266      fixed,
+      267      length,
+      268      null,
+      269      rel,
+      270      substr,
+      271      verify) builtin;
+      272 						/*  */
+  1     1 /*	BEGIN INCLUDE FILE  ...  et_instr_data_map.incl.pl1
+  1     2**
+  1     3**	Created  Jan, 73  by  Bill Silver.
+  1     4**
+  1     5**
+  1     6**	Below is a map of the data found in et_instr_data.alm.
+  1     7**	This is a table of  "eis" multi-word instructions.
+  1     8**/
+  1     9 
+  1    10 
+  1    11 
+  1    12 dcl	et_instr_data$num_instructions	fixed bin	   external;
+  1    13 
+  1    14 
+  1    15 dcl    1	et_instr_data$instructions( 0:1 )	aligned  external,
+  1    16 
+  1    17          (2 mnemonic	char(4),		/* Instruction's assembler name.  */
+  1    18 
+  1    19 	2 opcode		bit(10),		/* Opcode, rightmost bit always ON.  */
+  1    20 
+  1    21 	2 instr_typex	fixed bin(7),	/* 1 => alphanumeric,  2 => numeric,
+  1    22*					*  3 => bit  string    4 => conversion.  */
+  1    23 
+  1    24 	2 char_sizex (3)	fixed bin(2),	/* Defines the character size for each descriptor.
+  1    25*					*  0  =>  1,   1  =>  4,
+  1    26*					*  2  =>  36,  3  =>  -1,
+  1    27*					*  -1 =>  no descriptor  */
+  1    28 
+  1    29 	2 mf2_flag	bit(1),		/* 1 => instruction word has  "mf2"  field.
+  1    30*					*  0 => descriptor  word has  "mf2"  field.  */
+  1    31 
+  1    32 	2 mf3_flag	bit(1),		/* 1 => instruction word has  "mf3" field.
+  1    33*					*  0 => descriptor  word has  "mf3"  field.  */
+  1    34 
+  1    35 	2 desc_3_flag	bit(1),		/* 0 => instruction has 2 descriptors.
+  1    36*					*  1 => instruction has 3 descriptors.  */
+  1    37 
+  1    38 	2 test_x		fixed bin(2),	/* The number of the data statement used
+  1    39*					*  to input the  test  data.  */
+  1    40 
+  1    41 	2 result_x	fixed bin(2))	/* The number of the descriptor which
+  1    42*					*  references the result data.  */
+  1    43 
+  1    44 	unaligned;
+  1    45 
+  1    46 
+  1    47 /*	END of INCLUDE FILE  ...  et_instr_data_map.incl.pl1    */
+      273 
+      274 /* 	*/
+  2     1 /*	BEGINNING OF INCLUDE FILE  ...  et_setup_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created  Jan, 73  by  Bill Silver.
+  2     4*   *
+  2     5*   *
+  2     6*   * 	This include file defines the data that is needed to set up a test of an  eis
+  2     7*   *	instruction.  The area where this data actually resides is in  "et".
+  2     8**/
+  2     9 
+  2    10 
+  2    11 dcl  et_data_ptr ptr;				/* Pointer to the  et_data  area.  */
+  2    12 
+  2    13 
+  2    14 dcl 1 et_setup_data based (et_data_ptr) aligned,
+  2    15 
+  2    16     2 next_instruction_x fixed bin,			/* Index in script file of where the next
+  2    17*						   *  instruction test begins.  */
+  2    18 
+  2    19     2 name char (6),				/* Mnemonic name of the instruction
+  2    20*						   *  being tested. */
+  2    21 
+  2    22     2 test_count fixed bin,				/* The number of the current test. */
+  2    23 
+  2    24     2 note char (64),				/* A NOTE containing a description of the test. */
+  2    25 
+  2    26     2 loop_count fixed bin,				/* Number of times to execute the same
+  2    27*						   *  variation of an instruction.  */
+  2    28 
+  2    29     2 instr_offset fixed bin,				/* Indicates the position of the eis
+  2    30*						   *  instruction within the instruction
+  2    31*						   *  area in  etx. */
+  2    32 
+  2    33     2 instr_num fixed bin,				/* The index of the current instruction's
+  2    34*						   *  entry in the  et_instr_data$instruction
+  2    35*						   *  array.  */
+  2    36 
+  2    37     2 instr_type fixed bin,				/* 1  =  alphanumeric   2  =  numeric
+  2    38*						   *  3  =  bit  string    4  =  conversion  */
+  2    39 
+  2    40     2 instr_word bit (36),				/* The instruction word of the  eis
+  2    41*						   *  instruction to be tested.  */
+  2    42 
+  2    43     2 descriptors (3) bit (36),			/* The three possible descriptor words
+  2    44*						   *  of the eis instruction.  */
+  2    45 
+  2    46     2 ind_words (3) bit (36),				/* The three possible indirect words that
+  2    47*						   *  may follow the eis instruction.  */
+  2    48 
+  2    49     2 desc_ptrs (3) ptr,				/* An array of pointers to where any
+  2    50*						   *  indirect descriptors must be placed.  */
+  2    51 
+  2    52     2 mf_ptrs (3) ptr,				/* Pointers to the  mf  fields for each descriptor.
+  2    53*						   *  If an entry is null then there is no descriptor
+  2    54*						   *  associated with this entry.  */
+  2    55 
+  2    56     2 num_chars (3) fixed bin,			/* For each descriptor a code indicating what
+  2    57*						   *  type of "ta" or "tn" field it may have.  It
+  2    58*						   *  implies the number of characters in a word.
+  2    59*						   *   1 - descriptor must reference word boundary.
+  2    60*						   *   4 - any legal "ta" or "tn" field.
+  2    61*						   *       Implies 9 bit  characters as default.
+  2    62*						   *  36 - descriptor may reference  bits.
+  2    63*						   *  -1 - must use "ta" field of descriptor 1
+  2    64*						   *   0 - no descriptor.  */
+  2    65 
+  2    66     2 data_ptrs (5) ptr,				/* An array of pointers to where
+  2    67*						   *  the data for the corresponding
+  2    68*						   *  descriptor will go.  It points to
+  2    69*						   *  the first word of the data.
+  2    70*						   *  Entry (4) is for the test data.
+  2    71*						   *  Entry (5) is for the result data.  */
+  2    72 
+  2    73     2 data_lens (5) fixed bin,			/* An array of lengths of the data fields.
+  2    74*						   *  They will always be in units of chars. */
+  2    75 
+  2    76     2 data_offsets (5) fixed bin,			/* An array of character offsets.  They specify
+  2    77*						   *  the character position of the string  in
+  2    78*						   *  the first word of the string.  */
+  2    79 
+  2    80     2 page_faults (14) bit (1) unal,			/* A table of flags which indicate pages
+  2    81*						   *  which should take a page fault during
+  2    82*						   *  execution of the eis instruction. */
+  2    83 
+  2    84     2 page_ptrs (14) ptr,				/* A pointer to each page that is used
+  2    85*						   *  by the instruction.  Pages not used will
+  2    86*						   *  have null entries.  */
+  2    87 
+  2    88     2 truncation_flag fixed bin,			/* Indicates whether or not the instruction is
+  2    89*						   *  going to take a truncation fault.
+  2    90*						   *  1  =>  yes,   0  =>  no.  */
+  2    91 
+  2    92     2 pointers (0:7) ptr,				/* The values of the pointer registers
+  2    93*						   *  before the execution of the eis instr. */
+  2    94 
+  2    95     2 regs,					/* Index, A, and Q registers. */
+  2    96       3 x (0:7) fixed bin (17) unaligned,
+  2    97       3 A fixed bin (35),
+  2    98       3 Q fixed bin (35),
+  2    99       3 pad (2) bit (36),
+  2   100 
+  2   101     2 ir_word bit (36);				/* The settings of the indicator
+  2   102*						   *  registers after the eis instruction
+  2   103*						   *  has been executed.  */
+  2   104 
+  2   105 
+  2   106 
+  2   107 /*	END of INCLUDE FILE  ...  et_setup_data.incl.pl1	*/
+      275 
+      276 /* 	*/
+      277 /*	Set up the window on the input  "-mf"  option.  We will skip the
+      278*   *	"-mf" field at the beginning of the option.
+      279**/
+      280 
+      281 	option_ptr = addr (option);
+      282 	next_option_x = length (option);
+      283 
+      284 	et_data_ptr = arg_et_data_ptr;		/* Copy this argument.  */
+      285 
+      286 
+      287 	start = 0;
+      288 	size = next_option_x;
+      289 
+      290 
+      291 /*	Validate and convert the num  field.  */
+      292 
+      293 	len = verify (substr (window, 1, 1), "123");
+      294 
+      295 	if len = 0
+      296 
+      297 	then do;
+      298 	     dx = fixed (substr (window, 1, 1), 17);
+      299 	     start = start + 1;
+      300 	     size = size - 1;
+      301 	end;
+      302 
+      303 	else do;
+      304 	     code = 601;
+      305 	     call com_err_ (0, "ET", "^d Illegal desc num  field: ^a",
+      306 		code, substr (window, 1, 1));
+      307 	     return;
+      308 	end;
+      309 
+      310 
+      311 /*	Now test to see if we should process this  mf  field.  Only  mf  field 3  is in
+      312*   *	question.  If this  num field  is a  3  then check to see if there is an  mf
+      313*   *	field for this descriptor.
+      314**/
+      315 
+      316 	if (dx = 3) & (mf_ptrs (3) = null ())
+      317 
+      318 	then do;
+      319 	     code = 602;
+      320 	     call com_err_ (0, "ET", "^d -mf3  option invalid - instruction has only 2 descriptors.", code);
+      321 	     return;
+      322 	end;
+      323 
+      324 
+      325 /*	Get a pointer to the  mf field  we will be working with.  */
+      326 
+      327 	start = start + 1;				/* Move window past  num  field. */
+      328 	size = size - 1;
+      329 
+      330 
+      331 /*	Now we must initialize some of the data that we may need.  */
+      332 
+      333 	desc_ptr = addr (descriptors (dx));
+      334 	indw_ptr = addr (ind_words (dx));
+      335 	mf_ptr = mf_ptrs (dx);
+      336 
+      337 	mf_inst_flag = "1"b;
+      338 
+      339 	if (dx = 2) & (^et_instr_data$instructions (instr_num).mf2_flag)
+      340 	then mf_inst_flag = "0"b;
+      341 
+      342 	if (dx = 3) & (^et_instr_data$instructions (instr_num).mf3_flag)
+      343 	then mf_inst_flag = "0"b;
+      344 
+      345 
+      346 /*	Initialize these pointers just once per process.  */
+      347 
+      348 	if init_flag then goto term_loop;
+      349 
+      350 	eti_data_ptrs (1) = addr (eti1$data);
+      351 	eti_data_ptrs (2) = addr (eti2$data);
+      352 	eti_data_ptrs (3) = addr (eti3$data);
+      353 
+      354 	etd_data_ptrs (1) = addr (etd1$data);
+      355 	etd_data_ptrs (2) = addr (etd2$data);
+      356 	etd_data_ptrs (3) = addr (etd3$data);
+      357 
+      358 	etx_ind_ptrs (1) = addr (etx$ind1);
+      359 	etx_ind_ptrs (2) = addr (etx$ind2);
+      360 	etx_ind_ptrs (3) = addr (etx$ind3);
+      361 
+      362 	eti_ind_ptrs (1) = addr (eti1$ind);
+      363 	eti_ind_ptrs (2) = addr (eti2$ind);
+      364 	eti_ind_ptrs (3) = addr (eti3$ind);
+      365 
+      366 	init_flag = "1"b;
+      367 						/* 	*/
+      368 						/*	Now start to process the terms.  We will test for each possible term name.
+      369*						   *	Each iteration of this loop will process one term.
+      370*						   */
+      371 
+      372 
+      373 term_loop:
+      374 
+      375 
+      376 /*	Skip to the next term.  If we find the end of the statement or the beginning of a new
+      377*   *	option we will know that there are no more terms in this  mf  field.
+      378**/
+      379 
+      380 	call et_util$skip (option_ptr, start, size);
+      381 
+      382 	if (substr (window, 1, 1) = ";") | (substr (window, 1, 1) = "-")
+      383 
+      384 	then return;
+      385 
+      386 
+      387 /*	Look through the list of valid term names.  */
+      388 
+      389 	term_name = substr (window, 1, 2);
+      390 
+      391 	do i = 1 to 4;
+      392 
+      393 	     if term_name = term_names (i)
+      394 
+      395 	     then do;
+      396 		start = start + 2;			/* Move window past term name.  */
+      397 		size = size - 2;
+      398 		goto term_routine (i);		/* Go to routine which processes this term. */
+      399 	     end;
+      400 	end;
+      401 
+      402 	goto illegal_term;				/* We didn't find a valid term name.  */
+      403 						/* 	*/
+      404 term_routine (1):					/*  ar  */
+      405 
+      406 
+      407 /*	First set up the  ar  bit in the  mf  field.  */
+      408 
+      409 	mf_ptr -> mf_map.ar = "1"b;
+      410 
+      411 
+      412 /*	Next set up the pointer register number in the descriptor.  */
+      413 
+      414 	desc_ptr -> desc_map.pr_num = substr (addr (dx) -> bit_word, 34, 3);
+      415 
+      416 
+      417 /*	Now set up the data pointer.  Since  ar  modification is present we know that the
+      418*   *	data will go into segment  etdX.
+      419**/
+      420 
+      421 	data_ptrs (dx) = etd_data_ptrs (dx);
+      422 
+      423 
+      424 /*	Now we must set up the address field and the pointer register used by this
+      425*   *	descriptor.  The address field in the descriptor will be set to  8 * X.
+      426*   The pointer register will actually point to the data but will be adjusted by
+      427*   *	the value of the descriptor address so the effective address will be correct.
+      428*   *	If  reg  modification is also specified then we must adjust the descriptor address
+      429*   *	by the effective word offset of the specified index register.
+      430**/
+      431 
+      432 	offsetx = dx * 8;
+      433 
+      434 	if mf_ptr -> mf_map.reg = "0"b
+      435 
+      436 	then desc_ptr -> desc_map.y = offsetx;
+      437 
+      438 	else desc_ptr -> desc_map.y = offsetx - dx;
+      439 
+      440 	pointers (dx) = addrel (data_ptrs (dx), -offsetx);
+      441 
+      442 /*	That's it for an  ar  modifier.  Go back and process the next term.  */
+      443 
+      444 	goto term_loop;
+      445 						/* 	*/
+      446 term_routine (2):					/*  rl  */
+      447 
+      448 /*	The first thing we must do is to see if if is legal to have  rl  modification
+      449*   *	with this  mf  field.  If the  mf field  is not in the instruction word itself
+      450*   *	then  rl  modification is illegal.
+      451**/
+      452 
+      453 	if ^mf_inst_flag
+      454 
+      455 	then do;
+      456 	     code = 621;
+      457 	     call com_err_ (0, "ET", "^d RL modification is illegal for  mf^d.", code, dx);
+      458 	     return;
+      459 	end;
+      460 
+      461 
+      462 /*	It is  OK.  We must get the length term that must follow the  rl  term.  */
+      463 
+      464 	call et_util$skip (option_ptr, start, size);
+      465 
+      466 	call et_util$convert_decimal (option_ptr, start, size, dec_num, code);
+      467 
+      468 	if code ^= 0
+      469 
+      470 	then do;
+      471 	     call com_err_ (0, "ET", "^d Illegal  rl  term length field.", code);
+      472 	     return;
+      473 	end;
+      474 
+      475 /*	Now we will turn  ON  the  rl  bit in the  mf  field.  Then depending upon which
+      476*   *	descriptor this  mf  field is for we will go to the routine which will put the length
+      477*   *	in the correct register and set the correct register code in the descriptor.
+      478**/
+      479 
+      480 	mf_ptr -> mf_map.rl = "1"b;
+      481 
+      482 	goto rl_routine (dx);
+      483 
+      484 
+      485 rl_routine (1):
+      486 
+      487 	regs.A = dec_num;
+      488 	desc_ptr -> desc_map.rl_num = "0101"b;
+      489 	goto term_loop;
+      490 
+      491 
+      492 rl_routine (2):
+      493 
+      494 	regs.Q = dec_num;
+      495 	desc_ptr -> desc_map.rl_num = "0110"b;
+      496 	goto term_loop;
+      497 
+      498 
+      499 rl_routine (3):
+      500 
+      501 	regs.x (6) = dec_num;
+      502 	desc_ptr -> desc_map.rl_num = "1110"b;
+      503 	goto term_loop;
+      504 						/* 	*/
+      505 term_routine (3):					/*  id  */
+      506 
+      507 
+      508 /*	The first thing we must do is to see if it is legal to have  id  modification
+      509*   *	with this  mf  field.  If the  mf field  is not in the instruction word itself
+      510*   *	then  id  modification is illegal.
+      511**/
+      512 
+      513 	if ^mf_inst_flag
+      514 
+      515 	then do;
+      516 	     code = 631;
+      517 	     call com_err_ (0, "ET", "^d ID modification is illegal for  mf^d.", code, dx);
+      518 	     return;
+      519 	end;
+      520 
+      521 
+      522 /*	The  id  term may be followed by a character which specifies  ar  or  reg  modification.
+      523*   *	We must look for that character and set the flags which indicate these types of
+      524*   *	modification.  If either of the two is specified we must move the window past
+      525*   *	this character.
+      526**/
+      527 
+      528 	indw_ar_flag = "0"b;
+      529 	indw_reg_flag = "0"b;
+      530 
+      531 	if substr (window, 1, 1) = "b"
+      532 	then do;
+      533 	     indw_ar_flag = "1"b;
+      534 	     indw_reg_flag = "1"b;
+      535 	end;
+      536 
+      537 	if substr (window, 1, 1) = "a"
+      538 	then indw_ar_flag = "1"b;
+      539 
+      540 	if substr (window, 1, 1) = "r"
+      541 	then indw_reg_flag = "1"b;
+      542 
+      543 	if (indw_ar_flag) | (indw_reg_flag)
+      544 	then do;
+      545 	     start = start + 1;
+      546 	     size = size - 1;
+      547 	end;
+      548 
+      549 
+      550 /*	Now perform the necessary initialization.  We must turn ON the  id  bit in the
+      551*   *	mf  field.  We will initially assume that the indirect word does not use
+      552*   *	ar  modification.  Thus the descriptor will be in segment  etx.  We will also
+      553*   *	initially assume that the indirect word does not use  reg  modification.
+      554*   *	Just in case, however, we will set the number of the pointer register or index
+      555*   *	used by this indirect word.
+      556**/
+      557 
+      558 	mf_ptr -> mf_map.id = "1"b;
+      559 
+      560 	desc_ptrs (dx) = etx_ind_ptrs (dx);
+      561 
+      562 	indw_ptr -> indw_map.y = fixed (rel (desc_ptrs (dx)), 14);
+      563 
+      564 /*	Set up the number of the pointer register and index register that the indirect
+      565*   *	word will use.  We use  4,5, and 7 because we do not want to use  pointer
+      566*   *	register 6 - it is the stack pointer.
+      567**/
+      568 
+      569 	if dx = 3
+      570 	then idx = 7;
+      571 	else idx = dx + 3;
+      572 
+      573 
+      574 /*	If this indirect word requires  ar  modification then we must do the following:
+      575*   *	1.  Turn on the  ar  bit in the indirect word.
+      576*   *	2.  Set the pointer register number in the indirect word.
+      577*   *	3.  Change the  desc_ptrs entry.  The indirect descriptor will now be placed
+      578*   *	    in segment  etiX.
+      579*   *	4.  Set up the address field in the indirect word.
+      580*   *	5.  Set up the pointer register used by the indirect word.  It will point to
+      581*   *	    the descriptor but must be adjusted by the value in the indirect word's address
+      582*   *	    field so the effective address will be correct.
+      583**/
+      584 
+      585 	if ^indw_ar_flag then goto check_indw_reg;
+      586 
+      587 	indw_ptr -> indw_map.ar = "1"b;
+      588 
+      589 	indw_ptr -> indw_map.pr_num = substr (addr (idx) -> bit_word, 34, 3);
+      590 
+      591 	desc_ptrs (dx) = eti_ind_ptrs (dx);
+      592 
+      593 	indw_ptr -> indw_map.y = idx * 8;
+      594 
+      595 	pointers (idx) = addrel (desc_ptrs (dx), - indw_ptr -> indw_map.y);
+      596 
+      597 
+      598 /*	If the descriptor itself has  ar  modification then the data will be in segment
+      599*   *	etdX.  We will leave it there.  However, if the descriptor does not specify
+      600*   *	ar  modification then the data currently is to be in segment  etx.   We must change
+      601*   *	this and put the data in the same segment as the descriptor which is in segment
+      602*   *	etiX.  Note, if the descriptor specifies  reg  modification then we will have
+      603*   *	to adjust the new descriptor address.
+      604**/
+      605 
+      606 	if mf_ptr -> mf_map.ar then goto check_indw_reg;
+      607 
+      608 	data_ptrs (dx) = eti_data_ptrs (dx);
+      609 
+      610 	if mf_ptr -> mf_map.reg = "0"b
+      611 	then offsetx = 0;
+      612 	else offsetx = - dx;
+      613 
+      614 	desc_ptr -> desc_map.y = fixed (rel (addrel (data_ptrs (dx), offsetx)), 14);
+      615 
+      616 
+      617 /*	Now check for register modification.  If it is specified the offset will be
+      618*   *	idx  WORDS.  We don't care whether or not  ar  modification has been specified.
+      619*   *	In either case we must:
+      620*   *	1.  Set the index modifier tag code in the indirect word.
+      621*   *	2.  Put the word offset in the index register to be used.
+      622*   *	3.  Adjust the address field that is in the indirect word.
+      623**/
+      624 
+      625 check_indw_reg:
+      626 
+      627 	if indw_reg_flag
+      628 
+      629 	then do;
+      630 
+      631 	     indw_ptr -> indw_map.reg = indw_reg_tags (dx);
+      632 
+      633 	     regs.x (idx) = idx;
+      634 
+      635 	     indw_ptr -> indw_map.y = indw_ptr -> indw_map.y - idx;
+      636 
+      637 	end;
+      638 
+      639 
+      640 /*	Now we can set up the  page_ptrs  entry for this indirect descriptor.
+      641*   *	Their entries are:  3, 7, & 11.
+      642**/
+      643 
+      644 	page_ptrs (3 + (dx-1)*4) = desc_ptrs (dx);
+      645 
+      646 
+      647 	goto term_loop;
+      648 						/* 	*/
+      649 term_routine (4):					/*  reg  */
+      650 
+      651 
+      652 /*	We came here because we found an  "re".  Lets check to see that the next character
+      653*   *	is really the  "g".
+      654**/
+      655 
+      656 	substr (term_name, 3, 1) = substr (window, 1, 1);
+      657 
+      658 	if term_name ^= "reg"
+      659 	then goto illegal_term;
+      660 
+      661 	start = start + 1;
+      662 	size = size - 1;
+      663 
+      664 
+      665 /*	This is a valid  reg  term.  We must do the following:
+      666*   *	1.  Set the index register modifier tag code in the mf field.
+      667*   *	2.  Adjust the address field in the descriptor.  We must adjust it by a word
+      668*   *	    offset.  This value then will just be  X.
+      669*   *	3.  NOTE, we will not set up the value in the index register now.   We know that
+      670*   *	    it should be  X  words but we don't know what mode to express this offset
+      671*   *	    in yet.   This will be done by  "et_test"  when all the data statements have
+      672*   *	    been parsed.
+      673**/
+      674 
+      675 	mf_ptr -> mf_map.reg = mf_reg_tags (dx);
+      676 
+      677 	desc_ptr -> desc_map.y = desc_ptr -> desc_map.y - dx;
+      678 
+      679 	goto term_loop;
+      680 						/* 	*/
+      681 illegal_term:
+      682 
+      683 	code = 607;
+      684 
+      685 	call com_err_ (0, "ET", "^d Illegal  mf  term: ""^a"".", code, term_name);
+      686 
+      687 	return;
+      688 
+      689 
+      690 
+      691 
+      692      end et_mf;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/03/82  1023.7  et_mf.pl1                         >spec>on>phx-dir>et_mf.pl1
+273          1    05/06/74  1741.2  et_instr_data_map.incl.pl1        >ldd>include>et_instr_data_map.incl.pl1
+275          2    06/02/82  1246.3  et_setup_data.incl.pl1            >spec>on>phx-dir>et_setup_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+A                       170            based           fixed bin(35,0)          level 3 dcl 2-14 set ref 485*
+Q                       171            based           fixed bin(35,0)          level 3 dcl 2-14 set ref 492*
+addr                                                   builtin function         dcl 264 ref 281 333 334 350 351 352 354 355 356 358
+                                                                                  359 360 362 363 364 414 589
+addrel                                                 builtin function         dcl 264 ref 440 595 614
+ar                                     based           bit(1)                   level 2 in structure "mf_map" packed unaligned
+                                                                                  dcl 187 in procedure "et_mf" set ref 404* 606
+ar                        0(29)        based           bit(1)                   level 2 in structure "indw_map" packed unaligned
+                                                                                  dcl 201 in procedure "et_mf" set ref 587*
+arg_et_data_ptr                        parameter       pointer                  dcl 93 ref 11 284
+bit_word                               based           bit(36)                  dcl 182 ref 414 589
+code                                   parameter       fixed bin(35,0)          dcl 93 set ref 11 304* 305* 319* 320* 456* 457* 466*
+                                                                                  468 471* 516* 517* 681* 685*
+com_err_                        000072 constant        entry                    external dcl 258 ref 305 320 457 471 517 685
+data_ptrs                60            based           pointer                  array level 2 dcl 2-14 set ref 421* 440 608* 614
+dec_num                         000105 automatic       fixed bin(17,0)          dcl 127 set ref 466* 485 492 499
+desc_map                               based           structure                level 1 dcl 194
+desc_ptr                        000110 automatic       pointer                  dcl 127 set ref 333* 414 434 438 488 495 502 614 677
+                                                                                  677
+desc_ptrs                40            based           pointer                  array level 2 dcl 2-14 set ref 560* 562 591* 595 644
+descriptors              31            based           bit(36)                  array level 2 dcl 2-14 set ref 333
+dx                              000120 automatic       fixed bin(17,0)          dcl 145 set ref 298* 316 333 334 335 339 342 414 421
+                                                                                  421 432 438 440 440 457* 482 517* 560 560 562 569
+                                                                                  571 591 591 595 608 608 612 614 631 644 644 675
+                                                                                  677
+et_data_ptr                     000126 automatic       pointer                  dcl 2-11 set ref 284* 316 333 334 335 339 342 421
+                                                                                  440 440 485 492 499 560 562 591 595 595 608 614
+                                                                                  633 644 644
+et_instr_data$instructions      000100 external static structure                array level 1 dcl 1-15
+et_setup_data                          based           structure                level 1 dcl 2-14
+et_util$convert_decimal         000076 constant        entry                    external dcl 258 ref 466
+et_util$skip                    000074 constant        entry                    external dcl 258 ref 373 464
+etd1$data                       000064 external static fixed bin(17,0)          dcl 252 set ref 354
+etd2$data                       000066 external static fixed bin(17,0)          dcl 252 set ref 355
+etd3$data                       000070 external static fixed bin(17,0)          dcl 252 set ref 356
+etd_data_ptrs                   000034 internal static pointer                  array dcl 235 set ref 354* 355* 356* 421
+eti1$data                       000056 external static fixed bin(17,0)          dcl 252 set ref 350
+eti1$ind                        000050 external static fixed bin(17,0)          dcl 252 set ref 362
+eti2$data                       000060 external static fixed bin(17,0)          dcl 252 set ref 351
+eti2$ind                        000052 external static fixed bin(17,0)          dcl 252 set ref 363
+eti3$data                       000062 external static fixed bin(17,0)          dcl 252 set ref 352
+eti3$ind                        000054 external static fixed bin(17,0)          dcl 252 set ref 364
+eti_data_ptrs                   000026 internal static pointer                  array dcl 235 set ref 350* 351* 352* 608
+eti_ind_ptrs                    000020 internal static pointer                  array dcl 235 set ref 362* 363* 364* 591
+etx$ind1                        000042 external static fixed bin(17,0)          dcl 252 set ref 358
+etx$ind2                        000044 external static fixed bin(17,0)          dcl 252 set ref 359
+etx$ind3                        000046 external static fixed bin(17,0)          dcl 252 set ref 360
+etx_ind_ptrs                    000012 internal static pointer                  array dcl 235 set ref 358* 359* 360* 560
+fixed                                                  builtin function         dcl 264 ref 298 562 614
+i                               000106 automatic       fixed bin(17,0)          dcl 127 set ref 391* 393 398*
+id                        0(02)        based           bit(1)                   level 2 packed unaligned dcl 187 set ref 558*
+idx                             000121 automatic       fixed bin(17,0)          dcl 145 set ref 569* 571* 589 593 595 633 633 635
+ind_words                34            based           bit(36)                  array level 2 dcl 2-14 set ref 334
+indw_ar_flag                    000123 automatic       bit(1)                   unaligned dcl 145 set ref 528* 533* 537* 543 585
+indw_map                               based           structure                level 1 dcl 201
+indw_ptr                        000112 automatic       pointer                  dcl 127 set ref 334* 562 587 589 593 595 631 635 635
+indw_reg_flag                   000124 automatic       bit(1)                   unaligned dcl 145 set ref 529* 534* 540* 543 625
+indw_reg_tags                   000007 constant        bit(4)                   initial array unaligned dcl 229 ref 631
+init_flag                       000010 internal static bit(1)                   initial unaligned dcl 235 set ref 348 366*
+instr_num                26            based           fixed bin(17,0)          level 2 dcl 2-14 ref 339 342
+len                             000107 automatic       fixed bin(17,0)          dcl 127 set ref 293* 295
+length                                                 builtin function         dcl 264 ref 282
+mf2_flag                  1(27) 000100 external static bit(1)                   array level 2 packed unaligned dcl 1-15 ref 339
+mf3_flag                  1(28) 000100 external static bit(1)                   array level 2 packed unaligned dcl 1-15 ref 342
+mf_inst_flag                    000122 automatic       bit(1)                   unaligned dcl 145 set ref 337* 339* 342* 446 505
+mf_map                                 based           structure                level 1 packed unaligned dcl 187
+mf_option                              based           structure                level 1 packed unaligned dcl 170
+mf_ptr                          000114 automatic       pointer                  dcl 127 set ref 335* 404 434 480 558 606 610 675
+mf_ptrs                  46            based           pointer                  array level 2 dcl 2-14 ref 316 335
+mf_reg_tags                     000010 constant        bit(4)                   initial array unaligned dcl 226 ref 675
+next_option_x                   000104 automatic       fixed bin(17,0)          dcl 110 set ref 282* 288
+null                                                   builtin function         dcl 264 ref 316
+offsetx                         000116 automatic       fixed bin(17,0)          dcl 127 set ref 432* 434 438 440 610* 612* 614
+option                                 parameter       char                     unaligned dcl 93 set ref 11 281 282
+option_ptr                      000100 automatic       pointer                  dcl 110 set ref 281* 293 298 305 305 373* 382 382
+                                                                                  389 464* 466* 531 537 540 649
+page_ptrs               106            based           pointer                  array level 2 dcl 2-14 set ref 644*
+pointers                144            based           pointer                  array level 2 dcl 2-14 set ref 440* 595*
+pr_num                                 based           bit(3)                   level 2 in structure "desc_map" packed unaligned
+                                                                                  dcl 194 in procedure "et_mf" set ref 414*
+pr_num                                 based           bit(3)                   level 2 in structure "indw_map" packed unaligned
+                                                                                  dcl 201 in procedure "et_mf" set ref 589*
+reg                       0(32)        based           bit(4)                   level 2 in structure "indw_map" packed unaligned
+                                                                                  dcl 201 in procedure "et_mf" set ref 631*
+reg                       0(03)        based           bit(4)                   level 2 in structure "mf_map" packed unaligned
+                                                                                  dcl 187 in procedure "et_mf" set ref 434 610 675*
+regs                    164            based           structure                level 2 dcl 2-14
+rel                                                    builtin function         dcl 264 ref 562 614
+rl                        0(01)        based           bit(1)                   level 2 packed unaligned dcl 187 set ref 480*
+rl_num                    0(32)        based           bit(4)                   level 2 packed unaligned dcl 194 set ref 488* 495*
+                                                                                  502*
+size                            000103 automatic       fixed bin(35,0)          dcl 110 set ref 288* 293 298 300* 300 305 305 328*
+                                                                                  328 373* 382 382 389 397* 397 464* 466* 531 537
+                                                                                  540 546* 546 649 662* 662
+start                           000102 automatic       fixed bin(35,0)          dcl 110 set ref 287* 293 298 299* 299 305 305 327*
+                                                                                  327 373* 382 382 389 396* 396 464* 466* 531 537
+                                                                                  540 545* 545 649 661* 661
+substr                                                 builtin function         dcl 264 set ref 293 298 305 305 382 382 389 414 531
+                                                                                  537 540 589 649* 649
+term_name                       000117 automatic       char(3)                  unaligned dcl 127 set ref 389* 393 649* 658 685*
+term_names                      000012 constant        char(2)                  initial array unaligned dcl 218 ref 393
+verify                                                 builtin function         dcl 264 ref 293
+window                                 based           char                     level 2 packed unaligned dcl 170 ref 293 298 305 305
+                                                                                  382 382 389 531 537 540 649
+x                       164            based           fixed bin(17,0)          array level 3 packed unaligned dcl 2-14 set ref 499*
+                                                                                  633*
+y                         0(03)        based           fixed bin(14,0)          level 2 in structure "desc_map" packed unaligned
+                                                                                  dcl 194 in procedure "et_mf" set ref 434* 438*
+                                                                                  614* 677* 677
+y                         0(03)        based           fixed bin(14,0)          level 2 in structure "indw_map" packed unaligned
+                                                                                  dcl 201 in procedure "et_mf" set ref 562* 593* 595
+                                                                                  635* 635
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+et_instr_data$num_instructions         external static fixed bin(17,0)          dcl 1-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check_indw_reg                  001230 constant        label                    dcl 625 ref 585 606
+et_mf                           000136 constant        entry                    external dcl 11
+illegal_term                    001336 constant        label                    dcl 681 set ref 402 658
+rl_routine                      000004 constant        label                    array(3) dcl 485 set ref 482
+term_loop                       000452 constant        label                    dcl 373 set ref 348 444 489 496 503 647 679
+term_routine                    000000 constant        label                    array(4) dcl 404 ref 398
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1556        1660    1401        1566
+Length      2112    1401       102         215     154          32
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+et_mf                               278 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 init_flag                   et_mf
+000012 etx_ind_ptrs                et_mf
+000020 eti_ind_ptrs                et_mf
+000026 eti_data_ptrs               et_mf
+000034 etd_data_ptrs               et_mf
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+et_mf                    000100 option_ptr                  et_mf
+                         000102 start                       et_mf
+                         000103 size                        et_mf
+                         000104 next_option_x               et_mf
+                         000105 dec_num                     et_mf
+                         000106 i                           et_mf
+                         000107 len                         et_mf
+                         000110 desc_ptr                    et_mf
+                         000112 indw_ptr                    et_mf
+                         000114 mf_ptr                      et_mf
+                         000116 offsetx                     et_mf
+                         000117 term_name                   et_mf
+                         000120 dx                          et_mf
+                         000121 idx                         et_mf
+                         000122 mf_inst_flag                et_mf
+                         000123 indw_ar_flag                et_mf
+                         000124 indw_reg_flag               et_mf
+                         000126 et_data_ptr                 et_mf
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return              ext_entry_desc      any_to_any_tr
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      et_util$convert_decimal       et_util$skip
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+et_instr_data$instructions    etd1$data                     etd2$data                     etd3$data
+eti1$data                     eti1$ind                      eti2$data                     eti2$ind
+eti3$data                     eti3$ind                      etx$ind1                      etx$ind2
+etx$ind3
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000132       281 000151       282 000154       284 000155       287 000160       288 000161       293 000162
+    295 000173       298 000177       299 000212       300 000216       301 000224       304 000225       305 000227
+    307 000267       316 000270       319 000302       320 000305       321 000340       327 000341       328 000345
+    333 000353       334 000357       335 000361       337 000365       339 000367       342 000404       348 000415
+    350 000420       351 000422       352 000424       354 000426       355 000430       356 000432       358 000434
+    359 000436       360 000440       362 000442       363 000444       364 000446       366 000450       373 000452
+    382 000465       389 000477       391 000504       393 000511       396 000516       397 000522       398 000530
+    400 000532       402 000534       404 000535       414 000541       421 000546       432 000554       434 000560
+    438 000571       440 000576       444 000602       446 000603       456 000605       457 000610       458 000647
+    464 000650       466 000663       468 000703       471 000706       472 000741       480 000742       482 000746
+    485 000750       488 000753       489 000757       492 000760       495 000763       496 000767       499 000770
+    502 000774       503 001000       505 001001       516 001003       517 001006       518 001045       528 001046
+    529 001047       531 001050       533 001060       534 001062       537 001063       540 001070       543 001075
+    545 001101       546 001105       558 001113       560 001117       562 001125       569 001133       571 001141
+    585 001143       587 001145       589 001147       591 001154       593 001160       595 001167       606 001201
+    608 001205       610 001210       612 001216       614 001220       625 001230       631 001232       633 001240
+    635 001251       644 001261       647 001273       649 001274       658 001301       661 001305       662 001311
+    675 001317       677 001325       679 001335       681 001336       685 001341       687 001400
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

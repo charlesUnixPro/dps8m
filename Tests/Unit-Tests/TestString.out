@@ -1,8 +1,10 @@
-28 (000034) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is a test of C-Style escapes ...
-... and we're back ...
+28 (000034) words loaded
+This is a test of C-Style escapes ...
+... and we're back ...
+
+simCycles = 392
 
 cpuCycles = 196
 TestString-10> g 0

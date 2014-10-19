@@ -1,41 +1,216 @@
-#CC = gcc
-#LD = gcc
-CC = clang
-LD = clang
+include ../Makefile.mk
 
-# for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-CFLAGS  = -g -O0
-#CFLAGS  = -g -O3
-CFLAGS += -I../decNumber -I../simh 
-CFLAGS += -std=c99 -U__STRICT_ANSI__  
-# CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
-# CFLAGS += -I . 
-CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
 CFLAGS += -Wall 
-CFLAGS += -DUSE_INT64
 
-LDFLAGS = -g
+CFLAGS += -Wunused-argument \
+-Wunused-function \
+-Wunused-label \
+-Wunused-parameter \
+-Wunused-value \
+-Wunused-variable \
+-Wunused \
+-Wextra
+
+CFLAGS += -Wunreachable-code
+
+#CFLAGS += -Wsign-conversion
+zzzCFLAGS += \
+-Wabi \
+-Waddress-of-temporary \
+-Waddress \
+-Waggregate-return \
+-Wall \
+-Wambiguous-member-template \
+-Warc-abi \
+-Warc-non-pod-memaccess \
+-Warc-retain-cycles \
+-Warc-unsafe-retained-assign \
+-Warc \
+-Watomic-properties \
+-Wattributes \
+-Wavailability \
+-Wbad-function-cast \
+-Wbind-to-temporary-copy \
+-Wbitwise-op-parentheses \
+-Wbool-conversions \
+-Wbuiltin-macro-redefined \
+-Wc++-compat \
+-Wc++0x-compat \
+-Wc++0x-extensions \
+-Wcast-align \
+-Wcast-qual \
+-Wchar-align \
+-Wchar-subscripts \
+-Wcomment \
+-Wcomments \
+-Wconditional-uninitialized \
+-Wconversion \
+-Wctor-dtor-privacy \
+-Wcustom-atomic-properties \
+-Wdeclaration-after-statement \
+-Wdelegating-ctor-cycles \
+-Wdelete-non-virtual-dtor \
+-Wdeprecated-declarations \
+-Wdeprecated-implementations \
+-Wdeprecated-writable-strings \
+-Wdeprecated \
+-Wdisabled-optimization \
+-Wdiscard-qual \
+-Wdiv-by-zero \
+-Wduplicate-method-arg \
+-Weffc++ \
+-Wempty-body \
+-Wendif-labels \
+-Wexit-time-destructors \
+-Wextra-tokens \
+-Wextra \
+-Wformat-extra-args \
+-Wformat-nonliteral \
+-Wformat-zero-length \
+-Wformat \
+-Wformat=2 \
+-Wfour-char-constants \
+-Wglobal-constructors \
+-Wgnu-designator \
+-Wgnu \
+-Wheader-hygiene \
+-Widiomatic-parentheses \
+-Wignored-qualifiers \
+-Wimplicit-atomic-properties \
+-Wimplicit-function-declaration \
+-Wimplicit-int \
+-Wimplicit \
+-Wimport \
+-Wincompatible-pointer-types \
+-Winit-self \
+-Winitializer-overrides \
+-Winline \
+-Wint-to-pointer-cast \
+-Winvalid-offsetof \
+-Winvalid-pch \
+-Wlarge-by-value-copy \
+-Wliteral-range \
+-Wlocal-type-template-args \
+-Wlogical-op-parentheses \
+-Wlong-long \
+-Wmain \
+-Wmicrosoft \
+-Wmismatched-tags \
+-Wmissing-braces \
+-Wmissing-declarations \
+-Wmissing-field-initializers \
+-Wmissing-format-attribute \
+-Wmissing-include-dirs \
+-Wmissing-noreturn \
+-Wmost \
+-Wmultichar \
+-Wnested-externs \
+-Wnewline-eof \
+-Wnon-gcc \
+-Wnon-virtual-dtor \
+-Wnonnull \
+-Wnonportable-cfstrings \
+-Wnull-dereference \
+-Wobjc-nonunified-exceptions \
+-Wold-style-cast \
+-Wold-style-definition \
+-Wout-of-line-declaration \
+-Woverflow \
+-Woverlength-strings \
+-Woverloaded-virtual \
+-Wpacked \
+-Wparentheses \
+-Wpointer-arith \
+-Wpointer-to-int-cast \
+-Wprotocol \
+-Wreadonly-setter-attrs \
+-Wredundant-decls \
+-Wreorder \
+-Wreturn-type \
+-Wself-assign \
+-Wsemicolon-before-method-body \
+-Wsequence-point \
+-Wshadow \
+-Wshorten-64-to-32 \
+-Wsign-compare \
+-Wsign-promo \
+-Wsizeof-array-argument \
+-Wstack-protector \
+-Wstrict-aliasing \
+-Wstrict-overflow \
+-Wstrict-prototypes \
+-Wstrict-selector-match \
+-Wsuper-class-method-mismatch \
+-Wswitch-default \
+-Wswitch-enum \
+-Wswitch \
+-Wsynth \
+-Wtautological-compare \
+-Wtrigraphs \
+-Wtype-limits \
+-Wundeclared-selector \
+-Wuninitialized \
+-Wunknown-pragmas \
+-Wunnamed-type-template-args \
+-Wunneeded-internal-declaration \
+-Wunneeded-member-function \
+-Wunused-argument \
+-Wunused-exception-parameter \
+-Wunused-function \
+-Wunused-label \
+-Wunused-member-function \
+-Wunused-parameter \
+-Wunused-value \
+-Wunused-variable \
+-Wunused \
+-Wused-but-marked-unused \
+-Wvariadic-macros \
+-Wvector-conversions \
+-Wvla \
+-Wvolatile-register-var \
+-Wwrite-strings
+ 
+
+ 
+
 #LDFLAGS += -Wl,--cref -Wl,-Map=dps8.map
-
-# Dese make debugging hard; also, I don't belive that -fwhole-program is appropriate
-# CFLAGS += -flto -fwhole-program
 
 # Temporary to tidy -Wall
 CFLAGS += -DQUIET_UNUSED
 
-# for Linux (Gentoo 4.3.6-r1 p1.0, pie-10.1.5)
-# Ubuntu Linux 8.04.4, "Hardy Heron" (which is no longer a supported release) 
-#CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 \
-#  -fgcse-after-reload \
-#  -fno-unsafe-loop-optimizations -fno-strict-overflow  \
-#  -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
+# Configuration switches
 
-# For OS/X
-#LIBS = -lm -lpthread -ldl   -flto -fwhole-program
+# Enable CAC's EIS Computed address formation code; research/experimental
+#CFLAGS += -DNEWCAF
+
+# Enable CAC's Fault and EIS debugging code
+#CFLAGS += -DDBGF
+#CFLAGS += -DDBGX
+
+# Enable EIS operand caching; enormous performace gains here...
+CFLAGS += -DEIS_CACHE
+
+# First attempt at RALR repair, needs rework.
+CFLAGS += -DRALR_FIX_0
+
+# Enable RALR on non-APU transfers and RCU.
+#CFLAGS += -DAGGRESSIVE_RING_ALARM
+
+# Enable automatic pressing the operator attention key.
+CFLAGS += -DATTN_HACK
+
+# Enable automatic detection of selected tape mount requests
+CFLAGS += -DMOUNT_HACK
 
 LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
-LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence 
+# simh requires -ldl
+LIBS = $(LOCALLIBS)  -lm -ldl
+
+# efence is Electric Fence, a malloc debugger.
+#LIBS +- -lefence
+
+#LIBS = -lrt -lpthread 
 
 C_SRCS  = ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
@@ -44,6 +219,7 @@ C_SRCS += ./dps8_console.c
 C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_disk.c
+C_SRCS += ./dps8_dn355.c
 C_SRCS += ./dps8_eis.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
@@ -59,16 +235,71 @@ C_SRCS += ./dps8_utils.c
 C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
+C_SRCS += ./dps8_fxe.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
-H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h dps8_console.h dps8_disk.h dps8_iom.h dps8_mt.h dps8_utils.h 
+H_SRCS  = dps8_addrmods.h
+H_SRCS += dps8_append.h
+H_SRCS += dps8_bar.h
+H_SRCS += dps8_clk.h
+H_SRCS += dps8_console.h
+H_SRCS += dps8_cpu.h
+H_SRCS += dps8_decimal.h
+H_SRCS += dps8_disk.h
+H_SRCS += dps8_dn355.h
+H_SRCS += dps8_eis.h
+H_SRCS += dps8_faults.h
+H_SRCS += dps8_fxe.h
+H_SRCS += dps8.h
+H_SRCS += dps8_hw_consts.h
+H_SRCS += dps8_iefp.h
+H_SRCS += dps8_ins.h
+H_SRCS += dps8_iom.h
+H_SRCS += dps8_loader.h
+H_SRCS += dps8_math.h
+H_SRCS += dps8_mt.h
+H_SRCS += dps8_mp.h
+H_SRCS += dps8_opcodetable.h
+H_SRCS += dps8_scu.h
+H_SRCS += dps8_simh.h
+H_SRCS += dps8_sys.h
+H_SRCS += dps8_utils.h
+H_SRCS += utarray.h
+H_SRCS += uthash.h
+H_SRCS += utlist.h
 
-all: locallibs_then_dps8 tags
+H_SRCS += area_info.incl.pl1.h
+H_SRCS += bind_map.incl.pl1.h
+H_SRCS += definition_dcls.incl.pl1.h
+H_SRCS += iocbx.incl.pl1.h
+H_SRCS += linkdcl.incl.pl1.h
+H_SRCS += object_map.incl.pl1.h
+H_SRCS += pl1_symbol_block.incl.pl1.h
+H_SRCS += source_map.incl.pl1.h
+H_SRCS += stack_header.incl.pl1.h
+H_SRCS += std_symbol_header.incl.pl1.h
+H_SRCS += symbol_block.incl.pl1.h
+H_SRCS += system_link_names.incl.pl1.h
+
+
+
+all: tags locallibs_then_dps8 
+
+# # Multipass stuff
+# CFLAGS += -DMULTIPASS
+# LDFLAGS += -lrt
+# blinkenLights : blinkenLights.c
+# 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights `pkg-config --cflags --libs gtk+-3.0`
+# 
+# all : blinkenLights
 
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
+slte.inc : system_book_12_3.ascii
+	./buildSLTE.sh
+
 locallibs_then_dps8 :
 	(cd ../simh; $(MAKE))
 	(cd ../decNumber; $(MAKE))
@@ -76,29 +307,33 @@ locallibs_then_dps8 :
 
 # Other Targets
 
-tags : $(C_SRCS) $(H_SRCS)
-	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/*.[ch]
+# If you do not have ctags in your build environment, change 'ctags' to 
+# '#ctags' below.
 
-.PHONY : clean cleaner
+tags : $(C_SRCS) $(H_SRCS)
+	-ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
+
+.PHONY : tapes
+
+tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 99020.tap 93085.tap 98570.tap 99019.tap 98580_1er.tap 98576_1er.tap 98577.tap 20184.tap 20185.tap 20186.tap 20187.tap 20188.tap t4d_b.2.tap
+
+%.tap:
+	wget bitsavers.trailing-edge.com/bits/Honeywell/multics/tape/$@.gz
+	gunzip $@.gz
+
+.PHONY : clean cleaner 
 
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) dps8 tags
+	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*))
 
 cleaner: clean
 	(cd ../simh; $(MAKE) clean)
 	(cd ../decNumber; $(MAKE) clean)
 
-#dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
+%.d: %.c
+	@set -e; rm -f $@; \
+	$(CC) -MM $(CFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
 
-dps8_console.o : dps8_iom.h
-dps8_cpu.o : dps8_utils.h
-dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
-dps8_disk.o : dps8_iom.h dps8_disk.h 
-dps8_iom.o : dps8_utils.h dps8_iom.h dps8_mt.h dps8_disk.h
-dps8_loader.o : utlist.h
-dps8_mt.o : dps8_iom.h dps8_mt.h
-dps8_scu.o : dps8_utils.h 
-dps8_sys.c : dps8_iom.h dps8_mt.h dps8_disk.h dps8_utils.h
-dps8_utils.o :  ../simh/sim_defs.h dps8_utils.h
-
-$(OBJS) : dps8.h ../simh/sim_defs.h ../simh/sim_tape.h
+-include $(C_SRCS:.c=.d)

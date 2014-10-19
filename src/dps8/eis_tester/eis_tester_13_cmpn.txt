@@ -1,0 +1,818 @@
+
+/*                           CMPN
+*
+*     The CMPN instruction algebtaically compares two numbers and sets the
+* zero, negative, and carry indicators to indicate the results of the
+* comparison.  The five possible settings of the indicators and the inputs
+* which cause the settings are shown below:
+*
+* ZR NG CR        INPUTS          INPUT
+*                              COMBINATION
+*                                NUMBER
+*
+
+*  0 0 1     neg,pos,[N1]<[N2]     1
+*  0 0 1     pos,pos,[N1]<[N2]     2
+*  1 0 1     neg,neg,[N1]=[N2]     3
+*  1 0 1     pos,pos,[N1]=[N2]     4
+*  0 1 1     neg,neg,[N1]<[N2]     5
+*  0 1 1     pos,neg,[N1]<[N2]     6
+*  0 1 0     pos,neg,[N1]>[N2]     7
+*  0 1 0     pos,pos,[N1]>[N2]     8
+*  0 0 0     neg,neg,[N1]>[N2]     9
+*  0 0 0     neg,pos,[N1]>[N2]    10
+*
+*
+* where neg,neg,[N1]<[N2] means that the 1st operand is negative,
+* the second operand is negative, and the absolute value of the ist
+* operand is less than the absolute value of the 2nd.
+*
+*
+*     Each of the even numbered input combinations is tested with:
+*
+*  1).  both of the numbers 9-bit decimal and floating point,
+*  2).  both of the numbers 9-bit decimal with leading sign,
+*  3)   both of the numbers 9-bit decimal with trailing sign,
+*  4).  where possible, both of the numbers 9-bit decimal and unsigned.
+*
+*
+*     Each of the odd numbered input combinations is tested with:
+*
+*  1).  both of the numbers 4-bit decimal and floating point,
+*  2).  both of the numbers 4-bit decimal with leading sign,
+*  3).  both of the numbers 4-bit decimal with trailing sign,
+*  4).  where possible, both of the numbers 4-bit decimal and unsigned.
+*
+*
+*/
+
+
+
+
+
+/*     cmpn1
+*  The carry indicator is set.
+*  Two 4-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit pos"
+-ir cr
+-mf1 idb ar
+-mf2 idb ar rl 5
+-io 2;
+
+desc 1 -tn 4 -sd t -nn 5;
+desc 2 -tn 4 -sd t;
+
+data 1 -do -2 "76" 32;
+data 2 -do -2 "98" 26;
+
+page -all;
+
+
+/*     cmpn2
+*  The carry indicator is set.
+*  Two 4-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit pos"
+-ir cr
+-mf1 idb ar rl 13
+-mf2 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd l -sf -1;
+desc 2 -tn 4 -sd l -sf -2 -nn 16;
+
+data 1 -do -2 325 "98642" 00;
+data 2 -do -3 262 "3278411";
+
+page -all;
+
+
+/*     cmpn3
+*  The carry indicator is set.
+*  Two 4-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit pos"
+-ir cr
+-mf1 idb ar
+-mf2 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd f -nn 12;
+desc 2 -tn 4 -sd f -nn 12;
+
+data 1 -do -2 323 "98762";
+data 2 -do -1 264 "32943";
+
+page -all;
+
+
+/*     cmpn4
+*  The carry indicator is set.
+*  Two 9-bit unsigned operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd n -sf 4 -nn 63;
+desc 2 -sd n -sf 5 -nn 63;
+
+data 1 -do -1 (15)"9834" "395";
+data 2 -do -62 (15)"8765" "147";
+
+page -all;
+
+
+/*     cmpn5
+*  The carry indicator is set.
+*  Two 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 3;
+
+desc 1 -sd t -sf -2 -nn 14;
+desc 2 -sd t -sf 12 -nn 14;
+
+data 1 -do -13 (4)"298" "3" 053;
+data 2 -do -13 (4)"687" "2" 053;
+
+page -all;
+
+
+/*     cmpn6
+*  The carry indicator is set.
+*  Two 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd l -sf 2 -nn 12;
+desc 2 -sd l -sf 3 -nn 12;
+
+data 1 -do -4 053 (11)"3";
+data 2 -do -4 053 (11)"2";
+
+page -all;
+
+
+/*     cmpn7
+*  The carry indicator is set.
+*  Two 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir cr
+-mf1 idb ar reg rl 9
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd f;
+desc 2 -sd f -nn 8;
+
+data 1 -do -8 053 "7654321" 377;
+data 2 -do -1 053 "987654" 002;
+
+page -all;
+
+
+/*     cmpn8
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir zr cr
+-mf1 idb ar
+-mf2 idb ar rl 4
+-io 2;
+
+desc 1 -tn 4 -sd t -nn 4;
+desc 2 -tn 4 -sd t;
+
+data 1 -do -1 "7" 035;
+data 2 -do -1 "7" 035;
+
+page -all;
+
+
+/*     cmpn9
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir zr cr
+-mf1 idb ar rl 63
+-mf2 idb ar rl 63
+-io 1;
+
+desc 1 -tn 4 -sd l -sf 3;
+desc 2 -tn 4 -sd l -sf 3;
+
+data 1 -do -31 32 (31)"5";
+data 2 -do -1  32 (31)"5";
+
+page -all;
+
+
+/*     cmpn10
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir zr cr
+-mf1 idb ar
+-mf2 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd f -nn 8;
+desc 2 -tn 4 -sd f -nn 8;
+
+data 1 -do -1 325 "495";
+data 2 -do -2 325 "495";
+
+page -all;
+
+
+/*     cmpn11
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit unsigned operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir zr cr
+-mf1 idb ar reg rl 3
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd n -sf 1;
+desc 2 -sd n -sf 1 -nn 3;
+
+data 1 -do -2 "432";
+data 2 -do -1 "432";
+
+page -all;
+
+
+/*     cmpn12
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir zr cr
+-mf1 idb ar reg rl 63
+-mf2 idb ar reg rl 63
+-io 2;
+
+desc 1 -sd t;
+desc 2 -sd t;
+
+data 1 -do -62 (12)"98765" "28" 053;
+data 2 -do -61 (12)"98765" "28" 053;
+
+page -all;
+
+
+
+/*     cmpn13
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir zr cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd l -sf -8 -nn 18;
+desc 2 -sd l -sf -8 -nn 18;
+
+data 1 -do -16 053 (5)"369" "00";
+data 2 -do -15 053 (5)"369" "00";
+
+page -all;
+
+
+
+/*     cmpn14
+*  The zero indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir zr cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd f -nn 39;
+desc 2 -sd f -nn 39;
+
+data 1 -do -30 053 (6)"125897" "4" 017;
+data 2 -do -24 053 (6)"125897" "4" 017;
+
+page -all;
+
+
+/*     cmpn15
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir ng cr
+-mf1 idb ar
+-mf2 idb ar
+-io 3;
+
+desc 1 -tn 4 -sd t -sf -1 -nn 13;
+desc 2 -tn 4 -sd t -sf 1  -nn 63;
+
+data 1 -do -1  "123456" 32;
+data 2 -do -30 (15)"12" "9" 32;
+
+page -all;
+
+
+/*     cmpn16
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir ng cr
+-mf1 idb ar
+-mf2 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd l -sf 1 -nn 6;
+desc 2 -tn 4 -sd l -sf 2 -nn 6;
+
+data 1 -do -2 321 "44";
+data 2 -do -2 321 "44";
+
+page -all;
+
+
+/*     cmpn17
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 4-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-ir ng cr
+-mf1 idb ar
+-mf2 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd f -nn 5;
+desc 2 -tn 4 -sd f -nn 5;
+
+data 1 -do -1 324 "5" 00;
+data 2 -do -1 327 "6" 00;
+
+page -all;
+
+
+/*     cmpn18
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit neg"
+-ir ng cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd t -nn 8;
+desc 2 -sd t -nn 9;
+
+data 1 -do -4 "4567821" 053;
+data 2 -do -8 "92814372" 055;
+
+page -all;
+
+
+/*     cmpn19
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit neg"
+-ir ng cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd l -sf -5 -nn 63;
+desc 2 -sd l -sf -4 -nn 63;
+
+data 1 -do -60 053 "92" (15)"6391";
+data 2 -do -4  055 "82" (15)"7482";
+
+page -all;
+
+
+
+/*     cmpn20
+*  The negative indicator is set.
+*  The carry indicator is set.
+*  Two 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit neg"
+-ir ng cr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io3;
+
+desc 1 -sd f -nn 11;
+desc 2 -sd f -nn 11;
+
+data 1 -do -10 053  "345678901" 001;
+data 2 -do -1  055  "456789012" 002;
+
+page -all;
+
+
+
+/*     cmpn21
+*  The negative indicator is set.
+*  Two 4-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit pos with 4-bit neg"
+-ir ng
+-mf1 idb ar
+-mf2 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd t -nn 3;
+desc 2 -tn 4 -sd t -nn 3;
+
+data 1 -do -1 "4" 26;
+data 2 -do -1 "3" 32;
+
+page -all;
+
+
+/*     cmpn22
+*  The negative indicator is set.
+*  Two 4-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit neg"
+-ir ng
+-mf1 idb ar
+-mf2 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd l -nn 5;
+desc 2 -tn 4 -sd l -nn 4;
+
+data 1 -do -2 267 000  00;
+data 2 -do -1 324 000;
+
+page -all;
+
+
+/*     cmpn23
+*  The negative indicator is set.
+*  Two 4-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit neg"
+-ir ng
+-mf1 idb ar
+-mf2 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd f -nn 63;
+desc 2 -tn 4 -sd f -nn 63;
+
+data 1 -do -4 270 (14)"10" 00000000;
+data 2 -do -4 321 (14)"10" 00000000;
+
+page -all;
+
+
+/*     cmpn24
+*  The negative indicator is set.
+*  Two 9-bit unsigned operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir ng
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 3;
+
+desc 1 -sd n -sf 4 -nn 5;
+desc 2 -sd n -sf 1 -nn 4;
+
+data 1 -do -1 "12345";
+data 2 -do -3 "2345";
+
+page -all;
+
+
+/*     cmpn25
+*  The negative indicator is set.
+*  Two 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir ng
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd t  -sf 4  -nn 37;
+desc 2 -sd t  -sf 3  -nn 37;
+
+data 1 -do -36 (12)"965" 053;
+data 2 -do -1  (12)"965" 053;
+
+page -all;
+
+
+/*     cmpn26
+*  The negative indicator is set.
+*  Two 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+-ir ng
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 1;
+
+desc 1 -sd l  -sf 2  -nn 63;
+desc 2 -sd l  -sf 2  -nn 63;
+
+data 1 -do -3  053 "95" (15)"2398";
+data 2 -do -4  053 "68" (15)"4782";
+
+page -all;
+
+
+/*     cmpn27
+*  The negative indicator is set.
+*  Two 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit pos with 9-bit pos"
+
+-ir ng
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd f  -nn 63;
+desc 2 -sd f  -nn 63;
+
+data 1 -do -4  053 "4"  (15)"8901"  002;
+data 2 -do -3  053 "4"  (15)"8901"  001;
+
+page -all;
+
+
+
+/*     cmpn28
+*  Two 4-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-mf1 idb ar
+-mf2 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd t -nn 39;
+desc 2 -tn 4 -sd t -nn 39;
+
+data 1 -do -19 (19)"5" 32;
+data 2 -do -19 (19)"4" 32;
+
+page -all;
+
+
+/*     cmpn29
+*  Two 4-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-mf1 idb ar rl 7
+-mf2 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd l -sf 5 ;
+desc 2 -tn 4 -sd l -sf 1 -nn 7;
+
+data 1 -do -3 324 "98" 00;
+data 2 -do -1 323 "64" 00;
+
+page -all;
+
+
+/*     cmpn30
+*  Two 4-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 4-bit neg with 4-bit neg"
+-mf1 idb ar
+-mf2 idb ar  rl 60
+-io 2;
+
+desc 1 -tn 4 -sd f -nn 63;
+desc 2 -tn 4 -sd f;
+
+data 1 -do -1 321 (15)"892" 00;
+data 2 -do -29 322 (14)"98" 000;
+
+page -all;
+
+
+/*     cmpn31
+*  Two 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit neg with 9-bit pos"
+-mf1 idb ar reg rl 63
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd t -sf 12;
+desc 2 -sd t -sf -1 -nn 5;
+
+data 1 -do -62 (31)"98" 055;
+data 2 -do -4  "5432" 053;
+
+page -all;
+
+
+/*     cmpn32
+*  Two 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+-nt "Compare 9-bit neg with 9-bit pos"
+-mf1 idb ar reg
+-mf2 idb ar reg
+-io 2;
+
+desc 1 -sd l -sf -4 -nn 6;
+desc 2 -sd l -sf -6 -nn 6;
+
+data 1 -do -4 055 "42816";
+data 2 -do -5 053 "98321";
+
+page -all;
+
+
+/*     cmpn33
+*  Two 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst cmpn
+
+-nt "Compare 9-bit neg with 9-bit pos"
+-mf1 idb ar reg rl 63
+-mf2 idb ar reg rl 63
+-io 1;
+
+desc 1 -sd f ;
+desc 2 -sd f ;
+
+data 1 -do -8 055 (15)"9999" "8" 004;
+data 2 -do -9 053 (15)"8777" "4" 002;
+
+page -all;
+

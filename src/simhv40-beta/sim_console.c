@@ -129,7 +129,9 @@
 /* Forward Declaraations of Platform specific routines */
 
 static t_stat sim_os_poll_kbd (void);
+#if defined(SIM_ASYNCH_IO) && defined(SIM_ASYNCH_MUX)
 static t_bool sim_os_poll_kbd_ready (int ms_timeout);
+#endif
 static t_stat sim_os_putchar (int32 out);
 static t_stat sim_os_ttinit (void);
 static t_stat sim_os_ttrun (void);
@@ -1373,10 +1375,12 @@ else if (strcmp (gbuf, "DEBUG") == 0) {                 /* output to debug? */
 else if (strcmp (gbuf, "STDOUT") == 0) {                /* output to stdout? */
     *pf = stdout;
     *pref = NULL;
+    setlinebuf (*pf);
     }
 else if (strcmp (gbuf, "STDERR") == 0) {                /* output to stderr? */
     *pf = stderr;
     *pref = NULL;
+    setlinebuf (*pf);
     }
 else {
     *pref = calloc (1, sizeof(**pref));
@@ -1390,6 +1394,7 @@ else {
         *pref = NULL;
         return SCPE_OPENERR;
         }
+    setlinebuf (*pf);
     (*pref)->file = *pf;
     (*pref)->refcount = 1;                               /* need close */
     }
@@ -2560,6 +2565,7 @@ if (sim_brk_char && (buf[0] == sim_brk_char))
 else return (buf[0] | SCPE_KFLAG);
 }
 
+#if defined(SIM_ASYNCH_IO) && defined(SIM_ASYNCH_MUX)
 static t_bool sim_os_poll_kbd_ready (int ms_timeout)
 {
 fd_set readfds;
@@ -2575,6 +2581,7 @@ timeout.tv_sec = (ms_timeout*1000)/1000000;
 timeout.tv_usec = (ms_timeout*1000)%1000000;
 return (1 == select (1, &readfds, NULL, NULL, &timeout));
 }
+#endif
 
 static t_stat sim_os_putchar (int32 out)
 {

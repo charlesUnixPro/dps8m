@@ -1,0 +1,371 @@
+
+/*     ad3d1
+*  The zero indicator is set.
+*  Three 9-bit floating point operands are used.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-ir zr
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 1;
+
+desc 1  -sd f -nn 63;
+desc 2 -sd f -nn 60;
+desc 3 -sd f -nn 63;
+
+data 1 -do -1 "+" (14)"2583" "00000" 005;
+data 2 -do -60 "-" (14)"2583" "00" 010;
+data 3 -do -8 "+" (61)"0" 177;
+
+page -all;
+
+
+
+/*     ad3d2
+*  The zero indicator is set.
+*  Three 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-ir zr tn
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 2;
+
+desc 1 -sd l -nn 13 -sf 4;
+desc 2 -sd l -nn 13 -sf 4;
+desc 3 -sd l -nn 5 -sf 6;
+
+data 1 -do -12 "-" (2)"392457";
+data 2 -do -4 "+" (2)"392457";
+data 3 -do -4 "+" (4)"0";
+
+page -all;
+
+
+
+/*     ad3d3
+*  The negative indicator is set.
+*  Three 4-bit floating point operands are used.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "4 bit + 4 bit -> 4 bit"
+-ir ng
+-mf1 idb ar
+-mf2 idb ar
+-mf3 idb ar
+-io 3;
+
+desc 1 -tn 4 -sd f -nn 22;
+desc 2 -tn 4 -sd f -nn 22;
+desc 3 -tn 4 -sd f -nn 22;
+
+data 1 -do -11 320 (5)000 "8888" 005;
+data 2 -do -1 260 (5) 000 "7777" 005;
+data 3 -do -4 320 (5)000 (4)001 005;
+
+page -all;
+
+
+
+/*     ad3d4
+* The negative indicator is set.
+*  Three 4-bit trailing sign operands are used.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "4 bit + 4 bit -> 4 bit"
+-ir ng
+-mf1 idb ar
+-mf2 idb ar
+-mf3 idb ar
+-io 1;
+
+desc 1 -tn 4 -sd t -sf -1 -nn 8;
+desc 2 -tn 4 -sd t -sf -1 -nn 8;
+desc 3 -tn 4 -sd t -sf -1 -nn 8;
+
+data 1 -do -4 "555+";
+data 2 -do -4 "777-";
+data 3 -do -4 (3)002 015;
+
+page -all;
+
+
+/*     ad3d5
+*  The truncation indicator is set.
+*  Three 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-ir tn
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 2;
+
+desc 1  -sd f -nn 63;
+desc 2 -sd f -nn 63;
+desc 3 -sd f -nn 50;
+
+data 1 -do -1 "+" (61)"4" 003;
+data 2 -do -62 "+" (61)"5" 003;
+data 3 -do -48 "+" (48)"9" 020;
+
+page -all;
+
+
+
+/*     ad3d6
+*  The truncation indicator is set.
+*  Three 9-bit leading sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-ir tn
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 3;
+
+desc 1 -sd l -sf 5 -nn 37;
+desc 2 -sd l -sf 5 -nn 37;
+desc 3 -sd l -sf 10 -nn 37;
+
+data 1 -do -20 "+" (6)"121212";
+data 2 -do -20 "+" (6)"212121";
+data 3 -do -32 "+" (5)"0" (31)"3";
+
+page -all;
+
+
+
+/*     ad3d7
+*  Rounding is tested.
+*  Three 9-bit trailing sign operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-rb
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 1;
+
+desc 1 -sd t -sf 5 -nn 37;
+desc 2 -sd t -sf 5 -nn 37;
+desc 3 -sd t -sf 10 -nn 37;
+
+data 1 -do -36 (6)"121212" "+";
+data 2 -do -1  (6)"212121" "+";
+data 3 -do -35 (5)"0" (31)"3" "+";
+
+page -all;
+
+
+
+/*     ad3d8
+*  The overflow indicator is set.
+*  Three 4-bit unsigned operands are used.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "4 bit + 4 bit -> 4 bit"
+-ir ov
+-mf1 idb ar
+-mf2 idb ar
+-mf3 idb ar
+-io 2;
+
+desc 1 -tn 4 -sd n -sf 8 -nn 16;
+desc 2 -tn 4 -sd n -sf 8 -nn 16;
+desc 3 -tn 4 -sd n -sf 5 -nn 16;
+
+data 1 -do -15 (8) 042;
+data 2 -do -1  (8) 063;
+data 3 -do -8 (6) 125 120 000;
+
+page -all;
+
+
+
+/*     ad3d9
+*  The exponent overflow indicator is set.
+*  Three 9-bit floating point operands are used.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-ir eo tn
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 3;
+
+desc 1 -sd f -nn 6;
+desc 2 -sd f -nn 6;
+desc 3 -sd f -nn 6;
+
+data 1 -do -1 "+" (4)"9" 177;
+data 2 -do -5 "+" (4)"2" 177;
+data 3 -do -4 "+" "1222" 200;
+
+page -all;
+
+
+
+/*     ad3d10
+*  A 9-bit operand is added to a 9-bit operand and stored in a 4-bit operand.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 4 bit"
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar
+-io 1;
+
+desc 1 -sd l -nn 10;
+desc 2 -sd l -nn 10;
+desc 3 -sd l -tn 4 -nn 11 -cn 1;
+
+data 1 -do -1 "+" "987654321";
+data 2 -do -8 "+" "123456789";
+data 3 -do -1 00 301 (4)021 00;
+
+page -all;
+
+
+
+/*     ad3d11
+*  A 4-bit operand is added to a 4-bit operand and stored in a 9-bit operand.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "4 bit + 4 bit -> 9 bit"
+-mf1 idb ar
+-mf2 idb ar
+-mf3 idb ar reg
+-io 2;
+
+desc 1 -sd t -tn 4 -sf -1 -nn 10 -cn 1;
+desc 2 -sd t -tn 4 -sf -1 -nn 10 -cn 1;
+desc 3 -sd t -sf -1 -nn 11;
+
+data 1 -do -1 00 230 166 124 062 033;
+data 2 -do -5 00 022 064 126 170 233;
+data 3 -do -10 (9)"1" "0" "+";
+
+page -all;
+
+
+
+/*     ad3d12
+*  A 9-bit operand is added to a 4-bit operand and stored in a 4-bit operand.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 4 bit -> 4 bit"
+-mf1 idb ar reg
+-mf2 idb ar
+-mf3 idb ar
+-io 3;
+
+desc 1 -sd f -nn 11;
+desc 2 -sd f -tn 4 -nn 12;
+desc 3 -sd f -tn 4 -nn 13;
+
+data 1 -do -9 "+" "987654321" 036;
+data 2 -do -5 261 043 105 147 211 036;
+data 3 -do -6 301 (4)021 001 34;
+
+page -all;
+
+
+
+/*     ad3d13
+*  A 9-bit operand is added to a 4-bit operand and stored in a 9-bit operand.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 4 bit -> 9 bit"
+-mf1 idb ar reg
+-mf2 idb ar
+-mf3 idb ar reg
+-io 1;
+
+desc 1 -sd n -sf -5 -nn 9;
+desc 2 -sd n -tn 4 -sf -5 -nn 9;
+desc 3 -sd n -sf -5 -nn 10;
+
+data 1 -do -8 "987654321";
+data 2 -do -1 022 064 126 170 22;
+data 3 -do -5 (9)"1" "0";
+
+page -all;
+
+
+
+
+/*     ad3d14
+*  Leading, trailing, and floating point operands are mixed.
+*  The maximum number of page faults is taken.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "9 bit + 9 bit -> 9 bit"
+-mf1 idb ar reg
+-mf2 idb ar reg
+-mf3 idb ar reg
+-io 2;
+
+desc 1 -sd l -sf 7 -nn 10;
+desc 2 -sd t -sf 7 -nn 10;
+desc 3 -sd f -nn 12;
+
+data 1 -do -9 "+" "987654321";
+data 2 -do -4 "123456789" "+";
+data 3 -do -8 "+" (9)"1" "0" 007;
+
+page -all;
+
+
+
+/*     ad3d15
+*  Floating point, unsigned, and leading sign operands are mixed.
+*  Indirect descriptors are used for all operands.
+*  Address register modification is used for all operands.  */
+
+inst ad3d -nt "4 bit + 4 bit -> 4 bit"
+-mf1 idb ar
+-mf2 idb ar
+-mf3 idb ar
+-io 3;
+
+desc 1 -tn 4 -sd f -nn 12;
+desc 2 -tn 4 -sd n -nn 9;
+desc 3 -tn 4 -sd l -nn 13 -sf -2;
+
+data 1 -do -6 271 207 145 103 041 000;
+data 2 -do -4 022 064 126 170 22;
+data 3 -do -5 301 (4)021 00000;
+
+page -all;
+

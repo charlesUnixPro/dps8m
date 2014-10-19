@@ -6,23 +6,34 @@
 */
 
 #include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_loader.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 #include "utlist.h" // for linked list ops
 
 /* Master loader */
-#define FMT_O   1
-#define FMT_S   2
-#define FMT_E   3
+#define FMT_O   1 // .oct
+#define FMT_S   2 // .sav
+#define FMT_E   3 // .exe
+#define FMT_SEG 4
 #define FMT_9   9
 
 static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
+static t_stat load_simh (FILE * fileref, int32 segno, int32 ldaddr, 
+                         bool bDeferred, bool bVerbose);
 static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 
+#ifndef QUIET_UNUSED
 bool bdeferLoad = false;    // defer load to after symbol resolution
+#endif
 
-segdef *newSegdef(char *sym, int val)
+static segdef *newSegdef(char *sym, int val)
 {
     segdef *p = calloc(1, sizeof(segdef));
     p->symbol = strdup(sym);
@@ -34,7 +45,7 @@ segdef *newSegdef(char *sym, int val)
     return p;
 }
 
-void freeSegdef(segdef *p)
+static void freeSegdef(segdef *p)
 {
     if (p->symbol)
         free(p->symbol);
@@ -42,7 +53,7 @@ void freeSegdef(segdef *p)
 }
 
 
-segref *newSegref(char *seg, char *sym, int val, int off)
+static segref *newSegref(char *seg, char *sym, int val, int off)
 {
     segref *p = calloc(1, sizeof(segref));
     if (seg && strlen(seg) > 0)
@@ -62,7 +73,7 @@ segref *newSegref(char *seg, char *sym, int val, int off)
     return p;
 }
 
-void freeSegref(segref *p)
+static void freeSegref(segref *p)
 {
     if (p->segname)
         free(p->segname);
@@ -72,7 +83,7 @@ void freeSegref(segref *p)
     p->symbol = NULL;
 }
 
-segment *newSegment(char *name, int size, bool bDeferred)
+static segment *newSegment(char *name, int size, bool bDeferred)
 {
     segment *s = calloc(1, sizeof(segment));
     if (name && strlen(name) > 0)
@@ -102,7 +113,7 @@ segment *newSegment(char *name, int size, bool bDeferred)
 }
 
 
-void freeSegment(segment *s)
+static void freeSegment(segment *s)
 {
     segdef *d, *dtmp;
     DL_FOREACH_SAFE(s->defs, d, dtmp)
@@ -126,8 +137,8 @@ void freeSegment(segment *s)
         free(s->filename);
 }
 
-segment *segments = NULL;   // segment for current load unit
-segment *currSegment = NULL;
+static segment *segments = NULL;   // segment for current load unit
+static segment *currSegment = NULL;
 
 // remove segment from list of deferred segments
 
@@ -241,9 +252,9 @@ int removeSegref(char *seg, char *sym)
 }
 
 
-int objSize = -1;
+static int objSize = -1;
 
-int segNamecmp(segment *a, segment *b)
+static int segNamecmp(segment *a, segment *b)
 {
     if (*a->name && *b->name)
       return strcmp(a->name, b->name);
@@ -251,15 +262,20 @@ int segNamecmp(segment *a, segment *b)
       return 1;
     return -1;
 }
-int segdefNamecmp(segdef *a, segdef *b)
-{
-    return strcmp(a->symbol, b->symbol);
-}
-int segrefNamecmp(segref *a, segref *b)
+
+static int segdefNamecmp(segdef *a, segdef *b)
 {
     return strcmp(a->symbol, b->symbol);
 }
 
+#ifndef QUIET_UNUSED
+static int segrefNamecmp(segref *a, segref *b)
+{
+    return strcmp(a->symbol, b->symbol);
+}
+#endif 
+
+#ifndef QUIET_UNUSED
 segment *findSegment(char *segname)
 {
     segment *sg;
@@ -268,6 +284,8 @@ segment *findSegment(char *segname)
             return sg;
     return NULL;
 }
+#endif
+
 segment *findSegmentNoCase(char *segname)
 {
     segment *sg;
@@ -277,6 +295,7 @@ segment *findSegmentNoCase(char *segname)
     return NULL;
 }
 
+#ifndef QUIET_UNUSED
 segdef *findSegdef(char *seg, char *sgdef)
 {
     segment *s = findSegment(seg);
@@ -290,6 +309,7 @@ segdef *findSegdef(char *seg, char *sgdef)
     
     return NULL;
 }
+#endif
 segdef *findSegdefNoCase(char *seg, char *sgdef)
 {
     segment *s = findSegmentNoCase(seg);
@@ -304,8 +324,7 @@ segdef *findSegdefNoCase(char *seg, char *sgdef)
     return NULL;
 }
 
-PRIVATE
-void makeITS(int segno, int offset, int tag, word36 *Ypair)
+static void makeITS(int segno, int offset, int tag, word36 *Ypair)
 {
     word36 even = 0, odd = 0;
     
@@ -319,7 +338,7 @@ void makeITS(int segno, int offset, int tag, word36 *Ypair)
     Ypair[1] = odd;
 }
 
-//PRIVATE
+//static
 //_sdw0 *fetchSDW(int segno)
 //{
 //    int sdwAddr = DSBR.ADDR + (2 * segno);
@@ -390,7 +409,7 @@ bool getSegmentAddressString(int addr, char *msg)
     return false;
 }
 
-//PRIVATE
+//static
 //int getMaxSegno()
 //{
 //    int maxSegno = -1;
@@ -402,7 +421,7 @@ bool getSegmentAddressString(int addr, char *msg)
 //    return maxSegno;
 //}
 
-//PRIVATE
+//static
 //void writeSDW(int segno, _sdw0 *s0)
 //{
 //    int addr = DSBR.ADDR + (2 * segno);
@@ -435,7 +454,7 @@ bool getSegmentAddressString(int addr, char *msg)
  * try to resolve external references for all deferred segments
  */
 
-const int StartingSegment = 8;
+static const int StartingSegment = 8;
 
 int resolveLinks(bool bVerbose)
 {
@@ -507,8 +526,7 @@ int resolveLinks(bool bVerbose)
     return 0;
 }
 
-PRIVATE
-int loadDeferredSegment(segment *sg, int addr24)
+static int loadDeferredSegment(segment *sg, int addr24)
 {
     if (!sim_quiet) sim_printf("    loading %s as segment# 0%o\n", sg->name, sg->segno);
         
@@ -617,7 +635,7 @@ int loadDeferredSegments(bool bVerbose)
 /*
  * create a linkage Offset Table segment ...
  */
-t_stat createLOT(bool bVerbose)
+t_stat createLOT(UNUSED bool bVerbose)
 {
     segment *s;
     
@@ -788,6 +806,7 @@ t_stat createStack(int n, bool bVerbose)
     return SCPE_OK;
 }
 
+#ifndef QUIET_UNUSED
 /*
  * setup faux execution environment ...
  */
@@ -795,11 +814,13 @@ t_stat setupFXE()
 {
     return SCPE_OK;
 }
+#endif
 
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
+static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, 
+                             UNUSED bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -808,8 +829,8 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
     objSize = -1;
     currSegment = NULL;
     
-    char buff[1024], *c;
-    while((c = fgets(buff, sizeof(buff), f)) != NULL)
+    char buff[1024];
+    while(fgets(buff, sizeof(buff), f) != NULL)
     {
         if (buff[0] != '!')
             continue;
@@ -981,7 +1002,7 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
 //                
 //                if (elt)
 //                {
-//                    fprintf(stderr, "symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
+//                    sim_printf ("symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
 //                    freeSegref(s);
 //                    continue;
 //                }
@@ -1017,7 +1038,8 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
  */
-static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose)
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, 
+                        bool bDeferred, UNUSED bool bVerbose)
 {
     /*
      * we'll support the following type of loads
@@ -1040,7 +1062,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
             int n = sscanf(c, "%o %*s %llo", &maddr, &data);
             if (n == 2)
             {
-                if (maddr > currSegment->size)
+                if ((int) maddr > currSegment->size)
                 {
                     sim_printf("ERROR: load_oct(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
                     return SCPE_NXM;
@@ -1080,7 +1102,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                 if (maddr > MAXMEMSIZE)
                     return SCPE_NXM;
                 else
-                    M[maddr] = data & DMASK;
+                    M[maddr+ldaddr] = data & DMASK;
                 words++;
             }
         }
@@ -1111,13 +1133,118 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                     return SCPE_NXM;
                 else
                     M[ldaddr + maddr] = data & DMASK;
-                //fprintf(stderr, "laddr:%d maddr:%d\n", maddr, maddr);
+                //sim_printf ("laddr:%d maddr:%d\n", maddr, maddr);
                 words++;
                 maxaddr = max(maddr, maxaddr);
             }
         }
-        word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
-        //fprintf(stderr, "segwords:%d maxaddr:%d\n", segwords, maxaddr);
+        word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
+        //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
+        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+        {
+            if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
+        }
+        else
+        {
+            if (!sim_quiet) sim_printf("Error loading segment %d (%o)\n", segno, segno);
+        }
+    }
+    
+    return SCPE_OK;
+}
+
+//
+// "simh" simh/dps8 loader (.seg files) ....
+//
+
+static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr, 
+                         bool bDeferred, UNUSED bool bVerbose)
+  {
+    char buff[132] = "";
+    int fno = fileno (fileref);
+    lseek (fno, 0, SEEK_SET);
+
+    // 72 bits at a time; 2 dps8m words == 9 bytes
+    uint8 bytes [9];
+
+    int words = 0;
+    
+    if (bDeferred)  // a deferred segment load
+    {
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if ((int) maddr + 2 > currSegment->size)
+              {
+                sim_printf("ERROR: load_bin(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
+                return SCPE_NXM;
+              }
+            currSegment->M[maddr++] = w1 & DMASK;
+            currSegment->M[maddr++] = w2 & DMASK;
+            words += 2;
+          }
+        currSegment->ldaddr = ldaddr;
+        currSegment->segno = segno;
+        currSegment->deferred = true;
+        if (segno != -1)
+            sprintf(buff, " as segment %d", segno);
+        else
+            strcpy(buff, "");
+        
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
+      }
+    else if (segno == -1)// just do an absolute load
+      {
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if (currSegment && currSegment->M == NULL)
+              currSegment->M = &M[maddr];
+
+            if (maddr > MAXMEMSIZE)
+              return SCPE_NXM;
+
+            M [maddr + ldaddr] = w1 & DMASK;
+            maddr ++;
+            words++;
+            M [maddr + ldaddr] = w2 & DMASK;
+            maddr ++;
+            words++;
+          }
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded\n", words, words);
+    }
+    else
+    {
+        word24 maxaddr = 0;
+        
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if (currSegment && currSegment->M == NULL)
+              currSegment->M = &M[maddr];
+
+            if (maddr > MAXMEMSIZE)
+              return SCPE_NXM;
+
+            M [maddr + ldaddr] = w1 & DMASK;
+            maddr ++;
+            words++;
+            M [maddr + ldaddr] = w2 & DMASK;
+            maxaddr = maddr;
+            maddr ++;
+            words++;
+          }
+        word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
+        //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
         if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
             if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
@@ -1190,7 +1317,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
             return SCPE_MEM;
         
         DSBR.BND = (2 * (segno)) >> 4;
-        //fprintf(stderr, "DSBR.BND set to %o\n", DSBR.BND);
+        //sim_printf ("DSBR.BND set to %o\n", DSBR.BND);
     }
     
     const word3 R1 = 0;     ///< ring brackets
@@ -1210,7 +1337,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     const word1 C = true;   ///< allow caching (who cares?)
     const word14 EB = count;    ///< Any call into this segment must be to an offset less than EB if G=0
     
-    //fprintf(stderr, "B:%d count:%d\n", BOUND, count);
+    //sim_printf ("B:%d count:%d\n", BOUND, count);
     
     _sdw0 *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
     word36 yPair[2];
@@ -1231,7 +1358,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     segment *s;
     DL_FOREACH(segments, s)
     {
-        if (s -> segno == segno)
+        if (s -> segno == (int) segno)
         {
             if (compname)
                 * compname = s -> name;
@@ -1244,7 +1371,8 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     return NULL;
 }
 
-t_stat sim_dump (FILE *fileref, char *cptr, char *fnam, int flag)
+t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam, 
+                 UNUSED int flag)
 {
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)
@@ -1264,7 +1392,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     size_t fmt;
     
     int32 segno = -1;
-    int32 ldaddr = -1;
+    int32 ldaddr = 0;
     
     bool bDeferred = false; // a deferred load
 
@@ -1273,6 +1401,8 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         fmt = FMT_O;
     else if (match_ext (fnam, "OCT"))                       /* .OCT? */
         fmt = FMT_O;
+    else if (match_ext (fnam, "SEG"))                       /* .OCT? */
+        fmt = FMT_SEG;
     else {
         //wc = fxread (&data, sizeof (d8), 1, fileref);      /* read hdr */
         //if (wc == 0)                                        /* error? */
@@ -1291,15 +1421,38 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
    /*
     * Absolute:
     *  load file.oct
+    * Absolute at offset:
+    *  load file.oct address ?
     * Unpaged, non-deferred
     *  load file.oct segment ? address ?
     * Unpages, deferred
     *  load file.oct segment ? address ? deferred
     *
     */
+    // load file at offset ?
+    // Syntax load file.oct address addr
+    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "addr*"))
+    {
+        char s[128], *end_ptr, w[128], s2[128], sDef[128];
+        
+        strcpy(s, "");
+        strcpy(w, "");
+        strcpy(s2, "");
+        strcpy(sDef, "");
+        
+        /* long n = */ sscanf(cptr, "%*s %s", s);
+        ldaddr = (word24)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
+        
+        if (end_ptr == s)
+        {
+            sim_printf("sim_load(): No load address was found\n");
+            return SCPE_FMT;
+        }
+    }
+
     // load file into segment?
     // Syntax load file.oct segment xxx address addr
-    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
+    else if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
     {
         char s[128], *end_ptr, w[128], s2[128], sDef[128];
         
@@ -1383,11 +1536,15 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */
             return load_oct (fileref, segno, ldaddr, bDeferred, bVerbose);
-            break;
-            //case FMT_S:                                         /*!< SAV */
+            // break;
+
+        case FMT_SEG:                                         /*!< OCT */
+            return load_simh (fileref, segno, ldaddr, bDeferred, bVerbose);
+        //case FMT_S:                                         /*!< SAV */
             //  return load_sav (fileref);
             //    break;
-            //case FMT_E:                                         /*!< EXE */
+
+        //case FMT_E:                                         /*!< EXE */
             //   return load_exe (fileref);
             //    break;
     }

@@ -18,8 +18,8 @@
 " Interrupt pair
 
 	org	24
-	nop
-	nop
+	scu
+	rcu
 
 " Connect Channel Mailbox
 
@@ -50,6 +50,12 @@ test:
 	"absa	msg1
 	eaa	msg1
 	emcall	16
+
+" Mask interrupts
+
+	lda	12, dl	" Disable interrupts 0-15, enable ports 0, 1
+	ldq	0, dl	" Disable interrupts 16-31
+	smcm	0	" Port zero
 
 " Print "Expect ALERT"
 

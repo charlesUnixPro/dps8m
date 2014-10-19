@@ -9,11 +9,13 @@
 /*
  * stuff to handle BAR mode ...
  */
-// XXX needs testing ....
 
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_bar.h"
+#include "dps8_cpu.h"
+#include "dps8_faults.h"
 
 /*
  * The Base Address Register provides automatic hardware Address relocation and
@@ -36,12 +38,13 @@
  * address is out of range, and a store fault occurs.
  */
 
+// CANFAULT
 word18 getBARaddress(word18 addr)
 {
     // sim_printf ("BAR.BOUND %03o (%06o) addr %06o\n", BAR.BOUND, BAR.BOUND << 9, addr);
     if (BAR.BOUND == 0)
         // store fault, out of bounds.
-        doFault (NULL, store_fault, 0, "BAR store fault; out of bounds");
+        doFault (store_fault, oob, "BAR store fault; out of bounds");
 
     // A program is kept within certain limits by subtracting the
     // unrelocated computed address from the address bound. If the result
@@ -55,10 +58,10 @@ word18 getBARaddress(word18 addr)
     //if ((addr & 0777000) >= (((word18) BAR.BOUND) << 9))
     if (addr >= (((word18) BAR.BOUND) << 9))
         // store fault, out of bounds.
-        doFault (NULL, store_fault, 0, "BAR store fault; out of bounds");
+        doFault (store_fault, oob, "BAR store fault; out of bounds");
     
     word18 barAddr = (addr + (((word18) BAR.BASE) << 9)) & 0777777;
-    finalAddress = barAddr;
+    //finalAddress = barAddr;
     return barAddr;
     //return (addr + (BAR.BASE << 9)) & 0777777;
 }

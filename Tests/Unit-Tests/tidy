@@ -1,0 +1,11 @@
+awk "\
+/^Date /{next} \
+/  2014 /{next} \
+/^cpuCycles /{next} \
+/^simCycles /{next} \
+/^This is /{next} \
+/[0-9]> g/{next} \
+/It's '/{next} \
+/^Debug output /{next} \
+{print} \
+"

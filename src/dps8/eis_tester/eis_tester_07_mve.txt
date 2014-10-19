@@ -1,0 +1,2090 @@
+
+
+/*		mve1
+*
+*	Move  6  (9 bit) characters with zero -> "*" replacement.
+*	All the fields including the  micro op string will take faults
+*	and cross a page boundary.
+*/
+
+inst	mve	-nt  "zero rep, mod, faults"	-io 3
+	-mf1	idb ar reg  rl 6
+	-mf2	idb ar reg  rl 2
+	-mf3	idb ar reg  rl 6;
+
+/*	No desc statements needed.  */
+
+data 1	-do -4	"0010" "23";
+
+data 2	-do -1	124		/*  mvza 4 */
+		322;		/*   mvc 2 */
+
+data 3	-do -3	"**1" "023";
+
+
+page	-all;
+/*                  mve2
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9 simple test with no mod"
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+/*                  mve3
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9offset inst. and desc mod"     -io 2
+          -mf1      ida ar
+          -mf2      reg
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve4
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9 off inst desc mod d1 off"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+
+
+
+
+
+/*                  mve5
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9 d2 offset d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve6
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9d3 offset d2 offset d1 offset"     -io 3
+          -mf1      ida ar reg
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -28
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+
+/*                  mve7
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9data 1 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar
+          -mf3      ar reg rl 31;
+
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve8
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9data 2 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+           /* no desc needed */
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve9
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9all data totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+           /* no desc needed */
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -31
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve10
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-9 all data  on p0 all mod"     -io 3
+          -mf1      idb ar reg rl 27
+          -mf2      idb ar reg rl 26
+          -mf3      ar reg rl 31;
+
+
+           /* no desc needed */
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -31
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "-123"
+          ";;;";
+
+page      -all;
+ /*                  mve11
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9  simple test with no mod"
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2    -ns 26;
+
+desc 3    -ta 9;
+
+
+
+data 1    /* arranged according mop use */
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+/*                  mve12
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 offset inst. and desc mod"     -io 2
+          -mf1      ida ar
+          -mf2      reg
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+ /*                  mve13
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9  desc mod d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+
+
+
+
+
+/*                  mve14
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9  d2 offset d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+ /*                  mve15
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 d3 offset and d2 and d1"     -io 3
+          -mf1      ida ar reg
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -28
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+
+/*                  mve16
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 data 1 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+
+desc 2    -ns 26;
+
+
+data 1    /* arranged according mop use */
+          -do -28
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -13
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+  /*                  mve17
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 data 2 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+ /*                  mve18
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 all data totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -28
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -31
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+ /*                  mve19
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-9 all data  on p0 all mod"     -io 3
+          -mf1      idb ar reg rl 27
+          -mf2      idb ar reg rl 26
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -28
+          606061626060616260606162616263646465666752616263616263;
+
+data 2     /* mops arranged in order */
+          -do -26
+          104       /* mvzb */
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          420 "* +-    "    /* change table with string shown */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -31
+          "  12"
+          "**12"
+          "$"
+          "  $12"
+          "="
+          "*"
+          "4567"
+          "****"
+          "*123"
+          ";;;";
+
+page      -all;
+ /*                  mve20
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6  simple test with no mod"
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+
+data 1    /* arranged according mop use */
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;
+
+
+data 3    20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+/*                  mve21
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 offset inst. and desc mod"     -io 2
+          -mf1      ida ar
+          -mf2      reg
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+data 1    /* arranged according mop use */
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+
+data 3    20206162545461625320205361627554646566672020202055616263616263;
+page      -all;
+
+ /*                  mve22
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6  desc mod d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+
+
+
+
+
+/*                  mve23
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6  d2 offset d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+ /*                  mve24
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 d3 offset d2 and d1"     -io 3
+          -mf1      ida ar reg
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -7
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -28
+          20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+
+/*                  mve25
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 data 1 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar
+          -mf3      ar reg rl 31;
+
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+ /*                  mve26
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 data 2 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -12
+          20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+ /*                  mve27
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 all data totally on p0"     
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -32
+          20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+ /*                  mve28
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "9-6 all data  on p0 all mod"     -io 3
+          -mf1      idb ar reg rl 27
+          -mf2      idb ar reg rl 26
+          -mf3      ar reg rl 31;
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -27
+          "0012"
+          "0012"
+          "0012"
+          "1234"
+          "4567"
+          "-123"
+          "123";
+
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -32
+          20206162545461625320205361627554646566672020202055616263616263;
+
+page      -all;
+ /*                  mve29
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6  simple test with no mod"
+          -mf3      rl 31;
+
+desc 1    -ta 6    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+
+data 1    /* arranged according mop use */
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;
+
+
+data 3    20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+/*                  mve30
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 offset inst. and desc mod"     -io 2
+          -mf1      ida ar
+          -mf2      reg
+          -mf3      rl 31;
+
+desc 1      -ta 6    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+data 1    /* arranged according mop use */
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+
+data 3    20200102545401025320205301027554040506072020202052010203616263;
+page      -all;
+
+ /*                  mve31
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6  desc mod d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1      -ta 6    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+
+
+
+
+
+/*                  mve32
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6  d2 offset d1 offset"     -io 2
+          -mf1      ida ar
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1      -ta 6    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+ /*                  mve33
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 d3 offset and d1 and d2"     -io 3
+          -mf1      ida ar reg
+          -mf2      idb ar
+          -mf3      rl 31;
+
+desc 1      -ta 6    -ns 27;
+
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -6
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -28
+          20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+
+/*                  mve34
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 data 1 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+desc 2         -ns 26;
+
+desc 3    -ta 6;
+
+
+data 1    /* arranged according mop use */
+          -do -28
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -13
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do 30
+          20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+ /*                  mve35
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 data 2 totally on p0"     -io 3
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+
+desc 1    -ta 6;
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -28
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -12
+          20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+ /*                  mve36
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 all data totally on p0"     
+          -mf1      ida ar reg rl 27
+          -mf2      idb ar rl 26
+          -mf3      ar reg rl 31;
+
+desc 1    -ta 6;
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -28
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -32
+          20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+ /*                  mve37
+
+*         this test uses a sequence of micro op strings
+*         that are appropriate for alpha numeric data.
+*         each string is input to et such that it is
+*         explained via a comment after each mop.
+*         this particular mop sequence and the sending string is
+*         used for all 6 and 9 bit tests with mod done
+*         on descriptor access and data placement.
+*
+*/
+
+inst      mve -nt "6-6 all data  on p0 all mod"     -io 3
+          -mf1      idb ar reg rl 27
+          -mf2      idb ar reg rl 26
+          -mf3      ar reg rl 31;
+
+desc 1     -ta 6;
+
+desc 3    -ta 6;
+
+
+
+
+
+
+data 1    /* arranged according mop use */
+          -do -28
+     000001020000010200000102010203040405060752010203010203;
+data 2     /* mops arranged in order */
+          -do -26
+          /* change table and mvzb */ 420020054060052053073033000 104
+          060       /* ses es reset */
+          124       /* mvza */
+          060       /* ses es reset */
+          050       /* enf for $ insert */
+          064       /* ses es reset and bz set */
+          164       /* mflc */
+          200075    /* insb with = */
+          060       /* ses es reset */
+          220076    /* insa with " not used since es=0 */
+          304       /* ign */
+          324       /* mvc */
+          024       /* insm */
+          344       /* mses sn is set */
+          364;     /* mors */
+
+
+data 3    -do -32
+          20200102545401025320205301027554040506072020202052010203616263;
+
+page      -all;
+

@@ -1375,4 +1375,46 @@ expects the instruction to save the current state.
 Figure 4-19 suggests that the third operand should be \texttt{descna} format, 
 but the coding format specifies \texttt{arg}.
 
+\section{Typo in \texttt{scpr} instruction (pg 203).}
+
+In MODIFICATIONS, for C(TAG) 01, only DPS/L68 operation is shown;
+the DPS8M is different (see pg. 41, ``FAULT REGISTER (FR) - DPS 8M').
+
+\section{Documentation of RPT/RPD does not match usage.}
+
+In tape\_checksum\_.alm,
+
+\begin{verbatim}
+odd;    rpda    6,1             do the record header
+        awca    bp|0,1          compute checksum on header
+        alr     0,3             ..
+\end{verbatim}
+
+the repeated instruction is using bit 29 to indicate pointer register usage.
+
+In the documentation for the RPT instruction (and similarly RPD),
+
+\begin{verbatim}
+For the first execution of the repeated instruction:
+     C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
+\end{verbatim}
+
+indicating that the computed address is formed directly from the address field
+of the instruction without regard for bit 29.
+
+\section{Typo in eawp4.``}
+
+In AL39, page 171:
+
+\begin{verbatim}
+eawp4  Effective to Word/Bit Number of PR4 Address
+\end{verbatim}
+
+should read
+
+\begin{verbatim}
+eawp4  Effective Address to Word/Bit Number of PR4
+\end{verbatim}
+
+
 \end{document}

@@ -97,7 +97,7 @@ t_stat _sim_activate_after (UNIT *uptr, int32 usecs_walltime);
 t_stat sim_cancel (UNIT *uptr);
 t_bool sim_is_active (UNIT *uptr);
 int32 sim_activate_time (UNIT *uptr);
-double sim_gtime (void);
+t_int64 sim_gtime (void);
 uint32 sim_grtime (void);
 int32 sim_qcount (void);
 t_stat attach_unit (UNIT *uptr, char *cptr);
@@ -152,6 +152,7 @@ void sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...);
 #else
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...);
 #define sim_debug(dbits, dptr, ...) if (sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+void _sim_err (const char* fmt, ...);
 #endif
 void fprint_stopped_gen (FILE *st, t_stat v, REG *pc, DEVICE *dptr);
 

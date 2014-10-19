@@ -1,0 +1,683 @@
+
+
+/*		scmr1
+*
+*	Same  as  scm  only we will change the data  of string 2 so that there is
+*	a match.
+*/
+
+inst	scmr	-nt  "Same as scm but strings match"	-io 2
+	-mc		/* Mask =  (007) octal.  */
+	-mf1	ida
+	-mf2	ar
+	-mf3	ar reg;
+
+
+desc 1	-ns 3	-cn 3	-ta 9;
+
+desc 2	-cn 1;
+
+
+data 1	-do -4
+	000 000 000		/* Fill due to  cn 3.  */
+	011			/* Part of string on page 1. */
+	021 033;			/* Part of string on page 2. */
+
+data 2	-do -1	   000  013;
+
+data 3	000 000 000 002;
+
+page	-all;
+/*                   scmr2
+
+*         simple test to determine if instruction
+*         is working correctly.  data is 9 bit
+*         written in octal format to allow easy
+*         comparison with the mask.  this test
+*         accesses all descriptors directly.
+*
+*/
+
+inst     scmr    -nt "mc8 simple test 9 bit" 
+         -mc8;
+
+desc 1     -ns 8          -ta 9;
+
+data 1    060061062063064065066067;
+
+data 2    047;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+
+/*                  scmr3
+
+*         same data as test 2 but with data 1
+*         split across page boundary.  indirect
+*         mod on desc 1 and 2.
+*
+*/
+
+inst      scmr       -io 1    -nt "d1 split 9bit"
+          -mc8
+          -mf1      idb
+          -mf2      idb;
+
+desc 1    -ns 8     -ta 9;
+
+data 1    -do -4    060061062063 064065066067;
+
+data 2    047;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+/*                  scmr4
+
+*         same data config as test 2 but with
+*         full desc mod.
+*
+*/
+
+inst      scmr       -io 3    -nt "d1 split 9bit"
+          -mc8
+          -mf1      idb ar reg rl 8
+          -mf2      idb ar reg
+          -mf3       ar reg;
+
+desc 1    -ta 9;
+
+data 1    060061062063064065066067;
+
+data 2    047;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+
+
+/*                  scmr5
+
+*         test of the -cn option for desc 1 and 2
+*         along with a varied of """mode of desc mod.
+*         both data strings are split across page bound.
+*
+*/
+
+inst      scmr       -io 2    -nt "no match 9bit"
+       -ir     tr
+          -mc8
+          -mf1      idb ar reg rl 6
+          -mf2      ar
+          -mf3      ar;
+
+desc 1    -ta 9;
+
+desc 2    -cn 3;
+
+data 1    -do -2    000000 060061062063064066;
+
+data 2    -do -1    000 000 000 047;
+
+data 3    000 000 000 006  /* no match */;
+
+page      -all;
+
+
+
+/*                  scmr6
+
+*         data 1 wholey contained on page 0 and
+*         data  starting on word 0 of page 1; char 0.
+*         all desc mod.
+*
+*/
+
+inst      scmr       -io 1    -nt "d1 on p0 9bit"
+          -mc8
+          -mf1      idb ar reg
+          -mf2      idb ar reg
+          -mf3       ar reg;
+
+desc 1    -ta 9     -ns 2          -cn 2;
+
+data 1    -do  -4   000000060067;
+
+data 2    047;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+
+
+/*                  scmr7
+
+*         a variety of desc mod are used~ and the mask
+*         is set so that there is no match.  using the
+*         using the same data as test 6.
+*
+*/
+
+inst      scmr       -io 3    -nt "no match 9bit"
+	-mcÿ
+             /* mc = 777 */
+          -mf1      idr ar rl 2
+          -mf2      ar reg
+          -mf3      ar;
+
+desc 1    -ta 9     -cn 2;
+
+data 1    -do -4    000000060067;
+
+data 2    047;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+
+/*                  scmr 8
+
+*          the next four tests use the maximum amount of
+*         data for string 1 to test the paging of the data
+*         strings.  this test will make sure the inst is operating
+*         correctly using no desc mod.
+*
+*/
+
+inst      scmr    -nt "d1 covers 3pp 9bit"
+          -mc    /*  mc = 001 */
+                /* mc = 001 */
+          -mf1      rl 4352
+          /* no desc mod.--all direct */;
+
+desc 1    -ta 9          ;
+
+data 1    -do -128  066 (4351) 062;
+
+data 2    067;
+
+data 3    000 000 010 377;
+
+page      -all;
+
+
+
+/*                   scmr9
+
+*         uses same data setup as test 8 but applies
+*         maximum mod to descriptors.
+*
+*/
+
+inst      scmr       -io 3     -nt "d1 covers 3pp max desc mod 9b"
+          -mc    /*  mc = 001 */
+          -mf1      idb ar reg rl 4352
+          -mf2      idb ar reg
+          -mf3       ar reg;
+
+desc 1    -ta 9;
+
+data 1    -do -128  (4351) 062 066;
+
+data 2    067;
+
+data 3    000 000 000 000;
+
+page      -all;
+
+
+
+/*                  scmr10
+
+*         this test specifically tests the -cn option
+**        for data 2 along with forcing it to cross
+*         a page boundary.  all desc mods are taken.
+*
+*/
+
+
+inst      scmr       -io 1      -nt "d1 covers 3pp d2 split 9b"
+          -mc    /*  mc = 001 */
+          -mf1      idb ar reg rl 4352
+          -mf2      idb ar reg
+          -mf3       ar reg;
+
+desc 1    -ta 9;
+
+desc 2    -cn 1;
+
+data 1     -do -128       066    (4351) 062; 
+
+data 2    -do -2         000067 000000;
+
+data 3    000 000 010 377;
+
+page      -all;
+
+
+/*                  scmr11
+
+*         there will be no match on this test.  also,
+*         a variety of desc mods are taken.  note
+*         tr indicator will be on.
+*
+*/
+
+inst      scmr       -io 1    -nt "no match d1 covers 3pp 9bit"
+          -mc    /*  mc = 001 */
+          -ir       tr
+          -mf1      idb rl 4352
+          -mf2      ar reg
+          /* mf3 is direct */;
+
+desc 1    -ta 9; 
+
+desc 2    -cn 1;
+
+data 1    -do -128  (4352) 062;
+
+data 2    -do -2    000067 000000;
+
+data 3    000 000 010 400;
+
+page      -all;
+    /*               scmr12
+
+*          this starts the sequence of seven
+*          four bit data tests.  this first
+*          test makes sure that the inst is working
+*          correctly without any desc. mod.
+*
+*/
+
+inst       scmr    -nt "4bit simple test"
+           -mc    /*  mc = 001 */
+           /*  all the desc. are direct */;
+
+desc 1     -ta 4      -ns 8;
+
+
+data 1    237 323 070 361  /* 1001 1111 1101 0011 0011 1000 1111 00001 */;
+
+data 2     360    /* 1111 */;
+
+
+data 3     000 000 000 001;
+
+page       -all;
+
+
+
+/*                    scmr13
+
+*          same as previous test but taking all of the
+*          possible desc. mod.
+*
+*/
+
+inst       scmr        -io 1     -nt "full desc mod 4bit"
+           -mc    /*  mc = 001 */
+           -mf1       idb ar reg rl 8
+           -mf2       idb ar reg
+           -mf3       ar reg;
+
+desc 1     -ta 4;
+
+data 1     237 323 070 361;
+
+data 2     360;
+
+data 3     000 000 000 001;
+
+page      -all;
+
+
+
+/*                    scmr14
+
+*          changing the mask characters and offsetting
+*          the first data string across a page boundary
+*          with a variety of desc. mod.
+*
+*/
+
+inst       scmr        -io 3    -nt "d1 split 4bit"
+           -mc?
+           -mf1       ar
+           -mf2       idb
+           /* mf3 is direct */;
+
+desc 1     -ta 4      -ns 8;
+
+data 1     -do -2      237 323 /* page bound */ 070 361;
+
+data 2                              360;
+
+data 3     000 000 000 000;
+
+page       -all;
+
+
+
+/*                     scmr15
+
+*          again using the same data but this time splitting
+*          both strings across page bound. and exercising
+*          the -cn option.  all desc. mod. are taken.
+*
+*/
+
+inst       scmr         -io 1     -nt " d1,d" split 4 bit"
+           -mc?
+           -mf1        idb ar reg
+           -mf2        idb ar reg
+           -mf3       ar reg;
+
+desc 1     -ta 4       -ns 6         -cn 1;
+
+desc 2     -cn 3;
+
+data 1     -do -2      237 323  /* page boun. */  070 361;
+
+data 2     -do  -3    000 000 360  /* page bound. */  000;
+
+data 3       000 000 000 000;
+
+page       -all;
+
+
+
+/*                     scmr16
+
+*          this time there will be no match with
+*          the same parameters as test 15 with a mask of
+*          777. the tr indicator will be on.
+*
+*/
+
+inst       scmr         -io 2    -nt "match on first try 4 bit"
+         -mcÿ
+           -mf1        idb ar reg
+           -mf2        idb ar reg
+           -mf3       ar reg;
+
+desc 1     -ta 4       -ns 8        -cn 1;
+
+desc 2     -cn 3;
+
+data 1     -do -2      237 323 070 361;
+
+data 2     -do -3      000 000 360 000;
+
+data 3     000 000 000 000;
+
+page       -all;
+
+
+
+/*                     scmr17
+
+*          the next three tests use the maximum amount
+*          of data for string 1.  this test uses a mask
+*          of 000 but searches for a char which will not
+*          match ( tr ind).  no desc. mod.
+*
+*/
+
+inst       scmr     -nt "no mat d1 covers 3pp 4b"
+           -mc    /*  mc = 000 */
+           -ir   tr
+           -mf1        rl 8704
+           /*  all desc. are direct */;
+
+desc 1     -ta 4;
+
+data 1     -do -128    (1088) 237323070361;
+
+data 2     000;
+
+data 3     000 000 021 000;
+
+page       -all;
+
+
+
+/*                     scmr18
+
+*          this test will force a match on a middle
+*          char.  all desc mods. are taken.
+*
+*/
+
+inst       scmr         -io 2    -nt "d1 covers 3 pp 4bit"
+           -mc    /*  mc = 001 */
+           -mf1        idb ar reg rl 8704
+           -mf2        idb ar reg
+           -mf3       ar reg;
+
+desc 1     -ta 4;
+
+data 1     -do -128     (1087) 237323070361 237 323 070 000;
+
+data 2     000;
+
+data 3     000 000 000 000;
+
+page       -all;
+
+
+/*                      scmr19
+
+*          this test puts the second string on page 0
+*           and tests the -cn option.
+*
+*/
+
+inst       scmr          -io 2    -nt "d1 covers 3pp 4 bit"
+           -mc    /*  mc = 001 */
+           -mf1         ida ar reg rl 8704
+           -mf2         idr ar
+           /* mf3 is direct */;
+
+desc 1     -ta 4        ;
+
+desc 2     -cn 3;
+
+data 1     -do -128     237323070000   (1087) 237323070361 ;
+
+data 2     -do -3       000 000 000 000;
+
+data 3     000 000 000 000;
+
+
+page       -all;
+
+
+
+/*                      scmr20
+
+*          the following tests use 6 bit data.
+*          this test merely makes sure the instruction
+*          is working correctly.  direct mod on descriptors.
+*
+*/
+
+inst       scmr    -nt "simple test 6 bit"
+           -mc 
+           /* all desc. are direct */;
+
+desc 1     -ta 6        -ns 12;
+
+data 1     414243444546 575051525353;
+
+data 2     57;
+
+data 3     000 000 000 005;
+
+page       -all;
+
+
+
+
+/*                     scmr21
+
+*          same as previous test but with first string
+*          split across page bound. and a variety
+*          of desc. mods taken.
+*
+*/
+
+inst       scmr         -io 1    -nt "d1 split 6bit"
+          -mc   /*  mc - 020 */
+           -mf1        ar reg
+           -mf2        idb
+           /* mf3 is direct */;
+
+desc 1     -ta 6       -ns 12;
+
+data 1     -do -4      414243444546  /*page bound */  475051525354;
+
+data 2     67;
+
+data 3     000 000 000 005;
+
+page       -all;
+
+/*                     scmr22
+
+*          this is the same as test 22 except the mask
+*          has been set to preclude a match (tr on)
+          and different desc. mods. are taken.
+*
+*/
+
+inst       scmr         -io 2      -nt "no match 6bit"
+           -mc
+           -ir   tr
+           -mf1        idb ar
+           -mf2        ar reg
+           -mf3        ar reg;
+
+desc 1     -ta 6       -ns 12;
+
+data 1     -do -4      414243444546 475051525354;
+
+data 2     67;
+
+data 3    000 000 000 014;
+
+page       -all;
+
+
+/*                     scmr23
+
+*this test exercises all the desc. mods.
+*          and tests the rl and -cn options.  it also
+*          changes the mask char .
+*          
+*
+*/
+
+inst       scmr         -io 3   -nt "full desc mod 6bit"
+           -mc   /* mc = 025  */
+           -mf1        idb ar reg rl 12
+           -mf2        idb ar reg
+           -mf3       ar reg;
+
+desc 1     -ta 6;
+
+desc 2     -cn 3;
+
+data 1     -do -6      414243444546475051 525354;
+
+data 2     -do -4      000000720000 /* page bound. */;
+
+data 3     000 000 000 001;
+
+page       -all;
+
+
+/*                     scmr24
+
+*         using the -cn option on both descriptors
+*         direct mod on mf3 desc.
+*
+*/
+
+inst      scmr          -io 2    -nt "d1 split 6bit"
+          -mc   /* mc = 025  */
+          -mf1         ar rl 5
+          -mf2      ar
+          /* mf3 is direct */;
+
+desc 1    -ta 6        -cn 4;
+
+desc 2    -cn 2;
+
+data 1    -do -4      000000005100  /*page bound. */  525354;
+
+data 2    -do -2        00007200   /* page bound.  */;
+
+data 3    000 000 000 001;
+
+page      -all;
+
+
+/*                     scmr25
+
+*         this test and the next one uses the maximum amount
+*         of char for string 1.  this test forces a "no match"
+*         condition (ir tr on) and takes the maximum mod.
+*         on the desc.
+*
+*/
+
+inst      scmr          -io 3      -nt "d1 covers 3pp no mat 6bit"
+         -mc000
+          -ir  tr
+          -mf1         idb ar reg rl 6528
+          -mf2      idb ar reg
+          -mf3       ar reg;
+
+desc 1    -ta 6;
+
+data 1    -do -128          (1087) 515151515151 515151515153;
+
+data 2    52;
+
+data 3    000 000 014 600;
+
+page      -all;
+
+
+
+/*                     scmr26
+
+*         same as previous test but a match occurs
+*         on the last char.
+*
+*/
+
+inst      scmr          -io 2    -nt "d1 covers 3pp 6bit"
+          -mc    /*  mc = 000 */
+          -mf1         idb ar reg rl 6528
+          -mf2         idb ar reg
+          -mf3       ar reg;
+
+
+desc 1    -ta 6;
+
+data 1    -do -128     515151515152   (1087) 515151515151 ;
+
+data 2    52;
+
+data 3    000 000 014 572;
+
+page      -all;
+

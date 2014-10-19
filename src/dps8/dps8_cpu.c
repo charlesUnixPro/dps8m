@@ -8,35 +8,44 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_addrmods.h"
+#include "dps8_cpu.h"
+#include "dps8_append.h"
+#include "dps8_ins.h"
+#include "dps8_loader.h"
+#include "dps8_math.h"
 #include "dps8_scu.h"
+#include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_iefp.h"
+#include "dps8_faults.h"
+#include "dps8_console.h"
+#ifdef MULTIPASS
+#include "dps8_mp.h"
+#endif
 
-// XXX Use this when we assume there is only a single unit
+// XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
-void cpu_reset_array (void);
+static void cpu_reset_array (void);
+static bool clear_TEMPORARY_ABSOLUTE_mode (void);
+static void set_TEMPORARY_ABSOLUTE_mode (void);
+static void setCpuCycle (cycles_t cycle);
 
-/* CPU data structures
- 
- cpu_dev      CPU device descriptor
- cpu_unit     CPU unit
- cpu_reg      CPU register list
- cpu_mod      CPU modifier list
- */
+// CPU data structures
 
 #define N_CPU_UNITS 1
+
 // The DPS8M had only 4 ports
 
-UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
+static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
+
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 
-/*! CPU modifier list */
-MTAB cpu_mod[] = {
-    /* { UNIT_V_UF, 0, "STD", "STD", NULL }, */
-    //{ MTAB_XTD|MTAB_VDV, 0, "SPECIAL", NULL, NULL, &spec_disp },
+static MTAB cpu_mod[] = {
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
       0,            /* match */
@@ -44,12 +53,13 @@ MTAB cpu_mod[] = {
       "CONFIG",         /* match string */
       cpu_set_config,         /* validation routine */
       cpu_show_config, /* display routine */
-      NULL          /* value descriptor */
+      NULL,          /* value descriptor */
+      NULL // help
     },
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
-      NULL, cpu_show_stack, NULL },
-    { 0 }
+      NULL, cpu_show_stack, NULL, NULL },
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 static DEBTAB cpu_dt[] = {
@@ -78,9 +88,10 @@ static DEBTAB cpu_dt[] = {
 
     { "FAULT",      DBG_FAULT       },
     { "INTR",       DBG_INTR        },
-
-    // { "CAC",       DBG_CAC          },
-
+    { "CORE",       DBG_CORE        },
+    { "CYCLE",      DBG_CYCLE       },
+    { "CAC",        DBG_CAC         },
+    { "FINAL",      DBG_FINAL       },
     { NULL,         0               }
 };
 
@@ -90,12 +101,10 @@ const char *sim_stop_messages[] = {
     "Unimplemented Opcode",    // STOP_UNIMP
     "DIS instruction",         // STOP_DIS
     "Breakpoint",              // STOP_BKPT
-    "Invalid Opcode",          // STOP_INVOP
-    "Stop code - 5",           // STOP_5
     "BUG",                     // STOP_BUG
-    "WARNING",                  // STOP_WARN
     "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
+    "Illegal Opcode",          // STOP_ILLOP
 };
 
 /* End of simh interface */
@@ -104,15 +113,16 @@ const char *sim_stop_messages[] = {
  *
  * From AM81-04 Multics System Maintainance Procedures
  *
- * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
+ * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 
+ * 16MW of memory
  * [CAC]: but AN87 says multics only supports two IOMs
  * 
- * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
- * to the port. The base address (in KW) is the product of this number and the value
- * defined by the STORE SIZE patch plug for the port.
+ * ASSIGNMENT: 3 toggle switches determine the base address of the SCU 
+ * connected to the port. The base address (in KW) is the product of this 
+ * number and the value defined by the STORE SIZE patch plug for the port.
  *
- * ADDRESS RANGE: toggle FULL/HALF. Determines the size of the SCU as full or half
- * of the STORE SIZE patch.
+ * ADDRESS RANGE: toggle FULL/HALF. Determines the size of the SCU as full or 
+ * half of the STORE SIZE patch.
  *
  * PORT ENABLE: (4? toggles)
  *
@@ -123,15 +133,8 @@ const char *sim_stop_messages[] = {
  *
  * INTERLACE: ... All INTERLACE switches should be OFF for Multics operation.
  *
-
  */
 
-
-//t_stat spec_disp (FILE *st, UNIT *uptr, int value, void *desc)
-//{
-//    printf("In spec_disp()....\n");
-//    return SCPE_OK;
-//}
 
 /*
  * init_opcodes()
@@ -145,149 +148,162 @@ const char *sim_stop_messages[] = {
  * BUG: unimplemented instructions may not be represented
  */
 
-int is_eis[1024];    // hack
+static bool watchBits [MEMSIZE];
+
+static int is_eis[1024];    // hack
+
+// XXX PPR.IC oddly incremented. ticket #6
+// xec_side_effect is used to record the number of EIS operand descriptor
+// words consumed during XEC processing; this allows the PPR.IC to be
+// correctly incremented.
 int xec_side_effect; // hack
 
 void init_opcodes (void)
-{
+  {
     memset(is_eis, 0, sizeof(is_eis));
     
-    is_eis[(opcode1_cmpc<<1)|1] = 1;
-    is_eis[(opcode1_scd<<1)|1] = 1;
-    is_eis[(opcode1_scdr<<1)|1] = 1;
-    is_eis[(opcode1_scm<<1)|1] = 1;
-    is_eis[(opcode1_scmr<<1)|1] = 1;
-    is_eis[(opcode1_tct<<1)|1] = 1;
-    is_eis[(opcode1_tctr<<1)|1] = 1;
-    is_eis[(opcode1_mlr<<1)|1] = 1;
-    is_eis[(opcode1_mrl<<1)|1] = 1;
-    is_eis[(opcode1_mve<<1)|1] = 1;
-    is_eis[(opcode1_mvt<<1)|1] = 1;
-    is_eis[(opcode1_cmpn<<1)|1] = 1;
-    is_eis[(opcode1_mvn<<1)|1] = 1;
-    is_eis[(opcode1_mvne<<1)|1] = 1;
-    is_eis[(opcode1_csl<<1)|1] = 1;
-    is_eis[(opcode1_csr<<1)|1] = 1;
-    is_eis[(opcode1_cmpb<<1)|1] = 1;
-    is_eis[(opcode1_sztl<<1)|1] = 1;
-    is_eis[(opcode1_sztr<<1)|1] = 1;
-    is_eis[(opcode1_btd<<1)|1] = 1;
-    is_eis[(opcode1_dtb<<1)|1] = 1;
-    is_eis[(opcode1_dv3d<<1)|1] = 1;
-}
+#define IS_EIS(opc) is_eis [(opc << 1) | 1] = 1;
+    IS_EIS (opcode1_cmpc);
+    IS_EIS (opcode1_scd);
+    IS_EIS (opcode1_scdr);
+    IS_EIS (opcode1_scm);
+    IS_EIS (opcode1_scmr);
+    IS_EIS (opcode1_tct);
+    IS_EIS (opcode1_tctr);
+    IS_EIS (opcode1_mlr);
+    IS_EIS (opcode1_mrl);
+    IS_EIS (opcode1_mve);
+    IS_EIS (opcode1_mvt);
+    IS_EIS (opcode1_cmpn);
+    IS_EIS (opcode1_mvn);
+    IS_EIS (opcode1_mvne);
+    IS_EIS (opcode1_csl);
+    IS_EIS (opcode1_csr);
+    IS_EIS (opcode1_cmpb);
+    IS_EIS (opcode1_sztl);
+    IS_EIS (opcode1_sztr);
+    IS_EIS (opcode1_btd);
+    IS_EIS (opcode1_dtb);
+    IS_EIS (opcode1_dv3d);
+  }
 
 
-/*!
+/*
  * initialize segment table according to the contents of DSBR ...
  */
-t_stat dpsCmd_InitUnpagedSegmentTable ()
-{
-    if (DSBR.U == 0)
-    {
-        sim_printf("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
+
+static t_stat dpsCmd_InitUnpagedSegmentTable ()
+  {
+    if (DSBR . U == 0)
+      {
+        sim_printf  ("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
         return SCPE_OK;    // need a better return value
-    }
+      }
     
-    if (DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
-        if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
+    if (DSBR . ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
+      {
+        if (! get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
+          {
             return SCPE_OK;
-    
+          }
+      }
     
     word15 segno = 0;
     while (2 * segno < (16 * (DSBR.BND + 1)))
-    {
+      {
         //generate target segment SDW for DSBR.ADDR + 2 * segno.
         word24 a = DSBR.ADDR + 2 * segno;
         
         // just fill with 0's for now .....
-        core_write(a + 0, 0);
-        core_write(a + 1, 0);
+        core_write ((a + 0) & PAMASK, 0);
+        core_write ((a + 1) & PAMASK, 0);
         
-        segno += 1; // onto next segment SDW
-    }
+        segno ++; // onto next segment SDW
+      }
     
-    if (!sim_quiet) sim_printf("zero-initialized segments 0 .. %d\n", segno - 1);
+    if ( !sim_quiet)
+      sim_printf("zero-initialized segments 0 .. %d\n", segno - 1);
     return SCPE_OK;
-}
+  }
 
-t_stat dpsCmd_InitSDWAM ()
-{
-    memset(SDWAM, 0, sizeof(SDWAM));
+static t_stat dpsCmd_InitSDWAM ()
+  {
+    memset (SDWAM, 0, sizeof (SDWAM));
     
-    if (!sim_quiet) sim_printf("zero-initialized SDWAM\n");
+    if (! sim_quiet)
+      sim_printf ("zero-initialized SDWAM\n");
     return SCPE_OK;
-}
+  }
 
 // Assumes unpaged DSBR
 
-_sdw0 *fetchSDW(word15 segno)
-{
+_sdw0 *fetchSDW (word15 segno)
+  {
     word36 SDWeven, SDWodd;
     
-    core_read2(DSBR.ADDR + 2 * segno, &SDWeven, &SDWodd);
+    core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd);
     
     // even word
     static _sdw0 _s;
     
-    _sdw0 *SDW = &_s;   //calloc(1, sizeof(_sdw0));
-    memset(SDW, 0, sizeof(_s));
+    _sdw0 *SDW = &_s;
+    memset (SDW, 0, sizeof (_s));
     
-    SDW->ADDR = (SDWeven >> 12) & 077777777;
-    SDW->R1 = (SDWeven >> 9) & 7;
-    SDW->R2 = (SDWeven >> 6) & 7;
-    SDW->R3 = (SDWeven >> 3) & 7;
-    SDW->F = TSTBIT(SDWeven, 2);
-    SDW->FC = SDWeven & 3;
+    SDW -> ADDR = (SDWeven >> 12) & 077777777;
+    SDW -> R1 = (SDWeven >> 9) & 7;
+    SDW -> R2 = (SDWeven >> 6) & 7;
+    SDW -> R3 = (SDWeven >> 3) & 7;
+    SDW -> F = TSTBIT(SDWeven, 2);
+    SDW -> FC = SDWeven & 3;
     
     // odd word
-    SDW->BOUND = (SDWodd >> 21) & 037777;
-    SDW->R = TSTBIT(SDWodd, 20);
-    SDW->E = TSTBIT(SDWodd, 19);
-    SDW->W = TSTBIT(SDWodd, 18);
-    SDW->P = TSTBIT(SDWodd, 17);
-    SDW->U = TSTBIT(SDWodd, 16);
-    SDW->G = TSTBIT(SDWodd, 15);
-    SDW->C = TSTBIT(SDWodd, 14);
-    SDW->EB = SDWodd & 037777;
+    SDW -> BOUND = (SDWodd >> 21) & 037777;
+    SDW -> R = TSTBIT(SDWodd, 20);
+    SDW -> E = TSTBIT(SDWodd, 19);
+    SDW -> W = TSTBIT(SDWodd, 18);
+    SDW -> P = TSTBIT(SDWodd, 17);
+    SDW -> U = TSTBIT(SDWodd, 16);
+    SDW -> G = TSTBIT(SDWodd, 15);
+    SDW -> C = TSTBIT(SDWodd, 14);
+    SDW -> EB = SDWodd & 037777;
     
     return SDW;
-}
+  }
 
-char *strDSBR(void)
-{
-    static char buff[256];
-    sprintf(buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
+static char * strDSBR (void)
+  {
+    static char buff [256];
+    sprintf (buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     return buff;
-}
+  }
 
-PRIVATE
-void printDSBR()
-{
-    sim_printf("%s\n", strDSBR());
-}
+static void printDSBR (void)
+  {
+    sim_printf ("%s\n", strDSBR ());
+  }
 
 
-char *strSDW0(_sdw0 *SDW)
-{
-    static char buff[256];
+char * strSDW0 (_sdw0 * SDW)
+  {
+    static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (!SDW->F) 
-        sprintf(buff, "*** Uninitialized ***");
+    if (! SDW -> F) 
+      sprintf (buff, "*** Uninitialized ***");
     else
-        sprintf(buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
-                SDW->ADDR, SDW->R1, SDW->R2, SDW->R3, SDW->F, SDW->FC, SDW->BOUND, SDW->R, SDW->E, SDW->W,
-                SDW->P, SDW->U, SDW->G, SDW->C, SDW->EB);
+      sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
+               SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> F,
+               SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
+               SDW -> P, SDW -> U, SDW -> G, SDW -> C, SDW -> EB);
     return buff;
-}
+ }
 
-PRIVATE
-void printSDW0(_sdw0 *SDW)
-{
-    sim_printf("%s\n", strSDW0(SDW));
-}
+static void printSDW0 (_sdw0 *SDW)
+  {
+    sim_printf ("%s\n", strSDW0 (SDW));
+  }
 
-t_stat dpsCmd_DumpSegmentTable()
+static t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
@@ -354,7 +370,7 @@ t_stat dpsCmd_DumpSegmentTable()
                 //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0 . BOUND; offset += 1024)
                 if (SDW0.U == 0)
                 {
-                    for (word18 offset = 0; offset < 16 * (SDW0.BOUND + 1); offset += 1024)
+                    for (word18 offset = 0; offset < 16u * (SDW0.BOUND + 1u); offset += 1024u)
                     {
                         word24 y2 = offset % 1024;
                         word24 x2 = (offset - y2) / 1024;
@@ -364,15 +380,15 @@ t_stat dpsCmd_DumpSegmentTable()
                         word36 PTWx2;
                         core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
 
-                        struct _ptw0 PTW2;
-                        PTW2.ADDR = GETHI(PTWx2);
-                        PTW2.U = TSTBIT(PTWx2, 9);
-                        PTW2.M = TSTBIT(PTWx2, 6);
-                        PTW2.F = TSTBIT(PTWx2, 2);
-                        PTW2.FC = PTWx2 & 3;
+                        struct _ptw0 PTW_2;
+                        PTW_2.ADDR = GETHI(PTWx2);
+                        PTW_2.U = TSTBIT(PTWx2, 9);
+                        PTW_2.M = TSTBIT(PTWx2, 6);
+                        PTW_2.F = TSTBIT(PTWx2, 2);
+                        PTW_2.FC = PTWx2 & 3;
 
                          sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
-                                     offset, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.F, PTW2.FC);
+                                     offset, PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.F, PTW_2.FC);
 
                       }
                   }
@@ -384,7 +400,7 @@ t_stat dpsCmd_DumpSegmentTable()
 }
 
 //! custom command "dump"
-t_stat dpsCmd_Dump (int32 arg, char *buf)
+t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
 {
     char cmds [256][256];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -398,8 +414,137 @@ t_stat dpsCmd_Dump (int32 arg, char *buf)
     return SCPE_OK;
 }
 
+static word36 getKST (word24 offset)
+  {
+    word18 kst_seg = 067; // From system_book
+    char * msg;
+    word24 fa;
+    if (dbgLookupAddress (kst_seg, offset, & fa, & msg))
+      {
+        sim_printf ("address xlate failed for %05o:%06o (%s)\n",
+                    kst_seg, offset, msg);
+        return 0llu;
+      }
+    return M [fa];
+   }
+
+// dcl 1 kst aligned based (kstp),                 /* KST header declaration */
+
+// Word 0: 000000000230
+
+//     2 lowseg fixed bin (17),                            /* lowest segment number described by kst */
+
+// Word 1: 000000007775
+
+//     2 highseg fixed bin (17),                           /* highest segment number described by kst */
+//     2 highest_used_segno fixed bin (17),                /* highest segment number yet used  */
+//     2 lvs fixed bin (8),                                /* number of private LVs this process is connected to */
+
+// Word 2,3: 000000000331 000000000000
+
+//     2 time_of_bootload fixed bin (71),                  /* bootload time during prelinking */
+
+// Word 4: 
+
+//     2 garbage_collections fixed bin (17) unaligned,     /* KST garbage collections */
+//     2 entries_collected fixed bin (17) unaligned,               /* KST entries recovered by garbage collection */
+
+//     2 free_list bit (18) unaligned,                     /* relative pointer to first free kste */
+//     2 prelinked_ring (7) bit (1) unaligned,             /* rings prelinked in process */
+//     2 template bit (1) unaligned,                       /* this is a template kst if set */
+//     2 allow_256K_connect bit (1) unaligned,             /* can use 256K segments */
+//     2 unused_2 bit (9) unaligned,
+//     2 uid_hash_bucket (0 : 127) bit (18) unaligned,     /* hash buckets */
+//     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+//     2 lv (1:256) bit (36),                              /* private logical volume connection list */
+//     2 end_of_kst bit (36);
+
+
+
+
+
+
+// dcl 1 kste based (kstep) aligned,                           /* KST entry declaration */
+
+// word 0:
+
+//     2 fp bit (18) unaligned,                                /* forward rel pointer */
+//     2 segno fixed bin (17) unaligned,                       /* segment number of this kste */
+
+// word 1, 2:
+
+//     2 usage_count (0:7) fixed bin (8) unaligned,            /* outstanding initiates/ring */
+
+/// word 3, 4:
+
+//     2 entryp ptr unaligned,                                 /* branch pointer */
+//                                                             /* See WARNING below for requirements to use entryp. */
+
+// word 5:
+
+//     2 uid bit (36) aligned,                                 /* unique identifier */
+
+
+//     2 access_information unaligned,
+
+// word 6:
+
+//       3 dtbm bit (36),                                      /* date time branch modified */
+
+// word 7:
+
+//       3 extended_access bit (33),                           /* extended access from the branch */
+//       3 access bit (3),                                     /* rew */
+
+// word 8;
+
+//       3 ex_rb (3) bit (3),                                  /* ring brackets from branch */
+//     2 pad1 bit (3) unaligned,
+//     2 flags unaligned,
+//       3 dirsw bit (1),                                      /* directory switch */
+//       3 allow_write bit (1),                                /* set if initiated with write permission */
+//       3 priv_init bit (1),                                  /* privileged initiation */
+//       3 tms bit (1),                                        /* transparent modification switch */
+//       3 tus bit (1),                                        /* transparent usage switch */
+//       3 tpd bit (1),                                        /* transparent paging device switch */
+//       3 audit bit (1),                                      /* audit switch */
+//       3 explicit_deact_ok bit (1),                          /* set if I am willing to have a user force deactivate */
+//       3 pad bit (3),
+//     2 infcount fixed bin (12) unaligned;                    /* _^Hi_^Hf dirsw _^Ht_^Hh_^He_^Hn inferior count _^He_^Hl_^Hs_^He lv index */
+
+// 9 words total
+
+
+
+
+t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
+  {
+#if 0
+    for (word18 offset = 0; offset < 1024 * 64; offset ++)
+      {
+        sim_printf ("%06o %012llo\n", offset, getKST (offset));
+      }
+#endif
+
+    //sim_printf ("lowseg  %06llo\n", getKST (0) >> 18);
+    //sim_printf ("highseg %06llo\n", getKST (0) & MASK18);
+    sim_printf ("lowseg  %06llo\n", getKST (0) & MASK18);
+    sim_printf ("highseg %06llo\n", getKST (1) & MASK18);
+
+    word18 start = 0110;
+    for (word18 i = 0; ; i ++)
+      {
+        word36 w0 = getKST (start + i * 8);
+        if ((w0 & MASK18) == 0)
+          break;
+        sim_printf ("%4d %06llo\n", i, w0 & MASK18);
+        sim_printf ("    %012llo %012llo\n", getKST (start + i * 8 + 3), getKST (start + i * 8 + 4));
+      }
+    return SCPE_OK;
+  }
+
 //! custom command "init"
-t_stat dpsCmd_Init (int32 arg, char *buf)
+t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -416,7 +561,7 @@ t_stat dpsCmd_Init (int32 arg, char *buf)
 }
 
 //! custom command "segment" - stuff to do with deferred segments
-t_stat dpsCmd_Segment (int32 arg, char *buf)
+t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -439,7 +584,7 @@ t_stat dpsCmd_Segment (int32 arg, char *buf)
 }
 
 //! custom command "segments" - stuff to do with deferred segments
-t_stat dpsCmd_Segments (int32 arg, char *buf)
+t_stat dpsCmd_Segments (UNUSED int32 arg, char *buf)
 {
     bool bVerbose = !sim_quiet;
 
@@ -478,8 +623,9 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     return SCPE_ARG;
 }
 
+static void ic_history_init(void);
 /*! Reset routine */
-t_stat cpu_reset_mm (DEVICE *dptr)
+static t_stat cpu_reset_mm (UNUSED DEVICE * dptr)
 {
     
 #ifdef USE_IDLE
@@ -501,7 +647,11 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     
     set_addr_mode(ABSOLUTE_mode);
     
-    cpu.cycle = FETCH_cycle;
+    setCpuCycle (FETCH_cycle);
+
+    sys_stats . total_cycles = 0;
+    for (int i = 0; i < N_FAULTS; i ++)
+      sys_stats . total_faults [i] = 0;
 
 //#if FEAT_INSTR_STATS
     memset(&sys_stats, 0, sizeof(sys_stats));
@@ -510,7 +660,7 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     return 0;
 }
 
-t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
+static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 {
     // The boot button on the cpu is conneted to the boot button on the IOM
     // XXX is this true? Which IOM is it connected to?
@@ -520,15 +670,15 @@ t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
 }
 
 // Map memory to port
-static int scpage_map [N_SCPAGES];
+static int scbank_map [N_SCBANKS];
 
-static void setup_scpage_map (void)
+static void setup_scbank_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", SCBANK, N_SCBANKS, MAXMEMSIZE);
 
     // Initalize to unmapped
-    for (int pg = 0; pg < N_SCPAGES; pg ++)
-      scpage_map [pg] = -1; 
+    for (uint pg = 0; pg < N_SCBANKS; pg ++)
+      scbank_map [pg] = -1; 
 
     // For each port (which is connected to a SCU
     for (int port_num = 0; port_num < N_CPU_PORTS; port_num ++)
@@ -543,32 +693,45 @@ static void setup_scpage_map (void)
         uint assignment = switches . assignment [port_num];
         uint base = assignment * sz;
 
-        // Now convert to SCPAGES
-        sz = sz / SCPAGE;
-        base = base / SCPAGE;
+        // Now convert to SCBANK
+        sz = sz / SCBANK;
+        base = base / SCBANK;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
-	for (int pg = 0; pg < sz; pg ++)
+        for (uint pg = 0; pg < sz; pg ++)
           {
-            int scpg = base + pg;
-            if (scpg >= 0 && scpg < N_SCPAGES)
-              scpage_map [scpg] = port_num;
+            uint scpg = base + pg;
+            if (scpg < N_SCBANKS)
+              scbank_map [scpg] = port_num;
           }
       }
-    for (int pg = 0; pg < N_SCPAGES; pg ++)
-      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: %d:%d\n", pg, scpage_map [pg]);
+    for (uint pg = 0; pg < N_SCBANKS; pg ++)
+      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, scbank_map [pg]);
   }
 
-int query_scpage_map (word24 addr)
+int query_scbank_map (word24 addr)
   {
-    uint scpg = addr / SCPAGE;
-    if (scpg < N_SCPAGES)
-      return scpage_map [scpg];
+    uint scpg = addr / SCBANK;
+    if (scpg < N_SCBANKS)
+      return scbank_map [scpg];
     return -1;
   }
 
-t_stat cpu_reset (DEVICE *dptr)
+// called once initialization
+
+void cpu_init (void)
+{
+  memset (& switches, 0, sizeof (switches));
+  memset (& watchBits, 0, sizeof (watchBits));
+  switches . FLT_BASE = 2; // Some of the UnitTests assume this
+}
+
+// DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
+// Put state information into the unused high order bits.
+#define MEM_UNINITIALIZED 0x4000000000000000LLU
+
+static t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
         free(M);
@@ -582,26 +745,29 @@ t_stat cpu_reset (DEVICE *dptr)
     // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
     // marking the memory as uninitialized.
 
-    for (int i = 0; i < MEMSIZE; i ++)
+    for (uint i = 0; i < MEMSIZE; i ++)
       M [i] = MEM_UNINITIALIZED;
 
-    PPR.IC = 0;
     rA = 0;
     rQ = 0;
-    XECD = 0;
     
     PPR.IC = 0;
     PPR.PRR = 0;
     PPR.PSR = 0;
     PPR.P = 1;
-    
+    RSDWH_R1 = 0;
+
+    rTR = 0;
+ 
     processorCycle = UNKNOWN_CYCLE;
     //processorAddressingMode = ABSOLUTE_MODE;
     set_addr_mode(ABSOLUTE_mode);
     
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
-    cpuCycles = 0;
+    sys_stats . total_cycles = 0;
+    for (int i = 0; i < N_FAULTS; i ++)
+      sys_stats . total_faults [i] = 0;
     
     CMR.luf = 3;    // default of 16 mS
     
@@ -612,9 +778,17 @@ t_stat cpu_reset (DEVICE *dptr)
 
     cpu_reset_array ();
 
-    setup_scpage_map ();
+    setup_scbank_map ();
 
     initializeTheMatrix();
+
+    tidy_cu ();
+
+    cpu . wasXfer = false;
+    cpu . wasInhibited = false;
+
+    cpu . interrupt_flag = false;
+    cpu . g7_flag = false;
 
     return SCPE_OK;
 }
@@ -625,7 +799,7 @@ t_stat cpu_reset (DEVICE *dptr)
 //  variable has bit<n> set if the n’th letter was specified as a switch to the examine command. 
 // Not true...
 
-t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw)
+static t_stat cpu_ex (t_value *vptr, t_addr addr, UNUSED UNIT * uptr, UNUSED int32 sw)
 {
     if (addr>= MEMSIZE)
         return SCPE_NXM;
@@ -637,7 +811,8 @@ t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw)
 }
 
 /*! Memory deposit */
-t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw)
+static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr, 
+                       UNUSED int32 sw)
 {
     if (addr >= MEMSIZE) return SCPE_NXM;
     M[addr] = val & DMASK;
@@ -647,85 +822,36 @@ t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw)
 
 enum _processor_cycle_type processorCycle;                  ///< to keep tract of what type of cycle the processor is in
 //enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
-enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
+//enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
 
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
 
 /* GE-625/635 */
 
-word36	rA;	/*!< accumulator */
-word36	rQ;	/*!< quotient */
-word8	rE;	/*!< exponent [map: rE, 28 0's] */
+word36 rA;      /*!< accumulator */
+word36 rQ;      /*!< quotient */
+word8  rE;      /*!< exponent [map: rE, 28 0's] */
 
-word18	rX[8];	/*!< index */
-
-
-
-//word18	rBAR;	/*!< base address [map: BAR, 18 0's] */
-/* format: 9b base, 9b bound */
-
-int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o PPR.IC fetch */
-word36 XECD1; /*!< XEC instr / XED instr#1 */
-word36 XECD2; /*!< XED instr#2 */
+word18 rX[8];   /*!< index */
 
 
- //word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
-//IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
+word27 rTR; /*!< timer [map: TR, 9 0's] */
+word24 rY;     /*!< address operand */
+word8 rTAG; /*!< instruction tag */
+
+word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
+word8 tCF; /*!< character position field [3b] */
 
 
-word27	rTR;	/*!< timer [map: TR, 9 0's] */
-
-//word18	ry;     /*!< address operand */
-word24	rY;     /*!< address operand */
-word8	rTAG;	/*!< instruction tag */
-
-word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
-word8	tCF;	/*!< character position field [3b] */
-
-/* GE-645 */
-
-
-//word36	rDBR;	/*!< descriptor base */
-//!<word27	rABR[8];/*!< address base */
-//
 ///* H6180; L68; DPS-8M */
 //
-word8	rRALR;	/*!< ring alarm [3b] [map: 33 0's, RALR] */
-//word36	rPRE[8];/*!< pointer, even word */
-//word36	rPRO[8];/*!< pointer, odd word */
-//word27	rAR[8];	/*!< address [24b] [map: ARn, 12 0's] */
-//word36	rPPRE;	/*!< procedure pointer, even word */
-//word36	rPPRO;	/*!< procedure pointer, odd word */
-//word36	rTPRE;	/*!< temporary pointer, even word */
-//word36	rTPRO;	/*!< temporary pointer, odd word */
-//word36	rDSBRE;	/*!< descriptor segment base, even word */
-//word36	rDSBRO;	/*!< descriptor segment base, odd word */
-//word36	mSE[16];/*!< word-assoc-mem: seg descrip regs, even word */
-//word36	mSO[16];/*!< word-assoc-mem: seg descrip regs, odd word */
-//word36	mSP[16];/*!< word-assoc-mem: seg descrip ptrs */
-//word36	mPR[16];/*!< word-assoc-mem: page tbl regs */
-//word36	mPP[16];/*!< word-assoc-mem: page tbl ptrs */
-//word36	rFRE;	/*!< fault, even word */
-//word36	rFRO;	/*!< fault, odd word */
-//word36	rMR;	/*!< mode */
-//word36	rCMR;	/*!< cache mode */
-//word36	hCE[16];/*!< history: control unit, even word */
-//word36	hCO[16];/*!< history: control unit, odd word */
-//word36	hOE[16];/*!< history: operations unit, even word */
-//word36	hOO[16];/*!< history: operations unit, odd word */
-//word36	hDE[16];/*!< history: decimal unit, even word */
-//word36	hDO[16];/*!< history: decimal unit, odd word */
-//word36	hAE[16];/*!< history: appending unit, even word */
-//word36	hAO[16];/*!< history: appending unit, odd word */
-//word36	rSW[5];	/*!< switches */
+word3 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
 
 // end h6180 stuff
 
 struct _tpr TPR;    ///< Temporary Pointer Register
 struct _ppr PPR;    ///< Procedure Pointer Register
-//struct _prn PR[8];  ///< Pointer Registers
-//struct _arn AR[8];  ///< Address Registers
 struct _par PAR[8]; ///< pointer/address resisters
 struct _bar BAR;    ///< Base Address Register
 struct _dsbr DSBR;  ///< Descriptor Segment Base Register
@@ -740,6 +866,8 @@ struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 
+word3    RSDWH_R1; // Track the ring number of the last SDW
+
 _cache_mode_register CMR;
 _mode_register MR;
 
@@ -751,163 +879,163 @@ static BITFIELD dps8_IR_bits[] = {
     BITNCF(3),
     BITFNAM(HEX,   1, z1),    /*!< base-16 exponent */ ///< 0000010
     BITFNAM(ABS,   1, z1),    /*!< absolute mode */ ///< 0000020
-    BITFNAM(MIIF,  1, z1),	  /*!< mid-instruction interrupt fault */ ///< 0000040
+    BITFNAM(MIIF,  1, z1),   /*!< mid-instruction interrupt fault */ ///< 0000040
     BITFNAM(TRUNC, 1, z1),    /*!< truncation */ ///< 0000100
-    BITFNAM(NBAR,  1, z1),	  /*!< not BAR mode */ ///< 0000200
-    BITFNAM(PMASK, 1, z1),	  /*!< parity mask */ ///< 0000400
+    BITFNAM(NBAR,  1, z1),   /*!< not BAR mode */ ///< 0000200
+    BITFNAM(PMASK, 1, z1),   /*!< parity mask */ ///< 0000400
     BITFNAM(PAR,   1, z1),    /*!< parity error */ ///< 0001000
-    BITFNAM(TALLY, 1, z1),	  /*!< tally runout */ ///< 0002000
+    BITFNAM(TALLY, 1, z1),   /*!< tally runout */ ///< 0002000
     BITFNAM(OMASK, 1, z1),    /*!< overflow mask */ ///< 0004000
-    BITFNAM(EUFL,  1, z1),	  /*!< exponent underflow */ ///< 0010000
-    BITFNAM(EOFL,  1, z1),	  /*!< exponent overflow */ ///< 0020000
-    BITFNAM(OFLOW, 1, z1),	  /*!< overflow */ ///< 0040000
-    BITFNAM(CARRY, 1, z1),	  /*!< carry */ ///< 0100000
+    BITFNAM(EUFL,  1, z1),   /*!< exponent underflow */ ///< 0010000
+    BITFNAM(EOFL,  1, z1),   /*!< exponent overflow */ ///< 0020000
+    BITFNAM(OFLOW, 1, z1),   /*!< overflow */ ///< 0040000
+    BITFNAM(CARRY, 1, z1),   /*!< carry */ ///< 0100000
     BITFNAM(NEG,   1, z1),    /*!< negative */ ///< 0200000
-    BITFNAM(ZERO,  1, z1),	  /*!< zero */ ///< 0400000
-    ENDBITS
+    BITFNAM(ZERO,  1, z1),   /*!< zero */ ///< 0400000
+    { NULL, 0, 0, NULL, NULL }
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, PPR.IC, VASIZE) },
-    //{ ORDATA (IR, rIR, 18) },
-    { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
+    { ORDATA (IC, PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    //{ ORDATA (IR, cu.IR, 18), 0, 0 },
+    { ORDATADF (IR, cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
-    //    { FLDATA (Zero, rIR, F_V_A) },
-    //    { FLDATA (Negative, rIR, F_V_B) },
-    //    { FLDATA (Carry, rIR, F_V_C) },
-    //    { FLDATA (Overflow, rIR, F_V_D) },
-    //    { FLDATA (ExpOvr, rIR, F_V_E) },
-    //    { FLDATA (ExpUdr, rIR, F_V_F) },
-    //    { FLDATA (OvrMask, rIR, F_V_G) },
-    //    { FLDATA (TallyRunOut, rIR, F_V_H) },
-    //    { FLDATA (ParityErr, rIR, F_V_I) }, ///< Yeah, right!
-    //    { FLDATA (ParityMask, rIR, F_V_J) },
-    //    { FLDATA (NotBAR, rIR, F_V_K) },
-    //    { FLDATA (Trunc, rIR, F_V_L) },
-    //    { FLDATA (MidInsFlt, rIR, F_V_M) },
-    //    { FLDATA (AbsMode, rIR, F_V_N) },
-    //    { FLDATA (HexMode, rIR, F_V_O) },
+    //    { FLDATA (Zero, cu.IR, F_V_A), 0, 0 },
+    //    { FLDATA (Negative, cu.IR, F_V_B), 0, 0 },
+    //    { FLDATA (Carry, cu.IR, F_V_C), 0, 0 },
+    //    { FLDATA (Overflow, cu.IR, F_V_D), 0, 0 },
+    //    { FLDATA (ExpOvr, cu.IR, F_V_E), 0, 0 },
+    //    { FLDATA (ExpUdr, cu.IR, F_V_F), 0, 0 },
+    //    { FLDATA (OvrMask, cu.IR, F_V_G), 0, 0 },
+    //    { FLDATA (TallyRunOut, cu.IR, F_V_H), 0, 0 },
+    //    { FLDATA (ParityErr, cu.IR, F_V_I), 0, 0 }, ///< Yeah, right!
+    //    { FLDATA (ParityMask, cu.IR, F_V_J), 0, 0 },
+    //    { FLDATA (NotBAR, cu.IR, F_V_K), 0, 0 },
+    //    { FLDATA (Trunc, cu.IR, F_V_L), 0, 0 },
+    //    { FLDATA (MidInsFlt, cu.IR, F_V_M), 0, 0 },
+    //    { FLDATA (AbsMode, cu.IR, F_V_N), 0, 0 },
+    //    { FLDATA (HexMode, cu.IR, F_V_O), 0, 0 },
     
-    { ORDATA (A, rA, 36) },
-    { ORDATA (Q, rQ, 36) },
-    { ORDATA (E, rE, 8) },
+    { ORDATA (A, rA, 36), 0, 0 },
+    { ORDATA (Q, rQ, 36), 0, 0 },
+    { ORDATA (E, rE, 8), 0, 0 },
     
-    { ORDATA (X0, rX[0], 18) },
-    { ORDATA (X1, rX[1], 18) },
-    { ORDATA (X2, rX[2], 18) },
-    { ORDATA (X3, rX[3], 18) },
-    { ORDATA (X4, rX[4], 18) },
-    { ORDATA (X5, rX[5], 18) },
-    { ORDATA (X6, rX[6], 18) },
-    { ORDATA (X7, rX[7], 18) },
+    { ORDATA (X0, rX[0], 18), 0, 0 },
+    { ORDATA (X1, rX[1], 18), 0, 0 },
+    { ORDATA (X2, rX[2], 18), 0, 0 },
+    { ORDATA (X3, rX[3], 18), 0, 0 },
+    { ORDATA (X4, rX[4], 18), 0, 0 },
+    { ORDATA (X5, rX[5], 18), 0, 0 },
+    { ORDATA (X6, rX[6], 18), 0, 0 },
+    { ORDATA (X7, rX[7], 18), 0, 0 },
     
-    { ORDATA (PPR.IC,  PPR.IC,  18) },
-    { ORDATA (PPR.PRR, PPR.PRR,  3) },
-    { ORDATA (PPR.PSR, PPR.PSR, 15) },
-    { ORDATA (PPR.P,   PPR.P,    1) },
+    { ORDATA (PPR.IC,  PPR.IC,  18), 0, 0 },
+    { ORDATA (PPR.PRR, PPR.PRR,  3), 0, 0 },
+    { ORDATA (PPR.PSR, PPR.PSR, 15), 0, 0 },
+    { ORDATA (PPR.P,   PPR.P,    1), 0, 0 },
     
-    { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24) },
-    { ORDATA (DSBR.BND,   DSBR.BND,   14) },
-    { ORDATA (DSBR.U,     DSBR.U,      1) },
-    { ORDATA (DSBR.STACK, DSBR.STACK, 12) },
+    { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24), 0, 0 },
+    { ORDATA (DSBR.BND,   DSBR.BND,   14), 0, 0 },
+    { ORDATA (DSBR.U,     DSBR.U,      1), 0, 0 },
+    { ORDATA (DSBR.STACK, DSBR.STACK, 12), 0, 0 },
     
-    { ORDATA (BAR.BASE,  BAR.BASE,  9) },
-    { ORDATA (BAR.BOUND, BAR.BOUND, 9) },
+    { ORDATA (BAR.BASE,  BAR.BASE,  9), 0, 0 },
+    { ORDATA (BAR.BOUND, BAR.BOUND, 9), 0, 0 },
     
-    //{ ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
+    //{ ORDATA (FAULTBASE, rFAULTBASE, 12), 0, 0 }, ///< only top 7-msb are used
     
-    { ORDATA (PR0.SNR, PR[0].SNR, 18) },
-    { ORDATA (PR1.SNR, PR[1].SNR, 18) },
-    { ORDATA (PR2.SNR, PR[2].SNR, 18) },
-    { ORDATA (PR3.SNR, PR[3].SNR, 18) },
-    { ORDATA (PR4.SNR, PR[4].SNR, 18) },
-    { ORDATA (PR5.SNR, PR[5].SNR, 18) },
-    { ORDATA (PR6.SNR, PR[6].SNR, 18) },
-    { ORDATA (PR7.SNR, PR[7].SNR, 18) },
+    { ORDATA (PR0.SNR, PR[0].SNR, 18), 0, 0 },
+    { ORDATA (PR1.SNR, PR[1].SNR, 18), 0, 0 },
+    { ORDATA (PR2.SNR, PR[2].SNR, 18), 0, 0 },
+    { ORDATA (PR3.SNR, PR[3].SNR, 18), 0, 0 },
+    { ORDATA (PR4.SNR, PR[4].SNR, 18), 0, 0 },
+    { ORDATA (PR5.SNR, PR[5].SNR, 18), 0, 0 },
+    { ORDATA (PR6.SNR, PR[6].SNR, 18), 0, 0 },
+    { ORDATA (PR7.SNR, PR[7].SNR, 18), 0, 0 },
     
-    { ORDATA (PR0.RNR, PR[0].RNR, 18) },
-    { ORDATA (PR1.RNR, PR[1].RNR, 18) },
-    { ORDATA (PR2.RNR, PR[2].RNR, 18) },
-    { ORDATA (PR3.RNR, PR[3].RNR, 18) },
-    { ORDATA (PR4.RNR, PR[4].RNR, 18) },
-    { ORDATA (PR5.RNR, PR[5].RNR, 18) },
-    { ORDATA (PR6.RNR, PR[6].RNR, 18) },
-    { ORDATA (PR7.RNR, PR[7].RNR, 18) },
+    { ORDATA (PR0.RNR, PR[0].RNR, 18), 0, 0 },
+    { ORDATA (PR1.RNR, PR[1].RNR, 18), 0, 0 },
+    { ORDATA (PR2.RNR, PR[2].RNR, 18), 0, 0 },
+    { ORDATA (PR3.RNR, PR[3].RNR, 18), 0, 0 },
+    { ORDATA (PR4.RNR, PR[4].RNR, 18), 0, 0 },
+    { ORDATA (PR5.RNR, PR[5].RNR, 18), 0, 0 },
+    { ORDATA (PR6.RNR, PR[6].RNR, 18), 0, 0 },
+    { ORDATA (PR7.RNR, PR[7].RNR, 18), 0, 0 },
     
-    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18) },
-    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18) },
-    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18) },
-    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18) },
-    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18) },
-    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18) },
-    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18) },
-    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18) },
+    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18), 0, 0 },
     
-    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18) },
-    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18) },
-    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18) },
-    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18) },
-    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18) },
-    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18) },
-    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18) },
-    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18) },
+    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0 },
     
-    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18) },
-    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18) },
-    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18) },
-    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18) },
-    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18) },
-    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18) },
-    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18) },
-    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18) },
+    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18), 0, 0 },
+    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18), 0, 0 },
+    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18), 0, 0 },
+    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18), 0, 0 },
+    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18), 0, 0 },
+    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18), 0, 0 },
+    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18), 0, 0 },
+    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18), 0, 0 },
     
-    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18) },
-    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18) },
-    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18) },
-    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18) },
-    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18) },
-    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18) },
-    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18) },
-    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18) },
+    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18), 0, 0 },
     
     /*
-     { ORDATA (EBR, ebr, EBR_N_EBR) },
-     { FLDATA (PGON, ebr, EBR_V_PGON) },
-     { FLDATA (T20P, ebr, EBR_V_T20P) },
-     { ORDATA (UBR, ubr, 36) },
+     { ORDATA (EBR, ebr, EBR_N_EBR), 0, 0 },
+     { FLDATA (PGON, ebr, EBR_V_PGON), 0, 0 },
+     { FLDATA (T20P, ebr, EBR_V_T20P), 0, 0 },
+     { ORDATA (UBR, ubr, 36), 0, 0 },
      { GRDATA (CURAC, ubr, 8, 3, UBR_V_CURAC), REG_RO },
      { GRDATA (PRVAC, ubr, 8, 3, UBR_V_PRVAC) },
-     { ORDATA (SPT, spt, 36) },
-     { ORDATA (CST, cst, 36) },
-     { ORDATA (PUR, pur, 36) },
-     { ORDATA (CSTM, cstm, 36) },
-     { ORDATA (HSB, hsb, 36) },
-     { ORDATA (DBR1, dbr1, PASIZE) },
-     { ORDATA (DBR2, dbr2, PASIZE) },
-     { ORDATA (DBR3, dbr3, PASIZE) },
-     { ORDATA (DBR4, dbr4, PASIZE) },
-     { ORDATA (PCST, pcst, 36) },
-     { ORDATA (PIENB, pi_enb, 7) },
-     { FLDATA (PION, pi_on, 0) },
-     { ORDATA (PIACT, pi_act, 7) },
-     { ORDATA (PIPRQ, pi_prq, 7) },
+     { ORDATA (SPT, spt, 36), 0, 0 },
+     { ORDATA (CST, cst, 36), 0, 0 },
+     { ORDATA (PUR, pur, 36), 0, 0 },
+     { ORDATA (CSTM, cstm, 36), 0, 0 },
+     { ORDATA (HSB, hsb, 36), 0, 0 },
+     { ORDATA (DBR1, dbr1, PASIZE), 0, 0 },
+     { ORDATA (DBR2, dbr2, PASIZE), 0, 0 },
+     { ORDATA (DBR3, dbr3, PASIZE), 0, 0 },
+     { ORDATA (DBR4, dbr4, PASIZE), 0, 0 },
+     { ORDATA (PCST, pcst, 36), 0, 0 },
+     { ORDATA (PIENB, pi_enb, 7), 0, 0 },
+     { FLDATA (PION, pi_on, 0), 0, 0 },
+     { ORDATA (PIACT, pi_act, 7), 0, 0 },
+     { ORDATA (PIPRQ, pi_prq, 7), 0, 0 },
      { ORDATA (PIIOQ, pi_ioq, 7), REG_RO },
      { ORDATA (PIAPR, pi_apr, 7), REG_RO },
-     { ORDATA (APRENB, apr_enb, 8) },
-     { ORDATA (APRFLG, apr_flg, 8) },
-     { ORDATA (APRLVL, apr_lvl, 3) },
-     { ORDATA (RLOG, rlog, 10) },
-     { FLDATA (F1PR, its_1pr, 0) },
+     { ORDATA (APRENB, apr_enb, 8), 0, 0 },
+     { ORDATA (APRFLG, apr_flg, 8), 0, 0 },
+     { ORDATA (APRLVL, apr_lvl, 3), 0, 0 },
+     { ORDATA (RLOG, rlog, 10), 0, 0 },
+     { FLDATA (F1PR, its_1pr, 0), 0, 0 },
      { BRDATA (PCQ, pcq, 8, VASIZE, PCQ_SIZE), REG_RO+REG_CIRC },
      { ORDATA (PCQP, pcq_p, 6), REG_HRO },
      { DRDATA (INDMAX, ind_max, 8), PV_LEFT + REG_NZ },
      { DRDATA (XCTMAX, xct_max, 8), PV_LEFT + REG_NZ },
-     { ORDATA (WRU, sim_int_char, 8) },
-     { FLDATA (STOP_ILL, stop_op0, 0) },
+     { ORDATA (WRU, sim_int_char, 8), 0, 0 },
+     { FLDATA (STOP_ILL, stop_op0, 0), 0, 0 },
      { BRDATA (REG, acs, 8, 36, AC_NUM * AC_NBLK) },
      */
     
-    { NULL }
+    { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 };
 
 /*
@@ -939,46 +1067,30 @@ DEVICE cpu_dev = {
     0,              /*!< debug control flags */
     cpu_dt,         /*!< debug flag names */
     NULL,           /*!< memory size change */
-    NULL            /*!< logical name */
+    NULL,           /*!< logical name */
+    NULL,           // help
+    NULL,           // attach help
+    NULL,           // help context
+    NULL            // description
 };
-
-//word36 IWB;         ///< instruction working buffer
-//opCode *iwb = NULL; ///< opCode *
-//int32  opcode;      ///< opcode
-//bool   opcodeX;     ///< opcode extension
-//word18 address;     ///< bits 0-17 of instruction XXX replace with rY
-//bool   a;           ///< bin-29 - indirect addressing mode?
-//bool   i;           ///< interrupt inhinit bit.
-//word6  tag;         ///< instruction tag XXX replace with rTAG
-
-//word18 stiTally;    ///< for sti instruction
-
-
-static DCDstruct *newDCDstruct(void);
 
 static t_stat reason;
 
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
-static DCDstruct _currentInstruction;
-DCDstruct *currentInstruction  = &_currentInstruction;;
+DCDstruct currentInstruction;
 
-static EISstruct E;
-//EISstruct *e = &E;
+//static EISstruct E;
 
 events_t events;
 switches_t switches;
 // the following two should probably be combined
 cpu_state_t cpu;
 ctl_unit_data_t cu;
+du_unit_data_t du;
 
 
-// This is an out-of-band flag for the APU. User commands to
-// display or modify memory can invoke much the APU. Howeveer, we don't
-// want interactive attempts to access non-existant memory locations
-// to register a fault.
-bool fault_gen_no_fault;
-
+#if 0
 int stop_reason; // sim_instr return value for JMP_STOP
 
 /*
@@ -1000,350 +1112,800 @@ void cancel_run(t_stat reason)
         cancel = reason;
     //sim_debug (DBG_DEBUG, & cpu_dev, "CU: Cancel requested: %d\n", reason);
 }
+#endif
 
 static uint get_highest_intr (void)
   {
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+      {
+        if (events . XIP [scuUnitNum])
+          {
+            return scuGetHighestIntr (scuUnitNum);
+          }
+      }
+    return -1;
+  }
+
+#if 0
+static uint get_highest_intr (void)
+  {
 // XXX In theory there needs to be interlocks on this?
-    for (int int_num = 32 - 1; int_num >= 0; int_num --) // XXX Magic number
-      if (events . interrupts [int_num])
-        {
-          events . interrupts [int_num] = 0;
+    for (int int_num = N_INTERRUPTS - 1; int_num >= 0; int_num --)
+      for (uint scu_num = 0; scu_num < N_SCU_UNITS_MAX; scu_num ++)
+        if (events . interrupts [scu_num] [int_num])
+          {
+            events . interrupts [scu_num] [int_num] = 0;
+            scu_clear_interrupt (scu_num, int_num);
 
-          int cnt = 0;
-          for (int i = 0; i < 32; i ++) // XXX Magic number
-            if (events . interrupts [i])
-              cnt ++;
-          events . int_pending = !!cnt;
+            int cnt = 0;
+            for (uint i = 0; i < N_INTERRUPTS; i ++)
+              for (uint s = 0; s < N_SCU_UNITS_MAX; s ++)
+                if (events . interrupts [s] [i])
+                  {
+                    cnt ++;
+                    break;
+//sim_printf ("%u %u\n", s, i);
+                  }
+            events . int_pending = !!cnt;
 
-          for (int i = 0; i < 7; i ++) // XXX Magic number
-            if (events . fault [i])
-              cnt ++;
-          events . any = !! cnt;
-
-          return int_num * 2;
-        }
+            cnt = 0;
+            for (int i = 0; i < N_FAULT_GROUPS; i ++)
+              if (events . fault [i])
+                {
+                  cnt ++;
+                  break;
+//sim_printf ("%u %u\n", s, i);
+                }
+            //events . any = !! cnt;
+            events . fault_pending = !! cnt;
+            //sim_printf ("int num %d (%o), pair_addr %o pend %d any %d\n", int_num, int_num, int_num * 2, events . int_pending, events . any);
+            return int_num * 2;
+          }
     return 1;
   }
+#endif
 
 bool sample_interrupts (void)
   {
-    return events . int_pending;
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+      {
+        if (events . XIP [scuUnitNum])
+          {
+            return true;
+          }
+      }
+    return false;
   }
 
-t_stat doIEFPLoop();
+t_stat simh_hooks (void)
+  {
+    int reason = 0;
+    // check clock queue 
+    if (sim_interval <= 0)
+      {
+//int32 int0 = sim_interval;
+        reason = sim_process_event ();
+//sim_printf ("int delta %d\n", sim_interval - int0);
+        if (reason)
+          return reason;
+      }
+        
+    sim_interval --;
+
+    // breakpoint? 
+    //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
+    // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
+    // PPR.PSR into the high 12
+    if (sim_brk_summ &&
+        sim_brk_test ((PPR.IC & 0777777) |
+                      ((((t_addr) PPR.PSR) & 037777) << 18),
+                      SWMASK ('E')))  /* breakpoint? */
+      return STOP_BKPT; /* stop simulation */
+    if (sim_deb_break && sim_timell () >= sim_deb_break)
+      return STOP_BKPT; /* stop simulation */
+
+    return reason;
+  }       
+
+static char * cycleStr (cycles_t cycle)
+  {
+    switch (cycle)
+      {
+        case ABORT_cycle:
+          return "ABORT_cycle";
+        case FAULT_cycle:
+          return "FAULT_cycle";
+        case EXEC_cycle:
+          return "EXEC_cycle";
+        case FAULT_EXEC_cycle:
+          return "FAULT_EXEC_cycle";
+        case FAULT_EXEC2_cycle:
+          return "FAULT_EXEC2_cycle";
+        case INTERRUPT_cycle:
+          return "INTERRUPT_cycle";
+        case INTERRUPT_EXEC_cycle:
+          return "INTERRUPT_EXEC_cycle";
+        case INTERRUPT_EXEC2_cycle:
+          return "INTERRUPT_EXEC2_cycle";
+        case FETCH_cycle:
+          return "FETCH_cycle";
+#if 0
+        default:
+          sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
+          return "XXX unknown cycle";
+#endif
+     }
+  }
+
+static void setCpuCycle (cycles_t cycle)
+  {
+    sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to %s\n",
+               cycleStr (cycle));
+    cpu . cycle = cycle;
+  }
+//
+// Okay, lets treat this as a state machine
+//
+//  INTERRUPT_cycle
+//     clear interrupt, load interrupt pair into instruction buffer
+//     set INTERRUPT_EXEC_cycle
+//  INTERRUPT_EXEC_cycle
+//     execute instruction in instruction buffer
+//     if (! transfer) set INTERUPT_EXEC2_cycle 
+//     else set FETCH_cycle
+//  INTERRUPT_EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//     set INTERUPT_EXEC2_cycle 
+//
+//  FAULT_cycle
+//     fetch fault pair into instruction buffer
+//     set FAULT_EXEC_cycle
+//  FAULT_EXEC_cycle
+//     execute instructions in instruction buffer
+//     if (! transfer) set FAULT_EXE2_cycle 
+//     else set FETCH_cycle
+//  FAULT_EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//     set FETCH_cycle
+//
+//  FETCH_cycle
+//     fetch instruction into instruction buffer
+//     set EXEC_cycle
+//
+//  EXEC_cycle
+//     execute instruction in instruction buffer
+//     if (repeat conditions) keep cycling
+//     if (pair) set EXEC2_cycle
+//     else set FETCH_cycle
+//  EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//
+//  XEC_cycle
+//     load instruction into instruction buffer
+//     set EXEC_cyvle
+//
+//  XED_cycle
+//     load instruction pair into instruction buffer
+//     set EXEC_cyvle
+//  
+// other extant cycles:
+//  ABORT_cycle
+
+static word36 instr_buf [2];
 
 // This is part of the simh interface
 t_stat sim_instr (void)
-{
-
+  {
 #ifdef USE_IDLE
     sim_rtcn_init (0, 0);
 #endif
 
     // Heh. This needs to be static; longjmp resets the value to NULL
-    static DCDstruct *ci = NULL;
+    //static DCDstruct _ci;
+    static DCDstruct * ci = & currentInstruction;
     
-    /* Main instruction fetch/decode loop */
-    adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
-    apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
-    
-    cpu . interrupt_flag = false;
+    // This allows long jumping to the top of the state machine
+    int val = setjmp(jmpMain);
 
-    //currentInstruction = &_currentInstruction;
-    currentInstruction->e = &E;
-    
-    int val = setjmp(jmpMain);    // here's our main fault/interrupt return. Back to executing instructions....
     switch (val)
     {
-        case 0:
+        case JMP_ENTRY:
+        case JMP_REENTRY:
             reason = 0;
-            //cpuCycles = 0;
             break;
         case JMP_NEXT:
-            goto jmpNext;
+            goto nextInstruction;
+#if 0
         case JMP_RETRY:
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
-//        case JMP_INTR:
-//            goto jmpIntr;
+        case JMP_INTR:
+            goto jmpIntr;
+#endif
         case JMP_STOP:
-            return stop_reason;
+            reason = STOP_HALT;
+            goto leave;
+        case JMP_SYNC_FAULT_RETURN:
+            goto syncFaultReturn;
+        case JMP_REFETCH:
 
-    }
-    
-    
-//    if (val)
-//    {
-//        // if we're here, we're returning from a fault etc and we want to retry an instruction
-//        goto retry;
-//    } else {
-//        reason = 0;
-//        cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
-//    }
-    
-    do {
-jmpRetry:;
-        /* loop until halted */
-        if (sim_interval <= 0) {                                /* check clock queue */
-            if ((reason = sim_process_event ()))
-                break;
-        }
-        
-        sim_interval --;
-        //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E'))) {    /* breakpoint? */
-        // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
-        // PPR.PSR into the high 12
-        if (sim_brk_summ && sim_brk_test ((PPR.IC & 0777777) | ((((t_addr) PPR.PSR) & 037777) << 18), SWMASK ('E'))) {    /* breakpoint? */
-            reason = STOP_BKPT;                        /* stop simulation */
-            break;
-        }
-
-        // stop after a given number ot cpuCycles ...
-        if (sim_brk_summ && sim_brk_test (cpuCycles, SWMASK ('C'))) {    /* breakpoint? */
-            reason = STOP_BKPT;                        /* stop simulation */
-            break;
-        }
-
-        //reason = doIEFPLoop();
-#if 1
-        if (cpu . cycle == DIS_cycle)
-          {
-            cpu . interrupt_flag = sample_interrupts ();
-            if (cpu . interrupt_flag)
-              goto dis_entry;
-            continue;
-          }
-#endif
-        // do group 7 fault processing
-        if (G7Pending && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
-            doG7Faults();
-            
-        //
-        // fetch instruction
-        //processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
-        processorCycle = INSTRUCTION_FETCH;
-        
-        xec_side_effect = 0;
-
-        ci = fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
-        
-        if (currentInstruction -> IWB == 0777777777777U &&
-           switches . halt_on_unimp)
-          return STOP_UNIMP;
-
-// XXX The conditions are more rigorous: see AL39, pg 327
-        if (PPR.IC % 2 == 0 && // Even address
-            ci -> i == 0) // Not inhibited
-          cpu . interrupt_flag = sample_interrupts ();
-        else
-          cpu . interrupt_flag = false;
-
-        // XXX: what if sim stops during XEC/XED? if user wants to re-step
-        // instruc, is this logic OK?
-    
-//        if(XECD == 1) {
-//          ci->IWB = XECD1;
-//        } else if(XECD == 2) {
-//          ci->IWB = XECD2;
-//        }
-//
-        
-        t_stat ret = executeInstruction(ci);
-
-        if (! ret)
-         {
-           if (cpu . interrupt_flag)
-              {
-                sim_debug (DBG_INTR, & cpu_dev, "Handling interrupt_flag\n");
-                // We should do this later, but doing it now allows us to
-                // avoid clean up for no interrupt pending.
-
-                uint intr_pair_addr;
-dis_entry:;
-#ifndef QUIET_UNUSED
-jmpIntr:;
-#endif
-                intr_pair_addr = get_highest_intr ();
-                if (intr_pair_addr != 1) // no interrupts 
-                  {
-                    sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", intr_pair_addr);
-
-		    // In the INTERRUPT CYCLE, the processor safe-stores the
-		    // Control Unit Data (see Section 3) into program-invisible
-		    // holding registers in preparation for a Store Control
-		    // Unit (scu) instruction, enters temporary absolute mode,
-		    // and forces the current ring of execution C(PPR.PRR) to
-		    // 0. It then issues an XEC system controller command to
-		    // the system controller on the highest priority port for
-		    // which there is a bit set in the interrupt present
-		    // register.  
-
-                    cu_safe_store ();
-
-                    // addr_modes_t am = get_addr_mode();  // save address mode
-
-		    // Temporary absolute mode
-		    set_TEMPORARY_ABSOLUTE_mode ();
-
-		    // Set to ring 0
-		    PPR . PRR = 0;
-
-                    // get intr_pair_addr
-
-                    // get interrupt pair
-                    word36 faultPair[2];
-                    core_read2(intr_pair_addr, faultPair, faultPair+1);
-
-                    // Don't! T4D says the IC remains pointing at the faulting
-                    // instructiion
-                    //PPR.IC = intr_pair_addr;
-
-                    cpu . interrupt_flag = false;
-
-                    t_stat xrv = doXED(faultPair);
-
-                    sim_debug (DBG_MSG, & cpu_dev, "leaving DIS_cycle\n");
-                    sim_printf ("leaving DIS_cycle\n");
-                    cpu . cycle = FETCH_cycle;
-
-                    if (xrv == CONT_TRA)
-                    {
-// The tricky case: We entered the fault in appending mode, and the fault
-// pair transfered in absolute mode. According to AL39 and T&D, we should
-// stay in absolute mode, not return to appending mode.
-                        if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                          set_addr_mode (ABSOLUTE_mode);
-                        sim_debug (DBG_INTR, & cpu_dev, "Interrupt pair transfers\n");
-                        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
-                    }
-    
-                    // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
-
-                    clear_TEMPORARY_ABSOLUTE_mode ();
-                    // set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-
-                    cu_safe_restore ();
-
-                    if (xrv == CONT_INTR)
-                    {
-                        longjmp(jmpMain, JMP_INTR);    
-                    }
-
-                    if (0 && xrv)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
-                        longjmp(jmpMain, JMP_RETRY);    // retry instruction
-                    longjmp(jmpMain, JMP_RETRY);     // execute next instruction
-
-                    ret = xrv;
-                } // int_pair != 1
-            } // interrupt_flag
+            // Not necessarily so, but the only times
+            // this path is taken is after an RCU returning
+            // from an interrupt, which could only happen if
+            // was xfer was false; or in a DIS cycle, in
+            // which case we want it false so interrupts 
+            // can happen.
+            cpu . wasXfer = false;
              
-        } // if (!ret)
-
-        if (ret)
-        {
-            if (ret > 0)
-            {
-                reason = ret;
-                break;
-            } else {
-                switch (ret)
-                {
-                    case CONT_TRA:
-jmpTra:                 continue;   // don't bump PPR.IC, instruction already did it
-                    case CONT_FAULT:
-                    {
-                        // XXX Instruction faulted.
-                    }
-                    break;
-                }
-            }
-        }
-        
-#if 0
-        // XXX Remove this when we actually can wait for an interrupt
-        if (ci->opcode == 0616) { // DIS
-            reason = STOP_DIS;
+            setCpuCycle (FETCH_cycle);
             break;
-        }
+        case JMP_RESTART:
+            setCpuCycle (EXEC_cycle);
+            break;
+        default:
+          sim_printf ("longjmp value of %d unhandled\n", val);
+            goto leave;
+    }
+
+    // Main instruction fetch/decode loop 
+
+    do
+      {
+
+        if_sim_debug (DBG_TRACE, & cpu_dev)
+          sim_printf ("\n");
+
+        reason = 0;
+
+        // Process deferred events and breakpoints
+        reason = simh_hooks ();
+        if (reason)
+          //return reason;
+          break;
+
+        if (sim_gtime () % 1024 == 0)
+          {
+            t_stat ch = sim_poll_kbd ();
+            if (ch != SCPE_OK)
+              {
+                //sim_printf ("%o\n", ch);
+                if (ch == 010033) // Escape
+                  console_attn (NULL);
+              }
+          }
+
+#ifdef MULTIPASS
+       if (multipassStatsPtr) 
+         {
+           multipassStatsPtr -> A = rA;
+           multipassStatsPtr -> Q = rQ;
+           multipassStatsPtr -> E = rE;
+           for (int i = 0; i < 8; i ++)
+             {
+               multipassStatsPtr -> X [i] = rX [i];
+               multipassStatsPtr -> PAR [i] = PAR [i];
+             }
+           multipassStatsPtr -> IR = cu . IR;
+           multipassStatsPtr -> TR = rTR;
+           multipassStatsPtr -> RALR = rRALR;
+         }
 #endif
 
-jmpNext:;
-        // doesn't seem to work as advertized
-        if (switches . disable_kbd_bkpt == 0 && sim_poll_kbd())
-            reason = STOP_BKPT;
-       
-        // XXX: what if sim stops during XEC/XED? if user wants to re-step
-        // instruc, is this logic OK?
-        if(XECD == 1) {
-          XECD = 2;
-        } else if(XECD == 2) {
-          XECD = 0;
-        } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
-          PPR.IC += 1;
-        
-        // is this a multiword EIS?
-        // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
-        if (ci->info->ndes > 0)
-          PPR.IC += ci->info->ndes;
-        PPR.IC += xec_side_effect;
-        xec_side_effect = 0;
+        // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
+                                     // simh clock clyce; move down...
+                                     // Acutally have FETCH jump to EXECUTE
+                                     // instead of breaking.
 
-    } while (reason == 0);
+        // Sync. the TR with the emulator clock.
+        static uint rTRlsb = 0;
+        rTRlsb ++;
+        // The emulator clock runs about 7x as fast at the Timer Register;
+        // see wiki page "CAC 08-Oct-2014"
+        if (rTRlsb >= 7)
+          {
+            rTRlsb = 0;
+            rTR = (rTR - 1) & MASK27;
+            if (rTR == MASK27) // passing thorugh 0...
+              {
+                if (switches . tro_enable)
+                  setG7fault (timer_fault, 0);
+              }
+          }
+
+        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
+                   cycleStr (cpu . cycle));
+        switch (cpu . cycle)
+          {
+            case INTERRUPT_cycle:
+              {
+                // In the INTERRUPT CYCLE, the processor safe-stores
+                // the Control Unit Data (see Section 3) into 
+                // program-invisible holding registers in preparation 
+                // for a Store Control Unit (scu) instruction, enters 
+                // temporary absolute mode, and forces the current 
+                // ring of execution C(PPR.PRR) to
+                // 0. It then issues an XEC system controller command 
+                // to the system controller on the highest priority 
+                // port for which there is a bit set in the interrupt 
+                // present register.  
+
+                uint intr_pair_addr = get_highest_intr ();
+                cu . FI_ADDR = intr_pair_addr / 2;
+                cu_safe_store ();
+
+                // Temporary absolute mode
+                set_TEMPORARY_ABSOLUTE_mode ();
+
+                // Set to ring 0
+                PPR . PRR = 0;
+                TPR . TRR = 0;
+
+                // Check that an interrupt is actually pending
+                if (cpu . interrupt_flag)
+                  {
+                    // clear interrupt, load interrupt pair into instruction 
+                    // buffer; set INTERRUPT_EXEC_cycle.
+
+                    // In the h/w this is done later, but doing it now allows 
+                    // us to avoid clean up for no interrupt pending.
+
+                    if (intr_pair_addr != 1) // no interrupts 
+                      {
+
+                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
+                                   intr_pair_addr);
+
+                        if_sim_debug (DBG_INTR, & cpu_dev) 
+                          traceInstruction (DBG_INTR);
+
+#ifdef MULTIPASS
+                        if (multipassStatsPtr)
+                          {
+                            multipassStatsPtr -> intr_pair_addr = intr_pair_addr;
+                          }
+#endif
+                        // get interrupt pair
+                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1);
+
+                        cpu . interrupt_flag = false;
+                        setCpuCycle (INTERRUPT_EXEC_cycle);
+                        break;
+                      } // int_pair != 1
+                  } // interrupt_flag
+
+                // If we get here, there was no interrupt
+
+                cpu . interrupt_flag = false;
+                clear_TEMPORARY_ABSOLUTE_mode ();
+                // Restores addressing mode 
+                cu_safe_restore ();
+                // We can only get here if wasXfer was
+                // false, so we can assume it still is.
+                cpu . wasXfer = false;
+// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+// we can safely assume that is the state that should be restored.
+                setCpuCycle (FETCH_cycle);
+              }
+              break;
+
+            case INTERRUPT_EXEC_cycle:
+            case INTERRUPT_EXEC2_cycle:
+              {
+                //     execute instruction in instruction buffer
+                //     if (! transfer) set INTERUPT_EXEC2_cycle 
+
+                if (cpu . cycle == INTERRUPT_EXEC_cycle)
+                  cu . IWB = instr_buf [0];
+                else
+                  cu . IWB = instr_buf [1];
+
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
+                t_stat ret = executeInstruction ();
+
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
+
+                if (ret == CONT_TRA)
+                  {
+                     cpu . wasXfer = true; 
+                     setCpuCycle (FETCH_cycle);
+                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                       set_addr_mode (ABSOLUTE_mode);
+                     break;
+                  }
+
+                if (cpu . cycle == INTERRUPT_EXEC_cycle)
+                  {
+                    setCpuCycle (INTERRUPT_EXEC2_cycle);
+                    break;
+                  }
+                clear_TEMPORARY_ABSOLUTE_mode ();
+                cu_safe_restore ();
+// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+// we can safely assume that is the state that should be restored.
+                // We can only get here if wasXfer was
+                // false, so we can assume it still is.
+                cpu . wasXfer = false;
+                setCpuCycle (FETCH_cycle);
+              }
+              break;
+
+            case FETCH_cycle:
+              {
+// "If the interrupt inhibit bit is not set in the currect instruction 
+// word at the point of the next sequential instruction pair virtual
+// address formation, the processor samples the [group 7 and interrupts]."
+
+// Since we do not do concurrent instruction fetches, we must remember 
+// the inhibit bits (cpu . wasInhibited).
+
+
+// If the instruction pair virtual address being formed is the result of a 
+// transfer of control condition or if the current instruction is 
+// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
+// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
+// not sampled.
+
+                if ((! cpu . wasInhibited) &&
+                    (PPR . IC % 2) == 0 &&
+                    (! cpu . wasXfer) &&
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+                  {
+                    cpu . interrupt_flag = sample_interrupts ();
+                    cpu . g7_flag = bG7Pending ();
+                  }
+
+                // The cpu . wasInhibited accumulates across the even and 
+                // odd intruction. If the IC is even, reset it for
+                // the next pair.
+
+                if ((PPR . IC % 2) == 0)
+                  cpu . wasInhibited = false;
+
+                if (cpu . interrupt_flag)
+                  {
+// This is the only place cycle is set to INTERRUPT_cycle; therefore
+// return from interrupt can safely assume the it should set the cycle
+// to FETCH_cycle.
+                    setCpuCycle (INTERRUPT_cycle);
+                    break;
+                  }
+                if (cpu . g7_flag)
+                  {
+                    cpu . g7_flag = false;
+                    doG7Fault ();
+                  }
+#if 0
+                if (cpu . interrupt_flag && 
+                    ((PPR . IC % 2) == 0) &&
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+                  {
+// This is the only place cycle is set to INTERRUPT_cycle; therefore
+// return from interrupt can safely assume the it should set the cycle
+// to FETCH_cycle.
+                    setCpuCycle (INTERRUPT_cycle);
+                    break;
+                  }
+                if (cpu . g7_flag)
+                  {
+                    cpu . g7_flag = false;
+                    //setCpuCycle (FAULT_cycle);
+                    doG7Fault ();
+                  }
+#endif
+
+                // If we have done the even of an XED, do the odd
+                if (cu . xde == 0 && cu . xdo == 1)
+                  {
+                    // Get the odd
+                    cu . IWB = cu . IRODD;
+                    cu . xde = cu . xdo = 0; // and done
+                  }
+                // If we have done neither of the XED
+                else if (cu . xde == 1 && cu . xdo == 1)
+                  {
+                    cu . xde = 0; // do the odd next time
+                    cu . xdo = 1;
+                  }
+                // If were nave not yet done the XEC
+                else if (cu . xde == 1)
+                  {
+                    cu . xde = cu . xdo = 0; // and done
+                  }
+                else
+                  {
+                    processorCycle = INSTRUCTION_FETCH;
+                    // fetch next instruction into current instruction struct
+                    clr_went_appending (); // XXX not sure this is the right place
+                    fetchInstruction (PPR . IC);
+                  }
+
+
+#ifdef MULTIPASS
+                if (multipassStatsPtr)
+                  {
+                    multipassStatsPtr -> PPR = PPR;
+                  }
+#endif
+#if 0
+                // XXX The conditions are more rigorous: see AL39, pg 327
+           // ci is not set up yet; check the inhibit bit in the IWB!
+                //if (PPR.IC % 2 == 0 && // Even address
+                    //ci -> i == 0) // Not inhibited
+                //if (GET_I (cu . IWB) == 0) // Not inhibited
+// If the instruction pair virtual address being formed is the result of a 
+// transfer of control condition or if the current instruction is 
+// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
+// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
+// not sampled.
+                if (PPR.IC % 2 == 0 && // Even address
+                    GET_I (cu . IWB) == 0 &&  // Not inhibited
+                    (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+                  {
+                    cpu . interrupt_flag = sample_interrupts ();
+                    cpu . g7_flag = bG7Pending ();
+                  }
+                else
+                  {
+                    cpu . interrupt_flag = false;
+                    cpu . g7_flag = false;
+                  }
+#endif
+
+                setCpuCycle (EXEC_cycle);
+              }
+              break;
+
+            case EXEC_cycle:
+              {
+                xec_side_effect = 0;
+
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
+                t_stat ret = executeInstruction ();
+
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
+                if (ret == CONT_TRA)
+                  {
+#ifdef AGGRESSIVE_RING_ALARM
+                    //if (rRALR && (PPR.PRR || TPR.TRR))
+                      //sim_printf ("CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
+                                  //PPR.PRR, TPR.TRR, rRALR);
+                    if (rRALR && (PPR.PRR || TPR.TRR))
+                      {
+                        sim_debug (DBG_CAC, & cpu_dev,
+                                   "CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
+                                   PPR.PRR, TPR.TRR, rRALR);
+                        traceInstruction (DBG_CAC);
+                      }
+                    if (rRALR != 0 && ! (PPR . PRR < rRALR))
+                      {
+                        sim_printf ("CAC sez this is a ring alarm\n");
+                        doFault (acc_viol_fault, ACV13,i
+                                 "CAC sez this is a ring alarm");
+                      }
+#endif
+                    cu . xde = cu . xdo = 0;
+                    cpu . wasXfer = true;
+                    setCpuCycle (FETCH_cycle);
+                    break;   // don't bump PPR.IC, instruction already did it
+                  }
+                cpu . wasXfer = false;
+
+                if (ret < 0)
+                  {
+                    sim_printf ("execute instruction returned %d?\n", ret);
+                    break;
+                  }
+
+                if ((! cu . repeat_first) && (cu . rpt || (cu . rd & (PPR.IC & 1))))
+                  {
+                    if (! cu . rpt)
+                      -- PPR.IC;
+                    cpu . wasXfer = false; 
+                    setCpuCycle (FETCH_cycle);
+                    break;
+                  }
+
+#if 0
+                if (cu . xde == 1 && cu . xdo == 1) // we just did the even of an XED
+                  {
+                    setCpuCycle (FETCH_cycle);
+                    break;
+                  }
+                if (cu . xde) // We just did a xec or xed instruction
+                  {
+                    setCpuCycle (FETCH_cycle);
+                    break;
+                  }
+#endif
+                if (cu . xde || cu . xdo) // we are starting or are in an XEC/XED
+                  {
+                    cpu . wasXfer = false; 
+                    setCpuCycle (FETCH_cycle);
+                    break;
+                  }
+
+                cu . xde = cu . xdo = 0;
+                PPR.IC ++;
+                if (ci->info->ndes > 0)
+                  PPR.IC += ci->info->ndes;
+                PPR.IC += xec_side_effect;
+                xec_side_effect = 0;
+
+                cpu . wasXfer = false; 
+                setCpuCycle (FETCH_cycle);
+                break;
+
+nextInstruction:;
+syncFaultReturn:;
+                PPR.IC ++;
+                xec_side_effect = 0;
+                cpu . wasXfer = false; 
+                setCpuCycle (FETCH_cycle);
+              }
+              break;
+
+            case FAULT_cycle:
+              {
+#if 0
+                // Interrupts need to be processed at the beginning of the
+                // FAULT CYCLE as part of the H/W 'fetch instruction pair.'
+
+                cpu . interrupt_flag = sample_interrupts ();
+                cpu . g7_flag = bG7Pending ();
+#endif
+                // In the FAULT CYCLE, the processor safe-stores the Control
+                // Unit Data (see Section 3) into program-invisible holding
+                // registers in preparation for a Store Control Unit ( scu)
+                // instruction, then enters temporary absolute mode, forces the
+                // current ring of execution C(PPR.PRR) to 0, and generates a
+                // computed address for the fault trap pair by concatenating
+                // the setting of the FAULT BASE switches on the processor
+                // configuration panel with twice the fault number (see Table
+                // 7-1).  This computed address and the operation code for the
+                // Execute Double (xed) instruction are forced into the
+                // instruction register and executed as an instruction. Note
+                // that the execution of the instruction is not done in a
+                // normal EXECUTE CYCLE but in the FAULT CYCLE with the
+                // processor in temporary absolute mode.
+
+                //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
     
-    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+                if (switches . report_faults == 1 ||
+                    (switches . report_faults == 2 &&
+                     cpu . faultNumber == FAULT_OFL))
+                  {
+                    emCallReportFault ();
+                    clearFaultCycle ();
+                    cpu . wasXfer = false; 
+                    setCpuCycle (FETCH_cycle);
+                    PPR.IC += ci->info->ndes;
+                    PPR.IC ++;
+                    break;
+                  }
+
+                cu_safe_store ();
+
+                // Temporary absolute mode
+                set_TEMPORARY_ABSOLUTE_mode ();
+
+                // Set to ring 0
+                PPR . PRR = 0;
+                TPR . TRR = 0;
+
+                // (12-bits of which the top-most 7-bits are used)
+                int fltAddress = (switches.FLT_BASE << 5) & 07740;
+
+                // absolute address of fault YPair
+                word24 addr = fltAddress +  2 * cpu . faultNumber;
+  
+#ifdef MULTIPASS
+                if (multipassStatsPtr)
+                  {
+                    multipassStatsPtr -> faultNumber = cpu . faultNumber;
+                  }
+#endif
+                core_read2 (addr, instr_buf, instr_buf + 1);
+
+                setCpuCycle (FAULT_EXEC_cycle);
+
+                break;
+              }
+
+            case FAULT_EXEC_cycle:
+            case FAULT_EXEC2_cycle:
+              {
+                //     execute instruction in instruction buffer
+                //     if (! transfer) set INTERUPT_EXEC2_cycle 
+
+                if (cpu . cycle == FAULT_EXEC_cycle)
+                  cu . IWB = instr_buf [0];
+                else
+                  cu . IWB = instr_buf [1];
+
+                if (GET_I (cu . IWB))
+                  cpu . wasInhibited = true;
+
+                t_stat ret = executeInstruction ();
+
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
+
+                if (ret == CONT_TRA)
+                  {
+                    cpu . wasXfer = true; 
+                    setCpuCycle (FETCH_cycle);
+                    clearFaultCycle ();
+                    if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                      set_addr_mode (ABSOLUTE_mode);
+                    break;
+                  }
+                if (cpu . cycle == FAULT_EXEC_cycle)
+                  {
+                    setCpuCycle (FAULT_EXEC2_cycle);
+                    break;
+                  }
+                // Done with FAULT_EXEC2_cycle
+                // Restores cpu.cycle and addressing mode
+                clear_TEMPORARY_ABSOLUTE_mode ();
+                cu_safe_restore ();
+                cpu . wasXfer = false; 
+                setCpuCycle (FETCH_cycle);
+                clearFaultCycle ();
+
+// XXX Is this needed? Are EIS instructions allowed in fault pairs?
+
+                // cu_safe_restore should have restored CU.IWB, so
+                // we can determine the instruction length.
+                // decodeInstruction() restores ci->info->ndes
+                decodeInstruction (cu . IWB, & currentInstruction);
+
+                PPR.IC += ci->info->ndes;
+                PPR.IC ++;
+                break;
+              }
+
+            default:
+              {
+                sim_printf ("cpu . cycle %d?\n", cpu . cycle);
+                return SCPE_UNK;
+              }
+          }  // switch (cpu . cycle)
+
+      } while (reason == 0);
+
+leave:
+    sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
+    sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+    for (int i = 0; i < N_FAULTS; i ++)
+      {
+        if (sys_stats . total_faults [i])
+          sim_printf("%s faults = %lld\n", faultNames [i], sys_stats . total_faults [i]);
+     }
     
     return reason;
-}
+  }
 
 
-#if 0
-static void setDegenerate()
-{
-    sim_debug (DBG_DEBUG, & cpu_dev, "setDegenerate\n");
-    //TPR.TRR = 0;
-    //TPR.TSR = 0;
-    //TPR.TBR = 0;
-    
-    //PPR.PRR = 0;
-    //PPR.PSR = 0;
-    
-    //PPR.P = 1;
-}
-#endif
 
 #if 0
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 #endif
-
-#define DOITSITP(indword, Tag) ((_TM(Tag) == TM_IR || _TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)))
-//bool DOITSITP(indword, Tag)
-//{
-//    return ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)));
-//}
-
-//PRIVATE
-//t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
-//{
-//    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-//    
-//    rY = addr;
-//    TPR.CA = addr;  //XXX for APU
-//    
-//    switch (accessType)
-//    {
-//        case InstructionFetch:
-//            core_read(addr, dat);
-//            break;
-//        default:
-//            //if (i->a)
-//                doAppendCycle(i, accessType, Tag, -1, dat);
-//            //else
-//            //    core_read(addr, dat);
-//            break;
-//    }
-//    return SCPE_OK;
-//}
 
 /*!
  cd@libertyhaven.com - sez ....
@@ -1360,7 +1922,8 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 // read N words in a non-aligned fashion for EIS
 //
 // XXX here is where we probably need to to the prepage thang...
-t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
+#ifndef QUIET_UNUSED
+t_stat ReadNnoalign (int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1368,13 +1931,15 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     else
 #endif
         for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, OPERAND_READ, Tag);
+            Read (addr + j, Yblock + j, EIS_OPERAND_READ, Tag);
     
     return SCPE_OK;
 }
+#endif
 
-int OPSIZE(DCDstruct *i)
+int OPSIZE (void)
 {
+    DCDstruct * i = & currentInstruction;
     if (i->info->flags & (READ_OPERAND | STORE_OPERAND))
         return 1;
     else if (i->info->flags & (READ_YPAIR | STORE_YPAIR))
@@ -1383,12 +1948,15 @@ int OPSIZE(DCDstruct *i)
         return 8;
     else if (i->info->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
         return 16;
+    else if (i->info->flags & (READ_YBLOCK32 | STORE_YBLOCK32))
+        return 32;
     return 0;
 }
 
 // read instruction operands
-t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
+    DCDstruct * i = & currentInstruction;
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
             return STOP_BKPT;
@@ -1402,30 +1970,36 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
         addr &= 0777776;   // make even
-        Read(i, addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
-        Read(i, addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
         return SCPE_OK;
     }
 
-    switch (OPSIZE(i))
+    switch (OPSIZE ())
     {
         case 1:
-            Read(i, addr, &CY, cyctyp, b29);
+            Read (addr, &CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read(i, addr + 0, Ypair + 0, cyctyp, b29);
-            Read(i, addr + 1, Ypair + 1, cyctyp, b29);
+            Read (addr + 0, Ypair + 0, cyctyp, b29);
+            Read (addr + 1, Ypair + 1, cyctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read(i, addr + j, Yblock8 + j, cyctyp, b29);
+                Read (addr + j, Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read(i, addr + j, Yblock16 + j, cyctyp, b29);
+                Read (addr + j, Yblock16 + j, cyctyp, b29);
+            
+            break;
+        case 32:
+            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            for (int j = 0 ; j < 32 ; j += 1)
+                Read (addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
     }
@@ -1436,7 +2010,7 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 }
 
 // write instruction operands
-t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
+t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1444,25 +2018,30 @@ t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29
     else
 #endif
         
-    switch (OPSIZE(i))
+    switch (OPSIZE ())
     {
         case 1:
-            Write(i, addr, CY, OPERAND_STORE, b29);
+            Write (addr, CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write(i, addr + 0, Ypair[0], OPERAND_STORE, b29);
-            Write(i, addr + 1, Ypair[1], OPERAND_STORE, b29);
+            Write (addr + 0, Ypair[0], OPERAND_STORE, b29);
+            Write (addr + 1, Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write(i, addr + j, Yblock8[j], OPERAND_STORE, b29);
+                Write (addr + j, Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write(i, addr + j, Yblock16[j], OPERAND_STORE, b29);
+                Write (addr + j, Yblock16[j], OPERAND_STORE, b29);
+            break;
+        case 32:
+            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            for (int j = 0 ; j < 32 ; j += 1)
+                Write (addr + j, Yblock32[j], OPERAND_STORE, b29);
             break;
     }
     //TPR.CA = addr;  // restore address
@@ -1471,55 +2050,104 @@ t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29
     
 }
 
+t_stat memWatch (int32 arg, char * buf)
+  {
+    //sim_printf ("%d <%s>\n", arg, buf);
+    if (strlen (buf) == 0)
+      {
+        if (arg)
+          {
+            sim_printf ("no argument to watch?\n");
+            return SCPE_ARG;
+          }
+        sim_printf ("Clearing all watch points\n");
+        memset (& watchBits, 0, sizeof (watchBits));
+        return SCPE_OK;
+      }
+    char * end;
+    long int n = strtol (buf, & end, 0);
+    if (* end || n < 0 || n >= MEMSIZE)
+      {
+        sim_printf ("invalid argument to watch?\n");
+        return SCPE_ARG;
+      }
+    watchBits [n] = arg != 0;
+    return SCPE_OK;
+  }
+
 /*!
  * "Raw" core interface ....
  */
 int32 core_read(word24 addr, word36 *data)
 {
-    if(addr >= MEMSIZE) {
-        *data = 0;
-        return -1;
-    } else {
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *data = M[addr] & DMASK;
-    }
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_read nem");
+    if (M[addr] & MEM_UNINITIALIZED)
+      {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+      }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read   %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+    *data = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read  %08o %012llo\n",
+                addr, * data);
     return 0;
 }
 
 int core_write(word24 addr, word36 data) {
-    if(addr >= MEMSIZE) {
-        return -1;
-    } else {
-        M[addr] = data & DMASK;
-    }
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_write nem");
+    M[addr] = data & DMASK;
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write %08o %012llo\n",
+                addr, data);
     return 0;
 }
 
 int core_read2(word24 addr, word36 *even, word36 *odd) {
-    if(addr >= MEMSIZE) {
-        *even = 0;
-        *odd = 0;
-        return -1;
-    } else {
-        if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
-            addr &= ~1; /* make it an even address */
-        }
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *even = M[addr++] & DMASK;
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *odd = M[addr] & DMASK;
-        return 0;
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_read2 nem");
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
+        addr &= ~1; /* make it an even address */
     }
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+    }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+    *even = M[addr++] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo\n",
+                addr - 1, * even);
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+    }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+
+    *odd = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo\n",
+                addr, * odd);
+    return 0;
 }
 //
 ////! for working with CY-pairs
@@ -1533,16 +2161,24 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
 //}
 //
 int core_write2(word24 addr, word36 even, word36 odd) {
-    if(addr >= MEMSIZE) {
-        return -1;
-    } else {
-        if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
-            addr &= ~1; /* make it even a dress, or iron a skirt ;) */
-        }
-        M[addr++] = even;
-        M[addr] = odd;
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_write2 nem");
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
+        addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+    M[addr++] = even;
+    if (watchBits [addr])
+      {
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
+                   traceInstruction (0);
+      }
+    M[addr] = odd;
     return 0;
 }
 ////! for working with CY-pairs
@@ -1583,6 +2219,7 @@ int core_write2(word24 addr, word36 even, word36 odd) {
 #if 1   //def MM
 
 
+#ifndef QUIET_UNUSED
 //=============================================================================
 
 /*
@@ -1594,90 +2231,43 @@ int core_write2(word24 addr, word36 even, word36 odd) {
 
 void encode_instr(const instr_t *ip, word36 *wordp)
 {
-    *wordp = setbits36(0, 0, 18, ip->addr);
+    *wordp = 0;
+    putbits36(wordp, 0, 18, ip->addr);
 #if 1
-    *wordp = setbits36(*wordp, 18, 10, ip->opcode);
+    putbits36(wordp, 18, 10, ip->opcode);
 #else
-    *wordp = setbits36(*wordp, 18, 9, ip->opcode & 0777);
-    *wordp = setbits36(*wordp, 27, 1, ip->opcode >> 9);
+    putbits36(*wordp, 18, 9, ip->opcode & 0777);
+    putbits36(*wordp, 27, 1, ip->opcode >> 9);
 #endif
-    *wordp = setbits36(*wordp, 28, 1, ip->inhibit);
+    putbits36(wordp, 28, 1, ip->inhibit);
     if (! is_eis[ip->opcode&MASKBITS(10)]) {
-        *wordp = setbits36(*wordp, 29, 1, ip->mods.single.pr_bit);
-        *wordp = setbits36(*wordp, 30, 6, ip->mods.single.tag);
+        putbits36(wordp, 29, 1, ip->mods.single.pr_bit);
+        putbits36(wordp, 30, 6, ip->mods.single.tag);
     } else {
-        *wordp = setbits36(*wordp, 29, 1, ip->mods.mf1.ar);
-        *wordp = setbits36(*wordp, 30, 1, ip->mods.mf1.rl);
-        *wordp = setbits36(*wordp, 31, 1, ip->mods.mf1.id);
-        *wordp = setbits36(*wordp, 32, 4, ip->mods.mf1.reg);
+        putbits36(wordp, 29, 1, ip->mods.mf1.ar);
+        putbits36(wordp, 30, 1, ip->mods.mf1.rl);
+        putbits36(wordp, 31, 1, ip->mods.mf1.id);
+        putbits36(wordp, 32, 4, ip->mods.mf1.reg);
     }
 }
-
+#endif
 
 
 #endif // MM
     
-static DCDstruct *newDCDstruct(void)
-{
-    DCDstruct *p = malloc(sizeof(DCDstruct));
-    p->e = malloc(sizeof(EISstruct));
-    
-    return p;
-}
-
-void freeDCDstruct(DCDstruct *p)
-{
-    if (!p)
-        return; // Uh-Uh...
-    
-    if (p->e)
-        free(p->e);
-    free(p);
-}
 
 /*
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
  */
-#ifdef OLD_WAY
-DCDstruct *fetchInstructionOLD(word18 addr, DCDstruct *i)  // fetch instrcution at address
-{
-    DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
-
-// XXX experimental code; there may be a better way to do this, especially
-// if a pointer to a malloc is getting zapped
-// Yep, I was right
-// HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
-    
-    //memset (p, 0, sizeof (struct DCDstruct));
-// Try the obivous ones
-    p->opcode  = 0;
-    p->opcodeX = 0;
-    p->address = 0;
-    p->a       = 0;
-    p->i       = 0;
-    p->tag     = 0;
-    
-    p->iwb = 0;
-    p->IWB = 0;
-    
-    Read(p, addr, &p->IWB, InstructionFetch, 0);
-    
-    cpu.read_addr = addr;
-    
-    return decodeInstruction(p->IWB, p);
-}
-#endif
 
 /*
  * instruction decoder .....
  *
  * if dst is not NULL place results into dst, if dst is NULL plae results into global currentInstruction
  */
-DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruction into structure
+void decodeInstruction (word36 inst, DCDstruct * p)
 {
-    DCDstruct *p = dst == NULL ? newDCDstruct() : dst;
-    
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
@@ -1688,8 +2278,8 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->info = getIWBInfo(p);     // get info for IWB instruction
     
     // HWR 18 June 2013 
-    p->info->opcode = p->opcode;
-    p->IWB = inst;
+    //p->info->opcode = p->opcode;
+    //p->IWB = inst;
     
     // HWR 21 Dec 2013
     if (p->info->flags & IGN_B29)
@@ -1701,94 +2291,92 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
         p->tag = 0;
         if (p->info->ndes > 1)
         {
-            memset(p->e, 0, sizeof(EISstruct)); // clear out e
-            p->e->op0 = p->IWB;
+            memset(&p->e, 0, sizeof(EISstruct)); // clear out e
+            p->e.op0 = inst;
         }
     }
-    return p;
+#ifdef MULTIPASS
+    if (multipassStatsPtr)
+      multipassStatsPtr -> inst = inst;
+#endif
 }
 
 // MM stuff ...
 
-    /*
-     * is_priv_mode()
-     *
-     * Report whether or or not the CPU is in privileged mode.
-     * True if in absolute mode or if priv bit is on in segment TPR.TSR
-     * The processor executes instructions in privileged mode when forming addresses in absolute mode
-     * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
-     * and the execution ring is equal to zero.
-     *
-     * PPR.P A flag controlling execution of privileged instructions.
-     *
-     * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
-     */
+/*
+ * is_priv_mode()
+ *
+ * Report whether or or not the CPU is in privileged mode.
+ * True if in absolute mode or if priv bit is on in segment TPR.TSR
+ * The processor executes instructions in privileged mode when forming addresses in absolute mode
+ * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
+ * and the execution ring is equal to zero.
+ *
+ * PPR.P A flag controlling execution of privileged instructions.
+ *
+ * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
+ */
+ 
+int is_priv_mode(void)
+{
+    // TODO: fix this when time permits
     
-    int is_priv_mode(void)
+    // something has already set .P
+    if (PPR.P)
+        return 1;
+    
+    switch (get_addr_mode())
     {
-        // TODO: fix this when time permits
-        
-        // something has already set .P
-        if (PPR.P)
+        case ABSOLUTE_mode:
+            PPR.P = 1;
             return 1;
         
-        switch (get_addr_mode())
-        {
-            case ABSOLUTE_mode:
+        case APPEND_mode:
+            // XXX This is probably too simplistic, but it's a start
+            
+            if (switches . super_user)
+                return 1;
+
+// Append cycle should always set this up
+#if 0
+            if (SDW->P && PPR.PRR == 0)
+            {
                 PPR.P = 1;
                 return 1;
-            
-            case APPEND_mode:
-                // XXX This is probably too simplistic, but it's a start
-                
-                if (switches . super_user)
-                    return 1;
-
-// doAppendCycle maintains PPR.P (Consider that the current SDW may
-// be the operands SDW is the case of an XEC of a privileged instruction).
-#if 0
-                if (SDW->P && PPR.PRR == 0)
-                {
-                    PPR.P = 1;
-                    return 1;
-                }
+            }
 #endif
-                // [CAC] This generates a lot of traffic because is_priv_mode
-                // is frequntly called to get the state, and not just to trap
-                // priviledge violations.
-                //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privileged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
-                break;
-            default:
-                break;
-        }
-        
-        //if (!TSTF(rIR, I_ABS))       //IR.abs_mode)
-        //    return 1;
-        
-//        SDW_t *SDWp = get_sdw();    // Get SDW for segment TPR.TSR
-//        if (SDWp == NULL) {
-//            if (cpu.apu_state.fhld) {
-//                // TODO: Do we need to check cu.word1flags.oosb and other flags to
-//                // know what kind of fault to gen?
-//                fault_gen(acc_viol_fault);
-//                cpu.apu_state.fhld = 0;
-//            }
-//            sim_debug (DGB_WARN, & cpu_dev, "APU is-priv-mode: Segment does not exist?!?\n");
-//            cancel_run(STOP_BUG);
-//            return 0;   // arbitrary
-//        }
-//        if (SDWp->priv)
-//            return 1;
-//        if(opt_debug>0)
-//            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Priv check fails for segment %#o.\n", TPR.TSR);
-//        return 0;
-        
-        return 0;
+            // [CAC] This generates a lot of traffic because is_priv_mode
+            // is frequntly called to get the state, and not just to trap
+            // priviledge violations.
+            //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
+            break;
+        default:
+            break;
     }
+    
+    return 0;
+}
 
 
 static bool secret_addressing_mode;
+// XXX loss of data on page fault: ticket #5
 static bool went_appending; // we will go....
+
+void set_went_appending (void)
+  {
+    went_appending = true;
+  }
+
+void clr_went_appending (void)
+  {
+    went_appending = false;
+  }
+
+bool get_went_appending (void)
+  {
+    return went_appending;
+  }
+
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -1799,13 +2387,13 @@ static bool went_appending; // we will go....
  *
  */
 
-void set_TEMPORARY_ABSOLUTE_mode (void)
+static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = true;
     went_appending = false;
 }
 
-bool clear_TEMPORARY_ABSOLUTE_mode (void)
+static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
     return went_appending;
@@ -1813,15 +2401,21 @@ bool clear_TEMPORARY_ABSOLUTE_mode (void)
 
 addr_modes_t get_addr_mode(void)
 {
+    //if (secret_addressing_mode)
+      //{ sim_debug (DBG_TRACE, & cpu_dev, "SECRET\n"); }
     if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
+    //if (went_appending)
+      //{ sim_debug (DBG_TRACE, & cpu_dev, "WENT\n"); }
+    if (went_appending)
+        return APPEND_mode;
     //if (IR.abs_mode)
-    if (TSTF(rIR, I_ABS))
+    if (TSTF(cu.IR, I_ABS))
         return ABSOLUTE_mode;
     
     //if (IR.not_bar_mode == 0)
-    if (! TSTF(rIR, I_NBAR))
+    if (! TSTF(cu.IR, I_NBAR))
         return BAR_mode;
     
     return APPEND_mode;
@@ -1838,37 +2432,38 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+    went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
-//   case, and ITx if added.
-    if (secret_addressing_mode && mode == APPEND_mode)
-      went_appending = true;
+//   case or ITx.
+    //if (secret_addressing_mode && mode == APPEND_mode)
+      //set_went_appending ();
 
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
-        SETF(rIR, I_ABS);
-        SETF(rIR, I_NBAR);
+        SETF(cu.IR, I_ABS);
+        SETF(cu.IR, I_NBAR);
         
         PPR.P = 1;
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
-        if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
+        if (! TSTF (cu.IR, I_ABS) && TSTF (cu.IR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
-        CLRF(rIR, I_ABS);
+        CLRF(cu.IR, I_ABS);
         
-        SETF(rIR, I_NBAR);
+        SETF(cu.IR, I_NBAR);
     } else if (mode == BAR_mode) {
-        CLRF(rIR, I_ABS);
-        CLRF(rIR, I_NBAR);
+        CLRF(cu.IR, I_ABS);
+        CLRF(cu.IR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
-        cancel_run(STOP_BUG);
+        sim_err ("APU: Unable to determine address mode.\n"); // Doesn't return
     }
 }
 
@@ -1883,7 +2478,7 @@ void set_addr_mode(addr_modes_t mode)
 static int ic_hist_max = 0;
 static int ic_hist_ptr;
 static int ic_hist_wrapped;
-enum hist_enum { h_instruction, h_fault, h_intr } htype;
+enum hist_enum { h_instruction, h_fault, h_intr };
 struct ic_hist_t {
     addr_modes_t addr_mode;
     uint seg;
@@ -1891,9 +2486,9 @@ struct ic_hist_t {
     //enum hist_enum { instruction, fault, intr } htype;
     enum hist_enum htype;
     union {
-        int intr;
+        //int intr;
         int fault;
-        instr_t instr;
+        //instr_t instr;
     } detail;
 };
 
@@ -1901,7 +2496,7 @@ typedef struct ic_hist_t ic_hist_t;
 
 static ic_hist_t *ic_hist;
 
-void ic_history_init(void)
+static void ic_history_init(void)
 {
     ic_hist_wrapped = 0;
     ic_hist_ptr = 0;
@@ -1912,33 +2507,18 @@ void ic_history_init(void)
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
 
-// XXX when multiple cpus are supported, make the cpu  data structure
-// an array and merge the unit state info into here; coding convention
-// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
-// is taken. It should probably be merged into here, and then this
-// should then be renamed.
-
-#define N_CPU_UNITS_MAX 1
-
-static struct
-  {
-    struct
-      {
-        bool inuse;
-        int scu_unit_num; // 
-        DEVICE * devp;
-      } ports [N_CPU_PORTS];
-
-  } cpu_array [N_CPU_UNITS_MAX];
-
-// XXX when multiple cpus are supported, merge this into cpu_reset
+struct cpu_array cpu_array [N_CPU_UNITS_MAX];
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
-    return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    return -1;
   }
 
-void cpu_reset_array (void)
+// XXX when multiple cpus are supported, merge this into cpu_reset
+
+static void cpu_reset_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
@@ -1950,9 +2530,10 @@ void cpu_reset_array (void)
 //  from it's port scu_unit_num, scu_port_num
 //
 
-t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int scu_port_num)
+t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, 
+                     UNUSED int scu_port_num)
   {
-    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         return SCPE_ARG;
@@ -1977,17 +2558,18 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
 
-    setup_scpage_map ();
+    setup_scbank_map ();
 
     return SCPE_OK;
   }
 
-static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
+                               UNUSED int val, UNUSED void * desc)
 {
     int unit_num = UNIT_NUM (uptr);
-    if (unit_num < 0 || unit_num >= cpu_dev . numunits)
+    if (unit_num < 0 || unit_num >= (int) cpu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
+        //sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: invalid unit number %d\n", unit_num);
         return SCPE_ARG;
       }
@@ -2021,7 +2603,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
     sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
     sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
-
+    sim_printf("Report faults:            %01o(8)\n", switches . report_faults);
+    sim_printf("TRO faults enabled:       %01o(8)\n", switches . tro_enable);
+    sim_printf("Y2K enabled:              %01o(8)\n", switches . y2k);
+    sim_printf("drl fatal enabled:        %01o(8)\n", switches . drl_fatal);
     return SCPE_OK;
 }
 
@@ -2052,11 +2637,18 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           disable_wam = n
 //           bullet_time = n
 //           disable_kbd_bkpt = n
+//           report_faults = n
+//               n = 0 don't
+//               n = 1 report
+//               n = 2 report overflow
+//           tro_enable = n
+//           y2k
+//           drl_fatal
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
     { "multics", 2 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_on_off [] =
@@ -2065,14 +2657,14 @@ static config_value_list_t cfg_on_off [] =
     { "on", 1 },
     { "disable", 0 },
     { "enable", 1 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_cpu_mode [] =
   {
     { "gcos", 0 },
     { "multics", 1 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_port_letter [] =
@@ -2081,7 +2673,7 @@ static config_value_list_t cfg_port_letter [] =
     { "b", 1 },
     { "c", 2 },
     { "d", 3 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_interlace [] =
@@ -2089,7 +2681,7 @@ static config_value_list_t cfg_interlace [] =
     { "off", 0 },
     { "2", 2 },
     { "4", 4 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_size_list [] =
@@ -2113,7 +2705,7 @@ static config_value_list_t cfg_size_list [] =
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 7 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_list_t cpu_config_list [] =
@@ -2146,24 +2738,29 @@ static config_list_t cpu_config_list [] =
     /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
-    { NULL }
+    /* 25 */ { "report_faults", 0, 2, NULL },
+    /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
+    /* 27 */ { "y2k", 0, 1, cfg_on_off },
+    /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
+    { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+                              UNUSED void * desc)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
     int cpu_unit_num = UNIT_NUM (uptr);
-    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
+        //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
         sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
     static int port_num = 0;
 
-    config_state_t cfg_state = { NULL };
+    config_state_t cfg_state = { NULL, NULL };
 
     for (;;)
       {
@@ -2278,8 +2875,24 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               switches . disable_kbd_bkpt = v;
               break;
 
+            case 25: // REPORT_FAULTS
+              switches . report_faults = v;
+              break;
+
+            case 26: // TRO_ENABLE
+              switches . tro_enable = v;
+              break;
+
+            case 27: // Y2K
+              switches . y2k = v;
+              break;
+
+            case 28: // DRL_FATAL
+              switches . drl_fatal = v;
+              break;
+
             default:
-              sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
+              //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
               sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG; 
@@ -2291,7 +2904,7 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
     return SCPE_OK;
   }
 
-int words2its (word36 word1, word36 word2, struct _par * prp)
+static int words2its (word36 word1, word36 word2, struct _par * prp)
   {
     if ((word1 & MASKBITS(6)) != 043)
       {
@@ -2349,7 +2962,7 @@ static void print_frame (
 #endif
 }
 
-static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame_listp */)
+static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
     // Trace through the Multics stack frames
     // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
 {
@@ -2364,20 +2977,23 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
     int seg = PAR [6].SNR;
 
     uint curr_frame;
-    t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
+    char * msg;
+    //t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
+    int rc = dbgLookupAddress (seg, PAR [6].WORDNO, & curr_frame, & msg);
     if (rc)
       {
-        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address.\n",
-            __func__, PAR [6].SNR, PAR [6].WORDNO);
+        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
+            __func__, PAR [6].SNR, PAR [6].WORDNO, msg);
         return 1;
       }
 
     // The stack header will be at offset 0 within the stack segment.
     int offset = 0;
     word24 hdr_addr;  // 24bit main memory address
-    if (computeAbsAddrN (& hdr_addr, seg, offset))
+    //if (computeAbsAddrN (& hdr_addr, seg, offset))
+    if (dbgLookupAddress (seg, offset, & hdr_addr, & msg))
       {
-        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address.\n", __func__, seg);
+        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address becuase %s.\n", __func__, seg, msg);
         return 1;
       }
 
@@ -2416,8 +3032,8 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
 
     if (output)
       sim_printf ("%s: Stack Trace via back-links in current stack frame:\n", __func__);
-    int framep = stack_begin_pr.WORDNO;
-    int prev = 0;
+    uint framep = stack_begin_pr.WORDNO;
+    uint prev = 0;
     int finished = 0;
 #if 0
     int need_hist_msg = 0;
@@ -2428,12 +3044,13 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
         // Might find ourselves in a different page while moving from frame to frame...
         // BUG: We assume a stack frame doesn't cross page boundries
         uint addr;
-        if (computeAbsAddrN (& addr, seg, framep))
+        //if (computeAbsAddrN (& addr, seg, framep))
+        if (dbgLookupAddress (seg, offset, & addr, & msg))
           {
             if (finished)
               break;
             //if (output)
-              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address.\n", __func__, seg, framep);
+              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address because %s.\n", __func__, seg, framep, msg);
             return 1;
           }
 
@@ -2517,7 +3134,7 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
                 if (where)
                   {
                     sim_printf ("%s\n", where);
-                    listSource (compname, compoffset);
+                    listSource (compname, compoffset, 0);
                   }
 
 //---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {
@@ -2561,7 +3178,7 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
     return 0;
 }
 
-static int cmd_stack_trace (int32 arg, char * buf)
+static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
   {
     walk_stack (1, NULL);
     sim_printf ("\n");
@@ -2578,7 +3195,8 @@ static int cmd_stack_trace (int32 arg, char * buf)
   }
 
 
-static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc)
+static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                           UNUSED int val, UNUSED void * desc)
   {
     // FIXME: use FILE *st
     return cmd_stack_trace(0, NULL);

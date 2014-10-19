@@ -1,0 +1,6 @@
+!INFO date Sat 07 Jun 2014 17:22:10 PDT
+!INFO src TestFaultSeg2.s
+!SIZE 002002
+000000 xxxx 002001000000 t6_p2:	arg	t6_a1
+002000 xxxx 000567005001 	dec	t5_data
+002001 xxxx 000670006001 	dec	t6_data

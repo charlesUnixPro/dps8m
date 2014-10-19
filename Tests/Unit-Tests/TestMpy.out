@@ -1,6 +1,6 @@
-122 (000172) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+122 (000172) words loaded
 0 (0)
 01180591620717411303424 (1180591620717411303424)
 10 (10)
@@ -14,6 +14,8 @@ dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 1000000000 (1000000000)
 10000000000 (10000000000) 
 100000000000 (100000000000)
+
+simCycles = 112
 
 cpuCycles = 56
 TestMpy-4> g 0
