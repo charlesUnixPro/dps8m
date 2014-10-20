@@ -308,7 +308,7 @@ static t_stat dps_debug_break (UNUSED int32 arg, char * buf)
 static t_stat dps_debug_segno (UNUSED int32 arg, char * buf)
   {
     sim_deb_segno = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to segno %lld\n", sim_deb_segno);
+    sim_printf ("Debug set to segno %llo\n", sim_deb_segno);
     return SCPE_OK;
   }
 
