@@ -242,6 +242,18 @@ static struct
 
 static int boot_drive = 1; // Drive number to boot from
 
+t_stat rewindDone (UNIT * uptr)
+  {
+    int32 driveNumber = uptr -> u3;
+    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
+                            cables_from_ioms_to_mt [driveNumber] . chan_num,
+                            driveNumber, 0, 0100 /* rewind complete */);
+    return SCPE_OK;
+  }
+
+static UNIT rewindDoneUnit =
+  { UDATA (& rewindDone, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+
 static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
@@ -342,6 +354,10 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
  
 static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
+if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     int mt_unit_num = MT_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
@@ -373,15 +389,15 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
       {
         case 0: // CMD 00 Request status
           {
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Request status\n");
             stati = 04000; // have_status = 1
             if (sim_tape_wrp (unitp))
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Request status: %04o\n", stati);
           }
           break;
 
@@ -508,6 +524,8 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
+            sim_debug (DBG_DEBUG, & iom_dev,
+                       "%s: Tally %d (%o)\n", __func__, tally, tally);
 if (chan_data -> ptp)
   {
     sim_printf ("XXXX---->>>   PTP in mt read\n");
@@ -563,8 +581,8 @@ else
               stati |= 1;
 
             sim_debug (DBG_INFO, & tape_dev,
-                       "%s: Read %d bytes from simulated tape\n",
-                       __func__, (int) tbc);
+                       "%s: Read %d bytes from simulated tape; status %04o\n",
+                       __func__, (int) tbc, stati);
           }
           break;
 
@@ -580,16 +598,14 @@ else
 
         case 040:               // CMD 040 -- Reset Status
           {
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Reset status\n");
             stati = 04000;
             if (sim_tape_wrp (unitp))
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
-            sim_debug (DBG_INFO, & tape_dev,
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, stati);
           }
@@ -674,8 +690,8 @@ sim_printf ("uncomfortable with this\n");
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
           }
           break;
 
@@ -688,15 +704,15 @@ sim_printf ("uncomfortable with this\n");
 // has been filtered out at a higher level
         case 051:               // CMD 051 -- Reset device status
           {
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Reset device status\n");
             stati = 04000;
             if (sim_tape_wrp (unitp))
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Reset device status: %o\n", stati);
           }
           break;
 
@@ -850,8 +866,10 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Set 800 bpi\n");
           }
           break;
 
@@ -866,8 +884,14 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               stati |= 1;
             if (sim_tape_bot (unitp))
               stati |= 2;
-            if (sim_tape_eom (unitp))
-              stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //stati |= 0340;
+            //rewindDoneUnit . u3 = mt_unit_num;
+            //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
+    send_special_interrupt (cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num,
+                            cables_from_ioms_to_mt [mt_unit_num] . chan_num,
+                            mt_unit_num, 0, 0100 /* rewind complete */);
+
           }
           break;
    
@@ -893,7 +917,17 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3);
+
+    //if (pcwp -> control & 1) // marker bit set
+    if (pcwp -> control == 3) // marker bit set
+      {
+        sim_printf ("XXX marker intr\n");
+        sim_printf ("XXX marker intr\n");
+        sim_printf ("XXX marker intr\n");
+        sim_printf ("XXX marker intr\n");
+        send_marker_interrupt (iom_unit_num, chan);
+      }
 
     return 0;
   }
@@ -950,7 +984,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false);
             break;
           }
 
@@ -966,7 +1000,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false);
             break;
           }
         unitp = & mt_unit [mt_unit_num];

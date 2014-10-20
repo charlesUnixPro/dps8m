@@ -197,7 +197,7 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false);
 
     return 0;
   }
@@ -244,7 +244,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false);
             break;
           }
 
@@ -255,7 +255,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
         if (fnp_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false);
             break;
           }
         unitp = & fnp_unit [fnp_unit_num];

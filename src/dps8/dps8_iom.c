@@ -1454,7 +1454,8 @@ sim_printf ("iom user fault ignored"); // XXX
  */
 
 int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati, 
-                    word6 rcount, word12 residue, word3 char_pos, bool is_read)
+                    word6 rcount, word12 residue, word3 char_pos, bool is_read,
+                    bool marker)
   {
     // See page 33 and AN87 for format of y-pair of status info
     
@@ -1472,8 +1473,8 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
     //putbits36 (& word1, 6, 6, sub);
     putbits36 (& word1, 0, 12, stati);
 
-    putbits36 (& word1, 12, 1, 1); // BUG: even/odd
-    putbits36 (& word1, 13, 1, 1); // BUG: marker int
+    putbits36 (& word1, 12, 1, 0); // BUG: even/odd
+    putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
     putbits36 (& word1, 16, 1, 0); // BUG: initiate flag
     putbits36 (& word1, 17, 1, 0);
@@ -1679,7 +1680,6 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     return scu_set_interrupt ((uint)scuUnitNum, interrupt_num);
   }
 
-#if 0
 /*
  * send_marker_interrupt ()
  *
@@ -1690,11 +1690,10 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
  * of three.
  */
 
-static int send_marker_interrupt (uint iomUnitNum, int chanNum)
+int send_marker_interrupt (uint iomUnitNum, int chanNum)
 {
-    return send_general_interrupt (uiomUnitNum, chanNum, imwMarkerPic);
+    return send_general_interrupt (iomUnitNum, chanNum, imwMarkerPic);
 }
-#endif
 
 /*
  * send_special_interrupt ()
