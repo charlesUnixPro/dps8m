@@ -153,7 +153,7 @@ uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service (uint iomUnitNum, uint chan, uint dev_code, word12 stati, 
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker, bool odd, chanStat chanStatus,
+                    bool marker, bool initiate, bool odd, chanStat chanStatus,
                     iomStat iomStatus);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 

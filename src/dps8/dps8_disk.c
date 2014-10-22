@@ -314,6 +314,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     word3 char_pos = 0;
     bool is_read = true;
     bool odd = false;
+    bool initiate = false;
     chanStat chanStatus = chanStatNormal;
     * disc = false;
 
@@ -334,6 +335,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             stati = 04000;
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Request status\n");
+            initiate = true;
           }
           break;
 
@@ -816,6 +818,7 @@ sim_printf ("uncomfortable with this\n");
             stati = 04000;
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
+            initiate = true;
           }
           break;
 
@@ -835,7 +838,7 @@ sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, odd, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, initiate, odd, chanStatus, iomStatNormal);
 
     return 0;
 #if 0
@@ -991,7 +994,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
 
@@ -1001,7 +1004,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (disk_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
         unitp = & disk_unit [disk_unit_num];

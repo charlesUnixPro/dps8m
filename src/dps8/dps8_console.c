@@ -349,6 +349,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     word3 char_pos = 0;
     bool is_read = true;
     chanStat chanStatus = chanStatNormal;
+    bool initiate = false;
 
     int chan = pcwp-> chan;
 
@@ -364,6 +365,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                        "%s: Status request cmd received",
                        __func__);
             stati = 04000;
+            initiate = true;
           }
           break;
 
@@ -658,6 +660,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
             stati = 04000;
+            initiate = true;
           }
           break;
 
@@ -696,7 +699,9 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             break;
           }
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, 
+                    residue, char_pos, is_read, false, initiate, false,
+                    chanStatus, iomStatNormal);
 
     return 0;
   }

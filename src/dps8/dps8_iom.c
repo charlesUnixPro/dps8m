@@ -1456,7 +1456,7 @@ sim_printf ("iom user fault ignored"); // XXX
 
 int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati, 
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker, bool odd, chanStat chanStatus,
+                    bool marker, bool initiate, bool odd, chanStat chanStatus,
                     iomStat iomStatus)
   {
     // See page 33 and AN87 for format of y-pair of status info
@@ -1469,7 +1469,7 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
     putbits36 (& word1, 12, 1, odd ? 0 : 1);
     putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
-    putbits36 (& word1, 16, 1, 0); // BUG: initiate flag
+    putbits36 (& word1, 16, 1, initiate ? 1 : 0);
     putbits36 (& word1, 17, 1, 0);
     putbits36 (& word1, 18, 3, chanStatus);
     putbits36 (& word1, 21, 3, iomStatus);

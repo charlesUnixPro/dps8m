@@ -367,6 +367,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     word3 char_pos = 0;
     bool is_read = true;
     bool odd = false;
+    bool initiate = false;
     chanStat chanStatus = chanStatNormal;
     * disc = false;
 
@@ -399,6 +400,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
               //stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Request status: %04o\n", stati);
+            initiate = true;
           }
           break;
 
@@ -615,6 +617,7 @@ else
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, stati);
+            initiate = true;
           }
           break;
 
@@ -723,6 +726,7 @@ sim_printf ("uncomfortable with this\n");
               //stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset device status: %o\n", stati);
+            initiate = true;
           }
           break;
 
@@ -931,7 +935,9 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3, odd, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, 
+                    residue, char_pos, is_read, pcwp -> control == 3, 
+                    initiate, odd, chanStatus, iomStatNormal);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -998,7 +1004,10 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
+            status_service (iom_unit_num, pcwp -> chan, 
+                            dcw . fields . instr. dev_code, 04501, 0, 0, 
+                            0, true, false, false, false, 
+                            chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
 
@@ -1014,7 +1023,10 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
+            status_service (iom_unit_num, pcwp -> chan, 
+                            dcw . fields . instr. dev_code, 04502, 0, 0, 
+                            0, true, false, false, false, 
+                            chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
