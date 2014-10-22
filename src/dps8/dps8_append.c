@@ -327,7 +327,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
         nwam = 1;
-	return NULL;
+        return NULL;
     }
     
     for(int _n = 0 ; _n < nwam ; _n++)
@@ -580,7 +580,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
         nwam = 1;
-	return NULL;
+        return NULL;
     }
     
     for(int _n = 0 ; _n < nwam ; _n++)

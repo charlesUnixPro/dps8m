@@ -1277,15 +1277,15 @@ void setupOperandDescriptor(int k, EISstruct *e)
         word18 address = GETHI(opDesc);
         e->addr[k-1].address = address;
         
-	// Indirect descriptor control. If ID = 1 for Mfk, then the kth word
-	// following the instruction word is an indirect pointer to the operand
-	// descriptor for the kth operand; otherwise, that word is the operand
-	// descriptor.
+        // Indirect descriptor control. If ID = 1 for Mfk, then the kth word
+        // following the instruction word is an indirect pointer to the operand
+        // descriptor for the kth operand; otherwise, that word is the operand
+        // descriptor.
         //
-	// If MFk.ID = 1, then the kth word following an EIS multiword
-	// instruction word is not an operand descriptor, but is an indirect
-	// pointer to an operand descriptor and is interpreted as shown in
-	// Figure 4-5.
+        // If MFk.ID = 1, then the kth word following an EIS multiword
+        // instruction word is not an operand descriptor, but is an indirect
+        // pointer to an operand descriptor and is interpreted as shown in
+        // Figure 4-5.
         
         
         // Mike Mondy michael.mondy@coffeebird.net sez' ...
@@ -1301,8 +1301,8 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         if (a)
         {
-	    // A 3-bit pointer register number (n) and a 15-bit offset relative
-	    // to C(PRn.WORDNO) if A = 1 (all modes)
+            // A 3-bit pointer register number (n) and a 15-bit offset relative
+            // to C(PRn.WORDNO) if A = 1 (all modes)
             uint n = bitfieldExtract36(address, 15, 3);
             word15 offset = address & MASK15;  // 15-bit signed number
             address = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
@@ -1320,10 +1320,10 @@ void setupOperandDescriptor(int k, EISstruct *e)
             e->addr[k-1].mat = OperandRead;      // no ARs involved yet
 
         
-	// Address modifier for ADDRESS. All register modifiers except du and
-	// dl may be used. If the ic modifier is used, then ADDRESS is an
-	// 18-bit offset relative to value of the instruction counter for the
-	// instruction word. C(REG) is always interpreted as a word offset. REG 
+        // Address modifier for ADDRESS. All register modifiers except du and
+        // dl may be used. If the ic modifier is used, then ADDRESS is an
+        // 18-bit offset relative to value of the instruction counter for the
+        // instruction word. C(REG) is always interpreted as a word offset. REG 
 
         uint reg = opDesc & 017;
         address += getMFReg18(reg, false);
@@ -1369,9 +1369,9 @@ static void parseAlphanumericOperandDescriptor(uint k, EISstruct *e, uint useTA)
 
     if (MFk & MFkAR)
     {
-	// if MKf contains ar then it Means Y-charn is not the memory address
-	// of the data but is a reference to a pointer register pointing to the
-	// data.
+        // if MKf contains ar then it Means Y-charn is not the memory address
+        // of the data but is a reference to a pointer register pointing to the
+        // data.
         uint n = bitfieldExtract36(address, 15, 3);
         word18 offset = SIGNEXT15 (address);  // 15-bit signed number
         address = (AR [n] . WORDNO + offset) & AMASK;
@@ -3524,14 +3524,14 @@ static int mopINSN(EISstruct *e)
     {
         if (!e->mopSN)
         {
-	    //If SN is OFF, then edit insertion table entry 1 is moved to the
-	    //receiving field. If IF = 0, then the next 9 bits are also
-	    //skipped. If IF is not 0, the next 9 bits are treated as a MOP.
+            //If SN is OFF, then edit insertion table entry 1 is moved to the
+            //receiving field. If IF = 0, then the next 9 bits are also
+            //skipped. If IF is not 0, the next 9 bits are treated as a MOP.
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         } else {
-	    // If SN is ON and IF = 0, then the 9-bit character immediately
-	    // following the INSN micro-instruction is moved to the receiving
-	    // field.
+            // If SN is ON and IF = 0, then the 9-bit character immediately
+            // following the INSN micro-instruction is moved to the receiving
+            // field.
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
 
             e->mopTally -= 1;   // I think
@@ -3541,8 +3541,8 @@ static int mopINSN(EISstruct *e)
     {
         if (e->mopSN)
         {
-	    //If SN is ON and IF <> 0, then IF specifies which edit insertion
-	    //table entry (1-8) is to be moved to the receiving field.
+            //If SN is ON and IF <> 0, then IF specifies which edit insertion
+            //table entry (1-8) is to be moved to the receiving field.
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         }
     }
@@ -3669,11 +3669,11 @@ static int mopMFLC(EISstruct *e)
             e->_faults |= FAULT_IPR;
             return -1;
         }
-	// If ES is OFF and the character is zero, edit insertion table entry 1
-	// is moved to the receiving field in place of the character.
-	// If ES is OFF and the character is not zero, then edit insertion
-	// table entry 5 is moved to the receiving field, the character is also
-	// moved to the receiving field, and ES is set ON.
+        // If ES is OFF and the character is zero, edit insertion table entry 1
+        // is moved to the receiving field in place of the character.
+        // If ES is OFF and the character is not zero, then edit insertion
+        // table entry 5 is moved to the receiving field, the character is also
+        // moved to the receiving field, and ES is set ON.
         
         int c = *(e->in);
         if (!e->mopES) { // e->mopES is OFF
@@ -3689,15 +3689,15 @@ static int mopMFLC(EISstruct *e)
             if (c == decimalZero)
 #endif
                 {
-		// edit insertion table entry 1 is moved to the receiving field
-		// in place of the character.
+                // edit insertion table entry 1 is moved to the receiving field
+                // in place of the character.
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
             } else {
-		// then edit insertion table entry 5 is moved to the receiving
-		// field, the character is also moved to the receiving field,
-		// and ES is set ON.
+                // then edit insertion table entry 5 is moved to the receiving
+                // field, the character is also moved to the receiving field,
+                // and ES is set ON.
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[4]);
                 
                 e->in += 1;
@@ -3800,8 +3800,8 @@ static int mopMFLS(EISstruct *e)
             if (c == decimalZero)
 #endif
             {
-		// edit insertion table entry 1 is moved to the receiving field
-		// in place of the character.
+                // edit insertion table entry 1 is moved to the receiving field
+                // in place of the character.
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
@@ -3810,9 +3810,9 @@ static int mopMFLS(EISstruct *e)
                 // c is non-zero
                 if (!e->mopSN)
                 {
-		    // then edit insertion table entry 3 is moved to the
-		    // receiving field; the character is also moved to the
-		    // receiving field, and ES is set ON.
+                    // then edit insertion table entry 3 is moved to the
+                    // receiving field; the character is also moved to the
+                    // receiving field, and ES is set ON.
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is off; edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
 
@@ -3828,9 +3828,9 @@ static int mopMFLS(EISstruct *e)
 
                     e->mopES = true;
                 } else {
-		    //  SN is ON; edit insertion table entry 4 is moved to the
-		    //  receiving field; the character is also moved to the
-		    //  receiving field, and ES is set ON.
+                    //  SN is ON; edit insertion table entry 4 is moved to the
+                    //  receiving field; the character is also moved to the
+                    //  receiving field, and ES is set ON.
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is OFF; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
                     
@@ -3956,24 +3956,24 @@ static int mopMSES(EISstruct *e)
             return -1;
         }
         
-	//Starting with the first character during the move, a comparative AND
-	//is made first with edit insertion table entry 3. If the result is
-	//nonzero, the first character and the rest of the characters are moved
-	//without further comparative ANDs. If the result is zero, a
-	//comparative AND is made between the character being moved and edit
-	//insertion table entry 4 If that result is nonzero, the SN indicator
-	//is set ON (indicating negative) and the first character and the rest
-	//of the characters are moved without further comparative ANDs. If the
-	//result is zero, the second character is treated like the first. This
-	//process continues until one of the comparative AND results is nonzero
-	//or until all characters are moved.
+        //Starting with the first character during the move, a comparative AND
+        //is made first with edit insertion table entry 3. If the result is
+        //nonzero, the first character and the rest of the characters are moved
+        //without further comparative ANDs. If the result is zero, a
+        //comparative AND is made between the character being moved and edit
+        //insertion table entry 4 If that result is nonzero, the SN indicator
+        //is set ON (indicating negative) and the first character and the rest
+        //of the characters are moved without further comparative ANDs. If the
+        //result is zero, the second character is treated like the first. This
+        //process continues until one of the comparative AND results is nonzero
+        //or until all characters are moved.
         
         int c = *(e->in);
 
         // a comparative AND is made first with edit insertion table entry 3.
         int cmpAnd = (c & e->editInsertionTable[2]);  // only lower 4-bits are considered
-	//If the result is nonzero, the first character and the rest of the
-	//characters are moved without further comparative ANDs.
+        //If the result is nonzero, the first character and the rest of the
+        //characters are moved without further comparative ANDs.
         if (cmpAnd)
         {
             for(int n2 = n ; n2 < e->mopIF ; n2 += 1)
@@ -3991,11 +3991,11 @@ static int mopMSES(EISstruct *e)
             return 0;
         }
         
-	//If the result is zero, a comparative AND is made between the
-	//character being moved and edit insertion table entry 4 If that result
-	//is nonzero, the SN indicator is set ON (indicating negative) and the
-	//first character and the rest of the characters are moved without
-	//further comparative ANDs.
+        //If the result is zero, a comparative AND is made between the
+        //character being moved and edit insertion table entry 4 If that result
+        //is nonzero, the SN indicator is set ON (indicating negative) and the
+        //first character and the rest of the characters are moved without
+        //further comparative ANDs.
         
         cmpAnd = (c & e->editInsertionTable[3]);  // XXX only lower 4-bits are considered
         if (cmpAnd)
@@ -4015,9 +4015,9 @@ static int mopMSES(EISstruct *e)
             }
             return 0;
         }
-	//If the result is zero, the second character is treated like the
-	//first. This process continues until one of the comparative AND
-	//results is nonzero or until all characters are moved.
+        //If the result is zero, the second character is treated like the
+        //first. This process continues until one of the comparative AND
+        //results is nonzero or until all characters are moved.
         e->in += 1;
         e->srcTally -= 1;   // XXX is this correct? No chars have been consumed, but ......
     }
@@ -4096,9 +4096,9 @@ static int mopMVZA(EISstruct *e)
         if (!e->mopES && c == decimalZero)
 #endif
         {
-	    //If ES is OFF and the character is zero, then edit insertion table
-	    //entry 2 is moved to the receiving field in place of the
-	    //character.
+            //If ES is OFF and the character is zero, then edit insertion table
+            //entry 2 is moved to the receiving field in place of the
+            //character.
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
@@ -4111,14 +4111,14 @@ static int mopMVZA(EISstruct *e)
         else if (!e->mopES && c != decimalZero)
 #endif
         {
-	    //If ES is OFF and the character is not zero, then the character is
-	    //moved to the receiving field and ES is set ON.
+            //If ES is OFF and the character is not zero, then the character is
+            //moved to the receiving field and ES is set ON.
             writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
             
             e->mopES = true;
         } else if (e->mopES)
         {
-	    //If ES is ON, the character is moved to the receiving field.
+            //If ES is ON, the character is moved to the receiving field.
             writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
         }
     }
@@ -4176,9 +4176,9 @@ static int mopMVZB(EISstruct *e)
         if (!e->mopES && c == decimalZero)
 #endif
         {
-	    //If ES is OFF and the character is zero, then edit insertion table
-	    //entry 1 is moved to the receiving field in place of the
-	    //character.
+            //If ES is OFF and the character is zero, then edit insertion table
+            //entry 1 is moved to the receiving field in place of the
+            //character.
             writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
@@ -4191,8 +4191,8 @@ static int mopMVZB(EISstruct *e)
         else if (!e->mopES && c != decimalZero)
 #endif
         {
-	    //If ES is OFF and the character is not zero, then the character is
-	    //moved to the receiving field and ES is set ON.
+            //If ES is OFF and the character is not zero, then the character is
+            //moved to the receiving field and ES is set ON.
             writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
             
             e->mopES = true;
@@ -6455,9 +6455,9 @@ void scd(DCDstruct *ins)
     word6 ARn_BITNO = 0;
     if (y3A)
     {
-	// if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not
-	// the memory address of the data but is a reference to a pointer
-	// register pointing to the data.
+        // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not
+        // the memory address of the data but is a reference to a pointer
+        // register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;

@@ -3484,9 +3484,9 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0577:  ///< dfsb
-	    // The dfsb instruction is identical to the dfad instruction with
-	    // the exception that the twos complement of the mantissa of the
-	    // operand from main memory is used.
+            // The dfsb instruction is identical to the dfad instruction with
+            // the exception that the twos complement of the mantissa of the
+            // operand from main memory is used.
             
             dufs ();
             fno ();

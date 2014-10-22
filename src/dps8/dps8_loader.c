@@ -1118,8 +1118,8 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             if (buff[0] == '!' || buff[0] == '*')
                 continue;
             
-            word24 maddr; 	///< 24-bits
-            word36 data;  	///< 36 bits
+            word24 maddr;       ///< 24-bits
+            word36 data;        ///< 36 bits
             
             int n = sscanf(c, "%o %*s %llo", &maddr, &data);
             if (n == 2)

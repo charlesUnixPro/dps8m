@@ -290,27 +290,27 @@ typedef struct EISstruct EISstruct;
 /*! X from OP_* enum, and X from  */
 #define X(i) (i & 07U)
 
-enum { OP_1	= 00001U,
-    OP_E	= 00002U,
-    OP_BAR	= 00003U,
-    OP_IC	= 00004U,
-    OP_A	= 00005U,
-    OP_Q	= 00006U,
-    OP_AQ	= 00007U,
-    OP_IR	= 00010U,
-    OP_TR	= 00011U,
-    OP_REGS	= 00012U,
+enum { OP_1     = 00001U,
+    OP_E        = 00002U,
+    OP_BAR      = 00003U,
+    OP_IC       = 00004U,
+    OP_A        = 00005U,
+    OP_Q        = 00006U,
+    OP_AQ       = 00007U,
+    OP_IR       = 00010U,
+    OP_TR       = 00011U,
+    OP_REGS     = 00012U,
     
     /* 645/6180 */
-    OP_CPR	= 00021U,
-    OP_DBR	= 00022U,
-    OP_PTP	= 00023U,
-    OP_PTR	= 00024U,
-    OP_RA	= 00025U,
-    OP_SDP	= 00026U,
-    OP_SDR	= 00027U,
+    OP_CPR      = 00021U,
+    OP_DBR      = 00022U,
+    OP_PTP      = 00023U,
+    OP_PTR      = 00024U,
+    OP_RA       = 00025U,
+    OP_SDP      = 00026U,
+    OP_SDR      = 00027U,
     
-    OP_X	= 01000U
+    OP_X        = 01000U
 };
 
 

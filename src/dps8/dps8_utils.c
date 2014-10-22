@@ -19,7 +19,7 @@
  * misc utility routines used by simulator
  */
 
-//I_HEX I_ABS I_MIIF I_TRUNC  I_NBAR	I_PMASK I_PAR	 I_TALLY I_OMASK  I_EUFL	 I_EOFL	I_OFLOW	I_CARRY	    I_NEG	 I_ZERO
+//I_HEX I_ABS I_MIIF I_TRUNC  I_NBAR    I_PMASK I_PAR    I_TALLY I_OMASK  I_EUFL         I_EOFL I_OFLOW I_CARRY     I_NEG        I_ZERO
 char * dumpFlags(word18 flags)
 {
     static char buffer[256] = "";
@@ -29,15 +29,15 @@ char * dumpFlags(word18 flags)
             flags & I_ABS   ? "Abs "   : "",
             flags & I_MIIF  ? "Miif "  : "",
             flags & I_TRUNC ? "Trunc " : "",
-            flags & I_NBAR	? "~BAR "  : "",
+            flags & I_NBAR      ? "~BAR "  : "",
             flags & I_PMASK ? "PMask " : "",
             flags & I_PERR  ? "PErr"   : "",
             flags & I_TALLY ? "Tally " : "",
             flags & I_OMASK ? "OMASK " : "",
             flags & I_EUFL  ? "EUFL "  : "",
             flags & I_EOFL  ? "EOFL "  : "",
-            flags & I_OFLOW	? "Ovr "   : "",
-            flags & I_CARRY	? "Carry " : "",
+            flags & I_OFLOW     ? "Ovr "   : "",
+            flags & I_CARRY     ? "Carry " : "",
             flags & I_NEG   ? "Neg "   : "",
             flags & I_ZERO  ? "Zero "  : ""
             );
@@ -775,22 +775,22 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
 
 char * strlower(char *q)
 {
-	char *s = q;
+        char *s = q;
     
-	while (*s) {
-		if (isupper(*s))
-			*s = (char) tolower(*s);
-		s++;
-	}
-	return q;
+        while (*s) {
+                if (isupper(*s))
+                        *s = (char) tolower(*s);
+                s++;
+        }
+        return q;
 }
 
 /* ------------------------------------------------------------------------- */
 
 /*  state definitions  */
-#define	STAR	0
-#define	NOTSTAR	1
-#define	RESET	2
+#define STAR    0
+#define NOTSTAR 1
+#define RESET   2
 
 int strmask(char *str, char *mask)
 /*!
@@ -798,27 +798,27 @@ int strmask(char *str, char *mask)
  Returns TRUE if the string matches the mask.
  
  The mask can contain '?' and '*' wild card characters.
- '?' matches any	single character.
+ '?' matches any        single character.
  '*' matches any number of any characters.
  
  For example:
- strmask("Hello", "Hello");	---> TRUE
- strmask("Hello", "Jello");	---> FALSE
- strmask("Hello", "H*o");	---> TRUE
- strmask("Hello", "H*g");	---> FALSE
- strmask("Hello", "?ello");	---> TRUE
- strmask("Hello", "H????");	---> TRUE
- strmask("H", "H????");		---> FALSE
+ strmask("Hello", "Hello");     ---> TRUE
+ strmask("Hello", "Jello");     ---> FALSE
+ strmask("Hello", "H*o");       ---> TRUE
+ strmask("Hello", "H*g");       ---> FALSE
+ strmask("Hello", "?ello");     ---> TRUE
+ strmask("Hello", "H????");     ---> TRUE
+ strmask("H", "H????");         ---> FALSE
  */
 {
-	char *sp, *mp, *reset_string, *reset_mask, *sn;
-	int state;
+        char *sp, *mp, *reset_string, *reset_mask, *sn;
+        int state;
     
-	sp = str;
-	mp = mask;
+        sp = str;
+        mp = mask;
     
-	while (1) {
-		switch (*mp) {
+        while (1) {
+                switch (*mp) {
             case '\0':
                 return(*sp ? false : true);
             case '?':
@@ -879,9 +879,9 @@ int strmask(char *str, char *mask)
                     mp = reset_mask;
                 }
                 break;
-		}
-	}
-	return(true);
+                }
+        }
+        return(true);
 }
 
 /*!

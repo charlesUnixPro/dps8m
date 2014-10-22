@@ -9,17 +9,17 @@
 //--    Access Isolation Mechanism. */
 //-- 
 //-- 
-//-- dcl  1 aim_template aligned based,			/* authorization/access class template */
-//--        2 categories bit (36),				/* access categories */
-//--        2 level fixed bin (17) unaligned,		/* sensitivity level */
-//--        2 privileges unaligned,			/* special access privileges (in authorization only) */
-//--         (3 ipc,					/* interprocess communication privilege */
-//--          3 dir,					/* directory privilege */
-//--          3 seg,					/* segment privilege */
-//--          3 soos,					/* security out-of-service privilege */
-//--          3 ring1,					/* ring 1 access privilege */
-//--          3 rcp,					/* RCP resource access privilege */
-//--          3 comm) bit (1),				/* communications cross-AIM privilege */
+//-- dcl  1 aim_template aligned based,                 /* authorization/access class template */
+//--        2 categories bit (36),                              /* access categories */
+//--        2 level fixed bin (17) unaligned,           /* sensitivity level */
+//--        2 privileges unaligned,                     /* special access privileges (in authorization only) */
+//--         (3 ipc,                                    /* interprocess communication privilege */
+//--          3 dir,                                    /* directory privilege */
+//--          3 seg,                                    /* segment privilege */
+//--          3 soos,                                   /* security out-of-service privilege */
+//--          3 ring1,                                  /* ring 1 access privilege */
+//--          3 rcp,                                    /* RCP resource access privilege */
+//--          3 comm) bit (1),                          /* communications cross-AIM privilege */
 //--          3 pad bit (11);
 
 
