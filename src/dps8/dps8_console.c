@@ -687,7 +687,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             break;
           }
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false);
 
     return 0;
   }

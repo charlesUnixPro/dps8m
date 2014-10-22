@@ -534,7 +534,7 @@ sim_printf ("LPWPTW address %o\n", addr);
   }
 
 void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
-                          void * data, idsType type, bool write)
+                          void * data, idsType type, bool write, bool * odd)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     switch (type)
@@ -560,6 +560,7 @@ sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
                   core_write (addr, dataIn [t]);
                 else
                   core_read (addr, & dataIn [t]);
+                * odd = addr % 2;
               }
           }
           break;
@@ -1455,7 +1456,7 @@ sim_printf ("iom user fault ignored"); // XXX
 
 int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati, 
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker)
+                    bool marker, bool odd)
   {
     // See page 33 and AN87 for format of y-pair of status info
     
@@ -1467,13 +1468,8 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
     
     word36 word1, word2;
     word1 = 0;
-    //putbits36 (& word1, 0, 1, 1);
-    //putbits36 (& word1, 1, 1, power_off);
-    //putbits36 (& word1, 2, 4, major);
-    //putbits36 (& word1, 6, 6, sub);
     putbits36 (& word1, 0, 12, stati);
-
-    putbits36 (& word1, 12, 1, 0); // BUG: even/odd
+    putbits36 (& word1, 12, 1, odd ? 0 : 1);
     putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
     putbits36 (& word1, 16, 1, 0); // BUG: initiate flag

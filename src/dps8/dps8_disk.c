@@ -313,6 +313,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     word12 residue = 0;
     word3 char_pos = 0;
     bool is_read = true;
+    bool odd = false;
 
     * disc = false;
 
@@ -513,8 +514,11 @@ sim_printf ("uncomfortable with this\n");
 
             uint wordsProcessed = 0;
             for (uint i = 0; i < tally; i ++)
-              extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                       & M [daddr + i]);
+              {
+                extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
+                                         & M [daddr + i]);
+                odd = (daddr + i) % 2;
+              }
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
             stati = 04000;
           }
@@ -686,8 +690,11 @@ sim_printf ("uncomfortable with this\n");
             memset (buffer, 0, sizeof (buffer));
             uint wordsProcessed = 0;
             for (uint i = 0; i < tally; i ++)
-              insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                    M [daddr + i]);
+              {
+                insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
+                                      M [daddr + i]);
+                odd = (daddr + i) % 2;
+              }
 
             rc = fwrite (buffer, SECTOR_SZ_IN_BYTES,
                          tallySectors,
@@ -808,7 +815,7 @@ sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, odd);
 
     return 0;
 #if 0
@@ -964,7 +971,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false);
             break;
           }
 
@@ -974,7 +981,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (disk_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false);
             break;
           }
         unitp = & disk_unit [disk_unit_num];

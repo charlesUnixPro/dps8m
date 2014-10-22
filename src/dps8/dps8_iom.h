@@ -117,7 +117,7 @@ typedef enum
     idsTypeW36  // Incoming data is array of word36 
   } idsType;
 void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
-			  void * data, idsType type, bool write);
+                          void * data, idsType type, bool write, bool * odd);
 
 void iom_interrupt (uint iomUnitNum);
 void iom_init (void);
@@ -127,7 +127,9 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro);
 int iomListServiceTape (uint iomUnitNum, int chanNum, dcw_t * dcwp, bool * ptro);
 uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
-int status_service(uint iomUnitNum, uint chan, uint dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, bool is_read, bool marker);
+int status_service (uint iomUnitNum, uint chan, uint dev_code, word12 stati, 
+                    word6 rcount, word12 residue, word3 char_pos, bool is_read,
+                    bool marker, bool odd);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);

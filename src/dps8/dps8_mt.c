@@ -366,6 +366,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     word12 residue = 0;
     word3 char_pos = 0;
     bool is_read = true;
+    bool odd = false;
 
     * disc = false;
 
@@ -542,7 +543,7 @@ if (chan_data -> ptp)
               }
 
             indirectDataService (iom_unit_num, chan, daddr, tally, buffer,
-                                 idsTypeW36, true);
+                                 idsTypeW36, true, & odd);
   }
 else
   {
@@ -572,6 +573,7 @@ else
                                __func__, chan);
                     break;
                   }
+                odd = daddr % 2;
                 daddr ++;
                 tally --;
               }
@@ -853,7 +855,7 @@ iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
 sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
 #endif
             indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
-                                 idsTypeW36, true);
+                                 idsTypeW36, true, & odd);
 #endif
             stati = 04000;
           }
@@ -917,7 +919,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3, odd);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -984,7 +986,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false);
             break;
           }
 
@@ -1000,7 +1002,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
