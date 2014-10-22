@@ -2063,9 +2063,15 @@ sim_printf ("transfer to %o\n", addr);
                 
               }
           }
+        else if (chan_data -> chan_mode == cm_ext_LPW_real_DCW)
+          {
+            chan_data -> lpw . ires |= dcwp -> fields . xfer . res;
+            chan_data -> lpw . lpw23_srel |= dcwp -> fields . xfer . tdcw35_rel;
+          }
         else
           {
-            sim_printf ("unsupported chan_mode in TDCW\n");
+            sim_printf ("unsupported chan_mode in TDCW %d\n", 
+                        chan_data -> chan_mode);
             sim_err ("unsupported chan_mode in TDCW\n");
           }
         lpw . tally --;            
