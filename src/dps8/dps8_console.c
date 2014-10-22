@@ -348,6 +348,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     word12 residue = 0;
     word3 char_pos = 0;
     bool is_read = true;
+    chanStat chanStatus = chanStatNormal;
 
     int chan = pcwp-> chan;
 
@@ -417,12 +418,14 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -437,6 +440,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -497,12 +501,14 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -516,6 +522,7 @@ sim_printf ("uncomfortable with this\n");
             if (type != 0 && type != 1) //IOTD, IOTP
               {
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -684,10 +691,12 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             stati = 04501; // command reject, invalid instruction code
             sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
                        __func__, pcwp -> dev_cmd);
+            chanStatus = chanStatIncorrectDCW;
+
             break;
           }
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false, chanStatus, iomStatNormal);
 
     return 0;
   }

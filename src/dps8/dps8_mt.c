@@ -367,7 +367,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     word3 char_pos = 0;
     bool is_read = true;
     bool odd = false;
-
+    chanStat chanStatus = chanStatNormal;
     * disc = false;
 
     int chan = pcwp-> chan;
@@ -415,6 +415,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                     sim_debug (DBG_ERR, & tape_dev,
                                "%s: Malloc error\n", __func__);
                     stati = 05201; // BUG: arbitrary error code; config switch
+                    chanStatus = chanStatParityErrPeriph;
                     break;
                   }
               }
@@ -467,6 +468,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                            "%s: Returning arbitrary error code\n",
                            __func__);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatParityErrPeriph;
                 break;
               }
             tape_statep -> rec_num ++;
@@ -485,12 +487,14 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -508,6 +512,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -632,12 +637,14 @@ else
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -655,6 +662,7 @@ else
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
             if (tally == 0)
@@ -771,12 +779,14 @@ sim_printf ("get the ddcw\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #endif
@@ -796,6 +806,7 @@ sim_printf ("get the ddcw\n");
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -915,11 +926,12 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
             stati = 04501;
             sim_debug (DBG_ERR, & tape_dev,
                        "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);
+            chanStatus = chanStatIncorrectDCW;
             break;
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3, odd);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, pcwp -> control == 3, odd, chanStatus, iomStatNormal);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -986,7 +998,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
 
@@ -1002,7 +1014,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
         unitp = & mt_unit [mt_unit_num];

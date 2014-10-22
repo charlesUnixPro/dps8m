@@ -185,6 +185,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
     word12 residue = 0;
     word3 char_pos = 0;
     bool is_read = true;
+    chanStat chanStatus = chanStatNormal;
 
 //++     * disc = false;
 //++ 
@@ -575,11 +576,12 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
           {
 sim_printf ("dn355 daze %o\n", pcwp -> dev_cmd);
             stati = 04501; // cmd reject, invalid opcode
+            chanStatus = chanStatIncorrectDCW;
           }
           break;
 
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, false, chanStatus, iomStatNormal);
 
     return 0;
   }
@@ -631,7 +633,7 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, chanStatIncorrectDCW, iomStatNormal);
             break;
           }
 
@@ -641,7 +643,7 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dn355_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, chanStatIncorrectDCW, iomStatNormal);
             break;
           }
         unitp = & dn355_unit [dn355_unit_num];

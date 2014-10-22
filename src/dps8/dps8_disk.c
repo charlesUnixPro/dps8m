@@ -314,7 +314,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     word3 char_pos = 0;
     bool is_read = true;
     bool odd = false;
-
+    chanStat chanStatus = chanStatNormal;
     * disc = false;
 
 // init_toehold.pl1:
@@ -348,6 +348,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("read  got type %d\n", dcw . type);
@@ -355,6 +356,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -373,6 +375,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -417,6 +420,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("read  got type %d\n", dcw . type);
@@ -424,6 +428,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -442,6 +447,7 @@ sim_printf ("uncomfortable with this\n");
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -497,6 +503,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("read returned %d, errno %d\n", rc, errno);
                 stati = 04202; // attn, seek incomplete
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 //sim_printf ("tallySectors %u\n", tallySectors);
@@ -537,6 +544,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("seek  got type %d\n", dcw . type);
@@ -544,6 +552,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -562,6 +571,7 @@ sim_printf ("uncomfortable with this\n");
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -585,6 +595,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("disk seek dazed by tally %d != 1\n", tally);
                 stati = 04510; // Cmd reject, invalid inst. seq.
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -620,6 +631,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("write got type %d\n", dcw . type);
@@ -627,6 +639,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -645,6 +658,7 @@ sim_printf ("uncomfortable with this\n");
               {
 sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -672,6 +686,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("fseek (write) returned %d, errno %d\n", rc, errno);
                 stati = 04202; // attn, seek incomplete
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -704,6 +719,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
                 stati = 04202; // attn, seek incomplete
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -727,6 +743,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("seek  got type %d\n", dcw . type);
@@ -734,6 +751,7 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -752,6 +770,7 @@ sim_printf ("uncomfortable with this\n");
               {
 //sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
+                chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -811,11 +830,12 @@ sim_printf ("uncomfortable with this\n");
           {
 sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
             stati = 04501; // cmd reject, invalid opcode
+            chanStatus = chanStatIncorrectDCW;
           }
           break;
       
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, odd);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, odd, chanStatus, iomStatNormal);
 
     return 0;
 #if 0
@@ -971,7 +991,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
 
@@ -981,7 +1001,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (disk_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false);
+            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
         unitp = & disk_unit [disk_unit_num];

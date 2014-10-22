@@ -108,6 +108,30 @@ iomChannelData_ iomChannelData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC, DEVT_DN355 };
 typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
 
+typedef enum chanStat
+  {
+    chanStatNormal = 0,
+    chanStatUnexpectedPCW = 1,
+    chanStatInvalidInstrPCW = 2,
+    chanStatIncorrectDCW = 3,
+    chanStatIncomplete = 4,
+    chanStatUnassigned = 5,
+    chanStatParityErrPeriph = 6,
+    chanStatParityErrBus = 7
+  } chanStat;
+
+typedef enum iomStat
+  {
+    iomStatNormal = 0,
+    iomStatLPWTRO = 1,
+    iomStat2TDCW = 2,
+    iomStatBoundaryError = 3,
+    iomStatAERestricted = 4,
+    iomStatIDCWRestricted = 5,
+    iomStatCPDiscrepancy = 6,
+    iomStatParityErr = 7
+  } iomStat;
+
 typedef int iomCmd (UNIT * unitp, pcw_t * p);
 extern DEVICE iom_dev;
 
@@ -129,7 +153,8 @@ uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service (uint iomUnitNum, uint chan, uint dev_code, word12 stati, 
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker, bool odd);
+                    bool marker, bool odd, chanStat chanStatus,
+                    iomStat iomStatus);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
