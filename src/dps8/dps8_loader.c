@@ -1346,7 +1346,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     word24 sdwaddress = DSBR.ADDR + (2 * segno);
     if (!sim_quiet) sim_printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
-    core_write2(sdwaddress, yPair[0], yPair[1]);
+    core_write2(sdwaddress, yPair[0], yPair[1], __func__);
     
     return SCPE_OK;
 }

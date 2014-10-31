@@ -1098,13 +1098,13 @@ int OPSIZE (void);
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
 t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 
-int core_read (word24 addr, word36 *data);
-int core_write (word24 addr, word36 data);
-int core_read2 (word24 addr, word36 *even, d8 *odd);
-int core_write2 (word24 addr, word36 even, d8 odd);
-int core_readN (word24 addr, word36 *data, int n);
-int core_writeN (word24 addr, word36 *data, int n);
-int core_read72 (word24 addr, word72 *dst);
+int core_read (word24 addr, word36 *data, const char * ctx);
+int core_write (word24 addr, word36 data, const char * ctx);
+int core_read2 (word24 addr, word36 *even, d8 *odd, const char * ctx);
+int core_write2 (word24 addr, word36 even, d8 odd, const char * ctx);
+int core_readN (word24 addr, word36 *data, int n, const char * ctx);
+int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
+int core_read72 (word24 addr, word72 *dst, const char * ctx);
 
 int is_priv_mode (void);
 void set_went_appending (void);

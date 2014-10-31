@@ -215,8 +215,8 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
         word24 a = DSBR.ADDR + 2 * segno;
         
         // just fill with 0's for now .....
-        core_write ((a + 0) & PAMASK, 0);
-        core_write ((a + 1) & PAMASK, 0);
+        core_write ((a + 0) & PAMASK, 0, __func__);
+        core_write ((a + 1) & PAMASK, 0, __func__);
         
         segno ++; // onto next segment SDW
       }
@@ -241,7 +241,7 @@ _sdw0 *fetchSDW (word15 segno)
   {
     word36 SDWeven, SDWodd;
     
-    core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd);
+    core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
     
     // even word
     static _sdw0 _s;
@@ -325,7 +325,7 @@ static t_stat dpsCmd_DumpSegmentTable()
             word24 y1 = (2 * segno) % 1024;
             word24 x1 = (2 * segno - y1) / 1024;
             word36 PTWx1;
-            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
             struct _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
@@ -342,7 +342,7 @@ static t_stat dpsCmd_DumpSegmentTable()
             for (word15 tspt = 0; tspt < 512; tspt ++)
             {
                 word36 SDWeven, SDWodd;
-                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd);
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
                 struct _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
@@ -378,7 +378,7 @@ static t_stat dpsCmd_DumpSegmentTable()
                         // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
                         word36 PTWx2;
-                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
 
                         struct _ptw0 PTW_2;
                         PTW_2.ADDR = GETHI(PTWx2);
@@ -1353,6 +1353,9 @@ t_stat sim_instr (void)
     do
       {
 
+        // XXX Don't trace Multics idle loop
+        if (PPR.PSR != 061 && PPR.IC != 0307)
+
         if_sim_debug (DBG_TRACE, & cpu_dev)
           sim_printf ("\n");
 
@@ -1466,7 +1469,7 @@ t_stat sim_instr (void)
                           }
 #endif
                         // get interrupt pair
-                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1);
+                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1, __func__);
 
                         cpu . interrupt_flag = false;
                         setCpuCycle (INTERRUPT_EXEC_cycle);
@@ -1817,7 +1820,7 @@ syncFaultReturn:;
                     multipassStatsPtr -> faultNumber = cpu . faultNumber;
                   }
 #endif
-                core_read2 (addr, instr_buf, instr_buf + 1);
+                core_read2 (addr, instr_buf, instr_buf + 1, __func__);
 
                 setCpuCycle (FAULT_EXEC_cycle);
 
@@ -2078,75 +2081,75 @@ t_stat memWatch (int32 arg, char * buf)
 /*!
  * "Raw" core interface ....
  */
-int32 core_read(word24 addr, word36 *data)
+int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
     if(addr >= MEMSIZE)
       doFault (op_not_complete_fault, nem, "core_read nem");
     if (M[addr] & MEM_UNINITIALIZED)
       {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, PPR.PSR, PPR.IC, ctx);
       }
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "read   %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
     *data = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read  %08o %012llo\n",
-                addr, * data);
+               "core_read  %08o %012llo (%s)\n",
+                addr, * data, ctx);
     return 0;
 }
 
-int core_write(word24 addr, word36 data) {
+int core_write(word24 addr, word36 data, const char * ctx) {
     if(addr >= MEMSIZE)
       doFault (op_not_complete_fault, nem, "core_write nem");
     M[addr] = data & DMASK;
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "write  %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_write %08o %012llo\n",
-                addr, data);
+               "core_write %08o %012llo (%s)\n",
+                addr, data, ctx);
     return 0;
 }
 
-int core_read2(word24 addr, word36 *even, word36 *odd) {
+int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr >= MEMSIZE)
       doFault (op_not_complete_fault, nem, "core_read2 nem");
     if(addr & 1) {
-        sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
+        sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
     }
     if (M[addr] & MEM_UNINITIALIZED)
     {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
     }
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read2 %08o %012llo\n",
-                addr - 1, * even);
+               "core_read2 %08o %012llo (%s)\n",
+                addr - 1, * even, ctx);
     if (M[addr] & MEM_UNINITIALIZED)
     {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
     }
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "read2  %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
 
     *odd = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read2 %08o %012llo\n",
-                addr, * odd);
+               "core_read2 %08o %012llo (%s)\n",
+                addr, * odd, ctx);
     return 0;
 }
 //
@@ -2160,23 +2163,23 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
 //    return 0;
 //}
 //
-int core_write2(word24 addr, word36 even, word36 odd) {
+int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr >= MEMSIZE)
       doFault (op_not_complete_fault, nem, "core_write2 nem");
     if(addr & 1) {
-        sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
+        sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
     M[addr++] = even;
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo\n",addr, M [addr]);
-                   traceInstruction (0);
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, M [addr], ctx);
+        traceInstruction (0);
       }
     M[addr] = odd;
     return 0;

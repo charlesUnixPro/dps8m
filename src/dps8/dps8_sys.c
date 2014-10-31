@@ -757,8 +757,8 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
         word36 SDWe, SDWo;
-        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno) & PAMASK, & SDWe);
-        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1) & PAMASK, & SDWo);
+        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno) & PAMASK, & SDWe, __func__);
+        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1) & PAMASK, & SDWo, __func__);
 
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
@@ -812,7 +812,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
         struct _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);
@@ -836,7 +836,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // descriptor segment page at PTW(x1).ADDR + y1.
 
         word36 SDWeven, SDWodd;
-        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd);
+        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
 
         struct _sdw0 SDW0; 
         // even word
@@ -896,7 +896,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
             word36 PTWx2;
-            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
     
             struct _ptw0 PTW2;
             PTW2.ADDR = GETHI(PTWx2);
@@ -1175,7 +1175,7 @@ static t_stat virtAddrN (uint address)
             word24 y1 = (2 * segno) % 1024;
             word24 x1 = (2 * segno - y1) / 1024;
             word36 PTWx1;
-            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
             struct _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
@@ -1192,7 +1192,7 @@ static t_stat virtAddrN (uint address)
             for (word15 tspt = 0; tspt < 512; tspt ++)
             {
                 word36 SDWeven, SDWodd;
-                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd);
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
                 struct _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
@@ -1227,7 +1227,7 @@ static t_stat virtAddrN (uint address)
                         // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
                         word36 PTWx2;
-                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
 
                         struct _ptw0 PTW2;
                         PTW2.ADDR = GETHI(PTWx2);

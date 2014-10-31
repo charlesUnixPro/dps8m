@@ -319,24 +319,24 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-void fetch_abs_word (word24 addr, word36 *data)
+void fetch_abs_word (word24 addr, word36 *data, const char * ctx)
   {
-    core_read (addr, data);
+    core_read (addr, data, ctx);
   }
 
-void store_abs_word (word24 addr, word36 data)
+void store_abs_word (word24 addr, word36 data, const char * ctx)
   {
-    core_write (addr, data);
+    core_write (addr, data, ctx);
   }
 
-void fetch_abs_pair (word24 addr, word36 * even, word36 * odd)
+void fetch_abs_pair (word24 addr, word36 * even, word36 * odd, const char * ctx)
   {
-    core_read2 (addr, even, odd);
+    core_read2 (addr, even, odd, ctx);
   }
 
-static void store_abs_pair (word24 addr, word36 even, word36 odd)
+static void store_abs_pair (word24 addr, word36 even, word36 odd, const char * ctx)
   {
-    core_write2 (addr, even, odd);
+    core_write2 (addr, even, odd, ctx);
   }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -464,7 +464,7 @@ static void UNUSED fetchDDSPTW (uint iomUnitNum, int chanNum, word6 pageNumber)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     word24 addr = buildDDSPTWaddress (chan_data ->  ptPtr, pageNumber);
-    fetch_abs_word (addr, & chan_data ->  PTW_DCW);
+    fetch_abs_word (addr, & chan_data ->  PTW_DCW, __func__);
   }
 
 static word24 buildIDSPTWaddress (word18 ptPtr, word1 seg, word8 pageNumber)
@@ -495,7 +495,7 @@ static void fetchIDSPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumb
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     word24 addr = buildIDSPTWaddress (chan_data -> ptPtr, seg, pageNumber);
-    fetch_abs_word (addr, & chan_data -> PTW_DCW);
+    fetch_abs_word (addr, & chan_data -> PTW_DCW, __func__);
   }
 
 
@@ -530,7 +530,7 @@ static void fetchLPWPTW (uint iomUnitNum, int chanNum, word1 seg, word6 pageNumb
 #ifdef IOMDBG1
 sim_printf ("LPWPTW address %o\n", addr);
 #endif
-    fetch_abs_word (addr, & chan_data -> PTW_LPW);
+    fetch_abs_word (addr, & chan_data -> PTW_LPW, __func__);
   }
 
 void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
@@ -557,9 +557,9 @@ void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally,
 sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
 #endif
                 if (write)
-                  core_write (addr, dataIn [t]);
+                  store_abs_word (addr, dataIn [t], __func__);
                 else
-                  core_read (addr, & dataIn [t]);
+                  fetch_abs_word (addr, & dataIn [t], __func__);
                 * odd = addr % 2;
               }
           }
@@ -576,7 +576,7 @@ sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
 static void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
   {
     word36 word0;
-    fetch_abs_word (addr, & word0);
+    fetch_abs_word (addr, & word0, __func__);
 #ifdef IOMDBG
 sim_printf ("lpw %012llo\n", word0);
 #endif
@@ -595,7 +595,7 @@ sim_debug (DBG_TRACE, & iom_dev, "lpw ae(20) %o srel(23) %o\n", p -> lpw20_ae, p
     if (! is_conn)
       {
         word36 word1;
-        fetch_abs_word (addr +1, & word1);
+        fetch_abs_word (addr +1, & word1, __func__);
 #if 0
         // Ignore 2nd word on connect channel
         // following not valid for paged mode; see B15; but maybe IOM-B non existant
@@ -785,7 +785,7 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
       }
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: addr: 0%06o\n", __func__, addr);
-    fetch_abs_word (addr, & word);
+    fetch_abs_word (addr, & word, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "%s: dcw: 0%012llo\n", __func__, word);
 #ifdef IOMDBG
 sim_printf ("dcw: %012llo\n", word);
@@ -904,7 +904,7 @@ static int writeLPW (uint chanNum, word24 chanloc, const lpw_t * p, bool UNUSED 
     putbits36 (& word0, 22,  1, p -> trunout);
     putbits36 (& word0, 23,  1, p -> lpw23_srel);
     putbits36 (& word0, 24, 12, p -> tally);
-    store_abs_word (chanloc, word0);
+    store_abs_word (chanloc, word0, __func__);
     
     // In non-paged mode, the LPWx is writtne to reflect p->idcw update;
     // we only support paged mode.
@@ -923,7 +923,7 @@ static int writeLPW (uint chanNum, word24 chanloc, const lpw_t * p, bool UNUSED 
         putbits36 (& word1, 0, 18, p -> lbnd);
         putbits36 (& word1, 18, 18, p -> size);
 #endif
-        store_abs_word (chanloc + 1, word1);
+        store_abs_word (chanloc + 1, word1, __func__);
       }
 #endif
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -1419,17 +1419,17 @@ sim_printf ("%s: expected a DDCW; fail\n", __func__);
 #ifdef IOMDBG
 sim_printf ("%s: storing fault code @ %06o\n", __func__, addr);
 #endif
-        store_abs_word (addr, faultWord);
+        store_abs_word (addr, faultWord, __func__);
 
         send_general_interrupt (iomUnitNum, 1, imwSystemFaultPic);
 
         word36 ddcw;
-        fetch_abs_word (mbx, & ddcw);
+        fetch_abs_word (mbx, & ddcw, __func__);
         // incr addr
         putbits36 (& ddcw, 0, 18, (getbits36 (ddcw, 0, 18) + 1) & MASK18);
         // decr tally
         putbits36 (& ddcw, 24, 12, (getbits36 (ddcw, 24, 12) - 1) & MASK12);
-        store_abs_word (mbx, ddcw);
+        store_abs_word (mbx, ddcw, __func__);
       }
     else
       {
@@ -1483,9 +1483,7 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
 #if 0
     // BUG: Unimplemented status bits:
     putbits36 (& word2, 0, 18, chan_status.addr);
-    putbits36 (& word2, 21, 1, chanp->status.read);
     putbits36 (& word2, 22, 2, chan_status.type);
-    putbits36 (& word2, 24, 12, chan_status.dcw_residue);
 #endif
     putbits36 (& word2, 18, 3, char_pos);
     putbits36 (& word2, 21, 1, is_read);
@@ -1496,42 +1494,26 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
     // T&D tape does *not* expect us to cache original SCW, it expects us to
     // use the SCW loaded from tape.
     
-#if 1
     uint chanloc = mbx_loc (iomUnitNum, chanNum);
-    word24 scw = chanloc + 2;
-    word36 sc_word;
-    fetch_abs_word (scw, & sc_word);
-    word18 addr = getbits36 (sc_word, 0, 18);   // absolute
-    // BUG: probably need to check for y-pair here, not above
+    word24 scwAddr = chanloc + 2;
+    word36 scw;
+    fetch_abs_word (scwAddr, & scw, __func__);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "SCW chan %02o %012llo\n", chanNum, scw);
+    word18 addr = getbits36 (scw, 0, 18);   // absolute
+    uint lq = getbits36 (scw, 18, 2);
+    uint tally = getbits36 (scw, 24, 12);
+
+    sim_debug (DBG_DEBUG, & iom_dev, "%s: Status tally %d (%o) lq %o\n",
+               __func__, tally, tally, lq);
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: Writing status for chanNum %d dev_code %d to 0%o=>0%o\n",
-               __func__, chanNum, dev_code, scw, addr);
+               __func__, chanNum, dev_code, scwAddr, addr);
     sim_debug (DBG_TRACE, & iom_dev,
                "Writing status for chanNum %d dev_code %d to 0%o=>0%o\n",
-               chanNum, dev_code, scw, addr);
-#else
-    word36 sc_word = chanp->scw;
-    int addr = getbits36 (sc_word, 0, 18);   // absolute
-    if (addr % 2 == 1) {    // 3.2.4
-        sim_debug (DBG_WARN, &iom_dev, "status_service: Status address 0%o is not even\n", addr);
-        // store_abs_pair () call below will fix address
-    }
-    sim_debug (DBG_DEBUG, &iom_dev, "status_service: Writing status for chan %d to %#o\n",
-            chanNum, addr);
-#endif
-    sim_debug (DBG_DEBUG, & iom_dev, "%s: Status: 0%012llo 0%012llo\n",
+               chanNum, dev_code, scwAddr, addr);
+    sim_debug (DBG_DEBUG | DBG_TRACE, & iom_dev, "%s: Status: 0%012llo 0%012llo\n",
                __func__, word1, word2);
-    sim_debug (DBG_TRACE, & iom_dev, "Status: 0%012llo 0%012llo\n",
-               word1, word2);
-    sim_debug (DBG_DEBUG, & iom_dev,
-               "%s: Status: 0%04o, (12)e/o=%c, (13)marker=%c, "
-               "(14..15)Z, 16(Z?), 17(Z)\n",
-               __func__, stati,
-               '1', // BUG
-               'Y');   // BUG
-    uint lq = getbits36 (sc_word, 18, 2);
-    uint tally = getbits36 (sc_word, 24, 12);
-#if 1
     if (lq == 3)
       {
         sim_debug (DBG_WARN, &iom_dev, 
@@ -1539,8 +1521,7 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
                    __func__, chanNum);
         lq = 0;
       }
-#endif
-    store_abs_pair (addr, word1, word2);
+    store_abs_pair (addr, word1, word2, __func__);
 
     if (tally > 0 || (tally == 0 && lq != 0))
       {
@@ -1550,8 +1531,8 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
               // list
               if (tally != 0)
                 {
-                  addr += 2;
                   tally --;
+                  addr += 2;
                 }
               break;
 
@@ -1594,16 +1575,16 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
 #endif
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
-                   __func__, sc_word);
-        putbits36 (& sc_word, 24, 12, tally);
-        putbits36 (& sc_word, 0, 18, addr);
+                   __func__, scw);
+        putbits36 (& scw, 24, 12, tally);
+        putbits36 (& scw, 0, 18, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
-                   __func__, sc_word);
+                   __func__, scw);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
-                   __func__, scw);
-        store_abs_word (scw, sc_word);
+                   __func__, scwAddr);
+        store_abs_word (scwAddr, scw, __func__);
       }
 
     // BUG: update SCW in core
@@ -1642,7 +1623,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
                __func__, 'A' + iomUnitNum, chanNum, chanNum, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
-    (void) fetch_abs_word (imw_addr, &imw);
+    (void) fetch_abs_word (imw_addr, &imw, __func__);
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -1651,7 +1632,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     putbits36 (& imw, chan_in_group, 1, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012llo\n", __func__, imw_addr, imw);
-    (void) store_abs_word (imw_addr, imw);
+    (void) store_abs_word (imw_addr, imw, __func__);
     
 // XXX this should call scu_svc
 
@@ -1722,19 +1703,22 @@ sim_printf ("lpw tally %o\n", lpw . tally);
 sim_printf ("lpw dcw_ptr %o\n", lpw . dcw_ptr);
 #endif
 #if 1
-    word36 lpw = M [chanloc + 0];
-sim_printf ("lpw %012llo\n", lpw);
+    word36 lpw;
+    fetch_abs_word (chanloc + 0, & lpw, __func__);
+
+    //sim_printf ("lpw %012llo\n", lpw);
 // 001432040000
 //  001432  0 40000 
 //     addr  001432 
 // The lpw points to the special status mbx dcw word
 //     RES/REL/AE 0
 //     NC/TAL/REL 4
-sim_printf ("@lpw %012llo\n", M [(lpw >> 18) & MASK18]);
+    //sim_printf ("@lpw %012llo\n", M [(lpw >> 18) & MASK18]);
 #endif
 #endif
 
-    word36 dcw = M [chanloc + 3];
+    word36 dcw;
+    fetch_abs_word (chanloc + 3, & dcw, __func__);
 //sim_printf ("dcw %012llo\n", dcw);
 //  001320010012
 //  001320  0     1  0012
@@ -1745,7 +1729,7 @@ sim_printf ("@lpw %012llo\n", M [(lpw >> 18) & MASK18]);
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
 sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);
-    M [(dcw >> 18) & MASK18] = status;
+    store_abs_word ((dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
     if (tally > 1)
@@ -1756,7 +1740,7 @@ sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & M
     else
       dcw = 001320010012llu; // reset to beginning of queue
 sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());
-    M [chanloc + 3] = dcw;
+    store_abs_word (chanloc + 3, dcw, __func__);
 
 //    send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
     send_general_interrupt (iomUnitNum, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
@@ -2173,7 +2157,7 @@ static int doPayloadChannel (uint iomUnitNum, word24 dcw_ptr)
     word36 word0, word1;
     
     sim_debug (DBG_TRACE, & iom_dev, "doPayloadChannel pcw addr %08o\n", dcw_ptr);
-    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1, __func__);
 #ifdef IOMDBG
 sim_printf ("pcw %012llo %012llo\n", word0, word1);
 #endif
@@ -2325,7 +2309,7 @@ static int doConnectChan (uint iomUnitNum)
         pcw_t pcw;
         word36 word0, word1;
     
-        (void) fetch_abs_pair (lpwp -> dcw_ptr, & word0, & word1);
+        (void) fetch_abs_pair (lpwp -> dcw_ptr, & word0, & word1, __func__);
         decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     
         sim_debug (DBG_INFO, & iom_dev, "%s: PCW is: %s\n", 
@@ -2777,7 +2761,7 @@ static t_stat iomAnalyzeMbx (FILE * UNUSED st,
 
     pcw_t pcw;
     word36 word0, word1;
-    (void) fetch_abs_pair (addr, & word0, & word1);
+    (void) fetch_abs_pair (addr, & word0, & word1, __func__);
     decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
     //sim_printf ("PCW at %#06o: %s\n", addr, pcw2text (& pcw));
     uint cmd = pcw . dev_cmd;
@@ -2893,7 +2877,7 @@ static t_stat iomShowMbx (UNUSED FILE * st,
 
     pcw_t pcw;
     word36 word0, word1;
-    (void) fetch_abs_pair (addr, & word0, & word1);
+    (void) fetch_abs_pair (addr, & word0, & word1, __func__);
     decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     sim_printf ("PCW at %#06o: %s\n", addr, pcw2text (& pcw));
 

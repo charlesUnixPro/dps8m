@@ -160,8 +160,8 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
                             word8 status0, word8 status1);
 void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw, 
                   word36 word0, word36 word1);
-void fetch_abs_pair (word24 addr, word36 * even, word36 * odd);
+void fetch_abs_pair (word24 addr, word36 * even, word36 * odd, const char * ctx);
 int iomListServiceNoParse (uint iomUnitNum, int chanNum, word36 * wp);
-void fetch_abs_word (word24 addr, word36 *data);
-void store_abs_word (word24 addr, word36 data);
+void fetch_abs_word (word24 addr, word36 *data, const char * ctx);
+void store_abs_word (word24 addr, word36 data, const char * ctx);
 int send_marker_interrupt (uint iomUnitNum, int chanNum);

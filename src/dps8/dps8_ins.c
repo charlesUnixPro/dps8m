@@ -897,6 +897,9 @@ restart_1:
     // if a page fault occurs.
     ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
    
+    // XXX Don't trace Multics idle loop
+    if (PPR.PSR != 061 && PPR.IC != 0307)
+
     traceInstruction (DBG_TRACE);
 
     // This must not happen on instruction restart
@@ -7036,8 +7039,8 @@ static int doABSA (word36 * result)
           DSBR . ADDR + 2 * TPR . TSR);
 
         word36 SDWe, SDWo;
-        core_read ((DSBR . ADDR + 2 * TPR . TSR) & PAMASK, & SDWe);
-        core_read ((DSBR . ADDR + 2 * TPR . TSR  + 1) & PAMASK, & SDWo);
+        core_read ((DSBR . ADDR + 2 * TPR . TSR) & PAMASK, & SDWe, __func__);
+        core_read ((DSBR . ADDR + 2 * TPR . TSR  + 1) & PAMASK, & SDWo, __func__);
 
 //sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
 //sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n", DSBR . ADDR, TPR . TSR);
@@ -7109,7 +7112,7 @@ static int doABSA (word36 * result)
           DSBR . ADDR, x1, (DSBR . ADDR + x1) & PAMASK);
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
         struct _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);
@@ -7142,7 +7145,7 @@ static int doABSA (word36 * result)
           PTW1 . ADDR, y1, ((PTW1 . ADDR << 6) + y1) & PAMASK);
 
         word36 SDWeven, SDWodd;
-        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd);
+        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
 
         struct _sdw0 SDW0; 
         // even word
@@ -7227,7 +7230,7 @@ static int doABSA (word36 * result)
               SDW0 . ADDR, x2, (SDW0 . ADDR + x2) & PAMASK);
 
             word36 PTWx2;
-            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
     
             struct _ptw0 PTW_2;
             PTW_2.ADDR = GETHI(PTWx2);
