@@ -100,6 +100,11 @@ typedef struct iomChannelData_
         cm_ext_LPW_real_DCW,
         cm_paged_LPW_seg_DCW
       } chan_mode;
+
+    // Information accumulated for status service.
+    word12 stati;
+    uint dev_code;
+
   } iomChannelData_;
 
 iomChannelData_ iomChannelData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
@@ -151,7 +156,7 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro);
 int iomListServiceTape (uint iomUnitNum, int chanNum, dcw_t * dcwp, bool * ptro);
 uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
-int status_service (uint iomUnitNum, uint chan, uint dev_code, word12 stati, 
+int status_service (uint iomUnitNum, uint chan, 
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
                     bool marker, bool initiate, bool odd, chanStat chanStatus,
                     iomStat iomStatus);

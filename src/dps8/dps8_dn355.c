@@ -180,7 +180,6 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
     int dn355_unit_num = DN355_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_dn355 [dn355_unit_num] . iom_unit_num;
 //++     struct dn355_state * dn355_statep = & dn355_state [dn355_unit_num];
-    word12 stati = 0;
     word6 rcount = 0;
     word12 residue = 0;
     word3 char_pos = 0;
@@ -191,12 +190,14 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++     * disc = false;
 //++ 
     int chan = pcwp-> chan;
+    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    chan_data -> stati = 0;
 //sim_printf ("dn355_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
     switch (pcwp -> dev_cmd)
       {
 //++         case 000: // CMD 00 Request status
 //++           {
-//++             stati = 04000;
+//++             chan_data -> = 04000;
 //++             dn355_statep -> io_mode = no_mode;
 //++             sim_debug (DBG_NOTIFY, & dn355_dev, "Request status\n");
 //++           }
@@ -212,14 +213,14 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("list service failed\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ //sim_printf ("read  got type %d\n", dcw . type);
 //++             if (dcw . type != ddcw)
 //++               {
 //++                 sim_printf ("not ddcw? %d\n", dcw . type);
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ 
@@ -237,7 +238,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             else
 //++               {
 //++ sim_printf ("uncomfortable with this\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ 
@@ -266,7 +267,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             for (uint i = 0; i < tally; i ++)
 //++               M [daddr + i] = 0;
 //++ 
-//++             stati = 04000;
+//++             chan_data -> = 04000;
 //++           }
 //++           break;
 //++ 
@@ -281,14 +282,14 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("list service failed\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ //sim_printf ("read  got type %d\n", dcw . type);
 //++             if (dcw . type != ddcw)
 //++               {
 //++                 sim_printf ("not ddcw? %d\n", dcw . type);
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ 
@@ -306,7 +307,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             else
 //++               {
 //++ sim_printf ("uncomfortable with this\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ #if 0
@@ -332,7 +333,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
-//++                 stati = 04202; // attn, seek incomplete
+//++                 chan_data -> = 04202; // attn, seek incomplete
 //++                 break;
 //++               }
 //++ 
@@ -361,7 +362,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             else if (rc != (int) tallySectors)
 //++               {
 //++                 sim_printf ("read returned %d, errno %d\n", rc, errno);
-//++                 stati = 04202; // attn, seek incomplete
+//++                 chan_data -> = 04202; // attn, seek incomplete
 //++                 break;
 //++               }
 //++ //sim_printf ("tallySectors %u\n", tallySectors);
@@ -382,7 +383,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++               extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
 //++                                        & M [daddr + i]);
 //++ //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
-//++             stati = 04000;
+//++             chan_data -> = 04000;
 //++           }
 //++           break;
 //++ 
@@ -398,14 +399,14 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("list service failed\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ //sim_printf ("seek  got type %d\n", dcw . type);
 //++             if (dcw . type != ddcw)
 //++               {
 //++                 sim_printf ("not ddcw? %d\n", dcw . type);
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ 
@@ -423,7 +424,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             else
 //++               {
 //++ sim_printf ("uncomfortable with this\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ #if 0
@@ -446,7 +447,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (tally != 1)
 //++               {
 //++                 sim_printf ("dn355 seek dazed by tally %d != 1\n", tally);
-//++                 stati = 04510; // Cmd reject, invalid inst. seq.
+//++                 chan_data -> = 04510; // Cmd reject, invalid inst. seq.
 //++                 break;
 //++               }
 //++ 
@@ -465,7 +466,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++ //  
 //++             dn355_statep -> seekPosition = seekData & MASK21;
 //++ //sim_printf ("seek seekPosition %d\n", dn355_statep -> seekPosition);
-//++             stati = 00000; // Channel ready
+//++             chan_data -> = 00000; // Channel ready
 //++           }
 //++           break;
 //++ 
@@ -481,14 +482,14 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("list service failed\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ //sim_printf ("write got type %d\n", dcw . type);
 //++             if (dcw . type != ddcw)
 //++               {
 //++                 sim_printf ("not ddcw? %d\n", dcw . type);
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ 
@@ -506,7 +507,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             else
 //++               {
 //++ sim_printf ("uncomfortable with this\n");
-//++                 stati = 05001; // BUG: arbitrary error code; config switch
+//++                 chan_data -> = 05001; // BUG: arbitrary error code; config switch
 //++                 break;
 //++               }
 //++ #if 0
@@ -533,7 +534,7 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc)
 //++               {
 //++                 sim_printf ("fseek (write) returned %d, errno %d\n", rc, errno);
-//++                 stati = 04202; // attn, seek incomplete
+//++                 chan_data -> = 04202; // attn, seek incomplete
 //++                 break;
 //++               }
 //++ 
@@ -562,13 +563,13 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
 //++             if (rc != (int) tallySectors)
 //++               {
 //++                 sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
-//++                 stati = 04202; // attn, seek incomplete
+//++                 chan_data -> = 04202; // attn, seek incomplete
 //++                 break;
 //++               }
 //++ 
 //++             dn355_statep -> seekPosition += tallySectors;
 //++ 
-//++             stati = 04000;
+//++             chan_data -> = 04000;
 //++           }
 //++ //exit(1);
 //++           break;
@@ -576,13 +577,13 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
         default:
           {
 sim_printf ("dn355 daze %o\n", pcwp -> dev_cmd);
-            stati = 04501; // cmd reject, invalid opcode
+            chan_data -> stati = 04501; // cmd reject, invalid opcode
             chanStatus = chanStatIncorrectDCW;
           }
           break;
 
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, initiate, false, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, rcount, residue, char_pos, is_read, false, initiate, false, chanStatus, iomStatNormal);
 
     return 0;
   }
@@ -634,7 +635,10 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04501; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code;
+            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
             break;
           }
 
@@ -644,7 +648,10 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dn355_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04502; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code;
+            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
             break;
           }
         unitp = & dn355_unit [dn355_unit_num];

@@ -343,7 +343,6 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
     
-    word12 stati = 0;
     word6 rcount = 0;
     word12 residue = 0;
     word3 char_pos = 0;
@@ -356,7 +355,8 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
     if (chan_data -> ptp)
       sim_err ("PTP in console\n");
-
+    chan_data -> dev_code = pcwp -> dev_code;
+    chan_data -> stati = 0;
     switch (pcwp -> dev_cmd)
       {
         case 0: // CMD 00 Request status
@@ -364,7 +364,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Status request cmd received",
                        __func__);
-            stati = 04000;
+            chan_data -> stati = 04000;
             initiate = true;
           }
           break;
@@ -398,13 +398,13 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                 // Impossible to both have EOL and have buffer overflow
                 if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
                   {
-                    stati = 04340;
+                    chan_data -> stati = 04340;
                     sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
                     break;
                   }
                 if (! console_state . have_eol)
                   {
-                    stati = 04310;
+                    chan_data -> stati = 04310;
                     sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout)\n");
                   }
               }
@@ -419,14 +419,14 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -441,7 +441,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             if (type != 0 && type != 1) //IOTD, IOTP
               {
 sim_printf ("uncomfortable with this\n");
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -477,7 +477,7 @@ sim_printf ("uncomfortable with this\n");
             console_state . tailp = console_state . buf;
             console_state . have_eol = false;
 
-            stati = 04000;
+            chan_data -> stati = 04000;
           }
           break;
 
@@ -502,14 +502,14 @@ sim_printf ("uncomfortable with this\n");
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -523,7 +523,7 @@ sim_printf ("uncomfortable with this\n");
 
             if (type != 0 && type != 1) //IOTD, IOTP
               {
-                stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -650,7 +650,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
                   }
               }
             // sim_printf ("\n");
-            stati = 04000;
+            chan_data -> stati = 04000;
           }
           break;
 
@@ -659,7 +659,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
-            stati = 04000;
+            chan_data -> stati = 04000;
             initiate = true;
           }
           break;
@@ -673,7 +673,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write Alert cmd received\n", __func__);
             sim_putchar('\a');
-            stati = 04000;
+            chan_data -> stati = 04000;
           }
           break;
 
@@ -685,13 +685,13 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             // returned value. Make some thing up.
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Read ID received\n", __func__);
-            stati = 04500;
+            chan_data -> stati = 04500;
           }
           break;
 
         default:
           {
-            stati = 04501; // command reject, invalid instruction code
+            chan_data -> stati = 04501; // command reject, invalid instruction code
             sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
                        __func__, pcwp -> dev_cmd);
             chanStatus = chanStatIncorrectDCW;
@@ -699,7 +699,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             break;
           }
       }
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, 
+    status_service (iom_unit_num, chan, rcount, 
                     residue, char_pos, is_read, false, initiate, false,
                     chanStatus, iomStatNormal);
 

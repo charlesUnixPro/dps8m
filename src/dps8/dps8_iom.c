@@ -1454,18 +1454,19 @@ sim_printf ("iom user fault ignored"); // XXX
  *
  */
 
-int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati, 
+int status_service (uint iomUnitNum, uint chanNum,
                     word6 rcount, word12 residue, word3 char_pos, bool is_read,
                     bool marker, bool initiate, bool odd, chanStat chanStatus,
                     iomStat iomStatus)
   {
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     // See page 33 and AN87 for format of y-pair of status info
     
     // BUG: much of the following is not tracked
     
     word36 word1, word2;
     word1 = 0;
-    putbits36 (& word1, 0, 12, stati);
+    putbits36 (& word1, 0, 12, chan_data -> stati);
     putbits36 (& word1, 12, 1, odd ? 0 : 1);
     putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
@@ -1508,10 +1509,10 @@ int status_service (uint iomUnitNum, uint chanNum, uint dev_code, word12 stati,
                __func__, tally, tally, lq);
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: Writing status for chanNum %d dev_code %d to 0%o=>0%o\n",
-               __func__, chanNum, dev_code, scwAddr, addr);
+               __func__, chanNum, chan_data -> dev_code, scwAddr, addr);
     sim_debug (DBG_TRACE, & iom_dev,
                "Writing status for chanNum %d dev_code %d to 0%o=>0%o\n",
-               chanNum, dev_code, scwAddr, addr);
+               chanNum, chan_data -> dev_code, scwAddr, addr);
     sim_debug (DBG_DEBUG | DBG_TRACE, & iom_dev, "%s: Status: 0%012llo 0%012llo\n",
                __func__, word1, word2);
     if (lq == 3)
@@ -2164,8 +2165,8 @@ sim_printf ("pcw %012llo %012llo\n", word0, word1);
     decode_idcw (iomUnitNum, & pcw, true, word0, word1);
     uint chanNum = pcw . chan;
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
-    uint dev_code = pcw . dev_code;
-    DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [dev_code] . dev;
+    chan_data -> dev_code = pcw . dev_code;
+    DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [chan_data -> dev_code] . dev;
 
 #ifdef IOMDBG
 sim_printf ("setting addressExtension to %o from PCW\n",
@@ -2196,7 +2197,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
       }
     
 
-    UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [dev_code] . board;
+    UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [chan_data -> dev_code] . board;
 
     // Stash a local copy of the PCW so that it is still valid at activation
     // time

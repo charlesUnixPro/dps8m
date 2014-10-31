@@ -169,7 +169,6 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     int fnp_unit_num = FNP_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num;
 //-    struct fnpState * tape_statep = & fnpState [fnp_unit_num];
-    word12 stati = 0;
     word6 rcount = 0;
     word12 residue = 0;
     word3 char_pos = 0;
@@ -186,19 +185,20 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         sim_printf ("PTP in fnp; dev_cmd %o\n", pcwp -> dev_cmd);
         sim_err ("PTP in fnp\n");
       }
+    chan_data -> stati = 0;
 
     switch (pcwp -> dev_cmd)
       {
         default:
           {
-            stati = 04501;
+            chan_data -> stati = 04501;
             sim_debug (DBG_ERR, & fnpDev,
                        "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);
             break;
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read, false, initiate, false, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, rcount, residue, char_pos, is_read, false, initiate, false, chanStatus, iomStatNormal);
 
     return 0;
   }
@@ -245,7 +245,10 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04501, 0, 0, 0, true, false, false, false, chanStatInvalidInstrPCW, iomStatNormal);
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04501; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code;
+            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
 
@@ -256,7 +259,10 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
         if (fnp_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code, 04502, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04502; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code;
+            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
             break;
           }
         unitp = & fnp_unit [fnp_unit_num];

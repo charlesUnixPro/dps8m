@@ -352,7 +352,7 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
     return SCPE_OK;
   }
  
-static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc, word12 * statip)
+static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
 if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
 if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
@@ -390,15 +390,15 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
       {
         case 0: // CMD 00 Request status
           {
-            * statip = 04000; // have_status = 1
+            chan_data -> stati = 04000; // have_status = 1
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Request status: %04o\n", * statip);
+                       "mt_cmd: Request status: %04o\n", chan_data -> stati);
             initiate = true;
           }
           break;
@@ -415,7 +415,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                   {
                     sim_debug (DBG_ERR, & tape_dev,
                                "%s: Malloc error\n", __func__);
-                    * statip = 05201; // BUG: arbitrary error code; config switch
+                    chan_data -> stati = 05201; // BUG: arbitrary error code; config switch
                     chanStatus = chanStatParityErrPeriph;
                     break;
                   }
@@ -438,7 +438,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                     tape_statep -> rec_num ++;
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
-                    * statip = 04423; // EOF category EOF file mark
+                    chan_data -> stati = 04423; // EOF category EOF file mark
                     if (tbc != 0)
                       {
                         sim_debug (DBG_ERR, &tape_dev,
@@ -452,7 +452,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                   {
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOM: %s\n", __func__, simh_tape_msg (ret));
-                    * statip = 04340; // EOT file mark
+                    chan_data -> stati = 04340; // EOT file mark
                     if (tbc != 0)
                       {
                         sim_debug (DBG_ERR, &tape_dev,
@@ -468,7 +468,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
                 sim_debug (DBG_ERR, & tape_dev,
                            "%s: Returning arbitrary error code\n",
                            __func__);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatParityErrPeriph;
                 break;
               }
@@ -487,14 +487,14 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -512,7 +512,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
             else
               {
 sim_printf ("uncomfortable with this\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -572,9 +572,9 @@ else
                     // BUG: See some of the IOM status fields.
                     // BUG: The IOM should be updated to return its DCW tally residue
                     // to the caller.
-                    * statip = 04000;
+                    chan_data -> stati = 04000;
                     if (sim_tape_wrp (unitp))
-                      * statip |= 1;
+                      chan_data -> stati |= 1;
                     sim_debug (DBG_WARN, & tape_dev,
                                "%s: Read buffer exhausted on channel %d\n",
                                __func__, chan);
@@ -586,13 +586,13 @@ else
                 tally --;
               }
   }
-            * statip = 04000; // BUG: do we need to detect end-of-record?
+            chan_data -> stati = 04000; // BUG: do we need to detect end-of-record?
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
 
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Read %d bytes from simulated tape; status %04o\n",
-                       __func__, (int) tbc, * statip);
+                       __func__, (int) tbc, chan_data -> stati);
           }
           break;
 
@@ -608,16 +608,16 @@ else
 
         case 040:               // CMD 040 -- Reset Status
           {
-            * statip = 04000;
+            chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
-                       __func__, * statip);
+                       __func__, chan_data -> stati);
             initiate = true;
           }
           break;
@@ -640,14 +640,14 @@ else
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -665,7 +665,7 @@ else
             else
               {
 sim_printf ("uncomfortable with this\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -699,13 +699,13 @@ sim_printf ("uncomfortable with this\n");
               sim_printf ("Tape %ld backspaces to record %d\n",
                           MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
-            * statip = 04000;
+            chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
           }
           break;
 
@@ -718,15 +718,15 @@ sim_printf ("uncomfortable with this\n");
 // has been filtered out at a higher level
         case 051:               // CMD 051 -- Reset device status
           {
-            * statip = 04000;
+            chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Reset device status: %o\n", * statip);
+                       "mt_cmd: Reset device status: %o\n", chan_data -> stati);
             initiate = true;
           }
           break;
@@ -749,7 +749,7 @@ sim_printf ("uncomfortable with this\n");
 
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Survey devices\n");
-            * statip = 04000; // have_status = 1
+            chan_data -> stati = 04000; // have_status = 1
             //* need_data = true;
 
 #if 0
@@ -761,13 +761,13 @@ sim_printf ("get the idcw\n");
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
             if (dcw . type != idcw)
               {
                 sim_printf ("not idcw? %d\n", dcw . type);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
 #endif
@@ -783,14 +783,14 @@ sim_printf ("get the ddcw\n");
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -810,7 +810,7 @@ sim_printf ("get the ddcw\n");
             else
               {
 sim_printf ("uncomfortable with this\n");
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chanStatus = chanStatIncorrectDCW;
                 break;
               }
@@ -824,7 +824,7 @@ sim_printf ("uncomfortable with this\n");
                 sim_debug (DBG_DEBUG, & iom_dev,
                            "%s: Expected tally of 8; got %d\n",
                            __func__, tally);
-                * statip = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
 #endif
@@ -873,19 +873,19 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
             indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
                                  idsTypeW36, true, & odd);
 #endif
-            * statip = 04000;
+            chan_data -> stati = 04000;
           }
           break;
  
         case 060:              // CMD 060 -- Set 800 bpi.
           {
-            * statip = 04000;
+            chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Set 800 bpi\n");
           }
@@ -897,13 +897,13 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
                        "mt_cmd: Rewind\n");
             sim_tape_rewind (unitp);
             tape_statep -> rec_num = 0;
-            * statip = 04000;
+            chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
-              * statip |= 1;
+              chan_data -> stati |= 1;
             if (sim_tape_bot (unitp))
-              * statip |= 2;
+              chan_data -> stati |= 2;
             //if (sim_tape_eom (unitp))
-              //* statip |= 0340;
+              //chan_data -> stati |= 0340;
             //rewindDoneUnit . u3 = mt_unit_num;
             //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
     send_special_interrupt (cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num,
@@ -922,13 +922,13 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
                        "mt_cmd: Rewind/unload\n");
             sim_tape_detach (unitp);
             tape_statep -> rec_num = 0;
-            * statip = 04000;
+            chan_data -> stati = 04000;
           }
           break;
    
         default:
           {
-            * statip = 04501;
+            chan_data -> stati = 04501;
             sim_debug (DBG_ERR, & tape_dev,
                        "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);
             chanStatus = chanStatIncorrectDCW;
@@ -936,7 +936,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, * statip, rcount, 
+    status_service (iom_unit_num, chan, rcount, 
                     residue, char_pos, is_read, pcwp -> control == 3, 
                     initiate, odd, chanStatus, iomStatNormal);
 
@@ -960,7 +960,6 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
 
 static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
-    word12 stati;
     int mt_unit_num = MT_UNIT_NUM (unitp);
     if (mt_unit_num == 0)
       {
@@ -982,7 +981,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       return 1;
     bool disc;
 //sim_printf ("1 st call to mt_cmd\n");
-    mt_cmd (unitp, pcwp, & disc, & stati);
+    mt_cmd (unitp, pcwp, & disc);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
     // list so ignore that and force it to 2.
@@ -1006,9 +1005,11 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04501; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code; 
             status_service (iom_unit_num, pcwp -> chan, 
-                            dcw . fields . instr. dev_code, 04501, 0, 0, 
-                            0, true, false, false, false, 
+                            0, 0, 0, true, false, false, false, 
                             chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
@@ -1025,19 +1026,21 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
+            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            chan_data -> stati = 04502; 
+            chan_data -> dev_code = dcw . fields . instr. dev_code; 
             status_service (iom_unit_num, pcwp -> chan, 
-                            dcw . fields . instr. dev_code, 04502, 0, 0, 
-                            0, true, false, false, false, 
+                            0, 0, 0, true, false, false, false, 
                             chanStatInvalidInstrPCW, iomStatNormal);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
 //sim_printf ("next call to mt_cmd\n");
-        mt_cmd (unitp, & dcw . fields . instr, & disc, & stati);
+        mt_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
 //sim_printf ("disc %d ctrl %d\n", disc, ctrl);
       }
-    //status_service (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code,
+    //status_service (iom_unit_num, pcwp -> chan, 
                     //stati, rcount, 
                     //residue, char_pos, is_read, pcwp -> control == 3, 
                     //initiate, odd, chanStatus, iomStatNormal);
