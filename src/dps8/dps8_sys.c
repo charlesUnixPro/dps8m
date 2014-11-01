@@ -29,7 +29,6 @@
 #include "dps8_sys.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
-#include "dps8_dn355.h"
 #include "dps8_utils.h"
 #include "dps8_fxe.h"
 #include "dps8_append.h"
@@ -2099,7 +2098,6 @@ DEVICE * sim_devices [] =
     & clk_dev,
     // & mpc_dev,
     & opcon_dev,
-    & dn355_dev,
     & sys_dev,
     & fxe_dev,
     NULL
