@@ -1,4 +1,5 @@
-4Jan14: The ini files were rename to .ini files 
+
+4Jan14: The ini files were rename to .ini files
     dps8.ini.20184.tap -> 20184.ini
     dps8.ini.base_system -> base_system.ini
     dps8.ini.t4d_b.2.tap -> t4d_b.2.ini
@@ -99,5 +100,38 @@ Notes on building:
 
    Ubuntu/Debian users have reported the need to install 'binutils-avr'
    to get the ar command.
+
+31Oct2014
+
+Additional notes on building under 64-bit Debian 7.5 Linux (provided by Harvey Berenberg)
+
+    Here's what I did to get the dps8 simulator to work on Debian 7.5:
+
+    I downloaded the dps8 code from git on sourceforge
+    goto: sourceforge.net/
+    search for: dps8m
+    click on "git"
+    click "RO"
+    copy the RO command, omitting the "git clone" at the beginning of the line
+    From the linux commandline:
+    ~$ git://git.code.sf.net/p/dps8m/code dps8m-code
+    Unzip the zip file. It will create a directory "dps8m-code"
+    Follow the directions in the RELEASE_NOTES.txt file.
+
+    I had to install the following to get the code to compile
+    bison 2.5
+    flex 2.5.35
+    debian clang 3.0-6.2
+    LibParse-exuberantctags-perl 1.01-1+b2
+    exuberant-ctags 5.9  /* note: this wouldn't install w/o LibParse-exuberantctags-perl */
+
+    In the src/Makefile.mk file:
+    I chgd: LDFLAGS = -g
+    TO:      LDFLAGS = -g -lrt
+    /* this adds librt.so which contains "clock_gettime" to the linker search */
+
+
+
+
 
 
