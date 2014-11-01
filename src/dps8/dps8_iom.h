@@ -1,3 +1,5 @@
+#define N_IOM_PORTS 8
+
 typedef struct pcw_t
   {
     // Word 1
@@ -67,7 +69,101 @@ typedef struct
     // uint32 idcw;    // ptr to most recent dcw, idcw, ...
   } lpw_t;
  
+typedef enum iomStat
+  {
+    iomStatNormal = 0,
+    iomStatLPWTRO = 1,
+    iomStat2TDCW = 2,
+    iomStatBoundaryError = 3,
+    iomStatAERestricted = 4,
+    iomStatIDCWRestricted = 5,
+    iomStatCPDiscrepancy = 6,
+    iomStatParityErr = 7
+  } iomStat;
+
+enum configSwOs_
+  { 
+    CONFIG_SW_STD_GCOS, 
+    CONFIG_SW_EXT_GCOS, 
+    CONFIG_SW_MULTICS  // "Paged"
+  };
+
+// Boot device: CARD/TAPE;
+enum configSwBlCT_ { CONFIG_SW_BLCT_CARD, CONFIG_SW_BLCT_TAPE };
+
+struct iomUnitData
+  {
+    // Configuration switches
+    
+    // Interrupt multiplex base address: 12 toggles
+    word12 configSwIomBaseAddress;
+
+    // Mailbox base aka IOM base address: 9 toggles
+    // Note: The IOM number is encoded in the lower two bits
+    word9 configSwMultiplexBaseAddress;
+
+    // OS: Three position switch: GCOS, EXT GCOS, Multics
+    enum configSwOs_ configSwOS; // = CONFIG_SW_MULTICS;
+
+    // Bootload device: Toggle switch CARD/TAPE
+    enum configSwBlCT_ configSwBootloadCardTape; // = CONFIG_SW_BLCT_TAPE; 
+
+    // Bootload tape IOM channel: 6 toggles
+    word6 configSwBootloadMagtapeChan; // = 0; 
+
+    // Bootload cardreader IOM channel: 6 toggles
+    word6 configSwBootloadCardrdrChan; // = 1;
+
+    // Bootload: pushbutton
+ 
+    // Sysinit: pushbutton
+
+    // Bootload SCU port: 3 toggle AKA "ZERO BASE S.C. PORT NO"
+    // "the port number of the SC through which which connects are to
+    // be sent to the IOM
+    word3 configSwBootloadPort; // = 0; 
+
+    // 8 Ports: CPU/IOM connectivity
+
+    // Port configuration: 3 toggles/port 
+    // Which SCU number is this port attached to 
+    uint configSwPortAddress [N_IOM_PORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
+
+    // Port interlace: 1 toggle/port
+    uint configSwPortInterface [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // Port enable: 1 toggle/port
+    uint configSwPortEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // Port system initialize enable: 1 toggle/port // XXX What is this
+    uint configSwPortSysinitEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // Port half-size: 1 toggle/port // XXX what is this
+    uint configSwPortHalfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 }; 
+    // Port store size: 1 8 pos. rotary/port
+    uint configSwPortStoresize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // other switches:
+    //   alarm disable
+    //   test/normal
+    iomStat iomStatus;
+  };
+
+extern struct iomUnitData iomUnitData [N_IOM_UNITS_MAX];
+
 // This is the 'scratchpad'
+
+typedef enum chanStat
+  {
+    chanStatNormal = 0,
+    chanStatUnexpectedPCW = 1,
+    chanStatInvalidInstrPCW = 2,
+    chanStatIncorrectDCW = 3,
+    chanStatIncomplete = 4,
+    chanStatUnassigned = 5,
+    chanStatParityErrPeriph = 6,
+    chanStatParityErrBus = 7
+  } chanStat;
 
 typedef struct iomChannelData_
   {
@@ -101,9 +197,17 @@ typedef struct iomChannelData_
         cm_paged_LPW_seg_DCW
       } chan_mode;
 
+    //word27 pageTablePtr [MAX_CHANNELS];
+
     // Information accumulated for status service.
     word12 stati;
     uint dev_code;
+    word6 recordResidue;
+    word12 tallyResidue;
+    word3 charPos;
+    bool isRead;
+    bool isOdd;
+    chanStat chanStatus;
 
   } iomChannelData_;
 
@@ -112,30 +216,6 @@ iomChannelData_ iomChannelData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
 enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC, DEVT_DN355 };
 typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
-
-typedef enum chanStat
-  {
-    chanStatNormal = 0,
-    chanStatUnexpectedPCW = 1,
-    chanStatInvalidInstrPCW = 2,
-    chanStatIncorrectDCW = 3,
-    chanStatIncomplete = 4,
-    chanStatUnassigned = 5,
-    chanStatParityErrPeriph = 6,
-    chanStatParityErrBus = 7
-  } chanStat;
-
-typedef enum iomStat
-  {
-    iomStatNormal = 0,
-    iomStatLPWTRO = 1,
-    iomStat2TDCW = 2,
-    iomStatBoundaryError = 3,
-    iomStatAERestricted = 4,
-    iomStatIDCWRestricted = 5,
-    iomStatCPDiscrepancy = 6,
-    iomStatParityErr = 7
-  } iomStat;
 
 typedef int iomCmd (UNIT * unitp, pcw_t * p);
 extern DEVICE iom_dev;
@@ -157,9 +237,7 @@ int iomListServiceTape (uint iomUnitNum, int chanNum, dcw_t * dcwp, bool * ptro)
 uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service (uint iomUnitNum, uint chan, 
-                    word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker, bool initiate, bool odd, chanStat chanStatus,
-                    iomStat iomStatus);
+                    bool marker, bool initiate);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);

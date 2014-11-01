@@ -47,8 +47,6 @@
 // Default
 #define N_IOM_UNITS 1
 
-#define N_IOM_PORTS 8
-
 // The number of devices that a dev_code can address (6 bit number)
 
 #define N_DEV_CODES 64
@@ -178,75 +176,7 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-enum configSwOs_
-  { 
-    CONFIG_SW_STD_GCOS, 
-    CONFIG_SW_EXT_GCOS, 
-    CONFIG_SW_MULTICS  // "Paged"
-  };
-
-// Boot device: CARD/TAPE;
-enum configSwBlCT_ { CONFIG_SW_BLCT_CARD, CONFIG_SW_BLCT_TAPE };
-
-struct unitData
-  {
-    // Configuration switches
-    
-    // Interrupt multiplex base address: 12 toggles
-    word12 configSwIomBaseAddress;
-
-    // Mailbox base aka IOM base address: 9 toggles
-    // Note: The IOM number is encoded in the lower two bits
-    word9 configSwMultiplexBaseAddress;
-
-    // OS: Three position switch: GCOS, EXT GCOS, Multics
-    enum configSwOs_ configSwOS; // = CONFIG_SW_MULTICS;
-
-    // Bootload device: Toggle switch CARD/TAPE
-    enum configSwBlCT_ configSwBootloadCardTape; // = CONFIG_SW_BLCT_TAPE; 
-
-    // Bootload tape IOM channel: 6 toggles
-    word6 configSwBootloadMagtapeChan; // = 0; 
-
-    // Bootload cardreader IOM channel: 6 toggles
-    word6 configSwBootloadCardrdrChan; // = 1;
-
-    // Bootload: pushbutton
- 
-    // Sysinit: pushbutton
-
-    // Bootload SCU port: 3 toggle AKA "ZERO BASE S.C. PORT NO"
-    // "the port number of the SC through which which connects are to
-    // be sent to the IOM
-    word3 configSwBootloadPort; // = 0; 
-
-    // 8 Ports: CPU/IOM connectivity
-
-    // Port configuration: 3 toggles/port 
-    // Which SCU number is this port attached to 
-    uint configSwPortAddress [N_IOM_PORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
-
-    // Port interlace: 1 toggle/port
-    uint configSwPortInterface [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-    // Port enable: 1 toggle/port
-    uint configSwPortEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-    // Port system initialize enable: 1 toggle/port // XXX What is this
-    uint configSwPortSysinitEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-    // Port half-size: 1 toggle/port // XXX what is this
-    uint configSwPortHalfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 }; 
-    // Port store size: 1 8 pos. rotary/port
-    uint configSwPortStoresize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-    // other switches:
-    //   alarm disable
-    //   test/normal
-
-  };
-
-static struct unitData unitData [N_IOM_UNITS_MAX];
+struct iomUnitData iomUnitData [N_IOM_UNITS_MAX];
 
 
 static struct iom
@@ -260,7 +190,6 @@ static struct iom
         UNIT * board;  // points into iomUnit
         iomCmd * iomCmd;
       } devices [MAX_CHANNELS] [N_DEV_CODES];
-    word27 pageTablePtr [MAX_CHANNELS];
   } iom [N_IOM_UNITS_MAX];
 
 static struct
@@ -418,7 +347,7 @@ static void iomFault (uint iomUnitNum, uint chanNum, const char * who,
 
 uint mbx_loc (uint iomUnitNum, uint chanNum)
   {
-    word12 base = unitData [iomUnitNum] . configSwIomBaseAddress;
+    word12 base = iomUnitData [iomUnitNum] . configSwIomBaseAddress;
     word24 base_addr = ((word24) base) << 6; // 01400
     word24 mbx = base_addr + 4 * chanNum;
     sim_debug (DBG_INFO, & iom_dev, "%s: IOM %c, chan %d is %012o\n",
@@ -437,7 +366,7 @@ static word24 UNUSED buildAUXPTWaddress (uint iomUnitNum, int chanNum)
 //                         -----------------------------------
 // XXX Assuming 16 and 17 are or'ed.
 
-    word12 IOMBaseAddress = unitData [iomUnitNum] . configSwIomBaseAddress;
+    word12 IOMBaseAddress = iomUnitData [iomUnitNum] . configSwIomBaseAddress;
     word24 addr = (((word24) IOMBaseAddress) & MASK12) << 6;
     addr |= (chanNum & MASK6) << 2;
     addr |= 03;
@@ -647,7 +576,7 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
         p -> ptPtr = getbits36 (word1, 9, 18);
         p -> ptp = getbits36 (word1, 27, 1);
         if (p -> ptp != 0 &&
-            unitData [iomUnitNum] . configSwOS != CONFIG_SW_MULTICS)
+            iomUnitData [iomUnitNum] . configSwOS != CONFIG_SW_MULTICS)
           {
             sim_debug (DBG_ERR, &iom_dev, 
                        "%s: Page Table Pointer for model IOM-B detected but not CONFIG_SW_MULTICS\n",
@@ -948,7 +877,7 @@ static void setup_iom_scbank_map (void)
         for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
           iomScbankMap [iomUnitNum] [pg] = -1;
     
-        struct unitData * p = unitData + iomUnitNum;
+        struct iomUnitData * p = iomUnitData + iomUnitNum;
         // For each port (which is connected to a SCU
         for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
           {
@@ -1181,15 +1110,15 @@ static void init_memory_iom (uint iomUnitNum)
       "%s: Performing load of eleven words from IOM %c bootchannel to memory.\n",
       __func__, 'A' + iomUnitNum);
 
-    word12 base = unitData [iomUnitNum] . configSwIomBaseAddress;
+    word12 base = iomUnitData [iomUnitNum] . configSwIomBaseAddress;
 
     // bootload_io.alm insists that pi_base match
     // template_slt_$iom_mailbox_absloc
 
-    //uint pi_base = unitData [iomUnitNum] . configSwMultiplexBaseAddress & ~3;
-    word36 pi_base = (((word36) unitData [iomUnitNum] . configSwMultiplexBaseAddress)  << 3) |
-                     (((word36) (unitData [iomUnitNum] . configSwIomBaseAddress & 07700U)) << 6) ;
-    word3 iom_num = ((word36) unitData [iomUnitNum] . configSwMultiplexBaseAddress) & 3; 
+    //uint pi_base = iomUnitData [iomUnitNum] . configSwMultiplexBaseAddress & ~3;
+    word36 pi_base = (((word36) iomUnitData [iomUnitNum] . configSwMultiplexBaseAddress)  << 3) |
+                     (((word36) (iomUnitData [iomUnitNum] . configSwIomBaseAddress & 07700U)) << 6) ;
+    word3 iom_num = ((word36) iomUnitData [iomUnitNum] . configSwMultiplexBaseAddress) & 3; 
     word36 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
     word36 dev = 0;            // 6 bits: drive number
     
@@ -1205,13 +1134,13 @@ static void init_memory_iom (uint iomUnitNum)
     //    XXXX00 - Base Addr -- 01400
     //    XXYYYY0 Program Interrupt Base
     
-    enum configSwBlCT_ bootdev = unitData [iomUnitNum] . configSwBootloadCardTape;
+    enum configSwBlCT_ bootdev = iomUnitData [iomUnitNum] . configSwBootloadCardTape;
 
     word6 bootchan;
     if (bootdev == CONFIG_SW_BLCT_CARD)
-      bootchan = unitData [iomUnitNum] . configSwBootloadCardrdrChan;
+      bootchan = iomUnitData [iomUnitNum] . configSwBootloadCardrdrChan;
     else // CONFIG_SW_BLCT_TAPE
-      bootchan = unitData [iomUnitNum] . configSwBootloadMagtapeChan;
+      bootchan = iomUnitData [iomUnitNum] . configSwBootloadMagtapeChan;
 
 
     // 1
@@ -1312,7 +1241,7 @@ static void init_memory_iom (uint iomUnitNum)
     // 9
 
     // "SCU port" 
-    word3 port = unitData [iomUnitNum] . configSwBootloadPort; // 3 bits;
+    word3 port = iomUnitData [iomUnitNum] . configSwBootloadPort; // 3 bits;
     
     // Why does bootload_tape_label.alm claim that a port number belongs in 
     // the low bits of the 2nd word of the PCW?  The lower 27 bits of the 
@@ -1455,9 +1384,7 @@ sim_printf ("iom user fault ignored"); // XXX
  */
 
 int status_service (uint iomUnitNum, uint chanNum,
-                    word6 rcount, word12 residue, word3 char_pos, bool is_read,
-                    bool marker, bool initiate, bool odd, chanStat chanStatus,
-                    iomStat iomStatus)
+                    bool marker, bool initiate)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     // See page 33 and AN87 for format of y-pair of status info
@@ -1467,18 +1394,18 @@ int status_service (uint iomUnitNum, uint chanNum,
     word36 word1, word2;
     word1 = 0;
     putbits36 (& word1, 0, 12, chan_data -> stati);
-    putbits36 (& word1, 12, 1, odd ? 0 : 1);
+    putbits36 (& word1, 12, 1, chan_data -> isOdd ? 0 : 1);
     putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
     putbits36 (& word1, 16, 1, initiate ? 1 : 0);
     putbits36 (& word1, 17, 1, 0);
-    putbits36 (& word1, 18, 3, chanStatus);
-    putbits36 (& word1, 21, 3, iomStatus);
+    putbits36 (& word1, 18, 3, chan_data -> chanStatus);
+    putbits36 (& word1, 21, 3, iomUnitData [iomUnitNum] . iomStatus);
 #if 0
     // BUG: Unimplemented status bits:
     putbits36 (& word1, 24, 6, chan_status.addr_ext);
 #endif
-    putbits36 (& word1, 30, 6, rcount);
+    putbits36 (& word1, 30, 6, chan_data -> recordResidue);
     
     word2 = 0;
 #if 0
@@ -1486,9 +1413,9 @@ int status_service (uint iomUnitNum, uint chanNum,
     putbits36 (& word2, 0, 18, chan_status.addr);
     putbits36 (& word2, 22, 2, chan_status.type);
 #endif
-    putbits36 (& word2, 18, 3, char_pos);
-    putbits36 (& word2, 21, 1, is_read);
-    putbits36 (& word2, 24, 12, residue);
+    putbits36 (& word2, 18, 3, chan_data -> charPos);
+    putbits36 (& word2, 21, 1, chan_data -> isRead ? 1 : 0);
+    putbits36 (& word2, 24, 12, chan_data -> tallyResidue);
     
     // BUG: need to write to mailbox queue
     
@@ -1615,7 +1542,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     // address switches and zeros for the bits defined by the mailbox base
     // address switches.
     //imw_addr += 01200;  // all remaining bits
-    uint pi_base = unitData [iomUnitNum] . configSwMultiplexBaseAddress & ~3;
+    uint pi_base = iomUnitData [iomUnitNum] . configSwMultiplexBaseAddress & ~3;
     imw_addr = (pi_base << 3) | interrupt_num;
 
     sim_debug (DBG_NOTIFY, & iom_dev, 
@@ -1637,7 +1564,7 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
     
 // XXX this should call scu_svc
 
-    uint base = unitData [iomUnitNum] . configSwIomBaseAddress;
+    uint base = iomUnitData [iomUnitNum] . configSwIomBaseAddress;
     uint base_addr = base << 6; // 01400
     // XXX this is wrong; I believe that the SCU unit number should be
     // calculated from the Port Configuration Address Assignment switches
@@ -2166,6 +2093,12 @@ sim_printf ("pcw %012llo %012llo\n", word0, word1);
     uint chanNum = pcw . chan;
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     chan_data -> dev_code = pcw . dev_code;
+    chan_data -> recordResidue = 0;
+    chan_data -> tallyResidue = 0;
+    chan_data -> isRead = true;
+    chan_data -> charPos = 0;
+    chan_data -> isOdd = false;
+    chan_data -> chanStatus = chanStatNormal;
     DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [chan_data -> dev_code] . dev;
 
 #ifdef IOMDBG
@@ -2440,6 +2373,7 @@ void iom_interrupt (uint iomUnitNum)
                __func__, 'A' + iomUnitNum);
     sim_debug (DBG_TRACE, & iom_dev, "\nIOM starting.\n");
 
+    iomUnitData [iomUnitNum] . iomStatus = iomStatNormal;
 #if 0
     if_sim_debug (DBG_TRACE, & iom_dev)
       {
@@ -2960,7 +2894,7 @@ static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("IOM unit number %u\n", iomUnitNum);
-    struct unitData * p = unitData + iomUnitNum;
+    struct iomUnitData * p = iomUnitData + iomUnitNum;
 
     char * os = "<out of range>";
     switch (p -> configSwOS)
@@ -3120,7 +3054,7 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
         return SCPE_ARG;
       }
 
-    struct unitData * p = unitData + iomUnitNUm;
+    struct iomUnitData * p = iomUnitData + iomUnitNUm;
 
     static uint port_num = 0;
 

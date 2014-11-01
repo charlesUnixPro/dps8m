@@ -343,11 +343,6 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
     
-    word6 rcount = 0;
-    word12 residue = 0;
-    word3 char_pos = 0;
-    bool is_read = true;
-    chanStat chanStatus = chanStatNormal;
     bool initiate = false;
 
     int chan = pcwp-> chan;
@@ -420,14 +415,14 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
               {
                 sim_printf ("list service failed\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncomplete;
+                chan_data -> chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncorrectDCW;
+                chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -442,7 +437,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
               {
 sim_printf ("uncomfortable with this\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncorrectDCW;
+                chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -484,7 +479,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 033:               // Write ASCII
           {
-            is_read = false;
+            chan_data -> isRead = false;
             console_state . io_mode = write_mode;
 
             sim_debug (DBG_NOTIFY, & opcon_dev,
@@ -503,14 +498,14 @@ sim_printf ("uncomfortable with this\n");
               {
                 sim_printf ("list service failed\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncomplete;
+                chan_data -> chanStatus = chanStatIncomplete;
                 break;
               }
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncorrectDCW;
+                chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -524,7 +519,7 @@ sim_printf ("uncomfortable with this\n");
             if (type != 0 && type != 1) //IOTD, IOTP
               {
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chanStatus = chanStatIncorrectDCW;
+                chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -666,7 +661,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
 
         case 051:               // Write Alert -- Ring Bell
           {
-            is_read = false;
+            chan_data -> isRead = false;
             // AN70-1 says only console channels respond to this command
             //sim_printf ("CONSOLE: ALERT\n");
             sim_puts ("CONSOLE: ALERT\r\n");
@@ -694,14 +689,12 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             chan_data -> stati = 04501; // command reject, invalid instruction code
             sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
                        __func__, pcwp -> dev_cmd);
-            chanStatus = chanStatIncorrectDCW;
+            chan_data -> chanStatus = chanStatIncorrectDCW;
 
             break;
           }
       }
-    status_service (iom_unit_num, chan, rcount, 
-                    residue, char_pos, is_read, false, initiate, false,
-                    chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, initiate, false);
 
     return 0;
   }

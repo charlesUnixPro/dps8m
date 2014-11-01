@@ -180,11 +180,6 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
     int dn355_unit_num = DN355_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_dn355 [dn355_unit_num] . iom_unit_num;
 //++     struct dn355_state * dn355_statep = & dn355_state [dn355_unit_num];
-    word6 rcount = 0;
-    word12 residue = 0;
-    word3 char_pos = 0;
-    bool is_read = true;
-    chanStat chanStatus = chanStatNormal;
     bool initiate = false;
 
 //++     * disc = false;
@@ -578,12 +573,12 @@ static int dn355_cmd (UNIT * unitp, pcw_t * pcwp, UNUSED bool * disc)
           {
 sim_printf ("dn355 daze %o\n", pcwp -> dev_cmd);
             chan_data -> stati = 04501; // cmd reject, invalid opcode
-            chanStatus = chanStatIncorrectDCW;
+            chan_data -> chanStatus = chanStatIncorrectDCW;
           }
           break;
 
       }
-    status_service (iom_unit_num, chan, rcount, residue, char_pos, is_read, false, initiate, false, chanStatus, iomStatNormal);
+    status_service (iom_unit_num, chan, false, initiate);
 
     return 0;
   }
@@ -638,7 +633,8 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
-            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
+            chan_data -> chanStatus = chanStatIncorrectDCW;
+            status_service (iom_unit_num, pcwp -> chan, false, false);
             break;
           }
 
@@ -651,7 +647,8 @@ static int dn355_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
-            status_service (iom_unit_num, pcwp -> chan, 0, 0, 0, true, false, false, false, chanStatIncorrectDCW, iomStatNormal);
+            chan_data -> chanStatus = chanStatIncorrectDCW;
+            status_service (iom_unit_num, pcwp -> chan, false, false);
             break;
           }
         unitp = & dn355_unit [dn355_unit_num];
