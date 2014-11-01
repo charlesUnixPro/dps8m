@@ -207,6 +207,8 @@ typedef struct iomChannelData_
     word3 charPos;
     bool isRead;
     bool isOdd;
+    bool initiate;
+
     chanStat chanStatus;
 
   } iomChannelData_;
@@ -237,7 +239,7 @@ int iomListServiceTape (uint iomUnitNum, int chanNum, dcw_t * dcwp, bool * ptro)
 uint mbx_loc (uint iomUnitNum, uint chanNum);
 //void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
 int status_service (uint iomUnitNum, uint chan, 
-                    bool marker, bool initiate);
+                    bool marker);
 int send_terminate_interrupt (uint iomUnitNum, uint chan);
 int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);

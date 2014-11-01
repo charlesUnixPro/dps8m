@@ -361,7 +361,6 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     int mt_unit_num = MT_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
-    bool initiate = false;
     * disc = false;
 
     int chan = pcwp-> chan;
@@ -393,7 +392,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
               //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Request status: %04o\n", chan_data -> stati);
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -612,7 +611,7 @@ else
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, chan_data -> stati);
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -721,7 +720,7 @@ sim_printf ("uncomfortable with this\n");
               //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset device status: %o\n", chan_data -> stati);
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -930,9 +929,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, 
-                    pcwp -> control == 3, 
-                    initiate);
+    status_service (iom_unit_num, chan, pcwp -> control == 3);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -1003,8 +1000,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, 
-                            false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
 
@@ -1024,8 +1020,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, 
-                            false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
@@ -1034,9 +1029,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         ctrl = dcw . fields . instr . control;
 //sim_printf ("disc %d ctrl %d\n", disc, ctrl);
       }
-    //status_service (iom_unit_num, pcwp -> chan, 
-                    //pcwp -> control == 3, 
-                    //initiate);
+    //status_service (iom_unit_num, pcwp -> chan, pcwp -> control == 3);
 
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
 

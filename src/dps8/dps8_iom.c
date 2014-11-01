@@ -1384,7 +1384,7 @@ sim_printf ("iom user fault ignored"); // XXX
  */
 
 int status_service (uint iomUnitNum, uint chanNum,
-                    bool marker, bool initiate)
+                    bool marker)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     // See page 33 and AN87 for format of y-pair of status info
@@ -1397,7 +1397,7 @@ int status_service (uint iomUnitNum, uint chanNum,
     putbits36 (& word1, 12, 1, chan_data -> isOdd ? 0 : 1);
     putbits36 (& word1, 13, 1, marker ? 1 : 0);
     putbits36 (& word1, 14, 2, 0);
-    putbits36 (& word1, 16, 1, initiate ? 1 : 0);
+    putbits36 (& word1, 16, 1, chan_data -> initiate ? 1 : 0);
     putbits36 (& word1, 17, 1, 0);
     putbits36 (& word1, 18, 3, chan_data -> chanStatus);
     putbits36 (& word1, 21, 3, iomUnitData [iomUnitNum] . iomStatus);
@@ -2098,6 +2098,7 @@ sim_printf ("pcw %012llo %012llo\n", word0, word1);
     chan_data -> isRead = true;
     chan_data -> charPos = 0;
     chan_data -> isOdd = false;
+    chan_data -> initiate = false;
     chan_data -> chanStatus = chanStatNormal;
     DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [chan_data -> dev_code] . dev;
 

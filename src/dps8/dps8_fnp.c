@@ -169,7 +169,6 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     int fnp_unit_num = FNP_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num;
 //-    struct fnpState * tape_statep = & fnpState [fnp_unit_num];
-    bool initiate = false;
     * disc = false;
 
     int chan = pcwp-> chan;
@@ -193,7 +192,7 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
       }
 
-    status_service (iom_unit_num, chan, false, initiate);
+    status_service (iom_unit_num, chan, false);
 
     return 0;
   }
@@ -244,7 +243,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
 
@@ -259,7 +258,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatIncorrectDCW;
-            status_service (iom_unit_num, pcwp -> chan, false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
         unitp = & fnp_unit [fnp_unit_num];

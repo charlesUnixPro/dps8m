@@ -343,8 +343,6 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
     int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
     
-    bool initiate = false;
-
     int chan = pcwp-> chan;
 
     iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
@@ -360,7 +358,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                        "%s: Status request cmd received",
                        __func__);
             chan_data -> stati = 04000;
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -655,7 +653,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
             chan_data -> stati = 04000;
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -694,7 +692,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             break;
           }
       }
-    status_service (iom_unit_num, chan, initiate, false);
+    status_service (iom_unit_num, chan, false);
 
     return 0;
   }

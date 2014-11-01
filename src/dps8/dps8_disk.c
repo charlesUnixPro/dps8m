@@ -308,7 +308,6 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
     struct disk_state * disk_statep = & disk_state [disk_unit_num];
-    bool initiate = false;
     * disc = false;
 
 // init_toehold.pl1:
@@ -329,7 +328,7 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             chan_data -> stati = 04000;
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Request status\n");
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -813,7 +812,7 @@ sim_printf ("uncomfortable with this\n");
             chan_data -> stati = 04000;
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
-            initiate = true;
+            chan_data -> initiate = true;
           }
           break;
 
@@ -833,7 +832,7 @@ sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-    status_service (iom_unit_num, chan, false, initiate);
+    status_service (iom_unit_num, chan, false);
 
     return 0;
 #if 0
@@ -993,7 +992,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
 
@@ -1007,7 +1006,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false, false);
+            status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
         unitp = & disk_unit [disk_unit_num];
