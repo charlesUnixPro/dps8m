@@ -2172,13 +2172,13 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     }
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
     if (watchBits [addr])
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd;
