@@ -100,6 +100,7 @@
 #define SIGNMASK8      0xffffff40U                        ///< mask to sign extend a 8-bit number to a 32-bit integer
 #define SIGNEXT8(x)    (((x) & SIGN8) ? ((x) | SIGNMASK8) : ((x) & ~SIGNMASK8))  ///< sign extend a 8-bit word to 18/32-bit word
 #define MASK8           0377U                              ///< 8-bit mask
+#define MASK9           0777U                              ///< 9-bit mask
 
 #define SIGN12          0x800U                             ///< sign mask 12-bit number
 #define SIGNMASK12      0xfffff800U                        ///< mask to sign extend a 12-bit number to a 32-bit integer
@@ -119,20 +120,21 @@
 
 #define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
 
-#define GETHI36(a)      ((word18) ((a >> 18) & MASK18))
-#define GETLO36(a)      ((word18) (a & MASK18))
+#define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
+#define GETLO36(a)      ((word18) ((a) & MASK18))
 #define SETHI36(a,b)    (((a) &= MASKLO18), ((a) |= ((((word36)(b) & MASKLO18) << 18))))
 #define SETLO36(a,b)    (((a) &= MASKHI18), ((a) |= ((word36)(b) & MASKLO18)))
-#define GETHI(a)        GETHI36(a)
-#define GETLO(a)        GETLO36(a)
+#define GETHI(a)        GETHI36((a))
+#define GETLO(a)        GETLO36((a))
 #define SETHI(a,b)      SETHI36((a),(b))
 #define SETLO(a,b)      SETLO36((a),(b))
 
-#define GETHI72(a)      ((word36) ((a >> 36) & MASK36))
-#define GETLO72(a)      ((word36) (a & MASK36))
-#define SETHI72(a,b)    (a &= MASK36, a |= ((((word72)(b) & MASK36)) << 36))
-#define SETLO72(a,b)    (a &= MASK36 << 36, a |= ((word72)(b) & MASK36))
+#define GETHI72(a)      ((word36) (((a) >> 36) & MASK36))
+#define GETLO72(a)      ((word36) ((a) & MASK36))
+#define SETHI72(a,b)    ((a) &= MASK36, (a) |= ((((word72)(b) & MASK36)) << 36))
+#define SETLO72(a,b)    ((a) &= MASK36 << 36, (a) |= ((word72)(b) & MASK36))
 
+#define GET24(a)      ((word24) ((a) & MASK24))
 #define MASK21 07777777llu
 #define MASK27 0777777777llu
 
@@ -246,8 +248,8 @@ enum {
 #define GET_TB(tag) ((tag) & 040U)
 #define GET_CF(tag) ((tag) & 007U)
 
-#define _TB(tag) GET_TB(tag)
-#define _CF(tag) GET_CF(tag)
+#define _TB(tag) GET_TB((tag))
+#define _CF(tag) GET_CF((tag))
 
 #define TB6     000U ///< 6-bit characters
 #define TB9     040U ///< 9-bit characters

@@ -151,12 +151,15 @@ static bool FXEinitialized = false;
 
 // Remember where important segments are
 
-static int libIdx;
-static int errIdx;
-static int slIdx;
-static int ssaIdx;
-static int clrIdx;
-static int dsegIdx;
+typedef int sgIdx; // -1 .. N_SEGS - 1
+#define NOSGIDX -1
+
+static sgIdx libIdx;
+static sgIdx errIdx;
+static sgIdx slIdx;
+static sgIdx ssaIdx;
+static sgIdx clrIdx;
+static sgIdx dsegIdx;
 
 //
 // Forward declarations
@@ -183,7 +186,7 @@ typedef char pathnameBuf [PATHNAME_LEN + 1];
 
 static void cpACC2buf (segnameBuf buf, word36 * p)
   {
-    word36 cnt = getbits36 (* p, 0, 9);
+    word9 cnt = (word9) (getbits36 (* p, 0, 9) & MASK9);
     if (cnt > SEGNAME_LEN)
       cnt = SEGNAME_LEN;
     for (uint i = 0; i < cnt; i ++)
@@ -194,7 +197,7 @@ static void cpACC2buf (segnameBuf buf, word36 * p)
         buf [i] = (ch & 0177);
       }
     for (uint i = cnt; i < SEGNAME_LEN; i ++)
-     buf [i] = ' ';
+      buf [i] = ' ';
     buf [SEGNAME_LEN] = '\0';
   }
 
@@ -339,11 +342,11 @@ static void strcpyVarying (word24 base, word18 * next, char * str)
 
     for (uint i = 0; i < len; i ++)
       {
-        int woff = i / 4;
-        int choff = i % 4;
+        uint woff = i / 4;
+        uint choff = i % 4;
         if (choff == 0)
           M [base + offset + woff] = 0;
-        putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+        putbits36 (M + base + offset + woff, choff * 9, 9, (word36) str [i]);
         //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
       }
     offset += (len + 3) / 4;
@@ -360,11 +363,11 @@ static void strcpyNonVarying (word24 base, word18 * next, char * str)
       offset = 0;
     for (uint i = 0; i < len; i ++)
       {
-        int woff = i / 4;
-        int choff = i % 4;
+        uint woff = i / 4;
+        uint choff = i % 4;
         if (choff == 0)
           M [base + offset + woff] = 0;
-        putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+        putbits36 (M + base + offset + woff, choff * 9, 9, (word36) str [i]);
         //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
       }
     offset += (len + 3) / 4;
@@ -382,17 +385,17 @@ static void strcpyNonVaryingPad (word24 base, word18 * next, char * str, uint ds
       offset = 0;
     for (uint i = 0; i < dstlen; i ++)
       {
-        int woff = i / 4;
-        int choff = i % 4;
+        uint woff = i / 4;
+        uint choff = i % 4;
         if (choff == 0)
           M [base + offset + woff] = 0;
         if (i >= len)
           {
-            putbits36 (M + base + offset + woff, choff * 9, 9, ' ');
+            putbits36 (M + base + offset + woff, choff * 9, 9, (word36) ' ');
           }
         else
           {
-            putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+            putbits36 (M + base + offset + woff, choff * 9, 9, (word36) str [i]);
           }
         //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
       }
@@ -407,8 +410,8 @@ static void strcpyC (word24 addr, word24 len, char * str)
   {
     for (uint i = 0; i < len; i ++)
       {
-        int woff = i / 4;
-        int choff = i % 4;
+        uint woff = i / 4;
+        uint choff = i % 4;
         word36 ch = getbits36 (M [addr + woff], choff * 9, 9);
         * (str ++) = (char) (ch & 0177);
         //sim_printf ("chn %3d %012llo\n", woff, M [addr + woff]);
@@ -441,7 +444,9 @@ static void strcpyC (word24 addr, word24 len, char * str)
 typedef struct SLTEentry
   {
     char * segname;
-    int segno, R, E, W, P, R1, R2, R3;
+    word15 segno; // 0 is invalid sentinal
+    word1 R, E, W, P;
+    word3 R1, R2, R3;
     char * path;
   } SLTEentry;
 
@@ -453,10 +458,10 @@ static SLTEentry SLTE [] =
 
 // getSLTEidx - lookup a segment name in the SLTE 
 
-static int getSLTEidx (char * name)
+static sgIdx getSLTEidx (char * name)
   {
     //sim_printf ("getSLTEidx %s\n", name);
-    for (int idx = 0; SLTE [idx] . segname; idx ++)
+    for (sgIdx idx = 0; SLTE [idx] . segname; idx ++)
       {
         if (strcmp (SLTE [idx] . segname, name) == 0)
           return idx;
@@ -466,10 +471,10 @@ static int getSLTEidx (char * name)
   }
 
 // getSegnoFromSLTE - get the segment number of a segment from the SLTE
-
-static int getSegnoFromSLTE (char * name, int * slteIdx)
+// 0 is not found
+static word15 getSegnoFromSLTE (char * name, sgIdx * slteIdx)
   {
-    int idx = getSLTEidx (name);
+    sgIdx idx = getSLTEidx (name);
     if (idx < 0)
       return 0;
     * slteIdx = idx;
@@ -589,7 +594,7 @@ static int segnoMap [N_SEGNOS];
 // PDS: process data segment
 //
 
-static int pdsValidationLevel = FXE_RING;
+static uint pdsValidationLevel = FXE_RING;
 
 //
 // CLR - Multics segment containing the LOT and ISOT
@@ -646,20 +651,20 @@ static void installLOT (int idx)
 // KST routines
 //
 
-static int lookupSegname (char * name)
+static sgIdx lookupSegname (char * name)
   {
     for (uint i = 0; i < N_SEGS; i ++)
       if (strcmp (name, KST [i] . segname) == 0)
-        return i;
+        return (int) i;
     return -1;
   }
 
-static word24 lookupSegAddrByIdx (int segIdx)
+static word24 lookupSegAddrByIdx (sgIdx segIdx)
   {
     return KST [segIdx] . physmem;
   }
 
-static void setSegno (int idx, word15 segno)
+static void setSegno (sgIdx idx, word15 segno)
   {
     KST [idx] . segno = segno;
     segnoMap [segno] = idx;
@@ -674,9 +679,11 @@ static word24 nextPhysmem = 0;
 
 static word36 nextUID = 0;
 
-static int allocateSegment (uint seglen, char * segname, uint segno,
-                            uint R1, uint R2, uint R3, 
-                            uint R, uint E, uint W, uint P)
+// segno -- if 0, allocate segno
+
+static sgIdx allocateSegment (uint seglen, char * segname, word15 segno,
+                              word3 R1, word3 R2, word3 R3, 
+                              word1 R, word1 E, word1 W, word1 P)
   {
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("allocate segment len %u name %s\n", seglen, segname);
@@ -712,9 +719,9 @@ static int allocateSegment (uint seglen, char * segname, uint segno,
     return -1;
   }
 
-static int nextSegno = USER_SEGNO;
+static word15 nextSegno = USER_SEGNO;
 
-static int allocateSegno (void)
+static word15 allocateSegno (void)
   {
     return nextSegno ++;
   }
@@ -724,10 +731,10 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
     word36 even = * its;
     word36 odd = * (its + 1);
 
-    word15 segno = getbits36 (even, 3, 15);
-    word18 wordno = getbits36 (odd, 0, 18);
+    word15 segno = getbits15 (even, 3);
+    word18 wordno = (word18) getbits36 (odd, 0, 18);
     if (bitno)
-      * bitno = getbits36 (odd, 57 - 36, 6);
+      * bitno = getbits6 (odd, 57 - 36);
 
     word24 physmem = KST [segnoMap [segno]] . physmem  + wordno;
     return physmem;
@@ -739,7 +746,7 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
 typedef struct RNTEntry
   {
     char * refName;
-    int idx;
+    sgIdx idx;
   } RNTEntry;
 static RNTEntry RNT [N_SEGS]; // XXX Actually a segment can have many references; N_SEGS is not the right #
 #define RNT_TABLE_SIZE (sizeof (RNT) / sizeof (RNTEntry))
@@ -748,11 +755,11 @@ static int searchRNT (char * name)
   {
     for (uint i = 0; i < RNT_TABLE_SIZE; i ++)
       if (RNT [i] . refName && strcmp (name, RNT [i] . refName) == 0)
-        return i;
+        return (int) i;
     return -1;
   }
 
-static void addRNTRef (int idx, char * name)
+static void addRNTRef (sgIdx idx, char * name)
   {
     int i = searchRNT (name);
     if (i >= 0)
@@ -775,7 +782,7 @@ static void addRNTRef (int idx, char * name)
 
 static void delRNTRef (char * name)
   {
-    int i = searchRNT (name);
+    sgIdx i = searchRNT (name);
     if (i >= 0)
       {
         if (KST [RNT [i] . idx] . RNTRefCount)
@@ -905,9 +912,11 @@ static void printLineNumbers (int segIdx)
   }
 #endif
 
-static int lookupOffset (int segIdx, word18 offset, 
+static int lookupOffset (sgIdx segIdx, word18 offset, 
                          char * * compname, word18 * compoffset)
   {
+    if (segIdx < 0)
+      return 0;
     KSTEntry * e = KST + segIdx;
     if (! e -> parsed)
       return 0;
@@ -987,8 +996,10 @@ next:;
     return 0;
   }
 
-static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
+static int lookupDef (sgIdx segIdx, char * segName, char * symbolName, word18 * value)
   {
+    if (segIdx < 0)
+      return 0;
     KSTEntry * e = KST + segIdx;
     if (! e -> parsed)
       {
@@ -1065,7 +1076,7 @@ next2:
     return 0;
   }
 
-static int lookupEntry (int segIdx, char * entryName, word18 * value)
+static int lookupEntry (sgIdx segIdx, char * entryName, word18 * value)
   {
     KSTEntry * e = KST + segIdx;
     if (! e -> parsed)
@@ -1306,7 +1317,7 @@ static trapNameTableEntry trapNameTable [] =
 
 static int trapName (char * segName, char * symbolName)
   {
-    for (uint i = 0; i < N_TRAP_NAMES; i ++)
+    for (int i = 0; i < (int) N_TRAP_NAMES; i ++)
       {
         if (strcmp (segName, trapNameTable [i] . segName) == 0 &&
             strcmp (symbolName, trapNameTable [i] . symbolName) == 0)
@@ -1332,21 +1343,21 @@ static bool whiteList (char * segName)
   }
 
 static int resolveName (char * segName, char * symbolName, word15 * segno,
-                        word18 * value, int * index)
+                        word18 * value, sgIdx * index)
   {
     //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int trapNo = trapName (segName, symbolName);
     if (trapNo >= 0)
       {
         * segno = TRAP_SEGNO;
-        * value = trapNo;
+        * value = (word18) trapNo;
         * index = -1;
         return 1;
       }
    
-    int idx;
+    sgIdx idx;
 #if 1
-    if ((idx = searchRNT (segName)) != -1)
+    if ((idx = searchRNT (segName)) != NOSGIDX)
       {
         KSTEntry * e = KST + idx;
         if (e -> allocated && e -> loaded && e -> parsed && 
@@ -1392,7 +1403,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (idx >= 0)
           {
             //sim_printf ("got file\n");
-            int slteIdx = -1;
+            sgIdx slteIdx = -1;
             KST [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
             if (! KST [idx] . segno)
               {
@@ -1440,7 +1451,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
     return 0;
   }
 
-static void parseSegment (int segIdx)
+static void parseSegment (sgIdx segIdx)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     KSTEntry * e = KST + segIdx;
@@ -1740,7 +1751,7 @@ sim_printf ("symbolrel %012llo\n", glopp -> symbolrel);
 sim_printf ("symbolbc %012llo %012llo\n", glopp -> symbolbc, glopp -> symbolbc / 36ull);
 sim_printf ("maprel %012llo\n", glopp -> maprel);
 exit(3);
-        return;
+        //return;
       }
 
 sim_printf ("i %o\n", i);
@@ -1749,7 +1760,7 @@ sim_printf ("i %o\n", i);
     return;
   }
 
-static void readSegment (int fd, int segIdx/* , off_t flen*/)
+static void readSegment (int fd, sgIdx segIdx/* , off_t flen*/)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word24 maddr = segAddr;
@@ -1809,10 +1820,10 @@ static int loadSegmentFromFile (char * arg)
     // (ignore partial reads).
     //word24 bitcnt = flen * 8;
     //word18 wordcnt = nbits2nwords (bitcnt);
-    word18 wordcnt = (flen * 8) / 36; 
+    word18 wordcnt = (word18) (((flen * 8) / 36) & MASK18); 
 // XXX it would be better to be pasing around the segment name as well as the
 // path instead of relying on basename here.
-    int segIdx = allocateSegment (wordcnt, basename (upathname), 0, RINGS_ZFF, P_REW);
+    sgIdx segIdx = allocateSegment (wordcnt, basename (upathname), 0, RINGS_ZFF, P_REW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
@@ -1925,7 +1936,7 @@ static void setupWiredSegments (void)
   }
 
 
-static int stack0Idx;
+static sgIdx stack0Idx;
 
 // From multicians: The maximum size of user ring stacks is initially set to 48K
 
@@ -1933,12 +1944,12 @@ static int stack0Idx;
 
 static void createStackSegments (void)
   {
-    for (int i = 0; i < 8; i ++)
+    for (word3 i = 0; i < 8; i ++)
       {
         segnameBuf segname;
         sprintf (segname, "stack_%d", i);
-        int ssIdx = allocateSegment (STK_SIZE, segname, STACKS_SEGNO + i,
-                                     i, FXE_RING, FXE_RING, P_RW);
+        sgIdx ssIdx = allocateSegment (STK_SIZE, segname, STACKS_SEGNO + i,
+                                       i, FXE_RING, FXE_RING, P_RW);
         if (i == 0)
           stack0Idx = ssIdx;
         KSTEntry * e = KST + ssIdx;
@@ -1950,7 +1961,7 @@ static void createStackSegments (void)
       }
   }
 
-static void initStack (int ssIdx)
+static void initStack (sgIdx ssIdx)
   {
 // bound_file_system.s.archive has a 'MAKESTACK' function;
 // borrowing from there.
@@ -2001,16 +2012,23 @@ static void initStack (int ssIdx)
     makeNullPtr (M + hdrAddr + 16);
 
     // word 18, 19    stack_begin_ptr
-    makeITS (M + hdrAddr + 18, stkSegno, ssIdx - stack0Idx, STK_TOP, 0, 0);
+    makeITS (M + hdrAddr + 18, stkSegno, (word3) (ssIdx - stack0Idx), 
+             STK_TOP, 0, 0);
 
     // word 20, 21    stack_end_ptr
-    makeITS (M + hdrAddr + 20, stkSegno, ssIdx - stack0Idx, STK_TOP, 0, 0);
+    makeITS (M + hdrAddr + 20, stkSegno, (word3) (ssIdx - stack0Idx), 
+             STK_TOP, 0, 0);
 
     // word 22, 23    lot_ptr
-    makeITS (M + hdrAddr + 22, CLR_SEGNO, ssIdx - stack0Idx, LOT_OFFSET, 0, 0); 
+    makeITS (M + hdrAddr + 22, CLR_SEGNO, (word3) (ssIdx - stack0Idx), 
+             LOT_OFFSET, 0, 0); 
 
     // word 24, 25    signal_ptr
-    makeITS (M + hdrAddr + 24, TRAP_SEGNO, FXE_RING, trapName ("fxe", "unhandled_signal"), 0, 0);
+    int trapNo = trapName ("fxe", "unhandled_signal");
+    if (trapNo < 0)
+      makeNullPtr (M + hdrAddr + 24);
+    else
+      makeITS (M + hdrAddr + 24, TRAP_SEGNO, FXE_RING, (word18) trapNo, 0, 0);
 
     // word 26, 27    bar_mode_sp_ptr
 
@@ -2020,9 +2038,12 @@ static void initStack (int ssIdx)
                      & operator_table))
      {
        sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
+       makeNullPtr (M + hdrAddr + 28);
      }
-    makeITS (M + hdrAddr + 28, libSegno, ssIdx - stack0Idx, operator_table, 0, 0);
-
+    else
+      {
+        makeITS (M + hdrAddr + 28, libSegno, (word3) (ssIdx - stack0Idx), operator_table, 0, 0);
+      }
 // MR12.3_restoration/MR12.3/library_dir_dir/system_library_1/source/bound_file_system.s.archive.ascii, line 11779
 // AK92, pg 59
 
@@ -2092,7 +2113,7 @@ static void initStack (int ssIdx)
 
   }
 
-static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 prevRing)
+static void createFrame (sgIdx ssIdx, word15 prevSegno, word18 prevWordno, word3 prevRing)
   {
     word15 stkSegno = KST [ssIdx] . segno;
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
@@ -2131,11 +2152,15 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
     makeITS (M + frameAddr + 16, prevSegno, prevRing, prevWordno, 0, 0);
     //sim_printf ("stack %d prev %05o:%06o:%o @ %08o\n", ssIdx, prevSegno, prevWordno, prevRing, frameAddr + 16);
     // word 18, 19    next_stack_frame_ptr
-    makeITS (M + frameAddr + 18, stkSegno, ssIdx - stack0Idx, STK_TOP + FRAME_SZ, 0, 0);
+    makeITS (M + frameAddr + 18, stkSegno, (word3) (ssIdx - stack0Idx), STK_TOP + FRAME_SZ, 0, 0);
 
     // word 20, 21    return_ptr
     //makeNullPtr (M + frameAddr + 20);
-    makeITS (M + frameAddr + 20, TRAP_SEGNO, FXE_RING, trapName ("fxe", "return_to_fxe"), 0, 0);
+    int trapNo = trapName ("fxe", "return_to_fxe");
+    if (trapNo < 0)
+      makeNullPtr (M + frameAddr + 20);
+    else
+      makeITS (M + frameAddr + 20, TRAP_SEGNO, FXE_RING, (word18) trapNo, 0, 0);
     
     // word 22, 23    entry_ptr
     makeNullPtr (M + frameAddr + 22);
@@ -2145,12 +2170,15 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
     word18 operator_table = 0777777;
     if (! lookupDef (libIdx, "pl1_operators_", "operator_table",
                      & operator_table))
-     {
-       sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
-     }
-    word15 libSegno = KST [libIdx] . segno;
-    makeITS (M + frameAddr + 24, libSegno, FXE_RING, operator_table, 0, 0);
-
+      {
+        sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
+        makeNullPtr (M + frameAddr + 24);
+      }
+    else
+      {
+        word15 libSegno = KST [libIdx] . segno;
+        makeITS (M + frameAddr + 24, libSegno, FXE_RING, operator_table, 0, 0);
+      }
 
     // word 25, 26    argument_ptr
     makeNullPtr (M + frameAddr + 26);
@@ -2159,24 +2187,24 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
 
     // word 18, 19    stack_begin_ptr
     word24 hdrAddr = segAddr + HDR_OFFSET;
-    makeITS (M + hdrAddr + 18, stkSegno, ssIdx - stack0Idx, STK_TOP, 0, 0);
+    makeITS (M + hdrAddr + 18, stkSegno, (word3) (ssIdx - stack0Idx), STK_TOP, 0, 0);
 
     // word 20, 21    stack_end_ptr
-    makeITS (M + hdrAddr + 20, stkSegno, ssIdx - stack0Idx, STK_TOP + FRAME_SZ, 0, 0);
+    makeITS (M + hdrAddr + 20, stkSegno, (word3) (ssIdx - stack0Idx), STK_TOP + FRAME_SZ, 0, 0);
 
   }
 
 static int installLibrary (char * name)
   {
     //int idx = loadSegmentFromFile (name);
-    int idx = loadSegment (name);
+    sgIdx idx = loadSegment (name);
     if (idx < 0)
       {
         sim_printf ("ERROR: installLibrary of %s couldn't\n", name);
         return -1;
       }
-    int slteIdx = -1;
-    int segno = getSegnoFromSLTE (name, & slteIdx);
+    sgIdx slteIdx = -1;
+    word15 segno = getSegnoFromSLTE (name, & slteIdx);
     if (segno)
       {
         setSegno (idx, segno);
@@ -2221,7 +2249,7 @@ static void initSysinfoStr (char * segName, char * compName, char * str,
   {
     word18 value;
     word15 segno;
-    int defIdx;
+    sgIdx defIdx;
 
     if (resolveName (segName, compName, & segno, & value, & defIdx))
       {
@@ -2248,7 +2276,7 @@ static void initSysinfoWord36Offset (char * segName, char * compName,
   {
     word18 value;
     word15 segno;
-    int defIdx;
+    sgIdx defIdx;
 
     if (resolveName (segName, compName, & segno, & value, & defIdx))
       {
@@ -2395,7 +2423,7 @@ static void initSysinfo (void)
     initSysinfoWord36 ("sys_info", "comm_privilege", (word36) (1ull << 29));
   }
 
-static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
+static void setupIOCB (KSTEntry * iocbEntry, char * name, uint i)
   {
     // Define iocb [i]
 
@@ -2412,21 +2440,35 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
 
     word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
 
-    makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "put_chars"), 0, 0);
+    int trapNo = trapName ("fxe", "put_chars");
+
+    if (trapNo < 0)
+      makeNullPtr (putCharEntry);
+    else
+      makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, (word18) trapNo, 0, 0);
     makeNullPtr (putCharEntry + 2);
 
     // iocb [i] . get_line
 
     word36 * getLineEntry = (word36 *) & iocbUser -> get_line;
 
-    makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "get_line"), 0, 0);
+    trapNo = trapName ("fxe", "get_line");
+
+    if (trapNo < 0)
+      makeNullPtr (getLineEntry);
+    else
+      makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, (word18) trapNo, 0, 0);
     makeNullPtr (getLineEntry + 2);
 
     // iocb [i] . control
 
     word36 * controlEntry = (word36 *) & iocbUser -> control;
 
-    makeITS (controlEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "control"), 0, 0);
+    trapNo = trapName ("fxe", "control");
+    if (trapNo < 0)
+      makeNullPtr (controlEntry);
+    else
+      makeITS (controlEntry, TRAP_SEGNO, FXE_RING, (word18) trapNo, 0, 0);
     makeNullPtr (controlEntry + 2);
 
 #if 0
@@ -2443,7 +2485,7 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
 
     word18 value;
     word15 segno;
-    int defIdx;
+    sgIdx defIdx;
 
     if (! resolveName ("iox_", name, & segno, & value, & defIdx))
       {
@@ -2459,7 +2501,7 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
 t_stat fxeDump (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("\nSegment table\n------- -----\n\n");
-    for (int idx = 0; idx < (int) N_SEGS; idx ++)
+    for (sgIdx idx = 0; idx < (int) N_SEGS; idx ++)
       {
         KSTEntry * e = KST + idx;
         if (! e -> allocated)
@@ -2551,7 +2593,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 //#define INIT_PROC
 #ifdef INIT_PROC
     initializeDSEG ();
-    int segIdx = loadSegment ("bound_process_creation");
+    sgIdx segIdx = loadSegment ("bound_process_creation");
     if (segIdx < 0)
       {
         sim_printf ("ERROR: couldn't read bound_process_creation\n");
@@ -2672,7 +2714,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 
 // Setup IOCB
 
-    int iocbIdx = allocateSegment (MAX_SEGLEN, "iocb", IOCB_SEGNO, 
+    sgIdx iocbIdx = allocateSegment (MAX_SEGLEN, "iocb", IOCB_SEGNO, 
                                    RINGS_ZFF, P_RW);
     if (iocbIdx < 0)
       {
@@ -2717,7 +2759,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 
     // Create the fxe segment
 
-    int fxeIdx = allocateSegment (MAX_SEGLEN, "fxe", FXE_SEGNO, 
+    sgIdx fxeIdx = allocateSegment (MAX_SEGLEN, "fxe", FXE_SEGNO, 
                                   RINGS_ZFF, P_REW);
     if (fxeIdx < 0)
       {
@@ -2738,10 +2780,11 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       args [i] = malloc (strlen (buf) + 1);
     char * segmentName = malloc (strlen (buf) + 1);
-    int nargs = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s%s", 
-                    segmentName,
-                    args [0], args [1], args [2], args [3], args [4],
-                    args [5], args [6], args [7], args [8], args [9]);
+    uint nargs = (uint) sscanf (buf, "%s%s%s%s%s%s%s%s%s%s%s", 
+                                segmentName,
+                                args [0], args [1], args [2], args [3], 
+                                args [4], args [5], args [6], args [7], 
+                                args [8], args [9]);
     if (nargs >= 1)
       {
         nargs --; // don't count the segment name
@@ -2841,7 +2884,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
         //word36 argList = fxeMemPtr + next;
         word18 argAddrs [10];
 
-        for (int i = 0; i < nargs; i ++)
+        for (uint i = 0; i < nargs; i ++)
           {
             argAddrs [i] = next;
             strcpyNonVarying (fxeMemPtr, & next, args [i]);
@@ -2849,7 +2892,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
 
         word18 descAddrs [10];
         word36 descList = fxeMemPtr + next;
-        for (int i = 0; i < nargs; i ++)
+        for (uint i = 0; i < nargs; i ++)
           {
             descAddrs [i] = next + i;
             M [descList + i] = 0;
@@ -2885,7 +2928,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
         // List of arg ptrs
 
         word36 argPtrList = fxeMemPtr + next;
-        for (int i = 0; i < nargs; i ++)
+        for (uint i = 0; i < nargs; i ++)
           {
             makeITS (M + argPtrList + 2 * i, FXE_SEGNO, FXE_RING,
                      argAddrs [i], 0, 0);
@@ -2896,7 +2939,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
         // List of descriptors
 
         word36 descPtrList = fxeMemPtr + next;
-        for (int i = 0; i < nargs; i ++)
+        for (uint i = 0; i < nargs; i ++)
           {
             makeITS (M + descPtrList + 2 * i, FXE_SEGNO, FXE_RING,
                      descAddrs [i], 0, 0);
@@ -2913,7 +2956,7 @@ t_stat fxe (UNUSED int32 arg, char * buf)
         PR [0] . SNR = FXE_SEGNO;
         PR [0] . RNR = FXE_RING;
         PR [0] . BITNO = 0;
-        PR [0] . WORDNO = argBlock - fxeMemPtr;
+        PR [0] . WORDNO = (word18) (argBlock - fxeMemPtr);
 
 // AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
 
@@ -2982,7 +3025,7 @@ void fxeCall6TrapRestore (void)
   {
     word18 value;
     word15 segno;
-    int idx;
+    sgIdx idx;
     if (! resolveName ("pl1_operators_", "alm_return_no_pop", 
                        & segno, & value, & idx))
       {
@@ -3014,7 +3057,7 @@ static void faultTag2Handler (void)
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
-    word24 segBaseAddr = getbits36 (* even, 0, 24);
+    word24 segBaseAddr = getbits24 (* even, 0);
     word24 addr = (segBaseAddr + offset) & MASK24;
     //sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
 
@@ -3078,7 +3121,7 @@ static void faultTag2Handler (void)
           {
             word15 refSegno;
             word18 refValue;
-            int defIdx;
+            sgIdx defIdx;
 
             //sim_printf ("    3: referencing link with offset\n");
             //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
@@ -3106,7 +3149,7 @@ static void faultTag2Handler (void)
           {
             word15 refSegno;
             word18 refValue;
-            int defIdx;
+            sgIdx defIdx;
 
             //sim_printf ("    4: referencing link with offset\n");
             //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
@@ -3130,7 +3173,7 @@ static void faultTag2Handler (void)
 
             free (segStr);
             free (extStr);
-            //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+            //sgIdx segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
           }
           break;
 
@@ -3217,21 +3260,21 @@ typedef struct argTableEntry
 #define DESC_FIXED 1
 #define DESC_CHAR_SPLAT 21
 
-static int processArgs (int nargs, int ndescs, argTableEntry * t)
+static int processArgs (uint nargs, int ndescs, argTableEntry * t)
   {
     // Get the argument pointer
     word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
+    word18 apWordno = PR [0] . WORDNO;
     //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
 
     // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
+    sgIdx alIdx = segnoMap [apSegno];
     word24 alPhysmem = KST [alIdx] . physmem + apWordno;
 
     // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    word18 arg_count  = (word18) (getbits36 (M [alPhysmem + 0],  0, 17));
+    word18 call_type  = (word18) (getbits36 (M [alPhysmem + 0], 18, 18));
+    word18 desc_count = (word18) (getbits36 (M [alPhysmem + 1],  0, 17));
     //sim_printf ("arg_count %u\n", arg_count);
     //sim_printf ("call_type %u\n", call_type);
     //sim_printf ("desc_count %u\n", desc_count);
@@ -3250,7 +3293,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
         return 0;
       }
 
-    if ((int) arg_count != nargs)
+    if (arg_count != nargs)
       {
         sim_printf ("ERROR: expected %d args, got %d\n",
                      nargs, (int) arg_count);
@@ -3265,9 +3308,9 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
       }
 
     uint alOffset = 2;
-    uint dlOffset = alOffset + nargs * 2;
+    uint dlOffset = alOffset + nargs * 2u;
 
-    for (int i = 0; i < nargs; i ++)
+    for (uint i = 0; i < nargs; i ++)
       {
         t [i] . argAddr = 
           ITSToPhysmem (M + alPhysmem + alOffset + i * 2, NULL);
@@ -3275,7 +3318,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
           {
             t [i] . descAddr = 
               ITSToPhysmem (M + alPhysmem + dlOffset + i * 2, NULL);
-            word6 dt = getbits36 (M [t [i] . descAddr], 1, 6);
+            word6 dt = (word6) (getbits36 (M [t [i] . descAddr], 1, 6));
             if (dt != t [i] . dType)
               {
                 // Hack: Treat pointer and entry as synonyms
@@ -3288,7 +3331,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
               }
             if (dt == DESC_CHAR_SPLAT)
               {
-                t [i] . dSize = getbits36 (M [t [i] . descAddr], 12, 24);
+                t [i] . dSize = GET24 (M [t [i] . descAddr]);
               }
           }
         else
@@ -3322,11 +3365,11 @@ static void trapFXE_PutChars (void)
 
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
-    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    // sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx >= N_IOCBS)
+    uint iocbOffset = (iocbPtr - iocb0) / sizeof (iocb);
+    // sim_printf ("iocbOffset %u\n", iocbOffset);
+    if (iocbOffset >= N_IOCBS)
       {
-        //sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
+        //sim_printf ("ERROR: iocbOffset (%d) >= N_IOCBS (%d)\n", iocbOffset, N_IOCBS);
         M [t [ARG4] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
         doRCU (true); // doesn't return
       }
@@ -3336,10 +3379,10 @@ static void trapFXE_PutChars (void)
     word36 len = M [ap3];
 
     //sim_printf ("PUT_CHARS:");
-    for (int i = 0; i < (int) len; i ++)
+    for (uint i = 0; i < len; i ++)
       {
-        int woff = i / 4;
-        int chno = i % 4;
+        uint woff = i / 4;
+        uint chno = i % 4;
         word36 ch = getbits36 (M [bufPtr + woff], chno * 9, 9);
         sim_printf ("%c", (char) (ch & 0177U));
       }
@@ -3348,9 +3391,9 @@ static void trapFXE_PutChars (void)
     doRCU (true); // doesn't return
   }
 
-static int getline_ (char *buf, int n)
+static uint getline_ (char *buf, uint n)
   {
-    int whence = 0;
+    uint whence = 0;
     buf [whence] = 0;
     while (1)
       {
@@ -3464,9 +3507,9 @@ static void trapFXE_Control (void)
 
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
-    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx >= N_IOCBS)
+    uint iocbOffset = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbOffset %u\n", iocbOffset);
+    if (iocbOffset >= N_IOCBS)
       {
         M [t [ARG5] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
         doRCU (true); // doesn't return
@@ -3508,9 +3551,9 @@ static void trapFXE_GetLine (void)
 
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
-    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx >= N_IOCBS)
+    uint iocbOffset = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbOffset %u\n", iocbOffset);
+    if (iocbOffset >= N_IOCBS)
       {
         M [t [ARG5] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
         doRCU (true); // doesn't return
@@ -3531,16 +3574,16 @@ static void trapFXE_GetLine (void)
 //}
     sim_printf ("GET_LINE: ");
     char buf [len + 1];
-    int actlen = getline_ (buf, len + 1);
+    uint actlen = getline_ (buf, (uint) len + 1);
 
-    for (int i = 0; i < actlen; i ++)
+    for (uint i = 0; i < actlen; i ++)
       {
-        int woff = i / 4;
-        int chno = i % 4;
-        putbits36 (M + bufPtr + woff, chno * 9, 9, buf [i]);
+        uint woff = i / 4;
+        uint chno = i % 4;
+        putbits36 (M + bufPtr + woff, chno * 9, 9, (word36) buf [i]);
       }
 
-    M [ap4] = actlen;
+    M [ap4] = (word36) actlen;
     M [t [ARG5] . argAddr] = 0;
 
     doRCU (true); // doesn't return
@@ -3557,7 +3600,7 @@ static void trapModes (void)
     //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
 
     // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
+    sgIdx alIdx = segnoMap [apSegno];
     word24 alPhysmem = KST [alIdx] . physmem + apWordno;
 
     // XXX 17s below are not typos.
@@ -3642,11 +3685,11 @@ static void trapModes (void)
 
     word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
 
-    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx != 0)
+    uint iocbOffset = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbOffset %u\n", iocbOffset);
+    if (iocbOffset != 0)
       {
-        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
+        sim_printf ("ERROR: iocbOffset (%d) != 0\n", iocbOffset);
         return;
       }
 
@@ -3714,7 +3757,7 @@ static void trapGetSegPtr (void)
     strcpyC (ap1, 32, name);
     //sim_printf ("name %s\n", name);
     trimTrailingSpaces (name);
-    int idx = getSLTEidx (name);
+    sgIdx idx = getSLTEidx (name);
 
     makeITS (M + ap2, SLTE  [idx] . segno, PPR . PRR, 0, 0, 0);
     doRCU (true); // doesn't return
@@ -3779,7 +3822,7 @@ static void trapGetSegment (void)
     // Is the segment known?
 
     word36 ptr [2];
-    int idx = lookupSegname (ename);
+    sgIdx idx = lookupSegname (ename);
     if (idx >= 0)
       {
         KSTEntry * e = KST + idx;
@@ -3865,7 +3908,7 @@ static void trapGetType (void)
     // Argument 1: dirname (input)
     word24 ap1 = t [ARG1] . argAddr;
     word24 dp1 = t [ARG1] . descAddr;
-    word24 d1size = getbits36 (M [dp1], 12, 24);
+    word24 d1size = GET24 (M [dp1]);
 
     char * dirname = malloc (d1size + 1);
     strcpyC (ap1, d1size, dirname);
@@ -3874,7 +3917,7 @@ static void trapGetType (void)
     // Argument 2: entryname (input)
     word24 ap2 = t [ARG2] . argAddr;
     word24 dp2 = t [ARG2] . descAddr;
-    word24 d2size = getbits36 (M [dp2], 12, 24);
+    word24 d2size = GET24 (M [dp2]);
 
     char * ename = malloc (d2size + 1);
     strcpyC (ap2, d2size, ename);
@@ -3912,7 +3955,7 @@ static void trapHomedir (void)
     // Argument 1: hdir (output)
     word24 ap1 = t [ARG1] . argAddr;
     word24 dp1 = t [ARG1] . descAddr;
-    word24 d1size = getbits36 (M [dp1], 12, 24);
+    word24 d1size = GET24 (M [dp1]);
     strcpyNonVaryingPad (ap1, NULL, ">udd>fxe", d1size);
 
     doRCU (true); // doesn't return
@@ -3939,9 +3982,9 @@ static void trapGetLineLengthSwitch (void)
     word24 ap1 = t [ARG1] . argAddr;
     word24 ap3 = t [ARG3] . argAddr;
 
-    uint iocbIdx;
+    uint iocbOffset;
     if (isNullPtr (ap1))
-      iocbIdx = IOCB_USER_OUTPUT;
+      iocbOffset = IOCB_USER_OUTPUT;
     else
       {
         word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
@@ -3949,13 +3992,13 @@ static void trapGetLineLengthSwitch (void)
 
         word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
 
-        iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+        iocbOffset = (iocbPtr - iocb0) / sizeof (iocb);
       }
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx != IOCB_USER_OUTPUT)
+    //sim_printf ("iocbOffset %u\n", iocbOffset);
+    if (iocbOffset != IOCB_USER_OUTPUT)
       {
-        //sim_printf ("ERROR: iocbIdx (%d) != IOCB_USER_OUTPUT (%d)\n", 
-                    //iocbIdx, IOCB_USER_OUTPUT);
+        //sim_printf ("ERROR: iocbOffset (%d) != IOCB_USER_OUTPUT (%d)\n", 
+                    //iocbOffset, IOCB_USER_OUTPUT);
         M [t [ARG2] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
         doRCU (true); // doesn't return
       }
@@ -4050,9 +4093,11 @@ static int initiateSegment (char * dir, char * entry,
     off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
-    word24 bitcnt = flen * (isTxt ? 9 : 8); // 8 bit ascii gets mapped to 9-bit ascii
+    // 8 bit ascii gets mapped to 9-bit ascii
+    word24 bitcnt = (word24) ((flen * (isTxt ? 9 : 8)) & MASK24);
+
     word18 wordcnt = nbits2nwords (bitcnt);
-    int segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
+    sgIdx segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
                                   RINGS_ZFF, P_RW);
     if (segIdx < 0)
       {
@@ -4208,7 +4253,7 @@ static void trapHCS_InitiateCount (void)
     // Argument 1: dir_name (input)
     word24 ap1 = t [ARG1] . argAddr;
     word24 dp1 = t [ARG1] . descAddr;
-    word24 d1size = getbits36 (M [dp1], 12, 24);
+    word24 d1size = GET24 (M [dp1]);
 
     char * arg1 = malloc (d1size + 1);
     strcpyC (ap1, d1size, arg1);
@@ -4217,7 +4262,7 @@ static void trapHCS_InitiateCount (void)
     word24 ap2 = t [ARG2] . argAddr;
     word24 dp2 = t [ARG2] . descAddr;
 
-    word24 d2size = getbits36 (M [dp2], 12, 24);
+    word24 d2size = GET24 (M [dp2]);
     char * arg2 = malloc (d2size + 1);
     strcpyC (ap2, d2size, arg2);
 
@@ -4240,7 +4285,7 @@ static void trapHCS_InitiateCount (void)
 
     word24 ap3 = t [ARG3] . argAddr;
     word24 dp3 = t [ARG3] . descAddr;
-    word24 d3size = getbits36 (M [dp3], 12, 24);
+    word24 d3size = GET24 (M [dp3]);
 
     char * arg3 = NULL;
     if (d3size)
@@ -4254,7 +4299,7 @@ static void trapHCS_InitiateCount (void)
     word24 ap4 = t [ARG4] . argAddr;
     word24 dp4 = t [ARG4] . descAddr;
 
-    word24 d4size = getbits36 (M [dp4], 12, 24);
+    word24 d4size = GET24 (M [dp4]);
     if (d4size != 24)
       {
         sim_printf ("ERROR: initiate_count expected d4size 24, got %d\n", 
@@ -4267,7 +4312,7 @@ static void trapHCS_InitiateCount (void)
 
     word24 ap6 = t [ARG6] . argAddr;
     word24 dp6 = t [ARG6] . descAddr;
-    word24 d6size = getbits36 (M [dp6], 12, 24);
+    word24 d6size = GET24 (M [dp6]);
 
     if (d6size != 0)
       {
@@ -4282,7 +4327,7 @@ static void trapHCS_InitiateCount (void)
 
     //word24 ap7 = t [ARG7] . argAddr;
     word24 dp7 = t [ARG7] . descAddr;
-    word24 d7size = getbits36 (M [dp7], 12, 24);
+    word24 d7size = GET24 (M [dp7]);
 
     if (d7size != 35)
       {
@@ -4414,7 +4459,7 @@ static void trapHCS_Initiate (void)
     // Argument 1: dir_name (input)
     word24 ap1 = t [ARG1] . argAddr;
     word24 dp1 = t [ARG1] . descAddr;
-    word24 d1size = getbits36 (M [dp1], 12, 24);
+    word24 d1size = GET24 (M [dp1]);
 
     char * arg1 = malloc (d1size + 1);
     strcpyC (ap1, d1size, arg1);
@@ -4423,7 +4468,7 @@ static void trapHCS_Initiate (void)
     word24 ap2 = t [ARG2] . argAddr;
     word24 dp2 = t [ARG2] . descAddr;
 
-    word24 d2size = getbits36 (M [dp2], 12, 24);
+    word24 d2size = GET24 (M [dp2]);
     char * arg2 = malloc (d2size + 1);
     strcpyC (ap2, d2size, arg2);
 
@@ -4446,7 +4491,7 @@ static void trapHCS_Initiate (void)
 
     word24 ap3 = t [ARG3] . argAddr;
     word24 dp3 = t [ARG3] . descAddr;
-    word24 d3size = getbits36 (M [dp3], 12, 24);
+    word24 d3size = GET24 (M [dp3]);
 
     char * arg3 = NULL;
     if (d3size)
@@ -4460,7 +4505,7 @@ static void trapHCS_Initiate (void)
     word24 ap4 = t [ARG4] . argAddr;
     word24 dp4 = t [ARG4] . descAddr;
 
-    word24 d4size = getbits36 (M [dp4], 12, 24);
+    word24 d4size = GET24 (M [dp4]);
     if (d4size != 17)
       {
         sim_printf ("ERROR: initiate_count expected d4size 17, got %d\n", 
@@ -4469,7 +4514,7 @@ static void trapHCS_Initiate (void)
         doRCU (true); // doesn't return
       }
 
-    word24 seg_sw = getbits36 (M [ap4], 36 - 17, 17);
+    word24 seg_sw = (word24) getbits36 (M [ap4], 36 - 17, 17);
     if (seg_sw)
       {
         sim_printf ("ERROR: can't grok seg_sw != 0\n");
@@ -4480,7 +4525,7 @@ static void trapHCS_Initiate (void)
 
     word24 ap6 = t [ARG6] . argAddr;
     word24 dp6 = t [ARG6] . descAddr;
-    word24 d6size = getbits36 (M [dp6], 12, 24);
+    word24 d6size = GET24 (M [dp6]);
 
     if (d6size != 0)
       {
@@ -4495,7 +4540,7 @@ static void trapHCS_Initiate (void)
 
     //word24 ap7 = t [ARG7] . argAddr;
     word24 dp7 = t [ARG7] . descAddr;
-    word24 d7size = getbits36 (M [dp7], 12, 24);
+    word24 d7size = GET24 (M [dp7]);
 
     if (d7size != 35)
       {
@@ -4639,7 +4684,7 @@ static void trapHCS_MakePtr (void)
 
     // Argument 1: ref name // XXX ignored
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
     //sim_printf ("refer %012llo %012llo sz %o\n", M [ap1], M [ap1 + 1], d1size);
     if ((! isNullPtr (ap1)) && d1size)
       {
@@ -4648,7 +4693,7 @@ static void trapHCS_MakePtr (void)
 
     // Argument 2: entry name
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * arg2 = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -4680,10 +4725,11 @@ static void trapHCS_MakePtr (void)
     word15 segno;
     word18 value;
     word24 code = 0;
-    int rc, idx;
+    int rc;
+    sgIdx idx;
     word36 ptr [2];
 
-    if (strcmp (arg2, "translator.search") == 0)
+    if (strcmp (arg2, "translator.search") == 0 && slIdx >= 0)
       {
          rc = lookupDef (slIdx, "search_list_defaults_", arg3, & value);
          //sim_printf ("lookupDef(search_list_defaults_, %s) returned %d\n", arg3, rc);
@@ -4762,7 +4808,7 @@ static void trapHCS_StatusMins (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -4863,7 +4909,7 @@ static void trapHCS_MakeSeg (void)
 
     // Argument 1: dir_name // XXX ignored
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
 
     char * dir_name = NULL;
     if ((! isNullPtr (ap1)) && d1size)
@@ -4876,7 +4922,7 @@ static void trapHCS_MakeSeg (void)
 
     // Argument 2: entryname
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * entryname = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -4889,7 +4935,7 @@ static void trapHCS_MakeSeg (void)
 
     // Argument 3: ref_name
     word24 ap3 = t [ARG3] . argAddr;
-    word6 d3size = t [ARG3] . dSize;
+    word6 d3size = (word6) (t [ARG3] . dSize & MASK6);
 
     char * ref_name = NULL;
     if ((! isNullPtr (ap3)) && d3size)
@@ -4910,7 +4956,7 @@ static void trapHCS_MakeSeg (void)
 
     // Is the segment known?
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx >= 0)
       {
         KSTEntry * e = KST + idx;
@@ -5021,7 +5067,7 @@ static void trapHCS_SetBcSeg (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5032,7 +5078,7 @@ static void trapHCS_SetBcSeg (void)
     // Argument 2: bit_count
 
     word24 ap2 = t [ARG2] . argAddr;
-    word24 bit_count = M [ap2];
+    word24 bit_count = (word24) (M [ap2] & MASK24);
 
     KST [idx] . bit_count = bit_count;
     KST [idx] . seglen = (bit_count + 35) / 36;
@@ -5076,7 +5122,7 @@ static void trapHCS_HighLowSegCount (void)
 
     if (! processArgs (2, 0, t))
       return;
-    M [t [ARG1] . argAddr] = nextSegno - 1 - USER_SEGNO;
+    M [t [ARG1] . argAddr] = nextSegno - 1ull - USER_SEGNO;
     M [t [ARG2] . argAddr] = USER_SEGNO;
     
     doRCU (true); // doesn't return
@@ -5139,7 +5185,7 @@ static void trapHCS_FSGetMode (void)
       }
     else
       {
-        int idx = segnoMap [segno];
+        sgIdx idx = segnoMap [segno];
         if (idx < 0)
           {
             code = lookupErrorCode ("invalidsegno");
@@ -5293,7 +5339,7 @@ static void trapHCS_FsGetPathName (void)
     word24 ap1 = t [ARG1] . argAddr;
 
     //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
-    word15 segno = getbits36 (M [ap1], 3, 15);
+    word15 segno = getbits15 (M [ap1], 3);
 
     if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
@@ -5301,7 +5347,7 @@ static void trapHCS_FsGetPathName (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5370,7 +5416,7 @@ static void trapHCS_chnameSeg (void)
     word24 ap1 = t [ARG1] . argAddr;
 
     //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
-    word15 segno = getbits36 (M [ap1], 3, 15);
+    word15 segno = getbits15 (M [ap1], 3);
 
     if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
@@ -5378,7 +5424,7 @@ static void trapHCS_chnameSeg (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5389,7 +5435,7 @@ static void trapHCS_chnameSeg (void)
     // oldname
     word24 ap2 = t [ARG2] . argAddr;
     word24 dp2 = t [ARG2] . descAddr;
-    word24 d2size = getbits36 (M [dp2], 12, 24);
+    word24 d2size = GET24 (M [dp2]);
 
     char * oldname = malloc (d2size + 1);
     strcpyC (ap2, d2size, oldname);
@@ -5398,7 +5444,7 @@ static void trapHCS_chnameSeg (void)
     // newname
     word24 ap3 = t [ARG3] . argAddr;
     word24 dp3 = t [ARG3] . descAddr;
-    word24 d3size = getbits36 (M [dp3], 12, 24);
+    word24 d3size = GET24 (M [dp3]);
 
     char * newname = malloc (d3size + 1);
     strcpyC (ap3, d3size, newname);
@@ -5489,7 +5535,7 @@ static void trapHCS_StatusLong (void)
 
     // Argument 1: dir_name 
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
 
     char * dir_name = NULL;
     if ((! isNullPtr (ap1)) && d1size)
@@ -5502,7 +5548,7 @@ static void trapHCS_StatusLong (void)
 
     // Argument 2: entryname
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * entryname = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -5517,7 +5563,7 @@ static void trapHCS_StatusLong (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about algebra (%s)\n", entryname);
@@ -5607,7 +5653,7 @@ static void trapHCS_Status (void)
 
     // Argument 1: dir_name 
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
 
     char * dir_name = NULL;
     if ((! isNullPtr (ap1)) && d1size)
@@ -5620,7 +5666,7 @@ static void trapHCS_Status (void)
 
     // Argument 2: entryname
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * entryname = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -5635,7 +5681,7 @@ static void trapHCS_Status (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about algebra (%s) (%s)\n", dir_name, entryname);
@@ -5670,9 +5716,9 @@ static void trapHCS_Status (void)
     status_ptr -> long_ . damaged_switch = 0;
     status_ptr -> long_ . synchronized_switch = 0;
     status_ptr -> long_ . ring_brackets = 
-      ((KST [idx] . R1 & 077) << 12) |
-      ((KST [idx] . R2 & 077) <<  6) |
-      ((KST [idx] . R3 & 077) <<  0);
+      ((((uint) KST [idx] . R1) & 077) << 12) |
+      ((((uint) KST [idx] . R2) & 077) <<  6) |
+      ((((uint) KST [idx] . R3) & 077) <<  0);
     status_ptr -> long_ . uid = KST [idx] . uid;
 
 done:;
@@ -5733,7 +5779,7 @@ static void trapHCS_GetRingBrackets (void)
 
     // Argument 1: dir_name 
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
 
     char * dir_name = NULL;
     if ((! isNullPtr (ap1)) && d1size)
@@ -5746,7 +5792,7 @@ static void trapHCS_GetRingBrackets (void)
 
     // Argument 2: entryname
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * entryname = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -5761,7 +5807,7 @@ static void trapHCS_GetRingBrackets (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about trig\n");
@@ -5817,7 +5863,7 @@ static void trapHCS_TruncateSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits36 (M [ap1], 3, 15);
+    word15 segno = getbits15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
@@ -5825,7 +5871,7 @@ static void trapHCS_TruncateSeg (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5875,7 +5921,7 @@ static void trapHCS_GetMaxLengthSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits36 (M [ap1], 3, 15);
+    word15 segno = getbits15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
@@ -5883,7 +5929,7 @@ static void trapHCS_GetMaxLengthSeg (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5925,7 +5971,7 @@ static void trapHCS_SetMaxLengthSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits36 (M [ap1], 3, 15);
+    word15 segno = getbits15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
@@ -5933,7 +5979,7 @@ static void trapHCS_SetMaxLengthSeg (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -5976,7 +6022,7 @@ static void trapHCS_AddAclEntries (void)
 
     // Argument 1: dir_name 
     word24 ap1 = t [ARG1] . argAddr;
-    word6 d1size = t [ARG1] . dSize;
+    word6 d1size = (word6) (t [ARG1] . dSize & MASK6);
 
     char * dir_name = NULL;
     if ((! isNullPtr (ap1)) && d1size)
@@ -5989,7 +6035,7 @@ static void trapHCS_AddAclEntries (void)
 
     // Argument 2: entryname
     word24 ap2 = t [ARG2] . argAddr;
-    word6 d2size = t [ARG2] . dSize;
+    word6 d2size = (word6) (t [ARG2] . dSize & MASK6);
 
     char * entryname = NULL;
     if ((! isNullPtr (ap2)) && d2size)
@@ -6004,7 +6050,7 @@ static void trapHCS_AddAclEntries (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about difeq\n");
@@ -6089,7 +6135,7 @@ static void trapHCS_DeleteAclEntries (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about difeq\n");
@@ -6171,7 +6217,7 @@ static void trapHCS_ListAcl (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about difeq\n");
@@ -6261,7 +6307,7 @@ static void trapHCS_ReplaceAcl (void)
 
 // XXX ignoring directory....
 
-    int idx = lookupSegname (entryname);
+    sgIdx idx = lookupSegname (entryname);
     if (idx < 0)
       {
         sim_printf ("don't know about difeq\n");
@@ -6321,7 +6367,7 @@ static void trapPHCS_SetKSTAttributes (void)
 
     // Argument 1: segno
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = M [ap1];
+    word15 segno = (word15) (M [ap1] & MASK15);
 
     if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
@@ -6329,7 +6375,7 @@ static void trapPHCS_SetKSTAttributes (void)
         code = lookupErrorCode ("invalidsegno");
         goto done;
       }
-    int idx = segnoMap [segno];
+    sgIdx idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
@@ -6515,11 +6561,11 @@ static void fxeTrap (void)
 
     // Test FIF bit
     word18 offset;
-    word1 FIF = getbits36 (M [0200 + 5], 29, 1);
+    word1 FIF = (word1) getbits36 (M [0200 + 5], 29, 1);
     if (FIF != 0)
-      offset = getbits36 (M [0200 + 4], 0, 18); // PPR . IC
+      offset = (word18) getbits36 (M [0200 + 4], 0, 18); // PPR . IC
     else
-      offset = getbits36 (M [0200 + 5], 0, 18); // PPR . CA
+      offset = (word18) getbits36 (M [0200 + 5], 0, 18); // PPR . CA
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("FXE: trap %s:%s\n", trapNameTable [offset] . segName, trapNameTable [offset] . symbolName);
     trapNameTable [offset] . trapFunc ();
@@ -6591,7 +6637,7 @@ static void faultACVHandler (void)
 
     word15 refSegno;
     word18 refValue;
-    int defIdx;
+    sgIdx defIdx;
 
     switch (typePair -> type)
       {
@@ -6624,7 +6670,7 @@ static void faultACVHandler (void)
 
           free (segStr);
           free (extStr);
-          //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+          //sgIdx segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
           break;
         case 5:
           sim_printf ("    5: self-referencing link with offset\n");
@@ -6669,7 +6715,7 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
       return NULL;
 
     static char buf [129];
-    for (uint i = 0; i < N_SEGS; i ++)
+    for (sgIdx i = 0; i < (int) N_SEGS; i ++)
       {
         if (KST [i] . allocated && KST [i] . segno == segno)
           {

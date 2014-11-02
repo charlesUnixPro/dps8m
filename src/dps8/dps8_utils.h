@@ -111,6 +111,10 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     return;
   }
 #endif
+#define getbits6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
+#define getbits15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
+#define getbits24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
+
 char * strdupesc (const char * str);
 
 
