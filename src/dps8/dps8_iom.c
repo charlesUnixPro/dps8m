@@ -169,6 +169,8 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
     { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
+static t_stat termIntrSvc (UNIT * unitp);
+static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -935,6 +937,14 @@ void iom_init (void)
     // sets iom [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (& iom, 0, sizeof (iom));
     memset (cablesFromScus, 0, sizeof (cablesFromScus));
+    for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
+      for (int c = 0; c < MAX_CHANNELS; c ++)
+        {
+          memset (& termIntrChannelUnits [i] [c], 0, sizeof (UNIT));
+          termIntrChannelUnits [i] [c] . action = termIntrSvc;
+          termIntrChannelUnits [i] [c] . u3 = i;
+          termIntrChannelUnits [i] [c] . u4 = c;
+        }
   }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1383,8 +1393,7 @@ sim_printf ("iom user fault ignored"); // XXX
  *
  */
 
-int status_service (uint iomUnitNum, uint chanNum,
-                    bool marker)
+int status_service (uint iomUnitNum, uint chanNum, bool marker)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     // See page 33 and AN87 for format of y-pair of status info
@@ -1594,6 +1603,8 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
 
 int send_marker_interrupt (uint iomUnitNum, int chanNum)
 {
+sim_printf ("send_marker_interrupt\n");
+    status_service (iomUnitNum, chanNum, true);
     return send_general_interrupt (iomUnitNum, chanNum, imwMarkerPic);
 }
 
@@ -1685,10 +1696,29 @@ sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc +
  *
  */
 
+#if 0
 int send_terminate_interrupt (uint iomUnitNum, uint chanNum)
   {
+    status_service (iomUnitNum, chanNum, false);
     return send_general_interrupt (iomUnitNum, chanNum, imwTerminatePic);
   }
+#else
+static t_stat termIntrSvc (UNIT * unitp)
+  {
+    //sim_printf ("in termIntrSvc [%lld]\n", sim_gtime ());
+    uint iomUnitNum = unitp -> u3;
+    uint chanNum = unitp -> u4;
+    status_service (iomUnitNum, chanNum, false);
+    send_general_interrupt (iomUnitNum, chanNum, imwTerminatePic);
+    return SCPE_OK;
+  }
+
+int send_terminate_interrupt (uint iomUnitNum, uint chanNum)
+  {
+    sim_activate (& termIntrChannelUnits [iomUnitNum] [chanNum], 10000);
+    return 0;
+  }
+#endif
 
 //
 // iomListService

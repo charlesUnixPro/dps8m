@@ -832,7 +832,7 @@ sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-    status_service (iom_unit_num, chan, false);
+    //status_service (iom_unit_num, chan, false);
 
     return 0;
 #if 0
@@ -992,7 +992,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false);
+            //status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
 
@@ -1006,7 +1006,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false);
+            //status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
         unitp = & disk_unit [disk_unit_num];

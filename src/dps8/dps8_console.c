@@ -692,7 +692,7 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
             break;
           }
       }
-    status_service (iom_unit_num, chan, false);
+    //status_service (iom_unit_num, chan, false);
 
     return 0;
   }
@@ -1082,8 +1082,8 @@ static void check_keyboard (void)
               }
             if (announce)
               {
-                //sim_printf ("[auto-input] ");
-                sim_puts ("[auto-input] ");
+                sim_printf ("[auto-input] ");
+                //sim_puts ("[auto-input] ");
                 announce = 0;
               }
             if (c == '\005')

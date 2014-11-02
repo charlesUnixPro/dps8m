@@ -929,7 +929,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
           }
       }
 
-    status_service (iom_unit_num, chan, pcwp -> control == 3);
+    // status_service (iom_unit_num, chan, pcwp -> control == 3);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -1000,7 +1000,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false);
+            // status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
 
@@ -1020,7 +1020,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            status_service (iom_unit_num, pcwp -> chan, false);
+            // status_service (iom_unit_num, pcwp -> chan, false);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
