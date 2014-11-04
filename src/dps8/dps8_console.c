@@ -43,6 +43,10 @@ static t_stat opcon_set_nunits (UNIT * uptr, int32 value, char * cptr, void * de
 static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
 static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 
+static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
+                              char * cptr, UNUSED void * desc);
+static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
+                               UNUSED int  val, UNUSED void * desc);
 static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
@@ -56,6 +60,16 @@ static MTAB opcon_mod[] = {
       opcon_show_nunits, /* display routine */
       "Number of OPCON units in the system", /* value descriptor */
       NULL // Help
+    },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+      0,            /* match */
+      (char *) "CONFIG",     /* print string */
+      (char *) "CONFIG",         /* match string */
+      con_set_config,         /* validation routine */
+      con_show_config, /* display routine */
+      NULL,          /* value descriptor */
+      NULL,            /* help */
     },
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 };
@@ -153,6 +167,9 @@ static struct
     int chan_num;
     int dev_code;
   } cables_from_ioms_to_con [N_OPCON_UNITS];
+
+static int attn_hack = 0;
+static int mount_hack = 0;
 
 static void check_keyboard (void);
 
@@ -533,10 +550,10 @@ sim_printf ("uncomfortable with this\n");
             //sim_puts ("CONSOLE: ");
 
 
-#ifdef ATTN_HACK
             // When the console prints out "Command:", press the Attention
             // key one second later
-            if (tally == 3 &&
+            if (attn_hack &&
+                tally == 3 &&
                 M [daddr + 0] == 0103157155155llu &&
                 M [daddr + 1] == 0141156144072llu &&
                 M [daddr + 2] == 0040177177177llu)
@@ -548,7 +565,6 @@ sim_printf ("uncomfortable with this\n");
                     console_state . once_per_boot = true;
                   }
               }
-#endif
 
 #if 0
 sim_printf ("\ntally %d\n", tally);
@@ -566,7 +582,6 @@ for (uint i = 0; i < tally; i ++)
   }
 #endif
 
-#ifdef MOUNT_HACK
             // 1642.9  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_00 for Initialize
             // tally 21
             //    0 061066064062  1642
@@ -591,7 +606,8 @@ for (uint i = 0; i < tally; i ++)
             //   19 154151172145  lize
             //   20 015012177177  ....
 
-            if (tally > 6 &&
+            if (mount_hack &&
+                tally > 6 &&
                 M [daddr + 2] == 0122103120072llu && // RCP
                 M [daddr + 3] == 0040115157165llu && //  Mou
                 M [daddr + 4] == 0156164040122llu && // nt R
@@ -611,8 +627,6 @@ sim_printf ("loading 12.3EXEC_CF0019_1\n");
     //send_special_interrupt (cables_from_ioms_to_con [ASSUME0] . iom_unit_num,
                             //cables_from_ioms_to_con [ASSUME0] . chan_num);
               }
-
-#endif
 
             // Tally is in words, not chars.
 
@@ -911,7 +925,7 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
 //-- #if 0
 //--             char buf[40];   // max four "\###" sequences
 //--             *buf = 0;
-//--             t_uint64 word = *wordp;
+//--             uint64 word = *wordp;
 //--             if ((word >> 36) != 0) {
 //--                 sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Word %012llo has more than 36 bits.\n", word);
 //--                 cancel_run(STOP_BUG);
@@ -1160,3 +1174,67 @@ poll:
           }
       }
   }
+
+static config_value_list_t cfg_on_off [] =
+  {
+    { "off", 0 },
+    { "on", 1 },
+    { "disable", 0 },
+    { "enable", 1 },
+    { NULL, 0 }
+  };
+
+static config_list_t con_config_list [] =
+  {
+    /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
+    /* 1 */ { "mount_hack", 0, 1, cfg_on_off },
+   { NULL, 0, 0, NULL }
+  };
+
+static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
+                              char * cptr, UNUSED void * desc)
+  {
+// XXX Minor bug; this code doesn't check for trailing garbage
+    config_state_t cfg_state = { NULL, NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfgparse ("con_set_config", cptr, con_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+
+            case -1: // done
+              break;
+
+            case  0: // attn_hack
+              attn_hack = v;
+              break;
+    
+            case  1: // mount_hack
+              mount_hack = v;
+              break;
+
+            default:
+              sim_printf ("error: con_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+          } // switch
+        if (rc < 0)
+          break;
+      } // process statements
+    cfgparse_done (& cfg_state);
+    return SCPE_OK;
+  }
+
+static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
+                               UNUSED int  val, UNUSED void * desc)
+  {
+    sim_printf ("Attn hack:  %d\n", attn_hack);
+    sim_printf ("Mount hack: %d\n", mount_hack);
+    return SCPE_OK;
+  }
+
