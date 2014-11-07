@@ -15,9 +15,6 @@
 #include "dps8.h"
 #include "dps8_cpu.h"
 
-//typedef uint64_t t_uint64;
-//typedef uint64_t word36;
-
 #include "dps8_mp.h"
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))

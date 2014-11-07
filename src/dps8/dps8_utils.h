@@ -60,7 +60,7 @@ word72 bitfieldExtract72(word72 a, int b, int c);
 
 int bitfieldInsert(int a, int b, int c, int d);
 int bitfieldExtract(int a, int b, int c);
-char *bin2text(t_uint64 word, int n);
+char *bin2text(uint64 word, int n);
 void sim_printf( const char * format, ... )    // not really simh, by my impl
 #ifdef __GNUC__
   __attribute__ ((format (printf, 1, 2)))
@@ -122,10 +122,10 @@ word36 extr36 (uint8 * bits, uint woffset);
 word9 extr9 (uint8 * bits, uint coffset);
 word18 extr18 (uint8 * bits, uint coffset);
 uint8 getbit (void * bits, int offset);
-t_uint64 extr (void * bits, int offset, int nbits);
+uint64 extr (void * bits, int offset, int nbits);
 void put36 (word36 val, uint8 * bits, uint woffset);
-int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp);
-int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 wordp);
+int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, uint64 *wordp);
+int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 void print_int128 (__int128_t n, char * p);
 uint64 sim_timell (void);
 void sim_puts (char * str);

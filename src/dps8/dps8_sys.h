@@ -11,6 +11,7 @@ typedef struct {
         int connect;    // Delay between CIOC instr & connect channel operation
         int chan_activate;  // Time for a list service to send a DCW
         int boot_time; // delay between CPU start and IOM starting boot process
+        int terminate_time; // delay between CPU start and IOM starting boot process
     } iom_times;
     struct {
         int read;
@@ -25,10 +26,10 @@ typedef struct {
         uint nexec;
         uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
     } instr[1024];
-    t_uint64 total_cycles;      // Used for statistics and for simulated clock
-    t_uint64 total_faults [N_FAULTS];
-    t_uint64 total_instr;
-    t_uint64 total_msec;
+    uint64 total_cycles;      // Used for statistics and for simulated clock
+    uint64 total_faults [N_FAULTS];
+    uint64 total_instr;
+    uint64 total_msec;
     uint n_instr;       // Reset to zero on each call to sim_instr()
 } stats_t;
 

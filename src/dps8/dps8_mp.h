@@ -23,12 +23,12 @@ typedef struct multipassStats
     uint intr_pair_addr;
     cycles_t cycle;
 
-    t_uint64 cycles;
+    uint64 cycles;
 
 
-    t_uint64 diskSeeks;
-    t_uint64 diskWrites;
-    t_uint64 diskReads;
+    uint64 diskSeeks;
+    uint64 diskWrites;
+    uint64 diskReads;
 
     
   } multipassStats;

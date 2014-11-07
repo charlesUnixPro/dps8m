@@ -354,10 +354,10 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
  
 static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
-if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
-if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
-if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
-if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+    //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+    //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+    //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
+    //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     int mt_unit_num = MT_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
@@ -421,6 +421,7 @@ if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
               {
                 ret = sim_tape_rdrecf (unitp, tape_statep -> bufp, & tbc,
                                        bufsz);
+                sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_rdrecf returned %d, with tbc %d\n", ret, tbc);
                 // XXX put unit number in here...
               }
             if (ret != 0)
@@ -512,27 +513,28 @@ sim_printf ("uncomfortable with this\n");
 #if 0
             if (type == 3 && tally != 1)
               {
-                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                sim_debug (DBG_ERR, & tape_dev, "%s: Type is 3, but tally is %d\n",
                            __func__, tally);
               }
 #endif
             if (tally == 0)
               {
-                sim_debug (DBG_DEBUG, & iom_dev,
+                sim_debug (DBG_DEBUG, & tape_dev,
                            "%s: Tally of zero interpreted as 010000(4096)\n",
                            __func__);
                 tally = 4096;
               }
 
-            sim_debug (DBG_DEBUG, & iom_dev,
+            sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Tally %d (%o)\n", __func__, tally, tally);
 if (chan_data -> ptp)
   {
-    sim_printf ("XXXX---->>>   PTP in mt read\n");
-    sim_printf ("XXXX---->>>   PTP in mt read\n");
-    sim_printf ("XXXX---->>>   PTP in mt read\n");
-    sim_printf ("XXXX---->>>   PTP in mt read\n");
-
+    //sim_printf ("XXXX---->>>   PTP in mt read\n");
+    //sim_printf ("XXXX---->>>   PTP in mt read\n");
+    //sim_printf ("XXXX---->>>   PTP in mt read\n");
+    //sim_printf ("XXXX---->>>   PTP in mt read\n");
+    //sim_printf ("tally %d  tbc %d\n", tally, tape_statep -> tbc);
+    //sim_printf ("daddr %08o\n", daddr);
             word36 buffer [tally];
 
             for (uint i = 0; i < tally; i ++)
@@ -541,7 +543,7 @@ if (chan_data -> ptp)
                   break;
               }
 
-            indirectDataService (iom_unit_num, chan, daddr, tally, buffer,
+            indirectDataService (iom_unit_num, chan, daddr, tape_statep -> words_processed, buffer,
                                  idsTypeW36, true, & chan_data -> isOdd);
   }
 else
@@ -664,7 +666,7 @@ sim_printf ("uncomfortable with this\n");
               }
             if (tally == 0)
               {
-                sim_debug (DBG_DEBUG, & iom_dev,
+                sim_debug (DBG_DEBUG, & tape_dev,
                            "%s: Tally of zero interpreted as 010000(4096)\n",
                            __func__);
                 tally = 4096;
@@ -814,7 +816,7 @@ sim_printf ("uncomfortable with this\n");
             
             if (tally != 8)
               {
-                sim_debug (DBG_DEBUG, & iom_dev,
+                sim_debug (DBG_DEBUG, & tape_dev,
                            "%s: Expected tally of 8; got %d\n",
                            __func__, tally);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -934,10 +936,10 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
       {
-        sim_printf ("XXX marker intr\n");
-        sim_printf ("XXX marker intr\n");
-        sim_printf ("XXX marker intr\n");
-        sim_printf ("XXX marker intr\n");
+        //sim_printf ("XXX marker intr\n");
+        //sim_printf ("XXX marker intr\n");
+        //sim_printf ("XXX marker intr\n");
+        //sim_printf ("XXX marker intr\n");
         send_marker_interrupt (iom_unit_num, chan);
       }
 

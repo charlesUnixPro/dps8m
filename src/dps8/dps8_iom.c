@@ -451,6 +451,9 @@ static word24 buildLPWPTWaddress (word18 ptPtr, word1 seg, word8 pageNumber)
     word24 addr = (((word24) ptPtr) & MASK18) << 6;
     addr += (((word24) seg) & 01) << 8;
     addr += pageNumber;
+#ifdef IOMDBG1
+sim_printf ("buildLPWPTWaddress ptPtr %08o seg %o pageNumber %03o address %08o\n", ptPtr, seg, pageNumber, addr);
+#endif
     return addr;
   }
 
@@ -464,9 +467,13 @@ sim_printf ("LPWPTW address %o\n", addr);
     fetch_abs_word (addr, & chan_data -> PTW_LPW, __func__);
   }
 
+// 'write' means periperal write; i.e. the peripheral is writing to core after
+// reading media.
+
 void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
                           void * data, idsType type, bool write, bool * odd)
   {
+    //sim_debug (DBG_DEBUG, & iom_dev, "%s daddr %08o\n", __func__, daddr);
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
     switch (type)
       {
@@ -482,9 +489,9 @@ void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally,
                 fetchIDSPTW (iomUnitNum, chanNum, chan_data -> seg, pageNumber);
                 word24 addr = getbits36 (chan_data -> PTW_DCW, 4, 14) << 10 | 
                               pageOffset;
-//sim_printf ("daddr %08o t %4d offset %08o pn %04d po %04d addr %08o\n",
-            //daddr, t, offset, pageNumber, pageOffset, addr);
 #ifdef IOMDBG1
+sim_printf ("daddr %08o t %4d offset %08o pn %04d po %04d (%04o) addr %08o\n",
+            daddr, t, offset, pageNumber, pageOffset, pageOffset, addr);
 sim_printf ("ids addr %08o data %012llo\n", addr, dataIn [t]);
 #endif
                 if (write)
@@ -691,13 +698,13 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
                     chan_data -> lpw . size);
         sim_printf ("ptPtr %o\n", chan_data -> ptPtr);
 #endif
-        fetchLPWPTW (iomUnitNum, chanNum, chan_data -> seg, addr >> 10);
+        fetchLPWPTW (iomUnitNum, chanNum, chan_data -> seg, (addr >> 10) & MASK6);
 #ifdef IOMDBG1
         sim_printf ("PTW %012llo\n", chan_data -> PTW_LPW);
 #endif
         // Calculate effective address
         // PTW 4-17 || LPW 8-17
-        addr = getbits36 (chan_data -> PTW_LPW, 4, 14) << 10 | addr;
+        addr = getbits36 (chan_data -> PTW_LPW, 4, 14) << 10 | (addr & MASK10);
 #ifdef IOMDBG1
         sim_printf ("addr now %08o\n", addr);
 #endif
@@ -1603,7 +1610,6 @@ static int send_general_interrupt (uint iomUnitNum, uint chanNum, enum iomImwPic
 
 int send_marker_interrupt (uint iomUnitNum, int chanNum)
 {
-sim_printf ("send_marker_interrupt\n");
     status_service (iomUnitNum, chanNum, true);
     return send_general_interrupt (iomUnitNum, chanNum, imwMarkerPic);
 }
@@ -1715,7 +1721,8 @@ static t_stat termIntrSvc (UNIT * unitp)
 
 int send_terminate_interrupt (uint iomUnitNum, uint chanNum)
   {
-    sim_activate (& termIntrChannelUnits [iomUnitNum] [chanNum], 10000);
+    sim_activate (& termIntrChannelUnits [iomUnitNum] [chanNum], 
+                  sys_opts . iom_times . terminate_time);
     return 0;
   }
 #endif
@@ -1728,7 +1735,9 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chanNum];
 
-    lpw_t lpw; 
+    //lpw_t lpw; 
+    lpw_t * lpwp = & chan_data -> lpw;
+
     int user_fault_flag = iomCsNormal;
     int tdcw_count = 0;
 
@@ -1738,7 +1747,7 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
 
     // 4.3.1a: FIRST_SERVICE == YES
 
-    fetch_and_parse_lpw (& lpw, chanloc, false);
+    fetch_and_parse_lpw (lpwp, chanloc, false);
 
 //sim_printf ("initing ptro to 0\n");
     if (ptro)
@@ -1748,14 +1757,14 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
         
     // 4.3.1a: LPW 21,22 == ?
     
-//sim_printf ("nc %d trunout %d\n", lpw . nc, lpw . trunout);
-//sim_printf ("tally %d\n", lpw . tally);
+//sim_printf ("nc %d trunout %d\n", lpwp -> nc, lpwp -> trunout);
+//sim_printf ("tally %d\n", lpwp -> tally);
 
-    if (lpw . nc == 0 && lpw . trunout == 0)
+    if (lpwp -> nc == 0 && lpwp -> trunout == 0)
       {
         // 4.3.1a: LPW 21,22 == 00
         // 4.3.1a: 256K OVERFLOW?
-        if (lpw . lpw20_ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000u)
+        if (lpwp -> lpw20_ae == 0 && lpwp -> dcw_ptr  + lpwp -> tally >= 01000000u)
           {
 // XXX firstList ? iomFsrFirstList : iomFsrList
             iomFault (iomUnitNum, IOM_CONNECT_CHAN, __func__, 1, 
@@ -1764,15 +1773,15 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
           }
       }
     
-    if (lpw . nc == 0 && lpw . trunout == 1)
+    if (lpwp -> nc == 0 && lpwp -> trunout == 1)
       {
     A:
-//sim_printf ("tally %d\n", lpw . tally);
+//sim_printf ("tally %d\n", lpwp -> tally);
         // 4.3.1a: LPW 21,22 == 01
     
         // 4.3.1a: TALLY?
     
-        if (lpw . tally == 0)
+        if (lpwp -> tally == 0)
           {
             if (ptro)
               * ptro = 1;
@@ -1781,9 +1790,9 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
             //iomFault (iomUnitNum, chanNum, __func__, 0, 1);
             return 1;
           }
-        else if (lpw . tally > 1)
+        else if (lpwp -> tally > 1)
           {
-            if (lpw . lpw20_ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000)
+            if (lpwp -> lpw20_ae == 0 && lpwp -> dcw_ptr  + lpwp -> tally >= 01000000)
               {
 // XXX firstList ? iomFsrFirstList : iomFsrList
                 iomFault (iomUnitNum, IOM_CONNECT_CHAN, __func__, 1, 
@@ -1805,11 +1814,11 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
     
     // 4.3.1a: LPW 20? (address extension)
     
-    uint dcw_addr = lpw . dcw_ptr;
+    uint dcw_addr = lpwp -> dcw_ptr;
     
 // Pre-NSA code
 #if 0
-    if (lpw . lpw20_ae)
+    if (lpwp -> lpw20_ae)
       {
         // 4.3.1a: LPW 20 == 1
         // XXX IF STD_GCOS
@@ -1831,6 +1840,7 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
       }
 #endif
 
+    //sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
     if (chan_data -> chan_mode == cm_LPW_init_state)
       {
 // It is known that if PGE is set, the mode switch is in paged mode
@@ -1839,12 +1849,12 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
           {
             // Mode is PAGE CHAN
             // Look at LPW23 (srel) & LPW20 (ae)
-            if (lpw . lpw20_ae || lpw . lpw23_srel)
+            if (lpwp -> lpw20_ae || lpwp -> lpw23_srel)
               {
                 sim_printf ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
-                          lpw . lpw20_ae, lpw . lpw23_srel); 
+                          lpwp -> lpw20_ae, lpwp -> lpw23_srel); 
                 sim_err ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
-                          lpw . lpw20_ae, lpw . lpw23_srel); // Doesn't return
+                          lpwp -> lpw20_ae, lpwp -> lpw23_srel); // Doesn't return
               
               }
             // mode is REAL LPW/DCW (1)
@@ -1858,7 +1868,7 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
             // pg B16 "If the IOM is paged and PCW bit 64 is off, LPW
             // bit 23 (srel) is ignored by the hardware
             // But pg B25 clearly shows that LPW 23 is tested...
-            if (lpw . lpw20_ae || lpw . lpw23_srel)
+            if (lpwp -> lpw20_ae || lpwp -> lpw23_srel)
               {
                 sim_printf ("AE | SREL set in EXT MODE CHAN in iomListService; fail.\n");
                 sim_err ("AE | SREL set in EXT MODE CHAN in iomListService; fail.\n");
@@ -1871,7 +1881,6 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
     sim_debug (DBG_DEBUG, & iom_dev, "%s: DCW @ 0%06o\n", 
                __func__, dcw_addr);
         
-    // XXX check 1 bit; read_only
     fetchAndParseDCW (iomUnitNum, chanNum, dcwp, dcw_addr, 1);
 
     // 4.3.1b: C
@@ -1891,13 +1900,24 @@ sim_debug (DBG_TRACE, & iom_dev, "dcw type %o\n", dcwp -> type);
     
         // 4.3.1b: LPW 18 RES?
     
-        if (lpw . ires)
+        if (lpwp -> ires)
           {
             // 4.3.1b: LPW 18 RES == YES
             user_fault_flag = iomCsIdcwInResMode;
           }
 
         // In this context, mask is ec.
+
+// From iom_control.alm:
+//  " At this point we would normally set idcw.ext_ctl.  This would allow IOM's
+//  " to transfer to DCW lists which do not reside in the low 256K.
+//  " Unfortunately, the PSIA does not handle this bit properly.
+//  " As a result, we do not set the bit and put a kludge in pc_abs so that
+//  " contiguous I/O buffers are always in the low 256K.
+//  "
+//  " lda       =o040000,dl         " set extension control in IDCW
+//  " orsa      ab|0
+
         if (dcwp -> fields . instr . mask)
           {
 #ifdef IOMDBG
@@ -1915,7 +1935,7 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
     
     // 4.3.1b: LPW 23 REL?
     
-    // XXX missing the lpw.srel |= dcw.srel) somewhere???
+    // XXX missing the lpwp ->srel |= dcw.srel) somewhere???
     
     uint addr;
     if (dcwp -> type == ddcw)
@@ -1923,16 +1943,16 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
     else // we know it is not a idcw, so it must be a tdcw
       addr = dcwp -> fields . xfer . addr;
  
-    if (lpw . lpw23_srel != 0)
+    if (lpwp -> lpw23_srel != 0)
       {
         // 4.3.1b: LPW 23 REL == 1
         sim_err ("LPW.SREL set\n");
 // I don't have the original PCW handy, so elide...
 #if 0
         // 4.2.1b: BOUNDARY ERROR?
-        if ((lpw . lpw20_ae || pcwp -> ext))
+        if ((lpwp -> lpw20_ae || pcwp -> ext))
           {
-            uint sz = lpw . size;
+            uint sz = lpwp -> size;
             if (sz == 0)
               {
                 sim_debug (DBG_INFO, & iom_dev, "%s: LPW size is zero; interpreting as 4096\n", __func__);
@@ -1945,7 +1965,7 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
                 goto user_fault;
               }
             // 4.2.1b: ABSOUTIZE ADDRESS
-            addr = lpw . lbnd + addr;
+            addr = lpwp -> lbnd + addr;
           }
 #endif
       }
@@ -1970,12 +1990,12 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
 #ifdef IOMDBG
 sim_printf ("transfer to %o\n", addr); 
 #endif
-        lpw . dcw_ptr = addr;
+        lpwp -> dcw_ptr = addr;
 #if 0 // Non-nsa code
         // Not for Paged
-        //lpw . lpw20_ae |= dcwp -> fields . xfer . ec;
-        lpw . ires |= dcwp -> fields . xfer . res;
-        lpw . lpw23_srel |= dcwp -> fields . xfer . tdcw35_rel;
+        //lpwp -> lpw20_ae |= dcwp -> fields . xfer . ec;
+        lpwp -> ires |= dcwp -> fields . xfer . res;
+        lpwp -> lpw23_srel |= dcwp -> fields . xfer . tdcw35_rel;
 #endif
 
         //sim_debug (DBG_TRACE, & iom_dev, "TDCW 33 (pdcw) %o 35 (rel) %o\n", 
@@ -1987,9 +2007,11 @@ sim_printf ("transfer to %o\n", addr);
                 dcwp -> fields . xfer . tdcw35_rel == 1)
               {
                 chan_data -> chan_mode = cm_paged_LPW_seg_DCW;
+                sim_debug (DBG_TRACE, & iom_dev, "chan_mode set to cm_paged_LPW_seg_DCW\n");
                 // pdcw == 1 causes LPW20 to be set
-                chan_data -> lpw . lpw20_ae = 1;
+                lpwp -> lpw20_ae = 1;
                 chan_data -> seg = dcwp -> fields . xfer . tdcw31_seg;
+                sim_debug (DBG_TRACE, & iom_dev, "lpw20_ae set to 1; chan_data -> seg set to %o\n", chan_data -> seg);
               }
             else
               {
@@ -2004,8 +2026,8 @@ sim_printf ("transfer to %o\n", addr);
           }
         else if (chan_data -> chan_mode == cm_ext_LPW_real_DCW)
           {
-            chan_data -> lpw . ires |= dcwp -> fields . xfer . res;
-            chan_data -> lpw . lpw23_srel |= dcwp -> fields . xfer . tdcw35_rel;
+            lpwp -> ires |= dcwp -> fields . xfer . res;
+            lpwp -> lpw23_srel |= dcwp -> fields . xfer . tdcw35_rel;
           }
         else
           {
@@ -2013,13 +2035,13 @@ sim_printf ("transfer to %o\n", addr);
                         chan_data -> chan_mode);
             sim_err ("unsupported chan_mode in TDCW\n");
           }
-        lpw . tally --;            
+        lpwp -> tally --;            
  
         // 4.3.1b: AC CHANGE ERROR?
         //         LPW 18 == 1 AND DCW 33 = 1
  
 #if 0 // XXX paged mode?
-        if (lpw . ires && dcwp -> fields . xfer . ec)
+        if (lpwp -> ires && dcwp -> fields . xfer . ec)
           {
             // 4.3.1b: AC CHANGE ERROR == YES
             user_fault_flag = iomCsIdcwInResMode;
@@ -2065,16 +2087,16 @@ D:;
     
     // 4.3.1c: LPW 21?
     
-    if (lpw . nc == 0)
+    if (lpwp -> nc == 0)
       {
     
         // 4.3.1c: LPW 21 == 0 (UPDATE)
     
         // 4.3.1c: UPDATE LPW ADDRESS AND TALLY
     
-        lpw . tally --;
-        lpw . dcw_ptr ++;
-        if (lpw . tally == 0)
+        lpwp -> tally --;
+        lpwp -> dcw_ptr ++;
+        if (lpwp -> tally == 0)
           {
             if (ptro)
               * ptro = 1;
@@ -2093,7 +2115,7 @@ D:;
 
     // 4.3.1c:  WRITE LPW AND LPWX INTO MAILBOXES (scratch and core)
     
-    writeLPW (chanNum, chanloc, & lpw, true);
+    writeLPW (chanNum, chanloc, lpwp, true);
 
     return 0;
   }
@@ -2138,7 +2160,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
 #endif
     chan_data -> addressExtension = pcw . ext;
     chan_data -> chan_mode = cm_LPW_init_state;
-    sim_debug (DBG_TRACE, & iom_dev, "set cm_LPW_init_state\n");
+    sim_debug (DBG_TRACE, & iom_dev, "payload set cm_LPW_init_state\n");
 
 
 //if (chanNum == 012) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
@@ -2190,6 +2212,7 @@ static int doConnectChan (uint iomUnitNum)
   {
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [IOM_CONNECT_CHAN];
     chan_data -> chan_mode = cm_LPW_init_state;
+    sim_debug (DBG_TRACE, & iom_dev, "connect set cm_LPW_init_state\n");
     lpw_t * lpwp = & chan_data -> lpw;
     bool ptro = false;
     bool * first_list = & chan_data -> firstList;

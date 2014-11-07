@@ -1728,6 +1728,7 @@ sysinfo_t sys_opts =
       -1, /* iom_times.connect */
        0,  /* iom_times.chan_activate */
       10, /* boot_time */
+      10000, /* terminate_time */
     },
     {
 // XXX This suddenly started working when I reworked the iom code for multiple units.
@@ -1777,11 +1778,13 @@ static config_value_list_t cfg_timing_list [] =
 
 static config_list_t sys_config_list [] =
   {
-    /*  0 */ { "connect_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
-    /*  1 */ { "activate_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
-    /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
-    /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
-    /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+    /*  0 */ { "connect_time", -1, 100000, cfg_timing_list },
+    /*  1 */ { "activate_time", -1, 100000, cfg_timing_list },
+    /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list },
+    /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list },
+    /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list },
+    /*  5 */ { "terminate_time", -1, 100000, cfg_timing_list },
+    { NULL, 0, 0, NULL }
  };
 
 static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value, 
@@ -1820,6 +1823,10 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 
             case  4: // IOM_BOOT_TIME
               sys_opts . iom_times . boot_time = (int) v;
+              break;
+
+            case  5: // TERMINATE_TIME
+              sys_opts . iom_times . terminate_time = (int) v;
               break;
 
             default:

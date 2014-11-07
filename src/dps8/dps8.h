@@ -39,11 +39,10 @@
 #include <stdint.h>
 typedef t_uint64    u_int64_t;
 #endif
+typedef t_uint64    uint64;
+typedef t_int64     int64;
 
 /* Data types */
-
-typedef uint32          a8;                           ///< DSP8 addr (18/24b)
-typedef t_uint64        d8;                           ///< DSP8 data (36b)
 
 typedef uint8       word1;
 typedef uint8       word2;
@@ -66,13 +65,11 @@ typedef uint32      word20;
 typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word32;
-typedef t_uint64    word36;
-typedef t_int64     word36s;
+typedef uint64      word36;
+typedef int64       word36s;
 typedef __uint128_t word72;
 typedef __int128_t  word72s;
 
-typedef t_int64     int64;
-typedef t_uint64    uint64;
 typedef __uint128_t uint128;
 typedef __int128_t  int128;
 

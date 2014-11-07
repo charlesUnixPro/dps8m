@@ -82,12 +82,12 @@ struct opCode *getIWBInfo(DCDstruct *i)
 
 char *disAssemble(word36 instruction)
 {
-    int32 opcode  = GET_OP(instruction);   ///< get opcode
-    int32 opcodeX = GET_OPX(instruction);  ///< opcode extension
-    a8    address = GET_ADDR(instruction);
-    int32 a       = GET_A(instruction);
+    int32  opcode  = GET_OP(instruction);   ///< get opcode
+    int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
+    word18 address = GET_ADDR(instruction);
+    int32  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
-    int32 tag     = GET_TAG(instruction);
+    int32  tag     = GET_TAG(instruction);
 
     static char result[132] = "???";
     strcpy(result, "???");
@@ -1082,8 +1082,6 @@ int bitfieldReverse(int x)
 #endif
 
 
-//#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
-
 #if 0
 /*
  * getbits36()
@@ -1162,7 +1160,7 @@ void putbits36 (word36 * x, uint p, uint n, word36 val)
 
 #include <ctype.h>
 
-char *bin2text(t_uint64 word, int n)
+char *bin2text(uint64 word, int n)
 {
     // WARNING: static buffer
     static char str1[65];
@@ -1566,25 +1564,25 @@ word36 extr36 (uint8 * bits, uint woffset)
     uint dwoffset = woffset / 2;
     uint8 * p = bits + dwoffset * 9;
 
-    t_uint64 w;
+    uint64 w;
     if (isOdd)
       {
-        w  = ((t_uint64) (p [4] & 0xf)) << 32;
-        w |=  (t_uint64) (p [5]) << 24;
-        w |=  (t_uint64) (p [6]) << 16;
-        w |=  (t_uint64) (p [7]) << 8;
-        w |=  (t_uint64) (p [8]);
+        w  = (((uint64) p [4]) & 0xf) << 32;
+        w |=  ((uint64) p [5]) << 24;
+        w |=  ((uint64) p [6]) << 16;
+        w |=  ((uint64) p [7]) << 8;
+        w |=  ((uint64) p [8]);
       }
     else
       {
-        w  =  (t_uint64) (p [0]) << 28;
-        w |=  (t_uint64) (p [1]) << 20;
-        w |=  (t_uint64) (p [2]) << 12;
-        w |=  (t_uint64) (p [3]) << 4;
-        w |= ((t_uint64) (p [4]) >> 4) & 0xf;
+        w  =  ((uint64) p [0]) << 28;
+        w |=  ((uint64) p [1]) << 20;
+        w |=  ((uint64) p [2]) << 12;
+        w |=  ((uint64) p [3]) << 4;
+        w |= (((uint64) p [4]) >> 4) & 0xf;
       }
     // mask shouldn't be neccessary but is robust
-    return (word36) (w & 0777777777777ULL);
+    return (word36) (w & MASK36);
   }
 
 void put36 (word36 val, uint8 * bits, uint woffset)
@@ -1601,11 +1599,11 @@ void put36 (word36 val, uint8 * bits, uint woffset)
         p [6]  = (val >> 16) & 0xff;
         p [7]  = (val >>  8) & 0xff;
         p [8]  = (val >>  0) & 0xff;
-        //w  = ((t_uint64) (p [4] & 0xf)) << 32;
-        //w |=  (t_uint64) (p [5]) << 24;
-        //w |=  (t_uint64) (p [6]) << 16;
-        //w |=  (t_uint64) (p [7]) << 8;
-        //w |=  (t_uint64) (p [8]);
+        //w  = ((uint64) (p [4] & 0xf)) << 32;
+        //w |=  (uint64) (p [5]) << 24;
+        //w |=  (uint64) (p [6]) << 16;
+        //w |=  (uint64) (p [7]) << 8;
+        //w |=  (uint64) (p [8]);
       }
     else
       {
@@ -1615,11 +1613,11 @@ void put36 (word36 val, uint8 * bits, uint woffset)
         p [3]  = (val >>  4) & 0xff;
         p [4] &=               0x0f;
         p [4] |= (val <<  4) & 0xf0;
-        //w  =  (t_uint64) (p [0]) << 28;
-        //w |=  (t_uint64) (p [1]) << 20;
-        //w |=  (t_uint64) (p [2]) << 12;
-        //w |=  (t_uint64) (p [3]) << 4;
-        //w |= ((t_uint64) (p [4]) >> 4) & 0xf;
+        //w  =  (uint64) (p [0]) << 28;
+        //w |=  (uint64) (p [1]) << 20;
+        //w |=  (uint64) (p [2]) << 12;
+        //w |=  (uint64) (p [3]) << 4;
+        //w |= ((uint64) (p [4]) >> 4) & 0xf;
       }
     // mask shouldn't be neccessary but is robust
   }
@@ -1721,10 +1719,10 @@ word18 extr18 (uint8 * bits, uint boffset)
 
 uint8 getbit (void * bits, int offset)
   {
-    int offsetInWord = offset % 36;
-    int revOffsetInWord = 35 - offsetInWord;
-    int offsetToStartOfWord = offset - offsetInWord;
-    int revOffset = offsetToStartOfWord + revOffsetInWord;
+    unsigned int offsetInWord = (uint) offset % 36;
+    unsigned int revOffsetInWord = 35 - offsetInWord;
+    unsigned int offsetToStartOfWord = (uint) offset - offsetInWord;
+    unsigned int revOffset = offsetToStartOfWord + revOffsetInWord;
 
     uint8 * p = (uint8 *) bits;
     unsigned int byte_offset = revOffset / 8;
@@ -1744,9 +1742,9 @@ uint8 getbit (void * bits, int offset)
 //    Get a string of bits (up to 64)
 //
 
-t_uint64 extr (void * bits, int offset, int nbits)
+uint64 extr (void * bits, int offset, int nbits)
   {
-    t_uint64 n = 0;
+    uint64 n = 0;
     int i;
     for (i = nbits - 1; i >= 0; i --)
       {
@@ -1757,7 +1755,7 @@ t_uint64 extr (void * bits, int offset, int nbits)
     return n;
   }
 
-int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
+int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
   {
     uint wp = * words_processed; // How many words have been processed
 
@@ -1769,13 +1767,14 @@ int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed,
     //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
 
     * wordp = extr36 (bufp, wp);
+//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012llo\n", * wordp); 
     //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
     (* words_processed) ++;
 
     return 0;
   }
 
-int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 word)
+int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word)
   {
     uint wp = * words_processed; // How many words have been processed
 

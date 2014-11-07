@@ -1165,15 +1165,15 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
                 // Boot time
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                 // 932686778
-                t_uint64 UnixSecs = 932686778;
-                t_uint64 UnixuSecs = UnixSecs * 1000000llu + big;
+                uint64 UnixSecs = 932686778;
+                uint64 UnixuSecs = UnixSecs * 1000000llu + big;
                 // now determine uSecs since Jan 1, 1901 ...
-                t_uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
+                uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 
                 // The get calendar clock function is guaranteed to return
                 // different values on successive calls. 
 
-                static t_uint64 last = 0;
+                static uint64 last = 0;
                 if (last >= MulticsuSecs)
                   {
                     sim_debug (DBG_TRACE, & scu_dev, "finagle clock\n");
@@ -1210,13 +1210,13 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
 
                 now . tv_sec -= (1406072378 - 932686778);
               }
-            t_uint64 UnixSecs = (t_uint64) now.tv_sec;
-            t_uint64 UnixuSecs = UnixSecs * 1000000LL + (t_uint64) now.tv_usec;
+            uint64 UnixSecs = (uint64) now.tv_sec;
+            uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;
    
             // now determine uSecs since Jan 1, 1901 ...
-            t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+            uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
  
-            static t_uint64 lastRccl;                    //  value from last call
+            static uint64 lastRccl;                    //  value from last call
  
             if (MulticsuSecs == lastRccl)
                 lastRccl = MulticsuSecs + 1;

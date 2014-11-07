@@ -1186,7 +1186,7 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cp
 //-- // ============================================================================
 //-- 
 //-- 
-//-- int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
+//-- int disk_iom_io(int chan, uint64 *wordp, int* majorp, int* subp)
 //-- {
 //--     // sim_debug(DBG_DEBUG, & disk_dev, "disk_iom_io: Chan 0%o\n", chan);
 //--     

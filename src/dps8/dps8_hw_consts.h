@@ -118,7 +118,7 @@
 #define MASK35          0377777777777llu
 #define MASK70          (((word72)1U << 70) - 1U)
 
-#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
+#define MASKBITS(x) ( ~(~((uint64)0)<<x) ) // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
 #define GETLO36(a)      ((word18) ((a) & MASK18))

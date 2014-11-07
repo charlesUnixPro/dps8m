@@ -4535,10 +4535,10 @@ static t_stat DoBasicInstruction (void)
                   // Clock at initialization
                   // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                   // 932686778
-                  t_uint64 UnixSecs = 932686778;
-                  t_uint64 UnixuSecs = UnixSecs * 1000000LL;
+                  uint64 UnixSecs = 932686778;
+                  uint64 UnixuSecs = UnixSecs * 1000000LL;
                   // now determine uSecs since Jan 1, 1901 ...
-                  t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+                  uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
 
                   // Back into 72 bits
                   __uint128_t big = ((__uint128_t) rA) << 36 | rQ;

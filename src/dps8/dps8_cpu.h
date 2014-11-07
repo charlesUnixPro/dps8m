@@ -1100,8 +1100,8 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 
 int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
-int core_read2 (word24 addr, word36 *even, d8 *odd, const char * ctx);
-int core_write2 (word24 addr, word36 even, d8 odd, const char * ctx);
+int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
+int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 int core_readN (word24 addr, word36 *data, int n, const char * ctx);
 int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
 int core_read72 (word24 addr, word72 *dst, const char * ctx);
@@ -1126,5 +1126,3 @@ _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
-//t_uint64 sim_ctime (void);
-

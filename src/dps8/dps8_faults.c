@@ -16,7 +16,7 @@
 #include "dps8_utils.h"
 
 #ifndef QUIET_UNUSED
-static t_uint64 FR;
+static uint64 FR;
 #endif
 
 /*
@@ -226,7 +226,7 @@ typedef struct {
     bool mr_enable; // bit 35 "n"
     bool strobe; // bit 30 "l"
     bool fault_reset; // bit 31 "m"
-    t_uint64 word;
+    uint64 word;
 } mode_reg_t;
 static mode_reg_t MR;
 #endif 

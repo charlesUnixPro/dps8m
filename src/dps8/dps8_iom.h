@@ -7,6 +7,17 @@ typedef struct pcw_t
     uint dev_code;   // 6 bits; 6..11
     uint ext;        // 6 bits; 12..17; address extension
     uint cp;         // 3 bits; 18..20, must be all ones
+
+// From iom_control.alm:
+//  " At this point we would normally set idcw.ext_ctl.  This would allow IOM's
+//  " to transfer to DCW lists which do not reside in the low 256K.
+//  " Unfortunately, the PSIA does not handle this bit properly.
+//  " As a result, we do not set the bit and put a kludge in pc_abs so that
+//  " contiguous I/O buffers are always in the low 256K.
+//  "
+//  " lda       =o040000,dl         " set extension control in IDCW
+//  " orsa      ab|0
+
     uint mask;    // extension control or mask; 1 bit; bit 21
     uint control;    // 2 bits; bit 22..23
     uint chan_cmd;   // 6 bits; bit 24..29;
@@ -170,7 +181,7 @@ typedef struct iomChannelData_
     bool firstList;
     pcw_t pcw; // The pcw at the time of the CIOC.
     word6 addressExtension;
-    word18 ptPtr;
+    word18 ptPtr; // The page table pointer mod 64
     word1 ptp;
     word1 pge;
     word1 aux;
@@ -197,7 +208,7 @@ typedef struct iomChannelData_
         cm_paged_LPW_seg_DCW
       } chan_mode;
 
-    //word27 pageTablePtr [MAX_CHANNELS];
+    //word24 pageTablePtr;
 
     // Information accumulated for status service.
     word12 stati;
