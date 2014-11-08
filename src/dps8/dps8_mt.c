@@ -373,6 +373,7 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         pcwp -> dev_cmd != 060 && // set 800 bpi
         pcwp -> dev_cmd != 070 && // rewind
         pcwp -> dev_cmd != 005 && // read
+        pcwp -> dev_cmd != 063 && // permit
         pcwp -> dev_cmd != 040)   // reset status
       {
         sim_printf ("PTP in mt; dev_cmd %o\n", pcwp -> dev_cmd);
@@ -883,6 +884,12 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               //chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Set 800 bpi\n");
+          }
+          break;
+
+        case 063:              // CMD 063 -- Set File Permit.
+          {
+            sim_debug (DBG_ERR, & tape_dev, "Set file permit?\n");
           }
           break;
 

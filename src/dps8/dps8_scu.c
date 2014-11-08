@@ -710,6 +710,8 @@ typedef struct
 
 static scu_t scu [N_SCU_UNITS_MAX];
 
+static uint elapsed_days = 0;
+
 static t_stat scu_reset (UNUSED DEVICE * dptr)
   {
     // On reset, instantiate the config switch settings
@@ -1162,6 +1164,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * reg
                 if (switches . bullet_time)
                   big *= 10000;
 
+                big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
                 // Boot time
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                 // 932686778
@@ -1687,6 +1690,11 @@ static config_list_t scu_config_list [] =
     /* 11 */ { "lwrstoresize", 1, 0, cfg_size_list },
     /* 12 */ { "cyclic", 0, 0177, NULL },
     /* 13 */ { "nea", 0, 0377, NULL },
+
+    // Hacks
+
+    /* 14 */ { "elapsed_days", 0, 1000, NULL },
+
     { NULL, 0, 0, NULL }
   };
 
@@ -1760,6 +1768,10 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 
             case 13: // CYCLIC
               sw -> nea = (uint) v;
+              break;
+
+            case 14: // ELAPSED_DAYS
+              elapsed_days = (uint) v;
               break;
 
             default:

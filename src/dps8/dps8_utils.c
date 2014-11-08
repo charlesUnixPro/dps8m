@@ -1513,6 +1513,8 @@ char * strdupesc (const char * str)
           * p = ';';
         else if (p [1] == 'd')
           * p = '$';
+        else if (p [1] == 'q')
+          * p = '"';
         else
           {
             p ++;

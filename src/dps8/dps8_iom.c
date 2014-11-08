@@ -1625,7 +1625,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
                             word8 status0, word8 status1)
   {
     uint chanloc = mbx_loc (iomUnitNum, IOM_SPECIAL_STATUS_CHAN);
-sim_printf ("special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);
+    //sim_printf ("special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -1673,7 +1673,7 @@ sim_printf ("lpw dcw_ptr %o\n", lpw . dcw_ptr);
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);
+    //sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);
     store_abs_word ((dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
@@ -1684,7 +1684,7 @@ sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & M
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());
+    //sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());
     store_abs_word (chanloc + 3, dcw, __func__);
 
 //    send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);

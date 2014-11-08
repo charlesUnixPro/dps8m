@@ -327,14 +327,14 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           {
             chan_data -> stati = 04000;
             disk_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & disk_dev, "Request status\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Request status %d\n", disk_unit_num);
             chan_data -> initiate = true;
           }
           break;
 
         case 022: // CMD 22 Read Status Resgister
           {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Read Status Register\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Read Status Register %d\n", disk_unit_num);
             // Get the DDCW
             dcw_t dcw;
             int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
@@ -405,7 +405,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 025: // CMD 25 READ
           {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Read\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", disk_unit_num);
 //sim_printf ("disk read [%lld]\n", sim_timell ());
             // Get the DDCW
             dcw_t dcw;
@@ -528,7 +528,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 030: // CMD 30 SEEK_512
           {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek512\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", disk_unit_num);
 //sim_printf ("disk seek512 [%lld]\n", sim_timell ());
             // Get the DDCW
 
@@ -616,7 +616,7 @@ sim_printf ("uncomfortable with this\n");
         case 031: // CMD 31 WRITE
           {
             chan_data -> isRead = false;
-            sim_debug (DBG_NOTIFY, & disk_dev, "Write\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", disk_unit_num);
 //sim_printf ("disk write [%lld]\n", sim_timell ());
             // Get the DDCW
 
@@ -728,7 +728,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 034: // CMD 34 SEEK
           {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", disk_unit_num);
 //sim_printf ("disk seek [%lld]\n", sim_timell ());
             // Get the DDCW
 
@@ -811,14 +811,14 @@ sim_printf ("uncomfortable with this\n");
           {
             chan_data -> stati = 04000;
             disk_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", disk_unit_num);
             chan_data -> initiate = true;
           }
           break;
 
         case 042: // CMD 42 RESTORE
           {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Restore\n");
+            sim_debug (DBG_NOTIFY, & disk_dev, "Restore %d\n", disk_unit_num);
             chan_data -> stati = 04000;
           }
           break;
