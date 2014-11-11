@@ -203,6 +203,8 @@ void do_ldbr (word36 * Ypair)
     // C(Y-pair) 60,71 → C(DSBR.STACK)
     DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
     sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+    //sim_printf ("ldbr %012llo %012llo\n", Ypair [0], Ypair [1]);
+    //sim_printf ("ldbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
   }
 
 /**
@@ -223,6 +225,8 @@ void do_sdbr (word36 * Ypair)
     Ypair [1] = ((word36) (DSBR . BND & 037777)) << (71 - 50) |
                 ((word36) (DSBR . U & 1)) << (71 - 55) |
                 ((word36) (DSBR . STACK & 07777)) << (71 - 71);
+    //sim_printf ("sdbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+    //sim_printf ("sdbr %012llo %012llo\n", Ypair [0], Ypair [1]);
   }
 
 /**
