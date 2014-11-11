@@ -871,6 +871,100 @@ h:      switch (*s) {
     return (r);
 }
 
+/*
+ * strexpP() -- similiar to strex except it returns string in Pascal style with d[0] set to the string length
+ */
+char *
+strexpP(char *d, char *s)
+{
+    char *r = d + 1;    // we start at d+1 because we want the length to be stored in d[0]
+    long val;
+    char *end_ptr;
+    
+    int nCount = 0;
+    char *s2 = s;
+    
+    do {
+h:      switch (*s) {
+        case 0:
+            break;
+        case '\\' : /*!< An escape sequence */
+            s++;
+            nCount += 1;
+        switch (*s) {
+                case '0':	///< an octal or hex
+                case '1':	///< a decimal digit
+                case '2':	///< a decimal digit
+                case '3':	///< a decimal digit
+                case '4':	///< a decimal digit
+                case '5':	///< a decimal digit
+                case '6':	///< a decimal digit
+                case '7':	///< a decimal digit
+                case '8':	///< a decimal digit
+                case '9':	///< a decimal digit
+                    val = strtoll(s, &end_ptr, 0); // allows for octal, decimal and hex
+                    if (end_ptr == s)
+                        fprintf(stderr, "strexp(%s): strtoll conversion error", s);
+                    else
+                        s = end_ptr;
+                    *r++ = val & 0x1ff; // unfortunately since we aren't using wide characters we're still stuck at 8-bits
+//fprintf(stderr, "Val=%d\n", val);
+                    goto h;
+                case 'a' :  /*!< A bell       */
+                    *r++ = '\a';
+                    nCount += 1;
+                    break;
+                case 'b' :  /*!< Backspace    */
+                    *r++ = '\b';
+                    nCount += 1;
+                    break;
+                case 'f' :  /*!< A Form feed  */
+                    *r++ = '\f';
+                    nCount += 1;
+                    break;
+                case 'n' :  /*!< a nl <CR><LF> */
+                    //		       *d++ = '\r';
+                    *r++ = '\n';
+                    nCount += 1;
+                    break;
+                case 'r' :  /*!< A Carriage return    */
+                    *r++ = '\r';
+                    nCount += 1;
+                    break;
+                case 't' : /*!< A tab         */
+                    *r++ = '\t';
+                    nCount += 1;
+                    break;
+                case 'v' :
+                    *r++ = '\v';
+                    nCount += 1;
+                    break;
+                case '\\' :
+                    *r++ = '\\';
+                    nCount += 1;
+                    break;
+                case '"':
+                    *r++ = '"';
+                    nCount += 1;
+                    break;
+                case '\'':
+                    *r++ = '\'';
+                    nCount += 1;
+                    break;
+            }
+            break;
+        default :
+            *r++ = *s;
+            nCount += 1;
+      }
+    } while (*s++);
+    
+    //int nCount = (int)(r - d) + 1;
+    d[0] = nCount & 0xff;
+//fprintf(stderr, "nCount = %d <%s>\n", nCount, s2);
+    return (d);
+}
+
 /** ------------------------------------------------------------------------- */
 /** copy a string while predicate function returns non-0                      */
 
