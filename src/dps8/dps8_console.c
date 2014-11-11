@@ -399,8 +399,19 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                 // We won't return anything to the IOM until the operator
                 // has finished entering a full line and pressed ENTER.
                 sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Starting input loop for channel %d (%#o)\n", chan, chan);
-                time_t now = time(NULL);
-                while (time(NULL) < now + 30 && ! console_state . have_eol)
+                //time_t now = time(NULL);
+
+// ticket #30
+// The 30-second timeout code is broken; on timeout, it should deliver a
+// an error status, a zero length result and, ideally, leave the input buffer
+// intact. What it does is return an error status and the input buffer without
+// the EOL, and resets the buffer to empty. This means that if the timeout
+// occurs whilst typing, Multics receives the partial input, and you have
+// to hope that something unpleasant doesn't happen, and you have to start the
+// command from the beginning.
+
+                //while (time(NULL) < now + 30 && ! console_state . have_eol)
+                while ( ! console_state . have_eol)
                   {
                     check_keyboard ();
                     usleep (100000);       // FIXME: blocking
