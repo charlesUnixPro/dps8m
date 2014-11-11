@@ -654,6 +654,7 @@ void doOrg(word36 loc)
     if (debug) printf("  ORG at %o\n", addr);
 }
 
+#ifdef DEPRECIATED
 void doAcc(char *str, int sz)
 {
     char cstyle[1024];
@@ -715,12 +716,79 @@ void doAcc(char *str, int sz)
         }
     }
 }
+#endif
+/*
+ * very similar to doAcc() except a pascal style string for str is used
+ */
+void doAccP(char *str, int sz)
+{
+    char pstyle[1024];
+    strexpP(pstyle, str);
+    
+    //int strLength = (int)strlen(cstyle);
+    int strLength = pstyle[0] & 0xff;
+    
+    if (strLength)
+    {
+        /// convert 8-bit chars to 9-bit bytes in 36-bit words. Oh, Joy!
+        int nWords = 0;
+        nWords = (strLength+1) / 4 + ((strLength+1) % 4 ? 1 : 0); // +1 because of initial length char
+        if (sz > 0)
+        {
+            if (sz > strLength)
+                nWords = (sz) / 4 + ((sz) % 4 ? 1 : 0);
+            else if (sz < strLength)
+            {
+                yyprintf("acc: specified string length %d less than actual %d", sz, strLength);
+                return;
+            }
+        }
+        
+        word36 words[nWords];
+        memset(words, 0, sizeof(words));
+        
+        word36 *w = words;
+        int nPos = 2;                   ///< start at 2nd byte in word;
+        *w = ((word36)strLength << 27); ///< store string length in w0-8
+        
+        char *p = pstyle + 1;
+        for(int i = 0 ; i < strLength ; i++)
+        {
+            word36 q = *p++;
+            word36 nShift = (9 * (nPos--));
+            
+            *w |= (q << nShift);
+            
+            if (nPos < 0) {
+                w++;        // next word
+                //*w = 0;
+                nPos = 3;   // 1st byte in word
+            }
+        }
+        while (nPos >= 0)
+        {
+            word36 nShift = (9 * (nPos--));
+            
+            *w |= (' ' << nShift);
+        }
+        
+        for(int i = 0 ; i < nWords; i++)
+        {
+            if (nPass == 2)
+                //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, words[i], i == 0 ? inLine : "");
+                outas8data(words[i], addr, i == 0 ? LEXline : "");
+            
+            addr++;
+        }
+    }
+}
 
 
 /**
  * very similiar to ALM aci except only works on a single line (may need to change that later)
  * and C-style escapes are supported
  */
+#ifdef DEPRECIATED
 void doAci(char *str, int sz)
 {
     char cstyle[256];
@@ -778,6 +846,72 @@ void doAci(char *str, int sz)
         addr++;
     }
 }
+#endif
+
+/*
+ * very similar to doAci() except a pascal style string is passed for str
+ */
+void doAciP(char *str, int sz)
+{
+    char pstyle[256];
+    strexpP(pstyle, str);
+    
+    int strLength = pstyle[0] & 0xff;
+    
+    if (strLength)
+    {
+        /// convert 8-bit chars to 9-bit bytes in 36-bit words. Oh, Joy!
+        int nWords = (strLength) / 4 + ((strLength) % 4 ? 1 : 0);
+        
+        if (sz > 0)   // a size specifier
+        {
+            int nChars = sz;
+            if (nChars > strLength)
+                nWords = (nChars) / 4 + ((nChars) % 4 ? 1 : 0);
+            else if (nChars < strLength)
+            {
+                yyprintf("aci: specified string length less than actual");
+                return;
+            }
+        }
+        
+        word36 words[nWords];
+        memset(words, 0, sizeof(words));
+        
+        word36 *w = words;
+        int nPos = 3;
+        
+        //for(char *p = cstyle; *p; p++)
+        char *p = pstyle + 1;
+        for(int i = 0 ; i < strLength ; i++)
+        {
+            word36 q = *p++ & 0xff;   ///< keep to 8-bits because of sign-extension
+            word36 nShift = (9 * (nPos--));
+            
+            *w |= (q << nShift);
+            
+            if (nPos < 0) {
+                w++;        // next word
+                nPos = 3;   // 1st byte in word
+            }
+        }
+        
+        for(int i = 0 ; i < nWords; i++)
+        {
+            if (nPass == 2)
+                outas8data(words[i], addr, i == 0 ? LEXline : "\n");
+            addr++;
+        }
+    }
+    else
+    {
+        if (nPass == 2)
+            outas8data(0LL, addr, LEXline);
+        
+        addr++;
+    }
+}
+
 
 void doBci(char *str, int sz)
 {
@@ -939,9 +1073,11 @@ void doStrop(pseudoOp *p, char *str, expr *val)
 {
     int sz = val ? (int)val->value : 0;
     if (strcasecmp(p->name, "acc") == 0)
-        return doAcc(str, sz);
+        //return doAcc(str, sz);
+        return doAccP(str, sz);
     if (strcasecmp(p->name, "aci") == 0)
-        return doAci(str, sz);
+        //return doAci(str, sz);
+        return doAciP(str, sz);
     if (strcasecmp(p->name, "bci") == 0)
         return doBci(str, sz);
     if (strcasecmp(p->name, "ac4") == 0)

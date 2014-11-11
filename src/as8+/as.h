@@ -855,6 +855,8 @@ char *ltrim(char *s);
 char *rtrim(char *s);
 
 char *strexp(char *, char *);
+char *strexpP(char *, char *);
+
 char *Strdup(char *s, int size);
 char *strrev(char *s);
 int strcpyWhile(char *dst, char *src, int (*f)(int));
