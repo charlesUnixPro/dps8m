@@ -64,7 +64,7 @@ static MTAB cpu_mod[] = {
 
 static DEBTAB cpu_dt[] = {
     { "TRACE",      DBG_TRACE       },
-    { "TRACEEX",    DBG_TRACEEXT    },
+    { "TRACEEXT",   DBG_TRACEEXT    },
     { "MESSAGES",   DBG_MSG         },
 
     { "REGDUMPAQI", DBG_REGDUMPAQI  },
