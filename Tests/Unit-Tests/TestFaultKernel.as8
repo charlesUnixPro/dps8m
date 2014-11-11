@@ -530,34 +530,26 @@ msg_colon:
 	oct	0
 
 msg_start_entry:
-	aci	'Fault test entry\n\0\0'
-	oct	0
+	aci	'Fault test entry\n\0'
 
 msg_mme_entry:
-	aci	'MME entry\n\0\0'
-	oct	0
+	aci	'MME entry\n\0'
 
 msg_dpf3_entry:
-	aci	'DPF3 entry\n\0\0'
-	oct	0
+	aci	'DPF3 entry\n\0'
 
 msg_fetch:
-	aci	'DPF3 instruction fetch\n'
-	oct	0
+	aci	'DPF3 instruction fetch\n\0'
 
 msg_operand_fetch:
-	aci	'DPF3 operand fetch\n'
-	oct	0
+	aci	'DPF3 operand fetch\n\0'
 
 msg_segno:
-	aci	'segno: '
-	oct	0
+	aci	'segno: \0'
 
 msg_ca:
-	aci	' CA: '
-	oct	0
+	aci	' CA: \0'
 
 msg_ic:
-	aci	' IC: '
-	oct	0
+	aci	' IC: \0'
 

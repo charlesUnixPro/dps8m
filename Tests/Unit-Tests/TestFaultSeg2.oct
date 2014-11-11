@@ -1,4 +1,4 @@
-!INFO date Sat 07 Jun 2014 17:22:10 PDT
+!INFO date Mon 10 Nov 2014 18:49:35 PST
 !INFO src TestFaultSeg2.s
 !SIZE 002002
 000000 xxxx 002001000000 t6_p2:	arg	t6_a1

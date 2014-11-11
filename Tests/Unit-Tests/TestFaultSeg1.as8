@@ -510,104 +510,79 @@ mme_enable:
 	oct	0
 
 msg_test1:
-	aci	'Test 1 R,n ...\n\0\0'
-	oct	0
+	aci	'Test 1 R,n ...\n\0'
 
 msg_test_ok:
-	aci	'... ok\n\0\0'
-	oct	0
+	aci	'... ok\n\0'
 
 msg_test2:
-	aci	'Test 2 R,* ...\n\0\0'
-	oct	0
+	aci	'Test 2 R,* ...\n\0'
 
 msg_test3:
-	aci	'Test 3 R,*,* ...\n\0\0'
-	oct	0
+	aci	'Test 3 R,*,* ...\n\0'
 
 msg_test4:
-	aci	'Test 4 R,3* ...\n\0\0'
-	oct	0
+	aci	'Test 4 R,3* ...\n\0'
 
 msg_test5:
-	aci	'Test 5 R,*seg ...\n\0\0'
-	oct	0
+	aci	'Test 5 R,*seg ...\n\0'
 
 msg_test6:
-	aci	'Test 6 R,*seg, * ...\n\0\0'
-	oct	0
+	aci	'Test 6 R,*seg, * ...\n\0'
 
 msg_test7:
-	aci	'Test 7 R,sd ...\n\0\0'
-	oct	0
+	aci	'Test 7 R,sd ...\n\0'
 
 msg_test8:
-	aci	'Test 8 R,scr ...\n\0\0'
-	oct	0
+	aci	'Test 8 R,scr ...\n\0'
 
 msg_test9:
-	aci	'Test 9 R,scr w/addr change ...\n\0\0'
-	oct	0
+	aci	'Test 9 R,scr w/addr change ...\n\0'
 
 msg_test10:
-	aci	'Test 10 R,ci ...\n\0\0'
-	oct	0
+	aci	'Test 10 R,ci ...\n\0'
 
 msg_test11:
-	aci	'Test 11 R,i ...\n\0\0'
-	oct	0
+	aci	'Test 11 R,i ...\n\0'
 
 msg_test12:
-	aci	'Test 12 R,sc ...\n\0\0'
-	oct	0
+	aci	'Test 12 R,sc ...\n\0'
 
 msg_test13:
-	aci	'Test 13 R,sc w/addr change ...\n\0\0'
-	oct	0
+	aci	'Test 13 R,sc w/addr change ...\n\0'
 
 msg_test14:
-	aci	'Test 14 R,ad ...\n\0\0'
-	oct	0
+	aci	'Test 14 R,ad ...\n\0'
 
 msg_test15:
-	aci	'Test 15 R,di ...\n\0\0'
-	oct	0
+	aci	'Test 15 R,di ...\n\0'
 
 msg_test16:
-	aci	'Test 16 R,dic ...\n\0\0'
-	oct	0
+	aci	'Test 16 R,dic ...\n\0'
 
 msg_test18:
-	aci	'Test 18 R,idc ...\n\0\0'
-	oct	0
+	aci	'Test 18 R,idc ...\n\0'
 
 msg_test17:
-	aci	'Test 17 R,id ...\n\0\0'
-	oct	0
+	aci	'Test 17 R,id ...\n\0'
 
 msg_test19:
-	aci	'Test 19 R,*3 ...\n\0\0'
-	oct	0
+	aci	'Test 19 R,*3 ...\n\0'
 
 msg_main_entry:
-	aci	'Fault test main\n\0\0'
-	oct	0
+	aci	'Fault test main\n\0'
 
 msg_dbg_mme_back:
-	aci	'back from mme\n\0\0'
-	oct	0
+	aci	'back from mme\n\0'
 
 msg_done:
-	aci	'Fault test done\n\0\0'
-	oct	0
+	aci	'Fault test done\n\0'
 
 msg_without:
-	aci	'Running tests without page faulting\n\0\0'
-	oct	0
+	aci	'Running tests without page faulting\n\0'
 
 msg_with:
-	aci	'Running tests with page faulting\n\0\0'
-	oct	0
+	aci	'Running tests with page faulting\n\0'
 
 " Page 1: indirect words
 
