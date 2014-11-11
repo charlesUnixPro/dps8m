@@ -103,8 +103,8 @@ static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, char * cptr, void * d
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-// Survey devices only has 16 slots, so 15 drives plus the controller
-#define N_MT_UNITS_MAX 16
+// Survey devices only has 16 slots, so 16 drives plus the controller
+#define N_MT_UNITS_MAX 17
 #define N_MT_UNITS 1 // default
 
 static t_stat mt_svc (UNIT *up);
@@ -120,6 +120,7 @@ static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // XXX Should we rewind on reset? What is the actual behavior?
 // Unit 0 is the controller
     {UDATA (& mt_svc,                /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
@@ -830,7 +831,7 @@ sim_printf ("uncomfortable with this\n");
             for (uint i = 0; i < 8; i ++)
               buffer [i] = 0;
             
-            for (uint i = 0; i < N_MT_UNITS_MAX; i ++)
+            for (uint i = 1; i < N_MT_UNITS_MAX; i ++)
               {
                 if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
                   {

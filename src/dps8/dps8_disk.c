@@ -396,8 +396,13 @@ sim_printf ("uncomfortable with this\n");
               }
 
 // XXX need status register data format 
+            sim_debug (DBG_ERR, & disk_dev, "Need status register data format\n");
             for (uint i = 0; i < tally; i ++)
-              M [daddr + i] = 0;
+              //M [daddr + i] = 0;
+              store_abs_word (daddr + i, 0, "Disk status register");
+
+            //M [daddr] = SIGN36;
+            store_abs_word (daddr, SIGN36, "Disk status register");
 
             chan_data -> stati = 04000;
           }
@@ -517,8 +522,10 @@ sim_printf ("uncomfortable with this\n");
             uint wordsProcessed = 0;
             for (uint i = 0; i < tally; i ++)
               {
+                word36 w;
                 extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                         & M [daddr + i]);
+                                         & w);
+                store_abs_word (daddr + i, w, "Disk read");
                 chan_data -> isOdd = (daddr + i) % 2;
               }
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
@@ -594,7 +601,10 @@ sim_printf ("uncomfortable with this\n");
                 break;
               }
 
-            word36 seekData = M [daddr];
+            //word36 seekData = M [daddr];
+            word36 seekData;
+            fetch_abs_word (daddr, & seekData, "Disk seek address");
+
 //sim_printf ("seekData %012llo\n", seekData);
 // Observations about the seek/write stream
 // the stream is seek512 followed by a write 1024.
@@ -702,8 +712,10 @@ sim_printf ("uncomfortable with this\n");
             uint wordsProcessed = 0;
             for (uint i = 0; i < tally; i ++)
               {
+                word36 w;
+                fetch_abs_word (daddr + i, & w, "Disk write");
                 insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                      M [daddr + i]);
+                                      w);
                 chan_data -> isOdd = (daddr + i) % 2;
               }
 

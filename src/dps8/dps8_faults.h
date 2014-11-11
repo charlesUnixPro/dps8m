@@ -74,4 +74,6 @@ bool bG7PendingNoTRO (void);
 bool bG7Pending (void);
 void setG7fault (_fault faultNo, _fault_subtype subFault);
 void doG7Fault (void);
+void clearTROFault (void);
+
 

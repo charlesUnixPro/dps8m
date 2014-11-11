@@ -1409,8 +1409,10 @@ t_stat sim_instr (void)
           {
             rTRlsb = 0;
             rTR = (rTR - 1) & MASK27;
-            if (rTR == MASK27) // passing thorugh 0...
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
+            if (rTR == 0) // passing thorugh 0...
               {
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 if (switches . tro_enable)
                   setG7fault (timer_fault, 0);
               }
@@ -1516,10 +1518,17 @@ t_stat sim_instr (void)
 
                 if (ret == CONT_TRA)
                   {
+                     //sim_debug (DBG_TRACE,& cpu_dev,
+                                //"interrupt CONT_TRA; was_appending %d\n",
+                                //get_went_appending () ? 1 : 0);
                      cpu . wasXfer = true; 
                      setCpuCycle (FETCH_cycle);
                      if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                       set_addr_mode (ABSOLUTE_mode);
+                       {
+                         //sim_debug (DBG_TRACE, & cpu_dev,
+                                    //"CONR_TRA: went_appending was false, so setting absolute mode\n");
+                         set_addr_mode (ABSOLUTE_mode);
+                       }
                      break;
                   }
 
@@ -1851,11 +1860,21 @@ syncFaultReturn:;
 
                 if (ret == CONT_TRA)
                   {
+                    //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault\n");
+                    //sim_debug (DBG_TRACE,& cpu_dev,
+                                //"fault CONT_TRA; was_appending %d\n",
+                                //get_went_appending () ? 1 : 0);
                     cpu . wasXfer = true; 
                     setCpuCycle (FETCH_cycle);
                     clearFaultCycle ();
                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                      set_addr_mode (ABSOLUTE_mode);
+                      {
+                        //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault sets ABSOLUTE_mode\n");
+                        //brkbrk(0, NULL);
+                        //sim_debug (DBG_TRACE, & cpu_dev,
+                                   //"CONR_TRA: went_appending was false, so setting absolute mode\n");
+                        set_addr_mode (ABSOLUTE_mode);
+                      }
                     break;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
@@ -2399,6 +2418,7 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
+    //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", went_appending ? "true" : "false");
     return went_appending;
 }
 

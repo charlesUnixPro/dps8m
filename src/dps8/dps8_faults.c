@@ -374,7 +374,7 @@ static int nFaultNumber = -1;
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 #endif
-static _fault g7Faults = 0;
+static uint g7Faults = 0;
 static _fault_subtype  g7SubFaults [N_FAULTS];
 
 // We stash a few things for debugging; they are accessed by emCall.
@@ -552,13 +552,24 @@ bool bG7PendingNoTRO (void)
 
 void setG7fault (_fault faultNo, _fault_subtype subFault)
   {
+    // sim_printf ("setG7fault %d %d [%lld]\n", faultNo, subFault, sim_timell ());
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
     g7Faults |= (1u << faultNo);
     g7SubFaults [faultNo] = subFault;
   }
 
+void clearTROFault (void)
+  {
+    g7Faults &= ~(1u << timer_fault);
+  }
+
 void doG7Fault (void)
   {
+    // sim_printf ("doG7fault %08o [%lld]\n", g7Faults, sim_timell ());
+    // if (g7Faults)
+      // {
+        // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", g7Faults);
+      // }
      if (g7Faults & (1u << timer_fault))
        {
          g7Faults &= ~(1u << timer_fault);

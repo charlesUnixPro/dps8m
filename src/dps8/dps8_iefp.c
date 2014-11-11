@@ -33,6 +33,7 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
         
             setAPUStatus (apuStatus_FABS);
             core_read(address, result, __func__);
+            sim_debug(DBG_FINAL, &cpu_dev, "Read (Actual) Read:       abs address=%08o  readData=%012llo\n", address, *result);
             return SCPE_OK;
         
         case BAR_MODE:
@@ -41,6 +42,7 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
             iefpFinalAddress = getBARaddress(address);
         
             core_read(iefpFinalAddress, result, __func__);
+            sim_debug(DBG_FINAL, &cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address, *result);
 
             return SCPE_OK;
         
@@ -78,6 +80,7 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
         
             setAPUStatus (apuStatus_FABS);
             core_write(address, data, __func__);
+            sim_debug(DBG_FINAL, &cpu_dev, "Write(Actual) Write:      abs address=%08o writeData=%012llo\n", address, data);
             return SCPE_OK;
         
         case BAR_MODE:
@@ -85,6 +88,7 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
             iefpFinalAddress = getBARaddress(address);
             setAPUStatus (apuStatus_FABS); // XXX maybe...
             core_write(iefpFinalAddress, data, __func__);
+            sim_debug(DBG_FINAL, &cpu_dev, "Write(Actual) Write:      bar address=%08o writeData=%012llo\n", address, data);
         
             return SCPE_OK;
         

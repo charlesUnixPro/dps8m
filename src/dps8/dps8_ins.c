@@ -759,7 +759,18 @@ void traceInstruction (uint flag)
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
         if (where)
           {
-            sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+            if (get_addr_mode() == ABSOLUTE_mode)
+              {
+                sim_debug(flag, &cpu_dev, "%06o %s\n", PPR.IC, where);
+              }
+            else if (get_addr_mode() == APPEND_mode)
+              {
+                sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+              }
+            else if (get_addr_mode() == BAR_mode)
+              {
+                sim_debug(flag, &cpu_dev, "%05o|%06o %s\n", PPR.PSR, PPR.IC, where);
+              }
             listSource (compname, compoffset, flag);
           }
 
@@ -767,11 +778,11 @@ void traceInstruction (uint flag)
           {
             sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
-        if (get_addr_mode() == APPEND_mode)
+        else if (get_addr_mode() == APPEND_mode)
           {
             sim_debug(flag, &cpu_dev, "%05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
-        if (get_addr_mode() == BAR_mode)
+        else if (get_addr_mode() == BAR_mode)
           {
             sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
@@ -3695,19 +3706,53 @@ static t_stat DoBasicInstruction (void)
             
             
         case 0630:  ///< ret
-            
-            // Parity mask: If C(Y)27 = 1, and the processor is in absolute or mask privileged mode, then ON; otherwise OFF. This indicator is not affected in the normal or BAR modes.
-            // Nor BAR mode: Can be set OFF but not ON by the ret instruction
+          {           
+            // Parity mask: If C(Y)27 = 1, and the processor is in absolute or
+            // mask privileged mode, then ON; otherwise OFF. This indicator is
+            // not affected in the normal or BAR modes.
+            // Not BAR mode: Can be set OFF but not ON by the ret instruction
             // Absolute mode: Can be set OFF but not ON by the ret instruction
-            // All oter indicators: If corresponding bit in C(Y) is 1, then ON; otherwise, OFF
+            // All oter indicators: If corresponding bit in C(Y) is 1, then ON;
+            // otherwise, OFF
             
             /// C(Y)0,17 -> C(PPR.IC)
             /// C(Y)18,31 -> C(IR)
-            // XXX Not completely implemented
+
+            word18 tempIR = GETLO(CY) & 0777770;
+            // XXX Assuming 'mask privileged mode' is 'temporary absolute mode'
+            if (get_addr_mode () != ABSOLUTE_mode) // abs. or temp. abs.
+              {
+                // if not abs, copy existing parity mask to tempIR
+                if (cu.IR & I_PMASK)
+                  SETF (tempIR, I_EOFL);
+                else
+                  CLRF (tempIR, I_EOFL);
+              }
+            // can be set OFF but not on
+            //  IR   ret   result
+            //  off  off   off
+            //  off  on    off
+            //  on   on    on
+            //  on   off   off
+            // "If it was on, set it to on"
+            if (cu.IR & I_NBAR)
+              SETF (tempIR, I_NBAR);
+            if (cu.IR & I_ABS)
+              SETF (tempIR, I_ABS);
+
+            //sim_debug (DBG_TRACE, & cpu_dev,
+            //           "RET NBAR was %d now %d\n", 
+            //           TSTF (cu . IR, I_NBAR) ? 1 : 0, 
+            //           TSTF (tempIR, I_NBAR) ? 1 : 0);
+            //sim_debug (DBG_TRACE, & cpu_dev,
+            //           "RET ABS  was %d now %d\n", 
+            //           TSTF (cu . IR, I_ABS) ? 1 : 0, 
+            //           TSTF (tempIR, I_ABS) ? 1 : 0);
             PPR.IC = GETHI(CY);
-            cu.IR = GETLO(CY) & 0777760;
+            cu.IR = tempIR;
             
             return CONT_TRA;
+          }
             
         case 0610:  ///< rtcd
             /*
@@ -4798,10 +4843,13 @@ static t_stat DoBasicInstruction (void)
         case 0637:  ///< ldt
             //rTR = (CY & MASK27) << 9;
             //rTR = CY & MASK27;
-            rTR = (CY & MASK27) >> 9;
+            rTR = (CY >> 9) & MASK27;
             sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
-//if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
-  //rTR = 0;
+            // Undocumented feature. return to bce has been observed to
+            // experience TRO while masked, setting the TR to -1, and
+            // experiencing an unexpected TRo interrupt when unmasking.
+            // Reset any pending TRO fault when the TR is loaded.
+            clearTROFault ();
             break;
 
         case 0257:  ///< lsdp
@@ -7009,9 +7057,11 @@ static int doABSA (word36 * result)
 
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
+        //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
-        doFault (illproc_fault, ill_proc, "ABSA in absolute mode.");
+        //doFault (illproc_fault, ill_proc, "ABSA in absolute mode.");
+        * result = (TPR . CA & MASK18) << 12; // 24:12 format
+        return SCPE_OK;
       }
 
     if (DSBR.U == 1) // Unpaged

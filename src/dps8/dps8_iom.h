@@ -29,8 +29,8 @@ typedef struct pcw_t
     // Word 2
     uint chan;       // 6 bits; bits 3..8 of word 2
     uint ptPtr;        // 18 bits; bits 9..26 of word 2
-    uint ptp;    // 1 bit; bit 27 of word 2 uint pge;    // 1 bit; bit 28 of word 2
-    uint pge;    // 1 bit; bit 28 of word 2
+    uint ptp;    // 1 bit; bit 27 of word 2 
+    uint pcw64_pge;    // 1 bit; bit 28 of word 2
     uint aux;    // 1 bit; bit 29 of word 2
   } pcw_t;
 
@@ -183,7 +183,7 @@ typedef struct iomChannelData_
     word6 addressExtension;
     word18 ptPtr; // The page table pointer mod 64
     word1 ptp;
-    word1 pge;
+    word1 pcw64_pge;
     word1 aux;
     word1 seg; // bit 31 of last TDCW
     lpw_t lpw;
@@ -201,8 +201,8 @@ typedef struct iomChannelData_
     enum 
       {
         cm_LPW_init_state, // No TDCWs encountered; state is:
-                           //    PCW64 (pge): on   PAGE CHAN
-                           //    PCW64 (pge): off  EXT MODE CHAN
+                           //    PCW64 (pcw64_pge): on   PAGE CHAN
+                           //    PCW64 (pcw64_pge): off  EXT MODE CHAN
         cm_real_LPW_real_DCW,
         cm_ext_LPW_real_DCW,
         cm_paged_LPW_seg_DCW
