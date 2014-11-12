@@ -1486,6 +1486,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             //e->YChar4[k-1] = e->effWORDNO;
             //e->CN[k-1] = CN;    //e->effCHAR;
             e->CN[k-1] = e->effCHAR;
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA4\n",
+                       k, e->CN[k-1]);
             break;
         case CTA6:
             e->effBITNO = (9*ARn_CHAR + 6*r + ARn_BITNO) % 9;
@@ -1495,17 +1497,24 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
             
             //e->YChar6[k-1] = e->effWORDNO;
             e->CN[k-1] = e->effCHAR;   // ??????
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA6\n",
+                       k, e->CN[k-1]);
             break;
         case CTA9:
             CN = (CN >> 1) & 07;  // XXX Do error checking
             
             e->effBITNO = 0;
             e->effCHAR = (CN + ARn_CHAR + r) % 4;
+            sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                       "effCHAR %d = (CN %d + ARn_CHAR %d + r %lld) %% 4)\n",
+                       e->effCHAR, CN, ARn_CHAR, r);
             e->effWORDNO = address + ((9*CN + 9*ARn_CHAR + 9*r + ARn_BITNO) / 36);
             e->effWORDNO &= AMASK;
             
             //e->YChar9[k-1] = e->effWORDNO;
             e->CN[k-1] = e->effCHAR;   // ??????
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA9\n",
+                       k, e->CN[k-1]);
             break;
         default:
             sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
