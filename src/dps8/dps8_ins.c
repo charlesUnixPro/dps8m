@@ -1047,6 +1047,7 @@ restart_1:
               doPtrReg ();
             else
               {
+                TPR . TBR = 0;
                 if (get_addr_mode () == ABSOLUTE_mode)
                   {
                     TPR . TSR = PPR . PSR;
