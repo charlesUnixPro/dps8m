@@ -1,3 +1,8 @@
+2014-11-11
+
+Alpha 1.0
+
+See MR12.3_install.notes.txt
 
 4Jan14: The ini files were rename to .ini files
     dps8.ini.20184.tap -> 20184.ini
