@@ -2314,30 +2314,45 @@ static int doConnectChan (uint iomUnitNum)
 
         if (pcw.mask)
           {
-            // BUG: set mask flags for channel?
-            sim_debug (DBG_ERR, & iom_dev, 
-                       "%s: PCW Mask not implemented\n", __func__);
+            uint chanNum = pcw . chan;
+            uint devCode = pcw . dev_code;
+            UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [devCode] . board;
+
+// The idea of MASK is that it stops any ongoing channel activity; I believe
+// that is mostly used as part of crash recovery.
+
+// Since the IOM emulator is synchronous, killing any sim_activates should
+// suffice. When the IOM becomes asychronous, the solution should probably be
+// a mask bit in the channel data structure, and having the channel cmd code
+// check it the DCW loop.
+
+            sim_cancel (unitp);
+            sim_cancel (& termIntrChannelUnits [iomUnitNum] [chanNum]);
+            //sim_debug (DBG_ERR, & iom_dev, 
+                       //"%s: PCW Mask not implemented\n", __func__);
           }
-
-        // 4.3.1b: SEND PCW TO CHANNEL
-
-        //dcwp -> type = idcw;
-        //dcwp -> fields . instr = pcw;
-
-        int ret = doPayloadChannel (iomUnitNum, lpwp -> dcw_ptr);
-        if (ret)
+        else
           {
-            sim_debug (DBG_DEBUG, & iom_dev,
-                       "%s: doPayloadChannel returned %d\n", __func__, ret);
-          }
+            // 4.3.1b: SEND PCW TO CHANNEL
 
-        // 4.3.1c: D
+            //dcwp -> type = idcw;
+            //dcwp -> fields . instr = pcw;
 
-        ret = send_flags_to_channel ();
-        if (ret)
-          {
-            sim_debug (DBG_DEBUG, & iom_dev,
-                       "%s: send_flags_to_channel returned %d\n", __func__, ret);
+            int ret = doPayloadChannel (iomUnitNum, lpwp -> dcw_ptr);
+            if (ret)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: doPayloadChannel returned %d\n", __func__, ret);
+              }
+
+            // 4.3.1c: D
+
+            ret = send_flags_to_channel ();
+            if (ret)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: send_flags_to_channel returned %d\n", __func__, ret);
+              }
           }
 
         // 4.3.1c: LPW 21
