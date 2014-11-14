@@ -790,6 +790,42 @@ for (uint i = 0; i < tally; i ++)
                       }
                       break;
 
+                    case 12:
+                      {
+                        sim_printf ("loading 12.5EXEC_CF0019_1\n");
+                        mount_unit . u3 = 1;
+                        mount_unit . up7 = "20185.tap";
+                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                      }
+                      break;
+
+                    case 13:
+                      {
+                        sim_printf ("loading 12.5LDD_STANDARD_CF0019_1\n");
+                        mount_unit . u3 = 2;
+                        mount_unit . up7 = "20186.tap";
+                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                      }
+                      break;
+
+                    case 14:
+                      {
+                        sim_printf ("loading 12.5UNBUNDLED_CF0019_1\n");
+                        mount_unit . u3 = 3;
+                        mount_unit . up7 = "20188.tap";
+                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                      }
+                      break;
+
+                    case 15:
+                      {
+                        sim_printf ("loading 12.5MISC_CF0015\n");
+                        mount_unit . u3 = 4;
+                        mount_unit . up7 = "20187.tap";
+                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                      }
+                      break;
+
                     default:
                       {
                         sim_printf ("out of mount hacks\n");
