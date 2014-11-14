@@ -376,6 +376,7 @@ static void du2words (word36 * words)
 
     putbits36 (& words [0],  9,  1, du . Z);
     putbits36 (& words [0], 10,  1, du . NOP);
+    putbits36 (& words [0], 12, 24, du . CHTALLY);
 
     // Word 1
 
@@ -423,13 +424,14 @@ static void du2words (word36 * words)
 
 static void words2du (word36 * words)
   {
-    memset (words, 0, 8 * sizeof (* words));
+    // Why on earth?
+    //memset (words, 0, 8 * sizeof (* words));
 
     // Word 0
 
     du . Z        = getbits36 (words [0],  9,  1);
     du . NOP      = getbits36 (words [0], 10,  1);
-
+    du . CHTALLY  = getbits36 (words [0], 12, 24);
     // Word 1
 
     // Word 2
@@ -1036,6 +1038,12 @@ restart_1:
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
             Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0); // I think.
+          }
+        // This must not happen on instruction restart
+        if (! (cu . IR & I_MIIF))
+          {
+            du . CHTALLY = 0;
+            du . Z = 1;
           }
       }
     else

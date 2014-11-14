@@ -6749,7 +6749,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 
 #ifndef QUIET_UNUSED
 // CANFAULT
-static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
+static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, word1 bit)
 {
     if (*bpos > 8)      // bits 0-8
     {
@@ -6776,6 +6776,7 @@ static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 }
 #endif
 
+#if 0
 // CANFAULT
 static bool EISgetBitRW(EISaddr *p)
 {
@@ -6809,13 +6810,9 @@ static bool EISgetBitRW(EISaddr *p)
     //if (p->lastAddress != p->address)                     // read from memory if different address
         //Read(NULL, p->addr, &p->data, OperandRead, 0); // read data word from memory
     p->data = EISRead(p); // read data word from memory
-    
     if (p->mode == eRWreadBit)
     {
-        p->bit = (bool)bitfieldExtract36(p->data, bitPosn, 1);
-        
-        //if (p->lastAddress != p->address)                     // read from memory if different address
-            p->data = EISRead(p); // read data word from memory
+        p->bit = bitfieldExtract36(p->data, bitPosn, 1);
         
         // increment address after use
         if (p->incr)
@@ -6839,6 +6836,97 @@ static bool EISgetBitRW(EISaddr *p)
     //p->lastAddress = p->address;
     return p->bit;
 }
+#endif
+
+// CANFAULT
+static bool EISgetBitRWN (EISaddr * p)
+  {
+#if 0
+    return EISgetBitRW (p);
+#else
+//sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
+    int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
+    int baseBitPosn = baseCharPosn + p -> bPos;
+//sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
+    baseBitPosn += du . CHTALLY;
+//sim_printf ("CHTALLY %d baseBitPosn %d\n", du . CHTALLY, baseBitPosn);
+
+    int bitPosn = baseBitPosn % 36;
+    int woff = baseBitPosn / 36;
+//sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
+
+    word18 saveAddr = p -> address;
+    p -> address += woff;
+
+    p -> data = EISRead (p); // read data word from memory
+//if (PPR . PSR == 0400) sim_printf ("addr %08o pos %d\n", p->address, bitPosn);  
+    
+    if (p -> mode == eRWreadBit)
+      {
+        //p -> bit = (bool) bitfieldExtract36 (p -> data, bitPosn, 1);
+        p -> bit = getbits36 (p -> data, bitPosn, 1);
+      } 
+    else if (p -> mode == eRWwriteBit)
+      {
+        //p -> data = bitfieldInsert36 (p -> data, p -> bit, bitPosn, 1);
+        p -> data = setbits36 (p -> data, bitPosn, 1, p -> bit);
+        
+        EISWrite (p, p -> data); // write data word to memory
+      }
+
+    p -> address = saveAddr;
+    return p -> bit;
+#endif
+  }
+
+// CANFAULT
+static bool EISgetBitRWNR (EISaddr * p)
+  {
+//sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
+    int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
+    int baseBitPosn = baseCharPosn + p -> bPos;
+//sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
+    baseBitPosn -= du . CHTALLY;
+//sim_printf ("CHTALLY %d baseBitPosn %d\n", du . CHTALLY, baseBitPosn);
+
+    int bitPosn = baseBitPosn % 36;
+    int woff = baseBitPosn / 36;
+    while (bitPosn < 0)
+      {
+        bitPosn += 36;
+        woff -= 1;
+      }
+if (bitPosn < 0) {
+sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
+sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
+sim_printf ("CHTALLY %d baseBitPosn %d\n", du . CHTALLY, baseBitPosn);
+sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
+sim_err ("oops\n");
+}
+//sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
+
+    word18 saveAddr = p -> address;
+    p -> address += woff;
+
+    p -> data = EISRead (p); // read data word from memory
+//if (PPR . PSR == 0400) sim_printf ("addr %08o pos %d\n", p->address, bitPosn);  
+    
+    if (p -> mode == eRWreadBit)
+      {
+        //p -> bit = (bool) bitfieldExtract36 (p -> data, bitPosn, 1);
+        p -> bit = getbits36 (p -> data, bitPosn, 1);
+      } 
+    else if (p -> mode == eRWwriteBit)
+      {
+        //p -> data = bitfieldInsert36 (p -> data, p -> bit, bitPosn, 1);
+        p -> data = setbits36 (p -> data, bitPosn, 1, p -> bit);
+        
+        EISWrite (p, p -> data); // write data word to memory
+      }
+
+    p -> address = saveAddr;
+    return p -> bit;
+  }
 
 
 /*
@@ -6959,6 +7047,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2fill %d\n", i, b1, b2);
 // CANFAULT
 void csl(DCDstruct *ins, bool isSZTL)
 {
+//sim_printf ("[%lld] %05o\n", sim_timell (), PPR . PSR);
     EISstruct *e = &ins->e;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
@@ -7037,20 +7126,25 @@ void csl(DCDstruct *ins, bool isSZTL)
                e -> addr [1] . SNR, e -> addr [1] . address, 
                e -> addr [1] . cPos, e -> addr [1] . bPos);
 
-    SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    //SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    // du.Z initialized to 1 by instruction setup // assume all Y-bit2 == 0
     CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
-    uint i = 0;
-    for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
+    //uint i = 0;
+//du.CHTALLY=0;
+//sim_printf ("CHTALLY %d N1 %d N2 %d\n", du . CHTALLY, e -> N1, e -> N2);
+    for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
     {
-        bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
+        //bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
+        bool b1 = EISgetBitRWN(&e->ADDR1);  // read w/ addt incr from src 1
         
         // If we are a SZTL, addr2 is read only, increment here.
         // If we are a CSL, addr2 will be incremented below in the write cycle
         e->ADDR2.incr = isSZTL;
         e->ADDR2.mode = eRWreadBit;
-        bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
+        //bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
+        bool b2 = EISgetBitRWN(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
         if (!b1 && !b2)
             bR = B5;
@@ -7063,7 +7157,8 @@ void csl(DCDstruct *ins, bool isSZTL)
         
         if (bR)
         {
-            CLRF(cu.IR, I_ZERO);
+            //CLRF(cu.IR, I_ZERO);
+            du . Z = 0;
             if (isSZTL)
                 break;
         }
@@ -7071,16 +7166,25 @@ void csl(DCDstruct *ins, bool isSZTL)
         if (! isSZTL)
         {
             // write out modified bit
-            e->ADDR2.bit = bR;              // set bit contents to write
+            e->ADDR2.bit = bR ? 1 : 0;              // set bit contents to write
             e->ADDR2.incr = true;           // we want address incrementing
             e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
-            EISgetBitRW(&e->ADDR2);    // write bit w/ addr increment to memory
+            //EISgetBitRW(&e->ADDR2);    // write bit w/ addr increment to memory
+            EISgetBitRWN(&e->ADDR2);    // write bit w/ addr increment to memory
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+            EISWriteCache (&e->ADDR2);
+#endif
         }
     }
     
     if (e->N1 < e->N2)
     {
-        for(; i < e->N2 ; i += 1)
+        for(; du . CHTALLY < e->N2 ; du . CHTALLY += 1)
         {
             bool b1 = e->F;
             
@@ -7088,7 +7192,8 @@ void csl(DCDstruct *ins, bool isSZTL)
             // If we are a CSL, addr2 will be incremented below in the write cycle
             e->ADDR2.incr = isSZTL;
             e->ADDR2.mode = eRWreadBit;
-            bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
+            //bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
+            bool b2 = EISgetBitRWN(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
             if (!b1 && !b2)
                 bR = B5;
@@ -7101,7 +7206,8 @@ void csl(DCDstruct *ins, bool isSZTL)
             
             if (bR)
             {
-                CLRF(cu.IR, I_ZERO);
+                //CLRF(cu.IR, I_ZERO);
+                du . Z = 0;
                 if (isSZTL)
                   break;
             }
@@ -7109,10 +7215,19 @@ void csl(DCDstruct *ins, bool isSZTL)
             if (! isSZTL)
             {
                 // write out modified bit
-                e->ADDR2.bit = bR;
+                e->ADDR2.bit = bR ? 1 : 0;
                 e->ADDR2.mode = eRWwriteBit;
                 e->ADDR2.incr = true;
-                EISgetBitRW(&e->ADDR2);
+                //EISgetBitRW(&e->ADDR2);
+                EISgetBitRWN(&e->ADDR2);
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+                EISWriteCache (&e->ADDR2);
+#endif
             }
         }
     } else if (e->N1 > e->N2)
@@ -7124,6 +7239,10 @@ void csl(DCDstruct *ins, bool isSZTL)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
+            if (du . Z)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
 #ifdef EIS_CACHE
             cleanupOperandDescriptor(1, e);
             cleanupOperandDescriptor(2, e);
@@ -7131,6 +7250,10 @@ void csl(DCDstruct *ins, bool isSZTL)
             doFault(overflow_fault, 0, "csl truncation fault");
         }
     }
+    if (du . Z)
+      SETF (cu . IR, I_ZERO);
+    else
+      CLRF (cu . IR, I_ZERO);
 #ifdef EIS_CACHE
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
@@ -7244,21 +7367,24 @@ void csr(DCDstruct *ins, bool isSZTR)
     e->ADDR1.decr = true;
     e->ADDR1.mode = eRWreadBit;
     
-    SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    //SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    // du.Z initialized to 1 by instruction setup // assume all Y-bit2 == 0
     CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
     
-    uint i = 0;
-    for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
+    //uint i = 0;
+    for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
     {
-        bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt decr from src 1
+        //bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt decr from src 1
+        bool b1 = EISgetBitRWNR(&e->ADDR1);  // read w/ addt decr from src 1
         
         // If we are a SZTR, addr2 is read only, decrement here.
         // If we are a CSR, addr2 will be decremented below in the write cycle
         e->ADDR2.decr = isSZTR;
         e->ADDR2.mode = eRWreadBit;
-        bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr decr from src2 to in anticipation of a write
+        //bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr decr from src2 to in anticipation of a write
+        bool b2 = EISgetBitRWNR(&e->ADDR2);  // read w/ no addr decr from src2 to in anticipation of a write
         
         if (!b1 && !b2)
             bR = B5;
@@ -7271,7 +7397,8 @@ void csr(DCDstruct *ins, bool isSZTR)
         
         if (bR)
         {
-            CLRF(cu.IR, I_ZERO);
+            //CLRF(cu.IR, I_ZERO);
+            du . Z = 0;
             if (isSZTR)
                 break;
         }
@@ -7279,16 +7406,25 @@ void csr(DCDstruct *ins, bool isSZTR)
         if (! isSZTR)
         {
             // write out modified bit
-            e->ADDR2.bit = bR;              // set bit contents to write
+            e->ADDR2.bit = bR ? 1 : 0;              // set bit contents to write
             e->ADDR2.decr = true;           // we want address incrementing
             e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
-            EISgetBitRW(&e->ADDR2);  // write bit w/ addr increment to memory
+            //EISgetBitRW(&e->ADDR2);  // write bit w/ addr increment to memory
+            EISgetBitRWNR(&e->ADDR2);  // write bit w/ addr increment to memory
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+            EISWriteCache (&e->ADDR2);
+#endif
         }
     }
     
     if (e->N1 < e->N2)
     {
-        for(; i < e->N2 ; i += 1)
+        for(; du . CHTALLY < e->N2 ; du . CHTALLY += 1)
         {
             bool b1 = e->F;
             
@@ -7296,7 +7432,8 @@ void csr(DCDstruct *ins, bool isSZTR)
             // If we are a CSR, addr2 will be decremented below in the write cycle
             e->ADDR2.decr = isSZTR;
             e->ADDR2.mode = eRWreadBit;
-            bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr decr from src2 to in anticipation of a write
+            //bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr decr from src2 to in anticipation of a write
+            bool b2 = EISgetBitRWNR(&e->ADDR2); // read w/ no addr decr from src2 to in anticipation of a write
             
             if (!b1 && !b2)
                 bR = B5;
@@ -7309,7 +7446,8 @@ void csr(DCDstruct *ins, bool isSZTR)
             
             if (bR)
             {
-                CLRF(cu.IR, I_ZERO);
+                //CLRF(cu.IR, I_ZERO);
+                du . Z = 0;
                 if (isSZTR)
                   break;
             }
@@ -7317,10 +7455,19 @@ void csr(DCDstruct *ins, bool isSZTR)
             if (! isSZTR)
             {
                 // write out modified bit
-                e->ADDR2.bit = bR;
+                e->ADDR2.bit = bR ? 1 : 0;
                 e->ADDR2.mode = eRWwriteBit;
                 e->ADDR2.decr = true;
-                EISgetBitRW(&e->ADDR2);
+                //EISgetBitRW(&e->ADDR2);
+                EISgetBitRWNR(&e->ADDR2);
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+                EISWriteCache (&e->ADDR2);
+#endif
             }
         }
     } else if (e->N1 > e->N2)
@@ -7332,6 +7479,10 @@ void csr(DCDstruct *ins, bool isSZTR)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
+            if (du . Z)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
 #ifdef EIS_CACHE
             cleanupOperandDescriptor(1, e);
             cleanupOperandDescriptor(2, e);
@@ -7340,6 +7491,10 @@ void csr(DCDstruct *ins, bool isSZTR)
             //sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
+    if (du . Z)
+      SETF (cu . IR, I_ZERO);
+    else
+      CLRF (cu . IR, I_ZERO);
 #ifdef EIS_CACHE
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);

@@ -403,7 +403,7 @@ typedef struct EISaddr
     //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
     word36  data;
-    bool    bit;
+    word1    bit;
     bool    incr;      // when true increment bit address
     bool    decr;      // when true decrement bit address
     eRW     mode;
