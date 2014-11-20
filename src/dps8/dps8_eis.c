@@ -136,7 +136,7 @@ static void packCharBit (word6 * D_PTR_B, word3 TAk, uint effCHAR, uint effBITNO
           // CHARNO 0-3, BITNO 0-8
           * D_PTR_B = effCHAR * 9 + effBITNO;
         //default:
-          //doFault (illproc_fault, 0, "illegal TAk");
+          //doFault (FAULT_IPR, 0, "illegal TAk");
       }
   }
 
@@ -160,7 +160,7 @@ static void unpackCharBit (word6 D_PTR_B, word3 TAk, uint * effCHAR, uint * effB
           * effCHAR = D_PTR_B / 9;
           * effBITNO = D_PTR_B % 9;
         //default:
-          //doFault (illproc_fault, 0, "illegal TAk");
+          //doFault (FAULT_IPR, 0, "illegal TAk");
       }
   }
 
@@ -1116,7 +1116,7 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
 // XXX needs attention; doesn't work with old code; triggered by
 // XXX parseOperandDescriptor;
            // if (! allowDUL)
-             //doFault (illproc_fault, ill_proc, "getMFReg18 du");
+             //doFault (FAULT_IPR, ill_proc, "getMFReg18 du");
             return 0;
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
@@ -1128,7 +1128,7 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
         case 6: ///< ql / a
             return GETLO(rQ);
         case 7: ///< dl
-             doFault (illproc_fault, ill_proc, "getMFReg18 dl");
+             doFault (FAULT_IPR, ill_mod, "getMFReg18 dl");
         case 8:
         case 9:
         case 10:
@@ -1159,7 +1159,7 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
 // XXX needs attention; doesn't work with old code; triggered by
 // XXX parseOperandDescriptor;
            // if (! allowDUL)
-             //doFault (illproc_fault, ill_proc, "getMFReg36 du");
+             //doFault (FAULT_IPR, ill_proc, "getMFReg36 du");
             return 0;
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
@@ -1171,7 +1171,7 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
         case 6: ///< ql / a
             return rQ;
         case 7: ///< dl
-             doFault (illproc_fault, ill_proc, "getMFReg36 dl");
+             doFault (FAULT_IPR, ill_mod, "getMFReg36 dl");
         case 8:
         case 9:
         case 10:
@@ -2783,12 +2783,13 @@ void btd(DCDstruct *ins)
     
     //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
     //load9x(e->N1, addr, e->CN1, e);
+// ticket #35
                   // Technically, ill_proc should be "illegal eis modifier",
                   // but the Fault Register has no such bit; the Fault
                   // register description says ill_proc is anything not
                   // handled by other bits.
     if (e->N1 == 0 || e->N1 > 8)
-        doFault(illproc_fault, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
+        doFault(FAULT_IPR, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
     load9x(e->N1, &e->ADDR1, e->CN1, e);
     
@@ -2808,7 +2809,7 @@ void btd(DCDstruct *ins)
     
     cu.IR = e->_flags;
     if (TSTF(cu.IR, I_OFLOW))
-        doFault(overflow_fault, 0, "btd() overflow!");   // XXX generate overflow fault
+        doFault(FAULT_OFL, 0, "btd() overflow!");   // XXX generate overflow fault
 }
 
 // CANFAULT
@@ -3007,7 +3008,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(illproc_fault, ill_dig, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -3038,7 +3039,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(illproc_fault,ill_dig,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
                     
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -3051,7 +3052,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(illproc_fault,ill_dig,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -3059,7 +3060,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(illproc_fault, ill_dig,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -3070,7 +3071,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                         doFault(illproc_fault, ill_dig,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
+                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -3078,7 +3079,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(illproc_fault, ill_dig,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -4348,10 +4349,19 @@ static void mopExecutor(EISstruct *e, int kMop)
    
     // mop string exhausted?
     if (e->mopTally != 0)
+      {
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
     
+#if 0
     if (e->srcTally != 0)  // sending string exhausted?
+      {
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
+#endif 
+
+    if (e -> _faults)
+      doFault (FAULT_IPR, ill_proc, "mopExecutor");
 }
 
 // CANFAULT
@@ -4636,7 +4646,7 @@ void mlr(DCDstruct *ins)
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     //if (e->N1 > e->N2 && e -> T)
-      //doFault(overflow_fault, 0, "mlr truncation fault");
+      //doFault(FAULT_OFL, 0, "mlr truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -4780,7 +4790,7 @@ void mlr(DCDstruct *ins)
     cleanupOperandDescriptor(2, e);
 #endif
     if (e->N1 > e->N2 && e -> T)
-      doFault(overflow_fault, 0, "mlr truncation fault");
+      doFault(FAULT_OFL, 0, "mlr truncation fault");
 }
 
 /*
@@ -4929,7 +4939,7 @@ void mrl(DCDstruct *ins)
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     //if (e->N1 > e->N2 && e -> T)
-      //doFault(overflow_fault, 0, "mrl truncation fault");
+      //doFault(FAULT_OFL, 0, "mrl truncation fault");
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -5009,7 +5019,7 @@ void mrl(DCDstruct *ins)
     cleanupOperandDescriptor(2, e);
 #endif
     if (e->N1 > e->N2 && e -> T)
-      doFault(overflow_fault, 0, "mrl truncation fault");
+      doFault(FAULT_OFL, 0, "mrl truncation fault");
 }
 
 static word9 xlate(word36 *xlatTbl, int dstTA, int c)
@@ -5190,7 +5200,7 @@ void mvt(DCDstruct *ins)
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     if (e->N1 > e->N2 && e -> T)
-      doFault(overflow_fault, 0, "mvt truncation fault");
+      doFault(FAULT_OFL, 0, "mvt truncation fault");
 
     //SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
 
@@ -5358,10 +5368,26 @@ void scm(DCDstruct *ins)
     //   00...0 → C(Y3)0,11
     //   N1 → C(Y3)12,35
     
-    // Starting at location YC1, the L1 type TA1 characters are masked and compared with the assumed type TA1 character contained either in location YC2 or in bits 0-8 or 0-5 of the address field of operand descriptor 2 (when the REG field of MF2 specifies DU modification). The mask is right-justified in bit positions 0-8 of the instruction word. Each bit position of the mask that is a 1 prevents that bit position in the two characters from entering into the compare.
-    // The masked compare operation continues until either a match is found or the tally (L1) is exhausted. For each unsuccessful match, a count is incremented by 1. When a match is found or when the L1 tally runs out, this count is stored right-justified in bits 12-35 of location Y3 and bits 0-11 of Y3 are zeroed. The contents of location YC2 and the source string remain unchanged. The RL bit of the MF2 field is not used.
+    // Starting at location YC1, the L1 type TA1 characters are masked and
+    // compared with the assumed type TA1 character contained either in
+    // location YC2 or in bits 0-8 or 0-5 of the address field of operand
+    // descriptor 2 (when the REG field of MF2 specifies DU modification). The
+    // mask is right-justified in bit positions 0-8 of the instruction word.
+    // Each bit position of the mask that is a 1 prevents that bit position in
+    // the two characters from entering into the compare.
+
+    // The masked compare operation continues until either a match is found or
+    // the tally (L1) is exhausted. For each unsuccessful match, a count is
+    // incremented by 1. When a match is found or when the L1 tally runs out,
+    // this count is stored right-justified in bits 12-35 of location Y3 and
+    // bits 0-11 of Y3 are zeroed. The contents of location YC2 and the source
+    // string remain unchanged. The RL bit of the MF2 field is not used.
     
-    // The REG field of MF1 is checked for a legal code. If DU is specified in the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and the character or characters are arranged within the 18 bits of the word address portion of the operand descriptor.
+    // The REG field of MF1 is checked for a legal code. If DU is specified in
+    // the REG field of MF2 in one of the four multiword instructions (SCD,
+    // SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and
+    // the character or characters are arranged within the 18 bits of the word
+    // address portion of the operand descriptor.
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -5375,7 +5401,9 @@ void scm(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    // Both the string and the test character pair are treated as the data type
+    // given for the string, TA1. A data type given for the test character
+    // pair, TA2, is ignored.
     e->srcTA = e->TA1;
     e->srcTA2 = e->TA1;
 
@@ -5396,7 +5424,10 @@ void scm(DCDstruct *ins)
     int mask = (int)bitfieldExtract36(e->op0, 27, 9);
     
     // fetch 'test' char
-    //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.
+    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // instruction word does not contain an operand descriptor for the test
+    // character; instead, it contains the test character as a direct upper
+    // operand in bits 0,8.
     
     int ctest = 0;
     if (!(e->MF2 & MFkID) && ((e->MF2 & MFkREGMASK) == 3))  // MF2.du
@@ -7247,7 +7278,7 @@ void csl(DCDstruct *ins, bool isSZTL)
             cleanupOperandDescriptor(1, e);
             cleanupOperandDescriptor(2, e);
 #endif
-            doFault(overflow_fault, 0, "csl truncation fault");
+            doFault(FAULT_OFL, 0, "csl truncation fault");
         }
     }
     if (du . Z)
@@ -7487,7 +7518,7 @@ void csr(DCDstruct *ins, bool isSZTR)
             cleanupOperandDescriptor(1, e);
             cleanupOperandDescriptor(2, e);
 #endif
-            doFault(overflow_fault, 0, "csr truncation fault");
+            doFault(FAULT_OFL, 0, "csr truncation fault");
             //sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
@@ -7628,7 +7659,7 @@ void sztl(DCDstruct *ins)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
-            doFault(overflow_fault, 0, "sztl truncation fault");
+            doFault(FAULT_OFL, 0, "sztl truncation fault");
         }
     }
 }
@@ -7771,7 +7802,7 @@ void sztr(DCDstruct *ins)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
-            doFault(overflow_fault, 0, "sztr truncation fault");
+            doFault(FAULT_OFL, 0, "sztr truncation fault");
         }
     }
 }

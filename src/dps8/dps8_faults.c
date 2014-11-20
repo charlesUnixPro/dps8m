@@ -265,7 +265,7 @@ void fault_gen(int f)
 #if 0
     if (f == oob_fault) {
         sim_debug(DBG_ERR, & cpu_dev, "CU fault: Faulting for internal bug\n");
-        f = trouble_fault;
+        f = FAULT_TRB;
         (void) cancel_run(STOP_BUG);
     }
 #endif
@@ -295,7 +295,7 @@ void fault_gen(int f)
     //sim_debug(DBG_DEBUG, & cpu_dev, "CU fault: Recording fault # %d in group %d\n", f, group);
     
 #if 0 // This is DPS8, not DPS8M
-    // Note that we never simulate a (hardware) op_not_complete_fault
+    // Note that we never simulate a (hardware) FAULT_ONC
     if (MR.mr_enable && (f == FAULT_ONC || MR.fault_reset)) {
         if (MR.strobe) {
             sim_debug(DBG_INFO, & cpu_dev, "CU fault: Clearing MR.strobe.\n");
@@ -444,7 +444,7 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #if 0
-    if (faultNumber == acc_viol_fault && subFault == ACV13)
+    if (faultNumber == FAULT_ACV && subFault == ACV13)
       {
         if_sim_debug (DBG_CAC, & cpu_dev)
           {
@@ -473,25 +473,157 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
     if (faultNumber & ~037U)  // quicker?
     {
         sim_printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
-        /* return;*/ /* doFault Never returns */
-        cpu . faultNumber = FAULT_TRB;
-        cpu . subFault = 0; // XXX ???
+        sim_err ("fault out-of-range\n");
     }
 
     cpu . faultNumber = faultNumber;
     cpu . subFault = subFault;
     sys_stats . total_faults [faultNumber] ++;
 
-//--    dps8faults *f = &_faults[faultNumber];
-    
-//--    nFaultGroup = fault2group[faultNumber];
-//--    nFaultPriority = fault2prio[faultNumber];
-    
+    // Set fault register bits
+
+    if (faultNumber == FAULT_IPR)
+      {
+        if (subFault == ill_op)
+          faultRegister [0] |= FR_ILL_OP;
+        else if (subFault == ill_mod)
+          faultRegister [0] |= FR_ILL_MOD;
+        else if (subFault == ill_dig)
+          faultRegister [0] |= FR_ILL_DIG;
+        else /* if (subFault == ill_proc) */ // and all others
+          faultRegister [0] |= FR_ILL_PROC;
+      }
+    else if (faultNumber == FAULT_ONC && subFault == nem)
+      {
+        faultRegister [0] |= FR_NEM;
+      }
+    else if (faultNumber == FAULT_STR && subFault == oob)
+      {
+        faultRegister [0] |= FR_OOB;
+      }
+    else if (faultNumber == FAULT_CON)
+      {
+        switch (subFault)
+          {
+            case 0:
+              faultRegister [0] |= FR_CON_A;
+              break;
+            case 1:
+              faultRegister [0] |= FR_CON_B;
+              break;
+            case 2:
+              faultRegister [0] |= FR_CON_C;
+              break;
+            case 3:
+              faultRegister [0] |= FR_CON_D;
+              break;
+            default:
+              break;
+          }
+      }
+
+    // Set cu word1 fault bits
+
+    cu . IRO_ISN = 0;
+    cu . OEB_IOC = 0;
+    cu . EOFF_IAIM = 0;
+    cu . ORB_ISP = 0;
+    cu . ROFF_IPR = 0;
+    cu . OWB_NEA = 0;
+    cu . WOFF_OOB = 0;
+    cu . NO_GA = 0;
+    cu . OCB = 0;
+    cu . OCALL = 0;
+    cu . BOC = 0;
+    cu . PTWAM_ER = 0;
+    cu . CRT = 0;
+    cu . RALR = 0;
+    cu . SWWAM_ER = 0;
+    cu . OOSB = 0;
+    cu . PARU = 0;
+    cu . PARL = 0;
+    cu . ONC1 = 0;
+    cu . ONC2 = 0;
+    cu . IA = 0;
+    cu . IACHN = 0;
+    cu . CNCHN = 0;
+
+    // Set control unit 'fault occured during instruction fetch' flag
+    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
+    cu . FI_ADDR = faultNumber;
+
+    if (faultNumber == FAULT_ACV)
+      {
+        // This is annoyingly inefficent since the subFault value 
+        // is bitwise the same as the upper half of CU word1;
+        // if the upperhalf were not broken out, then this would be
+        // cu . word1_upper_half = subFault.
+
+        if (subFault & ACV0)
+          cu . IRO_ISN = 1;
+        if (subFault & ACV1)
+          cu . OEB_IOC = 1;
+        if (subFault & ACV2)
+          cu . EOFF_IAIM = 1;
+        if (subFault & ACV3)
+          cu . ORB_ISP = 1;
+        if (subFault & ACV4)
+          cu . ROFF_IPR = 1;
+        if (subFault & ACV5)
+          cu . OWB_NEA = 1;
+        if (subFault & ACV6)
+          cu . WOFF_OOB = 1;
+        if (subFault & ACV7)
+          cu . NO_GA = 1;
+        if (subFault & ACV8)
+          cu . OCB = 1;
+        if (subFault & ACV9)
+          cu . OCALL = 1;
+        if (subFault & ACV10)
+          cu . BOC = 1;
+        if (subFault & ACV11)
+          cu . PTWAM_ER = 1;
+        if (subFault & ACV12)
+          cu . CRT = 1;
+        if (subFault & ACV13)
+          cu . RALR = 1;
+        if (subFault & ACV14)
+          cu . SWWAM_ER = 1;
+        if (subFault & ACV15)
+          cu . OOSB = 1;
+      }
+    else if (faultNumber == FAULT_STR)
+      {
+        if (subFault == oob)
+          cu . WOFF_OOB = 1;
+        else if (subFault == ill_ptr)
+          cu . WOFF_OOB = 1;
+        // Not used by SCU 4MW
+        // else if (subFault == not_control)
+          // cu . WOFF_OOB;
+      }
+    else if (faultNumber == FAULT_IPR)
+      {
+        if (subFault == ill_op)
+          cu . OEB_IOC = 1;
+        else if (subFault == ill_mod)
+          cu . EOFF_IAIM = 1;
+        else if (subFault == ill_slv)
+          cu . ORB_ISP = 1;
+        else if (subFault == ill_dig)
+          cu . ROFF_IPR = 1;
+        // else if (subFault == ill_proc)
+          // cu . ? = 1;
+      }
+    // If already in a FAULT CYCLE then signal trouble fault
+
     if (cpu . cycle == FAULT_EXEC_cycle ||
-        cpu . cycle == FAULT_EXEC2_cycle)  // if already in a FAULT CYCLE then signal trouble fault
+        cpu . cycle == FAULT_EXEC2_cycle)
       {
         cpu . faultNumber = FAULT_TRB;
+        cu . FI_ADDR = FAULT_TRB;
         cpu . subFault = 0; // XXX ???
+        // XXX Does the CU or FR need fixing? ticket #36
         if (bTroubleFaultCycle)
           {
             if ((! sample_interrupts ()) &&
@@ -514,19 +646,12 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
     else
       {
         bTroubleFaultCycle = false;
-        // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-        // this in done in FAULT_cycle
-        // cu_safe_store ();
       }
     
     // If doInstruction faults, the instruction cycle counter doesn't get 
     // bumped.
     if (cpu . cycle == EXEC_cycle)
       sys_stats . total_cycles += 1; // bump cycle counter
-
-    // Set control unit 'fault occured during instruction fetch' flag
-    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
-    cu . FI_ADDR = faultNumber;
 
     cpu . cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
@@ -547,7 +672,7 @@ bool bG7Pending (void)
 
 bool bG7PendingNoTRO (void)
   {
-    return (g7Faults & (~ (1u << timer_fault))) != 0;
+    return (g7Faults & (~ (1u << FAULT_TRO))) != 0;
   }
 
 void setG7fault (_fault faultNo, _fault_subtype subFault)
@@ -560,7 +685,7 @@ void setG7fault (_fault faultNo, _fault_subtype subFault)
 
 void clearTROFault (void)
   {
-    g7Faults &= ~(1u << timer_fault);
+    g7Faults &= ~(1u << FAULT_TRO);
   }
 
 void doG7Fault (void)
@@ -570,20 +695,20 @@ void doG7Fault (void)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", g7Faults);
       // }
-     if (g7Faults & (1u << timer_fault))
+     if (g7Faults & (1u << FAULT_TRO))
        {
-         g7Faults &= ~(1u << timer_fault);
+         g7Faults &= ~(1u << FAULT_TRO);
 
-         doFault (timer_fault, 0, "Timer runout"); 
+         doFault (FAULT_TRO, 0, "Timer runout"); 
        }
 
-     if (g7Faults & (1u << connect_fault))
+     if (g7Faults & (1u << FAULT_CON))
        {
-         g7Faults &= ~(1u << connect_fault);
+         g7Faults &= ~(1u << FAULT_CON);
 
-         cu . CNCHN = g7SubFaults [connect_fault] & MASK3;
-         doFault (connect_fault, g7SubFaults [connect_fault], "Connect"); 
+         cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
+         doFault (FAULT_CON, g7SubFaults [FAULT_CON], "Connect"); 
        }
 
-     doFault (trouble_fault, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
+     doFault (FAULT_TRB, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
   }

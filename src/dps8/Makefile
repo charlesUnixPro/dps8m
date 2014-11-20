@@ -190,6 +190,10 @@ CFLAGS += -DQUIET_UNUSED
 # Enable EIS operand caching; enormous performace gains here...
 CFLAGS += -DEIS_CACHE
 
+# Enable M[] as shared memory segment
+CFLAGS += -DM_SHARED
+LDFLAGS += -lrt
+
 # First attempt at RALR repair, needs rework.
 CFLAGS += -DRALR_FIX_0
 
@@ -230,6 +234,7 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
+C_SRCS += ./fnpp.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -262,6 +267,7 @@ H_SRCS += dps8_utils.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
+H_SRCS += fnpp.h
 
 H_SRCS += area_info.incl.pl1.h
 H_SRCS += bind_map.incl.pl1.h

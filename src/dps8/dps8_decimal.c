@@ -2209,14 +2209,14 @@ void ad2d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"ad2d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"ad2d overflow fault");
+            doFault(FAULT_OFL, 0,"ad2d overflow fault");
     }
 }
 
@@ -2509,14 +2509,14 @@ void ad3d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"ad3d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
     }
     
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"ad3d overflow fault");
+            doFault(FAULT_OFL, 0,"ad3d overflow fault");
     }
 }
 
@@ -2777,14 +2777,14 @@ void sb2d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-            doFault(overflow_fault, 0,"sb2d truncation (overflow) fault");
+            doFault(FAULT_OFL, 0,"sb2d truncation (overflow) fault");
     }
     
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"sb2d overflow fault");
+            doFault(FAULT_OFL, 0,"sb2d overflow fault");
     }
 }
 
@@ -3058,14 +3058,14 @@ void sb3d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"sb3d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"sb3d overflow fault");
+            doFault(FAULT_OFL, 0,"sb3d overflow fault");
     }
 }
 
@@ -3325,14 +3325,14 @@ void mp2d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"mp2d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"mp2d overflow fault");
+            doFault(FAULT_OFL, 0,"mp2d overflow fault");
     }
     
 }
@@ -3606,14 +3606,14 @@ void mp3d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"mp3d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"mp3d overflow fault");
+            doFault(FAULT_OFL, 0,"mp3d overflow fault");
     }
 }
 
@@ -3870,14 +3870,14 @@ void dv2d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"dv2d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"dv2d overflow fault");
+            doFault(FAULT_OFL, 0,"dv2d overflow fault");
     }
 }
 
@@ -4175,14 +4175,14 @@ void dv3d (void)
     if (e->T && Trunc)
     {
         SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"dv3d truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-            doFault(overflow_fault, 0,"dv3d overflow fault");
+            doFault(FAULT_OFL, 0,"dv3d overflow fault");
     }
 }
 
@@ -4570,14 +4570,14 @@ void mvn (void)
         // According to eis_tester, test mvn2, the overflow bit is not
         // set on trucation.
         //SETF(cu.IR, I_OFLOW);
-        doFault(overflow_fault, 0,"mvn truncation(overflow) fault");
+        doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
     }
     
     if (Ovr)
     {
         SETF(cu.IR, I_OFLOW);
         if (! TSTF (cu.IR, I_OMASK))
-          doFault(overflow_fault, 0,"mvn overflow fault");
+          doFault(FAULT_OFL, 0,"mvn overflow fault");
     }
 
 }

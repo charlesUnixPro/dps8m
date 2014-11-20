@@ -296,7 +296,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag)
            (ISITP(indword) || ISITS(indword))))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP: faulting\n");
-        doFault (illproc_fault, ill_mod, "Incorrect address modifier");
+        doFault (FAULT_IPR, ill_mod, "Incorrect address modifier");
       }
 
     // Whenever the processor is forming a virtual address two special address
@@ -689,7 +689,7 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "RI_MOD: Td=%o\n", Td);
 
         if (Td == TD_DU || Td == TD_DL)
-          doFault (illproc_fault, ill_mod,
+          doFault (FAULT_IPR, ill_mod,
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
         word18 tmpCA = TPR . CA;
@@ -869,12 +869,12 @@ startCA:;
             if (GET_TD (GET_TAG(indword)) == IT_F2)
               {
                 TPR . CA = tmpCA;
-                doFault (f2_fault, 0, "RI_MOD: IT_F2 (0)");
+                doFault (FAULT_F2, 0, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
                 TPR . CA = tmpCA;
-                doFault (f2_fault, 0, "RI_MOD: IT_F3");
+                doFault (FAULT_F2, 0, "RI_MOD: IT_F3");
               }
           }
 
@@ -956,10 +956,10 @@ startCA:;
                     switch (Td)
                     {
                         case IT_F2:
-                            doFault (f2_fault, 0, "TM_IT: IT_F2 (1)");
+                            doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
-                            doFault( f3_fault, 0, "TM_IT: IT_F3");
+                            doFault( FAULT_F3, 0, "TM_IT: IT_F3");
                     }
                 }
                 // fall through to TM_R
@@ -1091,28 +1091,28 @@ startCA:;
             case SPEC_ITP:
             case SPEC_ITS:
               {
-                doFault(illproc_fault, ill_mod, "ITx in IT_MOD)");
+                doFault(FAULT_IPR, ill_mod, "ITx in IT_MOD)");
               }
 
             case 2:
               {
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
-                doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                doFault(FAULT_IPR, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
               }
 
             case IT_F1:
               {
-                doFault(f1_fault, 0, "IT_MOD: IT_F1");
+                doFault(FAULT_F1, 0, "IT_MOD: IT_F1");
               }
 
             case IT_F2:
               {
-                doFault(f2_fault, 0, "IT_MOD: IT_F2 (2)");
+                doFault(FAULT_F2, 0, "IT_MOD: IT_F2 (2)");
               }
 
             case IT_F3:
               {
-                doFault(f3_fault, 0, "IT_MOD: IT_F3");
+                doFault(FAULT_F3, 0, "IT_MOD: IT_F3");
               }
 
             case IT_CI: ///< Character indirect (Td = 10)
@@ -1164,12 +1164,12 @@ startCA:;
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (illproc_fault, ill_mod,
+                  doFault (FAULT_IPR, ill_mod,
                            "co size == TB6 && offset > 5");
 
                 if (characterOperandSize == TB9 && characterOperandOffset > 3)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (illproc_fault, ill_mod,
+                  doFault (FAULT_IPR, ill_mod,
                            "co size == TB9 && offset > 3");
 
 #ifdef ABUSE_CT_HOLD

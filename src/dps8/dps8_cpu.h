@@ -810,35 +810,36 @@ typedef struct
                    //               SF  Store Fault
                    //               IPF Illegal Procedure Fault
                    //
-                   //  0    IRO       AVF Illegal Ring Order
+    word1 IRO_ISN; //  0    IRO       AVF Illegal Ring Order
                    //       ISN       SF  Illegal segment number
-                   //  1    ORB       AVF Out of execute bracket [sic] should be OEB?
+    word1 OEB_IOC; //  1    ORB       AVF Out of execute bracket [sic] should be OEB?
                    //       ICC       IPF Illegal op code
+    word1 EOFF_IAIM;
                    //  2    E-OFF     AVF Execute bit is off
                    //       IA+IM     IPF Illegal address of modifier
-                   //  3    ORB       AVF Out of read bracket
+    word1 ORB_ISP; //  3    ORB       AVF Out of read bracket
                    //       ISP       IPF Illegal slave procedure
-                   //  4    R-OFF     AVF Read bit is off
+    word1 ROFF_IPR;//  4    R-OFF     AVF Read bit is off
                    //       IPR       IPF Illegal EIS digit
-                   //  5    OWB       AVF Out of write bracket
+    word1 OWB_NEA; //  5    OWB       AVF Out of write bracket
                    //       NEA       SF  Nonexistant address
-                   //  6    W-OFF     AVF Write bit is off
+    word1 WOFF_OOB;//  6    W-OFF     AVF Write bit is off
                    //       OOB       SF  Out of bounds (BAR mode)
-                   //  7    NO GA     AVF Not a gate
-                   //  8    OCB       AVF Out of call bracket
-                   //  9    OCALL     AVF Outward call
-                   // 10    BOC       AVF Bad outward call
-                   // 11    PTWAM_ER  AVF PTWAM error
-                   // 12    CRT       AVF Cross ring transfer
-                   // 13    RALR      AVF Ring alarm
-                   // 14    SWWAM_ER  AVF SDWAM error
-                   // 15    OOSB      AVF Out of segment bounds
-                   // 16    PARU      Parity fault - processor parity upper
-                   // 17    PARL      Parity fault - processor parity lower
-                   // 18    ONC1      Operation not complete fault error #1
-                   // 19    ONC2      Operation not complete fault error #2
-                   // 20-23 IA        System controll illegal action lines
-                   // 24-26 IACHN     Illegal action processor port
+    word1 NO_GA;   //  7    NO GA     AVF Not a gate
+    word1 OCB;     //  8    OCB       AVF Out of call bracket
+    word1 OCALL;   //  9    OCALL     AVF Outward call
+    word1 BOC;     // 10    BOC       AVF Bad outward call
+    word1 PTWAM_ER;// 11    PTWAM_ER  AVF PTWAM error
+    word1 CRT;     // 12    CRT       AVF Cross ring transfer
+    word1 RALR;    // 13    RALR      AVF Ring alarm
+    word1 SWWAM_ER;// 14    SWWAM_ER  AVF SDWAM error
+    word1 OOSB;    // 15    OOSB      AVF Out of segment bounds
+    word1 PARU;    // 16    PARU      Parity fault - processor parity upper
+    word1 PARL;    // 17    PARL      Parity fault - processor parity lower
+    word1 ONC1;    // 18    ONC1      Operation not complete fault error #1
+    word1 ONC2;    // 19    ONC2      Operation not complete fault error #2
+    word4 IA;      // 20-23 IA        System controll illegal action lines
+    word3 IACHN;   // 24-26 IACHN     Illegal action processor port
     word3 CNCHN;   // 27-29 CNCHN     Connect fault - connect processor port
     word5 FI_ADDR; // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
     word1 FLT_INT; // 35    F/I       0 = interrupt; 1 = fault
@@ -1088,6 +1089,8 @@ extern struct cpu_array
 
   } cpu_array [N_CPU_UNITS_MAX];
 
+
+word36 faultRegister [2];
 
 
 //extern int stop_reason;     // sim_instr return value for JMP_STOP

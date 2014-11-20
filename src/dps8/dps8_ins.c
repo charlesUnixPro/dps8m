@@ -210,16 +210,31 @@ static void scu2words(word36 *words)
 //sim_printf ("scu2words wrote %012llo @ %08o\n", words [0], words);
     // words [1]
     
-    putbits36 (& words [1],  0, 16, cpu . subFault & MASK16);
-    // 16, 1 PARU  processor parity upper
-    // 17, 1 PARL  processor parity lower
-    // 18, 1 ONC1  operation not complete error #1
-    // 19, 1 ONC2  operation not complete error #2
-    // 20, 4 IA    system controller illegal action lines
-    // 24, 3 IACHN Illegal action processor port
-    putbits36 (& words [1], 27, 3, cu .  CNCHN);
-    putbits36 (& words [1], 30, 5, cu .  FI_ADDR);
-//sim_printf ("setting F/I to %d; cycle %d\n", cpu . cycle == INTERRUPT_cycle ? 0 : 1, cpu . cycle);
+    //putbits36 (& words [1],  0, 16, cpu . subFault & MASK16);
+    putbits36 (& words [1],  0,  1, cu .  IRO_ISN);
+    putbits36 (& words [1],  1,  1, cu .  OEB_IOC);
+    putbits36 (& words [1],  2,  1, cu .  EOFF_IAIM);
+    putbits36 (& words [1],  3,  1, cu .  ORB_ISP);
+    putbits36 (& words [1],  4,  1, cu .  ROFF_IPR);
+    putbits36 (& words [1],  5,  1, cu .  OWB_NEA);
+    putbits36 (& words [1],  6,  1, cu .  WOFF_OOB);
+    putbits36 (& words [1],  7,  1, cu .  NO_GA);
+    putbits36 (& words [1],  8,  1, cu .  OCB);
+    putbits36 (& words [1],  9,  1, cu .  OCALL);
+    putbits36 (& words [1], 10,  1, cu .  BOC);
+    putbits36 (& words [1], 11,  1, cu .  PTWAM_ER);
+    putbits36 (& words [1], 12,  1, cu .  CRT);
+    putbits36 (& words [1], 13,  1, cu .  RALR);
+    putbits36 (& words [1], 14,  1, cu .  SWWAM_ER);
+    putbits36 (& words [1], 15,  1, cu .  OOSB);
+    putbits36 (& words [1], 16,  1, cu .  PARU);
+    putbits36 (& words [1], 17,  1, cu .  PARL);
+    putbits36 (& words [1], 18,  1, cu .  ONC1);
+    putbits36 (& words [1], 19,  1, cu .  ONC2);
+    putbits36 (& words [1], 20,  4, cu .  IA);
+    putbits36 (& words [1], 24,  3, cu .  IACHN);
+    putbits36 (& words [1], 27,  3, cu .  CNCHN);
+    putbits36 (& words [1], 30,  5, cu .  FI_ADDR);
     putbits36 (& words [1], 35, 1, cpu . cycle == INTERRUPT_cycle ? 0 : 1);
 
     // words [2]
@@ -325,8 +340,31 @@ static void words2scu (word36 * words)
     
     // words[1]
 
-    cu.FI_ADDR      = getbits36(words[1], 30, 5);
-    cu.FLT_INT      = getbits36(words[1], 35, 1);
+    cu . IRO_ISN      = getbits36 (words [1],  0,  1);
+    cu . OEB_IOC      = getbits36 (words [1],  1,  1);
+    cu . EOFF_IAIM    = getbits36 (words [1],  2,  1);
+    cu . ORB_ISP      = getbits36 (words [1],  3,  1);
+    cu . ROFF_IPR     = getbits36 (words [1],  4,  1);
+    cu . OWB_NEA      = getbits36 (words [1],  5,  1);
+    cu . WOFF_OOB     = getbits36 (words [1],  6,  1);
+    cu . NO_GA        = getbits36 (words [1],  7,  1);
+    cu . OCB          = getbits36 (words [1],  8,  1);
+    cu . OCALL        = getbits36 (words [1],  9,  1);
+    cu . BOC          = getbits36 (words [1], 10,  1);
+    cu . PTWAM_ER     = getbits36 (words [1], 11,  1);
+    cu . CRT          = getbits36 (words [1], 12,  1);
+    cu . RALR         = getbits36 (words [1], 13,  1);
+    cu . SWWAM_ER     = getbits36 (words [1], 14,  1);
+    cu . OOSB         = getbits36 (words [1], 15,  1);
+    cu . PARU         = getbits36 (words [1], 16,  1);
+    cu . PARL         = getbits36 (words [1], 17,  1);
+    cu . ONC1         = getbits36 (words [1], 18,  1);
+    cu . ONC2         = getbits36 (words [1], 19,  1);
+    cu . IA           = getbits36 (words [1], 20,  4);
+    cu . IACHN        = getbits36 (words [1], 24,  3);
+    cu . CNCHN        = getbits36 (words [1], 27,  3);
+    cu . FI_ADDR      = getbits36 (words [1], 30,  5);
+    cu . FLT_INT      = getbits36 (words [1], 35,  1);
 
     // words[2]
     
@@ -814,7 +852,7 @@ t_stat executeInstruction (void)
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     // Not clear what the subfault should be; see Fault Register in AL39.
     if ((ci->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(illproc_fault, ill_proc, "Attempted execution of privileged instruction.");
+        doFault(FAULT_IPR, ill_proc, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -822,37 +860,37 @@ t_stat executeInstruction (void)
     if (ci->info->mods == NO_CSS)
     {
         if (_nocss[ci->tag])
-            doFault(illproc_fault, ill_mod, "Illegal CI/SC/SCR modification");
+            doFault(FAULT_IPR, ill_mod, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DDCSS)
     {
         if (_noddcss[ci->tag])
-            doFault(illproc_fault, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DLCSS)
     {
         if (_nodlcss[ci->tag])
-            doFault(illproc_fault, ill_mod, "Illegal DL/CI/SC/SCR modification");
+            doFault(FAULT_IPR, ill_mod, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (ci->info->mods == NO_DUDL)
     {
         if (_nodudl[ci->tag])
-            doFault(illproc_fault, ill_mod, "Illegal DU/DL modification");
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL modification");
     }
     if (cu . xdo == 1) // Execute even or odd of XED
     {
     // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XED)
-            doFault(illproc_fault, ill_proc, "Instruction not allowed in XED");
+            doFault(FAULT_IPR, ill_proc, "Instruction not allowed in XED");
     }
     if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
     {
     // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XEC)
-            doFault(illproc_fault, ill_proc, "Instruction not allowed in XEC");
+            doFault(FAULT_IPR, ill_proc, "Instruction not allowed in XEC");
     }
 
     if (cu . rpt || cu .rd)
@@ -867,7 +905,7 @@ t_stat executeInstruction (void)
               break;
             default:
               // generate fault. Only R & RI allowed
-              doFault(illproc_fault, ill_mod, "ill addr mod from RPT");
+              doFault(FAULT_IPR, ill_mod, "ill addr mod from RPT");
           }
         word6 Td = GET_TD(ci->tag);
         switch (Td)
@@ -883,13 +921,13 @@ t_stat executeInstruction (void)
               break;
             default:
               // generate fault. Only Xn allowed
-              doFault(illproc_fault, ill_mod, "ill addr mod from RPT");
+              doFault(FAULT_IPR, ill_mod, "ill addr mod from RPT");
           }
 // XXX Does this need to also check for NO_RPL?
         // repeat allowed for this instruction?
     // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags & NO_RPT)
-          doFault(illproc_fault, ill_proc, "no rpt allowed for instruction");
+          doFault(FAULT_IPR, ill_proc, "no rpt allowed for instruction");
       }
 
     TPR.CA = address;
@@ -1399,7 +1437,7 @@ static t_stat DoBasicInstruction (void)
             {
                 SETF(cu.IR, I_OFLOW);
                 if (! TSTF (cu.IR, I_OMASK))
-                    doFault(overflow_fault, 0,"lcaq overflow fault");
+                    doFault(FAULT_OFL, 0,"lcaq overflow fault");
             }
             else if (Ypair[0] == 0 && Ypair[1] == 0)
             {
@@ -2434,7 +2472,7 @@ static t_stat DoBasicInstruction (void)
                 SCF(rA & SIGN36, cu.IR, I_NEG);
             
                 if (isovr && ! TSTF (cu.IR, I_OMASK))
-                    doFault(overflow_fault, 0,"mpf overflow fault");
+                    doFault(FAULT_OFL, 0,"mpf overflow fault");
                 }
             }
             break;
@@ -2475,7 +2513,7 @@ static t_stat DoBasicInstruction (void)
                 SCF(CY == 0, cu.IR, I_ZERO);
                 SCF(rQ & SIGN36, cu.IR, I_NEG);
                 // XXX divide check fault
-                doFault(div_fault, 0, "div divide check");
+                doFault(FAULT_DIV, 0, "div divide check");
             }
             else
             {
@@ -2587,7 +2625,7 @@ static t_stat DoBasicInstruction (void)
                 {
                     SETF(cu.IR, I_OFLOW);
                     if (! TSTF (cu.IR, I_OMASK))
-                        doFault(overflow_fault, 0,"neg overflow fault");
+                        doFault(FAULT_OFL, 0,"neg overflow fault");
                 }
             }
             break;
@@ -2620,7 +2658,7 @@ static t_stat DoBasicInstruction (void)
                     {
                         SETF(cu.IR, I_OFLOW);
                         if (! TSTF (cu.IR, I_OMASK))
-                            doFault(overflow_fault, 0,"negl overflow fault");
+                            doFault(FAULT_OFL, 0,"negl overflow fault");
                     }
                 
                     convertToWord36(tmp72, &rA, &rQ);
@@ -4022,7 +4060,7 @@ static t_stat DoBasicInstruction (void)
         case 0715:  ///< tss
             if (TPR.CA >= ((word18) BAR.BOUND) << 9)
             {
-                doFault (acc_viol_fault, ACV15, "TSS boundary violation");
+                doFault (FAULT_ACV, ACV15, "TSS boundary violation");
                 //break;
             }
             /// C(TPR.CA) + (BAR base) -> C(PPR.IC)
@@ -4283,7 +4321,7 @@ static t_stat DoBasicInstruction (void)
                 if (((CY >> 34) & 3) != 3)
                     PR[n].BITNO = (CY >> 30) & 077;
                 else
-                  doFault(cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+                  doFault(FAULT_CMD, 0, "Load Pointer Register Packed (lprpn)");
 
                 //If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
@@ -4501,7 +4539,7 @@ static t_stat DoBasicInstruction (void)
             
                 // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
                 if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != MASK15)
-                  doFault(store_fault, 0, "Store Pointer Register Packed (sprpn)");
+                  doFault(FAULT_STR, ill_ptr, "Store Pointer Register Packed (sprpn)");
             
                 if (switches . lprp_highonly)
                   {
@@ -4618,7 +4656,7 @@ static t_stat DoBasicInstruction (void)
               {
                 return STOP_HALT;
               }
-            doFault (derail_fault, 0, "drl");
+            doFault (FAULT_DRL, 0, "drl");
             // break;
          
         case 0716:  ///< xec
@@ -4629,16 +4667,42 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0717:  ///< xed
+        case 0717:  // xed
             {
-            /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
-            /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
-            /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y-pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
-    
-            /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
-            /// The instruction pair at C(Y-pair) may cause any of the processor defined fault conditions, but only the directed faults (0,1,2,3) and the access violation fault may be restarted successfully by the hardware. Note that the software induced fault tag (1,2,3) faults cannot be properly restarted.
-            ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
-            ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
+	  // The xed instruction itself does not affect any indicator.
+	  // However, the execution of the instruction pair from C(Y-pair)
+	  // may affect indicators.
+            //
+	  // The even instruction from C(Y-pair) must not alter
+	  // C(Y-pair)36,71, and must not be another xed instruction.
+            //
+	  // If the execution of the instruction pair from C(Y-pair) alters
+	  // C(PPR.IC), then a transfer of control occurs; otherwise, the
+	  // next instruction to be executed is fetched from C(PPR.IC)+1. If
+	  // the even instruction from C(Y-pair) alters C(PPR.IC), then the
+	  // transfer of control is effective immediately and the odd
+	  // instruction is not executed.
+            //
+	  // To execute an instruction pair having an rpd instruction as the
+	  // odd instruction, the xed instruction must be located at an odd
+	  // address. The instruction pair repeated is that instruction pair
+	  // at C PPR.IC)+1, that is, the instruction pair immediately
+	  // following the xed instruction. C(PPR.IC) is adjusted during the
+	  // execution of the repeated instruction pair so the the next
+	  // instruction fetched for execution is from the first word
+	  // following the repeated instruction pair.
+            //
+	  // The instruction pair at C(Y-pair) may cause any of the processor
+	  // defined fault conditions, but only the directed faults (0,1,2,3)
+	  // and the access violation fault may be restarted successfully by
+	  // the hardware. Note that the software induced fault tag (1,2,3)
+	  // faults cannot be properly restarted.
+            //
+	  //  An attempt to execute an EIS multiword instruction causes an
+	  //  illegal procedure fault.
+            //
+	  //  Attempted repetition with the rpt, rpd, or rpl instructions
+	  //  causes an illegal procedure fault.
             
                 cu . IWB = Ypair [0];
                 cu . IRODD = Ypair [1];
@@ -4647,24 +4711,30 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0001:   ///< mme
-            /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(mme1_fault, 0, "Master Mode Entry (mme)");
+        case 0001:   // mme
+	  // Causes a fault that fetches and executes, in absolute mode, the
+	  // instruction pair at main memory location C+4. The value of C is
+	  // obtained from the FAULT VECTOR switches on the processor
+	  // configuration panel.
+            doFault(FAULT_MME, 0, "Master Mode Entry (mme)");
             // break;
             
-        case 0004:   ///< mme2
-            /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(52)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(mme2_fault, 0, "Master Mode Entry 2 (mme2)");
+        case 0004:   // mme2
+	  // Causes a fault that fetches and executes, in absolute mode, the
+	  //instruction pair at main memory location C+(52)8. The value of C
+	  //is obtained from the FAULT VECTOR switches on the processor
+	  //configuration panel.
+            doFault(FAULT_MME2, 0, "Master Mode Entry 2 (mme2)");
             // break;
 
         case 0005:   ///< mme3
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(54)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(mme3_fault, 0, "Master Mode Entry 3 (mme3)");
+            doFault(FAULT_MME3, 0, "Master Mode Entry 3 (mme3)");
             // break;
 
         case 0007:   ///< mme4
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(56)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(mme4_fault, 0, "Master Mode Entry 4 (mme4)");
+            doFault(FAULT_MME4, 0, "Master Mode Entry 4 (mme4)");
             // break;
 
         case 0011:   ///< nop
@@ -4688,7 +4758,7 @@ static t_stat DoBasicInstruction (void)
             // For emulation purposes, a nop
             break;
          
-        case 0560:  ///< rpd
+        case 0560:  // rpd
             {
               uint c = (i->address >> 7) & 1;
               cu . delta = i->tag;
@@ -4840,7 +4910,7 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 default:
-                  doFault (illproc_fault, ill_mod, "lcpr tag invalid");
+                  doFault (FAULT_IPR, ill_mod, "lcpr tag invalid");
 
               }
             break;
@@ -4863,7 +4933,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0257:  ///< lsdp
             // Not clear what the subfault should be; see Fault Register in AL39.
-            doFault(illproc_fault, ill_proc, "lsdp is illproc on DPS8M");
+            doFault(FAULT_IPR, ill_proc, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
             doRCU (false); // never returns
@@ -4884,39 +4954,40 @@ static t_stat DoBasicInstruction (void)
                 case 001: // C(fault register) -> C(Y-pair)0,35
                           // 00...0 -> C(Y-pair)36,71
                   {
+#if 0
                     Ypair [0] = 0;
                     // a 0 ILL OP
-                    if (cpu . faultNumber == illproc_fault &&
+                    if (cpu . faultNumber == FAULT_IPR &&
                         cpu . subFault == ill_op)
                       putbits36 (& Ypair [0], 0, 1, 1); 
 
                     // b 1 ILL MOD
-                    if (cpu . faultNumber == illproc_fault &&
+                    if (cpu . faultNumber == FAULT_IPR &&
                         cpu . subFault == ill_mod)
                       putbits36 (& Ypair [0], 1, 1, 1); 
 
                     // c 2 ILL SLV
-                    if (cpu . faultNumber == illproc_fault &&
+                    if (cpu . faultNumber == FAULT_IPR &&
                         cpu . subFault == ill_slv)
                       putbits36 (& Ypair [0], 2, 1, 1);
 
                     // d 3 ILL PROC
-                    if (cpu . faultNumber == illproc_fault &&
+                    if (cpu . faultNumber == FAULT_IPR &&
                         cpu . subFault == ill_proc)
                       putbits36 (& Ypair [0], 3, 1, 1);
 
                     // e 4 NEM 
-                    if (cpu . faultNumber == op_not_complete_fault &&
+                    if (cpu . faultNumber == FAULT_ONC &&
                         cpu . subFault == nem)
                       putbits36 (& Ypair [0], 4, 1, 1);
 
                     // f 5 OOB
-                    if (cpu . faultNumber == store_fault &&
+                    if (cpu . faultNumber == FAULT_STR &&
                         cpu . subFault == oob)
                       putbits36 (& Ypair [0], 5, 1, 1);
 
                     // g 6 ILL DIG
-                    if (cpu . faultNumber == illproc_fault &&
+                    if (cpu . faultNumber == FAULT_IPR &&
                         cpu . subFault == ill_dig)
                       putbits36 (& Ypair [0], 6, 1, 1);
 
@@ -4970,6 +5041,12 @@ static t_stat DoBasicInstruction (void)
                     // E 47 SDWAM parity error
                     // F 48 PTWAM parity error
                     //   49-71 zero
+#else
+                    Ypair [0] = faultRegister [0];
+                    Ypair [1] = faultRegister [1];
+                    faultRegister [0] = 0;
+                    faultRegister [1] = 0;
+#endif
                   }
                   break;
 
@@ -5032,7 +5109,7 @@ static t_stat DoBasicInstruction (void)
 
                 default:
                   {
-                    doFault(illproc_fault, ill_mod, "SCPR Illegal register select value");
+                    doFault(FAULT_IPR, ill_mod, "SCPR Illegal register select value");
                   }
               }
           }
@@ -5299,7 +5376,7 @@ static t_stat DoBasicInstruction (void)
 
                 default:
                   // XXX Guessing values; also don't know if this is actually a fault
-                  doFault(illproc_fault, ill_mod, "Illegal register select value");
+                  doFault(FAULT_IPR, ill_mod, "Illegal register select value");
               }
             SCF (rA == 0, cu.IR, I_ZERO);
             SCF (rA & SIGN36, cu.IR, I_NEG);
@@ -5355,9 +5432,17 @@ static t_stat DoBasicInstruction (void)
             uint cpu_port_num = (TPR.CA >> 15) & 03;
             int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
 
-            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, rA);
-            if (rc == CONT_FAULT)
-              doFault(store_fault, 0, "(smic)");
+            if (scu_unit_num < 0)
+              {
+                // Not used by 4MW
+                // doFault (FAULT_STR, not_control, "(smic)");
+                sim_printf ("scu_unit_num not found; punting\n");
+                break;
+              }
+            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, cpu_port_num, rA);
+            // Not used bu 4MW
+            // if (rc == CONT_FAULT)
+              // doFault (FAULT_STR, not_control, "(smic)");
             if (rc)
               return rc;
           }
@@ -5395,9 +5480,10 @@ static t_stat DoBasicInstruction (void)
               }
             uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
     
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, iefpFinalAddress & MASK15, rA, rQ);
-            if (rc == CONT_FAULT)
-              doFault(store_fault, 0, "(sscr)");
+            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, iefpFinalAddress & MASK15, rA, rQ);
+            // Not used by 4MW
+            // if (rc == CONT_FAULT)
+              // doFault(FAULT_STR, not_control, "(sscr)");
             if (rc)
               return rc;
           }
@@ -5481,8 +5567,8 @@ static t_stat DoBasicInstruction (void)
                           {
                             if (rTR == MASK27)
                               {
-                                //doFault (timer_fault, 0, "Timer runout");
-                                setG7fault (timer_fault);
+                                //doFault (FAULT_TRO, 0, "Timer runout");
+                                setG7fault (FAULT_TRO);
                         sim_printf ("leaving dis 'cause of TRO\n");
                                 break;
                               }
@@ -5520,7 +5606,7 @@ static t_stat DoBasicInstruction (void)
             if (switches . halt_on_unimp)
                 return STOP_ILLOP;
             else
-                doFault(illproc_fault, ill_op, "Illegal instruction");
+                doFault(FAULT_IPR, ill_op, "Illegal instruction");
     }
     return SCPE_OK;
 }
@@ -6766,15 +6852,15 @@ static t_stat DoEISInstruction (void)
             
         case 0173:  ///< lptr
             // Not clear what the subfault should be; see Fault Register in AL39.
-            doFault(illproc_fault, ill_proc, "lptr is illproc on DPS8M");
+            doFault(FAULT_IPR, ill_proc, "lptr is illproc on DPS8M");
 
         case 0232:  ///< lsdr
             // Not clear what the subfault should be; see Fault Register in AL39.
-            doFault(illproc_fault, ill_proc, "lsdr is illproc on DPS8M");
+            doFault(FAULT_IPR, ill_proc, "lsdr is illproc on DPS8M");
 
         case 0257:  ///< lptp
             // Not clear what the subfault should be; see Fault Register in AL39.
-            doFault(illproc_fault, ill_proc, "lptp is illproc on DPS8M");
+            doFault(FAULT_IPR, ill_proc, "lptp is illproc on DPS8M");
 
         case 0774:  ///< lra
             rRALR = CY & MASK3;
@@ -6852,7 +6938,7 @@ static t_stat DoEISInstruction (void)
             if (switches . halt_on_unimp)
                 return STOP_ILLOP;
             else
-                doFault(illproc_fault, ill_op, "Illegal instruction");
+                doFault(FAULT_IPR, ill_op, "Illegal instruction");
     }
 
     return SCPE_OK;
@@ -7068,7 +7154,7 @@ static int doABSA (word36 * result)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
-        //doFault (illproc_fault, ill_proc, "ABSA in absolute mode.");
+        //doFault (FAULT_IPR, ill_proc, "ABSA in absolute mode.");
         * result = (TPR . CA & MASK18) << 12; // 24:12 format
         return SCPE_OK;
       }
@@ -7087,7 +7173,7 @@ static int doABSA (word36 * result)
 
         if (2 * (uint) TPR . TSR >= 16 * ((uint) DSBR . BND + 1))
           {
-            doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+            doFault (FAULT_ACV, ACV15, "ABSA in DSBR boundary violation.");
           }
 
         // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
@@ -7116,7 +7202,7 @@ static int doABSA (word36 * result)
         word14 BOUND = (SDWo >> (35u - 14u)) & 037777u;
         if (TPR . CA >= 16u * (BOUND + 1u))
           {
-            doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+            doFault (FAULT_ACV, ACV15, "ABSA in SDW boundary violation.");
           }
 
         // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
@@ -7151,7 +7237,7 @@ static int doABSA (word36 * result)
 
         if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
           {
-            doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+            doFault (FAULT_ACV, ACV15, "ABSA in DSBR boundary violation.");
           }
 
         // 2. Form the quantities:
@@ -7193,7 +7279,7 @@ static int doABSA (word36 * result)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
             // initiate a directed fault
-            doFault(dir_flt0_fault + PTW1.FC, 0, "ABSA !PTW1.F");
+            doFault(FAULT_DF0 + PTW1.FC, 0, "ABSA !PTW1.F");
           }
 
         // 5. Fetch the target segment SDW, SDW(segno), from the 
@@ -7245,7 +7331,7 @@ static int doABSA (word36 * result)
         if (!SDW0.F)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
-            doFault(dir_flt0_fault + SDW0.FC, 0, "ABSA !SDW0.F");
+            doFault(FAULT_DF0 + SDW0.FC, 0, "ABSA !SDW0.F");
           }
 
         // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an 
@@ -7259,7 +7345,7 @@ static int doABSA (word36 * result)
         if (((offset >> 4) & 037777) > SDW0 . BOUND)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa SDW boundary violation\n");
-            doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+            doFault (FAULT_ACV, ACV15, "ABSA in SDW boundary violation.");
           }
 
         // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the 
@@ -7312,7 +7398,7 @@ static int doABSA (word36 * result)
             //   {
             //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW_2.F\n");
             //     // initiate a directed fault
-            //     doFault(dir_flt0_fault + PTW_2.FC, 0, "ABSA !PTW_2.F");
+            //     doFault(FAULT_DF0 + PTW_2.FC, 0, "ABSA !PTW_2.F");
             //   }
 
             // 12. Generate the 24-bit absolute main memory address 
@@ -7431,7 +7517,7 @@ void doRCU (bool fxeTrap)
             if (rRALR != 0 && ! (PPR . PRR < rRALR))
               {
                 sim_printf ("CAC sez this is a RCU ring alarm\n");
-                doFault (acc_viol_fault, ACV13, "CAC sez this is a ring alarm");
+                doFault (FAULT_ACV, ACV13, "CAC sez this is a ring alarm");
               }
 #endif
             longjmp (jmpMain, JMP_RESTART);

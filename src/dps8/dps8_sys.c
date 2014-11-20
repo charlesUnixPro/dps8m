@@ -384,11 +384,18 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     // Multics seems to have a copy of hpchs_ (segno 0162) in segment 0322;
     // This little tweak allows source code level tracing for segment 0322,
     // and has no operational significance to the emulator
+    // Hmmm. What is happening is that these segments are being loaded into
+    // ring 4, and assigned segment #'s; the assigned number will vary 
+    // depending on the exact sequence of events.
     if (segno == 0322)
       segno = 0162;
     if (segno == 0310)
       segno = 041;
+    if (segno == 0314)
+      segno = 041;
     if (segno == 0313)
+      segno = 0161;
+    if (segno == 0317)
       segno = 0161;
 
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
@@ -914,7 +921,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             //   {
             //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
             //     // initiate a directed fault
-            //     doFault(dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+            //     doFault(FAULT_DF0 + PTW2.FC, 0, "ABSA !PTW2.F");
             //   }
 
             // 12. Generate the 24-bit absolute main memory address 
@@ -955,7 +962,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (exf_fault, 0);
+    setG7fault (FAULT_EXF, 0);
     return SCPE_OK;
   }
 

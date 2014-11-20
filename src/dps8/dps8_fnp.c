@@ -5,6 +5,7 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
+#include "fnpp.h"
 
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -127,6 +128,7 @@ void fnpInit(void)
     memset(fnpState, 0, sizeof(fnpState));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       cables_from_ioms_to_fnp [i] . iom_unit_num = -1;
+    fnppInit ();
   }
 
 static t_stat fnpReset (DEVICE * dptr)
@@ -135,6 +137,7 @@ static t_stat fnpReset (DEVICE * dptr)
       {
         sim_cancel (& fnp_unit [i]);
       }
+    fnppReset (dptr);
     return SCPE_OK;
   }
 
@@ -180,7 +183,7 @@ static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         sim_err ("PTP in fnp\n");
       }
     chan_data -> stati = 0;
-
+sim_printf ("fnp cmd %d\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)
       {
         default:
@@ -394,6 +397,6 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
     if (n < 1 || n > N_FNP_UNITS_MAX)
       return SCPE_ARG;
     fnpDev . numunits = (uint32) n;
-    return SCPE_OK;
+    return fnppSetNunits (uptr, value, cptr, desc);
   }
 

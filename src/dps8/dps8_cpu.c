@@ -7,6 +7,15 @@
 
 #include <stdio.h>
 
+#ifdef M_SHARED
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <fcntl.h>           /* For O_* constants */
+#endif
+
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_cpu.h"
@@ -687,11 +696,13 @@ static void setup_scbank_map (void)
           continue;
         // Calculate the amount of memory in the SCU in words
         uint store_size = switches . store_size [port_num];
-        uint sz = 1 << (store_size + 16);
+        //uint sz = 1 << (store_size + 16);
+        uint sz = 1 << (store_size + 15);
 
         // Calculate the base address of the memor in wordsy
         uint assignment = switches . assignment [port_num];
         uint base = assignment * sz;
+        // sim_printf ("setup_scbank_map SCU %d base %08o sz %08o (%d)\n", port_num, base, sz, sz);
 
         // Now convert to SCBANK
         sz = sz / SCBANK;
@@ -733,12 +744,38 @@ void cpu_init (void)
 
 static t_stat cpu_reset (DEVICE *dptr)
 {
+#ifdef M_SHARED
+    //sim_printf ("Session %d\n", getsid (0));
+    int fd = shm_open ("/dps8_memory", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    if (fd == -1)
+      {
+        sim_printf ("dps8_memory shm_open fail %d\n", errno);
+        return SCPE_MEM;
+      }
+
+    if (ftruncate (fd, sizeof (word36) * MEMSIZE) == -1)
+      {
+        sim_printf ("dps8_memory ftruncate  fail %d\n", errno);
+        return SCPE_MEM;
+      }
+
+    M = (word36 *) mmap (NULL, sizeof (word36) * MEMSIZE,
+                         PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    if (M == MAP_FAILED)
+      {
+        sim_printf ("dps8_memory mmap  fail %d\n", errno);
+        return SCPE_MEM;
+      }
+
+#else
     if (M)
         free(M);
     
     M = (word36 *) calloc (MEMSIZE, sizeof (word36));
     if (M == NULL)
         return SCPE_MEM;
+#endif
     
     //memset (M, -1, MEMSIZE * sizeof (word36));
 
@@ -789,6 +826,9 @@ static t_stat cpu_reset (DEVICE *dptr)
 
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
+
+    faultRegister [0] = 0;
+    faultRegister [1] = 0;
 
     return SCPE_OK;
 }
@@ -1414,7 +1454,7 @@ t_stat sim_instr (void)
               {
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 if (switches . tro_enable)
-                  setG7fault (timer_fault, 0);
+                  setG7fault (FAULT_TRO, 0);
               }
           }
 
@@ -1704,7 +1744,7 @@ t_stat sim_instr (void)
                     if (rRALR != 0 && ! (PPR . PRR < rRALR))
                       {
                         sim_printf ("CAC sez this is a ring alarm\n");
-                        doFault (acc_viol_fault, ACV13,i
+                        doFault (FAULT_ACV, ACV13,i
                                  "CAC sez this is a ring alarm");
                       }
 #endif
@@ -2103,7 +2143,7 @@ t_stat memWatch (int32 arg, char * buf)
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
     if(addr >= MEMSIZE)
-      doFault (op_not_complete_fault, nem, "core_read nem");
+      doFault (FAULT_ONC, nem, "core_read nem");
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, PPR.PSR, PPR.IC, ctx);
@@ -2122,7 +2162,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 
 int core_write(word24 addr, word36 data, const char * ctx) {
     if(addr >= MEMSIZE)
-      doFault (op_not_complete_fault, nem, "core_write nem");
+      doFault (FAULT_ONC, nem, "core_write nem");
     M[addr] = data & DMASK;
     if (watchBits [addr])
       {
@@ -2137,7 +2177,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
 
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr >= MEMSIZE)
-      doFault (op_not_complete_fault, nem, "core_read2 nem");
+      doFault (FAULT_ONC, nem, "core_read2 nem");
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
@@ -2184,7 +2224,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr >= MEMSIZE)
-      doFault (op_not_complete_fault, nem, "core_write2 nem");
+      doFault (FAULT_ONC, nem, "core_write2 nem");
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
@@ -2515,6 +2555,8 @@ struct ic_hist_t {
     } detail;
 };
 
+word36 faultRegister [2];
+
 typedef struct ic_hist_t ic_hist_t;
 
 static ic_hist_t *ic_hist;
@@ -2709,26 +2751,70 @@ static config_value_list_t cfg_interlace [] =
 
 static config_value_list_t cfg_size_list [] =
   {
-    { "32", 0 },
-    { "64", 1 },
-    { "128", 2 },
-    { "256", 3 },
-    { "512", 4 },
-    { "1024", 5 },
-    { "2048", 6 },
-    { "4096", 7 },
+// Examination of the runtime image indicates that the source code does not
+// match the boot image. The table in core does not contian this version of
+// dps_mem_size_table
+
+#if 0
+// rsw.incl.pl1
+//
+//  dcl  dps_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS and L68 memory sizes */
+//      (32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144);
+//  
+//  /* Note that the third array element above, is changed incompatibly in MR10.0.
+//     In previous releases, this array element was used to decode a port size of
+//     98304 (96K). With MR10.0 it is now possible to address 4MW per CPU port, by
+//     installing  FCO # PHAF183 and using a group 10 patch plug, on L68 and DPS CPUs.
+//  */
+
+    { "32", 0 },    //   32768
+    { "64", 1 },    //   65536
+    { "4096", 2 },  // 4194304
+    { "128", 3 },   //  131072
+    { "512", 4 },   //  524288
+    { "1024", 5 },  // 1048576
+    { "2048", 6 },  // 2097152
+    { "256", 7 },   //  262144
+
     { "32K", 0 },
     { "64K", 1 },
-    { "128K", 2 },
-    { "256K", 3 },
+    { "4096K", 2 },
+    { "128K", 3 },
     { "512K", 4 },
     { "1024K", 5 },
     { "2048K", 6 },
+    { "256K", 7 },
+
+    { "1M", 5 },
+    { "2M", 6 },
+    { "4M", 2 },
+#else
+// These values are taken from the dps8_mem_size_table loaded by the boot tape.
+
+    {    "32", 0 },
+    {    "64", 1 },
+    {   "128", 2 },
+    {   "256", 3 }, 
+    {   "512", 4 }, 
+    {  "1024", 5 },
+    {  "2048", 6 },
+    {  "4096", 7 },
+
+    {   "32K", 0 },
+    {   "64K", 1 },
+    {  "128K", 2 },
+    {  "256K", 3 },
+    {  "512K", 4 },
+    { "1024K", 5 },
+    { "2048K", 6 },
     { "4096K", 7 },
+
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 7 },
+#endif
     { NULL, 0 }
+
   };
 
 static config_list_t cpu_config_list [] =

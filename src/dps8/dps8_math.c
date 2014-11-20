@@ -906,7 +906,7 @@ static void fdvX(bool bInvert)
         
         rA = m1;
         
-        doFault(div_fault, 0, "DFDV: divide check fault");
+        doFault(FAULT_DIV, 0, "DFDV: divide check fault");
     }
 
     while (m1 >= m2)
@@ -1665,7 +1665,7 @@ static void dfdvX (bool bInvert)
         
         rA = m1;
         
-        doFault(div_fault, 0, "DFDV: divide check fault");
+        doFault(FAULT_DIV, 0, "DFDV: divide check fault");
     }
     
     while (m1 >= m2)
@@ -1794,7 +1794,7 @@ void dvf (void)
         rA = (m1 >> 36) & MASK36;
         rQ = m1 & 0777777777776LLU;
         
-        doFault(div_fault, 0, "DVF: divide check fault");
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
     }
     
     uint128 dividend = (uint128)m1 << 63;
