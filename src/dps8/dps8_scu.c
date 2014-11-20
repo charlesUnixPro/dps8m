@@ -1222,7 +1222,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             //sim_printf ("rscr 1 A: %012llo Q: %012llo\n", * rega, * regq);
 #else
-sim_printf ("rscr 1 [%lld]\n", sim_timell ());
+            // sim_printf ("rscr 1 [%lld]\n", sim_timell ());
             // AN87, pg 2-5
             word36 a, q;
 
