@@ -5,6 +5,8 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
+#define ABUSE_CT_HOLD2
+
 //#define DBGF // eis page fault debugging
 #include <stdio.h>
 
@@ -820,7 +822,7 @@ void traceInstruction (uint flag)
           }
         else if (get_addr_mode() == APPEND_mode)
           {
-            sim_debug(flag, &cpu_dev, "%05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
           }
         else if (get_addr_mode() == BAR_mode)
           {
@@ -833,6 +835,12 @@ void traceInstruction (uint flag)
 // CANFAULT
 t_stat executeInstruction (void)
   {
+
+
+///
+/// executeInstruction: Decode the instruction
+///
+
     DCDstruct * ci = & currentInstruction;
     decodeInstruction(cu . IWB, ci);
 
@@ -846,16 +854,25 @@ t_stat executeInstruction (void)
    
     addToTheMatrix (opcode, opcodeX, a, tag);
     
+///
+/// executeInstruction: Non-restart processing
+///
+
     if (cu . IR & I_MIIF)
       goto restart_1;
 
-    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
-    // Not clear what the subfault should be; see Fault Register in AL39.
-    if ((ci->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(FAULT_IPR, ill_proc, "Attempted execution of privileged instruction.");
+    // check for priv ins - Attempted execution in normal or BAR modes causes a
+    // illegal procedure fault.
+    // XXX Not clear what the subfault should be; see Fault Register in AL39.
+    if ((ci -> info -> flags & PRIV_INS) && ! is_priv_mode ())
+        doFault (FAULT_IPR, ill_proc, 
+                 "Attempted execution of privileged instruction.");
     
-    // check for illegal addressing mode(s) ...
-    
+    ///
+    /// executeInstruction: Non-restart processing
+    ///                     check for illegal addressing mode(s) ...
+    ///
+
     // No CI/SC/SCR allowed
     if (ci->info->mods == NO_CSS)
     {
@@ -882,16 +899,18 @@ t_stat executeInstruction (void)
     }
     if (cu . xdo == 1) // Execute even or odd of XED
     {
-    // Not clear what the subfault should be; see Fault Register in AL39.
+    // XXX Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XED)
             doFault(FAULT_IPR, ill_proc, "Instruction not allowed in XED");
     }
     if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
     {
-    // Not clear what the subfault should be; see Fault Register in AL39.
+    // XXX Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XEC)
             doFault(FAULT_IPR, ill_proc, "Instruction not allowed in XEC");
     }
+
+    // RPT/RPD illegal modifiers
 
     if (cu . rpt || cu .rd)
       {
@@ -923,12 +942,17 @@ t_stat executeInstruction (void)
               // generate fault. Only Xn allowed
               doFault(FAULT_IPR, ill_mod, "ill addr mod from RPT");
           }
-// XXX Does this need to also check for NO_RPL?
+        // XXX Does this need to also check for NO_RPL?
         // repeat allowed for this instruction?
-    // Not clear what the subfault should be; see Fault Register in AL39.
+        // XXX Not clear what the subfault should be
         if (ci->info->flags & NO_RPT)
           doFault(FAULT_IPR, ill_proc, "no rpt allowed for instruction");
       }
+
+    ///
+    /// executeInstruction: Non-restart processing
+    ///                     Initialize address registers
+    ///
 
     TPR.CA = address;
     iefpFinalAddress = TPR . CA;
@@ -944,14 +968,27 @@ t_stat executeInstruction (void)
 
 restart_1:
 
+///
+/// executeInstruction: Initialize state saving registers
+///
+
     // XXX this may be wrong; make sure that the right value is used
-    // if a page fault occurs.
+    // if a page fault occurs. (i.e. this may belong above restart_1.
     ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
    
+///
+/// executeInstruction: simh hooks
+///
+
     // XXX Don't trace Multics idle loop
     if (PPR.PSR != 061 && PPR.IC != 0307)
 
-    traceInstruction (DBG_TRACE);
+      traceInstruction (DBG_TRACE);
+
+
+///
+/// executeInstruction: Initialize TPR
+///
 
     // This must not happen on instruction restart
     if (! (cu . IR & I_MIIF))
@@ -964,6 +1001,10 @@ restart_1:
       }
 
     du . JMP = info -> ndes;
+
+///
+/// executeInstruction: RPT/RPD special processing for 'first time'
+///
 
 #define RPT_TRY4
 #ifdef RPT_TRY4
@@ -1058,6 +1099,11 @@ restart_1:
           }
       } // cu . rpt || cu . rpd
 #endif
+
+///
+/// executeInstruction: EIS operand processing
+///
+
     if (info -> ndes > 0)
       {
 #ifdef DBGF
@@ -1085,6 +1131,11 @@ restart_1:
           }
       }
     else
+
+///
+/// executeInstruction: non-EIS operand processing
+///
+
       {
         // This must not happen on instruction restart
         if (! (cu . IR & I_MIIF))
@@ -1102,9 +1153,15 @@ restart_1:
                   }
                 clr_went_appending ();
               }
-            // Setup for ABUSE_CT_HOLD code
+            // Setup for ABUSE_CT_HOLD, ABUSE_CT_HOLD2 code
             // This must not happen on instruction restart
-            cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
+#ifdef ABUSE_CT_HOLD2
+            if (! cu . rd)
+              cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits (ABUSE_CT_HOLD),
+                                // clear hidden xEven bits (ABUSE_CT_HOLD2)
+#else
+            cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits (ABUSE_CT_HOLD),
+#endif
           }
 
 
@@ -1150,9 +1207,16 @@ restart_1:
           }
       }
 
+///
+/// executeInstruction: Execute the instruction
+///
+
     t_stat ret = doInstruction ();
     
-    
+///
+/// executeInstruction: Transfer into append mode
+///
+
     if (switches . append_after)
     {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
@@ -1160,6 +1224,10 @@ restart_1:
             set_addr_mode(APPEND_mode);
         }
     }
+
+///
+/// executeInstruction: Write operand
+///
 
     if (WRITEOP (ci))
       {
@@ -1171,6 +1239,16 @@ restart_1:
         writeOperands ();
       }
     
+///
+/// executeInstruction: RPT/RPD processing
+///
+
+
+    // The semantics of these are that even is the first instruction of
+    // and RPD, and odd the second.
+
+    bool icOdd = !! (PPR . IC & 1);
+    bool icEven = ! icOdd;
 
     // Here, repeat_first means that the instruction just executed was the
     // RPT or RPD; but when the even instruction of a RPD is executed, 
@@ -1179,7 +1257,7 @@ restart_1:
     // ugly logic in to detect that condition.
 
     bool rf = cu . repeat_first;
-    if (rf && cu . rd && ((PPR . IC & 1) == 0))
+    if (rf && cu . rd && icEven)
       rf = false;
 
     if ((! rf) && (cu . rpt || cu . rd))
@@ -1189,18 +1267,45 @@ restart_1:
 
         // Add delta to index register.
 
-// XXX This seems really wrong; this should be in addrmods with the rest of the
-// RPT/RPD index register handling, but putting it there causes the index 
-// index register value to be low (by delta) at loop termination.
-        
-        sim_debug (DBG_TRACE, & cpu_dev,
-            "RPT/RPD delta first %d rf %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
-            cu . repeat_first, rf, cu . rpt, cu . rd, PPR . IC & 1, 
-            rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
+        bool rptA = !! (rX [0] & 01000);
+        bool rptB = !! (rX [0] & 00400);
 
-        if (cu . rpt ||                                             // rpt
-            (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
-            (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))    // rpd & odd & B 
+        // Get these out of the IWB, because sometimes we need to
+        // know X-even after executing  odd instruction
+
+        //uint xEven = getbits36 (cu . IWB, 36 - 3, 3);
+        //uint xOdd = getbits36 (cu . IRODD, 36 - 3, 3);
+
+        uint xN = getbits36 (cu . IWB, 36 - 3, 3);
+
+        sim_debug (DBG_TRACE, & cpu_dev,
+            "RPT/RPD delta first %d rf %d rpt %d rd %d "
+            "e/o %d X0 %06o a %d b %d xN %o\n", 
+            cu . repeat_first, rf, cu . rpt, cu . rd, icOdd,
+            rX [0], rptA, rptB, xN);
+
+        // In a RPD, X-even and X-odd are not updated until after
+        // both instructions are executed. This is relevant
+        // for RPDA when X-even == X-odd; when the odd instruction
+        // is executed, X-even should be unchanged until after
+        // the odd instruction
+        //   rpta
+        //   lda  ...,2
+        //   cmpa .,.,2
+
+#if 0
+        if (cu . rpt || // rpt
+            (cu . rd && icEven && rptA) || // rpda
+            (cu . rd && icOdd && rptB)) // rpdb
+          {
+            word6 Td = GET_TD(ci -> tag);
+            uint Xn = X(Td);  // Get Xn of instruction
+            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
+          }
+#else
+        if (cu . rpt) // rpt
           {
             word6 Td = GET_TD(ci -> tag);
             uint Xn = X(Td);  // Get Xn of instruction
@@ -1209,6 +1314,46 @@ restart_1:
                        "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
           }
 
+        // XXX the odd case of rpdab, where xEven == xOdd is not handled
+        // here specically: if it is correct that the x register should
+        // only be update once, then that case needs to be addressed here
+        // with additional logic
+#if 0
+        if (cu . rd && icOdd && rptA) // rpda
+          {
+            rX[xEven] = (rX[xEven] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", xEven, rX [xEven]);
+          }
+#else
+        if (cu . rd && icEven && rptA) // rpda, even instruction
+          {
+// We can use CT_HOLD here, because the repeated instructions are constrained
+// to be R or RI, and addrmod does not use CT_HOLD for those cases.
+#ifdef ABUSE_CT_HOLD2
+            cu . CT_HOLD = xN; // remember xN for later
+//sim_printf ("remembering %o\n", xN);
+#endif
+          }
+
+        if (cu . rd && icOdd && rptA) // rpda, odd instruction
+          {
+#ifdef ABUSE_CT_HOLD2
+            uint xN = cu . CT_HOLD; // recall xN 
+//sim_printf ("recalling %o\n", xN);
+#endif
+            rX[xN] = (rX[xN] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
+          }
+#endif
+        if (cu . rd && icOdd && rptB) // rpdb, odd instruction
+          {
+            rX[xN] = (rX[xN] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
+          }
+#endif
         // Check for termination conditions.
 
         if (cu . rpt || (cu . rd & (PPR.IC & 1)))
@@ -1226,12 +1371,19 @@ restart_1:
             //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON 
             //     and terminate
 
+            sim_debug (DBG_TRACE, & cpu_dev, "tally %d\n", x);
             if (x == 0)
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
                 SETF(cu.IR, I_TALLY);
                 exit = true;
               } 
+            else
+              {
+                sim_debug (DBG_TRACE, & cpu_dev, "not tally runout\n");
+                CLRF(cu.IR, I_TALLY);
+              }
+
             //  d. If a terminate condition has been met, then set 
             //     the tally runout indicator OFF and terminate
 
@@ -1241,37 +1393,37 @@ restart_1:
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               }
-            else if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
+            if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               } 
-            else if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
+            if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               } 
-            else if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
+            if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               } 
-            else if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
+            if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               } 
-            else if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
+            if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
                 CLRF(cu.IR, I_TALLY);
                 exit = true;
               } 
-            else if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
+            if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
                 CLRF(cu.IR, I_TALLY);
@@ -1289,6 +1441,10 @@ restart_1:
               }
           } // if (cu . rpt || cu . rd & (PPR.IC & 1))
       } // (! rf) && (cu . rpt || cu . rd)
+
+///
+/// executeInstruction: simh hooks
+///
 
     sys_stats . total_cycles += 1; // bump cycle counter
     
@@ -1313,6 +1469,10 @@ restart_1:
         sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     }
     
+///
+/// executeInstruction: done. (Whew!)
+///
+
     return ret;
 }
 
@@ -3869,6 +4029,7 @@ static t_stat DoBasicInstruction (void)
             PR[6].RNR =
             PR[7].RNR = PPR.PRR;
             
+//if (rRALR && PPR.PRR >= rRALR) sim_printf ("RTCD expects a ring alarm\n");
             return CONT_TRA;
             
             
@@ -4766,7 +4927,7 @@ static t_stat DoBasicInstruction (void)
                 rX[0] = i->address;    // Entire 18 bits
               cu . rd = 1;
               cu . repeat_first = 1;
-//sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
+//sim_printf ("[%lld] rpd delta %02o c %d X0:%06o\n",sim_timell (),  cu.delta, c, rX[0]);
             }
             break;
 
@@ -5412,7 +5573,10 @@ static t_stat DoBasicInstruction (void)
                 uint cpu_port_num = (TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 if (scu_unit_num < 0)
-                  scu_unit_num = 0; // XXX print message
+                  {
+                    sim_printf ("scu_unit_num for port %d not found; punting to 0\n", cpu_port_num);
+                    scu_unit_num = 0;
+                  }
                 t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, rA, rQ);
                 if (rc)
                     return rc;

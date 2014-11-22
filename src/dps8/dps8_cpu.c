@@ -36,7 +36,7 @@
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
-static void cpu_reset_array (void);
+static void cpu_init_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
 static void setCpuCycle (cycles_t cycle);
@@ -714,7 +714,20 @@ static void setup_scbank_map (void)
           {
             uint scpg = base + pg;
             if (scpg < N_SCBANKS)
-              scbank_map [scpg] = port_num;
+              {
+                if (scbank_map [scpg] != -1)
+                  {
+                    sim_printf ("scbank overlap scpg %d (%o) old port %d newport %d\n", scpg, scpg, scbank_map [scpg], port_num);
+                  }
+                else
+                  {
+                    scbank_map [scpg] = port_num;
+                  }
+              }
+            else
+              {
+                sim_printf ("scpg too big port %d scpg %d (%o), limit %d (%o)\n", port_num, scpg, scpg, N_SCBANKS, N_SCBANKS);
+              }
           }
       }
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
@@ -736,6 +749,7 @@ void cpu_init (void)
   memset (& switches, 0, sizeof (switches));
   memset (& watchBits, 0, sizeof (watchBits));
   switches . FLT_BASE = 2; // Some of the UnitTests assume this
+  cpu_init_array ();
 }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
@@ -745,6 +759,22 @@ void cpu_init (void)
 static t_stat cpu_reset (DEVICE *dptr)
 {
 #ifdef M_SHARED
+
+// Initialization.
+//  if shm_open (..EXCL)
+//     // creator
+//     ftruncate
+//     initialize...
+//     set shared_memory . initiialized = true;
+//  else if shm_open (...)
+//     // not creator
+//     ftruncate
+//     while (! shared_memory . initiialized)
+//       usleep ();
+//  else
+//    fail
+
+
     //sim_printf ("Session %d\n", getsid (0));
     int fd = shm_open ("/dps8_memory", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
@@ -812,8 +842,6 @@ static t_stat cpu_reset (DEVICE *dptr)
     
     
     cpu_reset_mm(dptr);
-
-    cpu_reset_array ();
 
     setup_scbank_map ();
 
@@ -973,6 +1001,8 @@ static REG cpu_reg[] = {
     { ORDATA (PPR.PRR, PPR.PRR,  3), 0, 0 },
     { ORDATA (PPR.PSR, PPR.PSR, 15), 0, 0 },
     { ORDATA (PPR.P,   PPR.P,    1), 0, 0 },
+    
+    { ORDATA (RALR,    rRALR,    3), 0, 0 },
     
     { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24), 0, 0 },
     { ORDATA (DSBR.BND,   DSBR.BND,   14), 0, 0 },
@@ -1744,7 +1774,7 @@ t_stat sim_instr (void)
                     if (rRALR != 0 && ! (PPR . PRR < rRALR))
                       {
                         sim_printf ("CAC sez this is a ring alarm\n");
-                        doFault (FAULT_ACV, ACV13,i
+                        doFault (FAULT_ACV, ACV13,
                                  "CAC sez this is a ring alarm");
                       }
 #endif
@@ -2140,15 +2170,25 @@ t_stat memWatch (int32 arg, char * buf)
 /*!
  * "Raw" core interface ....
  */
+
+static void nem_check (word24 addr, char * context)
+  {
+    if (query_scbank_map (addr) < 0)
+      {
+        //sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
+        doFault (FAULT_ONC, nem, context);
+      }
+  }
+
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
-    if(addr >= MEMSIZE)
-      doFault (FAULT_ONC, nem, "core_read nem");
+    nem_check (addr,  "core_read nem");
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, PPR.PSR, PPR.IC, ctx);
       }
     if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
       {
         sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
         traceInstruction (0);
@@ -2161,10 +2201,10 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 }
 
 int core_write(word24 addr, word36 data, const char * ctx) {
-    if(addr >= MEMSIZE)
-      doFault (FAULT_ONC, nem, "core_write nem");
+    nem_check (addr,  "core_write nem");
     M[addr] = data & DMASK;
     if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
       {
         sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
         traceInstruction (0);
@@ -2176,17 +2216,17 @@ int core_write(word24 addr, word36 data, const char * ctx) {
 }
 
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
-    if(addr >= MEMSIZE)
-      doFault (FAULT_ONC, nem, "core_read2 nem");
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
     }
+    nem_check (addr,  "core_read2 nem");
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
     }
     if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
       {
         sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
         traceInstruction (0);
@@ -2195,11 +2235,14 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr - 1, * even, ctx);
+
+    nem_check (addr,  "core_read2 nem");
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
     }
     if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
       {
         sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
         traceInstruction (0);
@@ -2223,19 +2266,22 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //}
 //
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
-    if(addr >= MEMSIZE)
-      doFault (FAULT_ONC, nem, "core_write2 nem");
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
+    nem_check (addr,  "core_write2 nem");
     if (watchBits [addr])
+    //if (watchBits [addr] && even==0)
       {
         sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
+
+    nem_check (addr,  "core_write2 nem");
     if (watchBits [addr])
+    //if (watchBits [addr] && odd==0)
       {
         sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
         traceInstruction (0);
@@ -2583,7 +2629,7 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
 
 // XXX when multiple cpus are supported, merge this into cpu_reset
 
-static void cpu_reset_array (void)
+static void cpu_init_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
@@ -2623,6 +2669,7 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num,
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
 
+    //sim_printf ("cpu_array [%d] [%d] . scu_unit_num = %d\n", cpu_unit_num, cpu_port_num, scu_unit_num);
     setup_scbank_map ();
 
     return SCPE_OK;

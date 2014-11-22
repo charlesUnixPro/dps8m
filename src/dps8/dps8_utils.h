@@ -72,6 +72,9 @@ word36 getbits36 (word36 x, uint i, uint n);
 word36 setbits36 (word36 x, uint p, uint n, word36 val);
 void putbits36 (word36 * x, uint p, uint n, word36 val);
 #else
+
+//  getbits36 (data, starting bit, number of bits)
+
 static inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)n+1;
