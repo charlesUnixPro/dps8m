@@ -1,3 +1,4 @@
+do ../../src/dps8/base_system.ini
 load TestMpy.oct
 ;set debug stdout
 ;set cpu debug=trace;regdumpaqi

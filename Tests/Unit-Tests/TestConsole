@@ -1,5 +1,5 @@
 set debug stdout
-do base_system.ini
+do ../../src/dps8/base_system.ini
 reset scu
 ;set iom debug=all
 ;set opcon debug=all
