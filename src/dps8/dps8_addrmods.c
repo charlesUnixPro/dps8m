@@ -673,7 +673,7 @@ startCA:;
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, 0);
 #else
-        // If repeat, the indirection chain is limited, so it is not needed
+        // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (cu . rpt || cu . rd))
