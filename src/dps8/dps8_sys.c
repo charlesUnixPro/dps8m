@@ -130,6 +130,8 @@ static CTAB dps8_cmds[] =
     {"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
     {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL},
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
+    {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
+    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -394,7 +396,7 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     if (segno == 0314)
       segno = 041;
     if (segno == 0313)
-      segno = 0161;
+      segno = 040;
     if (segno == 0317)
       segno = 0161;
 

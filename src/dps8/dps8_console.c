@@ -256,6 +256,37 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cp
     return SCPE_OK;
   }
 
+int opconAutoinput (int32 flag, char *  cptr)
+  {
+    if (! flag)
+      {
+        char * new = strdupesc (cptr);
+        if (console_state . auto_input)
+          {
+            size_t nl = strlen (new);
+            size_t ol = strlen (console_state . auto_input);
+
+            char * old = realloc (console_state . auto_input, nl + ol + 1);
+            strcpy (old + ol, new);
+            console_state . auto_input = old;
+            free (new);
+          }
+        else
+          console_state . auto_input = new;
+        //console_state . auto_input = strdup (cptr);
+        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", __func__, cptr);
+      }
+    else
+      {
+        if (console_state . auto_input)
+          free (console_state . auto_input);
+        console_state . auto_input = NULL;
+        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
+      }
+    console_state . autop = console_state . auto_input;
+    return SCPE_OK;
+  }
+
 static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr, 
                                  UNUSED int val, UNUSED void * desc)
   {
