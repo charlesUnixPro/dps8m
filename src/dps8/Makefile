@@ -191,8 +191,8 @@ CFLAGS += -DQUIET_UNUSED
 CFLAGS += -DEIS_CACHE
 
 # Enable M[] as shared memory segment
-CFLAGS += -DM_SHARED
-LDFLAGS += -lrt
+#CFLAGS += -DM_SHARED
+#LDFLAGS += -lrt
 
 # First attempt at RALR repair, needs rework.
 CFLAGS += -DRALR_FIX_0
