@@ -376,7 +376,7 @@ t_stat console_attn (UNUSED UNIT * uptr)
 
 static t_stat mount_request (UNIT * uptr)
   {
-    loadTape (uptr -> u3, uptr -> up7);
+    loadTape (uptr -> u3, uptr -> up7, uptr -> u4 != 0);
     return SCPE_OK;
   }
 
@@ -726,6 +726,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3EXEC_CF0019_1\n");
                         mount_unit . u3 = 1;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88534.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -735,6 +736,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3EXEC_CF0019_2\n");
                         mount_unit . u3 = 2;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88631.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -744,6 +746,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_1\n");
                         mount_unit . u3 = 1;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88632.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -753,6 +756,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_2\n");
                         mount_unit . u3 = 2;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88633.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -762,6 +766,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_3\n");
                         mount_unit . u3 = 3;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88634.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -771,6 +776,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_4\n");
                         mount_unit . u3 = 4;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88635.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -780,6 +786,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_5\n");
                         mount_unit . u3 = 5;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "88636.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -789,6 +796,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3LDD_STANDARD_CF0019_6\n");
                         mount_unit . u3 = 6;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "99020.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -798,6 +806,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3UNBUNDLED_DF0019_1\n");
                         mount_unit . u3 = 7;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "98570.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -807,6 +816,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3UNBUNDLED_CF0019_2\n");
                         mount_unit . u3 = 8;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "99019.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -816,6 +826,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.3MISC_CF0019\n");
                         mount_unit . u3 = 9;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "93085.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -825,6 +836,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.5EXEC_CF0019_1\n");
                         mount_unit . u3 = 1;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "20185.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -834,6 +846,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.5LDD_STANDARD_CF0019_1\n");
                         mount_unit . u3 = 2;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "20186.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -843,6 +856,7 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.5UNBUNDLED_CF0019_1\n");
                         mount_unit . u3 = 3;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "20188.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
@@ -852,7 +866,18 @@ for (uint i = 0; i < tally; i ++)
                       {
                         sim_printf ("loading 12.5MISC_CF0015\n");
                         mount_unit . u3 = 4;
+                        mount_unit . u4 = 1;
                         mount_unit . up7 = "20187.tap";
+                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                      }
+                      break;
+
+                    case 20:
+                      {
+                        sim_printf ("loading cac\n");
+                        mount_unit . u3 = 1;
+                        mount_unit . u4 = 0;
+                        mount_unit . up7 = "cac.tap";
                         sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                       }
                       break;
@@ -1425,7 +1450,7 @@ static config_value_list_t cfg_on_off [] =
 static config_list_t con_config_list [] =
   {
     /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
-    /* 1 */ { "mount_hack", 0, 15, cfg_on_off },
+    /* 1 */ { "mount_hack", 0, 100, cfg_on_off },
    { NULL, 0, 0, NULL }
   };
 
