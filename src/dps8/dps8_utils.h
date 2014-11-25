@@ -137,3 +137,8 @@ void sim_err (const char * format, ...) NO_RETURN
   __attribute__ ((format (printf, 1, 2)))
 #endif
 ;
+void sim_printl (const char * format, ...)
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;

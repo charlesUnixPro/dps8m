@@ -1266,6 +1266,8 @@ void sim_printf( const char * format, ... )
 //   to scp; not necessarily restartable.
 // sim_printf --
 //   prints strings to logfile and stdout
+// sim_printl --
+//   prints strings to console logfile 
 // sim_putchar/sim_os_putchar/sim_puts
 //   prints char/string to the console
 
@@ -1305,6 +1307,29 @@ void sim_printf (const char * format, ...)
     fflush (sim_deb);
     if (bOut)
       fflush (stdout);
+}
+
+void sim_printl (const char * format, ...)
+  {
+    if (! sim_log)
+      return;
+    char buffer [4096];
+
+    va_list args;
+    va_start (args, format);
+    vsnprintf (buffer, sizeof (buffer), format, args);
+    
+    for (uint i = 0 ; i < sizeof (buffer); i ++)
+      {
+        if (! buffer [i])
+          break;
+
+        // logfile
+
+        fputc (buffer [i], sim_log);
+      }
+    va_end (args);
+    fflush (sim_log);
 }
 
 void sim_puts (char * str)

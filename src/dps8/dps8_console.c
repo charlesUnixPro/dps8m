@@ -18,6 +18,7 @@
 #include "dps8_mt.h"
 
 #define ASSUME0 0
+#define USE_READ_LINE
 
 /*
  console.c -- operator's console
@@ -145,11 +146,16 @@ typedef struct con_state_t
     enum { no_mode, read_mode, write_mode } io_mode;
     // SIMH console library has only putc and getc; the SIMH terminal
     // library has more features including line buffering.
-    char buf[81];
+#define bufsize 81
+    char buf[bufsize];
     char *tailp;
     char *readp;
     bool have_eol;
     char *auto_input;
+#if 0
+#define promptSize 81
+    char prompt [promptSize];
+#endif
     char *autop;
     bool once_per_boot;
 
@@ -171,7 +177,11 @@ static struct
 static int attn_hack = 0;
 static int mount_hack = 0;
 
+#ifdef USE_READ_LINE
+static void getConsoleInput (void);
+#else
 static void check_keyboard (void);
+#endif
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p);
 #if 0
@@ -185,6 +195,9 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
     console_state . readp = console_state . buf;
     console_state . have_eol = false;
     console_state . once_per_boot = false;
+#if 0
+    console_state . prompt [0] = '\0';
+#endif
     return SCPE_OK;
   }
 
@@ -197,6 +210,9 @@ void console_init()
     opcon_reset (& opcon_dev);
     console_state . auto_input = NULL;
     console_state . autop = NULL;
+#if 0
+    console_state . prompt [0] = '\0';
+#endif
 }
 
 t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_code)
@@ -386,6 +402,25 @@ static UNIT attn_unit =
 static UNIT mount_unit = 
   { UDATA (& mount_request, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
+#if 0
+static void addPromptChar (char ch)
+  {
+    if (ch == '\r' || ch == '\n')
+      {
+        console_state . prompt [0] = '\0';
+        return;
+      }
+    if (strlen (console_state . prompt) >= promptSize - 1)
+     {
+        return;
+     }
+   char tmp [2];
+   tmp [0] = ch;
+   tmp [1] = '\0';
+   strcat (console_state . prompt, tmp);
+  }
+#endif
+  
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
@@ -423,6 +458,16 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             console_state . readp = console_state . buf;
             console_state . have_eol = false;
 
+#ifdef USE_READ_LINE
+           getConsoleInput ();
+
+          if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+            {
+               chan_data -> stati = 04340;
+               sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
+               break;
+            }
+#else
             // Read keyboard if we don't have an EOL from the operator
             // yet
             if (! console_state . have_eol)
@@ -460,6 +505,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
                     sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout)\n");
                   }
               }
+#endif
             // We have an EOL from the operator
             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Transfer for channel %d (%#o)\n", chan, chan);
             
@@ -904,7 +950,12 @@ for (uint i = 0; i < tally; i ++)
                     datum = datum << 9; // lose the leftmost char
                     char ch = wide_char & 0x7f;
                     if (ch != 0177 && ch != 0)
-                      sim_putchar (ch);
+                      {
+                        sim_putchar (ch);
+#if 0
+                        addPromptChar (ch);
+#endif
+                      }
 #if 0
                     if (isprint (ch))
                       {
@@ -1303,6 +1354,123 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
 //-- 
 //-- // ============================================================================
 
+#ifdef USE_READ_LINE
+static void getConsoleInput (void)
+  {
+    if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+     {
+        sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring keyboard.\n");
+        return;
+      }
+    // did we use up all of autop?
+    if (console_state . autop != NULL && * console_state . autop == '\0')
+      {
+        free(console_state . auto_input);
+        console_state . auto_input = NULL;
+        console_state . autop = NULL;
+      }
+
+    if (console_state . autop != NULL)
+      {
+        int announce = 1;
+        for (;;)
+          {
+            int c = * (console_state . autop);
+            if (c == 0)
+              {
+                console_state . have_eol = true; // punting
+                free(console_state . auto_input);
+                console_state . auto_input = NULL;
+                console_state . autop = NULL;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got auto-input EOS\n");
+                //goto poll; // return;
+                // Punting
+                goto eol;
+              }
+            if (announce)
+              {
+                sim_printf ("[auto-input] ");
+                announce = 0;
+              }
+            if (c == '\005')
+              {
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got <sim stop>\n");
+                return; // User typed ^E to stop simulation
+              }
+            ++ console_state . autop;
+
+            if (isprint (c))
+              sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '%c'\n", c);
+            else
+              sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '\\%03o'\n", c);
+          
+#if 0
+            if (c == '\014')  // Form Feed, \f, ^L
+              {
+                sim_putchar('\n');
+                sim_putchar('\r');
+                for (const char * p = console_state . buf; p < console_state . tailp; ++p)
+                  sim_putchar (* p);
+              }
+            else if (c == '\012' || c == '\015')
+#else
+            if (c == '\012' || c == '\015')
+#endif
+              {
+eol:
+                sim_putchar ('\n');
+                sim_putchar ('\r');
+                console_state . have_eol = true;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got EOL\n");
+                return;
+              }
+            else
+              {
+                * console_state . tailp ++ = c;
+                sim_putchar (c);
+              }
+          } // for (;;)
+      } // if (autop)
+    else
+      {
+        char cbuf [bufsize];
+        //char * prompt = NULL;
+        // in simh/scp.c
+        //char *read_line_p (char *prompt, char *ptr, int32 size, FILE *stream);
+        char *read_line (char *ptr, int32 size, FILE *stream);
+
+
+        sim_ttcmd ();
+        //read_line_p (console_state . prompt, cbuf, sizeof (cbuf), stdin);/* read with prompt*/
+        read_line (cbuf, sizeof (cbuf), stdin);
+        sim_ttrun ();
+        size_t l = strlen (cbuf);
+        for (uint i = 0; i < l; i ++)
+          {
+            char c = cbuf [i];
+            if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+             {
+                sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring keyboard.\n");
+                return;
+            }
+            if (c == 5)
+              {
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got <sim stop>\n");
+                return; // User typed ^E to stop simulation
+              }
+
+            if (isprint (c))
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got char '%c'\n", c);
+            else
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got char '\\%03o'\n", c);
+            
+            * console_state . tailp ++ = c;
+            //sim_putchar (c);
+            sim_printl ("%c", c);
+          }
+      }
+  }
+#else
 /*
  * check_keyboard()
  *
@@ -1360,6 +1528,7 @@ static void check_keyboard (void)
             if (announce)
               {
                 sim_printf ("[auto-input] ");
+                sim_printl ("[auto-input] ");
                 //sim_puts ("[auto-input] ");
                 announce = 0;
               }
@@ -1437,6 +1606,7 @@ poll:
           }
       }
   }
+#endif
 
 static config_value_list_t cfg_on_off [] =
   {
