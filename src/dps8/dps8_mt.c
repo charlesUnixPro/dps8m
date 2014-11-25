@@ -283,19 +283,19 @@ void tape_send_special_interrupt (uint driveNumber)
 
 void loadTape (uint driveNumber, char * tapeFilename, bool ro)
   {
-sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
+    //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
     t_stat stat = sim_tape_attach (& mt_unit [driveNumber], tapeFilename);
     if (stat != SCPE_OK)
       {
         sim_printf ("loadTape sim_tape_attach returned %d\n", stat);
         return;
       }
-sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
+    //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     if (ro)
       mt_unit [driveNumber] . flags |= UNIT_RO;
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
-sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
+    //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
     send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
                             cables_from_ioms_to_mt [driveNumber] . chan_num,
                             cables_from_ioms_to_mt [driveNumber] . dev_code,
