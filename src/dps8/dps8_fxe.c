@@ -93,6 +93,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <libgen.h>
 
 #include "dps8.h"
 #include "dps8_cpu.h"
