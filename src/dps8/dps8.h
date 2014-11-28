@@ -30,6 +30,31 @@
 #define USE_INT64
 #endif
 
+
+// Quiet compiler unused warnings
+#define QUIET_UNUSED
+
+// Enable CAC's EIS Computed address formation code; research/experimental
+//#define NEWCAF
+
+
+// Enable CAC's Fault and EIS debugging code
+//#define DBGF
+//#define DBGX
+
+// Enable EIS operand caching; enormous performace gains here...
+#define EIS_CACHE
+
+// Enable M[] as shared memory segment
+//#define M_SHARED
+//LDFLAGS += -lrt
+
+// First attempt at RALR repair, needs rework.
+#define RALR_FIX_0
+
+// Enable RALR on non-APU transfers and RCU.
+//#define AGGRESSIVE_RING_ALARM
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"

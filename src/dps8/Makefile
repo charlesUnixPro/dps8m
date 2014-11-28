@@ -175,30 +175,10 @@ zzzCFLAGS += \
 
 #LDFLAGS += -Wl,--cref -Wl,-Map=dps8.map
 
-# Temporary to tidy -Wall
-CFLAGS += -DQUIET_UNUSED
-
 # Configuration switches
 
-# Enable CAC's EIS Computed address formation code; research/experimental
-#CFLAGS += -DNEWCAF
-
-# Enable CAC's Fault and EIS debugging code
-#CFLAGS += -DDBGF
-#CFLAGS += -DDBGX
-
-# Enable EIS operand caching; enormous performace gains here...
-CFLAGS += -DEIS_CACHE
-
 # Enable M[] as shared memory segment
-#CFLAGS += -DM_SHARED
 #LDFLAGS += -lrt
-
-# First attempt at RALR repair, needs rework.
-CFLAGS += -DRALR_FIX_0
-
-# Enable RALR on non-APU transfers and RCU.
-#CFLAGS += -DAGGRESSIVE_RING_ALARM
 
 LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
