@@ -1375,6 +1375,11 @@ static void getConsoleInput (void)
         int announce = 1;
         for (;;)
           {
+            if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+             {
+                sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring autoinput.\n");
+                return;
+            }
             int c = * (console_state . autop);
             if (c == 0)
               {
