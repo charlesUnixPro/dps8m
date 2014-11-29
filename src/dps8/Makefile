@@ -266,6 +266,9 @@ H_SRCS += system_link_names.incl.pl1.h
 
 all: tags locallibs_then_dps8 
 
+android : 
+	ndk-build APP_BUILD_SCRIPT=./Android.mk APP_ABI=arm64-v8a APP_PLATFORM=android-21
+
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
 # LDFLAGS += -lrt
@@ -284,6 +287,11 @@ locallibs_then_dps8 :
 	(cd ../simh; $(MAKE))
 	(cd ../decNumber; $(MAKE))
 	$(MAKE) dps8
+
+android_locallibs_then_dps8 :
+#	(cd ../simh; $(MAKE) android)
+#	(cd ../decNumber; $(MAKE) android)
+#	$(MAKE)  android_dps8
 
 # Other Targets
 
