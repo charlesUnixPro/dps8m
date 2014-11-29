@@ -288,11 +288,6 @@ locallibs_then_dps8 :
 	(cd ../decNumber; $(MAKE))
 	$(MAKE) dps8
 
-android_locallibs_then_dps8 :
-#	(cd ../simh; $(MAKE) android)
-#	(cd ../decNumber; $(MAKE) android)
-#	$(MAKE)  android_dps8
-
 # Other Targets
 
 # If you do not have ctags in your build environment, change 'ctags' to 
