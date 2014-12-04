@@ -1291,9 +1291,20 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
                 big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
                 // Boot time
+
+// load_fnp is complaining that FNP core image is more than 5 years old; try 
+// moving the 'boot time' back to MR12.3 release date. (12/89 according to 
+// http://www.multicians.org/chrono.html
+
+#if 0 
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                 // 932686778
                 uint64 UnixSecs = 932686778;
+#else
+                // date -d "1990-01-01 00:00:00 -9" +%s
+                // 631184400
+                uint64 UnixSecs = 631184400;
+#endif
                 uint64 UnixuSecs = UnixSecs * 1000000llu + big;
                 // now determine uSecs since Jan 1, 1901 ...
                 uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
