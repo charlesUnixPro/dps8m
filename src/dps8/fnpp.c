@@ -44,6 +44,7 @@ t_stat fnppReset (UNUSED DEVICE * dptr)
   }
 
 
+#if 0
 // As the IOM processes the channel DCW list, it will generate a call to
 // fnppCmd() for each IDCW. Return value 0 means ok; non-zero TBD.
 
@@ -59,6 +60,16 @@ int fnppIDCW (UNUSED UNIT * unitp, uint unitNumber)
 int fnppIOTx (UNUSED UNIT * unitp, uint unitNumber)
    {
      //sim_printf ("fnppIOTx called for unit %d\n", unitNumber);
+     return 0;
+   }
+#endif
+
+// When the IOM receives a CIOC for the FNP, it will pass the channel number
+// to the FNP.
+
+int fnppCIOC (UNUSED UNIT * unitp, uint chanNum)
+   {
+     //sim_printf ("fnppIDCW called for unit %d\n", unitNumber);
      return 0;
    }
 
