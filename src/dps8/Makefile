@@ -271,7 +271,7 @@ android :
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-# LDFLAGS += -lrt
+LDFLAGS += -lrt
 # blinkenLights : blinkenLights.c
 # 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights `pkg-config --cflags --libs gtk+-3.0`
 # 
