@@ -215,6 +215,7 @@ C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
 C_SRCS += ./fnpp.c
+C_SRCS += ./shm.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -261,6 +262,7 @@ H_SRCS += stack_header.incl.pl1.h
 H_SRCS += std_symbol_header.incl.pl1.h
 H_SRCS += symbol_block.incl.pl1.h
 H_SRCS += system_link_names.incl.pl1.h
+H_SRCS += shm.h
 
 
 
@@ -272,10 +274,10 @@ android :
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
 LDFLAGS += -lrt
-# blinkenLights : blinkenLights.c
-# 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights `pkg-config --cflags --libs gtk+-3.0`
-# 
-# all : blinkenLights
+blinkenLights : blinkenLights.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
+
+all : blinkenLights
 
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
