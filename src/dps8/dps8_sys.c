@@ -7,15 +7,7 @@
 */
 
 #include <stdio.h>
-
-#ifdef MULTIPASS
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/mman.h>
-#include <fcntl.h>           /* For O_* constants */
-#endif
+#include <wordexp.h>
 
 #include "dps8.h"
 #include "dps8_console.h"
@@ -34,9 +26,18 @@
 #include "dps8_append.h"
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
+
 #ifdef MULTIPASS
 #include "dps8_mp.h"
+#include "shm.h"
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <fcntl.h>           /* For O_* constants */
 #endif
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -75,6 +76,7 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
+static t_stat launch (int32 arg, char * buf);
 #ifdef MULTIPASS
 static void multipassInit (void);
 #endif
@@ -132,6 +134,7 @@ static CTAB dps8_cmds[] =
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
+    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -2126,8 +2129,12 @@ multipassStats * multipassStatsPtr;
 // Once only initialization
 static void multipassInit (void)
   {
+#if 0
     //sim_printf ("Session %d\n", getsid (0));
-    int fd = shm_open ("/multipass", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    pid_t pid = getpid ();
+    char buf [256];
+    sprintf (buf, "/dps8m.%u.multipass", pid);
+    int fd = shm_open (buf, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
       {
         sim_printf ("multipass shm_open fail %d\n", errno);
@@ -2164,6 +2171,40 @@ static void multipassInit (void)
       }
     shmctl (mpStatsSegID, IPC_RMID, 0);
 #endif
-
+#endif
+    multipassStatsPtr = (multipassStats *) create_shm ("multipass", getpid (),
+      sizeof (multipassStats));
+    if (! multipassStatsPtr)
+      {
+        sim_printf ("create_shm multipass failed\n");
+        sim_err ("create_shm multipass failed\n");
+      }
   }
 #endif
+
+static t_stat launch (int32 arg, char * buf)
+  {
+    wordexp_t p;
+    int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
+    if (rc)
+      {
+        sim_printf ("wordexp failed %d\n", rc);
+        return SCPE_ARG;
+      }
+    for (uint i = 0; i < p . we_wordc; i ++)
+      sim_printf ("    %s\n", p . we_wordv [i]);
+    pid_t pid = fork ();
+    if (pid == -1) // parent, fork failed
+      {
+        sim_printf ("fork failed\n");
+        return SCPE_ARG;
+      }
+    if (pid == 0)  // child
+      {
+        execv (p . we_wordv [0], & p . we_wordv [1]);
+        sim_printf ("exec failed\n");
+        exit (1);
+      }
+    wordfree (& p);
+    return SCPE_OK;
+  }
