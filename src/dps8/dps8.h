@@ -55,6 +55,8 @@
 // Enable RALR on non-APU transfers and RCU.
 //#define AGGRESSIVE_RING_ALARM
 
+#define MULTIPASS
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
