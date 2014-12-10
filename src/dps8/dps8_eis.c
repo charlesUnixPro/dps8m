@@ -2027,6 +2027,63 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "EISGet469 : k: %u TAk %u coffset %u c %o \n
     return c;
 }
 
+static int EISget469N (EISaddr * p, int ta)
+{
+    int maxPos = 3; // CTA9
+    int bits = 9; // CTA9
+    int charsPerWord = 4; // CTA9
+    switch(ta)
+    {
+        case CTA4:
+            maxPos = 7;
+            bits = 4;
+            // Although there is room for 9, only 8 are used
+            charsPerWord = 8;
+            break;
+            
+        case CTA6:
+            maxPos = 5;
+            bits = 6;
+            charsPerWord = 6;
+            break;
+
+        default:
+            break;
+    }
+    
+    int baseCharPosn = (p -> cPos * bits);     // bit offset of base Char
+    int baseBitPosn = baseCharPosn + p -> bPos; // bit offset of base Char + base Bit
+
+    baseBitPosn += du . CHTALLY * charsPerWord;
+
+    int bitPosn = baseBitPosn % 36;
+    int charPosn = bitPosn / charsPerWord;
+    int woff = baseBitPosn / 36;
+
+    word18 saveAddr = p -> address;
+    p -> address += woff;
+
+    p -> data = EISRead (p); // read data word from memory
+
+    int c = 0;
+    switch(ta)
+    {
+        case CTA4:
+            c = (word4)get4(p->data, charPosn);
+            break;
+        case CTA6:
+            c = (word6)get6(p->data, charPosn);
+            break;
+        case CTA9:
+            c = (word9)get9(p->data, charPosn);
+            break;
+    }
+sim_debug (DBG_TRACEEXT, & cpu_dev, "EISGet469 : k: %u TAk %u coffset %u c %o \n", 0, ta, charPosn, c);
+    
+    p -> address = saveAddr;
+    return c;
+}
+
 /*!
  * return a 4-, 6- or 9-bit character at memory "*address" and position "*pos". Decrement pos (and address if necesary)
  * NB: must be initialized before use or else unpredictable side-effects may result. Not thread safe
@@ -5401,6 +5458,16 @@ void scm(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
+// XXX add these to use EISget469N
+    //e->ADDR1.cPos = e->C1;
+    //e->ADDR2.cPos = e->C2;
+    
+    //e->ADDR1.bPos = e->B1;
+    //e->ADDR2.bPos = e->B2;
+    
+
+
+
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
@@ -7004,6 +7071,20 @@ void cmpb(DCDstruct *ins)
     //getBit2(0, 0, 0);   // initialize bit getter 2
     
 sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
+
+#if 0
+// RJ78: Notes 1:  If L1 or L2 = 0, both the Zero and Carry indicators are 
+// turned ON, but no Illegal Procedure fault occurs.
+
+    if (e -> N1 == 0 || e -> N2 == 0)
+      {
+//sim_printf ("[%lld] cmpb %d %d\n", sim_timell (), e -> N1, e -> N2);
+//traceInstruction (0);
+        //CLRF(cu.IR, I_CARRY);
+        return;
+      }
+#endif
+
     uint i;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
     {
