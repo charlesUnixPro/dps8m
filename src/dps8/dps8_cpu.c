@@ -2175,7 +2175,7 @@ static void nem_check (word24 addr, char * context)
   {
     if (query_scbank_map (addr) < 0)
       {
-        //sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
+        sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
         doFault (FAULT_ONC, nem, context);
       }
   }
