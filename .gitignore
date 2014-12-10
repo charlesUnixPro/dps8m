@@ -7,4 +7,6 @@
 .settings/
 ./Makefile
 tags
-
+zeromq-4.1.0
+czmq-master-8f0210c283
+zyre-master-9d7e62d2c9
