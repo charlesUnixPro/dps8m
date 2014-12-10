@@ -16,6 +16,7 @@
 #include "dps8_cpu.h"
 
 #include "dps8_mp.h"
+#include "shm.h"
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 
@@ -150,6 +151,7 @@ static gboolean time_handler (GtkWidget * widget)
 
 int main (int argc, char * argv [])
   {
+#if 0
     //printf ("Session %d\n", getsid (0));
     int fd = shm_open ("/multipass", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
@@ -171,6 +173,15 @@ int main (int argc, char * argv [])
         printf ("multipass mmap  fail %d\n", errno);
         return 1;
       }
+#else
+    multipassStatsPtr = (multipassStats *) open_shm ("multipass", getppid (), sizeof (multipassStats));
+    if (! multipassStatsPtr)
+      {
+        printf ("multipass open_shm  fail %d\n", errno);
+        return 1;
+      }
+
+#endif
 #if 0
     for (;;)
       {
