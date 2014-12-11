@@ -91,8 +91,13 @@ static struct multipassStats previous;
 //static struct _ppr previous_PPR;
 //static word36 previous_inst = ~0llu;
 
+static pid_t ppid;
+
 static gboolean time_handler (GtkWidget * widget)
   {
+    if (ppid != getppid ())
+      exit (0);
+
     bool update = false;
     if (memcmp (& multipassStatsPtr -> PPR, & previous . PPR, sizeof (previous . PPR)))
       {
@@ -174,6 +179,7 @@ int main (int argc, char * argv [])
         return 1;
       }
 #else
+    ppid = getppid ();
     multipassStatsPtr = (multipassStats *) open_shm ("multipass", getppid (), sizeof (multipassStats));
     if (! multipassStatsPtr)
       {
