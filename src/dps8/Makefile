@@ -292,6 +292,10 @@ locallibs_then_dps8 :
 
 # Other Targets
 
+zmg:
+	(cd ../zeromq-4.1.0 && $(MAKE) && $(MAKE) install)
+	(cd ../czmq-master-ff0d028b16 && cmake . -DZEROMQ_LIBRARIES=../lib/libzmq.so -DZEROMQ_INCLUDE_DIRS=../include/ -DCMAKE_INSTALL_PREFIX=.. && $(MAKE) && $(MAKE) install)
+	(cd ../zyre-master-9d7e62d2c9 && cmake . -DCZMQ_LIBRARIES=../lib/libczmq.so -DCZMQ_INCLUDE_DIRS=../include -DZEROMQ_LIBRARIES=../lib/libzmq.so -DZEROMQ_INCLUDE_DIRS=../include/ -DCMAKE_INSTALL_PREFIX=.. && $(MAKE) && $(MAKE) install)
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
