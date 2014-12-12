@@ -180,7 +180,7 @@ int main (int argc, char * argv [])
       }
 #else
     ppid = getppid ();
-    multipassStatsPtr = (multipassStats *) open_shm ("multipass", getppid (), sizeof (multipassStats));
+    multipassStatsPtr = (multipassStats *) open_shm ("multipass", getsid (0), sizeof (multipassStats));
     if (! multipassStatsPtr)
       {
         printf ("multipass open_shm  fail %d\n", errno);

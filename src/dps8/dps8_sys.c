@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <wordexp.h>
+#include <signal.h>
 
 #include "dps8.h"
 #include "dps8_console.h"
@@ -54,6 +55,11 @@ int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
+
+// These are part of the shm interface
+
+static pid_t dps8m_sid; // Session id
+
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
 
@@ -78,7 +84,7 @@ static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
 static t_stat launch (int32 arg, char * buf);
 #ifdef MULTIPASS
-static void multipassInit (void);
+static void multipassInit (pid_t sid);
 #endif
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
@@ -150,7 +156,9 @@ static CTAB dps8_cmds[] =
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
-static void dps8_init(void)    //CustomCmds(void)
+// Once-only initialization
+
+static void dps8_init(void)
 {
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
@@ -159,6 +167,12 @@ static void dps8_init(void)    //CustomCmds(void)
     sim_vm_fprint_addr = fprint_addr;
 
     sim_vm_cmd = dps8_cmds;
+
+    // Create a session for this dps8m system instance.
+    dps8m_sid = setsid ();
+    if (dps8m_sid == (pid_t) -1)
+      dps8m_sid = getsid (0);
+    sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
 
     init_opcodes();
     iom_init ();
@@ -170,7 +184,7 @@ static void dps8_init(void)    //CustomCmds(void)
     scu_init ();
     cpu_init ();
 #ifdef MULTIPASS
-    multipassInit ();
+    multipassInit (dps8m_sid);
 #endif
 }
 
@@ -2127,7 +2141,7 @@ DEVICE * sim_devices [] =
 multipassStats * multipassStatsPtr;
 
 // Once only initialization
-static void multipassInit (void)
+static void multipassInit (pid_t sid)
   {
 #if 0
     //sim_printf ("Session %d\n", getsid (0));
@@ -2172,7 +2186,7 @@ static void multipassInit (void)
     shmctl (mpStatsSegID, IPC_RMID, 0);
 #endif
 #endif
-    multipassStatsPtr = (multipassStats *) create_shm ("multipass", getpid (),
+    multipassStatsPtr = (multipassStats *) create_shm ("multipass", sid,
       sizeof (multipassStats));
     if (! multipassStatsPtr)
       {
@@ -2182,7 +2196,30 @@ static void multipassInit (void)
   }
 #endif
 
-static t_stat launch (int32 arg, char * buf)
+#define MAX_CHILDREN 256
+static int nChildren = 0;
+static pid_t childrenList [MAX_CHILDREN];
+
+static void cleanupChildren (void)
+  {
+    printf ("cleanupChildren\n");
+    for (int i = 0; i < nChildren; i ++)
+      {
+        printf ("  kill %d\n", childrenList [i]);
+        kill (childrenList [i], SIGHUP);
+      }
+  }
+
+static void addChild (pid_t pid)
+  {
+    if (nChildren >= MAX_CHILDREN)
+      return;
+    childrenList [nChildren ++] = pid;
+    if (nChildren == 1)
+     atexit (cleanupChildren);
+  }
+
+static t_stat launch (int32 UNUSED arg, char * buf)
   {
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
@@ -2191,8 +2228,8 @@ static t_stat launch (int32 arg, char * buf)
         sim_printf ("wordexp failed %d\n", rc);
         return SCPE_ARG;
       }
-    for (uint i = 0; i < p . we_wordc; i ++)
-      sim_printf ("    %s\n", p . we_wordv [i]);
+    //for (uint i = 0; i < p . we_wordc; i ++)
+      //sim_printf ("    %s\n", p . we_wordv [i]);
     pid_t pid = fork ();
     if (pid == -1) // parent, fork failed
       {
@@ -2205,6 +2242,8 @@ static t_stat launch (int32 arg, char * buf)
         sim_printf ("exec failed\n");
         exit (1);
       }
+    addChild (pid);
     wordfree (& p);
+
     return SCPE_OK;
   }
