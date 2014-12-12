@@ -45,7 +45,7 @@ char * dumpFlags(word18 flags)
     
 }
 
-static char * strupr(char *str)
+static char * dps8_strupr(char *str)
 {
     char *s;
     
@@ -121,7 +121,7 @@ char *disAssemble(word36 instruction)
     
         sprintf(buff, " pr%d|%o", n, offset);
         strcat (result, buff);
-        // return strupr(result);
+        // return dps8_strupr(result);
     } else {
         sprintf(buff, " %06o", address);
         strcat (result, buff);
@@ -142,7 +142,7 @@ char *disAssemble(word36 instruction)
         strcat(result, buff);
     }
     
-    return strupr(result);
+    return dps8_strupr(result);
 }
 
 /*
