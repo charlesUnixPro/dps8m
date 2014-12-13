@@ -1367,9 +1367,71 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
           }
         break;
 
-        case 00006: // Interrupt cells
-          sim_printf ("rscr SU Mode Register%o\n", function);
-          return STOP_UNIMP;
+        case 00006: // SU Mode register
+        case 00007: // SU Mode register
+          {
+            //sim_printf ("rscr SU Mode Register%o\n", function);
+
+// Completely undocumented...
+//   scr.incl.alm
+//"         Structure scr_su
+//"
+//          equ       scr_su_size,2
+//
+//
+//          equ       scr_su.ZAC_line_word,1
+//          equ       scr_su.ZAC_line_shift,30
+//          bool      scr_su.ZAC_line_mask,000077
+//          equ       scr_su.syndrome_word,1
+//          equ       scr_su.syndrome_shift,22
+//          bool      scr_su.syndrome_mask,000377
+//          equ       scr_su.identification_word,1
+//          equ       scr_su.identification_shift,18
+//          bool      scr_su.identification_mask,000017
+//          equ       scr_su.EDAC_disabled_word,1
+//          bool      scr_su.EDAC_disabled,400000   " DL
+//          equ       scr_su.MINUS_5_VOLT_margin_word,1
+//"         equ       scr_su.MINUS_5_VOLT_margin_shift,11
+//          bool      scr_su.MINUS_5_VOLT_margin_mask,000003
+//          equ       scr_su.PLUS_5_VOLT_margin_word,1
+//          equ       scr_su.PLUS_5_VOLT_margin_shift,9
+//          bool      scr_su.PLUS_5_VOLT_margin_mask,000003
+//          equ       scr_su.spare_margin_word,1
+//          equ       scr_su.spare_margin_shift,7
+//          bool      scr_su.spare_margin_mask,000003
+//          equ       scr_su.PLUS_19_VOLT_margin_word,1
+//"         equ       scr_su.PLUS_19_VOLT_margin_shift,5
+//          bool      scr_su.PLUS_19_VOLT_margin_mask,000003
+//          equ       scr_su.SENSE_strobe_margin_word,1
+//"         equ       scr_su.SENSE_strobe_margin_shift,2
+//          bool      scr_su.SENSE_strobe_margin_mask,000003
+//"         equ       scr_su.maint_functions_enabled_word,1
+//          bool      scr_su.maint_functions_enabled,000001 " DL
+
+//                 1   1      1   2    2    2       2     3   3        3  3
+//   0     6       4   8      9   3    5    7       9     1   2        4  5
+//  ------------------------------------------------------------------------------
+//  | ZAC | synd | id | EDAC | 0 | -5 | +5 | spare | +19 | 0 | sense | 0 | maint |
+//  ------------------------------------------------------------------------------
+//       6      8    4      1   4    2    2      2      2   1       2   1       1
+
+//   id = scr_su.identification;                       /* copy id for easier access */
+//   if (id = "0011"b) | (id = "0100"b) | (id = "1010"b)
+//        | (id = "1011"b) | (id = "1110"b) | (id = "1111"b) then do; /* MOS memory */
+//        if scr_su.syndrome ^= "0"b then do;          /* Some error occured */
+//             if spoke (scas_index) then aloud = JUST_LOG; else aloud = ANNOUNCE; /* Mild fuss first time */
+//             spoke (scas_index) = "1"b;
+//             call syserr$binary (aloud, scrp, SB_mos_err, SBL_mos_err,
+//                  "mos_memory_check: EDAC error on mem ^a store ^a.", mem, store_name);
+//        end;
+//   end;
+
+// Okay, it looks safe to return 0.
+
+            * rega = 0; 
+            * regq = 0;
+          }
+          break;
 
         // XXX there is no way that this code is right
         case 00002: // mask register
