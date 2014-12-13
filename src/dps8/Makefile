@@ -180,7 +180,7 @@ zzzCFLAGS += \
 # Enable M[] as shared memory segment
 #LDFLAGS += -lrt
 
-LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
+LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
 
 # simh requires -ldl
 LIBS = $(LOCALLIBS)  -lm -ldl
@@ -286,7 +286,7 @@ slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 :
-	(cd ../simh; $(MAKE))
+	(cd ../simhv40-beta; $(MAKE))
 	(cd ../decNumber; $(MAKE))
 	$(MAKE) dps8
 
@@ -300,7 +300,7 @@ zmg:
 # '#ctags' below.
 
 tags : $(C_SRCS) $(H_SRCS)
-	-ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/dec*.[ch]
+	-ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 
@@ -316,7 +316,7 @@ clean:
 	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*))
 
 cleaner: clean
-	(cd ../simh; $(MAKE) clean)
+	(cd ../simhv40-beta; $(MAKE) clean)
 	(cd ../decNumber; $(MAKE) clean)
 
 %.d: %.c

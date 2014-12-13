@@ -7,9 +7,10 @@ LD = clang
 #CFLAGS  = -g -O0
 CFLAGS  = -g -O3
 
-CFLAGS += -I../decNumber -I../simh 
+CFLAGS += -I../decNumber -I../simhv40-beta 
 
 CFLAGS += -std=c99 -U__STRICT_ANSI__  
+#CFLAGS += -std=c99 -U__STRICT_ANSI__  -Wconversion
 
 # CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
 
