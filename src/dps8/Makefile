@@ -183,7 +183,12 @@ zzzCFLAGS += \
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
 
 # simh requires -ldl
-LIBS = $(LOCALLIBS)  -lm -ldl
+# Cygwin seems to need...
+ifeq ($(OS),Windows_NT)
+    LIBS = $(LOCALLIBS) -lgcc -lm -ldl -lrt
+else
+    LIBS = $(LOCALLIBS)  -lm -ldl
+endif
 
 # efence is Electric Fence, a malloc debugger.
 #LIBS +- -lefence

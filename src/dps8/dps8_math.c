@@ -19,6 +19,16 @@
 #include "dps8_faults.h"
 #include "dps8_sys.h"
 
+#ifdef __CYGWIN__
+ong double ldexpl(long double x, int n) {
+       return __builtin_ldexpl(x, n);
+}
+
+long double exp2l (long double e) {
+       return __builtin_exp2l(e);
+}
+#endif
+
 //! floating-point stuff ....
 //! quad to octal
 //char *Qtoo(__uint128_t n128);
