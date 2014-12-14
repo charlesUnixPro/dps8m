@@ -1289,8 +1289,8 @@ void sim_printf (const char * format, ...)
 
         if (bOut)
           {
-            if (sim_is_running && buffer [i] == '\n')
-              putchar  ('\r');
+            //if (sim_is_running && buffer [i] == '\n')
+              //putchar  ('\r');
             putchar (buffer [i]);
           }
 
@@ -1298,8 +1298,8 @@ void sim_printf (const char * format, ...)
 
         if (sim_deb)
           {
-            if (sim_is_running && buffer [i] == '\n')
-              fputc  ('\r', sim_deb);
+            //if (sim_is_running && buffer [i] == '\n')
+              //fputc  ('\r', sim_deb);
             fputc (buffer [i], sim_deb);
           }
     }

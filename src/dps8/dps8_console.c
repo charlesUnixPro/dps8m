@@ -8,6 +8,8 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <signal.h>
+#include <termios.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -201,6 +203,24 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
     return SCPE_OK;
   }
 
+static bool attn_pressed = false;
+
+static void quit_sig_hndlr (int UNUSED signum)
+  {
+    //printf ("quit\n");
+    attn_pressed = true;
+  }
+
+bool check_attn_key (void)
+  {
+    if (attn_pressed)
+      {
+         attn_pressed = false;
+         return true;
+      }
+    return false;
+  }
+
 // Once-only initialation
 
 void console_init()
@@ -213,6 +233,34 @@ void console_init()
 #if 0
     console_state . prompt [0] = '\0';
 #endif
+#if 0
+    if (isatty (fileno (stdin))) /* skip if !tty */
+      {
+        struct termios cmdtty, runtty;
+        int rc = tcgetattr (0, & cmdtty); /* get old flags */
+        if (rc)
+          {
+            perror  ("tcgetattr");
+          }
+        else
+          {
+            runtty = cmdtty;
+            runtty . c_cc [VQUIT] = '\033'; // ESC
+            rc = tcsetattr (0, TCSAFLUSH, & runtty);
+            if (rc)
+              {
+                perror  ("tcsetattr");
+              }
+          }
+      }
+#endif
+
+    // The quit signal is used has the console ATTN key
+    struct sigaction quit_action;
+    quit_action . sa_handler = quit_sig_hndlr;
+    quit_action . sa_flags = SA_RESTART;
+    sigaction (SIGQUIT, & quit_action, NULL);
+
 }
 
 t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_code)
@@ -420,7 +468,36 @@ static void addPromptChar (char ch)
    strcat (console_state . prompt, tmp);
   }
 #endif
-  
+ 
+static struct termios ttyTermios;
+static bool ttyTermiosOk = false;
+
+static void newlineOff (void)
+  {
+    if (! isatty (0))
+      return;
+    if (! ttyTermiosOk)
+      {
+        int rc = tcgetattr (0, & ttyTermios); /* get old flags */
+        if (rc)
+           return;
+        ttyTermiosOk = true;
+      }
+    struct termios runtty;
+    runtty = ttyTermios;
+    runtty . c_oflag &= ~OPOST; /* no output edit */
+    tcsetattr (0, TCSAFLUSH, & runtty);
+  }
+
+static void newlineOn (void)
+  {
+    if (! isatty (0))
+      return;
+    if (! ttyTermiosOk)
+      return;
+    tcsetattr (0, TCSAFLUSH, & ttyTermios);
+  }
+
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
@@ -939,6 +1016,7 @@ for (uint i = 0; i < tally; i ++)
 
             // Tally is in words, not chars.
 
+            newlineOff ();
             while (tally)
               {
                 word36 datum = M [daddr ++];
@@ -951,6 +1029,8 @@ for (uint i = 0; i < tally; i ++)
                     char ch = wide_char & 0x7f;
                     if (ch != 0177 && ch != 0)
                       {
+//if (ch == '\r') sim_printf ("hmm\n");
+//if (ch == '\n') sim_printf ("er\n");
                         sim_putchar (ch);
 #if 0
                         addPromptChar (ch);
@@ -971,6 +1051,7 @@ for (uint i = 0; i < tally; i ++)
                   }
               }
             // sim_printf ("\n");
+            newlineOn ();
             chan_data -> stati = 04000;
           }
           break;
@@ -990,7 +1071,7 @@ for (uint i = 0; i < tally; i ++)
             chan_data -> isRead = false;
             // AN70-1 says only console channels respond to this command
             //sim_printf ("CONSOLE: ALERT\n");
-            sim_puts ("CONSOLE: ALERT\r\n");
+            sim_puts ("CONSOLE: ALERT\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write Alert cmd received\n", __func__);
             sim_putchar('\a');
@@ -1424,7 +1505,7 @@ static void getConsoleInput (void)
               {
 eol:
                 sim_putchar ('\n');
-                sim_putchar ('\r');
+                //sim_putchar ('\r');
                 console_state . have_eol = true;
                 sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got EOL\n");
                 return;
@@ -1584,7 +1665,7 @@ poll:
         if (c == '\014')  // Form Feed, \f, ^L
           {
             sim_putchar('\n');
-            sim_putchar('\r');
+            //sim_putchar('\r');
             for (const char * p = console_state . buf; p < console_state . tailp; ++p)
               sim_putchar (* p);
           }
@@ -1599,7 +1680,7 @@ poll:
 #endif
             // sim_putchar(c);
             sim_putchar ('\n');
-            sim_putchar ('\r');
+            //sim_putchar ('\r');
             console_state . have_eol = true;
             sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL\n");
             return;

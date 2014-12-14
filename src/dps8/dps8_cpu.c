@@ -1437,6 +1437,7 @@ t_stat sim_instr (void)
           //return reason;
           break;
 
+#if 0
         if (sim_gtime () % 1024 == 0)
           {
             t_stat ch = sim_poll_kbd ();
@@ -1447,6 +1448,10 @@ t_stat sim_instr (void)
                   console_attn (NULL);
               }
           }
+#else
+        if (check_attn_key ())
+          console_attn (NULL);
+#endif
 
 #ifdef MULTIPASS
        if (multipassStatsPtr) 
@@ -1982,8 +1987,8 @@ syncFaultReturn:;
       } while (reason == 0);
 
 leave:
-    sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
-    sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+    sim_printf("\nsimCycles = %lld\n", sim_timell ());
+    sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
       {
         if (sys_stats . total_faults [i])

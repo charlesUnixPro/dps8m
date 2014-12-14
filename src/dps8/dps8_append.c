@@ -485,7 +485,7 @@ t_stat dumpSDWAM (void)
         
         //if (p->_initialized)
         if (p->F)
-            sim_printf("SDWAM n:%d %s\n\r", _n, strSDW(p));
+            sim_printf("SDWAM n:%d %s\n", _n, strSDW(p));
     }
     return SCPE_OK;
 }

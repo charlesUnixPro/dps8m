@@ -472,7 +472,7 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?
     {
-        sim_printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
+        sim_printf("fault(out-of-range): %d %d '%s'\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
         sim_err ("fault out-of-range\n");
     }
 
@@ -631,8 +631,8 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
-                sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+                sim_printf("\nsimCycles = %lld\n", sim_timell ());
+                sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }

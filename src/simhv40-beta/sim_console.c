@@ -1,3 +1,4 @@
+#define NO_RAW
 /* sim_console.c: simulator console I/O library
 
    Copyright (c) 1993-2012, Robert M Supnik
@@ -2474,6 +2475,7 @@ static int prior_norm = 1;
 
 static t_stat sim_os_ttinit (void)
 {
+#ifndef NO_RAW
 if (!isatty (fileno (stdin)))                           /* skip if !tty */
     return SCPE_OK;
 if (tcgetattr (0, &cmdtty) < 0)                         /* get old flags */
@@ -2511,11 +2513,13 @@ runtty.c_cc[VDSUSP] = 0;
 #if defined (VSTATUS)
 runtty.c_cc[VSTATUS] = 0;
 #endif
+#endif
 return SCPE_OK;
 }
 
 static t_stat sim_os_ttrun (void)
 {
+#ifndef NO_RAW
 if (!isatty (fileno (stdin)))                           /* skip if !tty */
     return SCPE_OK;
 runtty.c_cc[VINTR] = sim_int_char;                      /* in case changed */
@@ -2526,11 +2530,13 @@ if (prior_norm) {                                       /* at normal pri? */
     (void)nice (10);                                    /* try to lower pri */
     prior_norm = errno;                                 /* if no error, done */
     }
+#endif
 return SCPE_OK;
 }
 
 static t_stat sim_os_ttcmd (void)
 {
+#ifndef NO_RAW
 if (!isatty (fileno (stdin)))                           /* skip if !tty */
     return SCPE_OK;
 if (!prior_norm) {                                      /* priority down? */
@@ -2540,6 +2546,7 @@ if (!prior_norm) {                                      /* priority down? */
     }
 if (tcsetattr (0, TCSAFLUSH, &cmdtty) < 0)
     return SCPE_TTIERR;
+#endif
 return SCPE_OK;
 }
 
@@ -2555,6 +2562,7 @@ return isatty (fileno (stdin));
 
 static t_stat sim_os_poll_kbd (void)
 {
+#ifndef NO_RAW
 int status;
 unsigned char buf[1];
 
@@ -2563,11 +2571,15 @@ if (status != 1) return SCPE_OK;
 if (sim_brk_char && (buf[0] == sim_brk_char))
     return SCPE_BREAK;
 else return (buf[0] | SCPE_KFLAG);
+#else
+return SCPE_BREAK;
+#endif
 }
 
 #if defined(SIM_ASYNCH_IO) && defined(SIM_ASYNCH_MUX)
 static t_bool sim_os_poll_kbd_ready (int ms_timeout)
 {
+#ifndef NO_RAW
 fd_set readfds;
 struct timeval timeout;
 
@@ -2580,6 +2592,7 @@ FD_SET (0, &readfds);
 timeout.tv_sec = (ms_timeout*1000)/1000000;
 timeout.tv_usec = (ms_timeout*1000)%1000000;
 return (1 == select (1, &readfds, NULL, NULL, &timeout));
+#endif
 }
 #endif
 

@@ -2681,17 +2681,17 @@ static t_stat DoBasicInstruction (void)
                 t_int64 divisor = (t_int64) (SIGNEXT36(CY));
 
 #ifdef DIV_TRACE
-                sim_debug (DBG_CAC, & cpu_dev, "\r\n");
-                sim_debug (DBG_CAC, & cpu_dev, ">>> dividend rQ %lld (%012llo)\r\n", dividend, rQ);
-                sim_debug (DBG_CAC, & cpu_dev, ">>> divisor  CY %lld (%012llo)\r\n", divisor, CY);
+                sim_debug (DBG_CAC, & cpu_dev, "\n");
+                sim_debug (DBG_CAC, & cpu_dev, ">>> dividend rQ %lld (%012llo)\n", dividend, rQ);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> divisor  CY %lld (%012llo)\n", divisor, CY);
 #endif
 
                 t_int64 quotient = dividend / divisor;
                 t_int64 remainder = dividend % divisor;
 
 #ifdef DIV_TRACE
-                sim_debug (DBG_CAC, & cpu_dev, ">>> quot 1 %lld\r \n", quotient);
-                sim_debug (DBG_CAC, & cpu_dev, ">>> rem 1 %lld\r\n", remainder);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> quot 1 %lld\n", quotient);
+                sim_debug (DBG_CAC, & cpu_dev, ">>> rem 1 %lld\n", remainder);
 #endif
 
 // Evidence is that DPS8 rounds toward zero; if it turns out that it
@@ -2706,19 +2706,19 @@ static t_stat DoBasicInstruction (void)
                     quotient -= 1;
 
 #ifdef DIV_TRACE
-                    sim_debug (DBG_CAC, & cpu_dev, ">>> quot 2 %lld\r \n", quotient);
-                    sim_debug (DBG_CAC, & cpu_dev, ">>> rem 2 %lld\r\n", remainder);
+                    sim_debug (DBG_CAC, & cpu_dev, ">>> quot 2 %lld\n", quotient);
+                    sim_debug (DBG_CAC, & cpu_dev, ">>> rem 2 %lld\n", remainder);
 #endif
                   }
 #endif
 
 #ifdef DIV_TRACE
                 //  (a/b)*b + a%b is equal to a.
-                sim_debug (DBG_CAC, & cpu_dev, "dividend was                   = %lld\r\n", dividend);
-                sim_debug (DBG_CAC, & cpu_dev, "quotient * divisor + remainder = %lld\r\n", quotient * divisor + remainder);
+                sim_debug (DBG_CAC, & cpu_dev, "dividend was                   = %lld\n", dividend);
+                sim_debug (DBG_CAC, & cpu_dev, "quotient * divisor + remainder = %lld\n", quotient * divisor + remainder);
                 if (dividend != quotient * divisor + remainder)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "---------------------------------^^^^^^^^^^^^^^^\r\n");
+                    sim_debug (DBG_CAC, & cpu_dev, "---------------------------------^^^^^^^^^^^^^^^\n");
                   }
 #endif
 
@@ -4906,11 +4906,11 @@ static t_stat DoBasicInstruction (void)
             {
 #if 0
             // just generate a register dump
-            sim_printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(cu.IR));
-            sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
-            sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
+            sim_printf("A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(cu.IR));
+            sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
+            sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
                 for(uint32 n = 0 ; n < 8 ; n++)
-                    sim_printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+                    sim_printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
 #endif
             }
             break;
@@ -5679,8 +5679,8 @@ static t_stat DoBasicInstruction (void)
                                      // break this logic
               {
                 sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                sim_printf("\r\nsimCycles = %lld\n", sim_timell ());
-                sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+                sim_printf("\nsimCycles = %lld\n", sim_timell ());
+                sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);
               }

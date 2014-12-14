@@ -156,6 +156,12 @@ static gboolean time_handler (GtkWidget * widget)
 
 int main (int argc, char * argv [])
   {
+
+    struct sigaction quit_action;
+    quit_action . sa_handler = SIG_IGN;
+    quit_action . sa_flags = SA_RESTART;
+    sigaction (SIGQUIT, & quit_action, NULL);
+
 #if 0
     //printf ("Session %d\n", getsid (0));
     int fd = shm_open ("/multipass", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
