@@ -20,7 +20,7 @@
 #include "dps8_sys.h"
 
 #ifdef __CYGWIN__
-ong double ldexpl(long double x, int n) {
+long double ldexpl(long double x, int n) {
        return __builtin_ldexpl(x, n);
 }
 
