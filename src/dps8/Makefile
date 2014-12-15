@@ -279,10 +279,16 @@ android :
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
 LDFLAGS += -lrt
+
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
 
-all : blinkenLights
+#all : blinkenLights
+
+blinkenLightsCurses : blinkenLightsCurses.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLightsCurses.c -o blinkenLightsCurses shm.o -lncurses
+
+#all : blinkenLightsCurses
 
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
