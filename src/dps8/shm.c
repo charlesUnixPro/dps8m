@@ -8,6 +8,7 @@
 #include <fcntl.h>           /* For O_* constants */
 #include <unistd.h>
 #include <sys/types.h>
+#include <errno.h>
 
 //#include "dps8.h"
 //#include "dps8_utils.h"
@@ -40,11 +41,25 @@ void * create_shm (char * key, pid_t system_pid, size_t size)
     void * p;
     char buf [256];
     sprintf (buf, "/dps8m.%u.%s", system_pid, key);
+    shm_unlink (buf);
     int fd = shm_open (buf, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR);
     if (fd == -1)
       {
+#if 1
         //sim_printf ("create_shm shm_open fail %d\n", errno);
         return NULL;
+#else
+        // It already exists; assume that there was an emulator crash,
+        // and just open it
+//printf ("create_shm EXCL shm_open fail %d\n", errno);
+        fd = shm_open (buf, O_RDWR, S_IRUSR | S_IWUSR);
+        if (fd == -1)
+          {
+            close (fd);
+            //printf ("open_shm shm_open fail %d\n", errno);
+            return NULL;
+          }
+#endif
       }
 
     if (ftruncate (fd, size) == -1)
