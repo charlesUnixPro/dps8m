@@ -34,7 +34,7 @@ simh.a : $(OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS) simh.a
+	-$(RM) $(OBJS) simh.a tags
 	-@echo ' '
 
 
