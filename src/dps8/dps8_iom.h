@@ -61,6 +61,7 @@ typedef struct dcw_t
             bool tdcw35_rel;   // relative addressing control; 1 bit at 35
           } xfer;
       } fields;
+    word36 raw;
   } dcw_t;
 
 typedef struct

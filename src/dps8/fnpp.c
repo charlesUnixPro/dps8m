@@ -1,6 +1,7 @@
 // IPC for FNP process
 #include "dps8.h"
 #include "fnpp.h"
+#include "dps8_fnp.h"
 #include "dps8_utils.h"
 
 // fnp_init() will be called once and only once per emulator execution.
@@ -22,10 +23,10 @@ void fnppInit (void)
 // maximum number of supported units is a #define in dps8_fnp.c.
 
 t_stat fnppSetNunits (UNUSED UNIT * uptr, UNUSED int32 value,
-                             char * cptr, UNUSED void * desc)
+                      UNUSED char * cptr, UNUSED void * desc)
   {
 
-    int n = atoi (cptr);
+    //int n = atoi (cptr);
     //sim_printf ("fnppSetNunits called; units set to %d\n", n);
     return SCPE_OK;
   }
@@ -67,8 +68,15 @@ int fnppIOTx (UNUSED UNIT * unitp, uint unitNumber)
 // When the IOM receives a CIOC for the FNP, it will pass the channel number
 // to the FNP.
 
+#define FNP_UNIT_NUM(uptr) ((uptr) - fnpDev . units)
+
 int fnppCIOC (UNUSED UNIT * unitp, uint chanNum)
    {
+    int fnpUnitNum = FNP_UNIT_NUM (unitp);
+    int iomUnitNum = lookupFnpsIomUnitNumber (fnpUnitNum);
+
+// IPC call (fnpUnitNum, iomUnitNum, chanNum)
+
      //sim_printf ("fnppIDCW called for unit %d\n", unitNumber);
      return 0;
    }

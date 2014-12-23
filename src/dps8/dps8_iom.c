@@ -1,5 +1,6 @@
 //#define IOMDBG
 //#define IOMDBG1
+//#define DBGFNP
 //
 // \file dps8_iom.c
 // \project dps8
@@ -41,6 +42,8 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_sys.h"
+// For fnp debugging
+#include "dps8_iefp.h"
  
 #define ASSUME_CPU_0 0
 
@@ -515,9 +518,6 @@ static void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
   {
     word36 word0;
     fetch_abs_word (addr, & word0, __func__);
-#ifdef IOMDBG
-sim_printf ("lpw %012llo\n", word0);
-#endif
     sim_debug (DBG_TRACE, & iom_dev, "lpw %012llo\n", word0);
 
     p -> dcw_ptr = getbits36 (word0, 0, 18);
@@ -531,12 +531,26 @@ sim_printf ("lpw %012llo\n", word0);
     //  23 causes the data to become segmented.
     p -> lpw23_srel = getbits36 (word0, 23, 1);
     p -> tally = getbits36 (word0, 24, 12); // initial value treated as unsigned
+#ifdef DBGFNP
+sim_printf ("lpw %012llo\n", word0);
+sim_printf (" dcw-ptr %06o\n", p -> dcw_ptr);
+sim_printf (" ires %o\n", p -> ires);
+sim_printf (" hrel %o\n", p -> hrel);
+sim_printf (" lpw20_ae %o\n", p -> lpw20_ae);
+sim_printf (" nc %o\n", p -> nc);
+sim_printf (" trunout %o\n", p -> trunout);
+sim_printf (" lpw23_srel %o\n", p -> lpw23_srel);
+sim_printf (" tally %06o\n", p -> tally);
+#endif
     
     // sim_debug (DBG_TRACE, & iom_dev, "lpw ae(20) %o srel(23) %o\n", p -> lpw20_ae, p -> lpw23_srel);
     if (! is_conn)
       {
         word36 word1;
         fetch_abs_word (addr +1, & word1, __func__);
+#ifdef DBGFNP
+sim_debug (DBG_TRACE, & iom_dev, "lpw1 %012llo\n", word1);
+#endif
         // XXX Assuming paged mode
         p -> lbnd = getbits36 (word1, 0, 18);
         p -> size = getbits36 (word1, 18, 18);
@@ -549,6 +563,10 @@ sim_printf ("lpw %012llo\n", word0);
         // XXX Not in paged mode
         //p -> idcw = (uint)-1;
       }
+#ifdef DBGFNP
+sim_printf (" lbnd %06o\n", p -> lbnd);
+sim_printf (" size %06o\n", p -> size);
+#endif
     //if (p -> lpw20_ae || p -> lpw23_srel)
 #if 0
     if (p -> lpw23_srel)
@@ -598,7 +616,7 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
           }
         p -> pcw64_pge = getbits36 (word1, 28, 1);
         p -> aux = getbits36 (word1, 29, 1);
-#ifdef IOMDBG
+#ifdef DBGFNP
 if (p -> ptp)
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
 #endif
@@ -616,7 +634,7 @@ sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_
               }
           }
 
-#ifdef IOMDBG
+#ifdef DBGFNP
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
 #endif
         sim_debug (DBG_TRACE, & iom_dev, 
@@ -736,6 +754,7 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
 #ifdef IOMDBG
 sim_printf ("dcw: %012llo\n", word);
 #endif
+    p -> raw = word;
 
     uint cp = getbits36 (word, 18, 3);
     if (cp == 7U)
@@ -1724,6 +1743,9 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
     int tdcw_count = 0;
 
     uint chanloc = mbx_loc (iomUnitNum, chanNum);
+#ifdef DBGFNP
+sim_printf ("iomListService iomUnitNum %o chanNum %d (%o) chanloc %08o\n", iomUnitNum, chanNum, chanNum, chanloc);
+#endif
 
     // Eliding scratchpad, so always first service.
 
@@ -2308,6 +2330,14 @@ static int doConnectChan (uint iomUnitNum)
             return 1;
           }
     
+#ifdef DBGFNP
+if (pcw . chan == 020) // the fnp
+  {
+    sim_printf ("fnp in connect channel; iefpFinalAddress %08o\n", iefpFinalAddress);
+    sim_printf ("fnp in connect channel; lpwp -> dcw_ptr %08o\n", lpwp -> dcw_ptr);
+  }
+#endif
+
 // This is not an issue as of 'bce (boot)' as it as only been seen in
 // rewind commands, which don't request service to begin with.
 // XXX ticket 22

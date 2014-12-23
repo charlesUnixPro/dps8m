@@ -10,6 +10,7 @@
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int fnpIOMCmd (UNIT * unitp, pcw_t * p);
+//static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc);
 
 #define N_FNP_UNITS_MAX 16
 #define N_FNP_UNITS 1 // default
@@ -105,16 +106,16 @@ static struct fnpState
 
 static struct
   {
-    int iom_unit_num;
+    int iomUnitNum;
     int chan_num;
     int dev_code;
   } cables_from_ioms_to_fnp [N_FNP_UNITS_MAX];
 
-static int findFNPUnit (int iom_unit_num, int chan_num, int dev_code)
+static int findFNPUnit (int iomUnitNum, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       {
-        if (iom_unit_num == cables_from_ioms_to_fnp [i] . iom_unit_num &&
+        if (iomUnitNum == cables_from_ioms_to_fnp [i] . iomUnitNum &&
             chan_num     == cables_from_ioms_to_fnp [i] . chan_num     &&
             dev_code     == cables_from_ioms_to_fnp [i] . dev_code)
           return i;
@@ -122,12 +123,16 @@ static int findFNPUnit (int iom_unit_num, int chan_num, int dev_code)
     return -1;
   }
 
+int lookupFnpsIomUnitNumber (int fnpUnitNum)
+  {
+    return cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+  }
 
 void fnpInit(void)
   {
     memset(fnpState, 0, sizeof(fnpState));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
-      cables_from_ioms_to_fnp [i] . iom_unit_num = -1;
+      cables_from_ioms_to_fnp [i] . iomUnitNum = -1;
     fnppInit ();
   }
 
@@ -141,51 +146,61 @@ static t_stat fnpReset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-t_stat cableFNP (int fnp_unit_num, int iom_unit_num, int chan_num, int dev_code)
+t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num, int dev_code)
   {
-    if (fnp_unit_num < 0 || fnp_unit_num >= (int) fnpDev . numunits)
+    if (fnpUnitNum < 0 || fnpUnitNum >= (int) fnpDev . numunits)
       {
-        sim_printf ("cableFNP: fnp_unit_num out of range <%d>\n", fnp_unit_num);
+        sim_printf ("cableFNP: fnpUnitNum out of range <%d>\n", fnpUnitNum);
         return SCPE_ARG;
       }
 
-    if (cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num != -1)
+    if (cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum != -1)
       {
         sim_printf ("cableFNP: socket in use\n");
         return SCPE_ARG;
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DN355, chan_type_PSI, fnp_unit_num, & fnpDev, & fnp_unit [fnp_unit_num], fnpIOMCmd);
+    t_stat rc = cable_to_iom (iomUnitNum, chan_num, dev_code, DEVT_DN355, chan_type_PSI, fnpUnitNum, & fnpDev, & fnp_unit [fnpUnitNum], fnpIOMCmd);
     if (rc)
       return rc;
 
-    cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num = iom_unit_num;
-    cables_from_ioms_to_fnp [fnp_unit_num] . chan_num = chan_num;
-    cables_from_ioms_to_fnp [fnp_unit_num] . dev_code = dev_code;
+    cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum = iomUnitNum;
+    cables_from_ioms_to_fnp [fnpUnitNum] . chan_num = chan_num;
+    cables_from_ioms_to_fnp [fnpUnitNum] . dev_code = dev_code;
 
     return SCPE_OK;
   }
  
-static int fnp_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
+static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
-    int fnp_unit_num = FNP_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num;
-//-    struct fnpState * tape_statep = & fnpState [fnp_unit_num];
+    int fnpUnitNum = FNP_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+//-    struct fnpState * tape_statep = & fnpState [fnpUnitNum];
     * disc = false;
 
     int chan = pcwp-> chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
     if (chan_data -> ptp)
       {
         sim_printf ("PTP in fnp; dev_cmd %o\n", pcwp -> dev_cmd);
-        sim_err ("PTP in fnp\n");
+        //sim_err ("PTP in fnp\n");
       }
     chan_data -> stati = 0;
 sim_printf ("fnp cmd %d\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)
       {
+        case 000: // CMD 00 Request status
+          {
+sim_printf ("fnp cmd request status\n");
+            chan_data -> stati = 04000;
+            //disk_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & fnpDev, "Request status %d\n", fnpUnitNum);
+            chan_data -> initiate = true;
+          }
+          break;
+
         default:
           {
             chan_data -> stati = 04501;
@@ -195,7 +210,7 @@ sim_printf ("fnp cmd %d\n", pcwp -> dev_cmd);
           }
       }
 
-    //status_service (iom_unit_num, chan, false);
+    //status_service (iomUnitNum, chan, false);
 
     return 0;
   }
@@ -207,8 +222,8 @@ sim_printf ("fnp cmd %d\n", pcwp -> dev_cmd);
 
 static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
   {
-    int fnp_unit_num = FNP_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num;
+    int fnpUnitNum = FNP_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
@@ -216,9 +231,23 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
 // Ignore a CMD 051 in the PCW
     if (pcwp -> dev_cmd == 051)
       return 1;
+sim_printf ("fnpIOMCmd\n");
+sim_printf (" pcwp -> dev_cmd %02o\n", pcwp -> dev_cmd);
+sim_printf (" pcwp -> dev_code %02o\n", pcwp -> dev_code);
+sim_printf (" pcwp -> ext %02o\n", pcwp -> ext);
+sim_printf (" pcwp -> cp %0o\n", pcwp -> cp);
+sim_printf (" pcwp -> mask %0o\n", pcwp -> mask);
+sim_printf (" pcwp -> control %0o\n", pcwp -> control);
+sim_printf (" pcwp -> chan_cmd %0o\n", pcwp -> chan_cmd);
+sim_printf (" pcwp -> chan_data %0o\n", pcwp -> chan_data);
+sim_printf (" pcwp -> chan %0o\n", pcwp -> chan);
+sim_printf (" pcwp -> ptPtr %0o\n", pcwp -> ptPtr);
+sim_printf (" pcwp -> ptp %0o\n", pcwp -> ptp);
+sim_printf (" pcwp -> pcw64_pge %0o\n", pcwp -> pcw64_pge);
+sim_printf (" pcwp -> aux %0o\n", pcwp -> aux);
     bool disc;
-//sim_printf ("1 st call to fnp_cmd\n");
-    fnp_cmd (unitp, pcwp, & disc);
+sim_printf ("1 st call to fnpCmd\n");
+    fnpCmd (unitp, pcwp, & disc);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
     // list so ignore that and force it to 2.
@@ -227,6 +256,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
 
     int ptro = 0;
 //#define PTRO
+sim_printf ("starting list service loop\n");
 #ifdef PTRO
     while ((! disc) /* && ctrl == 2 */ && ! ptro)
 #else
@@ -234,43 +264,66 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
 #endif
       {
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & ptro);
+sim_printf ("calling list service\n");
+        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
+sim_printf ("list service returned %d %012llo\n", rc, dcw . raw);
         if (rc)
           {
             break;
           }
+#if 0
         if (dcw . type != idcw)
           {
+sim_printf ("list service not idcw\n");
 // 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iom_unit_num, pcwp -> chan, false);
+            //status_service (iomUnitNum, pcwp -> chan, false);
             break;
           }
-
+#endif
 
 // The dcw does not necessarily have the same dev_code as the pcw....
 
-        fnp_unit_num = findFNPUnit (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code);
-        if (fnp_unit_num < 0)
+        if (dcw . type == idcw)
           {
-// 04502 : COMMAND REJECTED, invalid device code
-            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
-            chan_data -> stati = 04502; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatIncorrectDCW;
-            //status_service (iom_unit_num, pcwp -> chan, false);
-            break;
+            fnpUnitNum = findFNPUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+            if (fnpUnitNum < 0)
+              {
+sim_printf ("list service invalid device code\n");
+                // 04502 : COMMAND REJECTED, invalid device code
+                iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
+                chan_data -> stati = 04502; 
+                chan_data -> dev_code = dcw . fields . instr. dev_code;
+                chan_data -> chanStatus = chanStatIncorrectDCW;
+                //status_service (iomUnitNum, pcwp -> chan, false);
+                break;
+              }
           }
-        unitp = & fnp_unit [fnp_unit_num];
-//sim_printf ("next call to fnp_cmd\n");
-        fnp_cmd (unitp, & dcw . fields . instr, & disc);
+
+        unitp = & fnp_unit [fnpUnitNum];
+sim_printf ("next call to fnpCmd; instr is %012llo\n", dcw . raw);
+
+        if (dcw . type == idcw)
+          {
+            fnpCmd (unitp, & dcw . fields . instr, & disc);
+          }
+        else if (dcw . type == idcw)
+          {
+            //fnpIOT (unitp, & dcw . fields . ddcw, & disc);
+          }
+        else
+          {
+            sim_printf ("fnpIOMCmd dazed and confused\n");
+            sim_err ("fnpIOMCmd dazed and confused\n");
+          }
         ctrl = dcw . fields . instr . control;
 //sim_printf ("disc %d ctrl %d\n", disc, ctrl);
       }
-    send_terminate_interrupt (iom_unit_num, pcwp -> chan);
+sim_printf ("end of list service; sending terminate interrupt\n");
+    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
     return 1;
   }
@@ -278,7 +331,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
 static t_stat fnpSVC (UNIT * unitp)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iom_unit_num;
+    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
     int chanNum = cables_from_ioms_to_fnp [fnpUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     fnpIOMCmd (unitp, pcwp);
@@ -287,14 +340,24 @@ static t_stat fnpSVC (UNIT * unitp)
     
 
 #if 0
+static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc)
+  {
+    int fnpUnitNum = FNP_UNIT_NUM (unitp);
+    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    * disc = false;
+    if (dcwp -> type == 0) // IOTD
+      * disc = true;
+
+  }
+
 static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
   {
     //sim_debug (DBG_DEBUG, & fnpDev, "%s\n", __func__);
-    int fnp_unit_num = FNP_UNIT_NUM (unitp);
-    //int iom_unit_num = cables_from_ioms_to_fnp [fnp_unit_num] . iom_unit_num;
+    int fnpUnitNum = FNP_UNIT_NUM (unitp);
+    //int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
 //--     
 //--     int dev_unit_num;
-//--     DEVICE* devp = get_iom_channel_dev (iom_unit_num, chan, dev_code, & dev_unit_num);
+//--     DEVICE* devp = get_iom_channel_dev (iomUnitNum, chan, dev_code, & dev_unit_num);
 //--     if (devp == NULL || devp->units == NULL) {
 //--         *majorp = 05;
 //--         *subp = 2;
@@ -304,7 +367,7 @@ static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uin
 //--     UNIT * unitp = & devp -> units [dev_unit_num];
 //--     // BUG: no dev_code
 //--     
-    struct fnpState * tape_statep = & fnpState [fnp_unit_num];
+    struct fnpState * tape_statep = & fnpState [fnpUnitNum];
     
     if (tape_statep -> io_mode == no_mode)
       {
