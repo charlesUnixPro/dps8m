@@ -33,6 +33,8 @@
 #include "dps8_mp.h"
 #endif
 
+#include "fnp_ipc.h"
+
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
@@ -1370,6 +1372,19 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
+    // IPC initalizatyion stuff
+      ipc_enable = !(ipc_dev.flags & DEV_DIS);
+      
+      ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
+      ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+      if (!ipc_enable)
+          sim_printf("Warning: IPC not enabled.\n");
+      else
+          ipc(ipcEnable, 0, 0, 0, 0);                // start IPC beacon for FNP IPC
+      
+    // End if IPC init stuff
+      
+      
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
     static DCDstruct * ci = & currentInstruction;
@@ -1987,6 +2002,11 @@ syncFaultReturn:;
       } while (reason == 0);
 
 leave:
+
+    // disable IPC 
+    if (ipc_enable)
+        ipc(ipcDisable, 0, 0, 0, 0);     // stop IPC operation
+
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)

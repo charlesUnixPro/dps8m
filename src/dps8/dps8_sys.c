@@ -39,6 +39,8 @@
 #include <fcntl.h>           /* For O_* constants */
 #endif
 
+#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -2133,6 +2135,7 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     & fxe_dev,
+    & ipc_dev,  // for fnp IPC
     NULL
   };
 
