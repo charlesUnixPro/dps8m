@@ -52,6 +52,11 @@ void cmp72(word72 op1, word72 op2, word18 *flags);
 
 char *strlower(char *q);
 int strmask(char *str, char *mask);
+char *Strtok(char *, char *);
+char *stripquotes(char *s);
+char *trim(char *s);
+char *ltrim(char *s);
+char *rtrim(char *s);
 
 word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
 word72 bitfieldInsert72(word72 a, word72 b, int c, int d);

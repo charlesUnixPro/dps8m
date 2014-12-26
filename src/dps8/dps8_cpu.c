@@ -1373,14 +1373,15 @@ t_stat sim_instr (void)
 #endif
 
     // IPC initalizatyion stuff
-      ipc_enable = !(ipc_dev.flags & DEV_DIS);
+      bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
       ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
       ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
-      if (!ipc_enable)
-          sim_printf("Warning: IPC not enabled.\n");
-      else
-          ipc(ipcEnable, 0, 0, 0, 0);                // start IPC beacon for FNP IPC
+      if (!ipc_running)
+      {
+          sim_printf("Info: ");
+          ipc(ipcStart, fnpName,0,0,0);
+      }
       
     // End if IPC init stuff
       
@@ -2003,9 +2004,10 @@ syncFaultReturn:;
 
 leave:
 
-    // disable IPC 
-    if (ipc_enable)
-        ipc(ipcDisable, 0, 0, 0, 0);     // stop IPC operation
+    // if IPC was running before G leave it running - don't stop it, else stop it
+    if (!ipc_running)
+        ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
+      
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);

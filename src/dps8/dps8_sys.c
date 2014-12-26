@@ -143,6 +143,12 @@ static CTAB dps8_cmds[] =
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+    
+#ifdef VM_DPS8
+    {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
+    {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
+#endif
+    
     { NULL, NULL, 0, NULL, NULL}
 };
 
