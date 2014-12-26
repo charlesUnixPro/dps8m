@@ -27,7 +27,11 @@
 #define IPC_NODE     "MulticsCS"        // default node name
 #endif
 
+extern DEVICE ipc_dev;
 extern int32 ipc_verbose, ipc_trace;
+
+extern char fnpName[32];
+extern char fnpGroup[32];
 
 
 #define DBG_IPCTRACE        1
@@ -67,15 +71,12 @@ int      deletePeers();
 t_stat  ipc (ipc_funcs, char *arg1, char *arg2, char *arg3, int32 arg4);
 
 bool isIPCRunning();
-
+bool isIPCEnabled();
+//bool checkIPC();
 
 t_stat ipc_shout   (int32 arg, char *buf);
 t_stat ipc_whisper (int32 arg, char *buf);
 
-extern char fnpName[32];
-extern char fnpGroup[32];
-
-extern DEVICE ipc_dev;
 
 #ifdef VM_FNP
 #define ipc_printf(...) sim_printf (__VA_ARGS__)

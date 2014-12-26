@@ -8,7 +8,7 @@
 
 #ifdef VM_FNP
 #include "fnp_defs.h"
-
+#include "fnp_utils.h"
 #include "fnp_mux.h"
 #endif
 #ifdef VM_DPS8
@@ -22,13 +22,12 @@ bool startsWith(const char *str, const char *pre);
 
 void sim_printf (const char* fmt, ...);
 
-
 #endif
 
-//#include "fnp_utils.h"
 #include "fnp_ipc.h"
 
 t_stat set_prompt (int32 flag, char *cptr);
+
 
 int32 ipc_verbose = 0;
 int32 ipc_trace = 0;
@@ -163,7 +162,7 @@ DEVICE ipc_dev = {
 #else
     NULL,
 #endif
-    DEV_DEBUG,  //DEV_DIS | DEV_DISABLE | DEV_DEBUG,
+    DEV_DIS | DEV_DISABLE | DEV_DEBUG,
     0,
     ipc_dbg
 };
@@ -371,20 +370,25 @@ bool isIPCRunning()
 {
     return actor ? true : false;
 }
+bool isIPCEnabled()
+{
+    return !(ipc_dev.flags & DEV_DIS); // IPC disabled?
+}
 
 t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
 {
+    //    if (!checkIPC())
+    //        return SCPE_UDIS;
+    
     switch (fn)
     {
         case ipcStart:
-        {
             if (actor)
                 killIPC();
             
             actor = zactor_new (ipc_actor, arg1);
             assert (actor);
-        }
-            strcpy(lastPeer, "");
+            deletePeers();          // remove all peers
             
             break;
             
@@ -465,6 +469,8 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
 static
 t_stat Test (FILE *st, UNIT *uptr, int32 val, void *desc)
 {
+    sim_printf("Test: IPC not enabled.\n");
+    
     return ipc(ipcTest, 0, 0, 0, 0);
 }
 
@@ -573,16 +579,26 @@ static t_stat ipc_remove_peers (UNIT *uptr, int32 val, char *c, void *desc)
  */
 t_stat ipc_shout (int32 arg, char *buf)
 {
+    if (!isIPCEnabled())
+    {
+        sim_printf("Shout: IPC not enabled.\n");
+        return SCPE_OK;
+    }
     if (!isIPCRunning())
     {
         sim_printf("Shout: IPC not running.\n");
         return SCPE_OK;
     }
-    return ipc(ipcShoutTx, buf, 0, 0, 0);
+    return ipc(ipcShoutTx, stripquotes(trim(buf)), 0, 0, 0);
 }
 
 t_stat ipc_whisper (int32 arg, char *buf)
 {
+    if (!isIPCEnabled())
+    {
+        sim_printf("Whisper: IPC not enabled.\n");
+        return SCPE_OK;
+    }
     if (!isIPCRunning())
     {
         sim_printf("Whisper: IPC not running.\n");
@@ -598,7 +614,7 @@ t_stat ipc_whisper (int32 arg, char *buf)
     
     if (a1 && a2)       // peer, message
     {
-        peer = a1;
+        peer = stripquotes(trim(a1));
         msg = stripquotes(trim(a2));
     } else if (a1 && !a2)
     {
@@ -678,6 +694,8 @@ int deletePeers()
         n += 1;
     }
     Peers = 0;
+    
+    strcpy(lastPeer, "");   // no last peer
     
     return n;
 }
