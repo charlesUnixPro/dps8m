@@ -884,6 +884,156 @@ int strmask(char *str, char *mask)
         return(true);
 }
 
+/**
+ * strtok() with string quoting...
+ * (implemented as a small fsm, kinda...
+ * (add support for embedded " later, much later...)
+ */
+#define NORMAL 		1
+#define IN_STRING	2
+#define EOB			3
+
+char *
+Strtok(char *line, char *sep)
+{
+    
+    static char *p;		/*!< current pointer position in input line	*/
+    static int state = NORMAL;
+    
+    char *q;			/*!< beginning of current field			*/
+    
+    if (line) {			/* 1st invocation						*/
+        p = line;
+        state = NORMAL;
+    }
+    
+    q = p;
+    while (state != EOB) {
+        switch (state) {
+            case NORMAL:
+                switch (*p) {
+                    case 0:				///< at end of buffer
+                        state = EOB;	// set state to "end Of Buffer
+                        return q;
+                        
+                    case '"':		///< beginning of a quoted string
+                        state = IN_STRING;	// we're in a string
+                        p++;
+                        continue;
+                        
+                    default:    ///< only a few special characters
+                        if (strchr(sep, *p) == NULL) {	// not a sep
+                            p++;				// goto next char
+                            continue;
+                        } else {
+                            *p++ = (char)0;	/* ... iff >0	*/
+                            while (*p && strchr(sep, *p))	/* skip over seperator(s)*/
+                                p++;
+                            return q;	/* return field		*/
+                        }
+                }
+                
+            case IN_STRING:
+                if (*p == 0) {		  /*!< incomplete quoted string	*/
+                    state = EOB;
+                    return q;
+                }
+                
+                if (*p != '"') { // not end of line and still in a string
+                    p++;
+                    continue;
+                }
+                state = NORMAL;			/* end of quoted string	*/
+                p++;
+                
+                continue;
+                
+            case EOB:					/*!< just in case	*/
+                state = NORMAL;
+                return NULL;
+                
+            default:
+                fprintf(stderr, "(Strtok):unknown state - %d",state);
+                state = EOB;
+                return NULL;
+        }
+        
+    }
+    
+    return NULL;		/* no more fields in buffer		*/
+    
+}
+bool startsWith(const char *str, const char *pre)
+{
+    size_t lenpre = strlen(pre),
+    lenstr = strlen(str);
+    return lenstr < lenpre ? false : strncasecmp(pre, str, lenpre) == 0;
+}
+
+/**
+ * Removes the trailing spaces from a string.
+ */
+char *rtrim(char *s)
+{
+    int index;
+    
+    //for (index = (int)strlen(s) - 1; index >= 0 && (s[index] == ' ' || s[index] == '\t'); index--)
+    for (index = (int)strlen(s) - 1; index >= 0 && isspace(s[index]); index--)
+    {
+        s[index] = '\0';
+    }
+    return(s);
+}
+/** ------------------------------------------------------------------------- */
+char *ltrim(char *s)
+/**
+ *	Removes the leading spaces from a string.
+ */
+{
+    char *p;
+    if (s == NULL)
+        return NULL;
+    
+    //for (p = s; (*p == ' ' || *p == '\t') && *p != '\0'; p++)
+    for (p = s; isspace(*p) && *p != '\0'; p++)
+        ;
+    
+    //strcpy(s, p);
+    memmove(s, p, strlen(p) + 1);
+    return(s);
+}
+
+/** ------------------------------------------------------------------------- */
+
+char *trim(char *s)
+{
+    return ltrim(rtrim(s));
+}
+
+
+char *
+stripquotes(char *s)
+{
+    if (! s || ! *s)
+        return s;
+    /*
+     char *p;
+     
+     while ((p = strchr(s, '"')))
+     *p = ' ';
+     strchop(s);
+     
+     return s;
+     */
+    int nLast = (int)strlen(s) - 1;
+    // trim away leading/trailing "'s
+    if (s[0] == '"')
+        s[0] = ' ';
+    if (s[nLast] == '"')
+        s[nLast] = ' ';
+    return trim(s);
+}
+
 /*!
  a - Bitfield to insert bits into.
  b - Bit pattern to insert.

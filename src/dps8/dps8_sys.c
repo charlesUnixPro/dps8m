@@ -39,6 +39,8 @@
 #include <fcntl.h>           /* For O_* constants */
 #endif
 
+#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -141,6 +143,12 @@ static CTAB dps8_cmds[] =
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+    
+#ifdef VM_DPS8
+    {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
+    {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
+#endif
+    
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -2133,6 +2141,7 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     & fxe_dev,
+    & ipc_dev,  // for fnp IPC
     NULL
   };
 

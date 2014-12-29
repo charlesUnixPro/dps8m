@@ -33,6 +33,8 @@
 #include "dps8_mp.h"
 #endif
 
+#include "fnp_ipc.h"
+
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
@@ -1370,6 +1372,20 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
+    // IPC initalizatyion stuff
+      bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
+      
+      ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
+      ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+      if (!ipc_running)
+      {
+          sim_printf("Info: ");
+          ipc(ipcStart, fnpName,0,0,0);
+      }
+      
+    // End if IPC init stuff
+      
+      
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
     static DCDstruct * ci = & currentInstruction;
@@ -1987,6 +2003,12 @@ syncFaultReturn:;
       } while (reason == 0);
 
 leave:
+
+    // if IPC was running before G leave it running - don't stop it, else stop it
+    if (!ipc_running)
+        ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
+      
+
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
