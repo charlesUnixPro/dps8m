@@ -13,7 +13,7 @@ endif
 #CFLAGS  = -g -O0
 CFLAGS  = -g -O3
 
-#CFLAGS = -m32
+CFLAGS = -m32
 #CFLAGS = -m64
 
 CFLAGS += -I../decNumber -I../simhv40-beta -I ../include -DVM_DPS8

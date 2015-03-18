@@ -147,3 +147,8 @@ void sim_printl (const char * format, ...)
   __attribute__ ((format (printf, 1, 2)))
 #endif
 ;
+#ifndef HAVE_128
+word72 mask72n (uint n);
+word72 mask72nInv (uint n);
+#endif
+

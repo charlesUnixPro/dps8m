@@ -386,10 +386,33 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         pcwp -> dev_cmd != 015 && // write
         pcwp -> dev_cmd != 055 && // write eof (tape mark)
         pcwp -> dev_cmd != 063 && // permit
+
+// According to poll_mpc.pl1
+// Note: XXX should probably be checking these...
+//  idcw.chan_cmd = "40"b3; /* Indicate special controller command */
+//  idcw.chan_cmd = "41"b3; /* Indicate special controller command */
+
+
+// EURC MPC
+        pcwp -> dev_cmd != 002 && // read controller main memory (ASCII)
+// 031 read statistics
+//  idcw.chan_cmd = "41"b3;  /* Indicate special controller command */
+// 006 initiate read data transfer
+// 032 write main memory (binary)
+// 016 initiate write data transfer
+// 000 suspend controller
+// 020 release controller
+
+
+// DAU MSP
+// 024 read configuration
+// 016 read/clear statistics
+
         pcwp -> dev_cmd != 040)   // reset status
       {
         sim_printf ("PTP in mt; dev_cmd %o\n", pcwp -> dev_cmd);
-        sim_err ("PTP in mt\n");
+        //sim_err ("PTP in mt\n");
+        goto fail;
       }
 
     sim_debug (DBG_DEBUG, & tape_dev,
@@ -412,6 +435,140 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
           break;
 
+        case 02:               // CMD 02 -- Read controller main memory (ASCII)
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Read controller main memory\n");
+            chan_data -> stati = 04000; // have_status = 1
+            //* need_data = true;
+
+#if 0
+sim_printf ("get the idcw\n");
+            // Get the IDCW
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (dcw . type != idcw)
+              {
+                sim_printf ("not idcw? %d\n", dcw . type);
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#endif
+
+#if 1
+//#ifdef IOMDBG1
+sim_printf ("get the ddcw\n");
+//#endif
+            // Get the DDCW
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncomplete;
+                break;
+              }
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncorrectDCW;
+                break;
+              }
+#endif
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
+            if (pcwp -> mask)
+              daddr |= ((pcwp -> ext) & MASK6) << 18;
+if (type == 0) sim_printf ("IOTD\n");
+if (type == 1) sim_printf ("IOTP\n");
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncorrectDCW;
+                break;
+              }
+
+
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "tally %04o daddr %06o\n", tally, daddr);
+sim_printf ("tally %d\n", tally);            
+#if 0
+            if (tally != 8)
+              {
+                sim_debug (DBG_DEBUG, & tape_dev,
+                           "%s: Expected tally of 8; got %d\n",
+                           __func__, tally);
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#endif
+#if 0
+            word36 buffer [8];
+            int cnt = 0;
+            for (uint i = 0; i < 8; i ++)
+              buffer [i] = 0;
+            
+            for (uint i = 1; i < N_MT_UNITS_MAX; i ++)
+              {
+                if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
+                  {
+                    word18 handler = 0;
+// Test hack: unit 0 never operational
+                    if (i != 0)
+                      handler |= 0100000; // operational
+                    //if (find_dev_from_unit (& mt_unit [i]))
+                      //sim_printf ("Unit %d has dev\n", i);
+                    if (mt_unit [i] . filename)
+                      {
+                        handler |= 0040000; // ready
+                        //sim_printf ("Unit %d ready\n", i);
+                      }
+                    handler |= (cables_from_ioms_to_mt [i] . dev_code & 037) << 9; // number
+                    handler |= 0000040; // 200 ips
+                    handler |= 0000020; // 9 track
+                    handler |= 0000007; // 800/1600/6250
+                    sim_debug (DBG_DEBUG, & tape_dev,
+                               "unit %d handler %06o\n", i, handler);
+                    if (cnt % 2 == 0)
+                      {
+                        buffer [cnt / 2] = ((word36) handler) << 18;
+                      }
+                    else
+                      {
+                        buffer [cnt / 2] |= handler;
+                      }
+                    cnt ++;
+                  }
+              }
+#ifdef IOMDBG1
+iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
+#endif
+            indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
+                                 idsTypeW36, true, & chan_data -> isOdd);
+#endif
+            chan_data -> stati = 04000;
+          }
+          break;
+ 
         case 5: // CMD 05 -- Read Binary Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -1199,6 +1356,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
    
         default:
           {
+fail:
             chan_data -> stati = 04501;
             sim_debug (DBG_ERR, & tape_dev,
                        "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);

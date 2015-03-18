@@ -2013,3 +2013,50 @@ uint64 sim_timell (void)
     return (uint64) sim_gtime ();
   }
 
+#ifndef HAVE_128
+// return a word72 with the N low bits set.
+word72 mask72n (uint n)
+  {
+    word72 val;
+
+    if (n < 64)
+      {
+        val . l = ~ (__uint64_t) -1ull << n
+        val . h = 0;
+      }
+    else if (n < 72)
+      {
+        val . l = (__uint64_t) -1ull;
+        val . h = ~ (__uint8_t) -1 << (n - 64);
+      }
+    else
+      {
+        val . l = (__uint64_t) -1ll;
+        val . h = (__uint8_t) -1;
+      }
+    return val;
+  }
+
+// return a word72 with the N low bits clear.
+word72 mask72nInv (uint n)
+  {
+    word72 val;
+
+    if (n < 64)
+      {
+        val . l = (__uint64_t) -1ll << n
+        val . h = (__uint8_t) -1 << n
+      }
+    else if (n < 72)
+      {
+        val . l = (__uint64_t) 0;
+        val . h = (__uint8_t) -1 << (n - 64);
+      }
+    else
+      {
+        val . l = (__uint64_t) 0;
+        val . h = (__uint8_t) 0;
+      }
+    return val;
+  }
+#endif // HAVE_128

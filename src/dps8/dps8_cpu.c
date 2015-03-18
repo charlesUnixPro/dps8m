@@ -2185,7 +2185,7 @@ t_stat memWatch (int32 arg, char * buf)
       }
     char * end;
     long int n = strtol (buf, & end, 0);
-    if (* end || n < 0 || n >= MEMSIZE)
+    if (* end || n < 0 || (ulong) n >= MEMSIZE)
       {
         sim_printf ("invalid argument to watch?\n");
         return SCPE_ARG;

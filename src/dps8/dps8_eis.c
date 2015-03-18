@@ -1732,10 +1732,18 @@ static bool sign9n(word72 n128, int N)
     
     if (N < 1 || N > 8) // XXX largest int we'll play with is 72-bits? Makes sense
         return false;
-    
+   
+#ifdef HAVE_128 
     word72 sgnmask = (word72)1 << ((N * 9) - 1);
     
-    return (bool)(sgnmask & n128);
+    return sgnmask & n128;
+#else
+    uint shift = N * 9 - 1;
+    if (shift > 64)
+      return (1ull << (shift - 64)) & n128 . h;
+    else
+      return (1ull << shift) & n128 . l;
+#endif
 }
 
 /*!
@@ -1751,11 +1759,25 @@ static word72 signExt9(word72 n128, int N)
     int bits = (N * 9) - 1;
     if (sign9n(n128, N))
     {
+#ifdef HAVE_128
         uint128 extBits = ((uint128)-1 << bits);
         return n128 | extBits;
+#else
+        word72 extBits = mask72nInv (bits);
+        extBits . l |= n128 . l;
+        extBits . h |= n128 . h;
+        return extBits;
+#endif
     }
+#ifdef HAVE_128
     uint128 zeroBits = ~((uint128)-1 << bits);
     return n128 & zeroBits;
+#else
+    word72 extBits = mask72n (bits);
+    extBits . l &= n128 . l;
+    extBits . h &= n128 . h;
+   return extBits;
+#endif
 }
 
 /**

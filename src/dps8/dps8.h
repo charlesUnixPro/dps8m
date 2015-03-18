@@ -13,8 +13,23 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <errno.h>
-
 #include <sys/time.h>
+#include <limits.h>
+
+
+// In general, for gcc and clang, 128 bit ints are only supported on 64
+// bit targets. Set a preprocessor flag to indicate that 128 bit ints are
+// valid.
+//#if ( __WORDSIZE == 64 )
+#ifdef __SIZEOF_INT128__
+#define HAVE_128   1
+//#warning 64 bit build
+#else
+#undef HAVE_128
+//#warning 32 bit build
+typedef struct { __uint64_t l; __uint8_t h; } __uint128_t;
+typedef struct { __uint64_t l; __int8_t h; } __int128_t;
+#endif
 
 #include <setjmp.h>     // for setjmp/longjmp used by interrupts & faults
 
