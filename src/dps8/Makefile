@@ -221,6 +221,7 @@ C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
 C_SRCS += ./fnpp.c
 C_SRCS += ./shm.c
+C_SRCS += ./fnp_ipc.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -271,14 +272,14 @@ H_SRCS += shm.h
 
 
 
-all: tags locallibs_then_dps8 
+all: locallibs_then_dps8 
 
 android : 
 	ndk-build APP_BUILD_SCRIPT=./Android.mk APP_ABI=arm64-v8a APP_PLATFORM=android-21
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-LDFLAGS += -lrt
+LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
@@ -290,7 +291,7 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 #all : blinkenLightsCurses
 
-dps8 : $(OBJS) $(LOCALLIBS) 
+dps8 : tags $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
 slte.inc : system_book_12_3.ascii
@@ -299,14 +300,30 @@ slte.inc : system_book_12_3.ascii
 locallibs_then_dps8 :
 	(cd ../simhv40-beta; $(MAKE))
 	(cd ../decNumber; $(MAKE))
+	$(MAKE) zmq
 	$(MAKE) dps8
 
 # Other Targets
 
-zmg:
-	(cd ../zeromq-4.1.0 && $(MAKE) && $(MAKE) install)
+.PHONY: zeromq czmq zyre 
+
+zmq: zeromq czmq zyre
+
+zeromq : ../lib/libzmq.a
+
+../lib/libzmq.a :
+	(cd ../zeromq-4.1.0 && ./configure --prefix=`pwd`/../ && $(MAKE) && $(MAKE) check && $(MAKE) install)
+	
+czmq : ../lib/libczmq.so
+
+../lib/libczmq.so :
 	(cd ../czmq-master-ff0d028b16 && cmake . -DZEROMQ_LIBRARIES=../lib/libzmq.so -DZEROMQ_INCLUDE_DIRS=../include/ -DCMAKE_INSTALL_PREFIX=.. && $(MAKE) && $(MAKE) install)
+
+zyre : ../lib/libzyre.so
+
+../lib/libzyre.so :
 	(cd ../zyre-master-9d7e62d2c9 && cmake . -DCZMQ_LIBRARIES=../lib/libczmq.so -DCZMQ_INCLUDE_DIRS=../include -DZEROMQ_LIBRARIES=../lib/libzmq.so -DZEROMQ_INCLUDE_DIRS=../include/ -DCMAKE_INSTALL_PREFIX=.. && $(MAKE) && $(MAKE) install)
+
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
