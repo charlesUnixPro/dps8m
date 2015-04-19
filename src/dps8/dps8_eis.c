@@ -6,6 +6,16 @@
  * \brief EIS support code...
 */
 
+//
+// XXX XXX XXX ticket #45
+//
+// The sign testing of the 72 bit signed data is assuming that the actual
+// sign bit (bit 0 is dps8m notation, ie. 2^71 is sign-extended through
+// the 128 bit word
+//
+// Verify that this code actually does the sign extension, and/or recode
+// to test the dps8 sign bit, not the native hardware bit.
+
 #define V4
 
 #ifdef V1
@@ -1720,7 +1730,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
 /*!
  * determine sign of N*9-bit length word
  */
-static bool sign9n(word72 n128, int N)
+static bool sign9n(word72s n128, int N)
 {
     
     // sign bit of  9-bit is bit 8  (1 << 8)
@@ -1749,7 +1759,7 @@ static bool sign9n(word72 n128, int N)
 /*!
  * sign extend a N*9 length word to a (word72) 128-bit word
  */
-static word72 signExt9(word72 n128, int N)
+static word72s signExt9(word72s n128, int N)
 {
     // ext mask for  9-bit = 037777777777777777777777777777777777777400  8 0's
     // ext mask for 18-bit = 037777777777777777777777777777777777400000 17 0's
@@ -1763,7 +1773,7 @@ static word72 signExt9(word72 n128, int N)
         uint128 extBits = ((uint128)-1 << bits);
         return n128 | extBits;
 #else
-        word72 extBits = mask72nInv (bits);
+        word72s extBits = mask72nInv (bits);
         extBits . l |= n128 . l;
         extBits . h |= n128 . h;
         return extBits;
@@ -1773,7 +1783,7 @@ static word72 signExt9(word72 n128, int N)
     uint128 zeroBits = ~((uint128)-1 << bits);
     return n128 & zeroBits;
 #else
-    word72 extBits = mask72n (bits);
+    word72s extBits = mask72n (bits);
     extBits . l &= n128 . l;
     extBits . h &= n128 . h;
    return extBits;
@@ -1790,7 +1800,7 @@ static int getSign(word72s n128, EISstruct *e)
     {
         // If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign.
         // If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
-        if (n128 >= 0)
+        if (ispos72s (n128))
         {
             if (e->P)
                 return 013;  // alternate + sign
@@ -1805,7 +1815,7 @@ static int getSign(word72s n128, EISstruct *e)
     }
     else
     {   // 9-bit
-        if (n128 >= 0)
+        if (ispos72s (n128))
             return 053;     // default 9-bit +
         else
         {
@@ -1832,7 +1842,8 @@ static void addSign(word72s n128, EISstruct *e)
 // CANFAULT
 static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
 {
-    int128 x = 0;
+    int128 x;
+    set72 (x, 0);
     
     //word36 data;
     //Read (sourceAddr, &data, OperandRead, 0);    // read data word from memory
@@ -1841,7 +1852,7 @@ static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
     int m = n;
     while (m)
     {
-        x <<= 9;         // make room for next 9-bit byte
+        ls72s_9 (x); // x <<= 9;         // make room for next 9-bit byte
         
         if (pos > 3)        // overflows to next word?
         {   // yep....
@@ -1852,7 +1863,7 @@ static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
             data = EISRead(addr);    // read it from memory
         }
         
-        x |= GETBYTE(data, pos);   // fetch byte at position pos and 'or' it in
+        or72s (x, GETBYTE(data, pos)); // x |= GETBYTE(data, pos);   // fetch byte at position pos and 'or' it in
         
         pos += 1;           // onto next posotion
         
@@ -2172,7 +2183,8 @@ static int EISget469r(EISaddr *p, int *pos, int ta)
 // CANFAULT
 static void loadDec(EISaddr *p, int pos, EISstruct *e)
 {
-    int128 x = 0;
+    int128 x;
+    set72s (x, 0);
     
     
     // XXX use get49() for this later .....
@@ -2918,7 +2930,7 @@ void dtb(DCDstruct *ins)
     loadDec(&e->ADDR1, e->CN1, e);
     
     // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
-    SCF(e->x == 0, e->_flags, I_ZERO);
+    SCF(iszero72s (e -> x), e->_flags, I_ZERO);
     
     EISwriteToBinaryStringReverse(&e->ADDR2, 2);
     

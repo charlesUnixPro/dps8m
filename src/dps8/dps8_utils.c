@@ -359,9 +359,10 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
 // CANFAULT
 word72 AddSub72b(char op, UNUSED bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
 {
-    word72 res = 0;
-    op1 &= ZEROEXT72;
-    op2 &= ZEROEXT72;
+    word72 res;
+    set72 (res, 0);
+    op1 = and72 (op1, ZEROEXT72); // op1 &= ZEROEXT72;
+    op2 = and72 (op2, ZEROEXT72); // op2 &= ZEROEXT72;
     
     // perform requested operation
     bool overflow = false;
@@ -2015,9 +2016,9 @@ uint64 sim_timell (void)
 
 #ifndef HAVE_128
 // return a word72 with the N low bits set.
-word72 mask72n (uint n)
+word72s mask72n (uint n)
   {
-    word72 val;
+    word72s val;
 
     if (n < 64)
       {
@@ -2038,9 +2039,9 @@ word72 mask72n (uint n)
   }
 
 // return a word72 with the N low bits clear.
-word72 mask72nInv (uint n)
+word72s mask72nInv (uint n)
   {
-    word72 val;
+    word72s val;
 
     if (n < 64)
       {
@@ -2059,4 +2060,72 @@ word72 mask72nInv (uint n)
       }
     return val;
   }
+
+word72 ls72s_9 (word72s n) // left shift 9
+  {
+    word72 res;
+    word36 t;
+    res . l = n . l << 9;
+
+    // get the top 9 bits of the low 64 bits;
+    t = n . l >> 55; // 64 - 9
+    t &= MASK9;
+    // and insert it into the low 9 bits of the high 64 bits.
+    res . h = n . h << 9 | t;
+    return res;
+  }
+
+
+
+// http://www.icodeguru.com/Embedded/Hacker%27s-Delight/053.htm
+// Figure 8-1 Multiword integer multiplication, signed.
+
+static void mulmns (unsigned short w [], unsigned short u [], 
+                    unsigned short v [], int m, int n)
+  {
+    unsigned int k, t, b; 
+    int i, j; 
+
+    for (i = 0; i < m; i ++) 
+      w [i] = 0; 
+
+    for (j = 0; j < n; j ++)
+      {
+        k = 0; 
+        for (i = 0; i < m; i ++)
+          {
+            t = u [i] * v [j] + w [i + j] + k; 
+            w [i + j] = t;        // (I.e., t & 0xFFFF). 
+            k = t >> 16; 
+          } 
+        w [j + m] = k; 
+      }
+
+    // Now w[] has the unsigned product. Correct by 
+    // subtracting v*2**16m if u < 0, and 
+    // subtracting u*2**16n if v < 0. 
+
+    if ((short)u[m - 1] < 0)
+      {
+        b = 0;                  // Initialize borrow. 
+        for (j = 0; j < n; j ++)
+          {
+            t = w [j + m] - v [j] - b; 
+            w [j + m] = t; 
+            b = t >> 31; 
+          } 
+      } 
+    if ((short) v [n - 1] < 0)
+      {
+        b = 0; 
+        for (i = 0; i < m; i ++)
+          {
+            t = w [i + n] - u [i] - b; 
+            w [i + n] = t; 
+            b = t >> 31; 
+          } 
+      } 
+    return; 
+  } 
+
 #endif // HAVE_128

@@ -148,7 +148,24 @@ void sim_printl (const char * format, ...)
 #endif
 ;
 #ifndef HAVE_128
-word72 mask72n (uint n);
-word72 mask72nInv (uint n);
+word72s mask72n (uint n);
+word72s mask72nInv (uint n);
+#define iszero72(n) (((n . l || n . h)) ? 1 : 0)
+#define iszero72s(n) (((n . l || n . h)) ? 1 : 0)
+#define ispos72s(n) (n . h >= 0)
+#define set72(n, v) n . h = 0; n . l = (v)
+#define set72s(n, v) n . h = 0; n . l = (v)
+#define or72s(n, v) n . l |= (v)
+word72 ls72s_9 (word72s n); // left shift 9
+#define and72(a, b) ((word72) { a . l & b . l, a . h & b . h })
+#else
+#define iszero72(n) ((n) == 0)
+#define iszero72s(n) ((n) == 0)
+#define ispos72s(n) ((n) >= 0)
+#define set72(n, v) n = v
+#define set72s(n, v) n = v
+#define or72s(n, v) n |= (v)
+#define ls72s_9(n) ((n) << 9) // left shift 9
+#define and72(a, b) (a & b)
 #endif
 

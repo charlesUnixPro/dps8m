@@ -79,15 +79,23 @@
 #define NEG136          0777777777777LLU                   ///< -1
 #define MAXPOS          0377777777777LLU                   ///<  2**35-1
 #define MAXNEG          0400000000000LLU                   ///< -2**35
-#define MAX36           0777777777777LLU                   ///< 2**36
+#define MAX36           0777777777777LLU                   ///< 2**36-1
+#ifdef HAVE_128
 #define MAX72           (((word72)1U << 72) - 1U)           ///< 72 1's
+#else
+#define MAX72           (((word72) { (uint64) -1LL, ((uint64) 1U << (72 - 64)) - 1U })           ///< 72 1's
+#endif
 
 #define CARRY          01000000000000LLU                   ///< carry from 2 36-bit additions/subs
 #define SIGNEXT    0xfffffff000000000LLU        ///< mask to sign extend a 36 => 64-bit negative
 #define ZEROEXT         0777777777777LLU        ///< mask to zero extend a 36 => 64-bit int
 #define SIGNMASK18      037777000000U        ///< mask to sign extend a 18 => 32-bit negative
 #define ZEROEXT18       0777777U                ///< mask to zero extend a 18 => 32-bit int
+#ifdef HAVE_128
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  ///< mask to zero extend a 72 => 128 int
+#else
+#define ZEROEXT72        (((word72) { (uint64) -1LL,  ((uint64) 1U << (72 - 64)) - 1U }) ///< mask to zero extend a 72 => 128 int
+#endif
 #define SIGN72           ((word72)1U << 71)
 #define MASK72          ZEROEXT72
 
