@@ -686,8 +686,8 @@ int main (int argc, char * argv [])
       memset (BITNO_state[nreg], 0, sizeof (BITNO_state[nreg]));
       memset (WORDNO_state[nreg], 0, sizeof (WORDNO_state[nreg]));
 
-      SNR_lights[nreg] = createLightArray (3, SNR_state[nreg]);
-      RNR_lights[nreg] = createLightArray (15, RNR_state[nreg]);
+      SNR_lights[nreg] = createLightArray (15, SNR_state[nreg]);
+      RNR_lights[nreg] = createLightArray (3, RNR_state[nreg]);
       BITNO_lights[nreg] = createLightArray (1, BITNO_state[nreg]);
       WORDNO_lights[nreg] = createLightArray (18, WORDNO_state[nreg]);
 
