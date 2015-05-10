@@ -7,8 +7,11 @@
 #include "dps8_iom.h"
 #include "fnpp.h"
 
+static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
+
 static int fnpIOMCmd (UNIT * unitp, pcw_t * p);
 //static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc);
 
@@ -49,6 +52,17 @@ static DEBTAB fnpDT [] =
 
 static MTAB fnpMod [] =
   {
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "CONFIG",     /* print string */
+      "CONFIG",         /* match string */
+      fnpSetConfig,         /* validation routine */
+      fnpShowConfig, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
@@ -95,14 +109,15 @@ DEVICE fnpDev = {
     NULL,             // device description
 };
 
-static struct fnpState
+static struct fnpUnitData
   {
 //-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
 //-    uint8 * bufp;
 //-    t_mtrlnt tbc; // Number of bytes read into buffer
 //-    uint words_processed; // Number of Word36 processed from the buffer
 //-    int rec_num; // track tape position
-  } fnpState [N_FNP_UNITS_MAX];
+    uint mailboxAddress;
+  } fnpUnitData [N_FNP_UNITS_MAX];
 
 static struct
   {
@@ -130,7 +145,7 @@ int lookupFnpsIomUnitNumber (int fnpUnitNum)
 
 void fnpInit(void)
   {
-    memset(fnpState, 0, sizeof(fnpState));
+    memset(fnpUnitData, 0, sizeof(fnpUnitData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       cables_from_ioms_to_fnp [i] . iomUnitNum = -1;
     fnppInit ();
@@ -176,7 +191,7 @@ static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
     int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
-//-    struct fnpState * tape_statep = & fnpState [fnpUnitNum];
+    //struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
     * disc = false;
 
     int chan = pcwp-> chan;
@@ -224,6 +239,7 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
     int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
@@ -231,7 +247,9 @@ static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
 // Ignore a CMD 051 in the PCW
     if (pcwp -> dev_cmd == 051)
       return 1;
+#if 0
 sim_printf ("fnpIOMCmd\n");
+sim_printf ("  [%lld]\n", sim_timell ());
 sim_printf (" pcwp -> dev_cmd %02o\n", pcwp -> dev_cmd);
 sim_printf (" pcwp -> dev_code %02o\n", pcwp -> dev_code);
 sim_printf (" pcwp -> ext %02o\n", pcwp -> ext);
@@ -245,83 +263,17 @@ sim_printf (" pcwp -> ptPtr %0o\n", pcwp -> ptPtr);
 sim_printf (" pcwp -> ptp %0o\n", pcwp -> ptp);
 sim_printf (" pcwp -> pcw64_pge %0o\n", pcwp -> pcw64_pge);
 sim_printf (" pcwp -> aux %0o\n", pcwp -> aux);
+#endif
     bool disc;
-sim_printf ("1 st call to fnpCmd\n");
+//sim_printf ("1 st call to fnpCmd\n");
     fnpCmd (unitp, pcwp, & disc);
 
-    // ctrl of the pcw is observed to be 0 even when there are idcws in the
-    // list so ignore that and force it to 2.
-    //uint ctrl = pcwp -> control;
-    uint ctrl = 2;
+// peek at the mailbox
 
-    int ptro = 0;
-//#define PTRO
-sim_printf ("starting list service loop\n");
-#ifdef PTRO
-    while ((! disc) /* && ctrl == 2 */ && ! ptro)
-#else
-    while ((! disc) && ctrl == 2)
-#endif
-      {
-        dcw_t dcw;
-sim_printf ("calling list service\n");
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
-sim_printf ("list service returned %d %012llo\n", rc, dcw . raw);
-        if (rc)
-          {
-            break;
-          }
-#if 0
-        if (dcw . type != idcw)
-          {
-sim_printf ("list service not idcw\n");
-// 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-            chan_data -> stati = 04501; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
-            break;
-          }
-#endif
+    word36 mbx0;
+    fetch_abs_word (p -> mailboxAddress, & mbx0, "fnpIOMCmd");
+    sim_printf ("mbx %08o:%012llo\n", p -> mailboxAddress, mbx0);
 
-// The dcw does not necessarily have the same dev_code as the pcw....
-
-        if (dcw . type == idcw)
-          {
-            fnpUnitNum = findFNPUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
-            if (fnpUnitNum < 0)
-              {
-sim_printf ("list service invalid device code\n");
-                // 04502 : COMMAND REJECTED, invalid device code
-                iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-                chan_data -> stati = 04502; 
-                chan_data -> dev_code = dcw . fields . instr. dev_code;
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                //status_service (iomUnitNum, pcwp -> chan, false);
-                break;
-              }
-          }
-
-        unitp = & fnp_unit [fnpUnitNum];
-sim_printf ("next call to fnpCmd; instr is %012llo\n", dcw . raw);
-
-        if (dcw . type == idcw)
-          {
-            fnpCmd (unitp, & dcw . fields . instr, & disc);
-          }
-        else if (dcw . type == idcw)
-          {
-            //fnpIOT (unitp, & dcw . fields . ddcw, & disc);
-          }
-        else
-          {
-            sim_printf ("fnpIOMCmd dazed and confused\n");
-            sim_err ("fnpIOMCmd dazed and confused\n");
-          }
-        ctrl = dcw . fields . instr . control;
-//sim_printf ("disc %d ctrl %d\n", disc, ctrl);
-      }
 sim_printf ("end of list service; sending terminate interrupt\n");
     send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
@@ -367,7 +319,7 @@ static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uin
 //--     UNIT * unitp = & devp -> units [dev_unit_num];
 //--     // BUG: no dev_code
 //--     
-    struct fnpState * tape_statep = & fnpState [fnpUnitNum];
+    struct fnpUnitData * tape_statep = & fnpUnitData [fnpUnitNum];
     
     if (tape_statep -> io_mode == no_mode)
       {
@@ -449,7 +401,7 @@ static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uin
 static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                               UNUSED int val, UNUSED void * desc)
   {
-    sim_printf("Number of TAPE units in system is %d\n", fnpDev . numunits);
+    sim_printf("Number of FNO units in system is %d\n", fnpDev . numunits);
     return SCPE_OK;
   }
 
@@ -463,3 +415,282 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
     return fnppSetNunits (uptr, value, cptr, desc);
   }
 
+static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
+                             UNUSED void * desc)
+  {
+    uint fnpUnitNum = FNP_UNIT_NUM (uptr);
+    if (fnpUnitNum >= fnpDev . numunits)
+      {
+        sim_debug (DBG_ERR, & fnpDev, 
+                   "fnpShowConfig: Invalid unit number %d\n", fnpUnitNum);
+        sim_printf ("error: invalid unit number %u\n", fnpUnitNum);
+        return SCPE_ARG;
+      }
+
+    sim_printf ("FNP unit number %u\n", fnpUnitNum);
+    struct fnpUnitData * p = fnpUnitData + fnpUnitNum;
+
+    sim_printf ("FNP Mailbox Address:         %04o(8)\n", p -> mailboxAddress);
+#if 0
+    char * os = "<out of range>";
+    switch (p -> configSwOS)
+      {
+        case CONFIG_SW_STD_GCOS:
+          os = "Standard GCOS";
+          break;
+        case CONFIG_SW_EXT_GCOS:
+          os = "Extended GCOS";
+          break;
+        case CONFIG_SW_MULTICS:
+          os = "Multics";
+          break;
+      }
+    char * blct = "<out of range>";
+    switch (p -> configSwBootloadCardTape)
+      {
+        case CONFIG_SW_BLCT_CARD:
+          blct = "CARD";
+          break;
+        case CONFIG_SW_BLCT_TAPE:
+          blct = "TAPE";
+          break;
+      }
+
+    sim_printf ("Allowed Operating System: %s\n", os);
+    sim_printf ("FNP Base Address:         %03o(8)\n", p -> configSwIomBaseAddress);
+    sim_printf ("Multiplex Base Address:   %04o(8)\n", p -> configSwMultiplexBaseAddress);
+    sim_printf ("Bootload Card/Tape:       %s\n", blct);
+    sim_printf ("Bootload Tape Channel:    %02o(8)\n", p -> configSwBootloadMagtapeChan);
+    sim_printf ("Bootload Card Channel:    %02o(8)\n", p -> configSwBootloadCardrdrChan);
+    sim_printf ("Bootload Port:            %02o(8)\n", p -> configSwBootloadPort);
+    sim_printf ("Port Address:            ");
+    int i;
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %03o", p -> configSwPortAddress [i]);
+    sim_printf ("\n");
+    sim_printf ("Port Interlace:          ");
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortInterface [i]);
+    sim_printf ("\n");
+    sim_printf ("Port Enable:             ");
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortEnable [i]);
+    sim_printf ("\n");
+    sim_printf ("Port Sysinit Enable:     ");
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortSysinitEnable [i]);
+    sim_printf ("\n");
+    sim_printf ("Port Halfsize:           ");
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortHalfsize [i]);
+    sim_printf ("\n");
+    sim_printf ("Port Storesize:           ");
+    for (i = 0; i < N_FNP_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortStoresize [i]);
+    sim_printf ("\n");
+#endif
+ 
+    return SCPE_OK;
+  }
+
+//
+// set fnp0 config=<blah> [;<blah>]
+//
+//    blah = mailbox=n
+//
+//--//           multiplex_base=n
+//--//           os=gcos | gcosext | multics
+//-//---//           boot=card | tape
+//--//           tapechan=n
+//-//---//           cardchan=n
+//--//           scuport=n
+//--//           port=n   // set port number for below commands
+//--//             addr=n
+//--//             interlace=n
+//--//             enable=n
+//--//             initenable=n
+//--//             halfsize=n
+//--//             storesize=n
+//--//          bootskip=n // Hack: forward skip n records after reading boot record
+
+#if 0
+static config_value_list_t cfg_os_list [] =
+  {
+    { "gcos", CONFIG_SW_STD_GCOS },
+    { "gcosext", CONFIG_SW_EXT_GCOS },
+    { "multics", CONFIG_SW_MULTICS },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_boot_list [] =
+  {
+    { "card", CONFIG_SW_BLCT_CARD },
+    { "tape", CONFIG_SW_BLCT_TAPE },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_base_list [] =
+  {
+    { "multics", 014 },
+    { "multics1", 014 }, // boot fnp
+    { "multics2", 020 },
+    { "multics3", 024 },
+    { "multics4", 030 },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_size_list [] =
+  {
+    { "32", 0 },
+    { "64", 1 },
+    { "128", 2 },
+    { "256", 3 },
+    { "512", 4 },
+    { "1024", 5 },
+    { "2048", 6 },
+    { "4096", 7 },
+    { "32K", 0 },
+    { "64K", 1 },
+    { "128K", 2 },
+    { "256K", 3 },
+    { "512K", 4 },
+    { "1024K", 5 },
+    { "2048K", 6 },
+    { "4096K", 7 },
+    { "1M", 5 },
+    { "2M", 6 },
+    { "4M", 7 },
+    { NULL, 0 }
+  };
+#endif
+
+static config_list_t fnp_config_list [] =
+  {
+    /*  0 */ { "mailbox", 0, 07777, NULL },
+#if 0
+    /*  0 */ { "os", 1, 0, cfg_os_list },
+    /*  1 */ { "boot", 1, 0, cfg_boot_list },
+    /*  2 */ { "fnp_base", 0, 07777, cfg_base_list },
+    /*  3 */ { "multiplex_base", 0, 0777, NULL },
+    /*  4 */ { "tapechan", 0, 077, NULL },
+    /*  5 */ { "cardchan", 0, 077, NULL },
+    /*  6 */ { "scuport", 0, 07, NULL },
+    /*  7 */ { "port", 0, N_FNP_PORTS - 1, NULL },
+    /*  8 */ { "addr", 0, 7, NULL },
+    /*  9 */ { "interlace", 0, 1, NULL },
+    /* 10 */ { "enable", 0, 1, NULL },
+    /* 11 */ { "initenable", 0, 1, NULL },
+    /* 12 */ { "halfsize", 0, 1, NULL },
+    /* 13 */ { "store_size", 0, 7, cfg_size_list },
+#endif
+
+    { NULL, 0, 0, NULL }
+  };
+
+static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
+  {
+    uint fnpUnitNUm = FNP_UNIT_NUM (uptr);
+    if (fnpUnitNUm >= fnpDev . numunits)
+      {
+        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitNUm);
+        sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitNUm);
+        return SCPE_ARG;
+      }
+
+    struct fnpUnitData * p = fnpUnitData + fnpUnitNUm;
+
+    static uint port_num = 0;
+
+    config_state_t cfg_state = { NULL, NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfgparse ("fnpSetConfig", cptr, fnp_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+
+            case -1: // done
+              break;
+            case 0: // OS
+              p -> mailboxAddress = v;
+              break;
+
+#if 0
+            case 1: // BOOT
+              p -> configSwBootloadCardTape = v;
+              break;
+
+            case 2: // FNP_BASE
+              p -> configSwIomBaseAddress = v;
+              break;
+
+            case 3: // MULTIPLEX_BASE
+              p -> configSwMultiplexBaseAddress = v;
+              break;
+
+            case 4: // TAPECHAN
+              p -> configSwBootloadMagtapeChan = v;
+              break;
+
+            case 5: // CARDCHAN
+              p -> configSwBootloadCardrdrChan = v;
+              break;
+
+            case 6: // SCUPORT
+              p -> configSwBootloadPort = v;
+              break;
+
+            case 7: // PORT
+              port_num = v;
+              break;
+
+#if 0
+                // all of the remaining assume a valid value in port_num
+                if (/* port_num < 0 || */ port_num > 7)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: cached PORT value out of range: %d\n", port_num);
+                    sim_printf ("error: fnpSetConfig: cached PORT value out of range: %d\n", port_num);
+                    break;
+                  } 
+#endif
+            case 8: // ADDR
+              p -> configSwPortAddress [port_num] = v;
+              break;
+
+            case 9: // INTERLACE
+              p -> configSwPortInterface [port_num] = v;
+              break;
+
+            case 10: // ENABLE
+              p -> configSwPortEnable [port_num] = v;
+              break;
+
+            case 11: // INITENABLE
+              p -> configSwPortSysinitEnable [port_num] = v;
+              break;
+
+            case 12: // HALFSIZE
+              p -> configSwPortHalfsize [port_num] = v;
+              break;
+
+            case 13: // STORE_SIZE
+              p -> configSwPortStoresize [port_num] = v;
+              break;
+#endif
+
+            default:
+              sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: fnpSetConfig: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+          } // switch
+        if (rc < 0)
+          break;
+      } // process statements
+    cfgparse_done (& cfg_state);
+    return SCPE_OK;
+  }
