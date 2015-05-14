@@ -180,7 +180,7 @@ zzzCFLAGS += \
 # Enable M[] as shared memory segment
 #LDFLAGS += -lrt
 
-LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
+LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
 # simh requires -ldl
 # Cygwin seems to need...
@@ -279,7 +279,7 @@ android :
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq
+LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
