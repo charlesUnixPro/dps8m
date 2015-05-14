@@ -1,6 +1,6 @@
 //#define IOMDBG
 //#define IOMDBG1
-//#define DBGFNP
+#define DBGFNP
 //
 // \file dps8_iom.c
 // \project dps8
@@ -532,6 +532,7 @@ static void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
     p -> lpw23_srel = getbits36 (word0, 23, 1);
     p -> tally = getbits36 (word0, 24, 12); // initial value treated as unsigned
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("lpw %012llo\n", word0);
 sim_printf (" dcw-ptr %06o\n", p -> dcw_ptr);
 sim_printf (" ires %o\n", p -> ires);
@@ -541,6 +542,7 @@ sim_printf (" nc %o\n", p -> nc);
 sim_printf (" trunout %o\n", p -> trunout);
 sim_printf (" lpw23_srel %o\n", p -> lpw23_srel);
 sim_printf (" tally %06o\n", p -> tally);
+}
 #endif
     
     // sim_debug (DBG_TRACE, & iom_dev, "lpw ae(20) %o srel(23) %o\n", p -> lpw20_ae, p -> lpw23_srel);
@@ -549,7 +551,7 @@ sim_printf (" tally %06o\n", p -> tally);
         word36 word1;
         fetch_abs_word (addr +1, & word1, __func__);
 #ifdef DBGFNP
-sim_debug (DBG_TRACE, & iom_dev, "lpw1 %012llo\n", word1);
+sim_debug (DBG_CAC, & iom_dev, "lpw1 %012llo\n", word1);
 #endif
         // XXX Assuming paged mode
         p -> lbnd = getbits36 (word1, 0, 18);
@@ -564,8 +566,10 @@ sim_debug (DBG_TRACE, & iom_dev, "lpw1 %012llo\n", word1);
         //p -> idcw = (uint)-1;
       }
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf (" lbnd %06o\n", p -> lbnd);
 sim_printf (" size %06o\n", p -> size);
+}
 #endif
     //if (p -> lpw20_ae || p -> lpw23_srel)
 #if 0
@@ -617,8 +621,10 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
         p -> pcw64_pge = getbits36 (word1, 28, 1);
         p -> aux = getbits36 (word1, 29, 1);
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 if (p -> ptp)
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
+}
 #endif
 //if (p -> ptp)
     //iomFault (iomUnitNum, 2, "cac", 1, iomFsrList, 016);
@@ -635,7 +641,9 @@ sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_
           }
 
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
+}
 #endif
         sim_debug (DBG_TRACE, & iom_dev, 
                    "decode_idcw IOMB pcw ptp %o ptPtr %06o pcw64_pge %o aux %o\n",
@@ -711,6 +719,7 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
 // XXX ticket #4
     word36 word;
 
+    sim_debug (DBG_CAC, & cpu_dev, "fetchAndParseDCW addr %08o chan_mode %d\n", addr, chan_data -> chan_mode);
     if (chan_data -> chan_mode == cm_paged_LPW_seg_DCW) // state 4
       {
 #ifdef IOMDBG1
@@ -1744,7 +1753,9 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
 
     uint chanloc = mbx_loc (iomUnitNum, chanNum);
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("iomListService iomUnitNum %o chanNum %d (%o) chanloc %08o\n", iomUnitNum, chanNum, chanNum, chanloc);
+}
 #endif
 
     // Eliding scratchpad, so always first service.
@@ -1845,6 +1856,7 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
 #endif
 
     //sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
+    sim_debug (DBG_CAC, & cpu_dev, "chan_mode %d\n", chan_data -> chan_mode);
     if (chan_data -> chan_mode == cm_LPW_init_state)
       {
 // It is known that if PGE is set, the mode switch is in paged mode
@@ -2170,8 +2182,8 @@ sim_printf ("setting addressExtension to %o from PCW\n",
 //if (chanNum == 012) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
 //if (chanNum == 012) sim_printf ("[%lld]\n", sim_timell ());
 
-    //if_sim_debug (DBG_DEBUG, & iom_dev)
-      //iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
+    if_sim_debug (DBG_DEBUG, & iom_dev)
+      iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
 //iomAnalyzeMbx (NULL, iomUnit + iomUnitNum, 0, "");
 
     sim_debug (DBG_NOTIFY, & iom_dev, "IOM dispatch to chan %o\n", chanNum);
@@ -2331,11 +2343,13 @@ static int doConnectChan (uint iomUnitNum)
           }
     
 #ifdef DBGFNP
+if_sim_debug (DBG_CAC, & cpu_dev) {
 if (pcw . chan == 020) // the fnp
   {
     sim_printf ("fnp in connect channel; iefpFinalAddress %08o\n", iefpFinalAddress);
     sim_printf ("fnp in connect channel; lpwp -> dcw_ptr %08o\n", lpwp -> dcw_ptr);
   }
+}
 #endif
 
 // This is not an issue as of 'bce (boot)' as it as only been seen in

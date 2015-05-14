@@ -78,7 +78,7 @@ static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
 static t_stat setSearchPath (int32 arg, char * buf);
 static t_stat absAddrN (int segno, uint offset);
-static t_stat virtAddrN (uint address);
+//static t_stat virtAddrN (uint address);
 static t_stat virtAddr (int32 arg, char * buf);
 static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
@@ -96,6 +96,7 @@ static t_stat dfx2entry (int32 arg, char * buf);
 static t_stat mdfx3entry (int32 arg, char * buf);
 static t_stat smfx1entry (int32 arg, char * buf);
 #endif
+static t_stat searchMemory (UNUSED int32 arg, char * buf);
 
 static CTAB dps8_cmds[] =
 {
@@ -149,6 +150,8 @@ static CTAB dps8_cmds[] =
     {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
 #endif
     
+    {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -594,10 +597,10 @@ void listSource (char * compname, word18 offset, uint dflag)
         FILE * listing = fopen (path, "r");
         if (listing)
           {
-            char line [133];
+            char line [1025];
             if (feof (listing))
               goto fileDone;
-            fgets (line, 132, listing);
+            fgets (line, 1024, listing);
             if (strncmp (line, "ASSEMBLY LISTING", 16) == 0)
               {
                 // Search ALM listing file
@@ -607,7 +610,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                 //     000226  4a  4 00010 7421 20  \tstx2]tbootload_0$entry_stack_ptr,id
                 while (! feof (listing))
                   {
-                    fgets (line, 132, listing);
+                    fgets (line, 1024, listing);
                     if (strncmp (line, offset_str, offset_str_len) == 0)
                       {
                         if (! dflag)
@@ -630,7 +633,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                 bool foundTable = false;
                 while (! feof (listing))
                   {
-                    fgets (line, 132, listing);
+                    fgets (line, 1024, listing);
                     if (strncmp (line, "   LINE    LOC", 14) != 0)
                       continue;
                     foundTable = true;
@@ -655,7 +658,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                         int loc [7];
                         char linenos [7] [8];
                         memset (linenos, 0, sizeof (linenos));
-                        fgets (line, 132, listing);
+                        fgets (line, 1024, listing);
                         // sometimes the leading columns are blank...
                         while (strncmp (line, "                 ", 8 + 6 + 3) == 0)
                           memmove (line, line + 8 + 6 + 3, strlen (line + 8 + 6 + 3));
@@ -713,7 +716,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                     rewind (listing);
                     while (! feof (listing))
                       {
-                        fgets (line, 132, listing);
+                        fgets (line, 1024, listing);
                         if (strncmp (line, "\f\tSOURCE", 8) == 0)
                           goto fileDone; // end of source code listing
                         char prefix [10];
@@ -736,7 +739,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                     rewind (listing);
                     while (! feof (listing))
                       {
-                        fgets (line, 132, listing);
+                        fgets (line, 1024, listing);
                         if (strncmp (line, offset_str + 4, offset_str_len - 4) == 0)
                           {
                             if (! dflag)
@@ -756,6 +759,22 @@ fileDone:
           } // if (listing)
       }
   }
+
+// SEARCHMEMORY valye
+
+static t_stat searchMemory (UNUSED int32 arg, char * buf)
+  {
+    word36 value;
+    if (sscanf (buf, "%llo", & value) != 1)
+      return SCPE_ARG;
+    
+    uint i;
+    for (i = 0; i < MEMSIZE; i ++)
+      if ((M [i] & DMASK) == value)
+        sim_printf ("%08o\n", i);
+    return SCPE_OK;
+  }
+
 
 // ABS segno:offset
 
@@ -1182,6 +1201,7 @@ static t_stat sbreak (int32 arg, char * buf)
     return rc;
   }
 
+t_stat virtAddrN (uint address);
 
 // VIRTUAL address
 
@@ -1193,7 +1213,7 @@ static t_stat virtAddr (UNUSED int32 arg, char * buf)
     return virtAddrN (address);
   }
 
-static t_stat virtAddrN (uint address)
+t_stat virtAddrN (uint address)
   {
     if (DSBR.U) {
         for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)

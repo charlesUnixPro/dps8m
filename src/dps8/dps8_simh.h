@@ -2,7 +2,7 @@
   if ( \
       sim_deb && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
-      ((sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR) && \
+      ((dptr != & cpu_dev) || (sim_deb_segno == NO_SUCH_SEGNO) || sim_deb_segno == PPR . PSR) && \
       sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) \
     ) 

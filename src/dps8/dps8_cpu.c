@@ -314,7 +314,7 @@ static void printSDW0 (_sdw0 *SDW)
     sim_printf ("%s\n", strSDW0 (SDW));
   }
 
-static t_stat dpsCmd_DumpSegmentTable()
+t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
