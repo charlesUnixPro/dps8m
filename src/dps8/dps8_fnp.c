@@ -471,8 +471,8 @@ sim_printf ("mbx %08o:%012llo\n", p -> mailboxAddress, dia_pcw);
 
     if (command == 072) // bootload
       {
-#if 0
 sim_printf ("bootload\n");
+#if 0
         uint a6_23 = getbits36 (dia_pcw, 0, 18);
         uint a0_2 = getbits36 (dia_pcw, 24, 3);
         uint a3_5 = getbits36 (dia_pcw, 27, 3);
