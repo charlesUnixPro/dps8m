@@ -1,0 +1,150 @@
+	bool	connect_channel, 2
+	bool	fnp_channel, 20
+
+	bool	mailbox_base_address, 01400
+	bool	connect_mbx, 01410	" base + 4 * chan_num
+	bool	fnp_mbx, 01440
+
+          bool	dia_mbx, 04500
+        
+	bool	request_status, 00
+	bool	fnp_dev_code, 0
+
+	bool	bootload, 072
+" Entry vector
+
+	org	0
+	tra	test
+
+" Interrupt pair
+
+	org	24
+	scu
+	rcu
+
+" Connect Channel Mailbox
+
+	org	connect_mbx
+connect_lpw:
+	oct	0		" LPW
+	oct	0		" LPWE
+	oct	0		" SCW
+	oct	0		" DCW
+
+" FNP Channel Mailbox
+
+	org	fnp_mbx
+fnp_lpw:
+	oct	0		" LPW
+	oct	0		" LPWE
+	oct	0		" SCW
+	oct	0		" DCW
+
+" FNP DIA mailboxes
+
+	org	dia_mbx
+
+dia_pcw:		vfd	24/0, 6/0, 6/bootload
+mailbox_requests:	oct	0
+term_inpt_mpx_wd:	oct	0
+last_mbx_req_count:	oct	0
+num_in_use:	oct	0
+mbx_used_flags:	oct	0
+crash_data0:	oct	0
+crash_data1:	oct	0
+
+" dn335 submbx 0
+
+word1:		vfd	18/image, 1/0, 2/0, 3/0, 1/0, 3/0, 3/0, 6/0
+word2:		oct	0
+command_data_0:	oct	0
+command_data_1:	oct	0
+command_data_2:	oct	0
+word6:		oct	0
+pad3_0:		oct	0
+pad3_1:		oct	0
+
+" dn335 submbx 1-7
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0
+
+" fnp submbx 0-3
+
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		oct	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+" Main procedure
+
+	org	010000
+test:
+
+" Print "FNP test"
+
+	emcall	8
+	eaa	msg1
+	emcall	16
+
+" Mask interrupts
+
+	lda	12, dl	" Disable interrupts 0-15, enable ports 0, 1
+	ldq	0, dl	" Disable interrupts 16-31
+	smcm	0	" Port zero
+
+" Print "Expect bootload"
+
+	eaa	msg2
+	emcall	16
+
+" setup the DIA mailbox
+
+" Send an Bootload
+
+	lda	lpw1
+	sta	connect_lpw
+	cioc	cioc_port
+
+
+
+" exit
+	emcall	18
+
+" Data
+
+cioc_port:
+	dec	0
+
+	even
+
+	bool	non_data,2
+	bool	terminate,0
+
+" ALERT
+
+lpw1:	vfd	18/pwc1,6/4,12/0
+
+	even
+pwc1:
+	vfd	6/request_status,6/fnp_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	vfd	9/fnp_channel,27/0
+
+msg1:	aci	'FNP test\n\0'
+
+msg2:	aci	'Expect bootload\n\0'
+
+
+image:	oct	0
