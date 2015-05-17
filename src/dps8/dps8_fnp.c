@@ -5,7 +5,8 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
-#include "fnpp.h"
+#include "fnp_ipc.h"
+//#include "fnpp.h"
 
 static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
@@ -150,7 +151,7 @@ void fnpInit(void)
     memset(fnpUnitData, 0, sizeof(fnpUnitData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       cables_from_ioms_to_fnp [i] . iomUnitNum = -1;
-    fnppInit ();
+    //fnppInit ();
   }
 
 static t_stat fnpReset (DEVICE * dptr)
@@ -159,7 +160,7 @@ static t_stat fnpReset (DEVICE * dptr)
       {
         sim_cancel (& fnp_unit [i]);
       }
-    fnppReset (dptr);
+    //fnppReset (dptr);
     return SCPE_OK;
   }
 
@@ -189,6 +190,15 @@ t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num, int dev_code)
     return SCPE_OK;
   }
  
+static void tellFNP (UNUSED int fnpUnitNum, char * msg)
+  {
+    sim_printf ("tellFNP (%s)\n", msg);
+    t_stat stat = ipc (ipcWhisperTx, "fnp-d", msg, NULL, 0);
+    if (stat != SCPE_OK)
+      sim_printf ("tellFNP returned %d\n", stat);
+    return;
+  }
+
 static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
@@ -471,6 +481,7 @@ sim_printf ("mbx %08o:%012llo\n", p -> mailboxAddress, dia_pcw);
 
     if (command == 072) // bootload
       {
+        tellFNP (fnpUnitNum, "bootload");
 sim_printf ("bootload\n");
 #if 0
         uint a6_23 = getbits36 (dia_pcw, 0, 18);
@@ -900,7 +911,8 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
     if (n < 1 || n > N_FNP_UNITS_MAX)
       return SCPE_ARG;
     fnpDev . numunits = (uint32) n;
-    return fnppSetNunits (uptr, value, cptr, desc);
+    //return fnppSetNunits (uptr, value, cptr, desc);
+    return SCPE_OK;
   }
 
 static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 

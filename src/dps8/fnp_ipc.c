@@ -500,8 +500,8 @@ static t_stat ipc_set_node (UNIT *uptr, int32 val, char *cval, void *desc)
     {
         stripquotes(cval);
         
-        if (!startsWith(cval, "fnp"))
-            sim_printf("WARNING: Node name <%s> does not begin with 'fnp'\n", cval);
+        if (!startsWith(cval, "cpu"))
+            sim_printf("WARNING: Node name <%s> does not begin with 'cpu'\n", cval);
         
         strcpy(fnpName, cval);
 #ifdef VM_FNP
