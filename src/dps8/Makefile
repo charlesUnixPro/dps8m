@@ -300,7 +300,7 @@ slte.inc : system_book_12_3.ascii
 locallibs_then_dps8 :
 	(cd ../simhv40-beta; $(MAKE))
 	(cd ../decNumber; $(MAKE))
-	$(MAKE) zmq
+	#$(MAKE) zmq
 	$(MAKE) dps8
 
 # Other Targets

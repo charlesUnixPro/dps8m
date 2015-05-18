@@ -55,7 +55,11 @@
 // Enable RALR on non-APU transfers and RCU.
 //#define AGGRESSIVE_RING_ALARM
 
+// Enable blinkenLights interface
 #define MULTIPASS
+
+// Enable IPC
+#define VM_DPS8
 
 #include "sim_defs.h"                                   /* simulator defns */
 

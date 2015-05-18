@@ -193,6 +193,18 @@ t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num, int dev_code)
 static void tellFNP (UNUSED int fnpUnitNum, char * msg)
   {
     sim_printf ("tellFNP (%s)\n", msg);
+
+#define RETRIES 2048
+    int retry;
+    for (retry = 0; retry < RETRIES; retry ++)
+      {
+        if (findPeer ("fnp-d"))
+          break;
+        usleep (1000);
+      }
+    if (retry >= RETRIES)
+      sim_printf ("FNP not found....\n");
+
     t_stat stat = ipc (ipcWhisperTx, "fnp-d", msg, NULL, 0);
     if (stat != SCPE_OK)
       sim_printf ("tellFNP returned %d\n", stat);
@@ -561,7 +573,7 @@ sim_printf ("tally %d (%o)\n", tally, tally);
 
 
 
-        dmpmbx (p -> mailboxAddress);
+        //dmpmbx (p -> mailboxAddress);
         uint cell = getbits36 (dia_pcw, 27, 3);
 sim_printf ("interrupt FNP\n");
 sim_printf ("mbx #%d\n", cell);
@@ -591,6 +603,21 @@ sim_printf ("mbx #%d\n", cell);
               {
                 switch (op_code)
                   {
+                    case  3: // dont_accept_calls
+                      {
+                        sim_printf ("fnp don'taccept calls\n");
+                        sim_printf ("  dn355_no %d\n", dn355_no);
+                        sim_printf ("  is_hsla %d\n", is_hsla);
+                        sim_printf ("  la_no %d\n", la_no);
+                        sim_printf ("  slot_no %d\n", slot_no);
+                        sim_printf ("  terminal_id %d\n", terminal_id);
+                        word36 command_data0 = smbxp -> command_data [0];
+                        uint bufferAddress = getbits36 (command_data0, 0, 18);
+                        sim_printf ("  buffer address %06o\n", bufferAddress);
+                        tellFNP (fnpUnitNum, "dont_accept_calls");
+                      }
+                      break;
+
                     case  4: // accept_calls
                       {
                         sim_printf ("fnp accept calls\n");
@@ -602,7 +629,7 @@ sim_printf ("mbx #%d\n", cell);
                         word36 command_data0 = smbxp -> command_data [0];
                         uint bufferAddress = getbits36 (command_data0, 0, 18);
                         sim_printf ("  buffer address %06o\n", bufferAddress);
-                        // call fnp (accept calls);
+                        tellFNP (fnpUnitNum, "accept_calls");
                       }
                       break;
 
@@ -626,6 +653,10 @@ sim_printf ("mbx #%d\n", cell);
                               {
                                 sim_printf ("fnp alter paramter Listen %d\n", flag);
                                 // call fno (alter parameter listen) // XX
+                                uint bufsz =  getbits36 (smbxp -> command_data [0], 18, 18);
+                                char cmd [256];
+                                sprintf (cmd, "listen %d %d %d", flag, slot_no, bufsz);
+                                tellFNP (fnpUnitNum, cmd);          
                               }
                             break;
 
@@ -685,7 +716,6 @@ sim_printf ("mbx #%d\n", cell);
                     case  0: // terminal_accepted
                     case  1: // disconnect_this_line
                     case  2: // disconnect_all_lines
-                    case  3: // dont_accept_calls
                     case  5: // input_accepted
                     case  6: // set_line_type
                     case  7: // enter_receive
@@ -769,6 +799,7 @@ sim_printf ("mbx #%d\n", cell);
     else
       {
 fail:
+        dmpmbx (p -> mailboxAddress);
         putbits36 (& dia_pcw, 18, 1, 1); // set bit 18
         store_abs_word (p -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }

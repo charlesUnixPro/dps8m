@@ -6,6 +6,16 @@
 //  Copyright (c) 2014 Harry Reed. All rights reserved.
 //
 
+#ifdef __GNUC__
+#define NO_RETURN   __attribute__ ((noreturn))
+#define UNUSED      __attribute__ ((unused))
+#else
+#define NO_RETURN
+#define UNUSED
+#endif
+
+#define VM_DPS8
+
 #ifdef VM_FNP
 #include "fnp_defs.h"
 #include "fnp_utils.h"
@@ -51,7 +61,7 @@ t_stat ipc_reset (DEVICE *dptr);
 DIB ipc_dib = { MUX_INT_CLK, MUX_INT_CLK, PI_CLK, &clk };
 #endif
 
-UNIT ipc_unit = { UDATA (&ipc_svc, UNIT_DISABLE, 0) };
+UNIT ipc_unit = { UDATA (&ipc_svc, UNIT_DISABLE, 0), 0, 0, 0, 0, 0, NULL, NULL  };
 
 static t_stat ipc_start (UNIT *uptr, int32 val, char *c, void *desc);
 static t_stat ipc_stop  (UNIT *uptr, int32 val, char *c, void *desc);
@@ -63,9 +73,9 @@ static t_stat ipc_show_grp(FILE *st, UNIT *uptr, int32 val, void *desc);
 static t_stat ipc_restart  (UNIT *uptr, int32 val, char *c, void *desc);
 static t_stat ipc_show_peers(FILE *st, UNIT *uptr, int32 val, void *desc);
 static t_stat ipc_remove_peers (UNIT *uptr, int32 val, char *c, void *desc);
-
+//static t_stat ipc_enter  (UNIT *uptr, int32 val, char *c, void *desc);
 MTAB ipc_mod[] = {
-    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0,  "TEST", NULL, NULL, &Test },              // show IPC test
+    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0,  "TEST", NULL, NULL, &Test, NULL, NULL },              // show IPC test
     {
         MTAB_XTD | MTAB_VDV | MTAB_VUN, /* mask */
         0,            /* match */
@@ -136,14 +146,26 @@ MTAB ipc_mod[] = {
         NULL,          /* value descriptor */
         NULL /* help */
     },
-    { 0 }
+#if 0
+    {
+        MTAB_XTD | MTAB_VDV | MTAB_VUN, /* mask */
+        0,            /* match */
+        (char *) "ENTER",     /* print string */
+        (char *) "ENTER",         /* match string */
+        ipc_enter,         /* validation routine */
+        NULL,               /* display routine */
+        NULL,          /* value descriptor */
+        NULL /* help */
+    },
+#endif
+    { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 };
 
 
 DEBTAB ipc_dbg[] = {
     {"TRACE",   DBG_IPCTRACE  },
     {"VERBOSE", DBG_IPCVERBOSE},
-    {0}
+    {NULL, 0}
 };
 
 
@@ -164,19 +186,25 @@ DEVICE ipc_dev = {
 #endif
     DEV_DIS | DEV_DISABLE | DEV_DEBUG,
     0,
-    ipc_dbg
+    ipc_dbg,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 };
 
 
 /* Unit service */
 
-t_stat ipc_svc (UNIT *uptr)
+t_stat ipc_svc (UNIT UNUSED *uptr)
 {
     return SCPE_OK;
 }
 
 /* Reset routine */
-t_stat ipc_reset (DEVICE *dptr)
+t_stat ipc_reset (DEVICE UNUSED *dptr)
 {
     //    if ((dptr->flags & DEV_DIS) == 0)
     //    {
@@ -375,7 +403,7 @@ bool isIPCEnabled()
     return !(ipc_dev.flags & DEV_DIS); // IPC disabled?
 }
 
-t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
+t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 UNUSED arg4)
 {
     //    if (!checkIPC())
     //        return SCPE_UDIS;
@@ -423,6 +451,7 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
             break;
             
         case ipcWhisperTx:
+#if 1
             if (arg1)   // WHISPER msg  (use last whisper peer)
             {
                 IPC_Peer *p1 = findPeer(stripquotes(trim(arg1)));    // fook for peer named 'name'
@@ -439,7 +468,7 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
                     strcpy(lastPeer, arg1);     // Peer name not found, assume arg1 is a peerID then...
                 }
             }
-            
+#endif
             zstr_sendx (actor, "WHISPER", arg2, NULL);
             break;
             
@@ -467,27 +496,27 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 arg4)
  */
 
 static
-t_stat Test (FILE *st, UNIT *uptr, int32 val, void *desc)
+t_stat Test (FILE UNUSED *st, UNIT UNUSED *uptr, int32 UNUSED val, void UNUSED *desc)
 {
     sim_printf("Test: IPC not enabled.\n");
     
     return ipc(ipcTest, 0, 0, 0, 0);
 }
 
-static t_stat ipc_start(UNIT *uptr, int32 val, char *cval, void *desc)
+static t_stat ipc_start(UNIT UNUSED *uptr, int32 UNUSED val, char UNUSED *cval, void UNUSED *desc)
 {
     return ipc(ipcStart, fnpName, 0, 0, 0);
 }
-static t_stat ipc_stop(UNIT *uptr, int32 val, char *cval, void *desc)
+static t_stat ipc_stop(UNIT UNUSED *uptr, int32 UNUSED val, char UNUSED *cval, void UNUSED *desc)
 {
     return ipc(ipcStop, 0, 0, 0, 0);
 }
-static t_stat ipc_show_node (FILE *st, UNIT *uptr, int32 val, void *desc)
+static t_stat ipc_show_node (FILE *st, UNIT UNUSED *uptr, int32 UNUSED val, void UNUSED *desc)
 {
     fprintf(st, "%s", fnpName);
     return SCPE_OK;
 }
-static t_stat ipc_set_node (UNIT *uptr, int32 val, char *cval, void *desc)
+static t_stat ipc_set_node (UNIT UNUSED *uptr, int32 UNUSED val, char *cval, void UNUSED *desc)
 {
     if (cval == NULL || *cval == 0)
     {
@@ -521,12 +550,12 @@ static t_stat ipc_set_node (UNIT *uptr, int32 val, char *cval, void *desc)
     
     return SCPE_OK;
 }
-static t_stat ipc_show_grp (FILE *st, UNIT *uptr, int32 val, void *desc)
+static t_stat ipc_show_grp (FILE UNUSED *st, UNIT UNUSED *uptr, int32 UNUSED val, void UNUSED *desc)
 {
     sim_printf("%s", fnpGroup);
     return SCPE_OK;
 }
-static t_stat ipc_set_grp (UNIT *uptr, int32 val, char *cval, void *desc)
+static t_stat ipc_set_grp (UNIT UNUSED *uptr, int32 UNUSED val, char UNUSED *cval, void UNUSED *desc)
 {
     stripquotes(cval);
     strcpy(fnpGroup, cval);
@@ -538,7 +567,8 @@ static t_stat ipc_set_grp (UNIT *uptr, int32 val, char *cval, void *desc)
     }
     return SCPE_OK;
 }
-static t_stat ipc_restart (UNIT *uptr, int32 val, char *cval, void *desc)
+
+static t_stat ipc_restart (UNIT UNUSED *uptr, int32 UNUSED val, char UNUSED *cval, void UNUSED *desc)
 {
     if (actor)
         ipc(ipcStop, 0, 0, 0, 0);    // kill IPC
@@ -547,7 +577,7 @@ static t_stat ipc_restart (UNIT *uptr, int32 val, char *cval, void *desc)
     return SCPE_OK;
 }
 
-static t_stat ipc_show_peers(FILE *st, UNIT *uptr, int32 val, void *desc)
+static t_stat ipc_show_peers(FILE UNUSED *st, UNIT UNUSED *uptr, int32 UNUSED val, void UNUSED *desc)
 {
     int n = HASH_COUNT(Peers);
     if (n == 0)
@@ -567,7 +597,7 @@ static t_stat ipc_show_peers(FILE *st, UNIT *uptr, int32 val, void *desc)
     }
     return SCPE_OK;
 }
-static t_stat ipc_remove_peers (UNIT *uptr, int32 val, char *c, void *desc)
+static t_stat ipc_remove_peers (UNIT UNUSED *uptr, int32 UNUSED val, char UNUSED *c, void UNUSED *desc)
 {
     int n = deletePeers();
     sim_printf("deleted %d peers\n", n);
@@ -577,7 +607,7 @@ static t_stat ipc_remove_peers (UNIT *uptr, int32 val, char *c, void *desc)
 /*
  * custom commands ...
  */
-t_stat ipc_shout (int32 arg, char *buf)
+t_stat ipc_shout (int32 UNUSED arg, char UNUSED *buf)
 {
     if (!isIPCEnabled())
     {
@@ -592,7 +622,7 @@ t_stat ipc_shout (int32 arg, char *buf)
     return ipc(ipcShoutTx, stripquotes(trim(buf)), 0, 0, 0);
 }
 
-t_stat ipc_whisper (int32 arg, char *buf)
+t_stat ipc_whisper (int32 UNUSED arg, char *buf)
 {
     if (!isIPCEnabled())
     {
