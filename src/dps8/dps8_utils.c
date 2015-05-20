@@ -1690,6 +1690,8 @@ char * strdupesc (const char * str)
           * p = '$';
         else if (p [1] == 'q')
           * p = '"';
+        else if (p [1] == 'z') // ^Z is eof (VAXism)
+          * p = '\004';
         else
           {
             p ++;
