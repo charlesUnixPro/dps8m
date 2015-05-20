@@ -29,6 +29,7 @@
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 #include "dps8_console.h"
+#include "dps8_fnp.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -1372,17 +1373,17 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
-    // IPC initalizatyion stuff
-      bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
+    // IPC initalization stuff
+    bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
-      ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
-      ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
-      if (!ipc_running)
-      {
-          sim_printf("Info: ");
-          ipc(ipcStart, fnpName,0,0,0);
-      }
-      
+    ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
+    ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+    if (!ipc_running)
+    {
+        sim_printf("Info: ");
+        ipc(ipcStart, fnpName,0,0,0);
+    }
+     
     // End if IPC init stuff
       
       
@@ -1452,6 +1453,8 @@ t_stat sim_instr (void)
         if (reason)
           //return reason;
           break;
+
+        fnpProcessEvent (); 
 
 #if 0
         if (sim_gtime () % 1024 == 0)

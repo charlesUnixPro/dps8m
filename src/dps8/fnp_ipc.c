@@ -479,6 +479,7 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 UNUSED arg4)
         case ipcWhisperRx:  // when we receive a peer-to-peer (whisper) message
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s: %s\n", arg1, arg2);
             ipc_printf("(RX WHISPER) %s/%s:<%s>\n", arg1, arg2, arg3);
+            diaCommand (arg1, arg2, arg3);
             break;
             
         case ipcTest:
