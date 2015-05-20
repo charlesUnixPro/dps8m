@@ -180,7 +180,7 @@ static int attn_hack = 0;
 static int mount_hack = 0;
 
 #ifdef USE_READ_LINE
-static void getConsoleInput (void);
+static bool getConsoleInput (void);
 #else
 static void check_keyboard (void);
 #endif
@@ -536,14 +536,20 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             console_state . have_eol = false;
 
 #ifdef USE_READ_LINE
-           getConsoleInput ();
+            bool eot = getConsoleInput ();
 
-          if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
-            {
-               chan_data -> stati = 04340;
-               sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
-               break;
-            }
+            if (eot)
+              {
+                chan_data -> stati = 04310;  // operator distracted
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: operator distracted\n");
+                break;
+              }
+            if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+              {
+                chan_data -> stati = 04340;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
+                break;
+              }
 #else
             // Read keyboard if we don't have an EOL from the operator
             // yet
@@ -1436,12 +1442,12 @@ static int con_iom_io (UNUSED UNIT * unitp, uint chan, UNUSED uint dev_code, uin
 //-- // ============================================================================
 
 #ifdef USE_READ_LINE
-static void getConsoleInput (void)
+static bool getConsoleInput (void)
   {
     if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
      {
         sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring keyboard.\n");
-        return;
+        return false;
       }
     // did we use up all of autop?
     if (console_state . autop != NULL && * console_state . autop == '\0')
@@ -1459,9 +1465,18 @@ static void getConsoleInput (void)
             if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
              {
                 sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring autoinput.\n");
-                return;
+                return false;
             }
             int c = * (console_state . autop);
+            if (c == 4) // eot
+              {
+                console_state . have_eol = true; // punting
+                free(console_state . auto_input);
+                console_state . auto_input = NULL;
+                console_state . autop = NULL;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got auto-input EOT\n");
+                return true;
+              }
             if (c == 0)
               {
                 console_state . have_eol = true; // punting
@@ -1481,7 +1496,7 @@ static void getConsoleInput (void)
             if (c == '\005')
               {
                 sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got <sim stop>\n");
-                return; // User typed ^E to stop simulation
+                return false; // User typed ^E to stop simulation
               }
             ++ console_state . autop;
 
@@ -1508,7 +1523,7 @@ eol:
                 //sim_putchar ('\r');
                 console_state . have_eol = true;
                 sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got EOL\n");
-                return;
+                return false;
               }
             else
               {
@@ -1528,8 +1543,13 @@ eol:
 
         sim_ttcmd ();
         //read_line_p (console_state . prompt, cbuf, sizeof (cbuf), stdin);/* read with prompt*/
-        read_line (cbuf, sizeof (cbuf), stdin);
+        bool eot = !read_line (cbuf, sizeof (cbuf), stdin);
         sim_ttrun ();
+        if (eot)
+          {
+            // sim_printf ("EOT\n");
+            return true;
+          }
         size_t l = strlen (cbuf);
         for (uint i = 0; i < l; i ++)
           {
@@ -1537,12 +1557,12 @@ eol:
             if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
              {
                 sim_debug (DBG_WARN, & opcon_dev, "getConsoleInput: Buffer full; ignoring keyboard.\n");
-                return;
+                return false;
             }
             if (c == 5)
               {
                 sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got <sim stop>\n");
-                return; // User typed ^E to stop simulation
+                return false; // User typed ^E to stop simulation
               }
 
             if (isprint (c))
@@ -1555,6 +1575,7 @@ eol:
             sim_printl ("%c", c);
           }
       }
+    return false;
   }
 #else
 /*
