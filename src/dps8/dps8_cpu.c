@@ -1439,6 +1439,16 @@ t_stat sim_instr (void)
 
     do
       {
+#if 0
+{
+static word36 last = 0;
+if (M [01007040] != last)
+{
+sim_printf ("[%lld] M[01007040] was %012llo now %012llo\n", sim_timell(), last, M [01007040]);
+last = M[01007040];
+}
+}
+#endif
 
         // XXX Don't trace Multics idle loop
         if (PPR.PSR != 061 && PPR.IC != 0307)
@@ -2220,7 +2230,8 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read   %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
@@ -2236,7 +2247,8 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] write  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2258,7 +2270,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
@@ -2274,7 +2287,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
 
@@ -2304,7 +2318,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
+        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
+        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
@@ -2313,7 +2328,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && odd==0)
       {
-        sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
+        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
+        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd;

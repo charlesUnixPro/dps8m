@@ -794,8 +794,10 @@ static t_stat setupForOperandRead (void)
 
 void traceInstruction (uint flag)
   {
+    if (! flag) goto force;
     if_sim_debug (flag, &cpu_dev)
       {
+force:;
         char * compname;
         word18 compoffset;
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
