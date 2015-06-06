@@ -860,7 +860,7 @@ startCA:;
              indword |= TM_R | GET_TD (iTAG);
            }
 
-        // XXX Ticket 15: Check for fault causing tags before updating
+        // (Closed) Ticket 15: Check for fault causing tags before updating
         // the IWB, so the instruction restart will reload the offending
         // indirect word.
 
