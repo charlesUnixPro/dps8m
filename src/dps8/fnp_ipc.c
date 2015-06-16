@@ -23,6 +23,7 @@
 #endif
 #ifdef VM_DPS8
 #include "sim_defs.h"
+#include "dps8_fnp.h"
 #include <stdbool.h>
 
 char *stripquotes(char *s);
@@ -435,14 +436,16 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 UNUSED arg4)
             
         case ipcEnter:
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s/%s has entered " STR(IPC_GROUP) "\n", arg1, arg2);
-            ipc_printf("(ENTER)      %s/%s has entered %s from %s\n", arg1, arg2, fnpGroup, arg3);
+            if (ipc_verbose)
+              ipc_printf("(ENTER)      %s/%s has entered %s from %s\n", arg1, arg2, fnpGroup, arg3);
             
             savePeer(arg1, arg2);
             break;
             
         case ipcExit:
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s has left " STR(IPC_GROUP) "\n", arg1);
-            ipc_printf("(EXIT)       %s/%s has left %s\n", arg1, arg2, fnpGroup);
+            if (ipc_verbose)
+              ipc_printf("(EXIT)       %s/%s has left %s\n", arg1, arg2, fnpGroup);
             removePeer(arg1);
             break;
             
@@ -474,11 +477,13 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 UNUSED arg4)
             
         case ipcShoutRx:    // when we receive a broadcast message
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s: %s\n", arg1, arg2);
-            ipc_printf("(RX SHOUT)   %s/%s:<%s>\n", arg1, arg2, arg3);
+            if (ipc_verbose)
+              ipc_printf("(RX SHOUT)   %s/%s:<%s>\n", arg1, arg2, arg3);
             break;
         case ipcWhisperRx:  // when we receive a peer-to-peer (whisper) message
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s: %s\n", arg1, arg2);
-            ipc_printf("(RX WHISPER) %s/%s:<%s>\n", arg1, arg2, arg3);
+            if (ipc_verbose)
+              ipc_printf("(RX WHISPER) %s/%s:<%s>\n", arg1, arg2, arg3);
             diaCommand (arg1, arg2, arg3);
             break;
             
