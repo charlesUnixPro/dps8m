@@ -1666,31 +1666,33 @@ char * strdupesc (const char * str)
             p ++;
             continue;
           }
-        if (p [1] == '\\')
+        if (p [1] == '\\')           //   \\    backslash
           * p = '\\';
-        else if (p [1] == 'w')
+        else if (p [1] == 'w')       //   \w    backslash
           * p = '\\';
-        else if (p [1] == 'n')
+        else if (p [1] == 'n')       //   \n    newline
           * p = '\n';
-        else if (p [1] == 't')
+        else if (p [1] == 't')       //  \t    tab
           * p = '\t';
-        else if (p [1] == 'f')
+        else if (p [1] == 'f')       //  \f    formfeed
           * p = '\f';
-        else if (p [1] == 'r')
+        else if (p [1] == 'r')       //  \r    carriage return
           * p = '\r';
-        else if (p [1] == 'e')
+        else if (p [1] == 'e')       //  \e    control E; Multics escape char.
           * p = '\005';
-        else if (p [1] == '_')
+        else if (p [1] == '_')       //  \_    space; needed for leading or 
+                                     //        trailing spaces (simh parser 
+                                     //        issue)
           * p = ' ';
-        else if (p [1] == 'c')
+        else if (p [1] == 'c')       //  \c    comma (simh parser issue)
           * p = ',';
-        else if (p [1] == 's')
+        else if (p [1] == 's')       //  \s    semicolon (simh parser issue)
           * p = ';';
-        else if (p [1] == 'd')
+        else if (p [1] == 'd')       //  \d    dollar sign (simh parser issue)
           * p = '$';
-        else if (p [1] == 'q')
+        else if (p [1] == 'q')       //  \q    double quote (simh parser issue)
           * p = '"';
-        else if (p [1] == 'z') // ^Z is eof (VAXism)
+        else if (p [1] == 'z')       // \Z     eof (VAXism)
           * p = '\004';
         else
           {
