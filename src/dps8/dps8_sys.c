@@ -428,6 +428,35 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     if (segno == 0317)
       segno = 0161;
 
+    // Hack to support formline debugging
+#define IOPOS 02006 // interpret_op_ptr_ offset
+    if (segno == 0371)
+      {
+        if (offset < IOPOS)
+          {
+            if (compname)
+              * compname = "find_condition_info_";
+            if (compoffset)
+              * compoffset = offset;
+            static char buf [129];
+            sprintf (buf, "bound_debug_util_:find_condition_info_+0%0o", 
+                  offset - 0);
+            return buf;
+          }
+        else
+          {
+            if (compname)
+              * compname = "interpret_op_ptr_";
+            if (compoffset)
+              * compoffset = offset - IOPOS;
+            static char buf [129];
+            sprintf (buf, "bound_debug_util_:interpret_op_ptr_+0%0o", 
+                  offset - IOPOS);
+            return buf;
+          }
+
+      }
+
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
     if (ret)
       return ret;
