@@ -3153,6 +3153,7 @@ static void print_frame (
       }
     else
       sim_printf ("\tUnknowable entry {%llo,%llo}  ", M [addr + 026], M [addr + 027]);
+    sim_printf ("\n");
     sim_printf ("(stack frame at %03o|%06o)\n", seg, offset);
 
 #if 0
@@ -3265,7 +3266,8 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
                 if (prev_pr . WORDNO != prev)
                   {
                     if (output)
-                      sim_printf ("%s: STACK Trace: Stack frame's prior ptr, %03o|%o is bad.\n", __func__, seg, prev_pr . WORDNO);
+                      sim_printf ("%s: STACK Trace: Stack frame's prior ptr, %03o|%o is bad; expected %o.\n", __func__, seg, prev_pr . WORDNO, prev);
+                    break;
                   }
               }
           }
