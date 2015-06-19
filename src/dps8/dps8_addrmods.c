@@ -424,7 +424,16 @@ t_stat doComputedAddressFormation (void)
     else
       rTAG = GET_TAG (cu . IWB);
 
+    int lockupCnt = 0;
+#define lockupLimit 4096 // approx. 2 ms
+
 startCA:;
+
+    if (++ lockupCnt > lockupLimit)
+      {
+        doFault (FAULT_LUF, 0,
+                 "Lockup in addrmod");
+      }
 
     Td = GET_TD (rTAG);
     Tm = GET_TM (rTAG);

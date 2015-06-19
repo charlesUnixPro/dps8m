@@ -657,6 +657,7 @@ static void tellFNP (int fnpUnitNum, char * msg)
   {
     //sim_printf ("tellFNP (%s)\n", msg);
 
+#if 0
 #define RETRIES 2048
     int retry;
     for (retry = 0; retry < RETRIES; retry ++)
@@ -666,6 +667,9 @@ static void tellFNP (int fnpUnitNum, char * msg)
         usleep (1000);
       }
     if (retry >= RETRIES)
+#else
+    if (! findPeer ("fnp-d"))
+#endif
       {
         sim_debug (DBG_ERR, & fnpDev, "FNP not found....\n");
 
@@ -677,11 +681,14 @@ static void tellFNP (int fnpUnitNum, char * msg)
         putbits36 (& mbxp -> crash_data [1], 18, 18, 0); // fault_word = 0
 
         send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+        return;
       }
 
     t_stat stat = ipc (ipcWhisperTx, "fnp-d", msg, NULL, 0);
     if (stat != SCPE_OK)
-      sim_debug (DBG_ERR, & fnpDev, "tellFNP returned %d\n", stat);
+      {
+        sim_debug (DBG_ERR, & fnpDev, "tellFNP returned %d\n", stat);
+      }
     return;
   }
 
@@ -951,7 +958,7 @@ sim_printf (" pcwp -> aux %0o\n", pcwp -> aux);
 //        15-23 0
 //
 
-    uint chanNum = getbits36 (dia_pcw, 24, 6);
+    //uint chanNum = getbits36 (dia_pcw, 24, 6);
     uint command = getbits36 (dia_pcw, 30, 6);
     word36 bootloadStatus = 0;
 
@@ -1055,16 +1062,16 @@ sim_printf ("tally %d (%o)\n", tally, tally);
             struct dn355_submailbox * smbxp = & (mbxp -> dn355_sub_mbxes [cell]);
     
             word36 word2 = smbxp -> word2;
-            uint cmd_data_len = getbits36 (word2, 9, 9);
+            //uint cmd_data_len = getbits36 (word2, 9, 9);
             uint op_code = getbits36 (word2, 18, 9);
             uint io_cmd = getbits36 (word2, 27, 9);
     
             word36 word1 = smbxp -> word1;
-            uint dn355_no = getbits36 (word1, 0, 3);
-            uint is_hsla = getbits36 (word1, 8, 1);
-            uint la_no = getbits36 (word1, 9, 3);
+            //uint dn355_no = getbits36 (word1, 0, 3);
+            //uint is_hsla = getbits36 (word1, 8, 1);
+            //uint la_no = getbits36 (word1, 9, 3);
             uint slot_no = getbits36 (word1, 12, 6);
-            uint terminal_id = getbits36 (word1, 18, 18);
+            //uint terminal_id = getbits36 (word1, 18, 18);
     
 #if 0
             sim_printf ("  dn355_no %d\n", dn355_no);
@@ -1093,8 +1100,8 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                         case  3: // dont_accept_calls
                           {
                             //sim_printf ("fnp don't accept calls\n");
-                            word36 command_data0 = smbxp -> command_data [0];
-                            uint bufferAddress = getbits36 (command_data0, 0, 18);
+                            //word36 command_data0 = smbxp -> command_data [0];
+                            //uint bufferAddress = getbits36 (command_data0, 0, 18);
                             //sim_printf ("  buffer address %06o\n", bufferAddress);
                             tellFNP (fnpUnitNum, "dont_accept_calls");
                           }
@@ -1103,8 +1110,8 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                         case  4: // accept_calls
                           {
                             //sim_printf ("fnp accept calls\n");
-                            word36 command_data0 = smbxp -> command_data [0];
-                            uint bufferAddress = getbits36 (command_data0, 0, 18);
+                            //word36 command_data0 = smbxp -> command_data [0];
+                            //uint bufferAddress = getbits36 (command_data0, 0, 18);
                             //sim_printf ("  buffer address %06o\n", bufferAddress);
                             tellFNP (fnpUnitNum, "accept_calls");
                           }
@@ -1379,14 +1386,14 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                                 case 21: // Xmit_hold
                                 case 26: // Set_buffer_size
                                   {
-                                    //sim_printf ("fnp unimplemented subtype %d (%o)\n", subtype, subtype);
+                                    sim_printf ("fnp unimplemented subtype %d (%o)\n", subtype, subtype);
                                     // doFNPfault (...) // XXX
                                     goto fail;
                                   }
     
                                 default:
                                   {
-                                    //sim_printf ("fnp illegal subtype %d (%o)\n", subtype, subtype);
+                                    sim_printf ("fnp illegal subtype %d (%o)\n", subtype, subtype);
                                     // doFNPfault (...) // XXX
                                     goto fail;
                                   }
@@ -1532,6 +1539,7 @@ struct fnp_async_meters
                         case 35: // checksum_error
                           {
                             sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented opcode %d (%o)\n", op_code, op_code);
+                            sim_printf ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
                             goto fail;
                           }
@@ -1539,6 +1547,7 @@ struct fnp_async_meters
                         default:
                           {
                             sim_debug (DBG_ERR, & fnpDev, "fnp illegal opcode %d (%o)\n", op_code, op_code);
+                            sim_printf ("fnp illegal opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
                             goto fail;
                           }
@@ -1556,6 +1565,7 @@ struct fnp_async_meters
                     if (op_code != 012 && op_code != 014)
                       {
                         sim_debug (DBG_ERR, & fnpDev, "fnp wtx unimplemented opcode %d (%o)\n", op_code, op_code);
+                         sim_printf ("fnp wtx unimplemented opcode %d (%o)\n", op_code, op_code);
                         // doFNPfault (...) // XXX
                         goto fail;
                       }
@@ -1618,12 +1628,14 @@ for (uint i = 0; i < dcwCnt; i ++)
                 case 2: // rtx (read text)
                   {
                     sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented io_cmd %d\n", io_cmd);
+                     sim_printf ("fnp unimplemented io_cmd %d\n", io_cmd);
                     // doFNPfault (...) // XXX
                     goto fail;
                   }
                 default:
                   {
                     sim_debug (DBG_ERR, & fnpDev, "fnp illegal io_cmd %d\n", io_cmd);
+                    sim_printf ("fnp illegal io_cmd %d\n", io_cmd);
                     // doFNPfault (...) // XXX
                     goto fail;
                   }
@@ -1640,16 +1652,16 @@ for (uint i = 0; i < dcwCnt; i ++)
             sim_printf ("    word2 %012llo\n", smbxp -> word2);
 #endif
             word36 word2 = smbxp -> word2;
-            uint cmd_data_len = getbits36 (word2, 9, 9);
+            //uint cmd_data_len = getbits36 (word2, 9, 9);
             uint op_code = getbits36 (word2, 18, 9);
             uint io_cmd = getbits36 (word2, 27, 9);
     
             word36 word1 = smbxp -> word1;
-            uint dn355_no = getbits36 (word1, 0, 3);
-            uint is_hsla = getbits36 (word1, 8, 1);
-            uint la_no = getbits36 (word1, 9, 3);
+            //uint dn355_no = getbits36 (word1, 0, 3);
+            //uint is_hsla = getbits36 (word1, 8, 1);
+            //uint la_no = getbits36 (word1, 9, 3);
             uint slot_no = getbits36 (word1, 12, 6);
-            uint terminal_id = getbits36 (word1, 18, 18);
+            //uint terminal_id = getbits36 (word1, 18, 18);
     
             switch (io_cmd)
               {
@@ -1720,6 +1732,7 @@ for (uint i = 0; i < dcwCnt; i ++)
                         case 37: // set_delay_table
                           {
                             sim_debug (DBG_ERR, & fnpDev, "fnp reply unimplemented opcode %d (%o)\n", op_code, op_code);
+                            sim_printf ("fnp reply unimplemented opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
                             goto fail;
                           }
@@ -1727,6 +1740,7 @@ for (uint i = 0; i < dcwCnt; i ++)
                         default:
                           {
                             sim_debug (DBG_ERR, & fnpDev, "fnp reply illegal opcode %d (%o)\n", op_code, op_code);
+                            sim_printf ("fnp reply illegal opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
                             goto fail;
                           }
@@ -1747,6 +1761,7 @@ for (uint i = 0; i < dcwCnt; i ++)
                 default:
                   {
                     sim_debug (DBG_ERR, & fnpDev, "illegal/unimplemented io_cmd (%d) in fnp submbx\n", io_cmd);
+                    sim_printf ("illegal/unimplemented io_cmd (%d) in fnp submbx\n", io_cmd);
                     // doFNPfault (...) // XXX
                     goto fail;
                   }
@@ -1770,13 +1785,14 @@ for (uint i = 0; i < dcwCnt; i ++)
         else
           {
             sim_debug (DBG_ERR, & fnpDev, "fnp illegal cell number %d\n", cell);
+            sim_printf ("fnp illegal cell number %d\n", cell);
             // doFNPfault (...) // XXX
             goto fail;
           }
       }
     if (ok)
       {
-ok:
+//ok:
         store_abs_word (p -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
         putbits36 (& bootloadStatus, 0, 1, 1); // real_status = 1
         putbits36 (& bootloadStatus, 3, 3, 0); // major_status = BOOTLOAD_OK;

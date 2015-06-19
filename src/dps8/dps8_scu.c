@@ -1342,12 +1342,28 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 
             if (switches . y2k) // subtract 20 years....
               {
+#if 0
                 // date -d "Tue Jul 22 16:39:38 PDT 2014"  +%s
                 // 1406072378
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
                 // 932686778
 
                 now . tv_sec -= (1406072378 - 932686778);
+#endif
+                // Back the clock up to just after the MR12.3 release (12/89
+                // according to http://www.multicians.org/chrono.html
+
+                // ticks at MR12.3 release
+                // date -d "1990-01-01 00:00:00 -9" +%s
+                // 631184400
+
+                // The date of the code insert
+                // date
+                // Wed Jun 17 20:00:50 PDT 2015
+                // date +%s
+                // 1434596455
+
+                now . tv_sec -= (1434596455 - 631184400);
               }
             uint64 UnixSecs = (uint64) now.tv_sec;
             uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;

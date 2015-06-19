@@ -1825,7 +1825,11 @@ static t_stat DoBasicInstruction (void)
             Yblock8[4] = rA;
             Yblock8[5] = rQ;
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
+#ifdef REAL_TR
+            Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (rRALR & 07);    // needs checking
+#else
             Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
+#endif
                     
             //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
@@ -1957,7 +1961,11 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0454:  ///< stt
+#ifdef REAL_TR
+             CY = (getTR (NULL) & MASK27) << 9;
+#else
              CY = (rTR & MASK27) << 9;
+#endif
              break;
             
             
@@ -5083,15 +5091,21 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0637:  ///< ldt
-            //rTR = (CY & MASK27) << 9;
-            //rTR = CY & MASK27;
-            rTR = (CY >> 9) & MASK27;
-            sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
-            // Undocumented feature. return to bce has been observed to
-            // experience TRO while masked, setting the TR to -1, and
-            // experiencing an unexpected TRo interrupt when unmasking.
-            // Reset any pending TRO fault when the TR is loaded.
-            clearTROFault ();
+            {
+#ifdef REAL_TR
+              word27 val = (CY >> 9) & MASK27;
+              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
+              setTR (val);
+#else
+              rTR = (CY >> 9) & MASK27;
+              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
+#endif
+              // Undocumented feature. return to bce has been observed to
+              // experience TRO while masked, setting the TR to -1, and
+              // experiencing an unexpected TRo interrupt when unmasking.
+              // Reset any pending TRO fault when the TR is loaded.
+              clearTROFault ();
+            }
             break;
 
         case 0257:  ///< lsdp
@@ -7692,3 +7706,51 @@ void doRCU (bool fxeTrap)
     sim_printf ("doRCU dies with unhandled fault number %d\n", cu . FI_ADDR);
     doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");
   }
+
+#ifdef REAL_TR
+static uint timerRegVal;
+static struct timeval timerRegT0;
+//static bool overrunAck;
+
+void setTR (word27 val)
+  {
+    val &= MASK27;
+    if (val)
+      {
+        timerRegVal = val & MASK27;
+      }
+    else
+      {
+        // Special case
+        timerRegVal = -1 & MASK27;
+      }
+    gettimeofday (& timerRegT0, NULL);
+    //overrunAck = false;
+
+//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
+  }
+
+word27 getTR (bool * runout)
+  {
+    uint128 t0us, tnowus, delta;
+    struct timeval tnow;
+    gettimeofday (& tnow, NULL);
+    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
+    tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
+    //delta = (tnowus - t0us) / 1.953125
+    delta = ((tnowus - t0us) * 1000000) / 1953125;
+    if (runout)
+     //* runout = (! overrunAck) && delta > timerRegVal;
+     * runout = delta > timerRegVal;
+    word27 val = (timerRegVal - delta) & MASK27;
+//if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
+    return val;
+  }
+
+void ackTR (void)
+  {
+    //overrunAck = true;
+    setTR (0);
+  }
+#endif
+

@@ -827,7 +827,11 @@ static t_stat cpu_reset (DEVICE *dptr)
     PPR.P = 1;
     RSDWH_R1 = 0;
 
+#ifdef REAL_TR
+    setTR (0);
+#else
     rTR = 0;
+#endif
  
     processorCycle = UNKNOWN_CYCLE;
     //processorAddressingMode = ABSOLUTE_MODE;
@@ -907,7 +911,9 @@ word8  rE;      /*!< exponent [map: rE, 28 0's] */
 word18 rX[8];   /*!< index */
 
 
+#ifndef REAL_TR
 word27 rTR; /*!< timer [map: TR, 9 0's] */
+#endif
 word24 rY;     /*!< address operand */
 word8 rTAG; /*!< instruction tag */
 
@@ -1483,20 +1489,24 @@ last = M[01007040];
 #endif
 
 #ifdef MULTIPASS
-       if (multipassStatsPtr) 
-         {
-           multipassStatsPtr -> A = rA;
-           multipassStatsPtr -> Q = rQ;
-           multipassStatsPtr -> E = rE;
-           for (int i = 0; i < 8; i ++)
-             {
-               multipassStatsPtr -> X [i] = rX [i];
-               multipassStatsPtr -> PAR [i] = PAR [i];
-             }
-           multipassStatsPtr -> IR = cu . IR;
-           multipassStatsPtr -> TR = rTR;
-           multipassStatsPtr -> RALR = rRALR;
-         }
+        if (multipassStatsPtr) 
+          {
+            multipassStatsPtr -> A = rA;
+            multipassStatsPtr -> Q = rQ;
+            multipassStatsPtr -> E = rE;
+            for (int i = 0; i < 8; i ++)
+              {
+                multipassStatsPtr -> X [i] = rX [i];
+                multipassStatsPtr -> PAR [i] = PAR [i];
+              }
+            multipassStatsPtr -> IR = cu . IR;
+#ifdef REAL_TR
+            multipassStatsPtr -> TR = getTR (NULL);
+#else
+            multipassStatsPtr -> TR = rTR;
+#endif
+            multipassStatsPtr -> RALR = rRALR;
+          }
 #endif
 
         // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
@@ -1504,6 +1514,17 @@ last = M[01007040];
                                      // Acutally have FETCH jump to EXECUTE
                                      // instead of breaking.
 
+#ifdef REAL_TR
+        bool overrun;
+        UNUSED word27 rTR = getTR (& overrun);
+        if (overrun)
+          {
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+            ackTR ();
+            if (switches . tro_enable)
+              setG7fault (FAULT_TRO, 0);
+          }
+#else
         // Sync. the TR with the emulator clock.
         static uint rTRlsb = 0;
         rTRlsb ++;
@@ -1521,6 +1542,7 @@ last = M[01007040];
                   setG7fault (FAULT_TRO, 0);
               }
           }
+#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));

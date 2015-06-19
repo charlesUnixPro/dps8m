@@ -70,7 +70,9 @@ extern word36   rQ;     // quotient
 extern word8    rE;     // exponent [map: rE, 28 0's]
 
 extern word18   rX [8]; // index
+#ifndef REAL_TR
 extern word27   rTR;    // timer [map: TR, 9 0's]
+#endif
 extern word24   rY;     // address operand
 extern word8    rTAG;   // instruction tag
 extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]

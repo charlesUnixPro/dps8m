@@ -17,4 +17,9 @@ t_stat executeInstruction (void);
 void doRCU (bool fxeTrap) NO_RETURN;
 void traceInstruction (uint flag);
 
+#ifdef REAL_TR
+void setTR (word27 val);
+word27 getTR (bool * runout);
+void ackTR (void);
+#endif
 

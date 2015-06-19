@@ -61,6 +61,9 @@
 // Enable IPC
 #define VM_DPS8
 
+// Enable Real time Timer Register
+#define REAL_TR
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
