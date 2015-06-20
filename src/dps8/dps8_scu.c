@@ -1363,7 +1363,13 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 // date +%s
                 // 1434596455
 
-                now . tv_sec -= (1434596455 - 631184400);
+                //now . tv_sec -= (1434596455 - 631184400);
+
+                // date --date='25 years ago' +%s; date +%s
+                // 645852697
+                // 1434771097
+
+                now . tv_sec -= (1434771097 - 645852697);
               }
             uint64 UnixSecs = (uint64) now.tv_sec;
             uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;
