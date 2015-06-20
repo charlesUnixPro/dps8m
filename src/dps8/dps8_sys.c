@@ -27,6 +27,7 @@
 #include "dps8_append.h"
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
+#include "utlist.h"
 
 #ifdef MULTIPASS
 #include "dps8_mp.h"
@@ -2305,3 +2306,88 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 
     return SCPE_OK;
   }
+
+// SCP message queue; when IPC messages come in, they are append to this
+// queue. The sim_instr loop will poll the queue for messages for delivery 
+// to the simh code.
+
+pthread_mutex_t scpMQlock;
+typedef struct scpQueueElement scpQueueElement;
+struct scpQueueElement
+  {
+    char * msg;
+    scpQueueElement * prev, * next;
+  };
+
+scpQueueElement * scpQueue = NULL;
+
+static void scpQueueMsg (char * msg)
+  {
+    pthread_mutex_lock (& scpMQlock);
+    scpQueueElement * element = malloc (sizeof (scpQueueElement));
+    if (! element)
+      {
+         sim_debug (DBG_ERR, & sys_dev, "couldn't malloc scpQueueElement\n");
+      }
+    else
+      {
+        element -> msg = strdup (msg);
+        DL_APPEND (scpQueue, element);
+      }
+    pthread_mutex_unlock (& scpMQlock);
+  }
+
+static bool scpPollQueue (void)
+  {
+    return !! scpQueue;
+  }
+
+
+static char * scpDequeueMsg (void)
+  {
+    if (! scpQueue)
+      return NULL;
+    pthread_mutex_lock (& scpMQlock);
+    scpQueueElement * rv = scpQueue;
+    DL_DELETE (scpQueue, rv);
+    pthread_mutex_unlock (& scpMQlock);
+    char * msg = rv -> msg;
+    free (rv);
+    return msg;
+  }
+
+//
+//   "attach <device> <filename>"
+//   "attachr <device> <filename>"
+//   "detach <device>
+
+
+void scpProcessEvent (void)
+  {
+    // Queue empty?
+    if (! scpPollQueue ())
+      return;
+    char * msg = scpDequeueMsg ();
+    if (msg)
+      {
+        sim_printf ("dia dequeued %s\n", msg);
+
+        //size_t msg_len = strlen (msg);
+        //char keyword [msg_len];
+        //sscanf (msg, "%s", keyword);
+
+        //if (strcmp(keyword, "attach") == 0)
+
+//drop:
+        free (msg);
+      }
+  }
+
+t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
+  {
+    // ASSUME0 XXX parse nodename to get unit #
+    scpQueueMsg (arg3);
+    return SCPE_OK;
+  }
+
+  

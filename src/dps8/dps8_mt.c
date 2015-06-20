@@ -100,6 +100,10 @@ static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_boot_drive (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat mt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat mt_set_tape_path (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
@@ -185,6 +189,26 @@ static MTAB mt_mod [] =
       "Select the boot drive", /* value descriptor */
       NULL          // help
     },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "DEVICE_NAME",     /* print string */
+      "DEVICE_NAME",         /* match string */
+      mt_set_device_name, /* validation routine */
+      mt_show_device_name, /* display routine */
+      "Select the boot drive", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "TAPE_PATH",     /* print string */
+      "TAPE_PATH",         /* match string */
+      mt_set_tape_path, /* validation routine */
+      mt_show_tape_path, /* display routine */
+      "Set the path to the directory containing tape images", /* value descriptor */
+      NULL          // help
+    },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -221,6 +245,8 @@ DEVICE tape_dev = {
     NULL,             // device description
 };
 
+#define MAX_DEV_NAME_LEN 64
+
 //-- /* unfinished; copied from tape_dev */
 static const char * simh_tape_msg (int code); // hack
 static const size_t bufsz = 4096 * 1024;
@@ -232,6 +258,7 @@ static struct tape_state
     uint words_processed; // Number of Word36 processed from the buffer
 // XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
     int rec_num; // track tape position
+    char device_name [MAX_DEV_NAME_LEN];
   } tape_state [N_MT_UNITS_MAX];
 
 static struct
@@ -242,7 +269,10 @@ static struct
   } cables_from_ioms_to_mt [N_MT_UNITS_MAX];
 
 static int boot_drive = 1; // Drive number to boot from
+#define TAPE_PATH_LEN 4096
+static char tape_path [TAPE_PATH_LEN];
 
+#if 0
 t_stat rewindDone (UNIT * uptr)
   {
     int32 driveNumber = uptr -> u3;
@@ -252,9 +282,12 @@ t_stat rewindDone (UNIT * uptr)
                             0, 0100 /* rewind complete */);
     return SCPE_OK;
   }
+#endif
 
+#if 0
 static UNIT rewindDoneUnit =
   { UDATA (& rewindDone, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+#endif
 
 static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
   {
@@ -1661,4 +1694,69 @@ static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value,
     boot_drive = (uint32) n;
     return SCPE_OK;
   }
+
+static t_stat mt_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                   UNUSED int val, UNUSED void * desc)
+  {
+    int n = MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Tape drive device name is %s\n", tape_state [n] . device_name);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value, 
+                                  UNUSED char * cptr, UNUSED void * desc)
+  {
+    int n = MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (tape_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        tape_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+      }
+    else
+      tape_state [n] . device_name [0] = 0;
+    return SCPE_OK;
+  }
+
+static t_stat mt_show_tape_path (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                                 UNUSED int val, UNUSED void * desc)
+  {
+    sim_printf("Tape path <%s>\n", tape_path);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             char * cptr, UNUSED void * desc)
+  {
+    if (strlen (cptr) >= TAPE_PATH_LEN - 1)
+      {
+        sim_printf ("truncating tape path\n");
+      }
+    strncpy (tape_path, cptr, TAPE_PATH_LEN);
+    tape_path [TAPE_PATH_LEN - 1] = 0;
+    return SCPE_OK;
+  }
+
+t_stat attachTape (char * label, bool withring, char * drive)
+  {
+    //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
+    int i;
+    for (i = 0; i < N_MT_UNITS_MAX; i ++)
+      {
+        if (strcmp (drive, tape_state [i] . device_name) == 0)
+          break;
+      }
+    if (i >= N_MT_UNITS_MAX)
+      {
+        sim_printf ("can't find device named %s\n", drive);
+        return SCPE_ARG;
+      }
+    loadTape (i, label, ! withring);
+    return SCPE_OK;
+  }
+
+
 

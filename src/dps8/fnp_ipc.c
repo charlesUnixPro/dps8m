@@ -23,7 +23,11 @@
 #endif
 #ifdef VM_DPS8
 #include "sim_defs.h"
+#include "dps8.h"
 #include "dps8_fnp.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
+#include "dps8_utils.h"
 #include <stdbool.h>
 
 char *stripquotes(char *s);
@@ -480,11 +484,18 @@ t_stat ipc (ipc_funcs fn, char *arg1, char *arg2, char *arg3, int32 UNUSED arg4)
             if (ipc_verbose)
               ipc_printf("(RX SHOUT)   %s/%s:<%s>\n", arg1, arg2, arg3);
             break;
+
         case ipcWhisperRx:  // when we receive a peer-to-peer (whisper) message
             //sim_debug (DBG_VERBOSE, &ipc_dev, "%s: %s\n", arg1, arg2);
             if (ipc_verbose)
               ipc_printf("(RX WHISPER) %s/%s:<%s>\n", arg1, arg2, arg3);
-            diaCommand (arg1, arg2, arg3);
+            if (strncmp (arg1, "fnp-", 4) == 0)
+              diaCommand (arg1, arg2, arg3);
+            else if (strncmp (arg1, "scp", 3) == 0)
+              scpCommand (arg1, arg2, arg3);
+            else
+              ipc_printf ("dropping whisper from unknown source %s/%s:<%s>\n",
+                          arg1, arg2, arg3);
             break;
             
         case ipcTest:

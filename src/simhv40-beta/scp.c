@@ -3727,7 +3727,7 @@ if (sim_switches & SWMASK ('R')) {                      /* read only? */
         return attach_err (uptr, SCPE_OPENERR);         /* yes, error */
     uptr->flags = uptr->flags | UNIT_RO;                /* set rd only */
     if (!sim_quiet)
-        printf ("%s: unit is read only\n", sim_dname (dptr));
+        printf ("%s: unit is read only\r\n", sim_dname (dptr));
     }
 else {
     if (sim_switches & SWMASK ('N')) {                  /* new file only? */
@@ -3735,7 +3735,7 @@ else {
         if (uptr->fileref == NULL)                      /* open fail? */
             return attach_err (uptr, SCPE_OPENERR);     /* yes, error */
         if (!sim_quiet)
-            printf ("%s: creating new file\n", sim_dname (dptr));
+            printf ("%s: creating new file\r\n", sim_dname (dptr));
         }
     else {                                              /* normal */
         uptr->fileref = sim_fopen (cptr, "rb+");        /* open r/w */
@@ -3752,7 +3752,7 @@ else {
                     return attach_err (uptr, SCPE_OPENERR); /* yes, error */
                 uptr->flags = uptr->flags | UNIT_RO;    /* set rd only */
                 if (!sim_quiet)
-                    printf ("%s: unit is read only\n", sim_dname (dptr));
+                    printf ("%s: unit is read only\r\n", sim_dname (dptr));
                 }
             else {                                      /* doesn't exist */
                 if (sim_switches & SWMASK ('E'))        /* must exist? */
@@ -3761,7 +3761,7 @@ else {
                 if (uptr->fileref == NULL)              /* open fail? */
                     return attach_err (uptr, SCPE_OPENERR); /* yes, error */
                 if (!sim_quiet)
-                    printf ("%s: creating new file\n", sim_dname (dptr));
+                    printf ("%s: creating new file\r\n", sim_dname (dptr));
                 }
             }                                           /* end if null */
         }                                               /* end else */
@@ -3772,7 +3772,7 @@ if (uptr->flags & UNIT_BUFABLE) {                       /* buffer? */
         uptr->filebuf = calloc (cap, SZ_D (dptr));      /* allocate */
     if (uptr->filebuf == NULL)                          /* no buffer? */
         return attach_err (uptr, SCPE_MEM);             /* error */
-    if (!sim_quiet) printf ("%s: buffering file in memory\n", sim_dname (dptr));
+    if (!sim_quiet) printf ("%s: buffering file in memory\r\n", sim_dname (dptr));
     uptr->hwmark = (uint32)sim_fread (uptr->filebuf,    /* read file */
         SZ_D (dptr), cap, uptr->fileref);
     uptr->flags = uptr->flags | UNIT_BUF;               /* set buffered */
@@ -3887,7 +3887,7 @@ if (uptr->flags & UNIT_BUF) {
     uint32 cap = (uptr->hwmark + dptr->aincr - 1) / dptr->aincr;
     if (uptr->hwmark && ((uptr->flags & UNIT_RO) == 0)) {
         if (!sim_quiet)
-            printf ("%s: writing buffer to file\n", sim_dname (dptr));
+            printf ("%s: writing buffer to file\r\n", sim_dname (dptr));
         rewind (uptr->fileref);
         sim_fwrite (uptr->filebuf, SZ_D (dptr), cap, uptr->fileref);
         if (ferror (uptr->fileref))

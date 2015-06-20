@@ -498,6 +498,33 @@ static void newlineOn (void)
     tcsetattr (0, TCSAFLUSH, & ttyTermios);
   }
 
+static void handleRCP (char * text)
+  {
+    //sim_printf ("<%s>\n", text);
+    //for (uint i = 0; i < strlen (text); i ++)
+      //sim_printf ("%02x ", text [i]);
+    //sim_printf ("\n");
+    char * label = NULL;
+    char * with = NULL;
+    char * drive = NULL;
+// 1750.1  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_01 
+    int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %ms %ms ring on %ms",
+                & label, & with, & drive);
+    if (rc == 3)
+      {
+        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
+        bool withring = (strcmp (with, "with") == 0);
+        char labelDotTap [strlen (label) + 4];
+        strcpy (labelDotTap, label);
+        strcat (labelDotTap, ".tap");
+sim_printf ("<%s>\n", labelDotTap);
+        attachTape (labelDotTap, withring, drive);
+      }
+    free (label);
+    free (with);
+    free (drive);
+  }
+
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
@@ -816,7 +843,7 @@ for (uint i = 0; i < tally; i ++)
                          M [daddr + 9] == 0060061071137llu && // 019_
                          (M [daddr + 10] & 0777777000000llu) == 0062040000000) // 2_
                   {
-                    sim_printf ("loading 12.3EXEC_CF0019_2\n");
+                    sim_printf ("loading 12.3EXEC_DF0019_2\n");
                     mount_unit . up7 = "88631.tap";
                     sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
                   }
@@ -863,7 +890,7 @@ for (uint i = 0; i < tally; i ++)
 
                     case 2:
                       {
-                        sim_printf ("loading 12.3EXEC_CF0019_2\n");
+                        sim_printf ("loading 12.3EXEC_DF0019_2.tap\n");
                         mount_unit . u3 = 2;
                         mount_unit . u4 = 1;
                         mount_unit . up7 = "88631.tap";
@@ -1022,6 +1049,9 @@ for (uint i = 0; i < tally; i ++)
 
             // Tally is in words, not chars.
 
+            char text [tally * 4 + 1];
+            * text = 0;
+            char * textp = text;
             newlineOff ();
             while (tally)
               {
@@ -1038,6 +1068,7 @@ for (uint i = 0; i < tally; i ++)
 //if (ch == '\r') sim_printf ("hmm\n");
 //if (ch == '\n') sim_printf ("er\n");
                         sim_putchar (ch);
+                        * textp ++ = ch;
 #if 0
                         addPromptChar (ch);
 #endif
@@ -1056,6 +1087,8 @@ for (uint i = 0; i < tally; i ++)
                       //sim_putchar ('\n');
                   }
               }
+            * textp ++ = 0;
+            handleRCP (text);
             // sim_printf ("\n");
             newlineOn ();
             chan_data -> stati = 04000;

@@ -1470,6 +1470,7 @@ last = M[01007040];
           //return reason;
           break;
 
+        scpProcessEvent (); 
         fnpProcessEvent (); 
 
 #if 0

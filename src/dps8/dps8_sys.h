@@ -49,4 +49,6 @@ void listSource (char * compname, word18 offset, uint dflag);
 //t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset);
 
 t_stat brkbrk (int32 arg, char * buf);
+void scpProcessEvent (void);
+t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3);
 
