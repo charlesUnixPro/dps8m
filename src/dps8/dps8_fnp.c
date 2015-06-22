@@ -574,6 +574,31 @@ void fnpProcessEvent (void)
             // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
             send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
           }
+        else if (strncmp (msg, "line_break", 10) == 0)
+          {
+            int chanNum;
+            int n = sscanf(msg, "%*s %d", & chanNum);
+            if (n != 1)
+              {
+                sim_debug (DBG_ERR, & fnpDev, "illformatted line_disconnected message; dropping\n");
+                goto drop;
+              }
+            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+            putbits36 (& smbxp -> word2, 18, 9, 0113); // op_code line_break
+            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+            p -> fnpMBXinUse [mbx] = true;
+            // Set the TIMW
+            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+            // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
+            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+          }
         else
           {
             sim_debug (DBG_ERR, & fnpDev, "unrecognized message; dropping\n");
@@ -1117,6 +1142,17 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                           }
                           break;
     
+                        case  8: // set_framing_chars
+                          {
+                            //sim_printf ("fnp set delay table\n");
+                            word36 command_data0 = smbxp -> command_data [0];
+                            uint d1 = getbits36 (command_data0, 0, 8);
+                            uint d2 = getbits36 (command_data0, 8, 8);
+
+                            char cmd [256];
+                            sprintf (cmd, "set_framing_chars %d %d %d", slot_no, d1, d2);
+                            tellFNP (fnpUnitNum, cmd);          
+                          }
                         case 30: // input_fc_chars
                           {
                             //sim_printf ("fnp input fc chars\n");
@@ -1211,6 +1247,15 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                                     //sim_printf ("fnp lfecho\n");
                                     char cmd [256];
                                     sprintf (cmd, "lfecho %d %d", slot_no, flag);
+                                    tellFNP (fnpUnitNum, cmd);          
+                                  }
+                                  break;
+    
+                                case 13: // Dumpoutput
+                                  {
+                                    //sim_printf ("fnp dumpoutput\n");
+                                    char cmd [256];
+                                    sprintf (cmd, "dumpoutput %d", slot_no);
                                     tellFNP (fnpUnitNum, cmd);          
                                   }
                                   break;
@@ -1381,7 +1426,6 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                                 case 10: // Lock
                                 case 11: // Msg
                                 case 12: // Upstate
-                                case 13: // Dumpoutput
                                 case 15: // Setbusy
                                 case 21: // Xmit_hold
                                 case 26: // Set_buffer_size
@@ -1512,7 +1556,6 @@ struct fnp_async_meters
                         case  5: // input_accepted
                         case  6: // set_line_type
                         case  7: // enter_receive
-                        case  8: // set_framing_chars
                         case  9: // blast
                         case 10: // accept_direct_output
                         case 11: // accept_last_output
@@ -1541,8 +1584,9 @@ struct fnp_async_meters
                             sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                             sim_printf ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
-                            goto fail;
+                            //goto fail;
                           }
+                        break;
     
                         default:
                           {
