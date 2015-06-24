@@ -735,6 +735,15 @@ static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
       }
 #endif
 
+    if (! findPeer ("fnp-d"))
+      {
+        chan_data -> stati = 06000; // Have status; power off?
+        //disk_statep -> io_mode = no_mode;
+        sim_debug (DBG_NOTIFY, & fnpDev, "Request status %d\n", fnpUnitNum);
+        chan_data -> initiate = true;
+        * disc = true;
+        return 1;
+      }
     chan_data -> stati = 0;
 //sim_printf ("fnp cmd %d\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)
@@ -875,7 +884,8 @@ sim_printf (" pcwp -> aux %0o\n", pcwp -> aux);
     bool disc;
 //sim_printf ("1 st call to fnpCmd\n");
     fnpCmd (unitp, pcwp, & disc);
-
+    if (disc)
+      goto intr;
 // 60132445 FEP Coupler EPS
 // 2.2.1 Cpntrol Intercommunication
 //
@@ -1852,6 +1862,7 @@ fail:
         store_abs_word (p -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }
 
+intr:;
 //sim_printf ("end of list service; sending terminate interrupt\n");
     send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
