@@ -877,11 +877,23 @@ h:      switch (*s) {
 char *
 strexpP(char *d, char *s)
 {
+    char temp[512];
+    strexp(temp, s);    // expand escape sequence
+    
+    strcpy(d+1, temp);  // copy expanded strint to pascal stype string
+    
+    int nCount = (int)strlen(temp);
+    d[0] = nCount & 0xff;   // write length specifier
+    
+    return d;
+    
+#ifdef OLD  // HWR 25 Jun 2015 - this is severly broken.....
+    
     char *r = d + 1;    // we start at d+1 because we want the length to be stored in d[0]
     long val;
     char *end_ptr;
     
-    int nCount = 0;
+    //int nCount = 0;
     char *s2 = s;
     
     do {
@@ -891,7 +903,7 @@ h:      switch (*s) {
         case '\\' : /*!< An escape sequence */
             s++;
             nCount += 1;
-        switch (*s) {
+            switch (*s) {
                 case '0':	///< an octal or hex
                 case '1':	///< a decimal digit
                 case '2':	///< a decimal digit
@@ -960,9 +972,15 @@ h:      switch (*s) {
     } while (*s++);
     
     //int nCount = (int)(r - d) + 1;
+    int nCount = (int)strlen(d+1);
     d[0] = nCount & 0xff;
-//fprintf(stderr, "nCount = %d <%s>\n", nCount, s2);
+    
+    
+    //fprintf(stderr, "nCount = %d <%s>\n", nCount, s2);
     return (d);
+    
+#endif
+  
 }
 
 /** ------------------------------------------------------------------------- */

@@ -731,8 +731,7 @@ void doAccP(char *str, int sz)
     if (strLength)
     {
         /// convert 8-bit chars to 9-bit bytes in 36-bit words. Oh, Joy!
-        int nWords = 0;
-        nWords = (strLength+1) / 4 + ((strLength+1) % 4 ? 1 : 0); // +1 because of initial length char
+        int nWords = (strLength+1) / 4 + ((strLength+1) % 4 ? 1 : 0); // +1 because of initial length char
         if (sz > 0)
         {
             if (sz > strLength)
@@ -757,7 +756,7 @@ void doAccP(char *str, int sz)
             word36 q = *p++;
             word36 nShift = (9 * (nPos--));
             
-            *w |= (q << nShift);
+            *w |= ((q & 0xff) << nShift);
             
             if (nPos < 0) {
                 w++;        // next word
