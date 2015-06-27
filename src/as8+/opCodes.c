@@ -229,7 +229,7 @@ void doMWEis(opCode *op, tuple *head)
     
     // iterate through the list of modifiers and options ...
     tuple *t, *t2;
-
+    
     int idx = 0;
     DL_FOREACH(head, t)
     {
@@ -261,6 +261,17 @@ void doMWEis(opCode *op, tuple *head)
                         retVal |= mfreg;
                     }
                 }
+                if (idx > 2)
+                {
+                    yyprintf("internal error: idx = %d", idx);
+                    return;
+                }
+                
+                // HWR 25 Jul 15
+                // ... but, here
+                MFk[idx] = retVal;
+                idx += 1;
+                
                 break;
             case 'o':       // a keyword/option
                 // an option
@@ -295,10 +306,12 @@ void doMWEis(opCode *op, tuple *head)
                 }
                 break;
         }
-
-        MFk[idx] = retVal;
-
-        idx += 1;
+// HWR 25 Jul 15
+// This seems to be a real old bug. If you have more than 3 keyword + options then idx grows greater than sizeof MFk[] and corrupts the local
+// activation record.
+//        MFk[idx] = retVal;    // Nope probably shouldn't be here....
+//
+//        idx += 1;
     }
     
     word36 i = 0;   ///< 1 st instruction word
@@ -409,7 +422,7 @@ void doMWEis(opCode *op, tuple *head)
     //    printf("ascii = %s\n", bAscii ? "True" : "False");
     
     //free(pSafe);
-    
+xxx:;
     outas8ins(i, addr, LEXline);
     
     addr += 1;
