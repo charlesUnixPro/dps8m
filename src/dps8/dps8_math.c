@@ -552,7 +552,7 @@ void fno (void)
         
         m ^= ((word72)1 << 71);
 
-        SCF(rA && SIGN72, cu.IR, I_NEG);
+        SCF(rA & SIGN72, cu.IR, I_NEG); // was &&
         CLRF(cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
@@ -833,7 +833,7 @@ void ufm (void)
     
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA && SIGN36, cu.IR, I_NEG);
+    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
     
     if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
     if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
@@ -1575,7 +1575,7 @@ void dufm (void)
     
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA && SIGN36, cu.IR, I_NEG);
+    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
     
     if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
     if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
