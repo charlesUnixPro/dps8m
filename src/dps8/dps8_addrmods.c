@@ -918,6 +918,7 @@ startCA:;
     IR_MOD:;
       {
         cu . CT_HOLD = Td;
+
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD: CT_HOLD=%o %o\n", cu . CT_HOLD, Td);
 
@@ -930,6 +931,7 @@ startCA:;
         iTAG = rTAG;
 
         word36 indword;
+        word18 saveCA = TPR . CA;
         Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a);
 
         if (ISITP (indword) || ISITS (indword))
@@ -965,9 +967,15 @@ startCA:;
                     switch (Td)
                     {
                         case IT_F2:
+                            // sim_printf ("IT_F2 (1): IWB is %012llo %06o %s\n",
+                            //                cu . IWB, GET_ADDR (cu . IWB),
+                            //                extMods [GET_TAG (cu . IWB)] . mod);
+                            // sim_printf ("IT_F2 (1): CA is %08o\n", TPR . CA);
+                            TPR . CA = saveCA;
                             doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
+                            TPR . CA = saveCA;
                             doFault( FAULT_F3, 0, "TM_IT: IT_F3");
                     }
                 }
