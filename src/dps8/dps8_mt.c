@@ -339,7 +339,10 @@ void mt_init(void)
   {
     memset(tape_state, 0, sizeof(tape_state));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
-      cables_from_ioms_to_mt [i] . iom_unit_num = -1;
+      {
+        cables_from_ioms_to_mt [i] . iom_unit_num = -1;
+        mt_unit [i] . capac = 40000000;
+      }
     boot_drive = 1;
   }
 
@@ -657,7 +660,11 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
                   {
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOM: %s\n", __func__, simh_tape_msg (ret));
-                    chan_data -> stati = 04340; // EOT file mark
+// If the tape is blank, a read should result in '4302' blank tape on read.
+                    if (sim_tape_bot (unitp))
+                      chan_data -> stati = 04302; // blank tape on read
+                    else
+                      chan_data -> stati = 04340; // EOT file mark
                     if (tbc != 0)
                       {
                         sim_debug (DBG_ERR, &tape_dev,
@@ -965,7 +972,7 @@ else
               chan_data -> stati |= 0340;
 
             sim_debug (DBG_INFO, & tape_dev,
-                       "%s: Wrote %d bytes from simulated tape; status %04o\n",
+                       "%s: Wrote %d bytes to simulated tape; status %04o\n",
                        __func__, (int) tbc, chan_data -> stati);
           }
           break;

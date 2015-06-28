@@ -1,4 +1,4 @@
-#define NO_RAW
+//#define NO_RAW
 /* sim_console.c: simulator console I/O library
 
    Copyright (c) 1993-2012, Robert M Supnik

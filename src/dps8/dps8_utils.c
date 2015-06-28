@@ -1333,7 +1333,6 @@ char *bin2text(uint64 word, int n)
 
 #include <ctype.h>
 
-#if 0
 //
 // simh puts the tty in raw mode when the sim is running;
 // this means that test output to the console will lack CR's and
@@ -1358,6 +1357,7 @@ char *bin2text(uint64 word, int n)
 //#define USE_COOKED
 #define USE_PUTCHAR
 
+#if 0
 void sim_printf( const char * format, ... )
 {
     char buffer[4096];
@@ -1424,12 +1424,18 @@ void sim_printf( const char * format, ... )
 void sim_printf (const char * format, ...)
   {
     char buffer [4096];
-    bool bOut = (sim_deb ? fileno (sim_deb) != fileno (stdout) : true);
+    bool bOut = (sim_deb ? fileno (sim_deb) != fileno (stdout) : false);
 
     va_list args;
     va_start (args, format);
     vsnprintf (buffer, sizeof (buffer), format, args);
+    va_end (args);
     
+#ifdef USE_COOKED
+    if (sim_is_running)
+      sim_ttcmd ();
+#endif
+
     for (uint i = 0 ; i < sizeof (buffer); i ++)
       {
         if (! buffer [i])
@@ -1437,23 +1443,33 @@ void sim_printf (const char * format, ...)
 
         // stdout
 
-        if (bOut)
+#ifdef USE_PUTCHAR
+        if (sim_is_running && buffer [i] == '\n')
           {
-            //if (sim_is_running && buffer [i] == '\n')
-              //putchar  ('\r');
-            putchar (buffer [i]);
+            putchar ('\r');
           }
+#endif
+#ifdef USE_OS_PUTCHAR
+        if (sim_is_running && buffer [i] == '\n')
+          sim_os_putchar ('\r');
+#endif
+        putchar (buffer [i]);
 
         // logfile
 
-        if (sim_deb)
+        if (bOut)
           {
             //if (sim_is_running && buffer [i] == '\n')
               //fputc  ('\r', sim_deb);
             fputc (buffer [i], sim_deb);
           }
     }
-    va_end (args);
+
+#ifdef USE_COOKED
+    if (sim_is_running)
+      sim_ttrun ();
+#endif
+
     fflush (sim_deb);
     if (bOut)
       fflush (stdout);

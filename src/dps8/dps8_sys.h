@@ -41,7 +41,9 @@ extern uint64 sim_deb_start;
 extern uint64 sim_deb_stop;
 extern uint64 sim_deb_break;
 #define NO_SUCH_SEGNO ((uint64) -1ll)
+#define NO_SUCH_RINGNO ((uint64) -1ll)
 extern uint64 sim_deb_segno;
+extern uint64 sim_deb_ringno;
 extern DEVICE *sim_devices[];
 
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);

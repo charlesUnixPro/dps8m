@@ -6,4 +6,5 @@ int opconAutoinput (int32 flag, char *  cptr);
 extern DEVICE opcon_dev;
 
 bool check_attn_key (void);
+void consoleProcess (void);
 

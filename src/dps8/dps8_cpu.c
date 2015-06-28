@@ -147,6 +147,8 @@ const char *sim_stop_messages[] = {
  *
  */
 
+static uint64_t lufCounter;
+
 
 /*
  * init_opcodes()
@@ -1246,6 +1248,7 @@ static uint get_highest_intr (void)
 
 bool sample_interrupts (void)
   {
+    lufCounter = 0;
     for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
         if (events . XIP [scuUnitNum])
@@ -1459,20 +1462,22 @@ last = M[01007040];
         // XXX Don't trace Multics idle loop
         if (PPR.PSR != 061 && PPR.IC != 0307)
 
-        if_sim_debug (DBG_TRACE, & cpu_dev)
-          sim_printf ("\n");
+          if_sim_debug (DBG_TRACE, & cpu_dev)
+            sim_printf ("\n");
 
         reason = 0;
 
         // Process deferred events and breakpoints
         reason = simh_hooks ();
         if (reason)
-          //return reason;
-          break;
+          {
+            //sim_printf ("reason: %d\n", reason);
+            break;
+          }
 
         scpProcessEvent (); 
         fnpProcessEvent (); 
-
+        consoleProcess ();
 #if 0
         if (sim_gtime () % 1024 == 0)
           {
@@ -1544,6 +1549,14 @@ last = M[01007040];
               }
           }
 #endif
+
+        lufCounter ++;
+        // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
+        if (lufCounter > 32000)
+          {
+            lufCounter = 0;
+            doFault (FAULT_LUF, 0, "instruction cycle lockup");
+          }
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));
