@@ -7672,6 +7672,11 @@ void doRCU (bool fxeTrap)
     if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
+    if (cu . FI_ADDR == FAULT_LUF)
+      {
+        longjmp (jmpMain, JMP_REFETCH);
+      }
+
     if (cu . FI_ADDR == FAULT_TRO || cu . FI_ADDR == FAULT_CON)  // g7 fault
       {
         longjmp (jmpMain, JMP_REFETCH);
