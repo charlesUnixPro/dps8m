@@ -7064,8 +7064,10 @@ void cmpb(DCDstruct *ins)
     
     e->F = bitfieldExtract36(e->op0, 25, 1) != 0;     // fill bit
 
-    SETF(cu.IR, I_ZERO);  // assume all =
-    SETF(cu.IR, I_CARRY); // assume all >=
+    //SETF(cu.IR, I_ZERO);  // assume all =
+    //SETF(cu.IR, I_CARRY); // assume all >=
+    CLRF(cu.IR, I_ZERO);
+    CLRF(cu.IR, I_CARRY);
     
     //getBit (0, 0, 0);   // initialize bit getter 1
     //getBit2(0, 0, 0);   // initialize bit getter 2
