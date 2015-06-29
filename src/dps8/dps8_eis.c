@@ -7062,7 +7062,7 @@ void cmpb(DCDstruct *ins)
     int bitPosn1 = e->B1;
     int bitPosn2 = e->B2;
     
-    e->F = bitfieldExtract36(e->op0, 25, 1) != 0;     // fill bit
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;     // fill bit (was 25)
 
     SETF(cu.IR, I_ZERO);  // assume all =
     SETF(cu.IR, I_CARRY); // assume all >=
