@@ -997,6 +997,7 @@ void consoleProcess (void)
                 //sendConsole (04310); // operator distracted
                 //sendConsole (04000); // Null line, status ok
                 sendConsole (04310); // Null line, status operator distracted
+                sim_printf ("CONSOLE: RELEASED\n");
                 return;
               }
             if (c == 0)
@@ -1137,6 +1138,7 @@ eol:
         console_state . tailp = console_state . buf;
         //sendConsole (04000); // Null line, status ok
         sendConsole (04310); // Null line, status operator distracted
+        sim_printf ("CONSOLE: RELEASED\n");
         return;
       }
 
