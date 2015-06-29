@@ -7078,7 +7078,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
 // RJ78: Notes 1:  If L1 or L2 = 0, both the Zero and Carry indicators are 
 // turned ON, but no Illegal Procedure fault occurs.
 
-    if (e -> N1 == 0 || e -> N2 == 0)
+// CAC: This makes sense if you s/or/and/; the behavior for the 'or' 
+// condition is well-defined by the text, but the case of 'and' is
+// not covered. However, this test is just an optimization -- the 
+// code behaves this way for the 'and' case.
+
+    //if (e -> N1 == 0 || e -> N2 == 0)
+    if (e -> N1 == 0 && e -> N2 == 0)
       {
 //sim_printf ("[%lld] cmpb %d %d\n", sim_timell (), e -> N1, e -> N2);
 //traceInstruction (0);
