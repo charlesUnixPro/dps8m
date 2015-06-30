@@ -1,0 +1,469 @@
+!INFO date Tue 30 Jun 2015 14:32:27 PDT
+!INFO src TestCMPB.as8
+!SIZE 000727
+000000 xxxx 000201702000        tsx2	rd_clock
+000001 xxxx 000024757000        staq	Date        "MM/DD HH:MM
+000002 xxxx 000405701000        call    ioa(msgHello, Date, Date+1)
+000003 xxxx 000010710000 
+000004 xxxx 000000000000 
+000005 xxxx 000011000000 
+000006 xxxx 000024000000 
+000007 xxxx 000025000000 
+000010 xxxx 000165710000     tra cmpb_onc
+000011 xxxx 032124150151 msgHello:  acc         "This is TestCMPB ...^g^g\r\n"
+000012 xxxx 163040151163 
+000013 xxxx 040124145163 
+000014 xxxx 164103115120 
+000015 xxxx 102040056056 
+000016 xxxx 056136147136 
+000017 xxxx 147015012040 
+000020 xxxx 015104141164 msg1:      acc         "Date: ^g^g \r\n"
+000021 xxxx 145072040136 
+000022 xxxx 147136147040 
+000023 xxxx 015012040040 
+000024 xxxx 000000000000 Date:   bss     2
+000026 xxxx 025103115120 tnztaken:       acc "CMPB: tnz taken ...\n\r"
+000027 xxxx 102072040164 
+000030 xxxx 156172040164 
+000031 xxxx 141153145156 
+000032 xxxx 040056056056 
+000033 xxxx 012015040040 
+000034 xxxx 031103115120 tnznottaken:    acc "CMPB: tnz NOT taken ...\n\r"
+000035 xxxx 102072040164 
+000036 xxxx 156172040116 
+000037 xxxx 117124040164 
+000040 xxxx 141153145156 
+000041 xxxx 040056056056 
+000042 xxxx 012015040040 
+000043 xxxx 777777777777 data0:  oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000044 xxxx 777777777777 
+000045 xxxx 777777777777 
+000046 xxxx 777777777777 
+000047 xxxx 777777777777 
+000050 xxxx 777777777777 
+000051 xxxx 777777777777 
+000052 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000053 xxxx 777777777777 
+000054 xxxx 777777777777 
+000055 xxxx 777777777777 
+000056 xxxx 777777777777 
+000057 xxxx 777777777777 
+000060 xxxx 777777777777 
+000061 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000062 xxxx 777777777777 
+000063 xxxx 777777777777 
+000064 xxxx 777777777777 
+000065 xxxx 777777777777 
+000066 xxxx 777777777777 
+000067 xxxx 777777777777 
+000070 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000071 xxxx 777777777777 
+000072 xxxx 777777777777 
+000073 xxxx 777777777777 
+000074 xxxx 777777777777 
+000075 xxxx 777777777777 
+000076 xxxx 777777777777 
+000077 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000100 xxxx 777777777777 
+000101 xxxx 777777777777 
+000102 xxxx 777777777777 
+000103 xxxx 777777777777 
+000104 xxxx 777777777777 
+000105 xxxx 777777777777 
+000106 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000107 xxxx 777777777777 
+000110 xxxx 777777777777 
+000111 xxxx 777777777777 
+000112 xxxx 777777777777 
+000113 xxxx 777777777777 
+000114 xxxx 777777777777 
+000115 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000116 xxxx 777777777777 
+000117 xxxx 777777777777 
+000120 xxxx 777777777777 
+000121 xxxx 777777777777 
+000122 xxxx 777777777777 
+000123 xxxx 777777777777 
+000124 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000125 xxxx 777777777777 
+000126 xxxx 777777777777 
+000127 xxxx 777777777777 
+000130 xxxx 777777777777 
+000131 xxxx 777777777777 
+000132 xxxx 777777777777 
+000133 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000134 xxxx 777777777777 
+000135 xxxx 777777777777 
+000136 xxxx 777777777777 
+000137 xxxx 777777777777 
+000140 xxxx 777777777777 
+000141 xxxx 777777777777 
+000142 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000143 xxxx 777777777777 
+000144 xxxx 777777777777 
+000145 xxxx 777777777777 
+000146 xxxx 777777777777 
+000147 xxxx 777777777777 
+000150 xxxx 777777777777 
+000151 xxxx 777777777777         oct 777777777777,777777777777,777777777777,777777777777,777777777777,777777777777,777777777777
+000152 xxxx 777777777777 
+000153 xxxx 777777777777 
+000154 xxxx 777777777777 
+000155 xxxx 777777777777 
+000156 xxxx 777777777777 
+000157 xxxx 777777777777 
+000160 xxxx 000405701000         call    ioa(tnztaken)
+000161 xxxx 000164710000 
+000162 xxxx 000000000000 
+000163 xxxx 000026000000 
+000164 xxxx 000200710000         tra     CSL0
+000165 xxxx 000043352000     eppbp   data0
+000166 xxxx 146524236007     ldq     52564,dl
+000167 xxxx 004372225003     ldx5	2298,du
+000170 xxxx 400000066546     cmpb	(pr,rl,ql),fill(1)
+000171 xxxx 200000000015     descb	bp|0,x5
+000172 xxxx 000000000000     descb	000(000)
+000173 xxxx 000160601000     tnz     data
+000174 xxxx 000405701000     call    ioa (tnznottaken)
+000175 xxxx 000200710000 
+000176 xxxx 000000000000 
+000177 xxxx 000034000000 
+000200 xxxx 000000616000         dis
+000201 xxxx 000000633000 rd_clock:	rccl                " read the clock
+000202 xxxx 000324757000 cv_clock:	staq	rdctime     " save clock reading
+000203 xxxx 000275742000 	stx2	datx2               " save XR's
+000204 xxxx 000276740000 	stx0	datx2+1             " ..
+000205 xxxx 000034235007 	lda     28,dl               " Initialize montab
+000206 xxxx 000327755000 	sta     montab+1			" to prime Feb
+000207 xxxx 000324237000 	ldaq	rdctime             " Get clock reading
+000210 xxxx 000001737000 	lls     1                   " Set for dvf
+000211 xxxx 000723507000 	dvf     =1000000			" Get seconds since 1900.
+000212 xxxx 000044777000 	llr     36                  " Into Q.
+000213 xxxx 000074506007 	div     60,dl               " Seconds since min to A, mins to Q.
+000214 xxxx 000310755000 	sta     rdclock.sec         " Save for inspection.
+000215 xxxx 000074506007 	div     60,dl               " Min since hr to A, hrs to Q.
+000216 xxxx 000307755000 	sta     rdclock.min
+000217 xxxx 000006627000 	eax7	6
+000220 xxxx 000300702000 	tsx2	datecv              " Convert the minutes.
+000221 xxxx 000320176000 	sbq     rdclock.zone_temp	" Adjust for GMT.
+000222 xxxx 000030506007 	div     24,dl               " Days since 1900 in q.
+000223 xxxx 000317756000 	stq     rdclock.day_of_century	" save for  later.
+000224 xxxx 000306755000 	sta     rdclock.hr          " Hours since daybreak.
+000225 xxxx 000300702000 	tsx2	datecv              " Convert the hours
+000226 xxxx 002665506007 	div     365*4+1,dl          " get leap year cycle
+000227 xxxx 002110115007 	cmpa	365*3+1,dl          " if in last year of cycle (the leap year)
+000230 xxxx 000232604000 	tmi     *+2                 " no
+000231 xxxx 000327054000 	aos     montab+1			" allow for feb 29
+000232 xxxx 000002736000 	qls     2                   " 4*# leap year cycles
+000233 xxxx 003555036007 	adlq	1901,dl
+000234 xxxx 000316756000 	stq     rdclock.year		" Save
+000235 xxxx 000044777000 	llr     36
+000236 xxxx 000555506007 	div     365,dl              " Years complete since l.y.c. =>Q
+000237 xxxx 000004116007 	cmpq	4,dl                " Dec 31st of leap year?
+000240 xxxx 000243601000 	tnz     *+3                 " No.
+000241 xxxx 000001176007 	sbq     1,dl                " Adjust year and
+000242 xxxx 000555235007 	lda     365,dl              " day numbers.
+000243 xxxx 000316056000 	asq     rdclock.year		" Add in years complete.
+000244 xxxx 000000626000 	eax6	0                   " search for correct month
+000245 xxxx 030220520201 	rpt     12,1,tmi			" ..
+000246 xxxx 000326175016 	sba     montab,6			" subtract off days for each month
+000247 xxxx 777777075016 	ada     -1,6                " put back last entry
+000250 xxxx 000001075007 	ada     1,dl                " plus one more
+000251 xxxx 000313755000 	sta     rdclock.day_of_month	" Day of month
+000252 xxxx 000300702000 	tsx2	datecv              " convert day
+000253 xxxx 000000635016 	eaa     0,6
+000254 xxxx 000326135003 	sbla	montab,du			" get index into month table
+000255 xxxx 000022771000 	arl     18                  "..
+000256 xxxx 000311755000 	sta     rdclock.month		" Save month number
+000257 xxxx 000353236005 	ldq     rdc.months-1,al		" Get name of month.
+000260 xxxx 000312756000 	stq     rdclock.month_name
+000261 xxxx 000300702000 	tsx2	datecv              " convert month
+000262 xxxx 000000024400 	mvne	(),(),()			" edit the date and time
+000263 xxxx 000323070010 	desc4ns	date,8
+000264 xxxx 000342000014 	desc9a	datedit,12
+000265 xxxx 000324020014 	desc6a	rdctime,12
+000266 xxxx 000317236000 	ldq     rdclock.day_of_century
+000267 xxxx 000002076007 	adq     2,dl                " Bump Tuesday into place.
+000270 xxxx 000007506007 	div     7,dl
+000271 xxxx 000314755000 	sta     rdclock.day_of_week
+000272 xxxx 000345236005 	ldq     rdc.days,al         " Get name of day.
+000273 xxxx 000315756000 	stq     rdclock.day_name
+000274 xxxx 000324237000 	ldaq	rdctime             " get conversion in AQ
+000275 xxxx 000275622000 datx2:	eax2	*			" restore XR's
+000276 xxxx 000276620000 	eax0    *               " ..
+000277 xxxx 000000710012 	tra     0,2             " return to caller
+000300 xxxx 000322755000 datecv:	sta	datenum			" save number
+000301 xxxx 000017301400 	btd     (),(x7)         " convert into proper place
+000302 xxxx 000322000004 	desc9a	datenum,4
+000303 xxxx 000323070002 	desc4ns	date,2
+000304 xxxx 777776627017 	eax7	-2,7			" move offset index
+000305 xxxx 000000710012 	tra     0,2             " and return
+000306 xxxx 000000000000 	bss	,1
+000307 xxxx 000000000000 	bss	,1
+000310 xxxx 000000000000 	bss	,1
+000311 xxxx 000000000000 	bss	,1
+000312 xxxx 000000000000 	bss	,1
+000313 xxxx 000000000000 	bss	,1
+000314 xxxx 000000000000 	bss	,1
+000315 xxxx 000000000000 	bss	,1
+000316 xxxx 000000000000 	bss	,1
+000317 xxxx 000000000000 	bss	,1
+000320 xxxx 000000000010     dec     8
+000321 xxxx 160144164040     aci     'pdt '
+000322 xxxx 000000000000 datenum:	bss	,1
+000323 xxxx 000000000000 date:	bss	,1
+000324 xxxx 000000000000 rdctime:	bss	,2
+000326 xxxx 000000000037 montab:	dec	31,28,31,30,31,30,31,31,30,31,30,31
+000327 xxxx 000000000034 
+000330 xxxx 000000000037 
+000331 xxxx 000000000036 
+000332 xxxx 000000000037 
+000333 xxxx 000000000036 
+000334 xxxx 000000000037 
+000335 xxxx 000000000037 
+000336 xxxx 000000000036 
+000337 xxxx 000000000037 
+000340 xxxx 000000000036 
+000341 xxxx 000000000037 
+000342 xxxx 401020102260 datedit:	vfd	9/lte+1,o9/20,9/mvzb+2,9/insp,o9/61,9/mvc+2,9/insm+1,9/mvc+2
+000343 xxxx 061322021322 
+000344 xxxx 260015322021 	vfd	9/insp,o9/15,9/mvc+2,9/insm+1
+000345 xxxx 163165156040 rdc.days: aci	'sun mon tue wed thurfri sat '
+000346 xxxx 155157156040 
+000347 xxxx 164165145040 
+000350 xxxx 167145144040 
+000351 xxxx 164150165162 
+000352 xxxx 146162151040 
+000353 xxxx 163141164040 
+000354 xxxx 152141156040 	aci	'jan feb mar apr may jun jul aug septoct nov dec '
+000355 xxxx 146145142040 
+000356 xxxx 155141162040 
+000357 xxxx 141160162040 
+000360 xxxx 155141171040 
+000361 xxxx 152165156040 
+000362 xxxx 152165154040 
+000363 xxxx 141165147040 
+000364 xxxx 163145160164 
+000365 xxxx 157143164040 
+000366 xxxx 156157166040 
+000367 xxxx 144145143040 
+000370 xxxx 000373710000 crlf:	save
+000371 xxxx 000000000000 
+000372 xxxx 000371630000 
+000373 xxxx 000371754000 
+000374 xxxx 000371741000 
+000375 xxxx 000404755000         sta     saveA
+000376 xxxx 000724235000         lda     =012
+000377 xxxx 000001420400         emCall  1
+000400 xxxx 000725235000         lda     =015
+000401 xxxx 000001420400         emcall  1
+000402 xxxx 000404235000         lda     saveA
+000403 xxxx 000372710000         return  crlf
+000404 xxxx 000000000000 saveA:  bss     1
+000405 xxxx 000414710000 ioa:    save    2, 4, 5, 6
+000406 xxxx 000000000000 
+000407 xxxx 000000222003 
+000410 xxxx 000001224003 
+000411 xxxx 000002225003 
+000412 xxxx 000003226003 
+000413 xxxx 000406630000 
+000414 xxxx 000406754000 
+000415 xxxx 000406741000 
+000416 xxxx 000407742000 
+000417 xxxx 000410744000 
+000420 xxxx 000411745000 
+000421 xxxx 000412746000 
+000422 xxxx 000002624031 ioa1:   eax4    2, 1*   " 1st arg is control string
+000423 xxxx 000003625011         eax5    3, 1    " next arg is the 1st of the numeric args. x5 points to next argument
+000424 xxxx 000000626015         eax6    0, x5
+000425 xxxx 000041235007         lda     041, dl " make a blank tallyb word .....
+000426 xxxx 000443755000         sta     i29
+000427 xxxx 000000235014     	lda     0, x4   " get 1st data word into A
+000430 xxxx 000033731000         ars     27      " determine word count
+000431 xxxx 000006735000     	als     6       " count to upper word of tally
+000432 xxxx 000443255000     	orsa    i29
+000433 xxxx 000000626014     	eax6    0, x4   " address of string into X6
+000434 xxxx 000443746000     	stx6    i29     " address to upper word of tally
+000435 xxxx 000443235052 inext:  lda     i29, sc
+000436 xxxx 000136115007         cmpa    =o000136,dl		" ^
+000437 xxxx 000444600000         tze     iernot      " if so, go process it
+000440 xxxx 000001420400 out1:  	emCall  1
+000441 xxxx 000435607000     	ttf     inext
+000442 xxxx 000407710000         return  ioa
+000443 xxxx 000000000041 i29:	tallyb  0, 0, 1
+000444 xxxx 000443235052 iernot: lda     i29, sc         " get next char ...
+000445 xxxx 000136115007         cmpa    =o000136,dl     " is it another "^"?
+000446 xxxx 000464600000         tze     i21             " No, just print it ...
+000447 xxxx 000167115007         cmpa    =o000167,dl     " is it a "w"?
+000450 xxxx 000466600000         tze     idoW            " do full word octal
+000451 xxxx 000157115007         cmpa    =o000157,dl     " is it an "o"?
+000452 xxxx 000514600000         tze     idoO            " print zero suppressed octal
+000453 xxxx 000156115007         cmpa    =o000156,dl     " is it a "n"?
+000454 xxxx 000537600000         tze     idoN            " octal w/ no spaces inserted
+000455 xxxx 000144115007         cmpa    =o000144,dl     " is it a "d"?
+000456 xxxx 000566600000         tze     idoD            " decimal
+000457 xxxx 000141115007         cmpa    =o000141,dl     " is it a ^a?
+000460 xxxx 000574600000         tze     idoA            " 4 char ascii display
+000461 xxxx 000147115007         cmpa    =o000147,dl     " is it a ^g?
+000462 xxxx 000605600000         tze     idoG            " 6 char GE BCD display
+000463 xxxx 000440710000         tra     out1        " unknown just print it....
+000464 xxxx 000001420400 i21:    emCall  1           " output A to console
+000465 xxxx 000435710000         tra     inext
+000466 xxxx 000000235035 idoW:   lda     0, 5*       " ^w - full-word octal xxxxxx xxxxxx
+000467 xxxx 000663702000         tsx2    octwd
+000470 xxxx 000564757000         staq    ioaSafe     " bcd in AQ
+000471 xxxx 000044773000         lrl     36          " A => Q
+000472 xxxx 000006622000         eax2    6
+000473 xxxx 000000235007 idoW2:  lda     =0, dl
+000474 xxxx 000006737000         lls     6
+000475 xxxx 000002420400         emCall  2           " output GE code char to console
+000476 xxxx 777777622012         eax2    -1, 2
+000477 xxxx 000473601000         tnz     idoW2
+000500 xxxx 000564237000         ldaq    ioaSafe
+000501 xxxx 000000235007         lda     =0, dl      " 0 => A
+000502 xxxx 000020235007         lda     =020 ,dl     " bcd ' ' => A
+000503 xxxx 000002420400         emcall  2
+000504 xxxx 000006622000         eax2    6
+000505 xxxx 000000235007 idoW3:  lda     =0,dl
+000506 xxxx 000006737000         lls     6
+000507 xxxx 000002420400         emCall  2
+000510 xxxx 777777622012         eax2    -1, 2
+000511 xxxx 000505601000         tnz     idoW3
+000512 xxxx 000001065003         adx5    1,du
+000513 xxxx 000435710000         tra     inext
+000514 xxxx 000000235035 idoO:   lda     0, 5*           " ^o - Zero-suppressed octal
+000515 xxxx 000663702000         tsx2    octwd
+000516 xxxx 000564757000         staq    ioaSafe         " bcd in AQ
+000517 xxxx 000535235000         lda     idOTly
+000520 xxxx 000536755000         sta     idOT
+000521 xxxx 000536235052 idO1:   lda     idOT, sc        " get char into A
+000522 xxxx 000000115007         cmpa    =0, dl          " a zero?
+000523 xxxx 000531601000         tnz     idONZ + 1       " nope
+000524 xxxx 000521607000         ttf     idO1            " Yes, a Zero. Go for more
+000525 xxxx 000002420400         emCall  2               " output a single 0
+000526 xxxx 000001065003         adx5    1,du
+000527 xxxx 000435710000         tra     inext
+000530 xxxx 000536235052 idONZ:  lda     idOT, sc        " get char into A
+000531 xxxx 000002420400         emCall  2
+000532 xxxx 000530607000         ttf     idONZ           " Yes, a Zero. Go for more
+000533 xxxx 000001065003         adx5    1,du
+000534 xxxx 000435710000         tra     inext
+000535 xxxx 000564001400 idOTly: tally   ioaSafe, 12, 0
+000536 xxxx 000000000000 idOT:   bss     1
+000537 xxxx 000000235035 idoN:   lda     0, 5*       " ^n - octal w/ no spaces inserted
+000540 xxxx 000663702000         tsx2    octwd
+000541 xxxx 000564757000         staq    ioaSafe     " bcd in AQ
+000542 xxxx 000044773000         lrl     36          " A => Q
+000543 xxxx 000006622000         eax2    6
+000544 xxxx 000000235007 idoN2:  lda     =0,dl
+000545 xxxx 000006737000         lls     6
+000546 xxxx 000002420400         emCall  2           " output GE code char to console
+000547 xxxx 777777622012         eax2    -1, 2
+000550 xxxx 000544601000         tnz     idoN2
+000551 xxxx 000564237000         ldaq    ioaSafe
+000552 xxxx 000000235007         lda     =0, dl      " 0 => A
+000553 xxxx 000006622000         eax2    6
+000554 xxxx 000000235007 idoN3:  lda     =0, dl
+000555 xxxx 000006737000         lls     6
+000556 xxxx 000002420400         emCall  2
+000557 xxxx 777777622012         eax2    -1, 2
+000560 xxxx 000554601000         tnz     idoN3
+000561 xxxx 000001065003         adx5    1,du
+000562 xxxx 000435710000         tra     inext
+000563 xxxx 000000011000         even "(allocating 1 nop)
+000564 xxxx 000000000000 ioaSafe:  bss 2
+000566 xxxx 000000236035 idoD:   ldq     0, 5*       " ^d
+000567 xxxx 000616701000         call    toDec
+000570 xxxx 000572710000 
+000571 xxxx 000000000000 
+000572 xxxx 000001065003         adx5    1,du
+000573 xxxx 000435710000         tra     inext
+000574 xxxx 000000236035 idoA:   ldq     0, 5*      " ^a (4 ascii chars into Q)
+000575 xxxx 000004622000         eax2    4
+000576 xxxx 000000235007 idoA2:  lda     =0,dl
+000577 xxxx 000011737000         lls     9
+000600 xxxx 000001420400         emCall  1
+000601 xxxx 777777622012         eax2    -1, 2
+000602 xxxx 000576601000         tnz     idoA2
+000603 xxxx 000001065003         adx5    1,du        " into next argument
+000604 xxxx 000435710000         tra     inext
+000605 xxxx 000000236035 idoG:   ldq     0, 5*        " ^g (6 GE BCD chars into Q)
+000606 xxxx 000006622000         eax2    6
+000607 xxxx 000000235007 idoG2:  lda     =0,dl
+000610 xxxx 000006737000         lls     6
+000611 xxxx 000002420400         emCall  2
+000612 xxxx 777777622012         eax2    -1, 2
+000613 xxxx 000607601000         tnz     idoG2
+000614 xxxx 000001065003         adx5    1,du        " into next argument
+000615 xxxx 000435710000         tra     inext
+000616 xxxx 000621710000 toDec:  save    "2,3,4,5,6,7
+000617 xxxx 000000000000 
+000620 xxxx 000617630000 
+000621 xxxx 000617754000 
+000622 xxxx 000617741000 
+000623 xxxx 000726116000         cmpq    =-34359738368       " the weird one?
+000624 xxxx 000630601000         tnz     toDec2
+000625 xxxx 000662235000         lda     decMTly             " just print it and be done with it
+000626 xxxx 000656755000         sta     decTly
+000627 xxxx 000646710000         tra     toDec1
+000630 xxxx 000652756000 toDec2: stq     decNo
+000631 xxxx 000000116007         cmpq    =0,dl       " Q < 0?
+000632 xxxx 000634605000         tpl     toDec0      " No
+000633 xxxx 000652336000         lcq     decNo       " -decNo => Q
+000634 xxxx 000012506007 toDec0: div     =10,dl      " divide Q by 10, remainder in A
+000635 xxxx 000060075007         ada     =o060,dl    " add ascii '0' (=1A0) to A
+000636 xxxx 000656755045         sta     decTly, scr " start writing characters backwards
+000637 xxxx 000000076007         adq     =0,dl       " set flags to test if Q == 0
+000640 xxxx 000634601000         tnz     toDec0      " if Q == 0 then we're essentially done with conversion
+000641 xxxx 000652235000         lda     decNo
+000642 xxxx 000000115007         cmpa    =0,dl
+000643 xxxx 000646605000         tpl     toDec1
+000644 xxxx 000055235007         lda     =o055,dl    " (-) => A
+000645 xxxx 000656755045         sta     decTly, scr " write (-) sign
+000646 xxxx 000656235052 toDec1: lda     decTly, sc
+000647 xxxx 000001420400         emCall  1
+000650 xxxx 000646607000         ttf     toDec1
+000651 xxxx 000620710000         return  toDec
+000652 xxxx 000000000000 decNo:  dec     0
+000653 xxxx 000000000000 decBuf: bss     3
+000656 xxxx 000655000040 decTly: tallyb  decBuf+2, , 0
+000657 xxxx 055063064063 decMM:  aci     "-34359738368"  " -2^^35
+000660 xxxx 065071067063 
+000661 xxxx 070063066070 
+000662 xxxx 000657001440 decMTly:tallyb  decMM, 12, 0
+000663 xxxx 000700742000 octwd:	stx2	octx2
+000664 xxxx 000006622000 	eax2	6
+000665 xxxx 000003736000 	qls     3
+000666 xxxx 000003777000 	llr     3
+000667 xxxx 777777622012 	eax2	-1,2
+000670 xxxx 000665605400 	tpnz	*-3
+000671 xxxx 000722756000 	stq     octtemp
+000672 xxxx 000006622000 	eax2	6
+000673 xxxx 000003736000 	qls     3
+000674 xxxx 000003777000 	llr     3
+000675 xxxx 777777622012 	eax2	-1,2
+000676 xxxx 000673605400 	tpnz	*-3
+000677 xxxx 000722235000 	lda     octtemp
+000700 xxxx 000700622000 octx2:	eax2	*
+000701 xxxx 000000710012 	tra     0,2
+000702 xxxx 000720742000 hexwd:	stx2	hexx2
+000703 xxxx 000044773000 	lrl     36          "shift to Q
+000704 xxxx 000006622000 	eax2	6           "	process 6 characters
+000705 xxxx 000000235007 hexloop:	lda	=0,dl	"	clear A
+000706 xxxx 000004737000 	lls     4           "shift in 4 bits
+000707 xxxx 000011115007 	cmpa	=9,dl		"greater than 9?
+000710 xxxx 000712604400 	tmoz	*+2
+000711 xxxx 000007035007 	adla	=7,dl       "if so, change to letter
+000712 xxxx 000006773000 	lrl     6
+000713 xxxx 000722235000 	lda     octtemp		"get temporary
+000714 xxxx 000006737000 	lls     6           "insert new character
+000715 xxxx 000722755000 	sta     octtemp		"and store
+000716 xxxx 777777622012 	eax2	-1,2		"decrement index
+000717 xxxx 000705605400 	tpnz	hexloop
+000720 xxxx 000720622000 hexx2:	eax2	*
+000721 xxxx 000000710012 	tra     0,2		"return to caller
+000722 xxxx 000000000000 octtemp:	oct	0
+000723 xxxx 000003641100 decimal literal (=1000000)
+000724 xxxx 000000000012 octal literal (=o12)
+000725 xxxx 000000000015 octal literal (=o15)
+000726 xxxx 400000000000 decimal literal (=-34359738368)
