@@ -7066,8 +7066,6 @@ void cmpb(DCDstruct *ins)
 
     SETF(cu.IR, I_ZERO);  // assume all =
     SETF(cu.IR, I_CARRY); // assume all >=
-    //CLRF(cu.IR, I_ZERO);    // If C(Y-bit1)i = C(Y-bit2)i for all i, then ON; otherwise, OFF
-    //SETF(cu.IR, I_CARRY);   // If C(Y-bit1)i < C(Y-bit2)i for any i, then OFF; otherwise ON
     
     //getBit (0, 0, 0);   // initialize bit getter 1
     //getBit2(0, 0, 0);   // initialize bit getter 2
@@ -7101,7 +7099,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
         bool b1 = EISgetBit (&e->ADDR1, &charPosn1, &bitPosn1);
         bool b2 = EISgetBit (&e->ADDR2, &charPosn2, &bitPosn2);
         
-sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2 %d\n", i, b1, b2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(min(e->N1, e->N2)) i %d b1 %d b2 %d\n", i, b1, b2);
         if (b1 != b2)
         {
             CLRF(cu.IR, I_ZERO);
@@ -7122,7 +7120,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2 %d\n", i, b1, b2);
             bool b1 = e->F;
             //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
             bool b2 = EISgetBit(&e->ADDR2, &charPosn2, &bitPosn2);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1fill %d b2 %d\n", i, b1, b2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 < e->N2) i %d b1fill %d b2 %d\n", i, b1, b2);
         
             if (b1 != b2)
             {
@@ -7143,7 +7141,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1fill %d b2 %d\n", i, b1, b2);
             //bool b1 = getBit(&srcAddr1, &charPosn1, &bitPosn1);
             bool b1 = EISgetBit(&e->ADDR1, &charPosn1, &bitPosn1);
             bool b2 = e->F;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb i %d b1 %d b2fill %d\n", i, b1, b2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n", i, b1, b2);
         
             if (b1 != b2)
             {
