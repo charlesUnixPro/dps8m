@@ -56,7 +56,7 @@
 //#define AGGRESSIVE_RING_ALARM
 
 // Enable blinkenLights interface
-#define MULTIPASS
+//#define MULTIPASS
 
 // Enable IPC
 #define VM_DPS8

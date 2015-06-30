@@ -148,10 +148,10 @@ static CTAB dps8_cmds[] =
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
     
-#ifdef VM_DPS8
-    {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
-    {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
-#endif
+//#ifdef VM_DPS8
+    //{"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
+    //{"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
+//#endif
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
 
@@ -193,7 +193,7 @@ static void dps8_init(void)
     console_init ();
     disk_init ();
     mt_init ();
-    fnpInit ();
+    //fnpInit ();
     //mpc_init ();
     scu_init ();
     cpu_init ();
@@ -295,10 +295,10 @@ static t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_scu (n1, n2, n3, n4);
       }
-    else if (strcasecmp (name, "FNP") == 0)
-      {
-        rc = cableFNP (n1, n2, n3, n4);
-      }
+    //else if (strcasecmp (name, "FNP") == 0)
+      //{
+        //rc = cableFNP (n1, n2, n3, n4);
+      //}
     else
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
@@ -2195,7 +2195,7 @@ DEVICE * sim_devices [] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
-    & fnpDev,
+    //& fnpDev,
     & disk_dev,
     & scu_dev,
     & clk_dev,
@@ -2203,7 +2203,7 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     & fxe_dev,
-    & ipc_dev,  // for fnp IPC
+    //& ipc_dev,  // for fnp IPC
     NULL
   };
 

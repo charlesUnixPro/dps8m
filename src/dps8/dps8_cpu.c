@@ -1382,6 +1382,7 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
+#if 0
     // IPC initalization stuff
     bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
@@ -1394,7 +1395,7 @@ t_stat sim_instr (void)
     }
      
     // End if IPC init stuff
-      
+#endif
       
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
@@ -1476,7 +1477,7 @@ last = M[01007040];
           }
 
         scpProcessEvent (); 
-        fnpProcessEvent (); 
+        //fnpProcessEvent (); 
         consoleProcess ();
 #if 0
         if (sim_gtime () % 1024 == 0)
@@ -2054,8 +2055,8 @@ syncFaultReturn:;
 leave:
 
     // if IPC was running before G leave it running - don't stop it, else stop it
-    if (!ipc_running)
-        ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
+    //if (!ipc_running)
+        //ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
       
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());

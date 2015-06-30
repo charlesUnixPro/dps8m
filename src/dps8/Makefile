@@ -203,7 +203,6 @@ C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_disk.c
 C_SRCS += ./dps8_eis.c
-C_SRCS += ./dps8_fnp.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
 C_SRCS += ./dps8_loader.c
@@ -220,8 +219,7 @@ C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
 #C_SRCS += ./fnpp.c
-C_SRCS += ./shm.c
-C_SRCS += ./fnp_ipc.c
+#C_SRCS += ./shm.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -235,7 +233,6 @@ H_SRCS += dps8_decimal.h
 H_SRCS += dps8_disk.h
 H_SRCS += dps8_eis.h
 H_SRCS += dps8_faults.h
-H_SRCS += dps8_fnp.h
 H_SRCS += dps8_fxe.h
 H_SRCS += dps8.h
 H_SRCS += dps8_hw_consts.h
@@ -254,7 +251,6 @@ H_SRCS += dps8_utils.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
-#H_SRCS += fnpp.h
 
 H_SRCS += area_info.incl.pl1.h
 H_SRCS += bind_map.incl.pl1.h
@@ -268,7 +264,7 @@ H_SRCS += stack_header.incl.pl1.h
 H_SRCS += std_symbol_header.incl.pl1.h
 H_SRCS += symbol_block.incl.pl1.h
 H_SRCS += system_link_names.incl.pl1.h
-H_SRCS += shm.h
+#H_SRCS += shm.h
 
 
 
@@ -279,7 +275,7 @@ android :
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
+#LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
