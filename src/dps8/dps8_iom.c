@@ -2179,7 +2179,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
     sim_debug (DBG_TRACE, & iom_dev, "payload set cm_LPW_init_state\n");
 
 
-//if (chanNum == 012) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
+//if (chanNum == 013) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
 //if (chanNum == 012) sim_printf ("[%lld]\n", sim_timell ());
 
     if_sim_debug (DBG_DEBUG, & iom_dev)
@@ -2682,14 +2682,10 @@ static void iom_show_channel_mbx (uint iomUnitNum, uint chanNum)
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;
-#if 0
-    for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
-#else
-    for (int i = 0; i < (int) lpw.tally; ++ i)
-#endif
+    //for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
+    //for (int i = 0; i < (int) lpw.tally; ++ i)
+    for (int i = 0; i < 4096; i ++)
       {
-        if (i > 4096)
-          break;
         dcw_t dcw;
         fetchAndParseDCW (iomUnitNum, chanNum, & dcw, addr, 1);
         if (dcw . type == idcw)
@@ -2705,10 +2701,12 @@ static void iom_show_channel_mbx (uint iomUnitNum, uint chanNum)
         else if (dcw . type == ddcw)
           {
             sim_printf ("    DDCW %d at %06o: %s\n", i, addr, dcw2text (& dcw));
-            control = dcw . fields . instr . control;
+            //control = dcw . fields . instr . control;
+            if (control == 0 && dcw . fields . ddcw . type == 0) // IOTD
+              break;
           }
         ++ addr;
-#if 1
+#if 0
         if (control != 2)
           {
             if (i == (int) lpw . tally)
@@ -2916,6 +2914,7 @@ static t_stat iomShowMbx (UNUSED FILE * st,
     sim_printf ("Channel %#o (%d):\n", chanNum, chanNum);
 
     iom_show_channel_mbx (iomUnitNum, chanNum);
+#if 0
     addr += 2;  // skip PCW
     
     if (lpw . tally == 0)
@@ -2923,7 +2922,8 @@ static t_stat iomShowMbx (UNUSED FILE * st,
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;
-    for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
+    //for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
+    for (int i = 0; i < 40 && control == 2; ++ i)
       {
         if (i > 4096)
           break;
@@ -2944,18 +2944,19 @@ static t_stat iomShowMbx (UNUSED FILE * st,
         else if (dcw . type == ddcw)
           {
             sim_printf ("DDCW %d at %06o: %s\n", i, addr, dcw2text (& dcw));
-            control = dcw . fields . instr . control;
+            //control = dcw . fields . instr . control;
           }
         addr ++;
         if (control != 2)
           {
-            if (i == (int) lpw . tally)
-              sim_printf ("-- end of list --\n");
-            else
+            //if (i == (int) lpw . tally)
+              //sim_printf ("-- end of list --\n");
+            //else
               sim_printf ("-- end of list (because dcw control != 2) --\n");
           }
       }
     sim_printf ("\n");
+#endif
     return SCPE_OK;
   }
 
