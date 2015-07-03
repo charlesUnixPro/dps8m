@@ -170,6 +170,13 @@ static CTAB dps8_cmds[] =
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
+static void usr1SignalHandler (UNUSED int sig)
+  {
+    sim_printf ("USR1 signal caught; pressing the EXF button\n");
+    setG7fault (FAULT_EXF, 0);
+    return;
+  }
+
 // Once-only initialization
 
 static void dps8_init(void)
@@ -187,6 +194,9 @@ static void dps8_init(void)
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+
+    // Wire the XF button to signal USR1
+    signal (SIGUSR1, usr1SignalHandler);
 
     init_opcodes();
     iom_init ();
