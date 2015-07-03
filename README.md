@@ -6,7 +6,7 @@ The canonical usage of GIT generally has the master branch containing "releases"
 
 The Alpha 1.0 release was done as a tag on the master branch; this was poor planning on our part as it made it difficult to apply bug fixes to generate a 1.1 version. The Alpha 2.0 release is being done as a branch; this will allow bug fixes to be merged in from the master branch, enabling the creation of release candidates, and future 2.x releases.
 
-As with the master branch please realize that there is no guarantee or implied understanding that release candidates are to work or able to perform any useful function. In this way you, our user community, will not by under any false assumptions about the quality of our release candidate distributions.
+As with the master branch please realize that there is no guarantee or implied understanding that release candidates are to work or able to perform any useful function. In this way you, our user community, will not be under any false assumptions about the quality of our release candidate distributions.
 
 The DPS8M team would like to apologize for any difficulties our unorthodox and informal policies may have incurred.
 
