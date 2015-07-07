@@ -403,9 +403,12 @@ static void handleRCP (char * text)
 sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
       }
-    free (label);
-    free (with);
-    free (drive);
+    if (label)
+      free (label);
+    if (with)
+      free (with);
+    if (drive)
+      free (drive);
   }
 
 static void sendConsole (uint stati)
