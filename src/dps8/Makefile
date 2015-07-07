@@ -11,8 +11,8 @@ CFLAGS += -Wunused-argument \
 -Wunused \
 -Wextra
 
-CFLAGS += -Wunreachable-code
-
+#CFLAGS += -Wunreachable-code
+CFLAGS += -Wno-array-bounds -Wno-parentheses-equality -Wno-missing-field-initializers
 #CFLAGS += -Wsign-conversion
 zzzCFLAGS += \
 -Wabi \
@@ -220,8 +220,14 @@ C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
 #C_SRCS += ./fnpp.c
-C_SRCS += ./shm.c
-C_SRCS += ./fnp_ipc.c
+#C_SRCS += ./shm.c
+#C_SRCS += ./fnp_ipc.c
+C_SRCS += ./fnp.c
+C_SRCS += ./fnp_mux.c
+C_SRCS += ./fnp_cmds.c
+C_SRCS += ./fnp_1.c
+C_SRCS += ./fnp_2.c
+C_SRCS += ./fnp_utils.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -279,7 +285,7 @@ android :
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
+#LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`

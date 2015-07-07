@@ -40,7 +40,7 @@
 #include <fcntl.h>           /* For O_* constants */
 #endif
 
-#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+//#include "fnp_ipc.h"        /*  for fnp IPC stuff */
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -61,7 +61,9 @@ void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
 // These are part of the shm interface
 
+#if 0
 static pid_t dps8m_sid; // Session id
+#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
@@ -86,7 +88,9 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
+#if 0
 static t_stat launch (int32 arg, char * buf);
+#endif
 #ifdef MULTIPASS
 static void multipassInit (pid_t sid);
 #endif
@@ -104,8 +108,10 @@ static CTAB dps8_cmds[] =
 {
     {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL},
     {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL},
+#if 0
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
+#endif
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
     {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
@@ -146,13 +152,17 @@ static CTAB dps8_cmds[] =
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
+#if 0
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+#endif
     
+#if 0
 #ifdef VM_DPS8
     {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
     {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
 #endif
-    
+#endif
+ 
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
 
     { NULL, NULL, 0, NULL, NULL}
@@ -189,11 +199,13 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+#ifdef MULTIPASS
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+#endif
 
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);
@@ -483,9 +495,11 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
     if (ret)
       return ret;
+#if 0
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
     if (ret)
       return ret;
+#endif
     ret = lookupFXESegmentAddress (segno, offset, compname, compoffset);
     return ret;
   }
@@ -2213,7 +2227,8 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     & fxe_dev,
-    & ipc_dev,  // for fnp IPC
+    // & ipc_dev,  // for fnp IPC
+    & mux_dev,
     NULL
   };
 
@@ -2277,6 +2292,7 @@ static void multipassInit (pid_t sid)
   }
 #endif
 
+#if 0
 #define MAX_CHILDREN 256
 static int nChildren = 0;
 static pid_t childrenList [MAX_CHILDREN];
@@ -2328,6 +2344,7 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 
     return SCPE_OK;
   }
+#endif
 
 // SCP message queue; when IPC messages come in, they are append to this
 // queue. The sim_instr loop will poll the queue for messages for delivery 
