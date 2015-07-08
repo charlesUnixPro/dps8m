@@ -3201,6 +3201,174 @@ static void print_frame (
 #endif
 }
 
+static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, char * ctx)
+  {
+    char * msg;
+    int rc = dbgLookupAddress (segno, offset, finalAddress, & msg);
+    if (rc)
+      {
+        sim_printf ("Cannot convert %s %5o|%6o to absolute memory address because %s.\n",
+            ctx, segno, offset, msg);
+        * finalAddress = 0;
+        return 1;
+      }
+    return 0;
+  }
+
+static int dumpStack (uint stkBase, uint stkNo)
+  {
+    word36 w0, w1;
+    word24 addr;
+    int rc;
+    sim_printf ("Stack %o, segment %05o\n", stkNo, stkBase);
+    word24 hdrPage;
+    rc = dsLookupAddress (stkBase, 0, & hdrPage, "stack base");
+    if (rc)
+      return 1;
+
+    sim_printf ("  segment header page at absolute location %08o\n", hdrPage);
+
+    w0 = M [hdrPage + 022];
+    w1 = M [hdrPage + 023];
+    sim_printf ("  stack_begin_ptr  %012llo %012llo %05o:%08o\n",
+                w0, w1,
+                (word15) getbits36 (w0,  3, 15),
+                (word18) getbits36 (w1,  0, 18));
+
+    w0 = M [hdrPage + 024];
+    w1 = M [hdrPage + 025];
+    sim_printf ("  stack_end_ptr    %012llo %012llo %05o:%08o\n",
+                w0, w1,
+                (word15) getbits36 (w0,  3, 15),
+                (word18) getbits36 (w1,  0, 18));
+
+    if (getbits36 (M [hdrPage + 022], 30, 6) != 043)
+      {
+        sim_printf("stack_begin_ptr is not an ITS\n");
+        return 1;
+      }
+    word15 stkBeginSegno = getbits36 (M [hdrPage + 022], 3, 15);
+
+    if (stkBeginSegno != stkBase)
+      {
+        sim_printf("stack_begin_ptr segno (%o) is wrong\n", stkBeginSegno);
+        return 1;
+      }
+    word18 stkBeginOffset = getbits36 (M [hdrPage + 023], 0, 18);
+
+
+
+    if (getbits36 (M [hdrPage + 024], 30, 6) != 043)
+      {
+        sim_printf("stack_end_ptr is not an ITS\n");
+        return 1;
+      }
+
+    word15 stkEndSegno = getbits36 (M [hdrPage + 024], 3, 15);
+    if (stkBeginSegno != stkBase)
+      {
+        sim_printf("stack_end_ptr segno (%o) is wrong\n", stkEndSegno);
+        return 1;
+      }
+    word18 stkEndOffset = getbits36 (M [hdrPage + 025], 0, 18);
+
+    word18 currentFrame = stkBeginOffset;
+    int currentFrameNumber = 1;
+
+    for (;;)
+      {
+        if (currentFrame > stkEndOffset)
+          break;
+        sim_printf ("  Frame %d, offset %06o\n", currentFrameNumber, currentFrame);
+        for (uint n = 0; n < 8; n ++)
+          {
+            rc = dsLookupAddress (stkBase, currentFrame + 2 * n, & addr, "PR address");
+            if (rc)
+              return 1;
+            w0 = M [addr + 0];
+            w1 = M [addr + 1];
+            sim_printf ("    PR%o               %012llo %012llo %05o:%06o BITNO %02o RNG %o\n",
+                        n,
+                        w0, w1,
+                        (word15) getbits36 (w0,  3, 15),
+                        (word18) getbits36 (w1,  0, 18),
+                        (word6)  getbits36 (w1, 21,  6),
+                        (word3)  getbits36 (w0, 18,  3));
+          }
+
+        rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "prev_sp");
+        if (rc)
+          return 1;
+        w0 = M [addr + 0];
+        w1 = M [addr + 1];
+        sim_printf ("    prev_sp         %012llo %012llo %05o:%08o\n",
+                    w0, w1,
+                    (word15) getbits36 (w0,  3, 15),
+                    (word18) getbits36 (w1,  0, 18));
+
+        rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "next_sp");
+        if (rc)
+          return 1;
+        w0 = M [addr + 0];
+        w1 = M [addr + 1];
+
+        word15 nextSpSegno  = (word15) getbits36 (w0,  3, 15);
+        word18 nextSpOffset = (word18) getbits36 (w1,  3, 18);
+        sim_printf ("    next_sp         %012llo %012llo %05o:%08o\n",
+                    w0, w1, nextSpSegno, nextSpOffset);
+
+      
+        if (nextSpSegno != stkBase)
+          {
+            sim_printf("    nextsp segno (%o) is wrong\n", nextSpSegno);
+            return 1;
+          }
+
+        if (nextSpOffset > stkEndOffset)
+          {
+            sim_printf("    nextsp offset is past end of stack\n");
+            break;
+          }
+
+        if (nextSpOffset < currentFrame)
+          {
+            sim_printf("    nextsp offset is less then the current frame\n");
+            break;
+          }
+
+        currentFrame = nextSpOffset;
+        currentFrameNumber ++;
+        sim_printf ("\n");
+      }
+    return 0;
+    
+  }
+
+int dumpStacks (void)
+  {
+    sim_printf ("DSBR.STACK %04u\n", DSBR . STACK);
+    uint stkBase = DSBR.STACK << 3;
+    for (uint stkNo = 0; stkNo <= 5; stkNo ++)
+      {
+        dumpStack (stkBase + stkNo, stkNo);
+      }
+    return 0;
+  }
+
+#if 0
+int dumpSystem (void)
+  {
+    FILE * f = fopen ("dps8.dump", "w");
+    if (! f)
+      {
+         sym_printf ("Couldn't open 'dps8.dump'; aborting.\n");
+         return;
+      }
+    fprintf (f, "// assuming 4 MW memory\n");
+  }
+#endif
+
+    
 static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
     // Trace through the Multics stack frames
     // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
