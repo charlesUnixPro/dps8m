@@ -710,5 +710,15 @@ void doG7Fault (void)
          doFault (FAULT_CON, g7SubFaults [FAULT_CON], "Connect"); 
        }
 
+     // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
+     // we are allowing the current instruction to complete, simplifying
+     // implementation
+     if (g7Faults & (1u << FAULT_EXF))
+       {
+         g7Faults &= ~(1u << FAULT_EXF);
+
+         doFault (FAULT_EXF, 0, "Execute fault");
+       }
+
      doFault (FAULT_TRB, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
   }

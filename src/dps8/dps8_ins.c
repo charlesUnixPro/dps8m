@@ -4979,7 +4979,8 @@ static t_stat DoBasicInstruction (void)
                 rA <<= 3;       // Shift C(A) left three positions
                 rA &= DMASK;    // keep to 36-bits
             
-                word36 tmp36 = llabs(SIGNEXT36(rA));
+                //word36 tmp36 = llabs(SIGNEXT36(rA));
+                word36 tmp36 = SIGNEXT36(rA) & MASK36;;
                 word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) -> 4-bit quotient plus remainder
                 word36 tmp36r = tmp36 % CY;
             
@@ -7687,8 +7688,10 @@ void doRCU (bool fxeTrap)
         cu . FI_ADDR == FAULT_DF3 || 
         cu . FI_ADDR == FAULT_ACV || 
         cu . FI_ADDR == FAULT_F2 || 
-        cu . FI_ADDR == FAULT_F2 || 
-        cu . FI_ADDR == FAULT_CMD)
+        cu . FI_ADDR == FAULT_F3 ||
+        cu . FI_ADDR == FAULT_DRL ||
+        cu . FI_ADDR == FAULT_CMD ||
+        cu . FI_ADDR == FAULT_EXF)
       {
         if (cu . FIF == 1)
           {
