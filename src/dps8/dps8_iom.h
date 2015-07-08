@@ -228,7 +228,7 @@ typedef struct iomChannelData_
 iomChannelData_ iomChannelData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
-enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC, DEVT_DN355 };
+enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC, DEVT_DN355, DEVT_CRDRDR };
 typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
 
 typedef int iomCmd (UNIT * unitp, pcw_t * p);
