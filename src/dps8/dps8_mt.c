@@ -196,7 +196,7 @@ static MTAB mt_mod [] =
       "DEVICE_NAME",         /* match string */
       mt_set_device_name, /* validation routine */
       mt_show_device_name, /* display routine */
-      "Select the boot drive", /* value descriptor */
+      "Set the device name", /* value descriptor */
       NULL          // help
     },
     {
