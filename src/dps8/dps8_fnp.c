@@ -320,7 +320,8 @@ static char * unpack (char * buffer)
     if (! out)
       return NULL;
     char * o = out;
-    while (nBytes --)
+    int remaining = nBytes;
+    while (remaining --)
       {
         int val;
 
