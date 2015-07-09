@@ -387,12 +387,23 @@ static void handleRCP (char * text)
     //for (uint i = 0; i < strlen (text); i ++)
       //sim_printf ("%02x ", text [i]);
     //sim_printf ("\n");
+
+// It appears that Cygwin doesn't grok "%ms"
+#if 0
     char * label = NULL;
     char * with = NULL;
     char * drive = NULL;
 // 1750.1  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_01 
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %ms %ms ring on %ms",
                 & label, & with, & drive);
+#else
+    size_t len = strlen (text);
+    char label [len];
+    char with [len];
+    char drive [len];
+    int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %s %s ring on %s",
+                label, with, drive);
+#endif
     if (rc == 3)
       {
         //sim_printf ("label %s %s ring on %s\n", label, with, drive);
@@ -403,9 +414,14 @@ static void handleRCP (char * text)
 sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
       }
-    free (label);
-    free (with);
-    free (drive);
+#if 0
+    if (label)
+      free (label);
+    if (with)
+      free (with);
+    if (drive)
+      free (drive);
+#endif
   }
 
 static void sendConsole (uint stati)

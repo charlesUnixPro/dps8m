@@ -228,6 +228,7 @@ C_SRCS += ./fnp_cmds.c
 C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
 C_SRCS += ./fnp_utils.c
+C_SRCS += ./dps8_crdrdr.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -261,6 +262,7 @@ H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
 #H_SRCS += fnpp.h
+H_SRCS += dps8_crdrdr.h
 
 H_SRCS += area_info.incl.pl1.h
 H_SRCS += bind_map.incl.pl1.h

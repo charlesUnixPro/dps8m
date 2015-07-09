@@ -27,6 +27,7 @@
 #include "dps8_append.h"
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
+#include "dps8_crdrdr.h"
 #include "utlist.h"
 
 #ifdef MULTIPASS
@@ -219,6 +220,7 @@ static void dps8_init(void)
     //mpc_init ();
     scu_init ();
     cpu_init ();
+    crdrdr_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -320,6 +322,10 @@ static t_stat sys_cable (UNUSED int32 arg, char * buf)
     else if (strcasecmp (name, "FNP") == 0)
       {
         rc = cableFNP (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "CRDRDR") == 0)
+      {
+        rc = cable_crdrdr (n1, n2, n3, n4);
       }
     else
       {
@@ -2229,6 +2235,7 @@ DEVICE * sim_devices [] =
     & fxe_dev,
     // & ipc_dev,  // for fnp IPC
     & mux_dev,
+    & crdrdr_dev,
     NULL
   };
 

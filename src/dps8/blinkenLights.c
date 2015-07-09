@@ -24,6 +24,12 @@ multipassStats * multipassStatsPtr;
 
 static GdkRGBA lightOn, lightOff;
 
+gboolean window_delete (GtkWidget * widget, cairo_t * cr, gpointer data)
+  {
+    //return true;
+    exit (0);
+  }
+
 gboolean draw_callback (GtkWidget * widget, cairo_t * cr, gpointer data)
   {
     guint width, height;
@@ -216,12 +222,13 @@ static struct multipassStats previous;
 //static struct _ppr previous_PPR;
 //static word36 previous_inst = ~0llu;
 
-static pid_t ppid;
+//static pid_t ppid;
+static pid_t sid;
 
 static gboolean time_handler (GtkWidget * widget)
   {
-    if (ppid != getppid ())
-      exit (0);
+    //if (ppid != getppid ())
+      //exit (0);
 
     bool update = false;
 
@@ -485,11 +492,23 @@ int main (int argc, char * argv [])
         return 1;
       }
 #else
-    ppid = getppid ();
-    multipassStatsPtr = (multipassStats *) open_shm ("multipass", getsid (0), sizeof (multipassStats));
+    //ppid = getppid ();
+     sid = getsid (0);
+     if (argc > 1 && strlen (argv [1]))
+       {
+         char * end;
+         long p = strtol (argv [1], & end, 0);
+         if (* end == 0)
+           {
+             sid = p;
+             argv [1] [0] = 0;
+           }
+       }
+
+    multipassStatsPtr = (multipassStats *) open_shm ("multipass", sid, sizeof (multipassStats));
     if (! multipassStatsPtr)
       {
-        printf ("multipass open_shm  fail %d\n", errno);
+        perror ("multipass open_shm");
         return 1;
       }
 
@@ -906,6 +925,7 @@ int main (int argc, char * argv [])
     // 10 = 100Hz
     g_timeout_add (10, (GSourceFunc) time_handler, (gpointer) window);
 
+    g_signal_connect (window, "delete-event", window_delete, NULL);
     gtk_widget_show_all  (window);
     
     time_handler (window);

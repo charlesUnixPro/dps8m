@@ -1869,14 +1869,25 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
               {
                 sim_printf ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
                           lpwp -> lpw20_ae, lpwp -> lpw23_srel); 
-                sim_err ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
-                          lpwp -> lpw20_ae, lpwp -> lpw23_srel); // Doesn't return
+                //sim_err ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
+                          //lpwp -> lpw20_ae, lpwp -> lpw23_srel); // Doesn't return
+// XXX
+// XXX
+// XXX
+// XXX this needs fixing; if both AE and Srel, then mode 4
+                // mode is SEG DCW/PAGED LPW (4)
+// XXX putting it in mode 3 b for the momemt/
+                chan_data -> chan_mode = cm_paged_LPW_seg_DCW;
+                sim_debug (DBG_TRACE, & iom_dev, "chan_mode set to cm_paged_LPW_seg_DCW\n");
               
               }
-            // mode is REAL LPW/DCW (1)
-            chan_data -> chan_mode = cm_real_LPW_real_DCW;
-            sim_debug (DBG_TRACE, & iom_dev, "chan_mode set to cm_real_LPW_real_DCW\n");
-            //sim_err ("PGE set in iomListService; fail.\n");
+            else
+              {
+                // mode is REAL LPW/DCW (1)
+                chan_data -> chan_mode = cm_real_LPW_real_DCW;
+                sim_debug (DBG_TRACE, & iom_dev, "chan_mode set to cm_real_LPW_real_DCW\n");
+                //sim_err ("PGE set in iomListService; fail.\n");
+              }
           }
         else
           {
@@ -1961,11 +1972,10 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
     if (lpwp -> lpw23_srel != 0)
       {
         // 4.3.1b: LPW 23 REL == 1
-        sim_err ("LPW.SREL set\n");
-// I don't have the original PCW handy, so elide...
-#if 0
+        // sim_printf ("LPW.SREL set\n");
+        // sim_printf ("lpw20_ae %o  ext %o\n", lpwp -> lpw20_ae, chan_data -> addressExtension);
         // 4.2.1b: BOUNDARY ERROR?
-        if ((lpwp -> lpw20_ae || pcwp -> ext))
+        if ((lpwp -> lpw20_ae || chan_data -> addressExtension))
           {
             uint sz = lpwp -> size;
             if (sz == 0)
@@ -1982,7 +1992,6 @@ sim_printf ("setting addressExtension to %o from IDCW\n",
             // 4.2.1b: ABSOUTIZE ADDRESS
             addr = lpwp -> lbnd + addr;
           }
-#endif
       }
     
     // 4.3.1b: TDCW?
