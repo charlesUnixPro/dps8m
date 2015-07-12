@@ -1515,20 +1515,26 @@ last = M[01007040];
           }
 #endif
 
-        // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
-                                     // simh clock clyce; move down...
-                                     // Acutally have FETCH jump to EXECUTE
-                                     // instead of breaking.
+        // Manage the timer register
+             // XXX this should be sync to the EXECUTE cycle, not the
+             // simh clock cycle; move down...
+             // Acutally have FETCH jump to EXECUTE
+             // instead of breaking.
 
 #ifdef REAL_TR
-        bool overrun;
-        UNUSED word27 rTR = getTR (& overrun);
-        if (overrun)
+        static uint trSubsample = 0;
+        if (trSubsample ++ > 1024)
           {
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-            ackTR ();
-            if (switches . tro_enable)
-              setG7fault (FAULT_TRO, 0);
+            trSubsample = 0;
+            bool overrun;
+            UNUSED word27 rTR = getTR (& overrun);
+            if (overrun)
+              {
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                ackTR ();
+                if (switches . tro_enable)
+                  setG7fault (FAULT_TRO, 0);
+              }
           }
 #else
         // Sync. the TR with the emulator clock.
