@@ -7691,7 +7691,8 @@ void doRCU (bool fxeTrap)
         cu . FI_ADDR == FAULT_F3 ||
         cu . FI_ADDR == FAULT_DRL ||
         cu . FI_ADDR == FAULT_CMD ||
-        cu . FI_ADDR == FAULT_EXF)
+        cu . FI_ADDR == FAULT_EXF ||
+        cu . FI_ADDR == FAULT_OFL)
       {
         if (cu . FIF == 1)
           {
