@@ -91,6 +91,7 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
     if (fd != -1)
       {
         close (fd);
+        shm_unlink (buf);
         //printf ("open_shm shm_open fail %d\n", errno);
         return NULL;
       }
@@ -98,7 +99,6 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
     fd = shm_open (buf, O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
       {
-        close (fd);
         //printf ("open_shm shm_open fail %d\n", errno);
         return NULL;
       }
@@ -106,12 +106,14 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
     if (ftruncate (fd, size) == -1)
       {
         //printf ("open_shm ftruncate  fail %d\n", errno);
+        close (fd);
         return NULL;
       }
 
     p = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (p == MAP_FAILED)
       {
+        close (fd);
         //printf ("open_shm mmap  fail %d\n", errno);
         return NULL;
       }
