@@ -13,7 +13,7 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
-#include "dps8_fnp.h"
+#include "dps8_cable.h"
 #include "fnp_ipc.h"
 #include "utlist.h"
 //#include "fnpp.h"
@@ -26,17 +26,13 @@ static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
 
-static int fnpIOMCmd (UNIT * unitp, pcw_t * p);
-//static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc);
-
 static int findMbx (uint fnpUnitNumber);
 
-#define N_FNP_UNITS_MAX 16
 #define N_FNP_UNITS 1 // default
 
 static t_stat fnpSVC (UNIT *up);
 
-static UNIT fnp_unit [N_FNP_UNITS_MAX] = {
+UNIT fnp_unit [N_FNP_UNITS_MAX] = {
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
@@ -136,13 +132,6 @@ static struct fnpUnitData
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
   } fnpUnitData [N_FNP_UNITS_MAX];
-
-static struct
-  {
-    int iomUnitNum;
-    int chan_num;
-    int dev_code;
-  } cables_from_ioms_to_fnp [N_FNP_UNITS_MAX];
 
 
 struct dn355_submailbox
@@ -653,32 +642,6 @@ static t_stat fnpReset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num, int dev_code)
-  {
-    if (fnpUnitNum < 0 || fnpUnitNum >= (int) fnpDev . numunits)
-      {
-        sim_printf ("cableFNP: fnpUnitNum out of range <%d>\n", fnpUnitNum);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum != -1)
-      {
-        sim_printf ("cableFNP: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitNum, chan_num, dev_code, DEVT_DN355, chan_type_PSI, fnpUnitNum, & fnpDev, & fnp_unit [fnpUnitNum], fnpIOMCmd);
-    if (rc)
-      return rc;
-
-    cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum = iomUnitNum;
-    cables_from_ioms_to_fnp [fnpUnitNum] . chan_num = chan_num;
-    cables_from_ioms_to_fnp [fnpUnitNum] . dev_code = dev_code;
-
-    return SCPE_OK;
-  }
- 
 static void tellFNP (int fnpUnitNum, char * msg)
   {
     //sim_printf ("tellFNP (%s)\n", msg);
@@ -853,7 +816,7 @@ static int findMbx (uint fnpUnitNumber)
  *
  */
 
-static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
+int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
     int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;

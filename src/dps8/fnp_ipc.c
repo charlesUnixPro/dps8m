@@ -24,6 +24,7 @@
 #ifdef VM_DPS8
 #include "sim_defs.h"
 #include "dps8.h"
+#include "dps8_iom.h"
 #include "dps8_fnp.h"
 #include "dps8_sys.h"
 #include "dps8_cpu.h"

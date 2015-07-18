@@ -1,10 +1,9 @@
-void console_init(void);
-t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_code);
-t_stat console_attn (UNUSED UNIT * uptr);
-int opconAutoinput (int32 flag, char *  cptr);
-
+extern UNIT opcon_unit [N_OPCON_UNITS_MAX];
 extern DEVICE opcon_dev;
 
+void console_init(void);
+t_stat console_attn (UNUSED UNIT * uptr);
+int opconAutoinput (int32 flag, char *  cptr);
+int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp);
 bool check_attn_key (void);
 void consoleProcess (void);
-

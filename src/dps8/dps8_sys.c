@@ -28,6 +28,7 @@
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_cable.h"
 #include "utlist.h"
 
 #ifdef MULTIPASS
@@ -69,7 +70,6 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
 
 stats_t sys_stats;
 
-static t_stat sys_cable (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat dps_debug_stop (int32 arg, char * buf);
 static t_stat dps_debug_break (int32 arg, char * buf);
@@ -200,6 +200,7 @@ static void dps8_init(void)
     signal (SIGUSR1, usr1SignalHandler);
 
     init_opcodes();
+    sysCableInit ();
     iom_init ();
     console_init ();
     disk_init ();
@@ -213,119 +214,6 @@ static void dps8_init(void)
     multipassInit (dps8m_sid);
 #endif
 }
-
-static int getval (char * * save, char * text)
-  {
-    char * value;
-    char * endptr;
-    value = strtok_r (NULL, ",", save);
-    if (! value)
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse %s\n", text);
-        sim_printf ("error: sys_cable: can't parse %s\n", text);
-        return -1;
-      }
-    long l = strtol (value, & endptr, 0);
-    if (* endptr || l < 0 || l > INT_MAX)
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse %s <%s>\n", text, value);
-        sim_printf ("error: sys_cable: can't parse %s <%s>\n", text, value);
-        return -1;
-      }
-    return (int) l;
-  }
-
-// Connect dev to iom
-//
-//   cable [TAPE | DISK],<dev_unit_num>,<iom_unit_num>,<chan_num>,<dev_code>
-//
-//   or iom to scu
-//
-//   cable IOM <iom_unit_num>,<iom_port_num>,<scu_unit_num>,<scu_port_num>
-//
-//   or scu to cpu
-//
-//   cable SCU <scu_unit_num>,<scu_port_num>,<cpu_unit_num>,<cpu_port_num>
-//
-//   or opcon to iom
-//
-//   cable OPCON <iom_unit_num>,<chan_num>,0,0
-//
-
-static t_stat sys_cable (UNUSED int32 arg, char * buf)
-  {
-// XXX Minor bug; this code doesn't check for trailing garbage
-
-    char * copy = strdup (buf);
-    t_stat rc = SCPE_ARG;
-
-    // process statement
-
-    // extract name
-    char * name_save = NULL;
-    char * name;
-    name = strtok_r (copy, ",", & name_save);
-    if (! name)
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse name\n");
-        sim_printf ("error: sys_cable: can't parse name\n");
-        goto exit;
-      }
-
-
-    int n1 = getval (& name_save, "parameter 1");
-    if (n1 < 0)
-      goto exit;
-    int n2 = getval (& name_save, "parameter 2");
-    if (n2 < 0)
-      goto exit;
-    int n3 = getval (& name_save, "parameter 3");
-    if (n3 < 0)
-      goto exit;
-    int n4 = getval (& name_save, "parameter 4");
-    if (n4 < 0)
-      goto exit;
-
-
-    if (strcasecmp (name, "TAPE") == 0)
-      {
-        rc = cable_mt (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "DISK") == 0)
-      {
-        rc = cable_disk (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "OPCON") == 0)
-      {
-        rc = cable_opcon (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "IOM") == 0)
-      {
-        rc = cable_iom (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "SCU") == 0)
-      {
-        rc = cable_scu (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "FNP") == 0)
-      {
-        rc = cableFNP (n1, n2, n3, n4);
-      }
-    else if (strcasecmp (name, "CRDRDR") == 0)
-      {
-        rc = cable_crdrdr (n1, n2, n3, n4);
-      }
-    else
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
-        sim_printf ("error: sys_cable: invalid switch name <%s>\n", name);
-        goto exit;
-      }
-
-exit:
-    free (copy);
-    return rc;
-  }
 
 uint64 sim_deb_start = 0;
 uint64 sim_deb_stop = 0;

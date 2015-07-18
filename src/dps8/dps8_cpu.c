@@ -30,6 +30,8 @@
 #include "dps8_faults.h"
 #include "dps8_console.h"
 #include "dps8_fnp.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -686,9 +688,9 @@ static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 // Map memory to port
 static int scbank_map [N_SCBANKS];
 
-static void setup_scbank_map (void)
+void setup_scbank_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", SCBANK, N_SCBANKS, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
     // Initalize to unmapped
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
@@ -1459,12 +1461,13 @@ last = M[01007040];
 }
 #endif
 
+#if 0
         // XXX Don't trace Multics idle loop
         if (PPR.PSR != 061 && PPR.IC != 0307)
 
           if_sim_debug (DBG_TRACE, & cpu_dev)
             sim_printf ("\n");
-
+#endif
         reason = 0;
 
         // Process deferred events and breakpoints
@@ -2706,8 +2709,6 @@ static void ic_history_init(void)
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
 
-struct cpu_array cpu_array [N_CPU_UNITS_MAX];
-
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
     if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
@@ -2722,45 +2723,6 @@ static void cpu_init_array (void)
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
         cpu_array [i] . ports [p] . inuse = false;
-  }
-
-// A scu is trying to attach a cable to us
-//  to my port cpu_unit_num, cpu_port_num
-//  from it's port scu_unit_num, scu_port_num
-//
-
-t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, 
-                     UNUSED int scu_port_num)
-  {
-    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
-      {
-        sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
-      {
-        sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
-        return SCPE_ARG;
-      }
-
-    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: socket in use\n");
-        sim_printf ("cable_to_cpu: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    DEVICE * devp = & scu_dev;
-     
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse = true;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
-
-    //sim_printf ("cpu_array [%d] [%d] . scu_unit_num = %d\n", cpu_unit_num, cpu_port_num, scu_unit_num);
-    setup_scbank_map ();
-
-    return SCPE_OK;
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 

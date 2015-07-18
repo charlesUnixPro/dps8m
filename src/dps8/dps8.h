@@ -114,6 +114,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #include "dps8_simh.h"
 #include "dps8_hw_consts.h"
+#include "dps8_em_consts.h"
 
 
 

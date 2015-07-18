@@ -42,6 +42,7 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_sys.h"
+#include "dps8_cable.h"
 // For fnp debugging
 #include "dps8_iefp.h"
  
@@ -49,10 +50,6 @@
 
 // Default
 #define N_IOM_UNITS 1
-
-// The number of devices that a dev_code can address (6 bit number)
-
-#define N_DEV_CODES 64
 
 #define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
@@ -184,25 +181,6 @@ static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 struct iomUnitData iomUnitData [N_IOM_UNITS_MAX];
 
 
-static struct iom
-  {
-    struct devices
-      {
-        enum dev_type type;
-        enum chan_type ctype;
-        DEVICE * dev; // attached device; points into sim_devices[]
-        uint devUnitNum; // Which unit of the attached device
-        UNIT * board;  // points into iomUnit
-        iomCmd * iomCmd;
-      } devices [MAX_CHANNELS] [N_DEV_CODES];
-  } iom [N_IOM_UNITS_MAX];
-
-static struct
-  {
-    bool inuse;
-    int scuUnitNum;
-    int scuPortNum;
-  } cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
 
 
 
@@ -914,8 +892,8 @@ static int iomScbankMap [N_IOM_UNITS_MAX] [N_SCBANKS];
 static void setup_iom_scbank_map (void)
   {
     sim_debug (DBG_DEBUG, & cpu_dev,
-      "%s: setup_iom_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", 
-      __func__, SCBANK, N_SCBANKS, MAXMEMSIZE);
+      "%s: setup_iom_scbank_map: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", 
+      __func__, SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
     for (uint iomUnitNum = 0; iomUnitNum < iom_dev . numunits; iomUnitNum ++)
       {
@@ -978,9 +956,6 @@ void iom_init (void)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
 
-    // sets iom [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
-    memset (& iom, 0, sizeof (iom));
-    memset (cablesFromScus, 0, sizeof (cablesFromScus));
     for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
       for (int c = 0; c < MAX_CHANNELS; c ++)
         {
@@ -1653,7 +1628,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
                             word8 status0, word8 status1)
   {
     uint chanloc = mbx_loc (iomUnitNum, IOM_SPECIAL_STATUS_CHAN);
-    //sim_printf ("special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);}
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -1663,18 +1638,18 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
     word36 lpw;
     fetch_abs_word (chanloc + 0, & lpw, __func__);
 
-    //sim_printf ("lpw %012llo\n", lpw);
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "lpw %012llo\n", lpw);}
 // 001432040000
 //  001432  0 40000 
 //     addr  001432 
 // The lpw points to the special status mbx dcw word
 //     RES/REL/AE 0
 //     NC/TAL/REL 4
-    //sim_printf ("@lpw %012llo\n", M [(lpw >> 18) & MASK18]);
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "lpw %012llo\n", M [(lpw >> 18) & MASK18]);}
 
     word36 dcw;
     fetch_abs_word (chanloc + 3, & dcw, __func__);
-//sim_printf ("dcw %012llo\n", dcw);
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "dcw %012llo\n", dcw);}
 //  001320010012
 //  001320  0     1  0012
 //  ADDR   CP  IOTP TALLY
@@ -1683,7 +1658,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-    //sim_printf ("writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);}
     store_abs_word ((dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
@@ -1694,7 +1669,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-    //sim_printf ("writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());
+//if (chanNum == 013) {sim_debug (0, & iom_dev, "writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());}
     store_abs_word (chanloc + 3, dcw, __func__);
 
 //    send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
@@ -2495,91 +2470,6 @@ void iom_interrupt (uint iomUnitNum)
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c finished.\n",
                __func__, 'A' + iomUnitNum);
-  }
-
-////////////////////////////////////////////////////////////////////////////////
-//
-// Cabling interface
-//
-////////////////////////////////////////////////////////////////////////////////
-
-// cable_to_iom
-//
-// a peripheral is trying to attach a cable
-//  to my port [iomUnitNum, chanNum, dev_code]
-//  from their simh dev [dev_type, devUnitNum]
-//
-// Verify that the port is unused; attach this end of the cable
-
-t_stat cable_to_iom (uint iomUnitNum, int chanNum, int dev_code, 
-                     enum dev_type dev_type, chan_type ctype, 
-                     uint devUnitNum, DEVICE * devp, UNIT * unitp, 
-                     iomCmd * iomCmd)
-  {
-    if (iomUnitNum >= iom_dev . numunits)
-      {
-        sim_printf ("cable_to_iom: iomUnitNum out of range <%u>\n", iomUnitNum);
-        return SCPE_ARG;
-      }
-
-    if (chanNum < 0 || chanNum >= MAX_CHANNELS)
-      {
-        sim_printf ("cable_to_iom: chanNum out of range <%d>\n", chanNum);
-        return SCPE_ARG;
-      }
-
-    if (dev_code < 0 || dev_code >= N_DEV_CODES)
-      {
-        sim_printf ("cable_to_iom: dev_code out of range <%d>\n", dev_code);
-        return SCPE_ARG;
-      }
-
-    if (iom [iomUnitNum] . devices [chanNum] [dev_code] . type != DEVT_NONE)
-      {
-        sim_printf ("cable_to_iom: socket in use\n");
-        return SCPE_ARG;
-      }
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . type = dev_type;
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . ctype = ctype;
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . devUnitNum = devUnitNum;
-
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . dev = devp;
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . board  = unitp;
-    iom [iomUnitNum] . devices [chanNum] [dev_code] . iomCmd  = iomCmd;
-
-    return SCPE_OK;
-  }
-
-t_stat cable_iom (uint iomUnitNum, int iomPortNum, int scuUnitNum, int scuPortNum)
-  {
-    if (iomUnitNum >= iom_dev . numunits)
-      {
-        sim_printf ("cable_iom: iomUnitNum out of range <%d>\n", iomUnitNum);
-        return SCPE_ARG;
-      }
-
-    if (iomPortNum < 0 || iomPortNum >= N_IOM_PORTS)
-      {
-        sim_printf ("cable_iom: iomPortNum out of range <%d>\n", iomUnitNum);
-        return SCPE_ARG;
-      }
-
-    if (cablesFromScus [iomUnitNum] [iomPortNum] . inuse)
-      {
-        sim_printf ("cable_iom: port in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, iomUnitNum, iomPortNum);
-    if (rc)
-      return rc;
-
-    cablesFromScus [iomUnitNum] [iomPortNum] . inuse = true;
-    cablesFromScus [iomUnitNum] [iomPortNum] . scuUnitNum = scuUnitNum;
-    cablesFromScus [iomUnitNum] [iomPortNum] . scuPortNum = scuPortNum;
-
-    return SCPE_OK;
   }
 
 ////////////////////////////////////////////////////////////////////////////////

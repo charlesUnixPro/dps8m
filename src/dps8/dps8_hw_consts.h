@@ -6,20 +6,18 @@
 //
 
 
-#define PASIZE          24                              /*!< phys addr width */
+#define PASIZE          24                     /* phys addr width */
 #define PAMASK          ((1U << PASIZE) - 1U)
 
-#define MAXMEMSIZE      (1U << PASIZE)                  /*!< maximum memory */
-#define INIMEMSIZE      MAXMEMSIZE                      /*!< 2**18 */
-#define MEMSIZE         INIMEMSIZE                      /*!< fixed, KISS */
+#define MEM_SIZE_MAX    (1U << PASIZE)        /* maximum memory */
 
 // The minimum allocation size of a SCU is 64K (2^16) 
 // (2 banks of 32K). Call it an SCBANK
 #define SCBANK (1U << 16)
 
-// Maximum memory size is MAXMEMSIZE, number of
+// Maximum memory size is MEM_SIZE_MAX, number of
 // scbanks is:
-#define N_SCBANKS ((MAXMEMSIZE) / (SCBANK))
+#define N_SCBANKS ((MEM_SIZE_MAX) / (SCBANK))
 
 //#define N_SCU_UNITS_MAX 4
 #define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
@@ -31,10 +29,6 @@
                           //     + upper store = 8M
                           //     * 2 SCUs = 16M 
                           // The phys addr width is 24 bits, and 2^24 = 16M
-
-// Hardware limit
-#define N_IOM_UNITS_MAX 4
-#define MAX_CHANNELS 64
 
 //
 // Memory addressing
@@ -1133,11 +1127,5 @@ typedef enum {
         opcode1_lar7   = 0767U, // (503 decimal)
         opcode1_lra    = 0774U  // (508 decimal)
 } opcode1_t;
-
-//
-// CPU ports
-//
-
-#define N_CPU_PORTS 4
 
 #endif // DPS8_HW_CONSTS_H

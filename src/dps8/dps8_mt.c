@@ -14,6 +14,8 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 
 /*
  mt.c -- mag tape
@@ -92,7 +94,6 @@
 
 #include "sim_tape.h"
 
-#include "dps8_iom.h"
 #include "dps8_mt.h"
 
 static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -104,16 +105,13 @@ static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_tape_path (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
 //static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-// Survey devices only has 16 slots, so 16 drives plus the controller
-#define N_MT_UNITS_MAX 17
 #define N_MT_UNITS 1 // default
 
 static t_stat mt_svc (UNIT *up);
 
-static UNIT mt_unit [N_MT_UNITS_MAX] = {
+UNIT mt_unit [N_MT_UNITS_MAX] = {
     // NOTE: other SIMH tape sims don't set UNIT_SEQ
     // CAC: Looking at SIMH source, the only place UNIT_SEQ is used
     // by the "run" command's reset sequence; units that have UNIT_SEQ
@@ -261,13 +259,6 @@ static struct tape_state
     char device_name [MAX_DEV_NAME_LEN];
   } tape_state [N_MT_UNITS_MAX];
 
-static struct
-  {
-    int iom_unit_num;
-    int chan_num;
-    int dev_code;
-  } cables_from_ioms_to_mt [N_MT_UNITS_MAX];
-
 static int boot_drive = 1; // Drive number to boot from
 #define TAPE_PATH_LEN 4096
 static char tape_path [TAPE_PATH_LEN];
@@ -340,7 +331,6 @@ void mt_init(void)
     memset(tape_state, 0, sizeof(tape_state));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
-        cables_from_ioms_to_mt [i] . iom_unit_num = -1;
         mt_unit [i] . capac = 40000000;
       }
     boot_drive = 1;
@@ -361,41 +351,6 @@ static t_stat mt_reset (DEVICE * dptr)
 //--     return tape_dev . numunits;
 //--   }
 //-- 
-//-- //
-//-- // String a cable from a tape drive to an IOM
-//-- //
-//-- // This end: mt_unit_num
-//-- // That end: iom_unit_num, chan_num, dev_code
-//-- // 
-
-t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
-  {
-    if (mt_unit_num < 0 || mt_unit_num >= (int) tape_dev . numunits)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
-        sim_printf ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num != -1)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_mt: socket in use\n");
-        sim_printf ("cable_mt: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_TAPE, chan_type_PSI, mt_unit_num, & tape_dev, & mt_unit [mt_unit_num], mt_iom_cmd);
-    if (rc)
-      return rc;
-
-    cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num = iom_unit_num;
-    cables_from_ioms_to_mt [mt_unit_num] . chan_num = chan_num;
-    cables_from_ioms_to_mt [mt_unit_num] . dev_code = dev_code;
-
-    return SCPE_OK;
-  }
- 
 static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
@@ -1430,7 +1385,7 @@ fail:
  *
  */
 
-static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
     int mt_unit_num = MT_UNIT_NUM (unitp);
     if (mt_unit_num == 0)

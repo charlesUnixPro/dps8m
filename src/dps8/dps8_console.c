@@ -17,7 +17,9 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
-#include "dps8_mt.h"
+#include "dps8_mt.h"  // attachTape
+#include "dps8_disk.h"  // attachDisk
+#include "dps8_cable.h"
 
 #define ASSUME0 0
 
@@ -32,7 +34,6 @@
  
  */
 
-#define N_OPCON_UNITS_MAX 1
 #define N_OPCON_UNITS 1 // default
 /* config switch -- The bootload console has a 30-second timer mechanism. When
 reading from the console, if no character is typed within 30 seconds, the read
@@ -97,7 +98,7 @@ static DEBTAB opcon_dt [] =
 
 static t_stat opcon_svc (UNIT * unitp);
 
-static UNIT opcon_unit [N_OPCON_UNITS] =
+UNIT opcon_unit [N_OPCON_UNITS_MAX] =
   {
     { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
@@ -170,17 +171,8 @@ static con_state_t console_state;
 
 //-- #define N_LINES 4
 
-static struct
-  {
-    int iom_unit_num;
-    int chan_num;
-    int dev_code;
-  } cables_from_ioms_to_con [N_OPCON_UNITS];
-
 static int attn_hack = 0;
 static int mount_hack = 0;
-
-static int con_iom_cmd (UNIT * unitp, pcw_t * p);
 
 static t_stat opcon_reset (UNUSED DEVICE * dptr)
   {
@@ -213,8 +205,6 @@ bool check_attn_key (void)
 
 void console_init()
 {
-    for (int i = 0; i < N_OPCON_UNITS; i ++)
-      cables_from_ioms_to_con [i] . iom_unit_num = -1;
     opcon_reset (& opcon_dev);
     console_state . auto_input = NULL;
     console_state . autop = NULL;
@@ -226,32 +216,6 @@ void console_init()
     sigaction (SIGQUIT, & quit_action, NULL);
 
 }
-
-t_stat cable_opcon (int con_unit_num, int iom_unit_num, int chan_num, int dev_code)
-  {
-    if (con_unit_num < 0 || con_unit_num >= (int) opcon_dev . numunits)
-      {
-        sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", con_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms_to_con [con_unit_num] . iom_unit_num != -1)
-      {
-        sim_printf ("cable_opcon: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_CON, chan_type_CPI, con_unit_num, & opcon_dev, & opcon_unit [con_unit_num], con_iom_cmd);
-    if (rc)
-      return rc;
-
-    cables_from_ioms_to_con [con_unit_num] . iom_unit_num = iom_unit_num;
-    cables_from_ioms_to_con [con_unit_num] . chan_num = chan_num;
-    cables_from_ioms_to_con [con_unit_num] . dev_code = dev_code;
-
-    return SCPE_OK;
-  }
 
 static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cptr, UNUSED void * desc)
   {
@@ -396,14 +360,14 @@ static void handleRCP (char * text)
 // 1750.1  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_01 
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %ms %ms ring on %ms",
                 & label, & with, & drive);
-#else
+#endif
     size_t len = strlen (text);
     char label [len];
     char with [len];
     char drive [len];
+    char whom [len];
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %s %s ring on %s",
                 label, with, drive);
-#endif
     if (rc == 3)
       {
         //sim_printf ("label %s %s ring on %s\n", label, with, drive);
@@ -414,6 +378,21 @@ static void handleRCP (char * text)
 sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
       }
+
+    rc = sscanf (text, "%*d.%*d RCP: Mount logical volume %s for %s",
+                label, whom);
+    if (rc == 2)
+      {
+        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
+        char labelDotDsk [strlen (label) + 4];
+        strcpy (labelDotDsk, label);
+        strcat (labelDotDsk, ".dsk");
+sim_printf ("<%s>\n", labelDotDsk);
+        attachDisk (labelDotDsk);
+      }
+
+
+
 #if 0
     if (label)
       free (label);
@@ -1077,17 +1056,17 @@ eol:
         return; // no input
     if (c == SCPE_STOP)
       {
-        sim_printf ("Got <sim stop>\r\n");
+        sim_printf ("Got <sim stop>\n");
         return; // User typed ^E to stop simulation
       }
     if (c == SCPE_BREAK)
       {
-        sim_printf ("Got <sim break>\r\n");
+        sim_printf ("Got <sim break>\n");
         return; // User typed ^E to stop simulation
       }
     if (c < SCPE_KFLAG)
       {
-        //sim_printf ("Bad char\r\n");
+        //sim_printf ("Bad char\n");
         return; // Should be impossible
       }
     c -= SCPE_KFLAG;    // translate to ascii
@@ -1101,7 +1080,7 @@ eol:
           attn_pressed = true;
         return;
       }
-    //sim_printf ("<%02x>\r\n", c);
+    //sim_printf ("<%02x>\n", c);
     if (c == '\177' || c == '\010')  // backspace/del
       {
         if (console_state . tailp > console_state . buf)
@@ -1119,7 +1098,7 @@ eol:
       {
         sim_putchar ('^');
         sim_putchar ('R');
-        sim_putchar ('\r');
+        //sim_putchar ('\r');
         sim_putchar ('\n');
         for (char * p = console_state . buf; p < console_state . tailp; p ++)
           sim_putchar (*p);
@@ -1130,7 +1109,7 @@ eol:
       {
         sim_putchar ('^');
         sim_putchar ('U');
-        sim_putchar ('\r');
+        //sim_putchar ('\r');
         sim_putchar ('\n');
         console_state . tailp = console_state . buf;
         return;
@@ -1138,7 +1117,7 @@ eol:
 
     if (c == '\012' || c == '\015')  // CR/LF
       {
-        sim_putchar ('\r');
+        //sim_putchar ('\r');
         sim_putchar ('\n');
         //sim_printf ("send: <%s>\r\n", console_state . buf);
         sendConsole (04000); // Normal status
@@ -1147,7 +1126,7 @@ eol:
 
     if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
       {
-        sim_putchar ('\r');
+        //sim_putchar ('\r');
         sim_putchar ('\n');
         // Empty input buffer
         console_state . readp = console_state . buf;
@@ -1178,7 +1157,7 @@ eol:
 
 // The console is a CPI device; only the PCW command is executed.
 
-static int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
+int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;

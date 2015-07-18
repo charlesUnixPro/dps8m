@@ -25,6 +25,8 @@
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 #include "dps8_fxe.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0

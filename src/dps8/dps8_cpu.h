@@ -1080,18 +1080,6 @@ extern du_unit_data_t du;
 
 #define N_CPU_UNITS_MAX 1
 
-extern struct cpu_array
-  {
-    struct
-      {
-        bool inuse;
-        int scu_unit_num; // 
-        DEVICE * devp;
-      } ports [N_CPU_PORTS];
-
-  } cpu_array [N_CPU_UNITS_MAX];
-
-
 word36 faultRegister [2];
 
 
@@ -1118,7 +1106,6 @@ bool get_went_appending (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
-t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat dpsCmd_Dump (int32 arg, char *buf);
@@ -1131,3 +1118,4 @@ _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
+void setup_scbank_map (void);

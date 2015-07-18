@@ -16,6 +16,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
+#include "dps8_cable.h"
 #include "sim_disk.h"
 
 //-- // XXX We use this where we assume there is only one unit
@@ -50,8 +51,7 @@
 // data: 3367 MB, 3447808 KB, 6895616 sectors,
 //  3530555392 bytes, 98070983 records?
 
-#define N_DISK_UNITS_MAX 16
-#define N_DISK_UNITS 1 // default
+#define N_DISK_UNITS 2 // default
 
 //-- // extern t_stat disk_svc(UNIT *up);
 
@@ -128,14 +128,13 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp);
 //static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static t_stat disk_svc (UNIT *);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
-static UNIT disk_unit [N_DISK_UNITS_MAX] =
+UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
     {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
@@ -226,14 +225,7 @@ static struct disk_state
     int chan;
     uint mask;
     uint ext;
-  } disk_state [N_DISK_UNITS_MAX];
-
-static struct
-  {
-    int iom_unit_num;
-    int chan_num;
-    int dev_code;
-  } cables_from_ioms_to_disk [N_DISK_UNITS_MAX];
+  } disk_states [N_DISK_UNITS_MAX];
 
 static int findDiskUnit (int iom_unit_num, int chan_num, int dev_code)
   {
@@ -256,9 +248,7 @@ static int findDiskUnit (int iom_unit_num, int chan_num, int dev_code)
 
 void disk_init (void)
   {
-    memset (disk_state, 0, sizeof (disk_state));
-    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
-      cables_from_ioms_to_disk [i] . iom_unit_num = -1;
+    memset (disk_states, 0, sizeof (disk_states));
   }
 
 static t_stat disk_reset (DEVICE * dptr)
@@ -271,39 +261,11 @@ static t_stat disk_reset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_code)
-  {
-    if (disk_unit_num < 0 || disk_unit_num >= (int) disk_dev . numunits)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
-        sim_printf ("cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num != -1)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_disk: socket in use\n");
-        sim_printf ("cable_disk: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd);
-    if (rc)
-      return rc;
-
-    cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num = iom_unit_num;
-    cables_from_ioms_to_disk [disk_unit_num] . chan_num = chan_num;
-    cables_from_ioms_to_disk [disk_unit_num] . dev_code = dev_code;
-
-    return SCPE_OK;
-  }
-
 static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
-    struct disk_state * disk_statep = & disk_state [disk_unit_num];
+    struct disk_state * disk_statep = & disk_states [disk_unit_num];
     * disc = false;
 
 // init_toehold.pl1:
@@ -440,9 +402,9 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
 
-    struct disk_state * disk_statep = & disk_state [disk_unit_num];
+    struct disk_state * disk_statep = & disk_states [disk_unit_num];
     iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [disk_statep -> chan];
-    switch (disk_state -> io_mode)
+    switch (disk_statep -> io_mode)
       {
         case no_mode:
           {
@@ -712,7 +674,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
     return 0;
   }
 
-static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
@@ -833,6 +795,53 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cp
     if (n < 1 || n > N_DISK_UNITS_MAX)
       return SCPE_ARG;
     disk_dev . numunits = n;
+    return SCPE_OK;
+  }
+
+void loadDisk (uint driveNumber, char * diskFilename)
+  {
+    //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
+    t_stat stat = attach_unit (& disk_unit [driveNumber], diskFilename);
+    if (stat != SCPE_OK)
+      {
+        sim_printf ("loadDisk sim_disk_attach returned %d\n", stat);
+        return;
+      }
+
+// if substr (special_status_word, 20, 1) ^= "1"b | substr (special_status_word, 13, 6) ^= "00"b3
+// if substr (special_status_word, 34, 3) ^= "001"b
+// Note the 34,3 spans 34,35,36; therefore the bits are 1..36, not 0..35
+// 20,1 is bit 19
+// 13,6, is bits 12..17
+// status0 is 19..26
+// status1 is 28..35
+// so substr (w, 20, 1) is bit 0 of status0
+//    substr (w, 13, 6) is the low 6 bits of dev_no
+//    substr (w, 34, 3) is the low 3 bits of status 1
+    //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
+    //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
+    send_special_interrupt (cables_from_ioms_to_disk [driveNumber] . iom_unit_num,
+                            cables_from_ioms_to_disk [driveNumber] . chan_num,
+                            cables_from_ioms_to_disk [driveNumber] . dev_code,
+                            0x40, 01 /* disk pack ready */);
+  }
+
+t_stat attachDisk (char * label)
+  {
+    //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
+    int i;
+    for (i = 1; i < N_DISK_UNITS_MAX; i ++)
+      {
+sim_printf ("%d fileref %p filename %s\n", i, disk_unit [i] . fileref, disk_unit [i] . filename);
+        if (disk_unit [i] . fileref == NULL)
+          break;
+      }
+    if (i >= N_DISK_UNITS_MAX)
+      {
+        sim_printf ("can't find available disk drive\n");
+        return SCPE_ARG;
+      }
+    loadDisk (i, label);
     return SCPE_OK;
   }
 
