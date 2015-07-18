@@ -7,50 +7,50 @@
 // Memory
 //
 
-#define MEMSIZE         MEM_SIZE_MAX          /* fixed, KISS */
+enum { MEMSIZE = MEM_SIZE_MAX };
 
 //
 // Card reader
 //
 
-#define N_CRDRDR_UNITS_MAX 16
+enum { N_CRDRDR_UNITS_MAX = 16 };
 
 //
 // FNP
 //
 
-#define N_FNP_UNITS_MAX 16
+enum { N_FNP_UNITS_MAX = 16 };
 
 //
 // Disk
 //
 
-#define N_DISK_UNITS_MAX 17
+enum { N_DISK_UNITS_MAX = 17 };
 
 //
 // SCU
 //
 
-#define N_SCU_PORTS 8
-#define N_ASSIGNMENTS 2
+enum { N_SCU_PORTS = 8 };
+enum { N_ASSIGNMENTS = 2 };
 // Number of interrupts in an interrupt cell register
-#define N_CELL_INTERRUPTS 32  
+enum { N_CELL_INTERRUPTS = 32 };
 
 //
 // Operator console
 //
 
-#define N_OPCON_UNITS_MAX 1
+enum { N_OPCON_UNITS_MAX = 1 };
 
 //
 // IOM
 //
 
-#define N_IOM_UNITS_MAX 4
-#define MAX_CHANNELS 64
-#define N_IOM_PORTS 8
+enum { N_IOM_UNITS_MAX = 4 };
+enum { MAX_CHANNELS = 64 };
+enum { N_IOM_PORTS = 8 };
 // The number of devices that a dev_code can address (6 bit number)
-#define N_DEV_CODES 64
+enum { N_DEV_CODES = 64 };
 
 
 typedef struct pcw_t
@@ -91,14 +91,14 @@ typedef struct pcw_t
 // CPU
 //
 
-#define N_CPU_PORTS 4
+enum { N_CPU_PORTS = 4 };
 
 //
 // Tape drive
 //
 
 // Survey devices only has 16 slots, so 16 drives plus the controller
-#define N_MT_UNITS_MAX 17
+enum { N_MT_UNITS_MAX = 17 };
 
 #endif // DPS8_EM_CONSTS_H
 
