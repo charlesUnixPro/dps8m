@@ -11,8 +11,11 @@
 #include "dps8_crdrdr.h"
 #include "dps8_cable.h"
 #include "dps8_utils.h"
-
-struct cables_t * cables;
+#ifdef M_SHARED
+#include <unistd.h>
+#include "shm.h"
+#endif
+struct cables_t * cables = NULL;
 
 // cable_to_iom
 //
@@ -515,7 +518,21 @@ exit:
 
 void sysCableInit (void)
   {
-    memset (& cables, 0, sizeof (cables));
+    if (! cables)
+      {
+#ifdef M_SHARED
+        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
+#else
+        cables = (struct cables_t *) malloc ("cables", sizeof (struct cables_t));
+#endif
+        if (cables == NULL)
+          {
+            sim_printf ("create_shm cables failed\n");
+            sim_err ("create_shm cables failed\n");
+          }
+      }
+
+    memset (cables, 0, sizeof (struct cables_t));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
         cables -> cablesFromIomToTap [i] . iomUnitNum = -1;
