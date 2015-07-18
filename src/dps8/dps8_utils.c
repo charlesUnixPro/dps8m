@@ -1333,6 +1333,8 @@ char *bin2text(uint64 word, int n)
 
 #include <ctype.h>
 
+// No longer putting the tty in "no output proceesing mode"; all of this
+// is irrelevant...
 //
 // simh puts the tty in raw mode when the sim is running;
 // this means that test output to the console will lack CR's and
@@ -1356,6 +1358,7 @@ char *bin2text(uint64 word, int n)
 
 //#define USE_COOKED
 #define USE_PUTCHAR
+//#define USE_NONE
 
 #if 0
 void sim_printf( const char * format, ... )

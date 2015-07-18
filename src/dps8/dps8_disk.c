@@ -231,9 +231,9 @@ static int findDiskUnit (int iomUnitNum, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cablesFromIomToDsk [i] . iomUnitNum &&
-            chan_num     == cablesFromIomToDsk [i] . chan_num     &&
-            dev_code     == cablesFromIomToDsk [i] . dev_code)
+        if (iomUnitNum == cables -> cablesFromIomToDsk [i] . iomUnitNum &&
+            chan_num     == cables -> cablesFromIomToDsk [i] . chan_num     &&
+            dev_code     == cables -> cablesFromIomToDsk [i] . dev_code)
           return i;
       }
     return -1;
@@ -264,7 +264,7 @@ static t_stat disk_reset (DEVICE * dptr)
 static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
     struct disk_state * disk_statep = & disk_states [disk_unit_num];
     * disc = false;
 
@@ -400,7 +400,7 @@ sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
 static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
   {
     int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
 
     struct disk_state * disk_statep = & disk_states [disk_unit_num];
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [disk_statep -> chan];
@@ -677,7 +677,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
 int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
     int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
@@ -764,13 +764,13 @@ static t_stat disk_svc (UNIT * unitp)
   {
 #if 1
     int diskUnitNum = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToDsk [diskUnitNum] . iomUnitNum;
-    int chanNum = cablesFromIomToDsk [diskUnitNum] . chan_num;
+    int iomUnitNum = cables -> cablesFromIomToDsk [diskUnitNum] . iomUnitNum;
+    int chanNum = cables -> cablesFromIomToDsk [diskUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     disk_iom_cmd (unitp, pcwp);
 #else
     int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
     word24 dcw_ptr = (word24) (unitp -> u3);
     pcw_t pcw;
     word36 word0, word1;
@@ -820,9 +820,9 @@ void loadDisk (uint driveNumber, char * diskFilename)
 //    substr (w, 34, 3) is the low 3 bits of status 1
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
-    send_special_interrupt (cablesFromIomToDsk [driveNumber] . iomUnitNum,
-                            cablesFromIomToDsk [driveNumber] . chan_num,
-                            cablesFromIomToDsk [driveNumber] . dev_code,
+    send_special_interrupt (cables -> cablesFromIomToDsk [driveNumber] . iomUnitNum,
+                            cables -> cablesFromIomToDsk [driveNumber] . chan_num,
+                            cables -> cablesFromIomToDsk [driveNumber] . dev_code,
                             0x40, 01 /* disk pack ready */);
   }
 

@@ -21,8 +21,6 @@ struct cableFromIomToDev
       } devices [MAX_CHANNELS] [N_DEV_CODES];
   };
 
-extern struct cableFromIomToDev cablesFromIomToDev [N_IOM_UNITS_MAX];
-
 struct cableFromScuToCpu
   {
     struct cpuPort
@@ -34,20 +32,12 @@ struct cableFromScuToCpu
 
   };
 
-extern struct cableFromScuToCpu cablesFromScuToCpu [N_CPU_UNITS_MAX];
-
 struct cableFromIom
   {
     int iomUnitNum;
     int chan_num;
     int dev_code;
   };
-
-extern struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
-extern struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
-extern struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
-extern struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
-extern struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
 
 struct cablesFromScu
   {
@@ -56,16 +46,26 @@ struct cablesFromScu
     int scuPortNum;
   };
 
-extern struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
-
 struct cableFromCpu
   {
     int cpu_unit_num;
     int cpu_port_num;
   };
 
-extern struct cableFromCpu cablesFomCpu [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+struct cables_t
+  {
+    struct cableFromCpu cablesFomCpu [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+    struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
+    struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
+    struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
+    struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
+    struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
+    struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
+    struct cableFromScuToCpu cablesFromScuToCpu [N_CPU_UNITS_MAX];
+    struct cableFromIomToDev cablesFromIomToDev [N_IOM_UNITS_MAX];
+  };
 
+extern struct cables_t * cables;
 
 t_stat sys_cable (UNUSED int32 arg, char * buf);
 void sysCableInit (void);

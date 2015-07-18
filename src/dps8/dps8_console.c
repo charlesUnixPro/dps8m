@@ -298,8 +298,8 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
  
 t_stat console_attn (UNUSED UNIT * uptr)
   {
-    send_special_interrupt (cablesFromIomToCon [ASSUME0] . iomUnitNum,
-                            cablesFromIomToCon [ASSUME0] . chan_num, 
+    send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitNum,
+                            cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
                             ASSUME0, 0, 0);
     return SCPE_OK;
   }
@@ -408,7 +408,7 @@ static void sendConsole (uint stati)
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
     int con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
-    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
     
     int chan = console_state . chan;
 
@@ -448,7 +448,7 @@ static void sendConsole (uint stati)
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
     
     int chan = pcwp-> chan;
 
@@ -1160,7 +1160,7 @@ eol:
 int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
 
     // Execute the command in the PCW.
 
@@ -1176,8 +1176,8 @@ int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
 static t_stat opcon_svc (UNIT * unitp)
   {
     int conUnitNum = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCon [conUnitNum] . iomUnitNum;
-    int chanNum = cablesFromIomToCon [conUnitNum] . chan_num;
+    int iomUnitNum = cables -> cablesFromIomToCon [conUnitNum] . iomUnitNum;
+    int chanNum = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     con_iom_cmd (unitp, pcwp);
  

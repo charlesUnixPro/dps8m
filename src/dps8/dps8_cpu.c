@@ -7,15 +7,6 @@
 
 #include <stdio.h>
 
-#ifdef M_SHARED
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/mman.h>
-#include <fcntl.h>           /* For O_* constants */
-#endif
-
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_cpu.h"
@@ -35,6 +26,10 @@
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
+#ifdef M_SHARED
+#include "shm.h"
+#endif
+
 
 #include "fnp_ipc.h"
 
@@ -752,12 +747,23 @@ int query_scbank_map (word24 addr)
 // called once initialization
 
 void cpu_init (void)
-{
-  memset (& switches, 0, sizeof (switches));
-  memset (& watchBits, 0, sizeof (watchBits));
-  switches . FLT_BASE = 2; // Some of the UnitTests assume this
-  cpu_init_array ();
-}
+  {
+#ifdef M_SHARED
+    if (! M)
+      {
+        M = (word36 *) create_shm ("M", getsid (0), MEMSIZE * sizeof (word36));
+        if (M == NULL)
+          {
+            sim_printf ("create_shm M failed\n");
+            sim_err ("create_shm M failed\n");
+          }
+      }
+#endif
+    memset (& switches, 0, sizeof (switches));
+    memset (& watchBits, 0, sizeof (watchBits));
+    switches . FLT_BASE = 2; // Some of the UnitTests assume this
+    cpu_init_array ();
+  }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
@@ -765,47 +771,8 @@ void cpu_init (void)
 
 static t_stat cpu_reset (DEVICE *dptr)
 {
-#ifdef M_SHARED
 
-// Initialization.
-//  if shm_open (..EXCL)
-//     // creator
-//     ftruncate
-//     initialize...
-//     set shared_memory . initiialized = true;
-//  else if shm_open (...)
-//     // not creator
-//     ftruncate
-//     while (! shared_memory . initiialized)
-//       usleep ();
-//  else
-//    fail
-
-
-    //sim_printf ("Session %d\n", getsid (0));
-    int fd = shm_open ("/dps8_memory", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (fd == -1)
-      {
-        sim_printf ("dps8_memory shm_open fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-    if (ftruncate (fd, sizeof (word36) * MEMSIZE) == -1)
-      {
-        sim_printf ("dps8_memory ftruncate  fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-    M = (word36 *) mmap (NULL, sizeof (word36) * MEMSIZE,
-                         PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
-    if (M == MAP_FAILED)
-      {
-        sim_printf ("dps8_memory mmap  fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-#else
+#ifndef M_SHARED
     if (M)
         free(M);
     
@@ -2711,8 +2678,8 @@ static void ic_history_init(void)
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
-    if (cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
-      return cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      return cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
     return -1;
   }
 
@@ -2722,7 +2689,7 @@ static void cpu_init_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
-        cablesFromScuToCpu [i] . ports [p] . inuse = false;
+        cables -> cablesFromScuToCpu [i] . ports [p] . inuse = false;
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 

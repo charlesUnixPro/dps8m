@@ -12,15 +12,7 @@
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 
-struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
-struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
-struct cableFromCpu cablesFomCpu [N_SCU_UNITS_MAX] [N_SCU_PORTS];
-struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
-struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
-struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
-struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
-struct cableFromScuToCpu cablesFromScuToCpu [N_CPU_UNITS_MAX];
-struct cableFromIomToDev cablesFromIomToDev [N_IOM_UNITS_MAX];
+struct cables_t * cables;
 
 // cable_to_iom
 //
@@ -54,7 +46,7 @@ static t_stat cable_to_iom (uint iomUnitNum, int chanNum, int dev_code,
       }
 
     struct device * d = 
-      & cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code];
+      & cables -> cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code];
 
     if (d -> type != DEVT_NONE)
       {
@@ -94,7 +86,7 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
+    if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
       {
         //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: socket in use\n");
         sim_printf ("cable_to_cpu: socket in use\n");
@@ -102,7 +94,7 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
       }
 
     struct cpuPort * p = 
-      & cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num];
+      & cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num];
 
     p -> inuse = true;
     p -> scu_unit_num = scu_unit_num;
@@ -125,7 +117,7 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitNum, int chan_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum != -1)
+    if (cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum != -1)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_crdrdr: socket in use\n");
         sim_printf ("cable_crdrdr: socket in use\n");
@@ -139,9 +131,9 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitNum, int chan_num,
     if (rc)
       return rc;
 
-    cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum = iomUnitNum;
-    cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = chan_num;
-    cablesFromIomToCrdRdr [crdrdr_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -155,7 +147,7 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromIomToFnp [fnpUnitNum] . iomUnitNum != -1)
+    if (cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum != -1)
       {
         sim_printf ("cableFNP: socket in use\n");
         return SCPE_ARG;
@@ -168,9 +160,9 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num,
     if (rc)
       return rc;
 
-    cablesFromIomToFnp [fnpUnitNum] . iomUnitNum = iomUnitNum;
-    cablesFromIomToFnp [fnpUnitNum] . chan_num = chan_num;
-    cablesFromIomToFnp [fnpUnitNum] . dev_code = dev_code;
+    cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num = chan_num;
+    cables -> cablesFromIomToFnp [fnpUnitNum] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -186,7 +178,7 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitNum, int chan_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromIomToDsk [disk_unit_num] . iomUnitNum != -1)
+    if (cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum != -1)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_disk: socket in use\n");
         sim_printf ("cable_disk: socket in use\n");
@@ -200,9 +192,9 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitNum, int chan_num,
     if (rc)
       return rc;
 
-    cablesFromIomToDsk [disk_unit_num] . iomUnitNum = iomUnitNum;
-    cablesFromIomToDsk [disk_unit_num] . chan_num = chan_num;
-    cablesFromIomToDsk [disk_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToDsk [disk_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToDsk [disk_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -217,7 +209,7 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitNum, int chan_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromIomToCon [con_unit_num] . iomUnitNum != -1)
+    if (cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum != -1)
       {
         sim_printf ("cable_opcon: socket in use\n");
         return SCPE_ARG;
@@ -230,9 +222,9 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitNum, int chan_num,
     if (rc)
       return rc;
 
-    cablesFromIomToCon [con_unit_num] . iomUnitNum = iomUnitNum;
-    cablesFromIomToCon [con_unit_num] . chan_num = chan_num;
-    cablesFromIomToCon [con_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToCon [con_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToCon [con_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -264,7 +256,7 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return SCPE_ARG;
       }
 
-    if (cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
+    if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
         // sim_debug (DBG_ERR, & scu_dev, "cable_scu: port in use\n");
         sim_printf ("cable_scu: port in use\n");
@@ -277,9 +269,9 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
     if (rc)
       return rc;
 
-    cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
+    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
       cpu_unit_num;
-    cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
+    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
       cpu_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
@@ -350,7 +342,7 @@ static t_stat cable_iom (uint iomUnitNum, int iomPortNum, int scuUnitNum,
         return SCPE_ARG;
       }
 
-    if (cablesFromScus [iomUnitNum] [iomPortNum] . inuse)
+    if (cables -> cablesFromScus [iomUnitNum] [iomPortNum] . inuse)
       {
         sim_printf ("cable_iom: port in use\n");
         return SCPE_ARG;
@@ -361,9 +353,9 @@ static t_stat cable_iom (uint iomUnitNum, int iomPortNum, int scuUnitNum,
     if (rc)
       return rc;
 
-    cablesFromScus [iomUnitNum] [iomPortNum] . inuse = true;
-    cablesFromScus [iomUnitNum] [iomPortNum] . scuUnitNum = scuUnitNum;
-    cablesFromScus [iomUnitNum] [iomPortNum] . scuPortNum = scuPortNum;
+    cables -> cablesFromScus [iomUnitNum] [iomPortNum] . inuse = true;
+    cables -> cablesFromScus [iomUnitNum] [iomPortNum] . scuUnitNum = scuUnitNum;
+    cables -> cablesFromScus [iomUnitNum] [iomPortNum] . scuPortNum = scuPortNum;
 
     return SCPE_OK;
   }
@@ -385,7 +377,7 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitNum, int chan_num,
         return SCPE_ARG;
       }
 
-    if (cablesFromIomToTap [mt_unit_num] . iomUnitNum != -1)
+    if (cables -> cablesFromIomToTap [mt_unit_num] . iomUnitNum != -1)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_mt: socket in use\n");
         sim_printf ("cable_mt: socket in use\n");
@@ -399,9 +391,9 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitNum, int chan_num,
     if (rc)
       return rc;
 
-    cablesFromIomToTap [mt_unit_num] . iomUnitNum = iomUnitNum;
-    cablesFromIomToTap [mt_unit_num] . chan_num = chan_num;
-    cablesFromIomToTap [mt_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToTap [mt_unit_num] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToTap [mt_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToTap [mt_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -523,21 +515,19 @@ exit:
 
 void sysCableInit (void)
   {
-    memset (cablesFromScus, 0, sizeof (cablesFromScus));
-    memset (cablesFromIomToTap, 0, sizeof (cablesFromIomToTap));
+    memset (& cables, 0, sizeof (cables));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
-        cablesFromIomToTap [i] . iomUnitNum = -1;
+        cables -> cablesFromIomToTap [i] . iomUnitNum = -1;
       }
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
-        cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
+        cables -> cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
-      cablesFromIomToCon [i] . iomUnitNum = -1;
+      cables -> cablesFromIomToCon [i] . iomUnitNum = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
-      cablesFromIomToDsk [i] . iomUnitNum = -1;
+      cables -> cablesFromIomToDsk [i] . iomUnitNum = -1;
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
-      cablesFromIomToCrdRdr [i] . iomUnitNum = -1;
+      cables -> cablesFromIomToCrdRdr [i] . iomUnitNum = -1;
     // sets cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
-    memset (& cablesFromIomToDev, 0, sizeof (cablesFromIomToDev));
   }

@@ -147,9 +147,9 @@ static int findCrdrdrUnit (int iomUnitNum, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cablesFromIomToCrdRdr [i] . iomUnitNum &&
-            chan_num     == cablesFromIomToCrdRdr [i] . chan_num     &&
-            dev_code     == cablesFromIomToCrdRdr [i] . dev_code)
+        if (iomUnitNum == cables -> cablesFromIomToCrdRdr [i] . iomUnitNum &&
+            chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
+            dev_code     == cables -> cablesFromIomToCrdRdr [i] . dev_code)
           return i;
       }
     return -1;
@@ -298,7 +298,7 @@ static void asciiToH (char * str, uint * hstr)
 static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
     struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
     * disc = false;
 
@@ -456,7 +456,7 @@ sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
 int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
@@ -534,8 +534,8 @@ sim_printf ("crdrdr interrupts\n");
 static t_stat crdrdr_svc (UNIT * unitp)
   {
     int crdrdrUnitNum = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitNum;
-    int chanNum = cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitNum;
+    int chanNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     crdrdr_iom_cmd (unitp, pcwp);
     return SCPE_OK;
