@@ -1344,6 +1344,12 @@ static void setCpuCycle (cycles_t cycle)
 
 static word36 instr_buf [2];
 
+static void ipcCleanup (void)
+  {
+    //printf ("cleanup\n");
+    ipc(ipcStop, 0, 0, 0, 0);
+  }
+
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
@@ -1360,6 +1366,7 @@ t_stat sim_instr (void)
     {
         sim_printf("Info: ");
         ipc(ipcStart, fnpName,0,0,0);
+        atexit (ipcCleanup);
     }
      
     // End if IPC init stuff
