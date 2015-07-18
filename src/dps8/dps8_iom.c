@@ -2152,7 +2152,7 @@ sim_printf ("pcw %012llo %012llo\n", word0, word1);
     chan_data -> isOdd = false;
     chan_data -> initiate = false;
     chan_data -> chanStatus = chanStatNormal;
-    DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [chan_data -> dev_code] . dev;
+    DEVICE * devp = cablesFromIomToDev [iomUnitNum] . devices [chanNum] [chan_data -> dev_code] . dev;
 
 #ifdef IOMDBG
 sim_printf ("setting addressExtension to %o from PCW\n",
@@ -2183,7 +2183,7 @@ sim_printf ("setting addressExtension to %o from PCW\n",
       }
     
 
-    UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [chan_data -> dev_code] . board;
+    UNIT * unitp = cablesFromIomToDev [iomUnitNum] .devices [chanNum] [chan_data -> dev_code] . board;
 
     // Stash a local copy of the PCW so that it is still valid at activation
     // time
@@ -2344,7 +2344,7 @@ if (pcw . chan == 020) // the fnp
           {
             uint chanNum = pcw . chan;
             uint devCode = pcw . dev_code;
-            UNIT * unitp = iom [iomUnitNum] .devices [chanNum] [devCode] . board;
+            UNIT * unitp = cablesFromIomToDev [iomUnitNum] .devices [chanNum] [devCode] . board;
 
 // The idea of MASK is that it stops any ongoing channel activity; I believe
 // that is mostly used as part of crash recovery.
@@ -2499,7 +2499,7 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
           {
             for (uint dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
               {
-                DEVICE * devp = iom [iomUnitNum] . devices [chanNum] [dev_code] . dev;
+                DEVICE * devp = cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code] . dev;
                 if (devp)
                   {
                     if (devp -> units == NULL)

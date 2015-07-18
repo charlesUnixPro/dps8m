@@ -267,9 +267,9 @@ static char tape_path [TAPE_PATH_LEN];
 t_stat rewindDone (UNIT * uptr)
   {
     int32 driveNumber = uptr -> u3;
-    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
-                            cables_from_ioms_to_mt [driveNumber] . chan_num,
-                            cables_from_ioms_to_mt [driveNumber] . dev_code,
+    send_special_interrupt (cablesFromIomToTap [driveNumber] . iomUnitNum,
+                            cablesFromIomToTap [driveNumber] . chan_num,
+                            cablesFromIomToTap [driveNumber] . dev_code,
                             0, 0100 /* rewind complete */);
     return SCPE_OK;
   }
@@ -280,13 +280,13 @@ static UNIT rewindDoneUnit =
   { UDATA (& rewindDone, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 #endif
 
-static int findTapeUnit (int iom_unit_num, int chan_num, int dev_code)
+static int findTapeUnit (int iomUnitNum, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
-        if (iom_unit_num == cables_from_ioms_to_mt [i] . iom_unit_num &&
-            chan_num     == cables_from_ioms_to_mt [i] . chan_num     &&
-            dev_code     == cables_from_ioms_to_mt [i] . dev_code)
+        if (iomUnitNum == cablesFromIomToTap [i] . iomUnitNum &&
+            chan_num     == cablesFromIomToTap [i] . chan_num     &&
+            dev_code     == cablesFromIomToTap [i] . dev_code)
           return i;
       }
     return -1;
@@ -300,8 +300,8 @@ UNIT * getTapeUnit (uint driveNumber)
 
 void tape_send_special_interrupt (uint driveNumber)
   {
-    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
-                            cables_from_ioms_to_mt [driveNumber] . chan_num);
+    send_special_interrupt (cablesFromIomToTap [driveNumber] . iomUnitNum,
+                            cablesFromIomToTap [driveNumber] . chan_num);
   }
 #endif
 
@@ -320,9 +320,9 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
-    send_special_interrupt (cables_from_ioms_to_mt [driveNumber] . iom_unit_num,
-                            cables_from_ioms_to_mt [driveNumber] . chan_num,
-                            cables_from_ioms_to_mt [driveNumber] . dev_code,
+    send_special_interrupt (cablesFromIomToTap [driveNumber] . iomUnitNum,
+                            cablesFromIomToTap [driveNumber] . chan_num,
+                            cablesFromIomToTap [driveNumber] . dev_code,
                             0, 020 /* tape drive to ready */);
   }
 
@@ -358,13 +358,13 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     //if (pcwp -> control == 3) sim_printf ("XXXX marker\n");
     int mt_unit_num = MT_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
+    int iomUnitNum = cablesFromIomToTap [mt_unit_num] . iomUnitNum;
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
     * disc = false;
 
     int chan = pcwp-> chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
     if (chan_data -> ptp &&
         pcwp -> dev_cmd != 057 && // survey devices
         pcwp -> dev_cmd != 072 && // rewind/unload
@@ -441,7 +441,7 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 sim_printf ("get the idcw\n");
             // Get the IDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -463,7 +463,7 @@ sim_printf ("get the ddcw\n");
 #endif
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -523,7 +523,7 @@ sim_printf ("tally %d\n", tally);
             
             for (uint i = 1; i < N_MT_UNITS_MAX; i ++)
               {
-                if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
+                if (cablesFromIomToTap [i] . iomUnitNum != -1)
                   {
                     word18 handler = 0;
 // Test hack: unit 0 never operational
@@ -536,7 +536,7 @@ sim_printf ("tally %d\n", tally);
                         handler |= 0040000; // ready
                         //sim_printf ("Unit %d ready\n", i);
                       }
-                    handler |= (cables_from_ioms_to_mt [i] . dev_code & 037) << 9; // number
+                    handler |= (cablesFromIomToTap [i] . dev_code & 037) << 9; // number
                     handler |= 0000040; // 200 ips
                     handler |= 0000020; // 9 track
                     handler |= 0000007; // 800/1600/6250
@@ -554,10 +554,10 @@ sim_printf ("tally %d\n", tally);
                   }
               }
 #ifdef IOMDBG1
-iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
 sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
 #endif
-            indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
+            indirectDataService (iomUnitNum, chan, daddr, 8, buffer,
                                  idsTypeW36, true, & chan_data -> isOdd);
 #endif
             chan_data -> stati = 04000;
@@ -649,7 +649,7 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -716,7 +716,7 @@ if (chan_data -> ptp)
                   break;
               }
 
-            indirectDataService (iom_unit_num, chan, daddr, tape_statep -> words_processed, buffer,
+            indirectDataService (iomUnitNum, chan, daddr, tape_statep -> words_processed, buffer,
                                  idsTypeW36, true, & chan_data -> isOdd);
   }
 else
@@ -784,7 +784,7 @@ else
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -835,7 +835,7 @@ else
                 word36 buffer [tally];
             
                 // copy from core into buffer
-                indirectDataService (iom_unit_num, chan, daddr, tally, buffer,
+                indirectDataService (iomUnitNum, chan, daddr, tally, buffer,
                                      idsTypeW36, false, & chan_data -> isOdd);
                 t_mtrlnt tbc = (bufsz * 9 + 1) / 2;
                 // repack buffer into bufp
@@ -971,7 +971,7 @@ else
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -1144,7 +1144,7 @@ sim_printf ("uncomfortable with this\n");
 sim_printf ("get the idcw\n");
             // Get the IDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -1166,7 +1166,7 @@ sim_printf ("get the ddcw\n");
 #endif
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -1224,7 +1224,7 @@ sim_printf ("uncomfortable with this\n");
             
             for (uint i = 1; i < N_MT_UNITS_MAX; i ++)
               {
-                if (cables_from_ioms_to_mt [i] . iom_unit_num != -1)
+                if (cablesFromIomToTap [i] . iomUnitNum != -1)
                   {
                     word18 handler = 0;
 // Test hack: unit 0 never operational
@@ -1237,7 +1237,7 @@ sim_printf ("uncomfortable with this\n");
                         handler |= 0040000; // ready
                         //sim_printf ("Unit %d ready\n", i);
                       }
-                    handler |= (cables_from_ioms_to_mt [i] . dev_code & 037) << 9; // number
+                    handler |= (cablesFromIomToTap [i] . dev_code & 037) << 9; // number
                     handler |= 0000040; // 200 ips
                     handler |= 0000020; // 9 track
                     handler |= 0000007; // 800/1600/6250
@@ -1255,10 +1255,10 @@ sim_printf ("uncomfortable with this\n");
                   }
               }
 #ifdef IOMDBG1
-iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
 sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
 #endif
-            indirectDataService (iom_unit_num, chan, daddr, 8, buffer,
+            indirectDataService (iomUnitNum, chan, daddr, 8, buffer,
                                  idsTypeW36, true, & chan_data -> isOdd);
 #endif
             chan_data -> stati = 04000;
@@ -1333,9 +1333,9 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               chan_data -> stati |= 0340;
             //rewindDoneUnit . u3 = mt_unit_num;
             //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
-    send_special_interrupt (cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num,
-                            cables_from_ioms_to_mt [mt_unit_num] . chan_num,
-                            cables_from_ioms_to_mt [mt_unit_num] . dev_code,
+    send_special_interrupt (cablesFromIomToTap [mt_unit_num] . iomUnitNum,
+                            cablesFromIomToTap [mt_unit_num] . chan_num,
+                            cablesFromIomToTap [mt_unit_num] . dev_code,
                             0, 0100 /* rewind complete */);
 
           }
@@ -1365,7 +1365,7 @@ fail:
           }
       }
 
-    // status_service (iom_unit_num, chan, pcwp -> control == 3);
+    // status_service (iomUnitNum, chan, pcwp -> control == 3);
 
     //if (pcwp -> control & 1) // marker bit set
     if (pcwp -> control == 3) // marker bit set
@@ -1374,7 +1374,7 @@ fail:
         //sim_printf ("XXX marker intr\n");
         //sim_printf ("XXX marker intr\n");
         //sim_printf ("XXX marker intr\n");
-        send_marker_interrupt (iom_unit_num, chan);
+        send_marker_interrupt (iomUnitNum, chan);
       }
 
     return 0;
@@ -1394,12 +1394,12 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         unitp = mt_unit + mt_unit_num;
         //sim_printf ("pcw boot unit set to %d\n", mt_unit_num);
       }
-    int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
+    int iomUnitNum = cablesFromIomToTap [mt_unit_num] . iomUnitNum;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    //uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    //uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -1424,7 +1424,7 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 #endif
       {
         dcw_t dcw;
-        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw, & ptro);
+        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
             break;
@@ -1432,18 +1432,18 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            // status_service (iom_unit_num, pcwp -> chan, false);
+            // status_service (iomUnitNum, pcwp -> chan, false);
             break;
           }
 
 
 // The dcw does not necessarily have the same dev_code as the pcw....
 
-        mt_unit_num = findTapeUnit (iom_unit_num, pcwp -> chan, dcw . fields . instr. dev_code);
+        mt_unit_num = findTapeUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
         if (mt_unit_num == 0)
           {
             mt_unit_num = boot_drive;
@@ -1452,11 +1452,11 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         if (mt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [pcwp -> chan];
+            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code; 
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            // status_service (iom_unit_num, pcwp -> chan, false);
+            // status_service (iomUnitNum, pcwp -> chan, false);
             break;
           }
         unitp = & mt_unit [mt_unit_num];
@@ -1465,9 +1465,9 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
         ctrl = dcw . fields . instr . control;
 //sim_printf ("disc %d ctrl %d\n", disc, ctrl);
       }
-    //status_service (iom_unit_num, pcwp -> chan, pcwp -> control == 3);
+    //status_service (iomUnitNum, pcwp -> chan, pcwp -> control == 3);
 
-    send_terminate_interrupt (iom_unit_num, pcwp -> chan);
+    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
     return 1;
   }
@@ -1475,8 +1475,8 @@ int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 static t_stat mt_svc (UNIT * unitp)
   {
     int mtUnitNum = MT_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_mt [mtUnitNum] . iom_unit_num;
-    int chanNum = cables_from_ioms_to_mt [mtUnitNum] . chan_num;
+    int iomUnitNum = cablesFromIomToTap [mtUnitNum] . iomUnitNum;
+    int chanNum = cablesFromIomToTap [mtUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     mt_iom_cmd (unitp, pcwp);
     return SCPE_OK;
@@ -1488,10 +1488,10 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint
   {
     //sim_debug (DBG_DEBUG, & tape_dev, "%s\n", __func__);
     int mt_unit_num = MT_UNIT_NUM (unitp);
-    //int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
+    //int iomUnitNum = cablesFromIomToTap [mt_unit_num] . iomUnitNum;
 //--     
 //--     int dev_unit_num;
-//--     DEVICE* devp = get_iom_channel_dev (iom_unit_num, chan, dev_code, & dev_unit_num);
+//--     DEVICE* devp = get_iom_channel_dev (iomUnitNum, chan, dev_code, & dev_unit_num);
 //--     if (devp == NULL || devp->units == NULL) {
 //--         *majorp = 05;
 //--         *subp = 2;

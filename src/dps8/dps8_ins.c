@@ -5387,7 +5387,7 @@ static t_stat DoBasicInstruction (void)
                   sim_debug (DBG_ERR, & cpu_dev, "RSCR: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
                   cpu_port_num = 0;
                 }
-              uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+              uint scu_unit_num = cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
 
               t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, iefpFinalAddress & MASK15, & rA, & rQ);
               if (rc)
@@ -5578,7 +5578,7 @@ static t_stat DoBasicInstruction (void)
                 sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
                 cpu_port_num = 0;
               }
-            uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+            uint scu_unit_num = cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
             uint scu_port_num = CY & MASK3;
             scu_cioc ((uint) scu_unit_num, scu_port_num);
           }
@@ -5661,7 +5661,7 @@ static t_stat DoBasicInstruction (void)
                 sim_debug (DBG_ERR, & cpu_dev, "SSCR: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
                 cpu_port_num = 0;
               }
-            uint scu_unit_num = cpu_array [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+            uint scu_unit_num = cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
     
             t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, iefpFinalAddress & MASK15, rA, rQ);
             // Not used by 4MW

@@ -2711,8 +2711,8 @@ static void ic_history_init(void)
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
-    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
-      return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    if (cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      return cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
     return -1;
   }
 
@@ -2722,7 +2722,7 @@ static void cpu_init_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
-        cpu_array [i] . ports [p] . inuse = false;
+        cablesFromScuToCpu [i] . ports [p] . inuse = false;
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 

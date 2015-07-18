@@ -1114,7 +1114,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             for (int pn = 0; pn < N_SCU_PORTS; pn ++)
               {
-                if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == 
+                if (cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
                     (int) cpu_unit_num)
                   {
                     scu_port_num = pn;
@@ -1454,12 +1454,12 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
       }
     if (portp -> type == ADEV_IOM)
       {
-        int iom_unit_num = portp -> idnum;
+        int iomUnitNum = portp -> idnum;
         //int iom_port_num = portp -> dev_port;
 
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (iom_unit_num);
+            iom_interrupt (iomUnitNum);
             return 0;
           }
         else
@@ -1469,7 +1469,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
                        "(for the connect channel)\n", 
                        sys_opts . iom_times . connect);
             int rc;
-            if ((rc = sim_activate (& iom_dev . units [iom_unit_num], 
+            if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
               {
                 sim_err ("sim_activate failed (%d)\n", rc); // Dosen't return
@@ -1485,7 +1485,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (FAULT_CON, cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (FAULT_CON, cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else
@@ -1909,7 +1909,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
+        if (cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
           {
             scu_port_num = pn;
             break;
@@ -2007,7 +2007,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == 
+        if (cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
             (int) cpu_unit_num)
           {
             scu_port_num = pn;

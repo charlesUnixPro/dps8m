@@ -298,8 +298,8 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
  
 t_stat console_attn (UNUSED UNIT * uptr)
   {
-    send_special_interrupt (cables_from_ioms_to_con [ASSUME0] . iom_unit_num,
-                            cables_from_ioms_to_con [ASSUME0] . chan_num, 
+    send_special_interrupt (cablesFromIomToCon [ASSUME0] . iomUnitNum,
+                            cablesFromIomToCon [ASSUME0] . chan_num, 
                             ASSUME0, 0, 0);
     return SCPE_OK;
   }
@@ -408,11 +408,11 @@ static void sendConsole (uint stati)
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
     int con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
-    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
+    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
     
     int chan = console_state . chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
     while (tally && console_state . readp < console_state . tailp)
       {
         int charno;
@@ -437,7 +437,7 @@ static void sendConsole (uint stati)
     console_state . io_mode = no_mode;
 
     chan_data -> stati = stati;
-    send_terminate_interrupt (iom_unit_num, chan);
+    send_terminate_interrupt (iomUnitNum, chan);
   }
 
 
@@ -448,11 +448,11 @@ static void sendConsole (uint stati)
 static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
+    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
     
     int chan = pcwp-> chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iom_unit_num] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
     if (chan_data -> ptp)
       sim_err ("PTP in console\n");
     chan_data -> dev_code = pcwp -> dev_code;
@@ -484,7 +484,7 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -548,7 +548,7 @@ sim_printf ("uncomfortable with this\n");
             // Get the DDCW
 
             dcw_t dcw;
-            int rc = iomListService (iom_unit_num, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -951,7 +951,7 @@ sim_printf ("uncomfortable with this\n");
             break;
           }
       }
-    //status_service (iom_unit_num, chan, false);
+    //status_service (iomUnitNum, chan, false);
 
     return 0; // send terminate interrupt
   }
@@ -1160,15 +1160,15 @@ eol:
 int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
+    int iomUnitNum = cablesFromIomToCon [con_unit_num] . iomUnitNum;
 
     // Execute the command in the PCW.
 
-    // uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
 
     con_cmd (unitp, pcwp);
 
-    send_terminate_interrupt (iom_unit_num, pcwp -> chan);
+    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
     return 1;
   }
@@ -1176,8 +1176,8 @@ int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
 static t_stat opcon_svc (UNIT * unitp)
   {
     int conUnitNum = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_con [conUnitNum] . iom_unit_num;
-    int chanNum = cables_from_ioms_to_con [conUnitNum] . chan_num;
+    int iomUnitNum = cablesFromIomToCon [conUnitNum] . iomUnitNum;
+    int chanNum = cablesFromIomToCon [conUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     con_iom_cmd (unitp, pcwp);
  
