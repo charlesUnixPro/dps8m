@@ -19,8 +19,8 @@
 // scbanks is:
 #define N_SCBANKS ((MEM_SIZE_MAX) / (SCBANK))
 
-//#define N_SCU_UNITS_MAX 4
-#define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
+#define N_SCU_UNITS_MAX 4
+//#define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
                           // [CAC] I believe that this is because the
                           // 4MW SCU supported much more memory then
                           // the earlier units, and two fully loaded
