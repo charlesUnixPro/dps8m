@@ -9,10 +9,10 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 
 #ifndef QUIET_UNUSED
@@ -453,8 +453,10 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
           }
       }
 #endif
+#ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
+#endif
 
 #if 0
 if (faultNumber == 10 && sys_stats . total_cycles > 10000)

@@ -9,13 +9,13 @@
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_loader.h"
 #include "dps8_math.h"
 #include "dps8_scu.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
@@ -239,10 +239,12 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 
 static t_stat dpsCmd_InitSDWAM ()
   {
+#ifndef SPEED
     memset (SDWAM, 0, sizeof (SDWAM));
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
+#endif
     return SCPE_OK;
   }
 
@@ -419,8 +421,10 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_DumpSegmentTable();
+#ifndef SPEED
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dumpSDWAM();
+#endif
     
     return SCPE_OK;
 }
@@ -563,8 +567,10 @@ t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_InitUnpagedSegmentTable();
+#ifndef SPEED
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dpsCmd_InitSDWAM();
+#endif
     //if (nParams == 2 && !strcasecmp(cmds[0], "stack"))
     //    return createStack((int)strtoll(cmds[1], NULL, 8));
     
@@ -908,12 +914,21 @@ struct _dsbr DSBR;  ///< Descriptor Segment Base Register
 // XXX given this is not real hardware we can eventually remove the SDWAM -- I think. But for now just leave it in.
 // For the DPS 8M processor, the SDW associative memory will hold the 64 MRU SDWs and have a 4-way set associative organization with LRU replacement.
 
+#ifdef SPEED
+struct _sdw SDWAM0;
+struct _sdw  * SDW = & SDWAM0; // Segment Descriptor Word Associative Memory & working SDW
+struct _sdw0 SDW0;  // a SDW not in SDWAM
+
+struct _ptw PTWAM0;
+struct _ptw * PTW = & PTWAM0;  // PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
+struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
+#else
 struct _sdw  SDWAM[64], *SDW = &SDWAM[0];    ///< Segment Descriptor Word Associative Memory & working SDW
 struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
-
+#endif
 word3    RSDWH_R1; // Track the ring number of the last SDW
 
 _cache_mode_register CMR;
@@ -1452,9 +1467,14 @@ last = M[01007040];
             break;
           }
 
-        scpProcessEvent (); 
-        fnpProcessEvent (); 
-        consoleProcess ();
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+          {
+            queueSubsample = 0;
+            scpProcessEvent (); 
+            fnpProcessEvent (); 
+            consoleProcess ();
+          }
 #if 0
         if (sim_gtime () % 1024 == 0)
           {
@@ -1584,8 +1604,10 @@ last = M[01007040];
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
 
+#ifndef SPEED
                         if_sim_debug (DBG_INTR, & cpu_dev) 
                           traceInstruction (DBG_INTR);
+#endif
 
 #ifdef MULTIPASS
                         if (multipassStatsPtr)
@@ -2239,6 +2261,7 @@ static void nem_check (word24 addr, char * context)
       }
   }
 
+#ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
     nem_check (addr,  "core_read nem");
@@ -2259,7 +2282,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
                 addr, * data, ctx);
     return 0;
 }
+#endif
 
+#ifndef SPEED
 int core_write(word24 addr, word36 data, const char * ctx) {
     nem_check (addr,  "core_write nem");
     M[addr] = data & DMASK;
@@ -2275,7 +2300,9 @@ int core_write(word24 addr, word36 data, const char * ctx) {
                 addr, data, ctx);
     return 0;
 }
+#endif
 
+#ifndef SPEED
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
@@ -2317,6 +2344,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                 addr, * odd, ctx);
     return 0;
 }
+#endif
 //
 ////! for working with CY-pairs
 //int core_read72(word24 addr, word72 *dst) // needs testing
@@ -2328,6 +2356,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //    return 0;
 //}
 //
+#ifndef SPEED
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
@@ -2354,6 +2383,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     M[addr] = odd;
     return 0;
 }
+#endif
 ////! for working with CY-pairs
 //int core_write72(word24 addr, word72 src) // needs testing
 //{

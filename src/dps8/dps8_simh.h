@@ -1,3 +1,7 @@
+#ifdef SPEED
+#define if_sim_debug(dbits, dptr) if (0)
+
+#else
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
@@ -7,6 +11,7 @@
       sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) \
     ) 
+#endif
 
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \

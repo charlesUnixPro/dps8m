@@ -64,6 +64,9 @@
 // Enable Real time Timer Register
 #define REAL_TR
 
+// Enable speed over debuggibility
+#define SPEED
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"

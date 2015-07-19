@@ -37,11 +37,11 @@
 #include <sys/time.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_scu.h"
 #include "dps8_iom.h"
-#include "dps8_sys.h"
 #include "dps8_cable.h"
 // For fnp debugging
 #include "dps8_iefp.h"
@@ -509,6 +509,7 @@ static void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
     //  23 causes the data to become segmented.
     p -> lpw23_srel = getbits36 (word0, 23, 1);
     p -> tally = getbits36 (word0, 24, 12); // initial value treated as unsigned
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("lpw %012llo\n", word0);
@@ -521,6 +522,7 @@ sim_printf (" trunout %o\n", p -> trunout);
 sim_printf (" lpw23_srel %o\n", p -> lpw23_srel);
 sim_printf (" tally %06o\n", p -> tally);
 }
+#endif
 #endif
     
     // sim_debug (DBG_TRACE, & iom_dev, "lpw ae(20) %o srel(23) %o\n", p -> lpw20_ae, p -> lpw23_srel);
@@ -543,11 +545,13 @@ sim_debug (DBG_CAC, & iom_dev, "lpw1 %012llo\n", word1);
         // XXX Not in paged mode
         //p -> idcw = (uint)-1;
       }
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf (" lbnd %06o\n", p -> lbnd);
 sim_printf (" size %06o\n", p -> size);
 }
+#endif
 #endif
     //if (p -> lpw20_ae || p -> lpw23_srel)
 #if 0
@@ -598,11 +602,13 @@ void decode_idcw (uint iomUnitNum, pcw_t *p, bool is_pcw,
           }
         p -> pcw64_pge = getbits36 (word1, 28, 1);
         p -> aux = getbits36 (word1, 29, 1);
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 if (p -> ptp)
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
 }
+#endif
 #endif
 //if (p -> ptp)
     //iomFault (iomUnitNum, 2, "cac", 1, iomFsrList, 016);
@@ -618,10 +624,12 @@ sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_
               }
           }
 
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("IOMB pcw ptPtr %06o pcw64_pge %o aux %o\n", p -> ptPtr, p -> pcw64_pge, p -> aux);
 }
+#endif
 #endif
         sim_debug (DBG_TRACE, & iom_dev, 
                    "decode_idcw IOMB pcw ptp %o ptPtr %06o pcw64_pge %o aux %o\n",
@@ -1628,7 +1636,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
                             word8 status0, word8 status1)
   {
     uint chanloc = mbx_loc (iomUnitNum, IOM_SPECIAL_STATUS_CHAN);
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "special interupt chan %o devcode %ochanloc %o\n", chanNum, devCode, chanloc);}
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -1638,18 +1646,18 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
     word36 lpw;
     fetch_abs_word (chanloc + 0, & lpw, __func__);
 
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "lpw %012llo\n", lpw);}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "lpw %012llo\n", lpw);}
 // 001432040000
 //  001432  0 40000 
 //     addr  001432 
 // The lpw points to the special status mbx dcw word
 //     RES/REL/AE 0
 //     NC/TAL/REL 4
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "lpw %012llo\n", M [(lpw >> 18) & MASK18]);}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "lpw %012llo\n", M [(lpw >> 18) & MASK18]);}
 
     word36 dcw;
     fetch_abs_word (chanloc + 3, & dcw, __func__);
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "dcw %012llo\n", dcw);}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "dcw %012llo\n", dcw);}
 //  001320010012
 //  001320  0     1  0012
 //  ADDR   CP  IOTP TALLY
@@ -1658,7 +1666,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "writing special status %012llo @ %08llo\n", status, (dcw >> 18) & MASK18);}
     store_abs_word ((dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
@@ -1669,7 +1677,7 @@ int send_special_interrupt (uint iomUnitNum, uint chanNum, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-//if (chanNum == 013) {sim_debug (0, & iom_dev, "writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());}
+//if (chanNum == 013 && devCode == 2) {sim_debug (0, & iom_dev, "writing special status dcw %012llo @ %08o (%lld)\n", dcw, chanloc + 3, sim_timell ());}
     store_abs_word (chanloc + 3, dcw, __func__);
 
 //    send_general_interrupt (iomUnitNum, chanNum, imwSpecialPic);
@@ -1727,10 +1735,12 @@ int iomListService (uint iomUnitNum, int chanNum, dcw_t * dcwp, int * ptro)
     int tdcw_count = 0;
 
     uint chanloc = mbx_loc (iomUnitNum, chanNum);
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 sim_printf ("iomListService iomUnitNum %o chanNum %d (%o) chanloc %08o\n", iomUnitNum, chanNum, chanNum, chanloc);
 }
+#endif
 #endif
 
     // Eliding scratchpad, so always first service.
@@ -2166,8 +2176,10 @@ sim_printf ("setting addressExtension to %o from PCW\n",
 //if (chanNum == 013) iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
 //if (chanNum == 012) sim_printf ("[%lld]\n", sim_timell ());
 
+#ifndef SPEED
     if_sim_debug (DBG_DEBUG, & iom_dev)
       iomShowMbx (NULL, iomUnit + iomUnitNum, 0, "");
+#endif
 //iomAnalyzeMbx (NULL, iomUnit + iomUnitNum, 0, "");
 
     sim_debug (DBG_NOTIFY, & iom_dev, "IOM dispatch to chan %o\n", chanNum);
@@ -2326,6 +2338,7 @@ static int doConnectChan (uint iomUnitNum)
             return 1;
           }
     
+#ifndef SPEED
 #ifdef DBGFNP
 if_sim_debug (DBG_CAC, & cpu_dev) {
 if (pcw . chan == 020) // the fnp
@@ -2334,6 +2347,7 @@ if (pcw . chan == 020) // the fnp
     sim_printf ("fnp in connect channel; lpwp -> dcw_ptr %08o\n", lpwp -> dcw_ptr);
   }
 }
+#endif
 #endif
 
 // This is not an issue as of 'bce (boot)' as it as only been seen in

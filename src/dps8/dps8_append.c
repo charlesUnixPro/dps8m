@@ -7,8 +7,8 @@
 
 #include <stdio.h>
 #include "dps8.h"
-#include "dps8_cpu.h"
 #include "dps8_sys.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_append.h"
@@ -164,6 +164,7 @@ static void selftestPTWAM (void)
 
 void do_ldbr (word36 * Ypair)
   {
+#ifndef SPEED
     // XXX is it enabled?
     // XXX Assuming 16 is 64 for the DPS8M
 
@@ -187,6 +188,7 @@ void do_ldbr (word36 * Ypair)
 #ifdef do_selftestPTWAM
     selftestPTWAM ();
 #endif
+#endif // SPEED
 
     // If cache is enabled, reset all cache column and level full flags
     // XXX no cache
@@ -241,10 +243,12 @@ void do_camp (UNUSED word36 Y)
     // counters are initialized.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #1
+#ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
         PTWAM [i] . F = 0;
       }
+#endif
   }
 
 /**
@@ -261,10 +265,12 @@ void do_cams (UNUSED word36 Y)
     // This may be done to either or both halves.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #2
+#ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
         SDWAM [i] . F = 0;
       }
+#endif
   }
 
     
@@ -321,7 +327,8 @@ static void modifyDSPTW(word15 segno)
 }
 
 
-/// \brief XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
+#ifndef SPEED
+// XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
 static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
@@ -361,7 +368,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
     return NULL;    // segment not referenced in SDWAM
 }
-
+#endif // SPEED
 /**
  * Fetches an SDW from a paged descriptor segment.
  */
@@ -474,6 +481,7 @@ static char *strSDW(_sdw *SDW)
     return buff;
 }
 
+#ifndef SPEED
 /**
  * dump SDWAM...
  */
@@ -489,6 +497,7 @@ t_stat dumpSDWAM (void)
     }
     return SCPE_OK;
 }
+#endif
 
 
 /**
@@ -496,6 +505,28 @@ t_stat dumpSDWAM (void)
  */
 static void loadSDWAM(word15 segno)
 {
+#ifdef SPEED
+    SDWAM0 . ADDR = SDW0.ADDR;
+    SDWAM0 . R1 = SDW0.R1;
+    SDWAM0 . R2 = SDW0.R2;
+    SDWAM0 . R3 = SDW0.R3;
+    SDWAM0 . BOUND = SDW0.BOUND;
+    SDWAM0 . R = SDW0.R;
+    SDWAM0 . E = SDW0.E;
+    SDWAM0 . W = SDW0.W;
+    SDWAM0 . P = SDW0.P;
+    SDWAM0 . U = SDW0.U;
+    SDWAM0 . G = SDW0.G;
+    SDWAM0 . C = SDW0.C;
+    SDWAM0 . CL = SDW0.EB;
+    SDWAM0 . POINTER = segno;
+    SDWAM0 . USE = 0;
+            
+    SDWAM0 . F = true;     // in use by SDWAM
+            
+    SDW = & SDWAM0;
+            
+#else
     if (switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
@@ -575,8 +606,10 @@ static void loadSDWAM(word15 segno)
     
     sim_printf("loadSDWAM(%05o): no USE=0 found!\n", segno);
     dumpSDWAM();
+#endif
 }
 
+#ifndef SPEED
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
     int nwam = 64;
@@ -610,6 +643,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     }
     return NULL;    // segment not referenced in SDWAM
 }
+#endif
 
 static void fetchPTW(_sdw *sdw, word18 offset)
 {
@@ -636,6 +670,17 @@ static void fetchPTW(_sdw *sdw, word18 offset)
 
 static void loadPTWAM(word15 segno, word18 offset)
 {
+#ifdef SPEED
+    PTWAM0 . ADDR = PTW0.ADDR;
+    PTWAM0 . M = PTW0.M;
+    PTWAM0 . PAGENO = (offset >> 6) & 07777;
+    PTWAM0 . POINTER = segno;
+    PTWAM0 . USE = 0;
+            
+    PTWAM0 . F = true;
+            
+    PTW = & PTWAM0;
+#else
     if (switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
@@ -690,7 +735,7 @@ static void loadPTWAM(word15 segno, word18 offset)
         }
     }
     sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
-
+#endif // SPEED
 }
 
 /**
@@ -963,6 +1008,30 @@ A:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
+#ifdef SPEED
+    if (DSBR.U == 0)
+    {
+        fetchDSPTW(TPR.TSR);
+        
+        if (!PTW0.F)
+            doFault(FAULT_DF0 + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
+        
+        if (!PTW0.U)
+            modifyDSPTW(TPR.TSR);
+        
+        fetchPSDW(TPR.TSR);
+    }
+    else
+        fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+    
+    if (SDW0.F == 0)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
+        // initiate a directed fault ...
+        doFault(FAULT_DF0 + SDW0.FC, 0, "SDW0.F == 0");
+    }
+    loadSDWAM(TPR.TSR);
+#else
     // is SDW for C(TPR.TSR) in SDWAM?
     if (!fetchSDWfromSDWAM(TPR.TSR))
     {
@@ -996,6 +1065,7 @@ A:;
             // load SDWAM .....
             loadSDWAM(TPR.TSR);
     }
+#endif
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(A) R1 %o R2 %o R3 %o\n", SDW -> R1, SDW -> R1, SDW -> R3);
     // Yes...
@@ -1240,6 +1310,17 @@ G:;
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
+#ifdef SPEED
+    fetchPTW(SDW, address);
+    if (!PTW0.F)
+    {
+        //TPR.CA = address;
+        // initiate a directed fault
+        doFault(FAULT_DF0 + PTW0.FC, 0, "PTW0.F == 0");
+    }
+    loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
+
+#else
     if (!fetchPTWfromPTWAM(SDW->POINTER, address))  //TPR.CA))
     {
         appendingUnitCycleType = apuCycle_PTWfetch;
@@ -1248,11 +1329,6 @@ G:;
         if (!PTW0.F)
         {
             //TPR.CA = address;
-//if (address != TPR.CA){
-//sim_printf ("Address %06o TPR.CA %06o\n", address, TPR . CA);
-//sim_printf ("[%lld]\n", sim_timell () );
-////exit (1);
-//}
             // initiate a directed fault
             doFault(FAULT_DF0 + PTW0.FC, 0, "PTW0.F == 0");
         }
@@ -1260,6 +1336,7 @@ G:;
         //loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
         loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
     }
+#endif
     
     // is prepage mode???
     // XXX: don't know what todo with this yet ...

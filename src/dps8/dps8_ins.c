@@ -12,6 +12,7 @@
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_eis.h"
@@ -19,7 +20,6 @@
 #include "dps8_math.h"
 #include "dps8_opcodetable.h"
 #include "dps8_scu.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
@@ -796,6 +796,17 @@ static t_stat setupForOperandRead (void)
 
 void traceInstruction (uint flag)
   {
+#if 0
+if (PPR.PSR == 037 && PPR.IC == 03232) { sim_printf ("%05o:%06o\n", PAR[2].SNR,PAR[2].WORDNO);
+word24 res;
+if (dbgLookupAddress (PAR[2].SNR, PAR[2].WORDNO, & res, NULL))
+sim_printf ("?\n");
+else
+{
+sim_printf ("%06o %012llo %012llo\n", res, M [res],M [res + 1]);
+}
+}
+#endif
     if (! flag) goto force;
     if_sim_debug (flag, &cpu_dev)
       {
@@ -4795,6 +4806,7 @@ static t_stat DoBasicInstruction (void)
               t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & rA, & rQ);
               if (rc > 0)
                 return rc;
+#ifndef SPEED
               if_sim_debug (DBG_TRACE, & cpu_dev)
                 {
                   // Clock at initialization
@@ -4816,6 +4828,7 @@ static t_stat DoBasicInstruction (void)
                              "Clock time since boot %4lu.%06lu seconds\n",
                              secs, uSecs);
                 }
+#endif
             }
             break;
         
@@ -5322,15 +5335,19 @@ static t_stat DoBasicInstruction (void)
           {
 // XXX The associative memory is ignored (forced to "no match") during address preparation.
 
+#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
+#endif
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
+#ifndef SPEED
                 putbits36 (& Yblock16 [i], 0, 15, SDWAM [toffset + i] . POINTER);
                 putbits36 (& Yblock16 [i], 27, 1, SDWAM [toffset + i] . F);
                 putbits36 (& Yblock16 [i], 30, 6, SDWAM [toffset + i] . USE);
+#endif
               }
           }
           break;
@@ -7054,16 +7071,20 @@ static t_stat DoEISInstruction (void)
           {
 // XXX The associative memory is ignored (forced to "no match") during address preparation.
 
+#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
+#endif
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
+#ifndef SPEED
                 putbits36 (& Yblock16 [i], 0, 15, PTWAM [toffset + i] . POINTER);
                 putbits36 (& Yblock16 [i], 15, 12, PTWAM [toffset + i] . PAGENO);
                 putbits36 (& Yblock16 [i], 27, 1, PTWAM [toffset + i] . F);
                 putbits36 (& Yblock16 [i], 30, 6, PTWAM [toffset + i] . USE);
+#endif
               }
           }
           break;
@@ -7072,14 +7093,18 @@ static t_stat DoEISInstruction (void)
           {
 // XXX The associative memory is ignored (forced to "no match") during address preparation.
 
+#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
+#endif
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
+#ifndef SPEED
                 putbits36 (& Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
                 putbits36 (& Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
+#endif
               }
           }
           break;
@@ -7088,17 +7113,22 @@ static t_stat DoEISInstruction (void)
           {
 // XXX The associative memory is ignored (forced to "no match") during address preparation.
 
+#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
+#endif
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock32 [i * 2] = 0;
+#ifndef SPEED
                 putbits36 (& Yblock32 [i * 2], 0, 23, SDWAM [toffset + i] . ADDR);
                 putbits36 (& Yblock32 [i * 2], 24, 3, SDWAM [toffset + i] . R1);
                 putbits36 (& Yblock32 [i * 2], 27, 3, SDWAM [toffset + i] . R2);
                 putbits36 (& Yblock32 [i * 2], 30, 3, SDWAM [toffset + i] . R3);
+#endif
                 Yblock32 [i * 2 + 1] = 0;
+#ifndef SPEED
                 putbits36 (& Yblock32 [i * 2 + 1], 37 - 36, 14, SDWAM [toffset + i] . BOUND);
                 putbits36 (& Yblock32 [i * 2 + 1], 51 - 36, 1, SDWAM [toffset + i] . R);
                 putbits36 (& Yblock32 [i * 2 + 1], 52 - 36, 1, SDWAM [toffset + i] . E);
@@ -7108,6 +7138,7 @@ static t_stat DoEISInstruction (void)
                 putbits36 (& Yblock32 [i * 2 + 1], 56 - 36, 1, SDWAM [toffset + i] . G);
                 putbits36 (& Yblock32 [i * 2 + 1], 57 - 36, 1, SDWAM [toffset + i] . C);
                 putbits36 (& Yblock32 [i * 2 + 1], 58 - 36, 14, SDWAM [toffset + i] . CL);
+#endif
               }
           }
           break;
