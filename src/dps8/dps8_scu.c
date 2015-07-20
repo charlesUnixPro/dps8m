@@ -1592,8 +1592,6 @@ static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
       return SCPE_ARG;
-    if (n > 2)
-      sim_printf ("Warning: Multics supports 2 SCUs maximum\n");
     scu_dev . numunits = (uint) n;
     return SCPE_OK;
   }
