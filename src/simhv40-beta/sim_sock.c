@@ -786,7 +786,7 @@ if (preferred->ai_family == AF_INET6) {
     sta = setsockopt (newsock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&off, sizeof(off));
     }
 #endif
-if (sim_switches & SWMASK ('U')) {
+if (1 || sim_switches & SWMASK ('U')) {
     int on = TRUE;
 
     sta = setsockopt (newsock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));

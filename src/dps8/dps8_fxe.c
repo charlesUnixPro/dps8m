@@ -95,9 +95,9 @@
 #include <ctype.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_ins.h"
 #include "dps8_fxe.h"
@@ -685,9 +685,10 @@ static sgIdx allocateSegment (uint seglen, char * segname, word15 segno,
                               word3 R1, word3 R2, word3 R3, 
                               word1 R, word1 E, word1 W, word1 P)
   {
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("allocate segment len %u name %s\n", seglen, segname);
-
+#endif
     // Round seglen up to next page boundary
     uint seglenpage = (seglen + 1023u) & ~1023u;
     for (int i = 0; i < (int) N_SEGS; i ++)
@@ -2543,8 +2544,10 @@ static word18 lookupErrorCode (char * name)
 t_stat fxe (UNUSED int32 arg, char * buf)
   {
     t_stat run_boot_prep (void);
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("FXE: initializing...\n");
+#endif
 
     // Reset hardware
     run_boot_prep ();
@@ -2801,8 +2804,10 @@ t_stat fxe (UNUSED int32 arg, char * buf)
             entryName = colon + 1;
           }
 
+#ifndef SPEED
         if_sim_debug (DBG_TRACE, & fxe_dev)
           sim_printf ("Loading segment %s\n", segmentName);
+#endif
         //int segIdx = loadSegmentFromFile (segmentName);
         int segIdx = loadSegment (segmentName);
         if (segIdx < 0)
@@ -2995,8 +3000,10 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
 
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("Starting execution...\n");
+#endif
     run_cmd (RU_CONT, "");
 #endif
     return SCPE_OK;
@@ -3128,8 +3135,10 @@ static void faultTag2Handler (void)
             char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
             if (resolveName (segStr, NULL, & refSegno, & refValue, & defIdx))
               {
+#ifndef SPEED
                 if_sim_debug (DBG_TRACE, & fxe_dev)
                   sim_printf ("FXE: snap (3) %s %05o:%06o\n", segStr, refSegno, refValue);
+#endif
                 makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                          linkCopy . modifier);
                 free (segStr);
@@ -3158,8 +3167,10 @@ static void faultTag2Handler (void)
             char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
             if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
               {
+#ifndef SPEED
                 if_sim_debug (DBG_TRACE, & fxe_dev)
                   sim_printf ("FXE: snap (4) %s$%s %05o:%06o\n", segStr, extStr, refSegno, refValue);
+#endif
                 makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                          linkCopy . modifier);
                 free (segStr);
@@ -4171,10 +4182,11 @@ static int initiateSegment (char * dir, char * entry,
 
     * bitcntp = bitcnt;
     KST [segIdx] . loaded = true;
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
                   seglen, e -> segno, e -> segname, segIdx, segAddr);
-
+#endif
     close (fd);
     return 0;
   }
@@ -6514,8 +6526,10 @@ static void trapFXE_UnhandledSignal (void)
 
 static void trapFXE_ReturnToFXE (void)
   {
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("Process exited\n");
+#endif
     longjmp (jmpMain, JMP_STOP);
   }
 
@@ -6566,8 +6580,10 @@ static void fxeTrap (void)
       offset = (word18) getbits36 (M [0200 + 4], 0, 18); // PPR . IC
     else
       offset = (word18) getbits36 (M [0200 + 5], 0, 18); // PPR . CA
+#ifndef SPEED
     if_sim_debug (DBG_TRACE, & fxe_dev)
       sim_printf ("FXE: trap %s:%s\n", trapNameTable [offset] . segName, trapNameTable [offset] . symbolName);
+#endif
     trapNameTable [offset] . trapFunc ();
   }
 

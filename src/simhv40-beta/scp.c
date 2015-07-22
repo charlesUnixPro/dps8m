@@ -6941,6 +6941,13 @@ if (sim_deb_switches & SWMASK ('P')) {
     sprintf(pc_s, "-%s:", sim_deb_PC->name);
     sprint_val (&pc_s[strlen(pc_s)], val, sim_deb_PC->radix, sim_deb_PC->width, sim_deb_PC->flags & REG_FMT);
     }
+static t_int64 lastGtime = 0;
+t_int64 gtime = sim_gtime ();
+if (gtime != lastGtime) {
+lastGtime = gtime;
+sprintf(debug_line_prefix, "\nDBG(%s%s%lld%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
+}
+else
 sprintf(debug_line_prefix, "DBG(%s%s%lld%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
 return debug_line_prefix;
 }

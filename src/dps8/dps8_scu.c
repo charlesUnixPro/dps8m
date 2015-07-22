@@ -535,12 +535,13 @@
 
 #include <sys/time.h>
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_scu.h"
 #include "dps8_utils.h"
-#include "dps8_sys.h"
 #include "dps8_iom.h"
 #include "dps8_faults.h"
+#include "dps8_cable.h"
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, 
@@ -550,6 +551,8 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, 
                               void * desc);
 static void deliverInterrupts (uint scu_unit_num);
+
+scu_t scu [N_SCU_UNITS_MAX];
 
 #define N_SCU_UNITS 1 // Default
 static UNIT scu_unit [N_SCU_UNITS_MAX] =
@@ -640,20 +643,9 @@ DEVICE scu_dev = {
     NULL             /* description */
 };
 
-#define N_SCU_PORTS 8
-#define N_ASSIGNMENTS 2
-// Number of interrupts in an interrupt cell register
-#define N_CELL_INTERRUPTS 32  
-
 enum { MODE_MANUAL = 0, MODE_PROGRAM = 1 };
 
 // Cabling
-
-static struct
-  {
-    int cpu_unit_num;
-    int cpu_port_num;
-  } cables_from_cpus [N_SCU_UNITS_MAX] [N_SCU_PORTS];
 
 // Hardware configuration switches
 
@@ -673,54 +665,6 @@ static struct config_switches
 // System Controller
 
     
-typedef struct
-  {
-    uint mode; // program or manual
-    uint port_enable [N_SCU_PORTS];  // enable/disable
-
-    // Mask registers A and B, each with 32 interrupt bits.
-    word32 exec_intr_mask [N_ASSIGNMENTS];
-
-    // Mask assignment.
-    // 2 mask registers, A and B, each 32 bits wide.
-    // A CPU will be attached to port N. 
-    // Mask assignment assigns a mask register (A or B) to a CPU
-    // on port N.
-    // That is, when interrupt I is set:
-    //   For reg = A, B
-    //     
-    // Mask A, B is set to Off or 0-7.
-    // mask_enable [A|B] says that mask A or B is not off
-    // if (mask_enable) then mask_assignment is a port number
-    uint mask_enable [N_ASSIGNMENTS]; // enable/disable
-    uint mask_assignment [N_ASSIGNMENTS]; // assigned port number
-
-    uint cells [N_CELL_INTERRUPTS];
-
-    uint lower_store_size; // In K words, power of 2; 32 - 4096
-    uint cyclic; // 7 bits
-    uint nea; // 8 bits
-    
-    // Note that SCUs had no switches to designate SCU 'A' or 'B', etc.
-    // Instead, SCU "A" is the one with base address switches set for 01400,
-    // SCU "B" is the SCU with base address switches set to 02000, etc.
-    // uint mem_base; // zero on boot scu
-    // mode reg: mostly not stored here; returned by scu_get_mode_register()
-    // int mode; // program/manual; if 1, sscr instruction can set some fields
-
-    // CPU/IOM connectivity; designated 0..7
-    // [CAC] really CPU/SCU and SCU/IOM connectivity
-    struct ports {
-        //bool is_enabled;
-        enum active_dev type; // type of connected device
-        int idnum; // id # of connected dev, 0..7
-        int dev_port; // which port on the connected device?
-    } ports[N_SCU_PORTS];
-    
-} scu_t;
-
-static scu_t scu [N_SCU_UNITS_MAX];
-
 static uint elapsed_days = 0;
 
 static t_stat scu_reset (UNUSED DEVICE * dptr)
@@ -1170,7 +1114,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             for (int pn = 0; pn < N_SCU_PORTS; pn ++)
               {
-                if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == 
+                if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
                     (int) cpu_unit_num)
                   {
                     scu_port_num = pn;
@@ -1510,12 +1454,12 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
       }
     if (portp -> type == ADEV_IOM)
       {
-        int iom_unit_num = portp -> idnum;
+        int iomUnitNum = portp -> idnum;
         //int iom_port_num = portp -> dev_port;
 
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (iom_unit_num);
+            iom_interrupt (iomUnitNum);
             return 0;
           }
         else
@@ -1525,7 +1469,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
                        "(for the connect channel)\n", 
                        sys_opts . iom_times . connect);
             int rc;
-            if ((rc = sim_activate (& iom_dev . units [iom_unit_num], 
+            if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
               {
                 sim_err ("sim_activate failed (%d)\n", rc); // Dosen't return
@@ -1541,7 +1485,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (FAULT_CON, cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (FAULT_CON, cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else
@@ -1648,8 +1592,6 @@ static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
       return SCPE_ARG;
-    if (n > 2)
-      sim_printf ("Warning: Multics supports 2 SCUs maximum\n");
     scu_dev . numunits = (uint) n;
     return SCPE_OK;
   }
@@ -1938,104 +1880,6 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
     return SCPE_OK;
   }
 
-t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, 
-                  int cpu_port_num)
-  {
-    sim_debug (DBG_DEBUG, & scu_dev, 
-               "cable_scu: scu_unit_num: %d, scu_port_num: %d, "
-               "cpu_unit_num: %d, cpu_port_num: %d\n", 
-               scu_unit_num, scu_port_num, cpu_unit_num, cpu_port_num);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_scu: scu_unit_num out of range <%d>\n", 
-                      // scu_unit_num);
-        sim_printf ("cable_scu: scu_unit_num out of range <%d>\n", 
-                    scu_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_scu: scu_port_num out of range <%d>\n", 
-                      // scu_unit_num);
-        sim_printf ("cable_scu: scu_port_num out of range <%d>\n", 
-                    scu_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, "cable_scu: port in use\n");
-        sim_printf ("cable_scu: port in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_cpu (cpu_unit_num, cpu_port_num, scu_unit_num, 
-                              scu_port_num);
-    if (rc)
-      return rc;
-
-    cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_unit_num = 
-      cpu_unit_num;
-    cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_port_num = 
-      cpu_port_num;
-
-    scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
-    scu [scu_unit_num] . ports [scu_port_num] . idnum = cpu_unit_num;
-    scu [scu_unit_num] . ports [scu_port_num] . dev_port = cpu_port_num;
-    return SCPE_OK;
-  }
-
-//  An IOM is trying to attach a cable 
-//  to my port scu_unit_num, scu_port_num
-//  from it's port iom_unit_num, iom_port_num
-//
-
-t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, 
-                     int iom_port_num)
-  {
-    sim_debug (DBG_DEBUG, & scu_dev, 
-               "cable_to_scu: scu_unit_num: %d, scu_port_num: %d, "
-               "iom_unit_num: %d, iom_port_num: %d\n", 
-               scu_unit_num, scu_port_num, iom_unit_num, iom_port_num);
-
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_to_scu: scu_unit_num out of range <%d>\n", 
-                      // scu_unit_num);
-        sim_printf ("cable_to_scu: scu_unit_num out of range <%d>\n", 
-                    scu_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_to_scu: scu_port_num out of range <%d>\n", 
-                      // scu_port_num);
-        sim_printf ("cable_to_scu: scu_port_num out of range <%d>\n", 
-                    scu_port_num);
-        return SCPE_ARG;
-      }
-
-    if (scu [scu_unit_num] . ports [scu_port_num] . type != ADEV_NONE)
-      {
-        // sim_debug (DBG_ERR, & scu_dev, "cable_to_scu: socket in use\n");
-        sim_printf ("cable_to_scu: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_IOM;
-    scu [scu_unit_num] . ports [scu_port_num] . idnum = iom_unit_num;
-    scu [scu_unit_num] . ports [scu_port_num] . dev_port = iom_port_num;
-
-    return SCPE_OK;
-  }
-
 void scu_init (void)
   {
     // One time only initializations
@@ -2049,9 +1893,6 @@ void scu_init (void)
           }
       }
 
-    for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
-      for (int p = 0; p < N_SCU_PORTS; p ++)
-        cables_from_cpus [u] [p] . cpu_unit_num = -1; // not connected
   }
 
 t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, 
@@ -2066,7 +1907,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
+        if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
           {
             scu_port_num = pn;
             break;
@@ -2164,7 +2005,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == 
+        if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
             (int) cpu_unit_num)
           {
             scu_port_num = pn;

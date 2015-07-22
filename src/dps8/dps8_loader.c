@@ -10,9 +10,9 @@
 #include <unistd.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_loader.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 
 #include "utlist.h" // for linked list ops
@@ -1109,7 +1109,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
                 if (currSegment && currSegment->M == NULL)
                     currSegment->M = &M[maddr];
 
-                if (maddr > MAXMEMSIZE)
+                if (maddr > MEMSIZE)
                     return SCPE_NXM;
                 else
                     M[maddr+ldaddr] = data & DMASK;
@@ -1139,7 +1139,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
                     currSegment->M = &M[ldaddr];
                     currSegment->segno = segno;
                 }
-                if (maddr > MAXMEMSIZE)
+                if (maddr > MEMSIZE)
                     return SCPE_NXM;
                 else
                     M[ldaddr + maddr] = data & DMASK;
@@ -1219,7 +1219,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             if (currSegment && currSegment->M == NULL)
               currSegment->M = &M[maddr];
 
-            if (maddr > MAXMEMSIZE)
+            if (maddr > MEMSIZE)
               return SCPE_NXM;
 
             M [maddr + ldaddr] = w1 & DMASK;
@@ -1244,7 +1244,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             if (currSegment && currSegment->M == NULL)
               currSegment->M = &M[maddr];
 
-            if (maddr > MAXMEMSIZE)
+            if (maddr > MEMSIZE)
               return SCPE_NXM;
 
             M [maddr + ldaddr] = w1 & DMASK;

@@ -46,7 +46,7 @@
 #define EIS_CACHE
 
 // Enable M[] as shared memory segment
-//#define M_SHARED
+#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
@@ -63,6 +63,9 @@
 
 // Enable Real time Timer Register
 #define REAL_TR
+
+// Enable speed over debuggibility
+#define SPEED
 
 #include "sim_defs.h"                                   /* simulator defns */
 
@@ -114,6 +117,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #include "dps8_simh.h"
 #include "dps8_hw_consts.h"
+#include "dps8_em_consts.h"
 
 
 

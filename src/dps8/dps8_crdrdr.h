@@ -1,5 +1,6 @@
 extern DEVICE crdrdr_dev;
+extern UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX];
 
 void crdrdr_init(void);
-t_stat cable_crdrdr (int crdrdr_unit_num, int iom_unit_num, int chan_num, int dev_code);
+int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp);
 

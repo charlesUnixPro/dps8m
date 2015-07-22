@@ -14,7 +14,9 @@
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_fnp.h"
+#include "fnp_cmds.h"
 //#include "fnp_ipc.h"
+#include "dps8_cable.h"
 #include "utlist.h"
 #include "uthash.h"
 //#include "fnpp.h"
@@ -31,17 +33,13 @@ static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
 
-static int fnpIOMCmd (UNIT * unitp, pcw_t * p);
-//static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc);
-
 static int findMbx (uint fnpUnitNumber);
 
-#define N_FNP_UNITS_MAX 16
 #define N_FNP_UNITS 1 // default
 
 static t_stat fnpSVC (UNIT *up);
 
-static UNIT fnp_unit [N_FNP_UNITS_MAX] = {
+UNIT fnp_unit [N_FNP_UNITS_MAX] = {
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (& fnpSVC, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
@@ -141,13 +139,6 @@ static struct fnpUnitData
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
   } fnpUnitData [N_FNP_UNITS_MAX];
-
-static struct
-  {
-    int iomUnitNum;
-    int chan_num;
-    int dev_code;
-  } cables_from_ioms_to_fnp [N_FNP_UNITS_MAX];
 
 
 struct dn355_submailbox
@@ -395,8 +386,8 @@ void fnpProcessEvent (void)
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
-            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            // send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else if (strncmp (msg, "wru_timeout", 11) == 0)
           {
@@ -420,8 +411,8 @@ void fnpProcessEvent (void)
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
-            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            // send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else if (strncmp (msg, "input", 5) == 0)
           {
@@ -527,7 +518,7 @@ void fnpProcessEvent (void)
             p -> fnpMBXinUse [mbx] = true;
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else if (strncmp (msg, "send_output", 11) == 0)
           {
@@ -552,8 +543,8 @@ void fnpProcessEvent (void)
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
-            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            // send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else if (strncmp (msg, "line_disconnected", 17) == 0)
           {
@@ -577,8 +568,8 @@ void fnpProcessEvent (void)
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
-            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            // send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else if (strncmp (msg, "line_break", 10) == 0)
           {
@@ -602,8 +593,8 @@ void fnpProcessEvent (void)
             // Set the TIMW
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             // Causes:  0206.5  dn355: emergency interrupt from FNP d: unknown fault
-            // send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
-            send_terminate_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num);
+            // send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
         else
           {
@@ -622,9 +613,9 @@ static int findFNPUnit (int iomUnitNum, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables_from_ioms_to_fnp [i] . iomUnitNum &&
-            chan_num     == cables_from_ioms_to_fnp [i] . chan_num     &&
-            dev_code     == cables_from_ioms_to_fnp [i] . dev_code)
+        if (iomUnitNum == cables -> cablesFromIomToFnp [i] . iomUnitNum &&
+            chan_num     == cables -> cablesFromIomToFnp [i] . chan_num     &&
+            dev_code     == cables -> cablesFromIomToFnp [i] . dev_code)
           return i;
       }
     return -1;
@@ -633,14 +624,14 @@ static int findFNPUnit (int iomUnitNum, int chan_num, int dev_code)
 
 int lookupFnpsIomUnitNumber (int fnpUnitNum)
   {
-    return cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    return cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
   }
 
 void fnpInit(void)
   {
     memset(fnpUnitData, 0, sizeof(fnpUnitData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
-      cables_from_ioms_to_fnp [i] . iomUnitNum = -1;
+      cables -> cablesFromIomToFnp [i] . iomUnitNum = -1;
     //fnppInit ();
     if (pthread_mutex_init (& fnpMQlock, NULL) != 0)
       {
@@ -660,32 +651,6 @@ static t_stat fnpReset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-t_stat cableFNP (int fnpUnitNum, int iomUnitNum, int chan_num, int dev_code)
-  {
-    if (fnpUnitNum < 0 || fnpUnitNum >= (int) fnpDev . numunits)
-      {
-        sim_printf ("cableFNP: fnpUnitNum out of range <%d>\n", fnpUnitNum);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum != -1)
-      {
-        sim_printf ("cableFNP: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitNum, chan_num, dev_code, DEVT_DN355, chan_type_PSI, fnpUnitNum, & fnpDev, & fnp_unit [fnpUnitNum], fnpIOMCmd);
-    if (rc)
-      return rc;
-
-    cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum = iomUnitNum;
-    cables_from_ioms_to_fnp [fnpUnitNum] . chan_num = chan_num;
-    cables_from_ioms_to_fnp [fnpUnitNum] . dev_code = dev_code;
-
-    return SCPE_OK;
-  }
- 
 #if 1
 static void tellFNP (UNUSED int fnpUnitNum, char * msg)
   {
@@ -719,7 +684,7 @@ static void tellFNP (int fnpUnitNum, char * msg)
         putbits36 (& mbxp -> crash_data [1],  0, 18, 0); // iom_fault_status = o
         putbits36 (& mbxp -> crash_data [1], 18, 18, 0); // fault_word = 0
 
-        send_special_interrupt (ASSUME0, cables_from_ioms_to_fnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+        send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
         return;
       }
 
@@ -735,7 +700,7 @@ static void tellFNP (int fnpUnitNum, char * msg)
 static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
     //struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
     * disc = false;
 
@@ -873,10 +838,10 @@ static int findMbx (uint fnpUnitNumber)
  *
  */
 
-static int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
+int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
     struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
 
     // First, execute the command in the PCW, and then walk the 
@@ -1893,8 +1858,8 @@ intr:;
 static t_stat fnpSVC (UNIT * unitp)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
-    int chanNum = cables_from_ioms_to_fnp [fnpUnitNum] . chan_num;
+    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    int chanNum = cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
     fnpIOMCmd (unitp, pcwp);
     return SCPE_OK;
@@ -1905,7 +1870,7 @@ static t_stat fnpSVC (UNIT * unitp)
 static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
     * disc = false;
     if (dcwp -> type == 0) // IOTD
       * disc = true;
@@ -1916,7 +1881,7 @@ static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uin
   {
     //sim_debug (DBG_DEBUG, & fnpDev, "%s\n", __func__);
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    //int iomUnitNum = cables_from_ioms_to_fnp [fnpUnitNum] . iomUnitNum;
+    //int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
 //--     
 //--     int dev_unit_num;
 //--     DEVICE* devp = get_iom_channel_dev (iomUnitNum, chan, dev_code, & dev_unit_num);

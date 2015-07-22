@@ -290,7 +290,12 @@ extern struct _sdw
                      //  and the queue is reordered. SDWs newly fetched from
                      //  main memory replace the SDW with USE value 0 (oldest)
                      //  and the queue is reordered.
-  } SDWAM [64], * SDW;
+  }
+#ifdef SPEED
+     SDWAM0, * SDW;
+#else
+     SDWAM [64], * SDW;
+#endif
 
 typedef struct _sdw _sdw;
 
@@ -376,7 +381,12 @@ extern struct _ptw
                      //  PTW with USE value 0 (oldest) and the queue is
                      //  reordered.
     
-  } PTWAM [64], * PTW;
+  }
+#ifdef SPEED
+     PTWAM0, * PTW;
+#else
+     PTWAM [64], * PTW;
+#endif
 
 typedef struct _ptw _ptw;
 
@@ -1080,18 +1090,6 @@ extern du_unit_data_t du;
 
 #define N_CPU_UNITS_MAX 1
 
-extern struct cpu_array
-  {
-    struct
-      {
-        bool inuse;
-        int scu_unit_num; // 
-        DEVICE * devp;
-      } ports [N_CPU_PORTS];
-
-  } cpu_array [N_CPU_UNITS_MAX];
-
-
 word36 faultRegister [2];
 
 
@@ -1103,6 +1101,30 @@ int OPSIZE (void);
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
 t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 
+#ifdef SPEED
+static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    *data = M[addr] & DMASK;
+    return 0;
+  }
+static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    M[addr] = data & DMASK;
+    return 0;
+  }
+static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+    *even = M[addr++] & DMASK;
+    *odd = M[addr] & DMASK;
+    return 0;
+  }
+static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+    M[addr++] = even;
+    M[addr] = odd;
+    return 0;
+  }
+#else
 int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
@@ -1110,6 +1132,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 int core_readN (word24 addr, word36 *data, int n, const char * ctx);
 int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
 int core_read72 (word24 addr, word72 *dst, const char * ctx);
+#endif
 
 int is_priv_mode (void);
 void set_went_appending (void);
@@ -1118,7 +1141,6 @@ bool get_went_appending (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
-t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat dpsCmd_Dump (int32 arg, char *buf);
@@ -1131,3 +1153,4 @@ _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
+void setup_scbank_map (void);

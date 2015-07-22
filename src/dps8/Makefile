@@ -220,7 +220,7 @@ C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
 #C_SRCS += ./fnpp.c
-#C_SRCS += ./shm.c
+C_SRCS += ./shm.c
 #C_SRCS += ./fnp_ipc.c
 C_SRCS += ./fnp.c
 C_SRCS += ./fnp_mux.c
@@ -229,6 +229,7 @@ C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./dps8_crdrdr.c
+C_SRCS += ./dps8_cable.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -263,6 +264,7 @@ H_SRCS += uthash.h
 H_SRCS += utlist.h
 #H_SRCS += fnpp.h
 H_SRCS += dps8_crdrdr.h
+H_SRCS += dps8_cable.h
 
 H_SRCS += area_info.incl.pl1.h
 H_SRCS += bind_map.incl.pl1.h
@@ -288,6 +290,7 @@ android :
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
 #LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
+LDFLAGS += -lrt 
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`

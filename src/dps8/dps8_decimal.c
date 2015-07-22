@@ -14,10 +14,10 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_decimal.h"
 #include "dps8_eis.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 
@@ -1125,6 +1125,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
     {
         //decNumberTrim(r);   // clean up any trailing 0's
         
+#ifndef SPEED
         int scale;
         char out[256], out2[256];
         
@@ -1138,6 +1139,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                 out[i] += '0';
             sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
         }
+#endif
         
         if (s != CSFL)// && sf != 0)
         {
@@ -1152,6 +1154,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             //*r2 = *r;
             decNumberCopy(r2, r);
         
+#ifndef SPEED
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
             decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
@@ -1161,6 +1164,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             sim_debug (DBG_TRACEEXT, & cpu_dev,
                        "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
         }
+#endif
     }
     
     int scale;
@@ -1286,6 +1290,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             
             // display int of number
             
+#ifndef SPEED
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
             {
                 decNumber _i;
@@ -1297,6 +1302,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                     outi[j] += '0';
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
             }
+#endif
         }
         else
         {
@@ -1590,9 +1596,10 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
     {
         //decNumberTrim(r);   // clean up any trailing 0's
         
+        
+#ifndef SPEED
         int scale;
         char out[256], out2[256];
-        
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
             bzero(out, sizeof(out));
@@ -1603,6 +1610,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                 out[i] += '0';
             sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
         }
+#endif
         
         if (s != CSFL)// && sf != 0)
         {
@@ -1619,6 +1627,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
         
         PRINTDEC("fd(2:r2):", r2);
 
+#ifndef SPEED
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
             decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
@@ -1628,6 +1637,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
             sim_debug (DBG_TRACEEXT, & cpu_dev,
                        "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
         }
+#endif
     }
     
     
@@ -1818,6 +1828,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
             
             // display int of number
             
+#ifndef SPEED
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
             {
                 decNumber _i;
@@ -1829,6 +1840,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                     outi[j] += '0';
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
             }
+#endif
         }
         else
         {
@@ -4441,8 +4453,10 @@ void mvn (void)
     
     char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, e->SF2, e->R, &Ovr, &Trunc);
     
+#ifndef SPEED
     if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         sim_printf("mvn res: '%s'\n", res);
+#endif
     
     // now write to memory in proper format.....
     switch(e->S2)

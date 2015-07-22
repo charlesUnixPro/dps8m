@@ -7,32 +7,29 @@
 
 #include <stdio.h>
 
-#ifdef M_SHARED
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/mman.h>
-#include <fcntl.h>           /* For O_* constants */
-#endif
-
 #include "dps8.h"
 #include "dps8_addrmods.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_loader.h"
 #include "dps8_math.h"
 #include "dps8_scu.h"
-#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 #include "dps8_console.h"
 #include "dps8_fnp.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
+#ifdef M_SHARED
+#include "shm.h"
+#endif
+
 
 //#include "fnp_ipc.h"
 #include "fnp_defs.h"
@@ -246,10 +243,12 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 
 static t_stat dpsCmd_InitSDWAM ()
   {
+#ifndef SPEED
     memset (SDWAM, 0, sizeof (SDWAM));
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
+#endif
     return SCPE_OK;
   }
 
@@ -426,8 +425,10 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_DumpSegmentTable();
+#ifndef SPEED
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dumpSDWAM();
+#endif
     
     return SCPE_OK;
 }
@@ -570,8 +571,10 @@ t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_InitUnpagedSegmentTable();
+#ifndef SPEED
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dpsCmd_InitSDWAM();
+#endif
     //if (nParams == 2 && !strcasecmp(cmds[0], "stack"))
     //    return createStack((int)strtoll(cmds[1], NULL, 8));
     
@@ -693,9 +696,9 @@ static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 // Map memory to port
 static int scbank_map [N_SCBANKS];
 
-static void setup_scbank_map (void)
+void setup_scbank_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MAXMEMSIZE %d\n", SCBANK, N_SCBANKS, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
     // Initalize to unmapped
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
@@ -757,12 +760,23 @@ int query_scbank_map (word24 addr)
 // called once initialization
 
 void cpu_init (void)
-{
-  memset (& switches, 0, sizeof (switches));
-  memset (& watchBits, 0, sizeof (watchBits));
-  switches . FLT_BASE = 2; // Some of the UnitTests assume this
-  cpu_init_array ();
-}
+  {
+#ifdef M_SHARED
+    if (! M)
+      {
+        M = (word36 *) create_shm ("M", getsid (0), MEMSIZE * sizeof (word36));
+        if (M == NULL)
+          {
+            sim_printf ("create_shm M failed\n");
+            sim_err ("create_shm M failed\n");
+          }
+      }
+#endif
+    memset (& switches, 0, sizeof (switches));
+    memset (& watchBits, 0, sizeof (watchBits));
+    switches . FLT_BASE = 2; // Some of the UnitTests assume this
+    cpu_init_array ();
+  }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
@@ -770,47 +784,8 @@ void cpu_init (void)
 
 static t_stat cpu_reset (DEVICE *dptr)
 {
-#ifdef M_SHARED
 
-// Initialization.
-//  if shm_open (..EXCL)
-//     // creator
-//     ftruncate
-//     initialize...
-//     set shared_memory . initiialized = true;
-//  else if shm_open (...)
-//     // not creator
-//     ftruncate
-//     while (! shared_memory . initiialized)
-//       usleep ();
-//  else
-//    fail
-
-
-    //sim_printf ("Session %d\n", getsid (0));
-    int fd = shm_open ("/dps8_memory", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (fd == -1)
-      {
-        sim_printf ("dps8_memory shm_open fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-    if (ftruncate (fd, sizeof (word36) * MEMSIZE) == -1)
-      {
-        sim_printf ("dps8_memory ftruncate  fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-    M = (word36 *) mmap (NULL, sizeof (word36) * MEMSIZE,
-                         PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
-    if (M == MAP_FAILED)
-      {
-        sim_printf ("dps8_memory mmap  fail %d\n", errno);
-        return SCPE_MEM;
-      }
-
-#else
+#ifndef M_SHARED
     if (M)
         free(M);
     
@@ -946,12 +921,21 @@ struct _dsbr DSBR;  ///< Descriptor Segment Base Register
 // XXX given this is not real hardware we can eventually remove the SDWAM -- I think. But for now just leave it in.
 // For the DPS 8M processor, the SDW associative memory will hold the 64 MRU SDWs and have a 4-way set associative organization with LRU replacement.
 
+#ifdef SPEED
+struct _sdw SDWAM0;
+struct _sdw  * SDW = & SDWAM0; // Segment Descriptor Word Associative Memory & working SDW
+struct _sdw0 SDW0;  // a SDW not in SDWAM
+
+struct _ptw PTWAM0;
+struct _ptw * PTW = & PTWAM0;  // PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
+struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
+#else
 struct _sdw  SDWAM[64], *SDW = &SDWAM[0];    ///< Segment Descriptor Word Associative Memory & working SDW
 struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
-
+#endif
 word3    RSDWH_R1; // Track the ring number of the last SDW
 
 _cache_mode_register CMR;
@@ -1399,6 +1383,7 @@ t_stat sim_instr (void)
     {
         sim_printf("Info: ");
         ipc(ipcStart, fnpName,0,0,0);
+        atexit (ipcCleanup);
     }
 #endif
     // End if IPC init stuff
@@ -1472,12 +1457,13 @@ last = M[01007040];
 }
 #endif
 
+#if 0
         // XXX Don't trace Multics idle loop
         if (PPR.PSR != 061 && PPR.IC != 0307)
 
           if_sim_debug (DBG_TRACE, & cpu_dev)
             sim_printf ("\n");
-
+#endif
         reason = 0;
 
         // Process deferred events and breakpoints
@@ -1488,12 +1474,16 @@ last = M[01007040];
             break;
           }
 
-        scpProcessEvent (); 
-        fnpProcessEvent (); 
-        consoleProcess ();
-        AIO_CHECK_EVENT;
-        dequeue_fnp_command ();
-
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+          {
+            queueSubsample = 0;
+            scpProcessEvent (); 
+            fnpProcessEvent (); 
+            consoleProcess ();
+            AIO_CHECK_EVENT;
+            dequeue_fnp_command ();
+          }
 #if 0
         if (sim_gtime () % 1024 == 0)
           {
@@ -1531,20 +1521,26 @@ last = M[01007040];
           }
 #endif
 
-        // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
-                                     // simh clock clyce; move down...
-                                     // Acutally have FETCH jump to EXECUTE
-                                     // instead of breaking.
+        // Manage the timer register
+             // XXX this should be sync to the EXECUTE cycle, not the
+             // simh clock cycle; move down...
+             // Acutally have FETCH jump to EXECUTE
+             // instead of breaking.
 
 #ifdef REAL_TR
-        bool overrun;
-        UNUSED word27 rTR = getTR (& overrun);
-        if (overrun)
+        static uint trSubsample = 0;
+        if (trSubsample ++ > 1024)
           {
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-            ackTR ();
-            if (switches . tro_enable)
-              setG7fault (FAULT_TRO, 0);
+            trSubsample = 0;
+            bool overrun;
+            UNUSED word27 rTR = getTR (& overrun);
+            if (overrun)
+              {
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                ackTR ();
+                if (switches . tro_enable)
+                  setG7fault (FAULT_TRO, 0);
+              }
           }
 #else
         // Sync. the TR with the emulator clock.
@@ -1617,8 +1613,10 @@ last = M[01007040];
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
 
+#ifndef SPEED
                         if_sim_debug (DBG_INTR, & cpu_dev) 
                           traceInstruction (DBG_INTR);
+#endif
 
 #ifdef MULTIPASS
                         if (multipassStatsPtr)
@@ -2273,6 +2271,7 @@ static void nem_check (word24 addr, char * context)
       }
   }
 
+#ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
     nem_check (addr,  "core_read nem");
@@ -2293,7 +2292,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
                 addr, * data, ctx);
     return 0;
 }
+#endif
 
+#ifndef SPEED
 int core_write(word24 addr, word36 data, const char * ctx) {
     nem_check (addr,  "core_write nem");
     M[addr] = data & DMASK;
@@ -2309,7 +2310,9 @@ int core_write(word24 addr, word36 data, const char * ctx) {
                 addr, data, ctx);
     return 0;
 }
+#endif
 
+#ifndef SPEED
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
@@ -2351,6 +2354,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                 addr, * odd, ctx);
     return 0;
 }
+#endif
 //
 ////! for working with CY-pairs
 //int core_read72(word24 addr, word72 *dst) // needs testing
@@ -2362,6 +2366,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //    return 0;
 //}
 //
+#ifndef SPEED
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
@@ -2388,6 +2393,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     M[addr] = odd;
     return 0;
 }
+#endif
 ////! for working with CY-pairs
 //int core_write72(word24 addr, word72 src) // needs testing
 //{
@@ -2717,12 +2723,10 @@ static void ic_history_init(void)
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
 
-struct cpu_array cpu_array [N_CPU_UNITS_MAX];
-
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
-    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
-      return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      return cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
     return -1;
   }
 
@@ -2732,46 +2736,7 @@ static void cpu_init_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
-        cpu_array [i] . ports [p] . inuse = false;
-  }
-
-// A scu is trying to attach a cable to us
-//  to my port cpu_unit_num, cpu_port_num
-//  from it's port scu_unit_num, scu_port_num
-//
-
-t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, 
-                     UNUSED int scu_port_num)
-  {
-    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
-      {
-        sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
-      {
-        sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
-        return SCPE_ARG;
-      }
-
-    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
-      {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: socket in use\n");
-        sim_printf ("cable_to_cpu: socket in use\n");
-        return SCPE_ARG;
-      }
-
-    DEVICE * devp = & scu_dev;
-     
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse = true;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
-
-    //sim_printf ("cpu_array [%d] [%d] . scu_unit_num = %d\n", cpu_unit_num, cpu_port_num, scu_unit_num);
-    setup_scbank_map ();
-
-    return SCPE_OK;
+        cables -> cablesFromScuToCpu [i] . ports [p] . inuse = false;
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
