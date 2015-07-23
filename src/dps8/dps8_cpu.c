@@ -26,10 +26,6 @@
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
-#ifdef M_SHARED
-#include "shm.h"
-#endif
-
 
 //#include "fnp_ipc.h"
 #include "fnp_defs.h"
@@ -1383,7 +1379,6 @@ t_stat sim_instr (void)
     {
         sim_printf("Info: ");
         ipc(ipcStart, fnpName,0,0,0);
-        atexit (ipcCleanup);
     }
 #endif
     // End if IPC init stuff

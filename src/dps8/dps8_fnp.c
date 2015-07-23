@@ -14,7 +14,6 @@
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_fnp.h"
-#include "fnp_cmds.h"
 //#include "fnp_ipc.h"
 #include "dps8_cable.h"
 #include "utlist.h"
