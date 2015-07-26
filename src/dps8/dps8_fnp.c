@@ -1148,6 +1148,69 @@ sim_printf ("tally %d (%o)\n", tally, tally);
                             sprintf (cmd, "set_framing_chars %d %d %d", slot_no, d1, d2);
                             tellFNP (fnpUnitNum, cmd);          
                           }
+                          break;
+
+#if 0
+                        case 24: // set_echnego_break_table
+                          {
+                            //sim_printf ("fnp set_echnego_break_table\n");
+                            word36 word6 = smbxp -> word6;
+                            uint data_addr = getbits36 (word6, 0, 18);
+                            uint data_len = getbits36 (word6, 18, 18);
+
+                            //sim_printf ("set_echnego_break_table %d addr %06o len %d\n", slot_no, data_addr, data_len);
+#define echoTableLen 8
+                            if (data_len != echoTableLen)
+                              {
+                                sim_printf ("set_echnego_break_table data_len !=8 (%d); bailing\n", data_len);
+                                break;
+                              }
+                            //set_echnego_break_table 0 addr 203340 len 8
+
+                            // We are going to assume that the table doesn't cross a page boundary, and only
+                            //for (uint i = 0; i < echoTableLen; i ++)
+                              //sim_printf ("      %012llo\n", M [data_addr + i]);
+                            // lookup the table start address.
+                            uint dataAddrPhys = virtToPhys (pcwp, data_addr);
+                            sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
+                            word36 echoTable [echoTableLen];
+                            for (uint i = 0; i < echoTableLen; i ++)
+                              {
+                                echoTable [i] = M [dataAddrPhys + i];
+                                //sim_printf ("   %012llo\n", echoTable [i]);
+                              }
+                            char cmd [256];
+                            sprintf (cmd, "set_echnego_break_table %d %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o",
+                                     slot_no,
+                                     (uint) (echoTable [0] >> 20) & MASK16,
+                                     (uint) (echoTable [0] >>  2) & MASK16,
+                                     (uint) (echoTable [1] >> 20) & MASK16,
+                                     (uint) (echoTable [1] >>  2) & MASK16,
+                                     (uint) (echoTable [2] >> 20) & MASK16,
+                                     (uint) (echoTable [2] >>  2) & MASK16,
+                                     (uint) (echoTable [3] >> 20) & MASK16,
+                                     (uint) (echoTable [3] >>  2) & MASK16,
+                                     (uint) (echoTable [4] >> 20) & MASK16,
+                                     (uint) (echoTable [4] >>  2) & MASK16,
+                                     (uint) (echoTable [5] >> 20) & MASK16,
+                                     (uint) (echoTable [5] >>  2) & MASK16,
+                                     (uint) (echoTable [6] >> 20) & MASK16,
+                                     (uint) (echoTable [6] >>  2) & MASK16,
+                                     (uint) (echoTable [7] >> 20) & MASK16,
+                                     (uint) (echoTable [7] >>  2) & MASK16);
+                            tellFNP (fnpUnitNum, cmd);
+                          }
+                          break;
+
+                        case 27: // init_echo_negotiation
+                          {
+                            char cmd [256];
+                            sprintf (cmd, "init_echo_negotiation %d", slot_no);
+                            tellFNP (fnpUnitNum, cmd);
+                          }
+                          break;
+#endif
+
                         case 30: // input_fc_chars
                           {
                             //sim_printf ("fnp input fc chars\n");
@@ -1576,8 +1639,8 @@ struct fnp_async_meters
                         //case 33: // ???
                         case 35: // checksum_error
                           {
-                            sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented opcode %d (%o)\n", op_code, op_code);
-                            sim_printf ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
+                            //sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented opcode %d (%o)\n", op_code, op_code);
+                            //sim_printf ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                             // doFNPfault (...) // XXX
                             //goto fail;
                           }
@@ -1843,6 +1906,7 @@ for (uint i = 0; i < dcwCnt; i ++)
       {
 fail:
         dmpmbx (p -> mailboxAddress);
+// 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36 (& dia_pcw, 18, 1, 1); // set bit 18
         store_abs_word (p -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }

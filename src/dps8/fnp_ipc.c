@@ -381,12 +381,6 @@ void killIPC()
 {
     terminated = true;                           // tell IPC actor to kill itself
     
-    if (actor)
-        zactor_destroy (&actor);
-    
-    if (poller)
-        zpoller_destroy (&poller);
-    
     // Notify peers that this peer is shutting down. Provide
     // a brief interval to ensure message is emitted.
     if (node)
@@ -394,6 +388,12 @@ void killIPC()
     zclock_sleep(100);
     
     zyre_destroy (&node);
+    
+    if (poller)
+        zpoller_destroy (&poller);
+    
+    if (actor)
+        zactor_destroy (&actor);
     
     actor = 0;
     node = 0;

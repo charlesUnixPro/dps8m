@@ -316,7 +316,7 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
       }
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     if (ro)
-      mt_unit [driveNumber] . flags |= UNIT_RO;
+      mt_unit [driveNumber] . flags |= MTUF_WRP;
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
@@ -377,6 +377,11 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         pcwp -> dev_cmd != 015 && // write
         pcwp -> dev_cmd != 055 && // write eof (tape mark)
         pcwp -> dev_cmd != 063 && // permit
+        pcwp -> dev_cmd != 061 && // Set 556 BPI
+        pcwp -> dev_cmd != 043 && // Set 556 BPI
+        pcwp -> dev_cmd != 060 && // Set 800 BPI
+        pcwp -> dev_cmd != 042 && // Set 800 BPI
+        pcwp -> dev_cmd != 065 && // Set 1600 CPI
 
 // According to poll_mpc.pl1
 // Note: XXX should probably be checking these...
@@ -1315,6 +1320,20 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
               chan_data -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Set 200 bpi\n");
+          }
+          break;
+
+        case 065:              // CMD 064 -- Set 1600 CPI
+          {
+            chan_data -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              chan_data -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              chan_data -> stati |= 2;
+            if (sim_tape_eot (unitp))
+              chan_data -> stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Set 1600 CPI\n");
           }
           break;
 
