@@ -316,7 +316,7 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
       }
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     if (ro)
-      mt_unit [driveNumber] . flags |= UNIT_RO;
+      mt_unit [driveNumber] . flags |= MTUF_WRP;
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
