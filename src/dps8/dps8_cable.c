@@ -523,7 +523,7 @@ void sysCableInit (void)
 #ifdef M_SHARED
         cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
 #else
-        cables = (struct cables_t *) malloc ("cables", sizeof (struct cables_t));
+        cables = (struct cables_t *) malloc (sizeof (struct cables_t));
 #endif
         if (cables == NULL)
           {
