@@ -242,6 +242,7 @@ typedef struct
         char outputResumeStr [4];
         int frame_begin;
         int frame_end;
+        bool echnego [256];
       } line [MAX_LINES];
   } t_MState;
 extern t_MState MState;

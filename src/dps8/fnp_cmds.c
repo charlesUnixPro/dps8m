@@ -769,6 +769,58 @@ t_stat dequeue_fnp_command (void)
 
 
 
+    } else if (strcmp(keyword, "set_echnego_break_table") == 0)
+    {
+        int p1;
+        int n = sscanf(arg3, "%*s %d", &p1);
+        if (n != 1)
+            goto scpe_arg;
+        //sim_printf("received dumpoutput %d...\n", p1);
+        if (p1 < 0 && p1 >= MAX_LINES)
+        {
+          sim_printf("err: set_echnego_break_table p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
+          goto scpe_arg;
+        }
+      uint table [16];
+      n = sscanf (arg3, "%*s %*d %o %o %o %o %o %o %o %o %o %o %o %o %o %o %o %o", 
+                  table +  0, table +  1, table +  2, table +  3, 
+                  table +  4, table +  5, table +  6, table +  7, 
+                  table +  8, table +  9, table + 10, table + 11, 
+                  table + 12, table + 13, table + 14, table + 15);
+      if (n != 16)
+        {
+          sim_printf("err: set_echnego_break_table expected 16, got %d\n", n);
+          goto scpe_arg;
+        }
+      for (int i = 0; i < 256; i ++)
+        {
+          int wordno = i / 16;
+          int bitno = i % 16;
+          int bitoffset = 15 - bitno;
+          MState . line [p1] . echnego [i] = !!(table [wordno] & (1 << bitoffset));
+        }
+      sim_printf ("set:");
+      for (int i = 0; i < 256; i ++)
+        if (MState . line [p1] . echnego [i])
+          sim_printf (" %d", i);
+      sim_printf ("\n");
+
+
+    } else if (strcmp(keyword, "init_echo_negotiation") == 0)
+    {
+        int p1;
+        int n = sscanf(arg3, "%*s %d", &p1);
+        if (n != 1)
+            goto scpe_arg;
+        //sim_printf("received init_echo_negotiation %d...\n", p1);
+        if (p1 < 0 && p1 >= MAX_LINES)
+          {
+            sim_printf("err: init_echo_negotiation p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
+            goto scpe_arg;
+          }
+        // XXX ignored
+
+
     } else {
        sim_printf ("dropping <%s>\n", arg3);
        goto scpe_arg;
