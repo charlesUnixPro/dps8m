@@ -377,8 +377,24 @@ static void handleRCP (char * text)
         strcat (labelDotTap, ".tap");
 sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
+        return;
       }
 
+    rc = sscanf (text, "%*d.%*d RCP: Remount Reel %s %s ring on %s",
+                label, with, drive);
+    if (rc == 3)
+      {
+        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
+        bool withring = (strcmp (with, "with") == 0);
+        char labelDotTap [strlen (label) + 4];
+        strcpy (labelDotTap, label);
+        strcat (labelDotTap, ".tap");
+sim_printf ("<%s>\n", labelDotTap);
+        attachTape (labelDotTap, withring, drive);
+        return;
+      }
+
+#if 0
     rc = sscanf (text, "%*d.%*d RCP: Mount logical volume %s for %s",
                 label, whom);
     if (rc == 2)
@@ -390,6 +406,7 @@ sim_printf ("<%s>\n", labelDotTap);
 sim_printf ("<%s>\n", labelDotDsk);
         attachDisk (labelDotDsk);
       }
+#endif
 
 
 
