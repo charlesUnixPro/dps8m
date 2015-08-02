@@ -108,6 +108,7 @@ struct tmln {
     int32               xmte;                           /* xmt enable */
     int32               dstb;                           /* disable Tlnt bin */
     t_bool              notelnet;                       /* raw binary data (no telnet interpretation) */
+    uint8               *telnet_sent_opts;              /* Telnet Options which we have sent a DON'T/WON'T */
     int32               rxbpr;                          /* rcv buf remove */
     int32               rxbpi;                          /* rcv buf insert */
     int32               rxcnt;                          /* rcv count */
