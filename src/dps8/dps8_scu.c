@@ -1286,14 +1286,6 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 
             if (switches . y2k) // subtract 20 years....
               {
-#if 0
-                // date -d "Tue Jul 22 16:39:38 PDT 2014"  +%s
-                // 1406072378
-                // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
-                // 932686778
-
-                now . tv_sec -= (1406072378 - 932686778);
-#endif
                 // Back the clock up to just after the MR12.3 release (12/89
                 // according to http://www.multicians.org/chrono.html
 
@@ -1301,19 +1293,23 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 // date -d "1990-01-01 00:00:00 -9" +%s
                 // 631184400
 
-                // The date of the code insert
-                // date
-                // Wed Jun 17 20:00:50 PDT 2015
-                // date +%s
-                // 1434596455
+// 12.3 was released 12/89
+// 12.4 was released 12/90
+// 12.5 was released 11/92
 
-                //now . tv_sec -= (1434596455 - 631184400);
-
+#if 0 // 12.3 release
                 // date --date='25 years ago' +%s; date +%s
                 // 645852697
                 // 1434771097
-
                 now . tv_sec -= (1434771097 - 645852697);
+#endif
+// 12.5 release was 22 years ago
+
+                // date --date='22 years ago' +%s ; date +%s
+                // 744420783
+                // 1438644783
+                now . tv_sec -= (1438644783 - 744420783);
+
               }
             uint64 UnixSecs = (uint64) now.tv_sec;
             uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;
