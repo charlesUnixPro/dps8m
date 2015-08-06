@@ -718,6 +718,124 @@ typedef struct {
 
 // ============================================================================
 
+static int64 userCorrection = 0;
+
+// The SCU clock is 52 bits long; fits in t_uint64
+static uint64 getSCUclock (void)
+  {
+
+// The emulator supports two clock models: steady and real
+// In steady mode the time of day is coupled to the instruction clock,
+// allowing reproducible behavior. In real, the clock is
+// coupled to the actual time-of-day.
+
+    if (switches . steady_clock)
+      {
+        // The is a bit of code that is waiting for 5000 ms; this
+        // fools into going faster
+        __uint128_t big = sys_stats . total_cycles;
+        // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
+        big *= 4u;
+        //big /= 100u;
+        if (switches . bullet_time)
+          big *= 10000;
+
+        big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+        // Boot time
+
+// load_fnp is complaining that FNP core image is more than 5 years old; try 
+// moving the 'boot time' back to MR12.3 release date. (12/89 according to 
+// http://www.multicians.org/chrono.html
+
+        // date -d "1990-01-01 00:00:00 -9" +%s
+        // 631184400
+        uint64 UnixSecs = 631184400;
+
+        uint64 UnixuSecs = UnixSecs * 1000000llu + big;
+        // now determine uSecs since Jan 1, 1901 ...
+        uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
+
+        MulticsuSecs += userCorrection;
+
+        // The get calendar clock function is guaranteed to return
+        // different values on successive calls. 
+
+        static uint64 last = 0;
+        if (last >= MulticsuSecs)
+          {
+            sim_debug (DBG_TRACE, & scu_dev, "finagle clock\n");
+            MulticsuSecs = last + 1;
+          }
+        last = MulticsuSecs;
+        return last;
+      }
+
+    // The calendar clock consists of a 52-bit register which counts
+    // microseconds and is readable as a double-precision integer by a
+    // single instruction from any central processor. This rate is in
+    // the same order of magnitude as the instruction processing rate of
+    // the GE-645, so that timing of 10-instruction subroutines is
+    // meaningful. The register is wide enough that overflow requires
+    // several tens of years; thus it serves as a calendar containing
+    // the number of microseconds since 0000 GMT, January 1, 1901
+    ///  Secs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800
+    //   Seconds
+    /// uSecs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800 000 000
+    //  uSeconds
+ 
+    struct timeval now;
+    gettimeofday(& now, NULL);
+                
+    if (switches . y2k) // subtract 20 years....
+      {
+        // Back the clock up to just after the MR12.3 release (12/89
+        // according to http://www.multicians.org/chrono.html
+
+        // ticks at MR12.3 release
+        // date -d "1990-01-01 00:00:00 -9" +%s
+        // 631184400
+
+        // 12.3 was released 12/89
+        // 12.4 was released 12/90
+        // 12.5 was released 11/92
+
+#if 0 
+        // 12.3 release was 25 years ago
+        // date --date='25 years ago' +%s; date +%s
+        // 645852697
+        // 1434771097
+        now . tv_sec -= (1434771097 - 645852697);
+#else
+        // 12.5 release was 22 years ago
+
+        // date --date='22 years ago' +%s ; date +%s
+        // 744420783
+        // 1438644783
+        now . tv_sec -= (1438644783 - 744420783);
+#endif
+
+      }
+    uint64 UnixSecs = (uint64) now.tv_sec;
+    uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;
+   
+    // now determine uSecs since Jan 1, 1901 ...
+    uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+ 
+    // Correction factor from the set time command
+
+    MulticsuSecs += userCorrection;
+
+    static uint64 lastRccl;                    //  value from last call
+ 
+    if (MulticsuSecs == lastRccl)
+        lastRccl = MulticsuSecs + 1;
+    else
+        lastRccl = MulticsuSecs;
+
+    return lastRccl;
+
+  }
+
 
 static char pcellb [N_CELL_INTERRUPTS + 1];
 static char * pcells (uint scu_unit_num)
@@ -868,15 +986,17 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
     switch (function)
       {
         case 00000: // Set system controller mode register
-          //sim_printf ("sscr %o\n", function);
-          return STOP_UNIMP;
+          {
+            scu [scu_unit_num] . id = (word4) getbits36 (regq, 50 - 36,  4);
+            scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
+          }
+          break;
 
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
             //sim_printf ("sscr 1 A: %012llo Q: %012llo\n", rega, regq);
             scu_t * up = scu + scu_unit_num;
-            //struct config_switches * sw = config_switches + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
                 word9 mask = ((maskab ? regq : rega) >> 27) & 0377;
@@ -896,12 +1016,11 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
          
                   }
               }
-            // ticket #33
-            // [CAC] I can't believe that the CPU is allowed
-            // to override the configured store size
-            // up -> lower_store_size = (rega >> 24) & 07;
-            if (up -> lower_store_size != ((rega >> 24) & 07))
-              sim_printf ("??? The CPU tried to change the SCU store size\n");
+            // AN87-00A, pg 2-5, 2-6 specifiy which fields are and are not settable.
+ 
+            //if (up -> lower_store_size != ((rega >> 24) & 07))
+              //sim_printf ("??? The CPU tried to change the SCU store size\n");
+            up -> lower_store_size = (rega >> 24) & 07;
             up -> cyclic = (regq >> 8) & 0177;
             up -> nea = (rega >> 6) & 0377;
             up -> port_enable [0] = (rega >> 3) & 01;
@@ -912,6 +1031,8 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             up -> port_enable [5] = (regq >> 2) & 01;
             up -> port_enable [6] = (regq >> 1) & 01;
             up -> port_enable [7] = (regq >> 0) & 01;
+
+            // XXX A, A1, B, B1, INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             break;
           }
 
@@ -1004,8 +1125,15 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
 
         case 00004: // Set calendar clock (4MW SCU only)
         case 00005: 
-          //sim_printf ("sscr %o\n", function);
-          return STOP_UNIMP;
+          {
+            // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
+            word16 b0_15 = (word16) getbits36 (rA, 20, 16);
+            word36 b16_51 = rQ;
+            uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
+            userCorrection = newClk - getSCUclock ();
+            //sim_printf ("sscr %o\n", function);
+          }
+          break;
 
         case 00006: // Set unit mode register
         case 00007: 
@@ -1060,7 +1188,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             * rega = 0;
             //* regq = 0000002000000; // ID = 0010
             * regq = 0;
-            putbits36 (regq, 50 - 36, 4, 0b0010);
+            putbits36 (regq, 50 - 36,  4, scu [scu_unit_num] . id);
+            putbits36 (regq, 54 - 36, 18, scu [scu_unit_num] . modeReg);
             break;
           }
 
@@ -1174,10 +1303,12 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 // (data, starting bit position, number of bits, value)
             putbits36 (& a,  0,  9, maskab [0]);
             putbits36 (& a,  9,  3, up -> lower_store_size);
+            // XXX A, A1, B, B1 not implemented. (AG87-00A pgs 2-5. 2-6)
             putbits36 (& a, 12,  4, 017); // A, A1, B, B1 online
             putbits36 (& a, 16,  4, scu_port_num);
             putbits36 (& a, 21,  1, up -> mode);
             putbits36 (& a, 22,  8, up -> nea);
+            // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
             // Looking at scr_util.list, I *think* the port order
@@ -1221,7 +1352,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
         case 00004: // Get calendar clock (4MW SCU only)
         case 00005: 
           {
-//rA = 0145642; rA = 0250557402045; break;
+#if 0
             if (switches . steady_clock)
               {
                 // The is a bit of code that is waiting for 5000 ms; this
@@ -1326,6 +1457,11 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
             rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
+#else
+            uint64 clk = getSCUclock ();
+            rQ =  clk & 0777777777777;     // lower 36-bits of clock
+            rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
+#endif
           }
         break;
 
@@ -1887,6 +2023,12 @@ void scu_init (void)
             scu [u] . ports [p] . dev_port = -1;
             scu [u] . ports [p] . type = ADEV_NONE;
           }
+
+        //  ID: 0000  8034, 8035
+        //      0001  Level 68 SC
+        //      0010  Level 66 SCU
+        scu [u] . id = 0b0010;
+        scu [u] . modeReg = 0; // used by T&D
       }
 
   }

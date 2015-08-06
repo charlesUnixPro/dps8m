@@ -44,7 +44,11 @@ typedef struct
         int idnum; // id # of connected dev, 0..7
         int dev_port; // which port on the connected device?
     } ports[N_SCU_PORTS];
-    
+
+    // system controller mode regsister    
+    word4 id;
+    word18 modeReg;
+
 } scu_t;
 
 extern scu_t scu [N_SCU_UNITS_MAX];
