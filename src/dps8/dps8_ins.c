@@ -6607,15 +6607,22 @@ static t_stat DoEISInstruction (void)
             }
             break;
             
+// If defined, do all ABD calculations in bits, not chars and bits in chars.
+#define ABD_BITS
         case 0503:  ///< abd         Add   bit Displacement to Address Register
             {
                 // 3-bit register specifier
                 uint ARn = bitfieldExtract36 (cu . IWB, 33, 3);
-
-//sim_printf ("ABD AR%d was WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
+//#define dbg if (PPR.PSR == 0400 && PPR.IC == 024025)
+//sim_printf ("ABD IC %06o address %06o\n", PPR . IC, currentInstruction . address);
+//sim_printf ("    AR%d was WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
 //ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
-//sim_printf ("ABD A %d address %05llo reg %llo cr %d (%06o)\n",
+//sim_printf ("    A %d address %05llo reg %llo cr %lld (%06llo)\n",
 //GET_A (cu . IWB) ? 1 : 0, getbits36 (cu . IWB, 3, 15), getbits36 (cu . IWB, 32, 4), getCrAR (getbits36 (cu . IWB, 32, 4)), getCrAR (getbits36 (cu . IWB, 32, 4)));
+//word18 wwordno = AR [ARn] . WORDNO;
+//word18 wbitno = AR [ARn] . BITNO;
+//word36 waddend = getCrAR (getbits36 (cu . IWB, 32, 4));
+//word36 waddr = 0;
 
                 // 4-bit register modification (None except au, qu, al, ql, xn)
                 uint reg = getbits36 (cu . IWB, 32, 4);
@@ -6631,6 +6638,7 @@ static t_stat DoEISInstruction (void)
 
                 word18 address = 
                   SIGNEXT15 (getbits36 (cu . IWB, 3, 15)) & AMASK;
+//waddr = address;
                 address += wordCnt;
 
                 if (! GET_A (cu . IWB))
@@ -6641,16 +6649,24 @@ static t_stat DoEISInstruction (void)
 // 18-23 of the specified AR.
 
                     AR [ARn] . WORDNO = address;
+#ifdef ABD_BITS
+                    AR [ARn] . BITNO = bitCnt;
+#else
                     SET_AR_CHAR_BIT (ARn, bitCnt / 9u, bitCnt % 9u);
+#endif
                   }
                 else
                   {
 // If bit 29=1, the sum is added to bits 0-17 of the specified AR.
                     AR [ARn] . WORDNO += address;
-
 //  The CHAR and BIT fields (bits 18-23) of the specified AR are added to the 
 //  character portion and the bit portion of the remainder. 
 
+#ifdef ABD_BITS
+                    word36 bits = AR [ARn] . BITNO + bitCnt;
+                    AR [ARn] . WORDNO += bits / 36;
+                    AR [ARn] . BITNO = bits % 36;
+#else
                     word36 charPortion = bitCnt / 9;
                     word36 bitPortion = bitCnt % 9;
 
@@ -6678,13 +6694,26 @@ static t_stat DoEISInstruction (void)
 
 
                     SET_AR_CHAR_BIT (ARn, charPortion, bitPortion);
+#endif
                   }
                 AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
                 // Masking done in SET_AR_CHAR_BIT
                 // AR[ARn].CHAR &= 03;
                 // AR[ARn].ABITNO &= 077;
-//sim_printf ("ABD AR%d is  WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
+//dbg sim_printf ("    AR%d is  WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
 //ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
+#if 0
+if (PPR.PSR == 0400 && PPR.IC == 024025)
+{
+word36 cacbits = wbitno + waddend;
+word18 cacw = wwordno + cacbits / 36;
+word18 cacbitno = cacbits % 36;
+sim_printf ("%012llo   %08o.%02o + %08llo + %08llo.%02llo (%08llo) -> %08o.%02o     [%08o.%02o]%c%c\n", rQ, wwordno, wbitno, waddr, waddend / 36, waddend % 36, waddend, AR [ARn] . WORDNO, AR [ARn] . BITNO,
+cacw, cacbitno, cacw == AR [ARn] . WORDNO ? '.' : '!', cacbitno == AR [ARn] . BITNO ? '.' : '!');
+AR [ARn] . WORDNO = cacw;
+AR [ARn] . BITNO = cacbitno;
+}
+#endif
             }
             break;
             
@@ -7346,12 +7375,14 @@ static int emCall (void)
             break;
         }
 
-       case 20:    // Report fault 
-       {
-           emCallReportFault ();
-       }
+        case 20:    // Report fault 
+        {
+            emCallReportFault ();
+             break;
+        }
 
-       // case 21 defined above
+        // case 21 defined above
+
     }
     return 0;
 }
@@ -7676,6 +7707,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08
 
 void doRCU (bool fxeTrap)
   {
+
     words2scu (Yblock8);
 
 // Restore addressing mode
@@ -7775,6 +7807,20 @@ void setTR (word27 val)
 
 word27 getTR (bool * runout)
   {
+#if 0
+    struct timeval tnow, tdelta;
+    gettimeofday (& tnow, NULL);
+    timersub (& tnow, & timerRegT0, & tdelta);
+    // 1000000 can be represented in 20 bits; so in a 64 bit word, we have room for
+    // 44 bits of seconds, way more then enough.
+    // Do 64 bit math; much faster.
+    //
+    //delta = (tnowus - t0us) / 1.953125
+    uint64 delta;
+    delta = ((uint64) tdelta . tv_sec) * 1000000 + ((uint64) tdelta . tv_usec);
+    // 1M * 1M ~= 40 bits; still leaves 24bits of seconds.
+    delta = (delta * 1000000) / 1953125;
+#else
     uint128 t0us, tnowus, delta;
     struct timeval tnow;
     gettimeofday (& tnow, NULL);
@@ -7782,6 +7828,7 @@ word27 getTR (bool * runout)
     tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
     //delta = (tnowus - t0us) / 1.953125
     delta = ((tnowus - t0us) * 1000000) / 1953125;
+#endif
     if (runout)
      //* runout = (! overrunAck) && delta > timerRegVal;
      * runout = delta > timerRegVal;
