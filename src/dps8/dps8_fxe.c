@@ -3084,7 +3084,7 @@ static void faultTag2Handler (void)
 
     // Find the copied linkage header
     // sim_printf ("header_relp %08o\n", linkCopy . header_relp);
-    word24 cpLinkHeaderOffset = (offset + SIGNEXT18 (linkCopy . header_relp)) & MASK24;
+    word24 cpLinkHeaderOffset = (offset + SIGNEXT18_24 (linkCopy . header_relp)) & MASK24;
     // sim_printf ("headerOffset %08o\n", linkHeaderOffset);
     link_header * cplh = (link_header *) (M + segBaseAddr + cpLinkHeaderOffset);
 

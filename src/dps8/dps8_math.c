@@ -1211,9 +1211,9 @@ void fcmp(void)
         //e3 = e1;
     }
     
-    // need todo algebraic comparisons of mantissae
-    SCF((word36s)SIGNEXT36(m1) == (word36s)SIGNEXT36(m2), cu.IR, I_ZERO);
-    SCF((word36s)SIGNEXT36(m1) <  (word36s)SIGNEXT36(m2), cu.IR, I_NEG);
+    // need to do algebraic comparisons of mantissae
+    SCF((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2), cu.IR, I_ZERO);
+    SCF((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2), cu.IR, I_NEG);
 }
 
 /*!
@@ -1759,8 +1759,8 @@ void dvf (void)
     // m1 divedend
     // m2 divisor
 
-    word72 m1 = SIGNEXT72((rA << 36) | (rQ & 0777777777776LLU));
-    word72 m2 = SIGNEXT72(SIGNEXT36(CY));
+    word72 m1 = SIGNEXT36_72((rA << 36) | (rQ & 0777777777776LLU));
+    word72 m2 = SIGNEXT36_72(CY);
 
 //sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
 //sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");

@@ -6,38 +6,27 @@
 //
 
 
-#define PASIZE          24                     /* phys addr width */
+#define PASIZE          24                       /* phys addr width */
 #define PAMASK          ((1U << PASIZE) - 1U)
 
-#define MEM_SIZE_MAX    (1U << PASIZE)        /* maximum memory */
+#define MEM_SIZE_MAX    (1U << PASIZE)           /* maximum memory */
 
 // The minimum allocation size of a SCU is 64K (2^16) 
 // (2 banks of 32K). Call it an SCBANK
-#define SCBANK (1U << 16)
+#define SCBANK          (1U << 16)
 
 // Maximum memory size is MEM_SIZE_MAX, number of
 // scbanks is:
 #define N_SCBANKS ((MEM_SIZE_MAX) / (SCBANK))
-
-#define N_SCU_UNITS_MAX 4
-//#define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
-                          // [CAC] I believe that this is because the
-                          // 4MW SCU supported much more memory then
-                          // the earlier units, and two fully loaded
-                          // 4MW's maxed out memory.
-                          // 4MW lower store max size: 4M words
-                          //     + upper store = 8M
-                          //     * 2 SCUs = 16M 
-                          // The phys addr width is 24 bits, and 2^24 = 16M
 
 //
 // Memory addressing
 //
 
 
-#define VASIZE          18                              /*!< virtual addr width */
-#define AMASK           ((1U << VASIZE) - 1U)             /*!< virtual addr mask */
-#define SEGSIZE         (1U << VASIZE)                   ///< size of segment in words
+#define VASIZE          18                       // virtual addr width
+#define AMASK           ((1U << VASIZE) - 1U)    // virtual addr mask
+#define SEGSIZE         (1U << VASIZE)           // size of segment in words
 
 
 //
@@ -46,73 +35,58 @@
 
 
 #define MAX18           0777777U
-#define MAX18POS        0377777U                           /*!<  2**17-1 */
-#define MAX18NEG        0400000U                           /*!< -2**17 */  
+#define MAX18POS        0377777U                 //  2**17-1 
+#define MAX18NEG        0400000U                 // -2**17 
 #define SIGN18          0400000U
-#define MASK36          0777777777777LLU                   /*!< data mask */
+#define MASK36          0777777777777LLU         // data mask 
 #define DMASK           MASK36
-#define MASK10          0001777U                     // 10-bit data mask
-#define MASK14          0037777U                     // 14-bit data mask
-#define MASK16          0177777U                     // 16-bit data mask
-#define MASK17          0377777U                     // 17-bit data mask
-#define MASK18          0777777U                     // 18-bit data mask
-#define WMASK           MASK18                             // WORDNO mask
+#define MASK10          0001777U                 // 10-bit data mask
+#define MASK14          0037777U                 // 14-bit data mask
+#define MASK16          0177777U                 // 16-bit data mask
+#define MASK17          0377777U                 // 17-bit data mask
+#define MASK18          0777777U                 // 18-bit data mask
+#define WMASK           MASK18                   // WORDNO mask
 #define MASKLO18        0000000777777LLU
 #define MASKHI18        0777777000000LLU
-#define MASK20          03777777U                     // 20-bit data mask
-#define MASK24          077777777U                     // 24-bit data mask
-#define SIGN36          0400000000000LLU                   /*!< sign bit of a 36-bit word */
-//#define SIGN            SIGN36
-#define SIGNEX          0100000000000LLU                   /*!< extended sign helper for mpf/mpy */
+#define MASK20          03777777U                // 20-bit data mask
+#define MASK24          077777777U               // 24-bit data mask
+#define SIGN36          0400000000000LLU         // sign bit of a 36-bit word
 #define MASK15          077777U
-#define SMASK           MASK15                             // Segment number mask
-#define SIGN15          040000U                            ///< sign mask 15-bit number
-#define SIGNMASK15      0xffff8000U                        ///< mask to sign exterd a 15-bit number to a 32-bit integer
-#define MAGMASK         0377777777777LLU                   /*!< magnitude mask */
+#define SMASK           MASK15                   // Segment number mask
+#define SIGN15          040000U                  // sign mask 15-bit number
+#define MAGMASK         0377777777777LLU         // magnitude mask 
 #define ONES            0777777777777LLU
-#define NEG136          0777777777777LLU                   ///< -1
-#define MAXPOS          0377777777777LLU                   ///<  2**35-1
-#define MAXNEG          0400000000000LLU                   ///< -2**35
-#define MAX36           0777777777777LLU                   ///< 2**36
-#define MAX72           (((word72)1U << 72) - 1U)           ///< 72 1's
+#define NEG136          0777777777777LLU         // -1
+#define MAXPOS          0377777777777LLU         //  2**35-1
+#define MAXNEG          0400000000000LLU         // -2**35
+#define MAX36           0777777777777LLU         // 2**36
+#define MAX72           (((word72)1U << 72) - 1U)  // 72 1's
 
-#define CARRY          01000000000000LLU                   ///< carry from 2 36-bit additions/subs
-#define SIGNEXT    0xfffffff000000000LLU        ///< mask to sign extend a 36 => 64-bit negative
-#define ZEROEXT         0777777777777LLU        ///< mask to zero extend a 36 => 64-bit int
-#define SIGNMASK18      037777000000U        ///< mask to sign extend a 18 => 32-bit negative
-#define ZEROEXT18       0777777U                ///< mask to zero extend a 18 => 32-bit int
-#define ZEROEXT72       (((word72)1U << 72) - 1U)  ///< mask to zero extend a 72 => 128 int
-#define SIGN72           ((word72)1U << 71)
+#define CARRY           01000000000000LLU        // carry from 2 36-bit additions/subs
+#define ZEROEXT         0777777777777LLU         // mask to zero extend a 36 => 64-bit int
+#define ZEROEXT18       0777777U                 // mask to zero extend a 18 => 32-bit int
+#define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
+#define SIGN72          ((word72)1U << 71)
 #define MASK72          ZEROEXT72
 
-#define SIGN64         ((uint64)1U << 63)
+#define SIGN64          ((uint64)1U << 63)
 
 #define MASK3           07U
 #define MASK6           077U
 
-#define SIGN8          0400U         //sign mask 8-bit number
-#define SIGNMASK8      0xffffff40U                        ///< mask to sign extend a 8-bit number to a 32-bit integer
-#define SIGNEXT8(x)    (((x) & SIGN8) ? ((x) | SIGNMASK8) : ((x) & ~SIGNMASK8))  ///< sign extend a 8-bit word to 18/32-bit word
-#define MASK8           0377U                              ///< 8-bit mask
-#define MASK9           0777U                              ///< 9-bit mask
+#define SIGN8           0400U                    // sign mask 8-bit number
+#define MASK8           0377U                    // 8-bit mask
+#define MASK9           0777U                    // 9-bit mask
 
-#define SIGN12          0x800U                             ///< sign mask 12-bit number
-#define SIGNMASK12      0xfffff800U                        ///< mask to sign extend a 12-bit number to a 32-bit integer
-#define SIGNEXT12(x)    (((x) & SIGN12) ? ((x) | SIGNMASK12) : ((x) & ~SIGNMASK12))  ///< sign extend a 12-bit word to 18/32-bit word
+#define SIGN12          0x800U                   // sign mask 12-bit number
 #define MASK12          07777U
 
-#define SIGNEXT18(x)    (((x) & SIGN18) ? ((x) | SIGNMASK18) : ((x) & ~SIGNMASK18)) ///< sign extend a 18-bit word to 64-bit
-#define SIGNEXT36(x)    (((x) & SIGN36) ? ((x) |    SIGNEXT) : ((x) & ~SIGNEXT)) ///< sign extend a 36-bit word to 64-bit
-#define SIGNEXT15(x)    (((x) & SIGN15) ? ((x) | SIGNMASK15) : ((x) & ~SIGNMASK15)) ///< sign extend a 15-bit word to 18/32-bit word
-
-#define SIGN6           0040U     ///< sign bit of 6-bit signed numfer (e.g. Scaling Factor)
-#define SIGNMASK6       0340U     ///< sign mask for 6-bit number
-#define SIGNEXT6(x)     (int8)(((x) & SIGN6) ? ((x) | SIGNMASK6) : (x)) ///< sign extend a 6-bit word to 8-bit char
+#define SIGN6           0040U                    // sign bit of 6-bit signed numfer (e.g. Scaling Factor)
 
 #define MASK35          0377777777777llu
 #define MASK70          (((word72)1U << 70) - 1U)
 
-#define MASKBITS(x) ( ~(~((uint64)0)<<x) ) // lower (x) bits all ones
+#define MASKBITS(x)     ( ~(~((uint64)0)<<x) )   // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
 #define GETLO36(a)      ((word18) ((a) & MASK18))
@@ -128,69 +102,125 @@
 #define SETHI72(a,b)    ((a) &= MASK36, (a) |= ((((word72)(b) & MASK36)) << 36))
 #define SETLO72(a,b)    ((a) &= MASK36 << 36, (a) |= ((word72)(b) & MASK36))
 
-#define GET24(a)      ((word24) ((a) & MASK24))
-#define MASK21 07777777llu
-#define MASK27 0777777777llu
+#define GET24(a)        ((word24) ((a) & MASK24))
+#define MASK21          07777777llu
+#define MASK27          0777777777llu
 
-// the 2 following may need some work........
-#define EXTMSK72        (((word72)-1) - ZEROEXT72)
-#define SIGNEXT72(x)    (((x) & SIGN72) ? ((x) | EXTMSK72) : ((x) & ~EXTMSK72)) ///< sign extend a 72-bit word to 128-bit
 
-#define SETS36(x)         ((x) | SIGN36)
-#define CLRS36(x)         ((x) & ~SIGN36)
-#define TSTS36(x)         ((x) & SIGN36)
+// Sign extent DPS8 words into host words
+
+static inline int SIGNEXT6_int (word6 w)
+  {
+    if (w & SIGN6)
+      {
+        return w | (((int) -1) << 6);
+      }
+    return w & MASK6;
+  }
+
+static inline t_int64 SIGNEXT36_64 (word36 w)
+  {
+    if (w & SIGN36)
+      {
+        return w | ((t_int64) -1) << 36;
+      }
+    return w & MASK36;
+  }
+
+static inline int128 SIGNEXT72_128 (word72 w)
+  {
+    if (w & SIGN72)
+      {
+        return w | (((int128) -1) << 72);
+      }
+    return w & MASK72;
+  }
+
+// Sign extend DPS8 words into DPS8 words
+// NB: The high order bits in the host container will
+// set to 0; you cannnot do host math with
+// there results.
+
+static inline word18 SIGNEXT15_18 (word15 w)
+  {
+    if (w & SIGN15)
+      {
+        return (w | ((word18) -1) << 15) & MASK18;
+      }
+    return w & MASK15;
+  }
+
+static inline word24 SIGNEXT18_24 (word18 w)
+  {
+    if (w & SIGN18)
+      {
+        return (w | ((word24) -1) << 18) & MASK24;
+      }
+    return w & MASK18;
+  }
+
+static inline word72 SIGNEXT36_72 (word36 w)
+  {
+    if (w & SIGN36)
+      {
+        return (w | ((word72) DMASK) << 36) & MASK72;
+      }
+    return w & MASK36;
+  }
+
+#define SETS36(x)       ((x) | SIGN36)
+#define CLRS36(x)       ((x) & ~SIGN36)
+#define TSTS36(x)       ((x) & SIGN36)
 
 //
 // Instruction format
 //
 
-#define INST_V_TAG      0                              ///< Tag
+#define INST_V_TAG      0                        // Tag
 #define INST_M_TAG      077U
-#define INST_V_A        6                              ///< Indirect via pointer
+#define INST_V_A        6                        // Indirect via pointer
 #define INST_M_A        1U
-#define INST_V_I        7                              ///< Interrupt Inhibit
+#define INST_V_I        7                        // Interrupt Inhibit
 #define INST_M_I        1U
-#define INST_V_OP       9                              /*!< opcode */
+#define INST_V_OP       9                        // opcode
 #define INST_M_OP       0777U
-#define INST_V_OPX      8                              /*!< opcode etension */
+#define INST_V_OPX      8                        // opcode etension 
 #define INST_M_OPX      1U
 
-#define INST_V_ADDR     18                              ///< Address
+#define INST_V_ADDR     18                       // Address
 #define INST_M_ADDR     0777777U
-#define INST_V_OFFSET   18                              ///< Offset (Bit29=1)
+#define INST_V_OFFSET   18                       // Offset (Bit29=1)
 #define INST_M_OFFSET   077777U
-#define INST_V_PRN      33                              ///< n of PR[n] (Bit29=1)
+#define INST_V_PRN      33                       // n of PR[n] (Bit29=1)
 #define INST_M_PRN      07U
-#define INST_V_ARN      33                              ///< n of PR[n] (Bit29=1)
+#define INST_V_ARN      33                       // n of AR[n] (Bit29=1)
 #define INST_M_ARN      07U
 
 
-#define GET_TAG(x)      ((int32) ( (x)              & INST_M_TAG ))
-#define GET_A(x)        ((int32) (((x) >> INST_V_A) & INST_M_A   ))
-#define GET_I(x)        ((int32) (((x) >> INST_V_I) & INST_M_I   ))
-#define GET_OP(x)       ((int32) (((x) >> INST_V_OP) & INST_M_OP ))
-#define GET_OPX(x)      ((bool) (((x) >> INST_V_OPX) & INST_M_OPX))
+#define GET_TAG(x)      ((int32)  ( (x)                   & INST_M_TAG ))
+#define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
+#define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
+#define GET_OP(x)       ((int32)  (((x) >> INST_V_OP)     & INST_M_OP ))
+#define GET_OPX(x)      ((bool)   (((x) >> INST_V_OPX)    & INST_M_OPX))
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
-#define GET_PRN(x)      ((word3) (((x) >> INST_V_PRN) & INST_M_PRN))
-#define GET_ARN(x)      ((word3) (((x) >> INST_V_ARN) & INST_M_ARN))
+#define GET_PRN(x)      ((word3)  (((x) >> INST_V_PRN)    & INST_M_PRN))
+#define GET_ARN(x)      ((word3)  (((x) >> INST_V_ARN)    & INST_M_ARN))
 
 #define GET_TM(x)       ((int32)(GET_TAG(x) & 060U))
 #define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))
 
-//#define GET_ADDR(x)     ((a8) ((x) & AMASK))
 #define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
 // tag defines ...
-#define TAG_R       0U     ///< The contents of the register specified in C(Td) are added to the current computed address,
-#define TAG_RI      1U     /*!< The contents of the register specified in C(Td) are added to the current computed address, C(TPR.CA), to form the modified computed address as for
-register modification. The modified C(TPR.CA) is then used to fetch an indirect word. The TAG field of the indirect word specifies the next step in computed address formation. The use of du or dl as the designator in this modification type will cause an illegal procedure, illegal modifier, fault. */
-#define TAG_IT      2U /*!< The indirect word at C(TPR.CA) is fetched and the modification performed according to the variation specified in C(Td) of the instruction word and the contents of the indirect word. This modification type allows automatic incrementing and decrementing of addresses and tally counting. */
-#define TAG_IR      3U
+#define TAG_R           0U
+#define TAG_RI          1U
+#define TAG_IT          2U
+#define TAG_IR          3U
 
 
-#define _TD(tag) ((tag) & 017U)
-#define _TM(tag) ((tag) & 060U)
+#define _TD(tag)        ((tag) & 017U)
+#define _TM(tag)        ((tag) & 060U)
 
 enum {
     TD_N        = 000U,
@@ -218,7 +248,7 @@ enum {
     TM_IR       = 060U
 };
 
-/*! see AL39, pp 6-13, tbl 6-3 */
+/* see AL39, pp 6-13, tbl 6-3 */
 enum {
     IT_F1       = 000U,
     IT_SD       = 004U,
@@ -239,51 +269,51 @@ enum {
     SPEC_ITS  = 003U
 };
 
-#define GET_TB(tag) ((tag) & 040U)
-#define GET_CF(tag) ((tag) & 007U)
+#define GET_TB(tag)     ((tag) & 040U)
+#define GET_CF(tag)     ((tag) & 007U)
 
-#define _TB(tag) GET_TB((tag))
-#define _CF(tag) GET_CF((tag))
+#define _TB(tag)        GET_TB((tag))
+#define _CF(tag)        GET_CF((tag))
 
-#define TB6     000U ///< 6-bit characters
-#define TB9     040U ///< 9-bit characters
+#define TB6            000U // 6-bit characters
+#define TB9            040U // 9-bit characters
 
 //
 // ITS/ITP
 //
 
 #define ISITP(x)                (((x) & INST_M_TAG) == 041U)
-#define GET_ITP_PRNUM(Ypair)    ((word3)(((Ypair)[0] >> 33) & 07U))
-#define GET_ITP_WORDNO(Ypair)   ((word18)(((Ypair)[1] >> 18) & WMASK))
-#define GET_ITP_BITNO(Ypair)    ((word3)(((Ypair)[1] >> 9) & 077U))
+#define GET_ITP_PRNUM(Ypair)    ((word3)  (((Ypair)[0] >> 33) & 07U))
+#define GET_ITP_WORDNO(Ypair)   ((word18) (((Ypair)[1] >> 18) & WMASK))
+#define GET_ITP_BITNO(Ypair)    ((word3)  (((Ypair)[1] >>  9) & 077U))
 #define GET_ITP_MOD(Ypair)      (GET_TAG((Ypair)[1]))
 
 #define ISITS(x)                (((x) & INST_M_TAG) == 043U)
-#define GET_ITS_SEGNO(Ypair)    ((word15)(((Ypair)[0] >> 18) & SMASK))
-#define GET_ITS_RN(Ypair)       ((word3)(((Ypair)[0] >> 15) & 07))
-#define GET_ITS_WORDNO(Ypair)   ((word18)(((Ypair)[1] >> 18) & WMASK))
-#define GET_ITS_BITNO(Ypair)    ((word3)(((Ypair)[1] >> 9) & 077))
+#define GET_ITS_SEGNO(Ypair)    ((word15) (((Ypair)[0] >> 18) & SMASK))
+#define GET_ITS_RN(Ypair)       ((word3)  (((Ypair)[0] >> 15) & 07))
+#define GET_ITS_WORDNO(Ypair)   ((word18) (((Ypair)[1] >> 18) & WMASK))
+#define GET_ITS_BITNO(Ypair)    ((word3)  (((Ypair)[1] >>  9) & 077))
 #define GET_ITS_MOD(Ypair)      (GET_TAG((Ypair)[1]))
 
 //
 // Indicator register bits
 //
 
-#define F_V_A           17      ///< Zero
-#define F_V_B           16      ///< Negative
-#define F_V_C           15      ///< Carry
-#define F_V_D           14      ///< Overflow
-#define F_V_E           13      ///< Exponent Overflow
-#define F_V_F           12      ///< Exponent Underflow
-#define F_V_G           11      ///< Overflow Mask
-#define F_V_H           10      ///< Tally Runout
-#define F_V_I            9      ///< Parity Error
-#define F_V_J            8      ///< Parity Mask
-#define F_V_K            7      ///< Not BAR mode
-#define F_V_L            6      ///< Truncation
-#define F_V_M            5      ///< Mid Instruction Interrupt Fault
-#define F_V_N            4      ///< Absolute Mode
-#define F_V_O            3      ///< Hex Mode
+#define F_V_A           17      // Zero
+#define F_V_B           16      // Negative
+#define F_V_C           15      // Carry
+#define F_V_D           14      // Overflow
+#define F_V_E           13      // Exponent Overflow
+#define F_V_F           12      // Exponent Underflow
+#define F_V_G           11      // Overflow Mask
+#define F_V_H           10      // Tally Runout
+#define F_V_I            9      // Parity Error
+#define F_V_J            8      // Parity Mask
+#define F_V_K            7      // Not BAR mode
+#define F_V_L            6      // Truncation
+#define F_V_M            5      // Mid Instruction Interrupt Fault
+#define F_V_N            4      // Absolute Mode
+#define F_V_O            3      // Hex Mode
 
 #define F_A             (1LLU << F_V_A)
 #define F_B             (1LLU << F_V_B)
@@ -301,21 +331,21 @@ enum {
 #define F_N             (1LLU << F_V_N)
 #define F_O             (1LLU << F_V_O)
 
-#define I_HEX   F_O     /*!< base-16 exponent */ ///< 0000010
-#define I_ABS   F_N     /*!< absolute mode */ ///< 0000020
-#define I_MIIF  F_M     /*!< mid-instruction interrupt fault */ ///< 0000040
-#define I_TRUNC F_L     /*!< truncation */ ///< 0000100
-#define I_NBAR  F_K     /*!< not BAR mode */ ///< 0000200
-#define I_PMASK F_J     /*!< parity mask */ ///< 0000400
-#define I_PERR  F_I     /*!< parity error */ ///< 0001000
-#define I_TALLY F_H     /*!< tally runout */ ///< 0002000
-#define I_OMASK F_G     /*!< overflow mask */ ///< 0004000
-#define I_EUFL  F_F     /*!< exponent underflow */ ///< 0010000
-#define I_EOFL  F_E     /*!< exponent overflow */ ///< 0020000
-#define I_OFLOW F_D     /*!< overflow */ ///< 0040000
-#define I_CARRY F_C     /*!< carry */ ///< 0100000
-#define I_NEG   F_B     /*!< negative */ ///< 0200000
-#define I_ZERO  F_A     /*!< zero */ ///< 0400000
+#define I_HEX   F_O     // base-16 exponent                 0000010
+#define I_ABS   F_N     // absolute mode                    0000020
+#define I_MIIF  F_M     // mid-instruction interrupt fault  0000040
+#define I_TRUNC F_L     // truncation                       0000100
+#define I_NBAR  F_K     // not BAR mode                     0000200
+#define I_PMASK F_J     // parity mask                      0000400
+#define I_PERR  F_I     // parity error                     0001000
+#define I_TALLY F_H     // tally runout                     0002000
+#define I_OMASK F_G     // overflow mask                    0004000
+#define I_EUFL  F_F     // exponent underflow               0010000
+#define I_EOFL  F_E     // exponent overflow                0020000
+#define I_OFLOW F_D     // overflow                         0040000
+#define I_CARRY F_C     // carry                            0100000
+#define I_NEG   F_B     // negative                         0200000
+#define I_ZERO  F_A     // zero                             0400000
 
 //
 //  floating-point constants
