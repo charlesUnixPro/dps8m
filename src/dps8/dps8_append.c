@@ -122,7 +122,7 @@ void doPtrReg(void)
     TPR.TSR = PAR[n].SNR;
     TPR.TRR = max3(PAR[n].RNR, TPR.TRR, PPR.PRR);
     
-    TPR.CA = (PAR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+    TPR.CA = (PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
     TPR.TBR = PAR[n].BITNO;
     
     set_went_appending ();

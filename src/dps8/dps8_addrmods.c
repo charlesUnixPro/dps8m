@@ -232,8 +232,7 @@ static void doITP (void)
     //TPR . TRR = max3 (PR [n] . RNR, SDW -> R1, TPR . TRR);
     TPR . TRR = max3 (PR [n] . RNR, RSDWH_R1, TPR . TRR);
     TPR . TBR = GET_ITP_BITNO (itxPair);
-    TPR . CA = SIGNEXT18 (PAR [n] . WORDNO) +
-               SIGNEXT18 (GET_ITP_WORDNO (itxPair));
+    TPR . CA = PAR [n] . WORDNO + GET_ITP_WORDNO (itxPair);
     TPR . CA &= AMASK;
     rY = TPR.CA;
 
@@ -391,7 +390,7 @@ t_stat doComputedAddressFormation (void)
         TPR . TSR = PAR [n] . SNR;
         TPR . TRR = max3 (PAR [n] . RNR, TPR . TRR, PPR . PRR);
 
-        TPR . CA = (PAR [n] . WORDNO + SIGNEXT15 (offset)) & 0777777;
+        TPR . CA = (PAR [n] . WORDNO + SIGNEXT15_18 (offset)) & 0777777;
         TPR . TBR = PAR [n] . BITNO;
 
         // Clear the A bit
@@ -584,11 +583,11 @@ startCA:;
 #ifdef RPT_TRY3
                     word18 offset;
                     //if (i -> a)
-                      //offset = SIGNEXT15 (GET_OFFSET (cu . IWB));
+                      //offset = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
                     //else
                       //offset = GET_ADDR (cu . IWB);
                     if (i -> a)
-                      offset = SIGNEXT15 (i -> address & MASK15);
+                      offset = SIGNEXT15_18 (i -> address & MASK15);
                     else
                       offset = i -> address;
                     offset &= AMASK;
@@ -749,11 +748,11 @@ startCA:;
 #ifdef RPT_TRY3
                         word18 offset;
                         //if (i -> a)
-                          //offset = SIGNEXT15 (GET_OFFSET (cu . IWB));
+                          //offset = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
                         //else
                           //offset = GET_ADDR (cu . IWB);
                         if (i -> a)
-                          offset = SIGNEXT15 (i -> address & MASK15);
+                          offset = SIGNEXT15_18 (i -> address & MASK15);
                         else
                           offset = i -> address;
                         offset &= AMASK;

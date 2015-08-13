@@ -1090,7 +1090,7 @@ restart_1:
                 word18 offset;
                 if (ci -> a)
                   {
-                    offset = SIGNEXT15 (ci -> address & MASK15);
+                    offset = SIGNEXT15_18 (ci -> address & MASK15);
                     //word3 PRn = (ci -> address >> 15) & MASK3;
                     //offset += PR [PRn] . WORDNO;
                     //offset &= AMASK;
@@ -2394,7 +2394,7 @@ static t_stat DoBasicInstruction (void)
         case 0033:   ///< adl
             // C(AQ) + C(Y) sign extended -> C(AQ)
             {
-                word72 tmp72 = SIGNEXT72(CY); // sign extend Cy
+                word72 tmp72 = SIGNEXT36_72(CY); // sign extend Cy
                 tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
@@ -2664,13 +2664,8 @@ static t_stat DoBasicInstruction (void)
             /// C(Q) × C(Y) -> C(AQ), right adjusted
             
             {
-                int64_t t0 = rQ & DMASK;
-                if (t0 & SIGN36)
-                    t0 |= SIGNEXT; // propagte word36 sign to 64 bits
-
-                int64_t t1 = CY & DMASK;
-                if (t1 & SIGN36)
-                    t1 |= SIGNEXT; // propagte word36 sign to 64 bits
+                int64_t t0 = SIGNEXT36_64 (rQ & DMASK);
+                int64_t t1 = SIGNEXT36_64 (CY & DMASK);
 
                 __int128_t prod = (__int128_t) t0 * (__int128_t) t1;
 
@@ -2700,8 +2695,8 @@ static t_stat DoBasicInstruction (void)
             }
             else
             {
-                t_int64 dividend = (t_int64) (SIGNEXT36(rQ));
-                t_int64 divisor = (t_int64) (SIGNEXT36(CY));
+                t_int64 dividend = (t_int64) (SIGNEXT36_64(rQ));
+                t_int64 divisor = (t_int64) (SIGNEXT36_64(CY));
 
 #ifdef DIV_TRACE
                 sim_debug (DBG_CAC, & cpu_dev, "\n");
@@ -2860,10 +2855,10 @@ static t_stat DoBasicInstruction (void)
                 //word36 y = CY & SIGN36 ? -CY : CY;
 
                 // If we do the 64 math, the MAXNEG case works
-                t_int64 a = SIGNEXT36 (rA);
+                t_int64 a = SIGNEXT36_64 (rA);
                 if (a < 0)
                   a = -a;
-                t_int64 y = SIGNEXT36 (CY);
+                t_int64 y = SIGNEXT36_64 (CY);
                 if (y < 0)
                   y = -y;
                 
@@ -4995,7 +4990,8 @@ static t_stat DoBasicInstruction (void)
                 rA &= DMASK;    // keep to 36-bits
             
                 //word36 tmp36 = llabs(SIGNEXT36(rA));
-                word36 tmp36 = SIGNEXT36(rA) & MASK36;;
+                //word36 tmp36 = SIGNEXT36(rA) & MASK36;;
+                word36 tmp36 = rA & MASK36;;
                 word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) -> 4-bit quotient plus remainder
                 word36 tmp36r = tmp36 % CY;
             
@@ -6529,7 +6525,7 @@ static t_stat DoEISInstruction (void)
         case 0501:  ///< a6bd        Add 6-bit Displacement to Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 //int r = SIGNEXT18(getCrAR(reg));
@@ -6570,7 +6566,7 @@ static t_stat DoEISInstruction (void)
         case 0502:  ///< a4bd        Add 4-bit Displacement to Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 //int r = SIGNEXT18(getCrAR(reg));
@@ -6637,7 +6633,7 @@ static t_stat DoEISInstruction (void)
                 word36 bitCnt = bitStringCnt % 36u;
 
                 word18 address = 
-                  SIGNEXT15 (getbits36 (cu . IWB, 3, 15)) & AMASK;
+                  SIGNEXT15_18 ((word15)getbits36 (cu . IWB, 3, 15)) & AMASK;
 //waddr = address;
                 address += wordCnt;
 
@@ -6721,7 +6717,7 @@ AR [ARn] . BITNO = cacbitno;
             {
             
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 
@@ -6749,7 +6745,7 @@ AR [ARn] . BITNO = cacbitno;
         case 0520:  ///< s9bd   Subtract 9-bit Displacement from Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
                 word36 r = getCrAR(reg);
@@ -6787,7 +6783,7 @@ AR [ARn] . BITNO = cacbitno;
         case 0521:  ///< s6bd   Subtract 6-bit Displacement from Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 word36 r = getCrAR(reg);
@@ -6827,7 +6823,7 @@ AR [ARn] . BITNO = cacbitno;
         case 0522:  ///< s4bd   Subtract 4-bit Displacement from Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 word36 r = getCrAR(reg);
@@ -6868,7 +6864,7 @@ AR [ARn] . BITNO = cacbitno;
         case 0523:  ///< sbd    Subtract   bit Displacement from Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 word36 r = getCrAR(reg);
@@ -6908,7 +6904,7 @@ AR [ARn] . BITNO = cacbitno;
         case 0527:  ///< swd    Subtract  word Displacement from Address Register
             {
                 int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 word36 r = getCrAR(reg);
@@ -7250,7 +7246,7 @@ static int emCall (void)
         }
         case 5:     ///< putdec - put decimal contents of A to stdout
         {
-            word36 tmp = SIGNEXT36(rA);
+            t_int64 tmp = SIGNEXT36_64(rA);
             sim_printf("%lld", tmp);
             break;
         }
@@ -7293,7 +7289,7 @@ static int emCall (void)
         }
         case 15:     ///< putdec - put decimal contents of Q to stdout
         {
-            word36 tmp = SIGNEXT36(rQ);
+            t_int64 tmp = SIGNEXT36_64(rQ);
             sim_printf("%lld", tmp);
             break;
         }
@@ -7366,9 +7362,7 @@ static int emCall (void)
 
         case 19:     ///< putdecaq - put decimal contents of AQ to stdout
         {
-            int64_t t0 = (int64_t)rA;
-            if (rA & SIGN36)
-               t0 |= SIGNEXT; // propagte word36 sign to 64 bits
+            int64_t t0 = SIGNEXT36_64 (rA);
             __int128_t AQ = ((__int128_t) t0) << 36;
             AQ |= (rQ & DMASK);
             print_int128 (AQ, NULL);

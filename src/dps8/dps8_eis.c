@@ -324,7 +324,7 @@ word3 saveTRR = TPR . TRR;
 
             word3 arn = GET_PRN (operandDesc);
             word15 offset = GET_OFFSET (operandDesc);
-            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & AMASK;
+            address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
             if (get_addr_mode () == APPEND_mode)
               {
@@ -387,7 +387,7 @@ word3 saveTRR = TPR . TRR;
 
         word3 arn = (address >> 15) & MASK3;
         word15 offset = address & MASK15;
-        address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & AMASK;
+        address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
 #if 0 // we are not actually going to do the read
         if (get_addr_mode () == APPEND_mode)
@@ -705,7 +705,7 @@ static void myEISDevelop (uint k, uint opType, uint pos,
 
             word3 arn = (address >> 15) & MASK3;
             word15 offset = address & MASK15;
-            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & AMASK;
+            address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
             if (get_addr_mode () == APPEND_mode)
               {
@@ -760,7 +760,7 @@ static void myEISDevelop (uint k, uint opType, uint pos,
 
         word3 arn = (address >> 15) & MASK3;
         word15 offset = address & MASK15;
-        address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & AMASK;
+        address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
         if (get_addr_mode () == APPEND_mode)
           {
@@ -1305,7 +1305,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
             // to C(PRn.WORDNO) if A = 1 (all modes)
             uint n = bitfieldExtract36(address, 15, 3);
             word15 offset = address & MASK15;  // 15-bit signed number
-            address = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+            address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
             e->addr[k-1].address = address;
             if (get_addr_mode() == APPEND_mode)
@@ -1373,7 +1373,7 @@ static void parseAlphanumericOperandDescriptor(uint k, EISstruct *e, uint useTA)
         // of the data but is a reference to a pointer register pointing to the
         // data.
         uint n = bitfieldExtract36(address, 15, 3);
-        word18 offset = SIGNEXT15 (address);  // 15-bit signed number
+        word18 offset = SIGNEXT15_18 (address);  // 15-bit signed number
         address = (AR [n] . WORDNO + offset) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
@@ -1547,7 +1547,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
         // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(address, 15, 3);
         word15 offset = address & MASK15;  ///< 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -1566,7 +1566,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
     
     e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
     e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
-    e->SF[k-1] = (int)SIGNEXT6(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
+    e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
     
     // Operand length. If MFk.RL = 0, this field contains the operand length in
     // digits. If MFk.RL = 1, it contains the REG code for the register holding
@@ -1656,7 +1656,7 @@ static void parseBitstringOperandDescriptor(int k, EISstruct *e)
         // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(address, 15, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
@@ -5179,7 +5179,7 @@ void mvt(DCDstruct *ins)
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(xAddress, 15, 3);
         word15 offset = xAddress & MASK15;  // 15-bit signed number
-        xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        xAddress = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -5553,7 +5553,7 @@ void scm(DCDstruct *ins)
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -5741,7 +5741,7 @@ void scmr(DCDstruct *ins)
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -5883,7 +5883,7 @@ void tct(DCDstruct *ins)
         //int n = (int)bitfieldExtract36(xAddress, 15, 3);
         word3 n = GET_ARN (xlat);
         //int offset = xAddress & MASK15;  // 15-bit signed number
-        word18 offset = SIGNEXT15 (xAddress & MASK15);  // 15-bit signed number
+        word18 offset = SIGNEXT15_18 (xAddress & MASK15);  // 15-bit signed number
         xAddress = (AR [n] . WORDNO + offset) & AMASK;
         
         //sim_debug (DBG_CAC, & cpu_dev,
@@ -5976,7 +5976,7 @@ void tct(DCDstruct *ins)
         //int n = (int)bitfieldExtract36(y3, 15, 3);
         word3 n = GET_ARN (e -> OP3);
         //int offset = y3 & MASK15;  // 15-bit signed number
-        word18 offset = SIGNEXT15 (y3 & MASK15);  // 15-bit signed number
+        word18 offset = SIGNEXT15_18 (y3 & MASK15);  // 15-bit signed number
         y3 = (AR [n] . WORDNO + offset) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
@@ -6141,7 +6141,7 @@ void tctr(DCDstruct *ins)
         // if 2nd operand contains A (bit-29 set) then it Means Y-char92 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         int n = (int)bitfieldExtract36(xAddress, 15, 3);
         int offset = xAddress & MASK15;  // 15-bit signed number
-        xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        xAddress = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -6210,7 +6210,7 @@ void tctr(DCDstruct *ins)
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -6567,7 +6567,7 @@ void scd(DCDstruct *ins)
         // register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -6739,7 +6739,7 @@ void scdr(DCDstruct *ins)
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
         uint n = (int)bitfieldExtract36(y3, 15, 3);
         word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & AMASK;
+        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;

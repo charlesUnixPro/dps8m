@@ -31,6 +31,7 @@ enum { N_DISK_UNITS_MAX = 17 };
 // SCU
 //
 
+enum { N_SCU_UNITS_MAX = 4 };
 enum { N_SCU_PORTS = 8 };
 enum { N_ASSIGNMENTS = 2 };
 // Number of interrupts in an interrupt cell register

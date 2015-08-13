@@ -639,8 +639,8 @@ void convertToWord36(word72 src, word36 *even, word36 *odd)
 //! XXX the following compare routines probably need sign extension
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
 {
-    word36s op1 = (word36s) SIGNEXT36(oP1 & DMASK);
-    word36s op2 = (word36s) SIGNEXT36(oP2 & DMASK);
+    t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
+    t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
     if (!((word36)op1 & SIGN36) && ((word36)op2 & SIGN36) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
@@ -664,8 +664,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
 }
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
 {
-    word18s op1 = (word18s) SIGNEXT18(oP1 & MASK18);
-    word18s op2 = (word18s) SIGNEXT18(oP2 & MASK18);
+    word18s op1 = (word18s) (oP1 & MASK18);
+    word18s op2 = (word18s) (oP2 & MASK18);
 
     if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
@@ -693,9 +693,9 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 
     //bool Z = (A <= Y && Y <= Q) || (A >= Y && Y >= Q);
 
-    word36s As = (word36s) SIGNEXT36(A & DMASK);
-    word36s Ys = (word36s) SIGNEXT36(Y & DMASK);
-    word36s Qs = (word36s) SIGNEXT36(Q & DMASK);
+    t_int64 As = (word36s) SIGNEXT36_64(A & DMASK);
+    t_int64 Ys = (word36s) SIGNEXT36_64(Y & DMASK);
+    t_int64 Qs = (word36s) SIGNEXT36_64(Q & DMASK);
     bool Z = (As <= Ys && Ys <= Qs) || (As >= Ys && Ys >= Qs);
 
     SCF(Z, *flags, I_ZERO);
@@ -739,8 +739,8 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
         CLRF(*flags, I_ZERO);
     }
 #else
-    word72s op1s = (word72s) SIGNEXT72 (op1 & MASK72);
-    word72s op2s = (word72s) SIGNEXT72 (op2 & MASK72);
+    int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
+    int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
     if (op1s > op2s)
       {
         if (op2 & SIGN72)
