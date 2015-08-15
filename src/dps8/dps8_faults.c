@@ -443,16 +443,6 @@ For now, at least, we must remember a few things:
 void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-#if 0
-    if (faultNumber == FAULT_ACV && subFault == ACV13)
-      {
-        if_sim_debug (DBG_CAC, & cpu_dev)
-          {
-            sim_debug (DBG_CAC, & cpu_dev, "RALR fault\n");
-            traceInstruction (DBG_CAC);
-          }
-      }
-#endif
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
@@ -617,6 +607,14 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
         // else if (subFault == ill_proc)
           // cu . ? = 1;
       }
+    else if (faultNumber == FAULT_CMD)
+      {
+        if (subFault == lprpn_bits)
+          cu . IA = 0;
+        else if (subFault == not_control)
+          cu . IA = 010;
+      }
+
     // If already in a FAULT CYCLE then signal trouble fault
 
     if (cpu . cycle == FAULT_EXEC_cycle ||
@@ -661,7 +659,7 @@ if (faultNumber == 10 && sys_stats . total_cycles > 10000)
 }
 
 //
-// return true if group 7 faules are pending ...
+// return true if group 7 faults are pending ...
 //
 
 // Note: The DIS code assumes that the only G7 fault is TRO. Adding any
