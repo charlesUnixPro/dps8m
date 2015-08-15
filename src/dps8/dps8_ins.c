@@ -4500,8 +4500,24 @@ static t_stat DoBasicInstruction (void)
                 if (((CY >> 34) & 3) != 3)
                     PR[n].BITNO = (CY >> 30) & 077;
                 else
-                  doFault(FAULT_CMD, 0, "Load Pointer Register Packed (lprpn)");
+                  {
+// fim.alm
+// command_fault:
+//           eax7      com       assume normal command fault
+//           ldq       bp|mc.scu.port_stat_word check illegal action
+//           canq      scu.ial_mask,dl
+//           tnz       fixindex            nonzero, treat as normal case
+//           ldq       bp|scu.even_inst_word check for LPRPxx instruction
+//           anq       =o770400,dl
+//           cmpq      lprp_insts,dl
+//           tnz       fixindex            isn't LPRPxx, treat as normal
 
+// ial_mask is checking SCU word 1, field IA: 0 means "no illegal action"
+
+                    // Therefore the subfault well no illegal action, and Multics will peek it the
+                    // instruction to deduce that it is a lprpn fault.
+                    doFault(FAULT_CMD, lprpn_bits, "Load Pointer Register Packed (lprpn)");
+                  }
                 //If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
                     PR[n].SNR |= 070000; // XXX check to see if this is correct
@@ -5583,15 +5599,21 @@ static t_stat DoBasicInstruction (void)
             // cioc The system controller addressed by Y (i.e., contains 
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
-//sim_printf ("cioc [%lld]\n", sim_timell ());
             int cpu_port_num = query_scbank_map (iefpFinalAddress);
 
+            // This shouldn't happen; every existing address is contained in a SCU, by defintion.
+            // Therefore, this should throw a NEm fault.
             if (cpu_port_num < 0)
               {
-                sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
-                cpu_port_num = 0;
+                //sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
+                //cpu_port_num = 0;
+                doFault (FAULT_ONC, nem, "(smcm)");
               }
-            uint scu_unit_num = cables -> cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            if (scu_unit_num < 0)
+              {
+                doFault (FAULT_ONC, nem, "(smcm)");
+              }
             uint scu_port_num = CY & MASK3;
             scu_cioc ((uint) scu_unit_num, scu_port_num);
           }
@@ -5606,8 +5628,15 @@ static t_stat DoBasicInstruction (void)
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 if (scu_unit_num < 0)
                   {
-                    sim_printf ("scu_unit_num for port %d not found; punting to 0\n", cpu_port_num);
-                    scu_unit_num = 0;
+                    if (cpu_port_num == 0)
+                      putbits36 (& faultRegister [0], 16, 4, 010);
+                    else if (cpu_port_num == 1)
+                      putbits36 (& faultRegister [0], 20, 4, 010);
+                    else if (cpu_port_num == 2)
+                      putbits36 (& faultRegister [0], 24, 4, 010);
+                    else
+                      putbits36 (& faultRegister [0], 28, 4, 010);
+                    doFault (FAULT_CMD, not_control, "(smcm)");
                   }
                 t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, rA, rQ);
                 if (rc)
@@ -5630,10 +5659,15 @@ static t_stat DoBasicInstruction (void)
 
             if (scu_unit_num < 0)
               {
-                // Not used by 4MW
-                // doFault (FAULT_STR, not_control, "(smic)");
-                sim_printf ("scu_unit_num not found; punting\n");
-                break;
+                if (cpu_port_num == 0)
+                  putbits36 (& faultRegister [0], 16, 4, 010);
+                else if (cpu_port_num == 1)
+                  putbits36 (& faultRegister [0], 20, 4, 010);
+                else if (cpu_port_num == 2)
+                  putbits36 (& faultRegister [0], 24, 4, 010);
+                else
+                  putbits36 (& faultRegister [0], 28, 4, 010);
+                doFault (FAULT_CMD, not_control, "(smic)");
               }
             t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, cpu_port_num, rA);
             // Not used bu 4MW
@@ -5647,39 +5681,22 @@ static t_stat DoBasicInstruction (void)
 
         case 0057:  // sscr
           {
-            // For the sscr instruction, the first 2 or 3 bits of the addr
-            // field of the instruction are used to specify which SCU.
-            // 2 bits for the DPS8M.
+            uint cpu_port_num = (TPR.CA >> 15) & 03;
+            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
 
-            // According to DH02:
-            //   XXXXXX0X  SCU Mode Register (Level 66 only)
-            //   XXXXXX1X  Configuration switches
-            //   XXXXXn2X  Interrupt mask port n
-            //   XXXXXX3X  Interrupt cells
-            //   XXXXXX4X  Elapsed time clock
-            //   XXXXXX5X  Elapsed time clock
-            //   XXXXXX6X  Mode register
-            //   XXXXXX7X  Mode register
-
-            // According to privileged_mode_ut,
-            //   port*1024 + scr_input*8
-
-//sim_debug (DBG_TRACE, & cpu_dev, "CA %06d\n", TPR . CA);
-
-            //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
-            //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
-            int cpu_port_num = query_scbank_map (iefpFinalAddress);
-            if (cpu_port_num < 0)
+            if (scu_unit_num < 0)
               {
-                sim_debug (DBG_ERR, & cpu_dev, "SSCR: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
-                cpu_port_num = 0;
+                if (cpu_port_num == 0)
+                  putbits36 (& faultRegister [0], 16, 4, 010);
+                else if (cpu_port_num == 1)
+                  putbits36 (& faultRegister [0], 20, 4, 010);
+                else if (cpu_port_num == 2)
+                  putbits36 (& faultRegister [0], 24, 4, 010);
+                else
+                  putbits36 (& faultRegister [0], 28, 4, 010);
+                doFault (FAULT_CMD, not_control, "(smic)");
               }
-            uint scu_unit_num = cables -> cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
-    
             t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, iefpFinalAddress & MASK15, rA, rQ);
-            // Not used by 4MW
-            // if (rc == CONT_FAULT)
-              // doFault(FAULT_STR, not_control, "(sscr)");
             if (rc)
               return rc;
           }
@@ -7729,7 +7746,68 @@ void doRCU (bool fxeTrap)
         longjmp (jmpMain, JMP_REFETCH);
       }
 
-    if (cu . FI_ADDR == FAULT_MME)
+// All of the faults list as having handlers have actually
+// been encountered in Multics operation and are believed
+// to be being handled correctly. The handlers in
+// parenthesis are speculative and untested.
+//
+// Unhandled:
+//
+//    SDF Shutdown: Why would you RCU from a shutdown fault?
+//    STR Store:    
+//      AL39 is contradictory or vague about store fault subfaults and store
+//      faults in general. They are mentioned:
+//        SPRPn: store fault (illegal pointer) (assuming STR:ISN)
+//        SMCM: store fault (not control)  \
+//        SMIC: store fault (not control)   > I believe that these should be command fault
+//        SSCR: store fault (not control)  /
+//        TSS:  STR:OOB
+//        Bar mode out-of-bounds: STR:OOB
+//     The SCU register doesn't define which bit is "store fault (not control)"
+// STR:ISN - illegal segment number
+// STR:NEA - nonexistent address
+// STR:OOB - bar mode out-of-bounds
+// 
+// decimal   octal
+// fault     fault  mnemonic   name             priority group  handler
+// number   address
+//   0         0      sdf      Shutdown               27 7
+//   1         2      str      Store                  10 4      
+//   2         4      mme      Master mode entry 1    11 5      JMP_SYNC_FAULT_RETURN
+//   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)
+//   4        10      tro      Timer runout           26 7      JMP_REFETCH
+//   5        12      cmd      Command                 9 4      JMP_REFETCH/JMP_RESTART
+//   6        14      drl      Derail                 15 5      JMP_REFETCH/JMP_RESTART
+//   7        16      luf      Lockup                  5 4      JMP_REFETCH
+//   8        20      con      Connect                25 7      JMP_REFETCH
+//   9        22      par      Parity                  8 4
+//  10        24      ipr      Illegal procedure      16 5
+//  11        26      onc      Operation not complete  4 2
+//  12        30      suf      Startup                 1 1
+//  13        32      ofl      Overflow                7 3      JMP_REFETCH/JMP_RESTART
+//  14        34      div      Divide check            6 3
+//  15        36      exf      Execute                 2 1      JMP_REFETCH/JMP_RESTART
+//  16        40      df0      Directed fault 0       20 6      JMP_REFETCH/JMP_RESTART
+//  17        42      df1      Directed fault 1       21 6      JMP_REFETCH/JMP_RESTART
+//  18        44      df2      Directed fault 2       22 6      (JMP_REFETCH/JMP_RESTART)
+//  19        46      df3      Directed fault 3       23 6      JMP_REFETCH/JMP_RESTART
+//  20        50      acv      Access violation       24 6      JMP_REFETCH/JMP_RESTART
+//  21        52      mme2     Master mode entry 2    12 5      JMP_SYNC_FAULT_RETURN
+//  22        54      mme3     Master mode entry 3    13 5      (JMP_SYNC_FAULT_RETURN)
+//  23        56      mme4     Master mode entry 4    14 5      (JMP_SYNC_FAULT_RETURN)
+//  24        60      f2       Fault tag 2            18 5      JMP_REFETCH/JMP_RESTART
+//  25        62      f3       Fault tag 3            19 5      JMP_REFETCH/JMP_RESTART
+//  26        64               Unassigned
+//  27        66               Unassigned
+//  28        70               Unassigned
+//  29        72               Unassigned
+//  30        74               Unassigned
+//  31        76      trb      Trouble                 3 2
+
+    if (cu . FI_ADDR == FAULT_MME ||
+        cu . FI_ADDR == FAULT_MME2 ||
+        cu . FI_ADDR == FAULT_MME3 ||
+        cu . FI_ADDR == FAULT_MME4)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
     if (cu . FI_ADDR == FAULT_LUF)
@@ -7737,15 +7815,18 @@ void doRCU (bool fxeTrap)
         longjmp (jmpMain, JMP_REFETCH);
       }
 
-    if (cu . FI_ADDR == FAULT_TRO || cu . FI_ADDR == FAULT_CON)  // g7 fault
+    if (cu . FI_ADDR == FAULT_TRO || 
+        cu . FI_ADDR == FAULT_CON)  // g7 fault
       {
         longjmp (jmpMain, JMP_REFETCH);
       }
 
     if (cu . FI_ADDR == FAULT_DF0 || 
         cu . FI_ADDR == FAULT_DF1 || 
+        cu . FI_ADDR == FAULT_DF2 || 
         cu . FI_ADDR == FAULT_DF3 || 
         cu . FI_ADDR == FAULT_ACV || 
+        cu . FI_ADDR == FAULT_F1 || 
         cu . FI_ADDR == FAULT_F2 || 
         cu . FI_ADDR == FAULT_F3 ||
         cu . FI_ADDR == FAULT_DRL ||

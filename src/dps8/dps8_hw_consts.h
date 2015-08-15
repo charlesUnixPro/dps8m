@@ -433,8 +433,11 @@ enum _fault_subtype {
 
     oob,        // A BAR mode boundary violation has occurred.
     ill_ptr,    // SPRPn illegal ptr.
-    // Not used by DPS8M
-    // not_control, // not control
+
+    // FAULT_CMD
+
+    lprpn_bits,  // illegal bits in lprpn instruction
+    not_control, // not control
 
     // FAULT_PAR
 
