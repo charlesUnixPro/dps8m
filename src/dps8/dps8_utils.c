@@ -664,8 +664,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
 }
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
 {
-    word18s op1 = (word18s) (oP1 & MASK18);
-    word18s op2 = (word18s) (oP2 & MASK18);
+    int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
+    int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
     if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
