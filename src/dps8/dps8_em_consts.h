@@ -101,5 +101,11 @@ enum { N_CPU_PORTS = 4 };
 // Survey devices only has 16 slots, so 16 drives plus the controller
 enum { N_MT_UNITS_MAX = 17 };
 
+//
+// Printer
+//
+
+enum { N_PRT_UNITS_MAX = 17 };
+
 #endif // DPS8_EM_CONSTS_H
 

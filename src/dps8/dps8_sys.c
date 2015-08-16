@@ -28,6 +28,7 @@
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_prt.h"
 #include "dps8_cable.h"
 #include "utlist.h"
 
@@ -210,6 +211,7 @@ static void dps8_init(void)
     scu_init ();
     cpu_init ();
     crdrdr_init ();
+    prt_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -2109,6 +2111,7 @@ DEVICE * sim_devices [] =
     & fxe_dev,
     & ipc_dev,  // for fnp IPC
     & crdrdr_dev,
+    & prt_dev,
     NULL
   };
 
@@ -2289,13 +2292,29 @@ void scpProcessEvent (void)
       {
         sim_printf ("dia dequeued %s\n", msg);
 
-        //size_t msg_len = strlen (msg);
-        //char keyword [msg_len];
-        //sscanf (msg, "%s", keyword);
+        size_t msg_len = strlen (msg);
+        char keyword [msg_len];
+        sscanf (msg, "%s", keyword);
 
-        //if (strcmp(keyword, "attach") == 0)
 
-//drop:
+        // "crdrdy %d"  -- Input hopper is ready on card reader sim unit n
+        if (strcmp(keyword, "crdrdy") == 0)
+          {
+            int unitNum;
+            int n = sscanf(msg, "%*s %d", & unitNum);
+            if (n != 1)
+              {
+                sim_printf ("illformatted crdrdy message; dropping\n");  
+                goto done;
+              }
+sim_printf ("dia thinks crdrdy %d\n", unitNum);
+            crdrdrCardReady (unitNum);
+            goto done;
+          }
+          
+        sim_printf ("dia dequeued and ignored%s\n", msg);
+
+done:
         free (msg);
       }
   }

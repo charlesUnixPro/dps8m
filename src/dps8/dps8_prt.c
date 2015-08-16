@@ -1,5 +1,5 @@
 //
-//  dps8_crdrdr.c
+//  dps8_prt.c
 //  dps8
 //
 //  Created by Harry Reed on 6/16/13.
@@ -11,7 +11,7 @@
 
 #include "dps8.h"
 #include "dps8_iom.h"
-#include "dps8_crdrdr.h"
+#include "dps8_prt.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
@@ -31,41 +31,41 @@
  */
 
 
-#define N_CRDRDR_UNITS 1 // default
+#define N_PRT_UNITS 1 // default
 
-static t_stat crdrdr_reset (DEVICE * dptr);
-static t_stat crdrdr_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat prt_reset (DEVICE * dptr);
+static t_stat prt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat prt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat prt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat prt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
 
-static t_stat crdrdr_svc (UNIT *);
+static t_stat prt_svc (UNIT *);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
-UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
+UNIT prt_unit [N_PRT_UNITS_MAX] =
   {
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& prt_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
-#define CRDRDR_UNIT_NUM(uptr) ((uptr) - crdrdr_unit)
+#define PRT_UNIT_NUM(uptr) ((uptr) - prt_unit)
 
-static DEBTAB crdrdr_dt [] =
+static DEBTAB prt_dt [] =
   {
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
@@ -78,7 +78,7 @@ static DEBTAB crdrdr_dt [] =
 
 #define UNIT_WATCH UNIT_V_UF
 
-static MTAB crdrdr_mod [] =
+static MTAB prt_mod [] =
   {
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
@@ -87,9 +87,9 @@ static MTAB crdrdr_mod [] =
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      crdrdr_set_nunits, /* validation routine */
-      crdrdr_show_nunits, /* display routine */
-      "Number of CRDRDR units in the system", /* value descriptor */
+      prt_set_nunits, /* validation routine */
+      prt_show_nunits, /* display routine */
+      "Number of PRT units in the system", /* value descriptor */
       NULL // Help
     },
     {
@@ -97,8 +97,8 @@ static MTAB crdrdr_mod [] =
       0,            /* match */
       "DEVICE_NAME",     /* print string */
       "DEVICE_NAME",         /* match string */
-      crdrdr_set_device_name, /* validation routine */
-      crdrdr_show_device_name, /* display routine */
+      prt_set_device_name, /* validation routine */
+      prt_show_device_name, /* display routine */
       "Select the boot drive", /* value descriptor */
       NULL          // help
     },
@@ -107,13 +107,12 @@ static MTAB crdrdr_mod [] =
   };
 
 
-// No crdrdrs known to multics had more than 2^24 sectors...
-DEVICE crdrdr_dev = {
-    "CRDRDR",       /*  name */
-    crdrdr_unit,    /* units */
+DEVICE prt_dev = {
+    "PRT",       /*  name */
+    prt_unit,    /* units */
     NULL,         /* registers */
-    crdrdr_mod,     /* modifiers */
-    N_CRDRDR_UNITS, /* #units */
+    prt_mod,     /* modifiers */
+    N_PRT_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */
@@ -121,14 +120,14 @@ DEVICE crdrdr_dev = {
     36,           /* data width */
     NULL,         /* examine */
     NULL,         /* deposit */ 
-    crdrdr_reset,   /* reset */
+    prt_reset,   /* reset */
     NULL,         /* boot */
     NULL,         /* attach */
     NULL,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
-    crdrdr_dt,      /* debug flag names */
+    prt_dt,      /* debug flag names */
     NULL,         /* memory size change */
     NULL,         /* logical name */
     NULL,         // help
@@ -138,14 +137,14 @@ DEVICE crdrdr_dev = {
 };
 
 #define MAX_DEV_NAME_LEN 64
-static struct crdrdr_state
+static struct prt_state
   {
     char device_name [MAX_DEV_NAME_LEN];
-  } crdrdr_state [N_CRDRDR_UNITS_MAX];
+  } prt_state [N_PRT_UNITS_MAX];
 
 static int findCrdrdrUnit (int iomUnitNum, int chan_num, int dev_code)
   {
-    for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
+    for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
       {
         if (iomUnitNum == cables -> cablesFromIomToCrdRdr [i] . iomUnitNum &&
             chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
@@ -156,172 +155,55 @@ static int findCrdrdrUnit (int iomUnitNum, int chan_num, int dev_code)
   }
 
 /*
- * crdrdr_init()
+ * prt_init()
  *
  */
 
 // Once-only initialization
 
-void crdrdr_init (void)
+void prt_init (void)
   {
-    memset (crdrdr_state, 0, sizeof (crdrdr_state));
+    memset (prt_state, 0, sizeof (prt_state));
   }
 
-static t_stat crdrdr_reset (DEVICE * dptr)
+static t_stat prt_reset (DEVICE * dptr)
   {
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
-        // sim_crdrdr_reset (& crdrdr_unit [i]);
-        sim_cancel (& crdrdr_unit [i]);
+        // sim_prt_reset (& prt_unit [i]);
+        sim_cancel (& prt_unit [i]);
       }
     return SCPE_OK;
   }
 
-// http://homepage.cs.uiowa.edu/~jones/cards/codes.html
-// General Electric
-// 
-// General Electric used the following collating sequence on their machines,
-// including the GE 600 (the machine on which Multics was developed); this is
-// largely upward compatable from the IBM 026 commercial character set, and it
-// shows strong influence from the IBM 1401 character set while supporting the
-// full ASCII character set, with 64 printable characters, as it was understood
-// in the 1960's.
-// 
-// GE   &-0123456789ABCDEFGHIJKLMNOPQR/STUVWXYZ[#@:>?+.](<\^$*);'_,%="!
-//      ________________________________________________________________
-//     /&-0123456789ABCDEFGHIJKLMNOPQR/STUVWXYZ #@:>V .¤(<§ $*);^±,%='"
-// 12 / O           OOOOOOOOO                        OOOOOO
-// 11|   O                   OOOOOOOOO                     OOOOOO
-//  0|    O                           OOOOOOOOO                  OOOOOO
-//  1|     O        O        O        O
-//  2|      O        O        O        O       O     O     O     O
-//  3|       O        O        O        O       O     O     O     O
-//  4|        O        O        O        O       O     O     O     O
-//  5|         O        O        O        O       O     O     O     O
-//  6|          O        O        O        O       O     O     O     O
-//  7|           O        O        O        O       O     O     O     O
-//  8|            O        O        O        O OOOOOOOOOOOOOOOOOOOOOOOO
-//  9|             O        O        O        O
-//   |__________________________________________________________________
-// In the above, the 0-8-2 punch shown as _ should be printed as an assignment
-// arrow, and the 11-8-2 punch shown as ^ should be printed as an up-arrow.
-// This conforms to the evolution of of these ASCII symbols from the time GE
-// adopted this character set and the present.
-
-
-UNUSED static void asciiToH (char * str, uint * hstr)
+static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
-    char haystack [] = "&-0123456789ABCDEFGHIJKLMNOPQR/STUVWXYZ[#@:>?+.](<\\^$*);'_,%=\"!";
-    uint table [] =
-      {
-        0b100000000000, // &
-        0b010000000000, // -
-        0b001000000000, // 0
-        0b000100000000, // 1
-        0b000010000000, // 2
-        0b000001000000, // 3
-        0b000000100000, // 4
-        0b000000010000, // 5
-        0b000000001000, // 6
-        0b000000000100, // 7
-        0b000000000010, // 8
-        0b000000000001, // 9
-
-        0b100100000000, // A
-        0b100010000000, // B
-        0b100001000000, // C
-        0b100000100000, // D
-        0b100000010000, // E
-        0b100000001000, // F
-        0b100000000100, // G
-        0b100000000010, // H
-        0b100000000001, // I
-
-        0b010100000000, // J
-        0b010010000000, // K
-        0b010001000000, // L
-        0b010000100000, // M
-        0b010000010000, // N
-        0b010000001000, // O
-        0b010000000100, // P
-        0b010000000010, // Q
-        0b010000000001, // R
-
-        0b001100000000, // /
-        0b001010000000, // S
-        0b001001000000, // T
-        0b001000100000, // U
-        0b001000010000, // V
-        0b001000001000, // W
-        0b001000000100, // X
-        0b001000000010, // Y
-        0b001000000001, // Z
-
-        0b000010000010, // [
-        0b000001000010, // #
-        0b000000100010, // @
-        0b000000010010, // :
-        0b000000001010, // >
-        0b000000000110, // ?
-
-        0b100010000010, // +
-        0b100001000010, // .
-        0b100000100010, // ]
-        0b100000010010, // (
-        0b100000001010, // <
-        0b100000000110, // backslash
-
-        0b010010000010, // ^
-        0b010001000010, // $
-        0b010000100010, // *
-        0b010000010010, // )
-        0b010000001010, // ;
-        0b010000000110, // '
-
-        0b001010000010, // _
-        0b001001000010, // ,
-        0b001000100010, // %
-        0b001000010010, // =
-        0b001000001010, // "
-        0b001000000110, // !
-      };
-    for (char * p = str; * p; p ++)
-      {
-        uint h = 0b000000000110; // ?
-        char * q = index (haystack, toupper (* p));
-        if (q)
-          h = table [q - haystack];
-        * hstr ++ = h;
-      }
- }
-
-static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
-  {
-    int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
-    //struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
+    int prt_unit_num = PRT_UNIT_NUM (unitp);
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [prt_unit_num] . iomUnitNum;
+    //struct prt_state * prt_statep = & prt_state [prt_unit_num];
     * disc = false;
 
     int chan = pcwp-> chan;
-sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
+sim_printf ("prt_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
     if (chan_data -> ptp)
-      sim_printf ("PTP in crdrdr\n");
+      sim_printf ("PTP in prt\n");
     chan_data -> stati = 0;
 
     switch (pcwp -> dev_cmd)
       {
+#if 0
         case 000: // CMD 00 Request status
           {
             chan_data -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status %d\n", crdrdr_unit_num);
+            sim_debug (DBG_NOTIFY, & prt_dev, "Request status %d\n", prt_unit_num);
             chan_data -> initiate = true;
           }
           break;
 
         case 001: // CMD 01 Read binary
           {
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary %d\n", crdrdr_unit_num);
+            sim_debug (DBG_NOTIFY, & prt_dev, "Read binary %d\n", prt_unit_num);
             // Get the DDCW
             dcw_t dcw;
             int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
@@ -432,17 +314,17 @@ w=i;
         case 040: // CMD 40 Reset status
           {
             chan_data -> stati = 04000;
-            //crdrdr_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status %d\n", crdrdr_unit_num);
+            //prt_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
             chan_data -> initiate = true;
           }
           break;
 
-
+#endif
 
         default:
           {
-sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
+sim_printf ("prt daze %o\n", pcwp -> dev_cmd);
             chan_data -> stati = 04501; // cmd reject, invalid opcode
             chan_data -> chanStatus = chanStatIncorrectDCW;
           }
@@ -453,10 +335,10 @@ sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
     return 0;
   }
 
-int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+int prt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
-    int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int prt_unit_num = PRT_UNIT_NUM (unitp);
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [prt_unit_num] . iomUnitNum;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
@@ -469,7 +351,7 @@ int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     if (pcwp -> dev_cmd == 051)
       return 1;
     bool disc;
-    crdrdr_cmd (unitp, pcwp, & disc);
+    prt_cmd (unitp, pcwp, & disc);
 
     // ctrl of the pcw is observed to be 0 even when there are idcws in the
     // list so ignore that and force it to 2.
@@ -479,7 +361,7 @@ int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       ctrl = 0;
 //sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
 
-    // It looks like the crdrdr controller ignores IOTD and olny obeys ctrl...
+    // It looks like the prt controller ignores IOTD and olny obeys ctrl...
     //while ((! disc) && ctrl == 2)
     int ptro = 0;
 #ifdef PTRO
@@ -510,8 +392,8 @@ sim_printf ("persuing got type %d\n", dcw . type);
 
 // The dcw does not necessarily have the same dev_code as the pcw....
 
-        crdrdr_unit_num = findCrdrdrUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
-        if (crdrdr_unit_num < 0)
+        prt_unit_num = findCrdrdrUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+        if (prt_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
             iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
@@ -521,73 +403,75 @@ sim_printf ("persuing got type %d\n", dcw . type);
             //status_service (iomUnitNum, pcwp -> chan, false);
             break;
           }
-        unitp = & crdrdr_unit [crdrdr_unit_num];
-        crdrdr_cmd (unitp, & dcw . fields . instr, & disc);
+        unitp = & prt_unit [prt_unit_num];
+        prt_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
       }
-sim_printf ("crdrdr interrupts\n");
+sim_printf ("prt interrupts\n");
     send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
     return 1;
   }
 
-static t_stat crdrdr_svc (UNIT * unitp)
+static t_stat prt_svc (UNIT * unitp)
   {
-    int crdrdrUnitNum = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitNum;
-    int chanNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
+    int prtUnitNum = PRT_UNIT_NUM (unitp);
+    int iomUnitNum = cables -> cablesFromIomToCrdRdr [prtUnitNum] . iomUnitNum;
+    int chanNum = cables -> cablesFromIomToCrdRdr [prtUnitNum] . chan_num;
     pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
-    crdrdr_iom_cmd (unitp, pcwp);
+    prt_iom_cmd (unitp, pcwp);
     return SCPE_OK;
   }
 
 
-static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat prt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
-    sim_printf("Number of CRDRDR units in system is %d\n", crdrdr_dev . numunits);
+    sim_printf("Number of PRT units in system is %d\n", prt_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_CRDRDR_UNITS_MAX)
+    if (n < 1 || n > N_PRT_UNITS_MAX)
       return SCPE_ARG;
-    crdrdr_dev . numunits = n;
+    prt_dev . numunits = n;
     return SCPE_OK;
   }
 
-static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
+static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
+    int n = PRT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_PRT_UNITS_MAX)
       return SCPE_ARG;
-    sim_printf("Card reader device name is %s\n", crdrdr_state [n] . device_name);
+    sim_printf("Card reader device name is %s\n", prt_state [n] . device_name);
     return SCPE_OK;
   }
 
-static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
+static t_stat prt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
+    int n = PRT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_PRT_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
       {
-        strncpy (crdrdr_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        crdrdr_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+        strncpy (prt_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        prt_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
       }
     else
-      crdrdr_state [n] . device_name [0] = 0;
+      prt_state [n] . device_name [0] = 0;
     return SCPE_OK;
   }
 
-void crdrdrCardReady (int unitNum)
+#if 0
+void prtCardReady (int unitNum)
   {
     send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitNum,
                             cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
                             cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
                             0000, 0001 /* tape drive to ready */);
   }
+#endif
 
