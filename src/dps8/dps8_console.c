@@ -365,7 +365,7 @@ static void handleRCP (char * text)
     char label [len];
     char with [len];
     char drive [len];
-    char whom [len];
+    //char whom [len];
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %s %s ring on %s",
                 label, with, drive);
     if (rc == 3)
@@ -391,6 +391,27 @@ sim_printf ("<%s>\n", labelDotTap);
         strcat (labelDotTap, ".tap");
 sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
+        return;
+      }
+
+// 1236.8  RCP: Force Detached tapa_01 from Anthony.SysEng.a
+
+    rc = sscanf (text, "%*d.%*d RCP: Force Detached %s",
+                drive);
+    if (rc == 1)
+      {
+        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
+        detachTape (drive);
+        return;
+      }
+
+
+    rc = sscanf (text, "%*d.%*d RCP: Detached %s",
+                drive);
+    if (rc == 1)
+      {
+        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
+        detachTape (drive);
         return;
       }
 
