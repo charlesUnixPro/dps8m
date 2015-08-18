@@ -31,6 +31,8 @@ static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat fnpSetIPCname (UNIT * uptr, int32 value, char * cptr, void * desc);
 
 static int findMbx (uint fnpUnitNumber);
 
@@ -91,6 +93,17 @@ static MTAB fnpMod [] =
       "Number of FNP units in the system", /* value descriptor */
       NULL          // help
     },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */ 
+      0,            /* match */ 
+      "IPC_NAME",     /* print string */
+      "IPC_NAME",         /* match string */
+      fnpSetIPCname, /* validation routine */
+      fnpShowIPCname, /* display routine */
+      "Set the device IPC name", /* value descriptor */
+      NULL          // help
+    },
+
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -127,6 +140,8 @@ DEVICE fnpDev = {
     NULL,             // device description
 };
 
+#define MAX_DEV_NAME_LEN 64
+
 static struct fnpUnitData
   {
 //-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
@@ -137,6 +152,7 @@ static struct fnpUnitData
     uint mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
+    char ipcName [MAX_DEV_NAME_LEN];
   } fnpUnitData [N_FNP_UNITS_MAX];
 
 
@@ -2051,6 +2067,32 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
       return SCPE_ARG;
     fnpDev . numunits = (uint32) n;
     //return fnppSetNunits (uptr, value, cptr, desc);
+    return SCPE_OK;
+  }
+
+static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
+                              UNUSED int val, UNUSED void * desc)
+  {   
+    int n = FNP_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_FNP_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("FNP IPC name is %s\n", fnpUnitData [n] . ipcName);
+    return SCPE_OK;
+  }   
+
+static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
+                             UNUSED char * cptr, UNUSED void * desc)
+  {
+    int n = FNP_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_FNP_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (fnpUnitData [n] . ipcName, cptr, MAX_DEV_NAME_LEN - 1);
+        fnpUnitData [n] . ipcName [MAX_DEV_NAME_LEN - 1] = 0;
+      }
+    else
+      fnpUnitData [n] . ipcName [0] = 0;
     return SCPE_OK;
   }
 

@@ -9,6 +9,7 @@
 #include "dps8_disk.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_prt.h"
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 #ifdef M_SHARED
@@ -137,6 +138,38 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitNum, int chan_num,
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum = iomUnitNum;
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = chan_num;
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+
+static t_stat cable_prt (int prt_unit_num, int iomUnitNum, int chan_num, 
+                            int dev_code)
+  {
+    if (prt_unit_num < 0 || prt_unit_num >= (int) prt_dev . numunits)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_prt: prt_unit_num out of range <%d>\n", prt_unit_num);
+        sim_printf ("cable_prt: prt_unit_num out of range <%d>\n", 
+                    prt_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitNum != -1)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_prt: socket in use\n");
+        sim_printf ("cable_prt: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iomUnitNum, chan_num, dev_code, DEVT_PRT, 
+                              chanTypePSI, prt_unit_num, & prt_dev, 
+                              & prt_unit [prt_unit_num], prt_iom_cmd);
+    if (rc)
+      return rc;
+
+    cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitNum = iomUnitNum;
+    cables -> cablesFromIomToPrt [prt_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToPrt [prt_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -504,6 +537,10 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_crdrdr (n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "PRT") == 0)
+      {
+        rc = cable_prt (n1, n2, n3, n4);
+      }
     else
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
@@ -546,5 +583,7 @@ void sysCableInit (void)
       cables -> cablesFromIomToDsk [i] . iomUnitNum = -1;
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       cables -> cablesFromIomToCrdRdr [i] . iomUnitNum = -1;
+    for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
+      cables -> cablesFromIomToPrt [i] . iomUnitNum = -1;
     // sets cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
   }

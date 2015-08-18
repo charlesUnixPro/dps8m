@@ -193,6 +193,9 @@ endif
 # efence is Electric Fence, a malloc debugger.
 #LIBS +- -lefence
 
+# link in gperftools 
+# LIBS += -lprofiler
+
 #LIBS = -lrt -lpthread 
 
 C_SRCS  = ./dps8_addrmods.c 
@@ -230,6 +233,7 @@ C_SRCS += ./fnp_2.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./dps8_crdrdr.c
 C_SRCS += ./dps8_cable.c
+C_SRCS += ./dps8_prt.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -265,6 +269,7 @@ H_SRCS += utlist.h
 #H_SRCS += fnpp.h
 H_SRCS += dps8_crdrdr.h
 H_SRCS += dps8_cable.h
+H_SRCS += dps8_prt.h
 
 H_SRCS += area_info.incl.pl1.h
 H_SRCS += bind_map.incl.pl1.h
