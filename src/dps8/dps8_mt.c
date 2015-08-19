@@ -255,7 +255,7 @@ static struct tape_state
     t_mtrlnt tbc; // Number of bytes read into buffer
     uint words_processed; // Number of Word36 processed from the buffer
 // XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
-    //int rec_num; // track tape position
+    int rec_num; // track tape position
     char device_name [MAX_DEV_NAME_LEN];
   } tape_state [N_MT_UNITS_MAX];
 
@@ -328,14 +328,15 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
 
 void unloadTape (uint driveNumber)
   {
-    //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
-    t_stat stat = sim_tape_detach (& mt_unit [driveNumber]);
-    if (stat != SCPE_OK)
+    if (mt_unit [driveNumber] . flags & UNIT_ATT)
       {
-        sim_printf ("loadTape sim_tape_detach returned %d\n", stat);
-        return;
+        t_stat stat = sim_tape_detach (& mt_unit [driveNumber]);
+        if (stat != SCPE_OK)
+          {
+            sim_printf ("unloadTape sim_tape_detach returned %d\n", stat);
+            return;
+          }
       }
-    //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     send_special_interrupt (cables -> cablesFromIomToTap [driveNumber] . iomUnitNum,
                             cables -> cablesFromIomToTap [driveNumber] . chan_num,
                             cables -> cablesFromIomToTap [driveNumber] . dev_code,
@@ -637,7 +638,7 @@ if (is9) sim_printf ("tbc %d <%s>\n", tbc, tape_statep -> bufp);
                 * disc = true;
                 if (ret == MTSE_TMK)
                   {
-                    //tape_statep -> rec_num ++;
+                    tape_statep -> rec_num ++;
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
                     chan_data -> stati = 04423; // EOF category EOF file mark
@@ -678,14 +679,12 @@ if (is9) sim_printf ("tbc %d <%s>\n", tbc, tape_statep -> bufp);
                 chan_data -> chanStatus = chanStatParityErrPeriph;
                 break;
               }
-            //tape_statep -> rec_num ++;
+            tape_statep -> rec_num ++;
             tape_statep -> tbc = tbc;
             tape_statep -> words_processed = 0;
             if (unitp->flags & UNIT_WATCH)
-              //sim_printf ("Tape %ld reads record %d\n",
-                          //MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-              sim_printf ("Tape %ld reads record\n",
-                          MT_UNIT_NUM (unitp));
+              sim_printf ("Tape %ld reads record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             // Get the DDCW
 
@@ -1030,12 +1029,10 @@ if (is9) sim_printf ("tbc %d <%s>\n", tbc, tape_statep -> bufp);
                 chan_data -> chanStatus = chanStatParityErrPeriph;
                 break;
               }
-            //tape_statep -> rec_num ++;
+            tape_statep -> rec_num ++;
             if (unitp->flags & UNIT_WATCH)
-              //sim_printf ("Tape %ld writes record %d\n",
-                          //MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-              sim_printf ("Tape %ld writes record\n",
-                          MT_UNIT_NUM (unitp));
+              sim_printf ("Tape %ld writes record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             chan_data -> stati = 04000; 
             if (sim_tape_eot (unitp))
@@ -1131,10 +1128,9 @@ sim_printf ("uncomfortable with this\n");
             sim_debug (DBG_DEBUG, & tape_dev, 
                        "mt_iom_cmd: Forward skip record tally %d\n", tally);
 
-            int nbs = 0;
-
             uint32 skipped;
             t_stat ret = sim_tape_sprecsf (unitp, tally, & skipped);
+
             if (ret != MTSE_OK && ret != MTSE_TMK)
               {
 sim_printf ("sim_tape_sprecsf returned %d\n", ret);
@@ -1145,9 +1141,16 @@ sim_printf ("sim_tape_sprecsf returned %d\n", ret);
 sim_printf ("skipped %d != tally %d\n", skipped, tally);
               }
 
+            tape_statep -> rec_num += skipped;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld forward skips to record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
             chan_data -> tallyResidue = tally - skipped;
+
             sim_debug (DBG_NOTIFY, & tape_dev, 
-                       "mt_iom_cmd: Forward space %d records\n", nbs);
+                       "mt_iom_cmd: Forward space %d records\n", skipped);
+
             chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
               chan_data -> stati |= 1;
@@ -1229,25 +1232,41 @@ sim_printf ("uncomfortable with this\n");
                 nbs ++;
               }
 #else
+sim_printf ("skip back tally %d\n", tally);
+// sim_tape_sprecsr sumbles on tape marks; do our own version...
+#if 0
             uint32 skipped;
             t_stat ret = sim_tape_sprecsr (unitp, tally, & skipped);
-            if (ret != MTSE_OK)
+            if (ret != MTSE_OK && ret != MTSE_TMK)
               {
 sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                  break;
               }
+#else
+            uint32 skipped = 0;
+            while (skipped < tally)
+              {
+                t_mtrlnt tbc;
+                t_stat ret = sim_tape_sprecr (unitp, & tbc);
+                if (ret != MTSE_OK && ret != MTSE_TMK)
+                  break;
+                skipped ++;
+              }
+#endif
             if (skipped != tally)
               {
 sim_printf ("skipped %d != tally %d\n", skipped, tally);
               }
+sim_printf ("skipped %d\n", skipped);
+            tape_statep -> rec_num -= skipped;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld skip back to record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
             chan_data -> tallyResidue = tally - skipped;
+
             sim_debug (DBG_NOTIFY, & tape_dev, 
-                       "mt_iom_cmd: Backspace %d records\n", tally);
-            if (unitp -> flags & UNIT_WATCH)
-              //sim_printf ("Tape %ld backspaces to record %d\n",
-                          //MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-              sim_printf ("Tape %ld backspaces record\n",
-                          MT_UNIT_NUM (unitp));
+                       "mt_iom_cmd: Backspace %d records\n", skipped);
 #endif
 
             chan_data -> stati = 04000;
@@ -1260,7 +1279,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
           }
           break;
 
-        case 047: // 046 Backspace File
+        case 047: // 047 Backspace File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace File\n");
@@ -1334,25 +1353,26 @@ sim_printf (" Back space file: setting tally %d to 1\n", tally);
                 nbs ++;
               }
 #else
-            uint32 skipped;
-            t_stat ret = sim_tape_spfiler (unitp, tally, & skipped);
-            if (ret != MTSE_OK)
+            uint32 skipped, recsskipped;
+            t_stat ret = sim_tape_spfilebyrecr (unitp, tally, & skipped, & recsskipped);
+            if (ret != MTSE_OK && ret != MTSE_TMK && ret != MTSE_BOT)
               {
-sim_printf ("sim_tape_sprecsr returned %d\n", ret);
+sim_printf ("sim_tape_spfilebyrecr returned %d\n", ret);
                  break;
               }
             if (skipped != tally)
               {
 sim_printf ("skipped %d != tally %d\n", skipped, tally);
               }
+
+            tape_statep -> rec_num -= recsskipped;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld backward skips to record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
             chan_data -> tallyResidue = tally - skipped;
             sim_debug (DBG_NOTIFY, & tape_dev, 
                        "mt_iom_cmd: Backspace %d records\n", tally);
-            if (unitp -> flags & UNIT_WATCH)
-              //sim_printf ("Tape %ld backspaces to record %d\n",
-                          //MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-              sim_printf ("Tape %ld backspaces record\n",
-                          MT_UNIT_NUM (unitp));
 #endif
 
             chan_data -> stati = 04000;
@@ -1424,12 +1444,11 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                 chan_data -> chanStatus = chanStatParityErrPeriph;
                 break;
               }
-            //tape_statep -> rec_num ++;
+
+            tape_statep -> rec_num ++;
             if (unitp->flags & UNIT_WATCH)
-              //sim_printf ("Tape %ld writes tape mark %d\n",
-                          //MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-              sim_printf ("Tape %ld writes tape mark\n",
-                          MT_UNIT_NUM (unitp));
+              sim_printf ("Tape %ld writes tape mark %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             chan_data -> stati = 04000; 
             if (sim_tape_eot (unitp))
@@ -1659,7 +1678,11 @@ sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Rewind\n");
             sim_tape_rewind (unitp);
-            //tape_statep -> rec_num = 0;
+
+            tape_statep -> rec_num = 0;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld rewinds\n", MT_UNIT_NUM (unitp));
+
             chan_data -> stati = 04000;
             if (sim_tape_wrp (unitp))
               chan_data -> stati |= 1;
@@ -1688,6 +1711,10 @@ sim_printf ("unloading\n");
             sim_tape_detach (unitp);
             //tape_statep -> rec_num = 0;
             chan_data -> stati = 04000;
+    send_special_interrupt (cables -> cablesFromIomToTap [mt_unit_num] . iomUnitNum,
+                            cables -> cablesFromIomToTap [mt_unit_num] . chan_num,
+                            cables -> cablesFromIomToTap [mt_unit_num] . dev_code,
+                            0, 0040 /* unload complete */);
           }
           break;
    

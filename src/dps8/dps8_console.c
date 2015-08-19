@@ -394,6 +394,10 @@ sim_printf ("<%s>\n", labelDotTap);
         return;
       }
 
+// Just because RCP has detached the drive, it doesn't mean that 
+// it doesn't remeber what tape is on there, and expects to be there
+
+#if 0
 // 1236.8  RCP: Force Detached tapa_01 from Anthony.SysEng.a
 
     rc = sscanf (text, "%*d.%*d RCP: Force Detached %s",
@@ -414,6 +418,7 @@ sim_printf ("<%s>\n", labelDotTap);
         detachTape (drive);
         return;
       }
+#endif
 
 #if 0
     rc = sscanf (text, "%*d.%*d RCP: Mount logical volume %s for %s",
