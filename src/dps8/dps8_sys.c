@@ -76,6 +76,7 @@ static t_stat dps_debug_stop (int32 arg, char * buf);
 static t_stat dps_debug_break (int32 arg, char * buf);
 static t_stat dps_debug_segno (int32 arg, char * buf);
 static t_stat dps_debug_ringno (int32 arg, char * buf);
+static t_stat dps_debug_bar (int32 arg, UNUSED char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat addSystemBookEntry (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
@@ -114,6 +115,8 @@ static CTAB dps8_cmds[] =
     {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL},
     {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL},
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL},
+    {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL},
+    {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
     {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
@@ -222,6 +225,7 @@ uint64 sim_deb_stop = 0;
 uint64 sim_deb_break = 0;
 uint64 sim_deb_segno = NO_SUCH_SEGNO;
 uint64 sim_deb_ringno = NO_SUCH_RINGNO;
+bool sim_deb_bar = false;
 
 static t_stat dps_debug_start (UNUSED int32 arg, char * buf)
   {
@@ -255,6 +259,16 @@ static t_stat dps_debug_ringno (UNUSED int32 arg, char * buf)
   {
     sim_deb_ringno = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to ringno %llo\n", sim_deb_ringno);
+    return SCPE_OK;
+  }
+
+static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
+  {
+    sim_deb_bar = arg;
+    if (arg)
+      sim_printf ("Debug set BAR %llo\n", sim_deb_ringno);
+    else
+      sim_printf ("Debug unset BAR %llo\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
