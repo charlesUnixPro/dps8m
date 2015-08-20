@@ -118,6 +118,15 @@ static inline int SIGNEXT6_int (word6 w)
     return w & MASK6;
   }
 
+static inline int32 SIGNEXT18_32 (word18 w)
+  {
+    if (w & SIGN18)
+      {
+        return (w | ((int32) -1) << 18);
+      }
+    return w & MASK18;
+  }
+
 static inline t_int64 SIGNEXT36_64 (word36 w)
   {
     if (w & SIGN36)
@@ -424,8 +433,11 @@ enum _fault_subtype {
 
     oob,        // A BAR mode boundary violation has occurred.
     ill_ptr,    // SPRPn illegal ptr.
-    // Not used by DPS8M
-    // not_control, // not control
+
+    // FAULT_CMD
+
+    lprpn_bits,  // illegal bits in lprpn instruction
+    not_control, // not control
 
     // FAULT_PAR
 

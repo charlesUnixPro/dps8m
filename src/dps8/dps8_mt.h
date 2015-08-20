@@ -7,4 +7,5 @@ int get_mt_numunits (void);
 //void tape_send_special_interrupt (uint driveNumber);
 void loadTape (uint driveNumber, char * tapeFilename, bool ro);
 t_stat attachTape (char * label, bool withring, char * drive);
+t_stat detachTape (char * drive);
 int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp);

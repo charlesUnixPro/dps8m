@@ -664,8 +664,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
 }
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
 {
-    word18s op1 = (word18s) (oP1 & MASK18);
-    word18s op2 = (word18s) (oP2 & MASK18);
+    int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
+    int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
     if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
@@ -1761,6 +1761,28 @@ char * strdupesc (const char * str)
 //     extract the word36 at woffset
 //
 
+word36 extrASCII36 (uint8 * bits, uint woffset)
+  {
+    uint8 * p = bits + woffset * 4;
+
+    uint64 w;
+    w  = ((uint64) p [0]) << 27;
+    w |= ((uint64) p [1]) << 18;
+    w |= ((uint64) p [2]) << 9;
+    w |= ((uint64) p [3]);
+    // mask shouldn't be neccessary but is robust
+    return (word36) (w & MASK36);
+  }
+
+// Data conversion routines
+//
+//  'bits' is the packed bit stream read from the simh tape
+//    it is assumed to start at an even word36 address
+//
+//   extr36
+//     extract the word36 at woffset
+//
+
 word36 extr36 (uint8 * bits, uint woffset)
   {
     uint isOdd = woffset % 2;
@@ -1786,6 +1808,15 @@ word36 extr36 (uint8 * bits, uint woffset)
       }
     // mask shouldn't be neccessary but is robust
     return (word36) (w & MASK36);
+  }
+
+void putASCII36 (word36 val, uint8 * bits, uint woffset)
+  {
+    uint8 * p = bits + woffset * 4;
+    p [0]  = (val >> 27) & 0xff;
+    p [1]  = (val >> 18) & 0xff;
+    p [2]  = (val >>  9) & 0xff;
+    p [3]  = (val      ) & 0xff;
   }
 
 void put36 (word36 val, uint8 * bits, uint woffset)
@@ -1958,6 +1989,25 @@ uint64 extr (void * bits, int offset, int nbits)
     return n;
   }
 
+int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
+  {
+    uint wp = * words_processed; // How many words have been processed
+
+    // 1 dps8m word == 4 bytes
+
+    uint bytes_processed = wp * 4;
+    if (bytes_processed >= tbc)
+      return 1;
+    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+
+    * wordp = extrASCII36 (bufp, wp);
+//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012llo\n", * wordp); 
+    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    (* words_processed) ++;
+
+    return 0;
+  }
+
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
   {
     uint wp = * words_processed; // How many words have been processed
@@ -1971,6 +2021,24 @@ int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed,
 
     * wordp = extr36 (bufp, wp);
 //if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012llo\n", * wordp); 
+    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    (* words_processed) ++;
+
+    return 0;
+  }
+
+int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word)
+  {
+    uint wp = * words_processed; // How many words have been processed
+
+    // 1 dps8m word == 4 bytes
+
+    uint bytes_processed = wp * 4;
+    if (bytes_processed >= tbc)
+      return 1;
+    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+
+    putASCII36 (word, bufp, wp);
     //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
     (* words_processed) ++;
 
