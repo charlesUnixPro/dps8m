@@ -811,7 +811,6 @@ static t_stat cpu_reset (DEVICE *dptr)
 #endif
  
     processorCycle = UNKNOWN_CYCLE;
-    //processorAddressingMode = ABSOLUTE_MODE;
     set_addr_mode(ABSOLUTE_mode);
     
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
@@ -873,7 +872,6 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
 
 
 enum _processor_cycle_type processorCycle;                  ///< to keep tract of what type of cycle the processor is in
-//enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
 //enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
 
 // h6180 stuff
@@ -2009,6 +2007,17 @@ syncFaultReturn:;
                     //sim_debug (DBG_TRACE,& cpu_dev,
                                 //"fault CONT_TRA; was_appending %d\n",
                                 //get_went_appending () ? 1 : 0);
+
+// BAR mode:  [NBAR] is set ON (taking the processor
+// out of BAR node) by the execution of any transfer instruction
+// other than tss during a fault or interrupt trap.
+
+                    if (! (currentInstruction . opcode == 0715 &&
+                           currentInstruction . opcodeX == 0))
+                      {
+                        SETF (cu . IR, I_NBAR);
+                      }
+
                     cpu . wasXfer = true; 
                     setCpuCycle (FETCH_cycle);
                     clearFaultCycle ();
@@ -2605,24 +2614,26 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 
 addr_modes_t get_addr_mode(void)
 {
-    //if (secret_addressing_mode)
-      //{ sim_debug (DBG_TRACE, & cpu_dev, "SECRET\n"); }
     if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
-    //if (went_appending)
-      //{ sim_debug (DBG_TRACE, & cpu_dev, "WENT\n"); }
     if (went_appending)
         return APPEND_mode;
-    //if (IR.abs_mode)
+
     if (TSTF(cu.IR, I_ABS))
-        return ABSOLUTE_mode;
-    
-    //if (IR.not_bar_mode == 0)
-    if (! TSTF(cu.IR, I_NBAR))
-        return BAR_mode;
-    
-    return APPEND_mode;
+      {
+        if (! TSTF(cu.IR, I_NBAR))
+          return BAR_mode;
+        else
+          return ABSOLUTE_mode;
+      }
+    else
+      {
+        if (! TSTF(cu.IR, I_NBAR))
+          return APPEND_BAR_mode;
+        else
+          return APPEND_mode;
+      }
 }
 
 
@@ -2646,25 +2657,31 @@ void set_addr_mode(addr_modes_t mode)
 
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
+        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
+
         SETF(cu.IR, I_ABS);
         SETF(cu.IR, I_NBAR);
-        
         PPR.P = 1;
         
-        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
         if (! TSTF (cu.IR, I_ABS) && TSTF (cu.IR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
+
         CLRF(cu.IR, I_ABS);
-        
         SETF(cu.IR, I_NBAR);
+
     } else if (mode == BAR_mode) {
+        sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
+        SETF(cu.IR, I_ABS);
+        CLRF(cu.IR, I_NBAR);
+        
+    } else if (mode == APPEND_BAR_mode) {
+        sim_debug (DBG_WARN, & cpu_dev, "APU: Setting appending bar mode.\n");
         CLRF(cu.IR, I_ABS);
         CLRF(cu.IR, I_NBAR);
         
-        sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         sim_err ("APU: Unable to determine address mode.\n"); // Doesn't return

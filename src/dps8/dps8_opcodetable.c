@@ -500,7 +500,7 @@ struct opCode NonEISopcodes[01000] = {
     //{"call6", PREPARE_CA | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
     {"call6", READ_OPERAND | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
-    {"tss", READ_OPERAND | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
+    {"tss", PREPARE_CA | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
     {"xec", READ_OPERAND | NO_RPT, NO_DDCSS, 0},
     {"xed", READ_YPAIR | NO_RPT, NO_DDCSS, 0}, // ????
     {"lxl0", READ_OPERAND | NO_RPL, NO_CSS, 0},

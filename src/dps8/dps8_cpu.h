@@ -4,7 +4,8 @@
 #define N_CPU_UNITS 1
 #define CPU_UNIT_NUM 0
 
-
+// JMP_ENTRY must be 0, which is the return value of the setjmp initial
+// entry
 #define JMP_ENTRY       0
 #define JMP_REENTRY     1
 #define JMP_RETRY       2   // retry instruction
@@ -22,12 +23,14 @@
 
 // The CPU supports 3 addressing modes
 // [CAC] I tell a lie: 4 modes...
+// [CAC] I tell another lie: 5 modes...
 
 typedef enum
   {
-    ABSOLUTE_mode = ABSOLUTE_MODE,
-    APPEND_mode = APPEND_MODE,
-    BAR_mode = BAR_MODE
+    ABSOLUTE_mode,
+    APPEND_mode,
+    BAR_mode,
+    APPEND_BAR_mode,
   } addr_modes_t;
 
 
