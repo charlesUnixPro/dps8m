@@ -55,7 +55,7 @@ CPU EIS instructions
 
 CPU math support routines
 
-\subsection{dps8\_opcode}
+\subsection{dps8\_opcodetable}
 
 CPU opcode table; drives address preparation and mode checking
 
@@ -328,6 +328,329 @@ Now that the instruction is in the IWB, switch to EXEC state.
 \begin{verbatim}
     setCpuCycle (EXEC\_cycle);
     break;
+\end{verbatim}
+
+\section{EXEC\_cycle}
+
+The execute cycle starts right off with:
+
+\begin{verbatim}
+    t_stat ret = executeInstruction ();
+\end{verbatim}
+
+A return value of greater than 0 indicates that the CPU needs to halt:
+
+\begin{verbatim}
+    if (ret > 0)
+      {
+        reason = ret;
+        break;
+      }
+\end{verbatim}
+
+A return value of CONT\_TRA indicates that a transfer instruction 
+was executed, which requires different handling. A transfer 
+may be of interest to the handling of
+transfer into append or BAR modes, so the `wasXfer' flag is set; and
+the code that increments the IC is skipped. The CPU state is set to
+EXEC\_cycle, and it all repeats.
+
+\begin{verbatim}
+    if (ret == CONT_TRA)
+      {
+        cpu . wasXfer = true;
+        setCpuCycle (FETCH_cycle);
+        break;   // don't bump PPR.IC, instruction already did it
+      }
+    cpu . wasXfer = false;
+\end{verbatim}
+
+
+Next, the IC is incremented to point to the next instruction; any
+EIS operands that the instruction had are also skipped over.
+The CPU state is set to FETCH\_cycle, and it all repeats.
+
+\begin{verbatim}
+    PPR.IC ++;
+    if (ci->info->ndes > 0)
+      PPR.IC += ci->info->ndes;
+
+    cpu . wasXfer = false;
+    setCpuCycle (FETCH_cycle);
+    break;
+\end{verbatim}
+
+
+\section{Instruction execution: `executeInstruction'}
+
+Instruction execution is managed by `executeInstruction()'.
+
+When `executeInstruction' starts, the instruction has been loaded
+into the CU IWB (Control Unit Instruction Working Buffer).
+
+First, the instruction is decoded, extracting the operation code, address
+field, tag field and the A and I bits into the `currentInstruction'
+structure; and setting the 'info' member to point to the operation's
+entry in the opcode table.
+
+\begin{verbatim}
+    decodeInstruction(cu . IWB, ci);
+\end{verbatim}
+
+The 'info' member contains a wide variety of details about the instruction,
+including:
+
+\begin{description}
+\item [PREPARE\_CA] Instruction will need the operand's computed address.
+\item [READ\_OPERAND] Instruction will read the operand.
+\item [WRITE\_OPERAND] Instruction will write the operand.
+\item [NO\_RPT] Not allowed in a repeat instruction.
+\item [PRIV\_INS] Privileged instruction.
+\item [] The number of EIS operands.
+\item [] Allowed tag values.
+\end{description}
+
+The flags in the `info' structure are used to check instruction restrictions, 
+such as privilege and allowed modifiers; violation causes a fault.
+
+\begin{verbatim}
+    if ((ci -> info -> flags & PRIV_INS) && ! is_priv_mode ())
+        doFault (FAULT_IPR, ill_proc, 
+                 "Attempted execution of privileged instruction.");
+    // No CI/SC/SCR allowed
+    if (ci->info->mods == NO_CSS)
+    {
+        if (_nocss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (ci->info->mods == NO_DUDL)
+    {
+        if (_nodudl[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL modification");
+    }
+\end{verbatim}
+
+Next, an assortment of initializations occurs, setting various registers
+to the operand address field, and initializing the TPR register.
+
+\begin{verbatim}
+    TPR.CA = address;
+    iefpFinalAddress = TPR . CA;
+    rY = TPR.CA;
+
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+\end{verbatim}
+
+If the instruction has EIS operands, they are read into holding variables.
+
+\begin{verbatim}
+    if (info -> ndes > 0)
+      {
+        for(int n = 0; n < info -> ndes; n += 1)
+          {
+// XXX This is a bit of a hack; In general the code is good about 
+// setting up for bit29 or PR operations by setting up TPR, but
+// assumes that the 'else' case can be ignored when it should set
+// TPR to the canonical values. Here, in the case of a EIS instruction
+// restart after page fault, the TPR is in an unknown state. Ultimately,
+// this should not be an issue, as this folderol would be in the DU, and
+// we would not be re-executing that code, but until then, set the TPR
+// to the condition we know it should be in.
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0);
+          }
+        // This must not happen on instruction restart
+        if (! (cu . IR & I_MIIF))
+          {
+            du . CHTALLY = 0;
+            du . Z = 1;
+          }
+      }
+\end{verbatim}
+
+If the instruction expects the address field to be converted to the
+Computed Address, do that.
+
+\begin{verbatim}
+        if (ci->info->flags & PREPARE_CA)
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
+\end{verbatim}
+
+Otherwise if the instruction wants the operand value, do that. `readOperands' will handle single, double, eight and sixteen word operands. The value is held in `CY', `Ypair', `Yblock8' or `Yblock16' holding registers, as appropriate. Read operands handles all aspects of indirection and address appending.
+
+\begin{verbatim}
+        else if (READOP (ci))
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+            readOperands ();
+          }
+\end{verbatim}
+
+Now that the operands have sorted, the instruction is executed.
+
+\begin{verbatim}
+    t_stat ret = doInstruction ();
+\end{verbatim}
+
+If an transfer instruction has the A bit set, and accesses the Append Unit
+during the Computed Address formation, the processor is switch to Append
+mode.
+
+\begin{verbatim}
+    if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
+      {
+        if (get_addr_mode () == BAR_mode)
+          set_addr_mode(APPEND_BAR_mode);
+        else
+          set_addr_mode(APPEND_mode);
+      }
+\end{verbatim}
+
+Finally, it the instruction writes the operand, do that.
+
+\begin{verbatim}
+    if (WRITEOP (ci))
+      {
+        if (! READOP (ci))
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
+        writeOperands ();
+      }
+\end{verbatim}
+
+\section{Instruction execution: `doInstruction'}
+
+First, initialize the EIS state registers.
+
+\begin{verbatim}
+    if (i->info->ndes > 0)
+    {
+        i->e.ins = i;
+        i->e.addr[0].e = &i->e;
+        i->e.addr[1].e = &i->e;
+        i->e.addr[2].e = &i->e;
+
+        i->e.addr[0].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[1].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[2].mat = OperandRead;   // no ARs involved yet
+    }
+\end{verbatim}
+
+And switch based on the opcode extension bit; `Basic' and `EIS' are
+misleading here; the opcode extension bit has a minimal correlation to
+the EIS instruction opcode layout, but by separating the two cases,
+the code becomes a bit more readable, Both routines have the same
+preamble:
+
+\begin{verbatim}
+    DCDstruct * i = & currentInstruction;
+    uint opcode  = i->opcode;  // get opcode
+
+    switch (opcode)
+    {
+       ....
+    }
+\end{verbatim}
+
+We will look at a few of the instructions so as to understand the
+general function of 'doInstruction.'
+
+\subsection{LCA Load Complement A}
+
+`readOperands()' has already retrieved the operand value, and left it in CY.
+The utility routine `compl36' complements the value and sets the IR flags,
+and the assignment operation places the complemented value in the A register.
+
+\begin{verbatim}
+    case 0335:  // lca
+      rA = compl36 (CY, & cu . IR);
+      break;
+\end{verbatim}
+
+\subsection{LREG Load Registers}
+
+LREG loads the A, Q, E, and index registers from a Y-block8. Again, 
+`readOperands()' has loaded the values into Yblock8.
+
+\begin{verbatim}
+    case 0073:   ///< lreg
+      rX[0] = GETHI(Yblock8[0]);
+      rX[1] = GETLO(Yblock8[0]);
+      rX[2] = GETHI(Yblock8[1]);
+      rX[3] = GETLO(Yblock8[1]);
+      rX[4] = GETHI(Yblock8[2]);
+      rX[5] = GETLO(Yblock8[2]);
+      rX[6] = GETHI(Yblock8[3]);
+      rX[7] = GETLO(Yblock8[3]);
+      rA = Yblock8[4];
+      rQ = Yblock8[5];
+      rE = (GETHI(Yblock8[6]) >> 10) & 0377;   // need checking
+      break;
+\end{verbatim}
+
+\subsection{STA Store A}
+
+Since `writeOperands()' will do the actual writing, all STA needs to
+do is copy A to CY.
+
+\begin{verbatim}
+    case 0755:  // sta
+      CY = rA;
+      break;
+\end{verbatim}
+
+\subsection{STXn Store Index Register n}
+
+For many opcodes, the low bits of the opcode contains indexing 
+information.
+
+\begin{verbatim}
+    case 0740:  ///< stx0
+    case 0741:  ///< stx1
+    case 0742:  ///< stx2
+    case 0743:  ///< stx3
+    case 0744:  ///< stx4
+    case 0745:  ///< stx5
+    case 0746:  ///< stx6
+    case 0747:  ///< stx7
+      {
+        uint32 n = opcode & 07;  // get n
+        SETHI(CY, rX[n]);
+      }
+    break;
+\end{verbatim}
+
+\subsection {TRA Transfer}
+
+For the TRA instruction, the computed address is placed in the PPR, and the
+function return value is used to signal that a transfer is to occur.
+
+\begin{verbatim}
+    case 0710:  ///< tra
+      PPR.IC = TPR.CA;
+      PPR.PSR = TPR.TSR;
+      return CONT_TRA;
 \end{verbatim}
 
 \end{document}
