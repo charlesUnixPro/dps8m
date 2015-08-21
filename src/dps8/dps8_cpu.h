@@ -64,8 +64,6 @@ typedef struct
   } eis_mf_t;
 #endif
 
-extern int xec_side_effect;
-
 // [map] designates mapping into 36-bit word from DPS-8 proc manual
 
 extern word36   rA;     // accumulator

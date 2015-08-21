@@ -164,10 +164,6 @@ static bool watchBits [MEMSIZE];
 static int is_eis[1024];    // hack
 
 // XXX PPR.IC oddly incremented. ticket #6
-// xec_side_effect is used to record the number of EIS operand descriptor
-// words consumed during XEC processing; this allows the PPR.IC to be
-// correctly incremented.
-int xec_side_effect; // hack
 
 void init_opcodes (void)
   {
@@ -1819,8 +1815,6 @@ last = M[01007040];
 
             case EXEC_cycle:
               {
-                xec_side_effect = 0;
-
                 if (GET_I (cu . IWB))
                   cpu . wasInhibited = true;
 
@@ -1896,8 +1890,6 @@ last = M[01007040];
                 PPR.IC ++;
                 if (ci->info->ndes > 0)
                   PPR.IC += ci->info->ndes;
-                PPR.IC += xec_side_effect;
-                xec_side_effect = 0;
 
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
@@ -1906,7 +1898,6 @@ last = M[01007040];
 nextInstruction:;
 syncFaultReturn:;
                 PPR.IC ++;
-                xec_side_effect = 0;
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
