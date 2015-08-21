@@ -1128,12 +1128,24 @@ sim_printf ("uncomfortable with this\n");
             sim_debug (DBG_DEBUG, & tape_dev, 
                        "mt_iom_cmd: Forward skip record tally %d\n", tally);
 
+// sim_tape_sprecsf incorrectly stops on tape marks; 
+#if 0
             uint32 skipped;
             t_stat ret = sim_tape_sprecsf (unitp, tally, & skipped);
-
-            if (ret != MTSE_OK && ret != MTSE_TMK)
+#else
+            uint32 skipped = 0;
+            t_stat ret = MTSE_OK;
+            while (skipped < tally)
               {
-sim_printf ("sim_tape_sprecsf returned %d\n", ret);
+                t_mtrlnt tbc;
+                ret = sim_tape_sprecf (unitp, & tbc);
+                if (ret != MTSE_OK && ret != MTSE_TMK)
+                  break;
+                skipped = skipped + 1;
+              }
+#endif
+            if (ret != MTSE_OK && ret != MTSE_TMK && ret != MTSE_EOM)
+              {
                  break;
               }
             if (skipped != tally)
@@ -1232,7 +1244,6 @@ sim_printf ("uncomfortable with this\n");
                 nbs ++;
               }
 #else
-sim_printf ("skip back tally %d\n", tally);
 // sim_tape_sprecsr sumbles on tape marks; do our own version...
 #if 0
             uint32 skipped;
@@ -1257,7 +1268,6 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               {
 sim_printf ("skipped %d != tally %d\n", skipped, tally);
               }
-sim_printf ("skipped %d\n", skipped);
             tape_statep -> rec_num -= skipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld skip back to record %d\n",
@@ -1329,7 +1339,6 @@ sim_printf ("uncomfortable with this\n");
 
             if (tally != 1)
               {
-sim_printf (" Back space file: setting tally %d to 1\n", tally);
                 sim_debug (DBG_DEBUG, & tape_dev,
                            "%s: Back space file: setting tally %d to 1\n",
                            __func__, tally);

@@ -1,0 +1,656 @@
+\documentclass[notitlepage]{report}
+\usepackage {listings}
+\usepackage{ulem}
+\renewcommand{\thesection}{\arabic{part}.\arabic{section}}
+\makeatletter
+\@addtoreset{section}{part}
+\makeatother 
+
+\begin{document}
+\title{Emulation Implementation Notes}
+%\author{}
+%\date{}
+\maketitle
+
+\part{Source Code Layout}
+
+\section{dps8\_sys} 
+
+This module handles the abstract "entire system." The bulk of the code is 
+initialization and simh command processing hooks.
+
+\subsection{dps8\_cable}
+
+Hardware device cabling emulation
+
+\section{dps8\_cpu} 
+
+The CPU emulator
+
+\subsection{dsp8\_iefp}
+
+CPU Memory access
+
+\subsection{dps8\_addrmods}
+
+CPU Address Modifcation
+
+\subsection{dps8\_append}
+
+CPU Append Unit
+
+\subsection{dps8\_bar}
+
+CPU BAR address computation
+
+\subsection{dps8\_ins}
+
+CPU instructions
+
+\subsection{dps8\_eis}
+
+CPU EIS instructions
+
+\subsection{dps8\_math}
+
+CPU math support routines
+
+\subsection{dps8\_opcodetable}
+
+CPU opcode table; drives address preparation and mode checking
+
+\subsection{dps8\_faults}
+
+CPU fault handling code
+
+\subsection{dps8\_decimal}
+
+CPU Decimal math support routines
+
+\section{dps8\_scu}
+
+The SCU emulator
+
+\section{dps8\_iom}
+
+The IOM emulator
+
+\subsection{dps8\_console}
+
+Operator console device
+
+\subsection{dps8\_disk}
+
+Disk device
+
+\subsection{dps8\_mt}
+
+Tape device
+
+\subsection{dps8\_fnp, fnp\_ipc}
+
+FNP device
+
+\subsection{dps8\_lp}
+
+Printer device
+
+\subsection{dps8\_crdrdr}
+
+Card reader device
+
+\section{dps8\_utils}
+
+Common utility routines
+
+\subsection{shm}
+
+Host shared memory management
+
+\section{Other}
+
+dps8\_utils Common support code \\
+dps8\_clk  Unused simh clock hooks \\
+dps8\_loader Segment loader for unit tests \\
+dps8\_stddev Vestigial \\
+dps8\_fxe Faux Multics Execution module
+
+%+ Variations between the hardware and the emulator ("as built" drawings).
+%
+%DPS8 memory is managed by the CPU code, not the SCU code.
+%
+%The history registers are not implemented.
+%
+%The RPL instruction is not implemented.
+%
+%The MPCs have been abstracted into the device code.
+%
+\part{CPU operation}
+
+\section{simh}
+
+When simh is running the CPU it calls sim\_instr(), which is the CPU emulator entry point.
+
+sim\_instr() loops, executing emulated instructions until some emulation halting condition is met, or some simh component signals for a pause due to an external
+event.
+
+\section{CPU emulation organization}
+
+sim\_instr first establishes a setjmp context; this is used primarily by RCU 
+mechanism to restart instruction processing after restoring a saved system
+state due to a fault or an interrupt.
+
+The cpu emulation is written as a state machine. The longjmp parameter is 
+used to setup the desired state; at initial entry, setjmp returns a zero, 
+and the appropriate setup is done.
+
+\begin{verbatim}
+#define JMP\_ENTRY       0
+
+    int val = setjmp(jmpMain);
+
+    switch (val)
+      {
+        case JMP\_ENTRY:
+        case JMP\_REENTRY:
+            reason = 0;
+            break;
+        case JMP\_NEXT:
+            goto nextInstruction;
+        case JMP\_STOP:
+            reason = STOP\_HALT;
+            goto leave;
+        case JMP\_SYNC\_FAULT\_RETURN:
+            goto syncFaultReturn;
+        case JMP\_REFETCH:
+            cpu . wasXfer = false;
+            setCpuCycle (FETCH\_cycle);
+            break;
+        case JMP\_RESTART:
+            setCpuCycle (EXEC\_cycle);
+            break;
+        default:
+          sim\_printf ("longjmp value of %d unhandled\n", val);
+          goto leave;
+      }
+
+\end{verbatim}
+
+The cpu emulation then enters a "do {...} while (reason == 0)" loop,
+which cycles the CPU through its states.
+
+The top of the loop checks the simh components for events that need
+to be handled (simh\_hooks()), polls various subsystems for service requests
+(emulator console commands to be processed, incoming FNP messages and 
+operator console input).
+
+\begin{verbatim}
+        reason = 0;
+
+        // Process deferred events and breakpoints
+        reason = simh\_hooks ();
+        if (reason)
+          {
+            //sim\_printf ("reason: %d\n", reason);
+            break;
+          }
+
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+          {
+            queueSubsample = 0;
+            scpProcessEvent ();
+            fnpProcessEvent ();
+            consoleProcess ();
+          }
+        if (check\_attn\_key ())
+          console\_attn (NULL);
+\end{verbatim}
+
+It then checks for Timer Register runout, setting the group 7 fault flag
+if needed. (Group 7 faults are distinguished as not resulting from
+instruction execution, but external events; and has such are handled
+synchronously between instruction execution steps, rather then 
+interrupting mid-instruction. 
+
+\begin{verbatim}
+    bool overrun;
+    UNUSED word27 rTR = getTR (& overrun);
+    if (overrun)
+      {
+        ackTR ();
+        if (switches . tro\_enable)
+          setG7fault (FAULT\_TRO, 0);
+      }
+\end{verbatim}
+
+Next, it then checks for lockup (the operating system has not enabled 
+interrupts for more then 32 ms.), and faults if needed.
+
+\begin{verbatim}
+        lufCounter ++;
+        // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
+        if (lufCounter > 32000)
+          {
+            lufCounter = 0;
+            doFault (FAULT\_LUF, 0, "instruction cycle lockup");
+          }
+\end{verbatim}
+
+Lastly, it checks the CPU state and branches to the appropriate code.
+
+\begin{verbatim}
+    switch (cpu . cycle)
+      {
+        case INTERRUPT\_cycle:
+          ....
+      }
+\end{verbatim}
+
+The states are:
+
+\begin{description}
+\item [FETCH\_cycle] Fetch the next instruction
+\item [EXEC\_cycle] Execute an instruction
+\item [INTERRUPT\_cycle] Fetch an Interrupt instruction pair
+\item [INTERRUPT\_EXEC\_cycle] Execute the even instruction of an interrupt pair
+\item [INTERRUPT\_EXEC2\_cycle] Execute the odd instruction of an interrupt pair
+\item [FAULT\_cycle]Fetch an Fault instruction pair
+\item [FAULT\_EXEC\_cycle] Execute the even instruction of a fault pair
+\item [FAULT\_EXEC2\_cycle] Execute the odd instruction of a fault pair
+\end{description}
+
+The normal instruction flow is alternating FETCH and EXEC cycles.
+
+\section{FETCH\_cycle}
+
+The fetch cycle first checks for pending interrupts and group 7 faults, 
+according to complex eligibility rules (AL39, pg 327, "Interrupt Sampling.")
+
+\begin{verbatim}
+    if ((! cpu . wasInhibited) &&
+        (PPR . IC % 2) == 0 &&
+        (! cpu . wasXfer) &&
+        (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
+      {
+        cpu . interrupt\_flag = sample\_interrupts ();
+        cpu . g7\_flag = bG7Pending ();
+      }
+    // The cpu . wasInhibited accumulates across the even and 
+    // odd intruction. If the IC is even, reset it for
+    // the next pair.
+
+    if ((PPR . IC % 2) == 0)
+      cpu . wasInhibited = false;
+\end{verbatim}
+
+If a eligible interrupt is pending, the CPU state is switched to 
+INTERRUPT\_cycle.
+
+\begin{verbatim}
+    if (cpu . interrupt\_flag)
+      {
+        setCpuCycle (INTERRUPT\_cycle);
+        break;
+      }
+\end{verbatim} 
+
+Likewise, if a Group 7 faults is pending, cause a fault.
+
+\begin{verbatim}
+    if (cpu . g7\_flag)
+      {
+        cpu . g7\_flag = false;
+        doG7Fault ();
+      }
+\end{verbatim}
+
+There is now code to process the XEC and XED instructions; the idea here is
+that the processing of the XEC and XED instructions loads the target 
+instructions into the Control Unit IWB and IODD words, and that the 
+fetch cycle is a no-op, as the instructions have already been 
+fetched.
+
+If not the XEC or XED the case, the instruction is fetched into the
+CU IWB word.
+
+\begin{verbatim}
+    else
+      {
+        processorCycle = INSTRUCTION\_FETCH;
+        clr\_went\_appending ();
+        fetchInstruction (PPR . IC);
+      }
+\end{verbatim}
+
+Now that the instruction is in the IWB, switch to EXEC state.
+
+\begin{verbatim}
+    setCpuCycle (EXEC\_cycle);
+    break;
+\end{verbatim}
+
+\section{EXEC\_cycle}
+
+The execute cycle starts right off with:
+
+\begin{verbatim}
+    t_stat ret = executeInstruction ();
+\end{verbatim}
+
+A return value of greater than 0 indicates that the CPU needs to halt:
+
+\begin{verbatim}
+    if (ret > 0)
+      {
+        reason = ret;
+        break;
+      }
+\end{verbatim}
+
+A return value of CONT\_TRA indicates that a transfer instruction 
+was executed, which requires different handling. A transfer 
+may be of interest to the handling of
+transfer into append or BAR modes, so the `wasXfer' flag is set; and
+the code that increments the IC is skipped. The CPU state is set to
+EXEC\_cycle, and it all repeats.
+
+\begin{verbatim}
+    if (ret == CONT_TRA)
+      {
+        cpu . wasXfer = true;
+        setCpuCycle (FETCH_cycle);
+        break;   // don't bump PPR.IC, instruction already did it
+      }
+    cpu . wasXfer = false;
+\end{verbatim}
+
+
+Next, the IC is incremented to point to the next instruction; any
+EIS operands that the instruction had are also skipped over.
+The CPU state is set to FETCH\_cycle, and it all repeats.
+
+\begin{verbatim}
+    PPR.IC ++;
+    if (ci->info->ndes > 0)
+      PPR.IC += ci->info->ndes;
+
+    cpu . wasXfer = false;
+    setCpuCycle (FETCH_cycle);
+    break;
+\end{verbatim}
+
+
+\section{Instruction execution: `executeInstruction'}
+
+Instruction execution is managed by `executeInstruction()'.
+
+When `executeInstruction' starts, the instruction has been loaded
+into the CU IWB (Control Unit Instruction Working Buffer).
+
+First, the instruction is decoded, extracting the operation code, address
+field, tag field and the A and I bits into the `currentInstruction'
+structure; and setting the 'info' member to point to the operation's
+entry in the opcode table.
+
+\begin{verbatim}
+    decodeInstruction(cu . IWB, ci);
+\end{verbatim}
+
+The 'info' member contains a wide variety of details about the instruction,
+including:
+
+\begin{description}
+\item [PREPARE\_CA] Instruction will need the operand's computed address.
+\item [READ\_OPERAND] Instruction will read the operand.
+\item [WRITE\_OPERAND] Instruction will write the operand.
+\item [NO\_RPT] Not allowed in a repeat instruction.
+\item [PRIV\_INS] Privileged instruction.
+\item [] The number of EIS operands.
+\item [] Allowed tag values.
+\end{description}
+
+The flags in the `info' structure are used to check instruction restrictions, 
+such as privilege and allowed modifiers; violation causes a fault.
+
+\begin{verbatim}
+    if ((ci -> info -> flags & PRIV_INS) && ! is_priv_mode ())
+        doFault (FAULT_IPR, ill_proc, 
+                 "Attempted execution of privileged instruction.");
+    // No CI/SC/SCR allowed
+    if (ci->info->mods == NO_CSS)
+    {
+        if (_nocss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (ci->info->mods == NO_DUDL)
+    {
+        if (_nodudl[ci->tag])
+            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL modification");
+    }
+\end{verbatim}
+
+Next, an assortment of initializations occurs, setting various registers
+to the operand address field, and initializing the TPR register.
+
+\begin{verbatim}
+    TPR.CA = address;
+    iefpFinalAddress = TPR . CA;
+    rY = TPR.CA;
+
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+\end{verbatim}
+
+If the instruction has EIS operands, they are read into holding variables.
+
+\begin{verbatim}
+    if (info -> ndes > 0)
+      {
+        for(int n = 0; n < info -> ndes; n += 1)
+          {
+// XXX This is a bit of a hack; In general the code is good about 
+// setting up for bit29 or PR operations by setting up TPR, but
+// assumes that the 'else' case can be ignored when it should set
+// TPR to the canonical values. Here, in the case of a EIS instruction
+// restart after page fault, the TPR is in an unknown state. Ultimately,
+// this should not be an issue, as this folderol would be in the DU, and
+// we would not be re-executing that code, but until then, set the TPR
+// to the condition we know it should be in.
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0);
+          }
+        // This must not happen on instruction restart
+        if (! (cu . IR & I_MIIF))
+          {
+            du . CHTALLY = 0;
+            du . Z = 1;
+          }
+      }
+\end{verbatim}
+
+If the instruction expects the address field to be converted to the
+Computed Address, do that.
+
+\begin{verbatim}
+        if (ci->info->flags & PREPARE_CA)
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
+\end{verbatim}
+
+Otherwise if the instruction wants the operand value, do that. `readOperands' will handle single, double, eight and sixteen word operands. The value is held in `CY', `Ypair', `Yblock8' or `Yblock16' holding registers, as appropriate. Read operands handles all aspects of indirection and address appending.
+
+\begin{verbatim}
+        else if (READOP (ci))
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+            readOperands ();
+          }
+\end{verbatim}
+
+Now that the operands have sorted, the instruction is executed.
+
+\begin{verbatim}
+    t_stat ret = doInstruction ();
+\end{verbatim}
+
+If an transfer instruction has the A bit set, and accesses the Append Unit
+during the Computed Address formation, the processor is switch to Append
+mode.
+
+\begin{verbatim}
+    if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
+      {
+        if (get_addr_mode () == BAR_mode)
+          set_addr_mode(APPEND_BAR_mode);
+        else
+          set_addr_mode(APPEND_mode);
+      }
+\end{verbatim}
+
+Finally, it the instruction writes the operand, do that.
+
+\begin{verbatim}
+    if (WRITEOP (ci))
+      {
+        if (! READOP (ci))
+          {
+            doComputedAddressFormation ();
+            iefpFinalAddress = TPR . CA;
+          }
+        writeOperands ();
+      }
+\end{verbatim}
+
+\section{Instruction execution: `doInstruction'}
+
+First, initialize the EIS state registers.
+
+\begin{verbatim}
+    if (i->info->ndes > 0)
+    {
+        i->e.ins = i;
+        i->e.addr[0].e = &i->e;
+        i->e.addr[1].e = &i->e;
+        i->e.addr[2].e = &i->e;
+
+        i->e.addr[0].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[1].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[2].mat = OperandRead;   // no ARs involved yet
+    }
+\end{verbatim}
+
+And switch based on the opcode extension bit; `Basic' and `EIS' are
+misleading here; the opcode extension bit has a minimal correlation to
+the EIS instruction opcode layout, but by separating the two cases,
+the code becomes a bit more readable, Both routines have the same
+preamble:
+
+\begin{verbatim}
+    DCDstruct * i = & currentInstruction;
+    uint opcode  = i->opcode;  // get opcode
+
+    switch (opcode)
+    {
+       ....
+    }
+\end{verbatim}
+
+We will look at a few of the instructions so as to understand the
+general function of 'doInstruction.'
+
+\subsection{LCA Load Complement A}
+
+`readOperands()' has already retrieved the operand value, and left it in CY.
+The utility routine `compl36' complements the value and sets the IR flags,
+and the assignment operation places the complemented value in the A register.
+
+\begin{verbatim}
+    case 0335:  // lca
+      rA = compl36 (CY, & cu . IR);
+      break;
+\end{verbatim}
+
+\subsection{LREG Load Registers}
+
+LREG loads the A, Q, E, and index registers from a Y-block8. Again, 
+`readOperands()' has loaded the values into Yblock8.
+
+\begin{verbatim}
+    case 0073:   ///< lreg
+      rX[0] = GETHI(Yblock8[0]);
+      rX[1] = GETLO(Yblock8[0]);
+      rX[2] = GETHI(Yblock8[1]);
+      rX[3] = GETLO(Yblock8[1]);
+      rX[4] = GETHI(Yblock8[2]);
+      rX[5] = GETLO(Yblock8[2]);
+      rX[6] = GETHI(Yblock8[3]);
+      rX[7] = GETLO(Yblock8[3]);
+      rA = Yblock8[4];
+      rQ = Yblock8[5];
+      rE = (GETHI(Yblock8[6]) >> 10) & 0377;   // need checking
+      break;
+\end{verbatim}
+
+\subsection{STA Store A}
+
+Since `writeOperands()' will do the actual writing, all STA needs to
+do is copy A to CY.
+
+\begin{verbatim}
+    case 0755:  // sta
+      CY = rA;
+      break;
+\end{verbatim}
+
+\subsection{STXn Store Index Register n}
+
+For many opcodes, the low bits of the opcode contains indexing 
+information.
+
+\begin{verbatim}
+    case 0740:  ///< stx0
+    case 0741:  ///< stx1
+    case 0742:  ///< stx2
+    case 0743:  ///< stx3
+    case 0744:  ///< stx4
+    case 0745:  ///< stx5
+    case 0746:  ///< stx6
+    case 0747:  ///< stx7
+      {
+        uint32 n = opcode & 07;  // get n
+        SETHI(CY, rX[n]);
+      }
+    break;
+\end{verbatim}
+
+\subsection {TRA Transfer}
+
+For the TRA instruction, the computed address is placed in the PPR, and the
+function return value is used to signal that a transfer is to occur.
+
+\begin{verbatim}
+    case 0710:  ///< tra
+      PPR.IC = TPR.CA;
+      PPR.PSR = TPR.TSR;
+      return CONT_TRA;
+\end{verbatim}
+
+\end{document}

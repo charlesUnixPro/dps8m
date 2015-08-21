@@ -156,14 +156,6 @@ extern enum _processor_cycle_type {
 } processorCycle;
 typedef enum _processor_cycle_type _processor_cycle_type;
 
-enum _processor_addressing_mode {
-    UNKNOWN_MODE = 0,
-    ABSOLUTE_MODE,
-    APPEND_MODE,
-    BAR_MODE
-};
-
-
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
     Unknown          = 0,
