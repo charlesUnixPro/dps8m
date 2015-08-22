@@ -882,7 +882,7 @@ startCA:;
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
                 TPR . CA = tmpCA;
-                doFault (FAULT_F2, 0, "RI_MOD: IT_F3");
+                doFault (FAULT_F3, 0, "RI_MOD: IT_F3");
               }
           }
 
