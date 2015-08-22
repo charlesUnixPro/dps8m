@@ -52,9 +52,6 @@
 // First attempt at RALR repair, needs rework.
 #define RALR_FIX_0
 
-// Enable RALR on non-APU transfers and RCU.
-//#define AGGRESSIVE_RING_ALARM
-
 // Enable blinkenLights interface
 #define MULTIPASS
 
