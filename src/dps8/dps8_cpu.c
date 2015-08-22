@@ -1551,14 +1551,6 @@ last = M[01007040];
           }
 #endif
 
-        lufCounter ++;
-        // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
-        if (lufCounter > 32000)
-          {
-            lufCounter = 0;
-            doFault (FAULT_LUF, 0, "instruction cycle lockup");
-          }
-
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));
         switch (cpu . cycle)
@@ -1736,6 +1728,15 @@ last = M[01007040];
                     cpu . g7_flag = false;
                     doG7Fault ();
                   }
+                lufCounter ++;
+
+                // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
+                if (lufCounter > 32000)
+                  {
+                    lufCounter = 0;
+                    doFault (FAULT_LUF, 0, "instruction cycle lockup");
+                  }
+
 #if 0
                 if (cpu . interrupt_flag && 
                     ((PPR . IC % 2) == 0) &&
@@ -1831,24 +1832,6 @@ last = M[01007040];
                   }
                 if (ret == CONT_TRA)
                   {
-#ifdef AGGRESSIVE_RING_ALARM
-                    //if (rRALR && (PPR.PRR || TPR.TRR))
-                      //sim_printf ("CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
-                                  //PPR.PRR, TPR.TRR, rRALR);
-                    if (rRALR && (PPR.PRR || TPR.TRR))
-                      {
-                        sim_debug (DBG_CAC, & cpu_dev,
-                                   "CONT_TRA ralr check PRR %o TRR %o RALR %o\n",
-                                   PPR.PRR, TPR.TRR, rRALR);
-                        traceInstruction (DBG_CAC);
-                      }
-                    if (rRALR != 0 && ! (PPR . PRR < rRALR))
-                      {
-                        sim_printf ("CAC sez this is a ring alarm\n");
-                        doFault (FAULT_ACV, ACV13,
-                                 "CAC sez this is a ring alarm");
-                      }
-#endif
                     cu . xde = cu . xdo = 0;
                     cpu . wasXfer = true;
                     setCpuCycle (FETCH_cycle);

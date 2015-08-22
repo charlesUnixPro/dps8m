@@ -276,7 +276,7 @@ static void scu2words(word36 *words)
     putbits36 (& words [5], 24,  1, cu . xde);
     putbits36 (& words [5], 25,  1, cu . xdo);
     // 26, 1 ITP Execute ITP indirect cycle
-    // 27, 1 RFI Restart this instruction
+    putbits36 (& words [5], 27,  1, cu . rfi);
     // 28, 1 ITS Execute ITS indirect cycle
     putbits36 (& words [5], 29,  1, cu . FIF);
     putbits36 (& words [5], 30,  6, cu . CT_HOLD);
@@ -393,6 +393,7 @@ static void words2scu (word36 * words)
     cu.rd           = getbits36(words[5], 20, 1);
     cu.xde          = getbits36(words[5], 24, 1);
     cu.xdo          = getbits36(words[5], 25, 1);
+    cu.rfi          = getbits36(words[5], 27, 1);
     cu.FIF          = getbits36(words[5], 29, 1);
     cu.CT_HOLD      = getbits36(words[5], 30, 6);
     
@@ -7795,37 +7796,48 @@ void doRCU (bool fxeTrap)
 // fault     fault  mnemonic   name             priority group  handler
 // number   address
 //   0         0      sdf      Shutdown               27 7
-//   1         2      str      Store                  10 4      
-//   2         4      mme      Master mode entry 1    11 5      JMP_SYNC_FAULT_RETURN
-//   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)
-//   4        10      tro      Timer runout           26 7      JMP_REFETCH
-//   5        12      cmd      Command                 9 4      JMP_REFETCH/JMP_RESTART
-//   6        14      drl      Derail                 15 5      JMP_REFETCH/JMP_RESTART
-//   7        16      luf      Lockup                  5 4      JMP_REFETCH
-//   8        20      con      Connect                25 7      JMP_REFETCH
+//   1         2      str      Store                  10 4                                  getBARaddress, instruction execution
+//   2         4      mme      Master mode entry 1    11 5      JMP_SYNC_FAULT_RETURN       instruction execution
+//   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)   doComputedAddressFormation
+//   4        10      tro      Timer runout           26 7      JMP_REFETCH                 FETCH_cycle
+//   5        12      cmd      Command                 9 4      JMP_REFETCH/JMP_RESTART     instruction execution
+//   6        14      drl      Derail                 15 5      JMP_REFETCH/JMP_RESTART     instruction execution
+//   7        16      luf      Lockup                  5 4      JMP_REFETCH                 doComputedAddressFormation, FETCH_cycle
+//   8        20      con      Connect                25 7      JMP_REFETCH                 FETCH_cycle
 //   9        22      par      Parity                  8 4
-//  10        24      ipr      Illegal procedure      16 5
-//  11        26      onc      Operation not complete  4 2
+//  10        24      ipr      Illegal procedure      16 5                                  doITSITP, doComputedAddressFormation, instruction execution
+//  11        26      onc      Operation not complete  4 2                                  nem_check, instruction execution
 //  12        30      suf      Startup                 1 1
-//  13        32      ofl      Overflow                7 3      JMP_REFETCH/JMP_RESTART
-//  14        34      div      Divide check            6 3
-//  15        36      exf      Execute                 2 1      JMP_REFETCH/JMP_RESTART
-//  16        40      df0      Directed fault 0       20 6      JMP_REFETCH/JMP_RESTART
-//  17        42      df1      Directed fault 1       21 6      JMP_REFETCH/JMP_RESTART
-//  18        44      df2      Directed fault 2       22 6      (JMP_REFETCH/JMP_RESTART)
-//  19        46      df3      Directed fault 3       23 6      JMP_REFETCH/JMP_RESTART
-//  20        50      acv      Access violation       24 6      JMP_REFETCH/JMP_RESTART
-//  21        52      mme2     Master mode entry 2    12 5      JMP_SYNC_FAULT_RETURN
-//  22        54      mme3     Master mode entry 3    13 5      (JMP_SYNC_FAULT_RETURN)
-//  23        56      mme4     Master mode entry 4    14 5      (JMP_SYNC_FAULT_RETURN)
-//  24        60      f2       Fault tag 2            18 5      JMP_REFETCH/JMP_RESTART
-//  25        62      f3       Fault tag 3            19 5      JMP_REFETCH/JMP_RESTART
+//  13        32      ofl      Overflow                7 3      JMP_REFETCH/JMP_RESTART     instruction execution
+//  14        34      div      Divide check            6 3                                  instruction execution
+//  15        36      exf      Execute                 2 1      JMP_REFETCH/JMP_RESTART     FETCH_cycle
+//  16        40      df0      Directed fault 0       20 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
+//  17        42      df1      Directed fault 1       21 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
+//  18        44      df2      Directed fault 2       22 6      (JMP_REFETCH/JMP_RESTART)   getSDW, doAppendCycle
+//  19        46      df3      Directed fault 3       23 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
+//  20        50      acv      Access violation       24 6      JMP_REFETCH/JMP_RESTART     fetchDSPTW, modifyDSPTW, fetchNSDW, doAppendCycle, EXEC_cycle (ring alarm)
+//  21        52      mme2     Master mode entry 2    12 5      JMP_SYNC_FAULT_RETURN       instruction execution
+//  22        54      mme3     Master mode entry 3    13 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
+//  23        56      mme4     Master mode entry 4    14 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
+//  24        60      f2       Fault tag 2            18 5      JMP_REFETCH/JMP_RESTART     doComputedAddressFormation
+//  25        62      f3       Fault tag 3            19 5      JMP_REFETCH/JMP_RESTART     doComputedAddressFormation
 //  26        64               Unassigned
 //  27        66               Unassigned
 //  28        70               Unassigned
 //  29        72               Unassigned
 //  30        74               Unassigned
-//  31        76      trb      Trouble                 3 2
+//  31        76      trb      Trouble                 3 2                                  FETCH_cycle, doRCU
+
+
+// Reworking logic
+
+    if (cu . rfi || // S/W asked for the instruction to be started
+        cu . FIF) // fault occured during instruction fetch
+      {
+        longjmp (jmpMain, JMP_REFETCH);
+      }
+
+    // MME faults resume with the next instruction
 
     if (cu . FI_ADDR == FAULT_MME ||
         cu . FI_ADDR == FAULT_MME2 ||
@@ -7833,15 +7845,11 @@ void doRCU (bool fxeTrap)
         cu . FI_ADDR == FAULT_MME4)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
+    // LUF can happen during fetch or CAF. If fetch, handled above
     if (cu . FI_ADDR == FAULT_LUF)
       {
-        longjmp (jmpMain, JMP_REFETCH);
-      }
-
-    if (cu . FI_ADDR == FAULT_TRO || 
-        cu . FI_ADDR == FAULT_CON)  // g7 fault
-      {
-        longjmp (jmpMain, JMP_REFETCH);
+        cu . IR |= I_MIIF;
+        longjmp (jmpMain, JMP_RESTART);
       }
 
     if (cu . FI_ADDR == FAULT_DF0 || 
@@ -7857,24 +7865,9 @@ void doRCU (bool fxeTrap)
         cu . FI_ADDR == FAULT_EXF ||
         cu . FI_ADDR == FAULT_OFL)
       {
-        if (cu . FIF == 1)
-          {
-            // directed page fault during instruction fetch
-            longjmp (jmpMain, JMP_REFETCH);
-          }
-        else
-          {
-            // directed page fault during CAF
-            cu . IR |= I_MIIF;
-#ifdef AGGRESSIVE_RING_ALARM
-            if (rRALR != 0 && ! (PPR . PRR < rRALR))
-              {
-                sim_printf ("CAC sez this is a RCU ring alarm\n");
-                doFault (FAULT_ACV, ACV13, "CAC sez this is a ring alarm");
-              }
-#endif
-            longjmp (jmpMain, JMP_RESTART);
-          }
+        // If the fault occurred during fetch, handled above.
+        cu . IR |= I_MIIF;
+        longjmp (jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cu . FI_ADDR);
     doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");

@@ -1157,22 +1157,9 @@ D:;
     if (instructionFetch)
       goto G;
 
-// Debugging
-#ifdef AGGRESSIVE_RING_ALARM
-    if (rRALR && (PPR.PRR || TPR.TRR))  
-      {
-        sim_debug (DBG_CAC, & cpu_dev,
-        "APU ralr check PRR %o TRR %o RALR %o\n", PPR.PRR, TPR.TRR, rRALR);
-      }
-#endif
-
     if (rRALR == 0)
         goto G;
     
-#ifdef AGGRESSIVE_RING_ALARM
-    sim_debug (DBG_CAC, & cpu_dev, "ralr check\n");
-#endif
-
     // C(PPR.PRR) < RALR?
     if (!(PPR.PRR < rRALR)) {
         sim_debug (DBG_APPENDING, & cpu_dev,
