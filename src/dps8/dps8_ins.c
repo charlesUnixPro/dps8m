@@ -1033,8 +1033,6 @@ restart_1:
 /// executeInstruction: RPT/RPD special processing for 'first time'
 ///
 
-#define RPT_TRY4
-#ifdef RPT_TRY4
     // possible states
     // repeat_first rpt rd    do it?
     //       f       f   f      y
@@ -1125,7 +1123,6 @@ restart_1:
               }
           }
       } // cu . rpt || cu . rpd
-#endif
 
 ///
 /// executeInstruction: EIS operand processing

@@ -481,8 +481,6 @@ startCA:;
             //updateIWB (identity)
             return SCPE_OK;
           }
-#define RPT_TRY4
-#ifdef RPT_TRY4
 
         if (cu . rpt || cu . rd)
           {
@@ -501,192 +499,13 @@ startCA:;
             TPR . CA  += Cr;
             TPR . CA  &= MASK18;   // keep to 18-bits
           }
-#else
-        // possible states
-        // repeat_first rpt rd    do it?
-        //       f       f   f      y
-        //       t       x   x      y
-        //       f       t   x      n
-        //       f       x   t      n
-        //sim_debug (DBG_TRACE, & cpu_dev,
-        //           "addrmode rf rpt rd tst %d %d %d %d\n",
-        //           cu . repeat_first, cu . rpt, cu . rd,
-        //           ((! cu . repeat_first) && (cu . rpt || cu . rd)));
-
-
-        if (cu . rpt || cu . rd)
-          {
-             word6 Td = GET_TD (i -> tag);
-             uint Xn = X (Td);  // Get Xn of next instruction
-             TPR . CA = rX [Xn];
-          }
-        else
-          {
-            TPR . CA += Cr;
-            TPR . CA &= MASK18;   // keep to 18-bits
-          }
-
-//
-// RPT:
-//
-// The computed address, y, of the operand (in the case of R modification) or
-// indirect word (in the case of RI modification) is determined as follows:
-//
-// For the first execution of the repeated instruction:
-//      C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
-// 
-// For all successive executions of the repeated instruction:
-//      C(Xn) + Delta -> y, y -> C(Xn);
-// 
-//
-//
-// RPD:
-//
-// The computed addresses, y-even and y-odd, of the operands (in the case of
-// R modification) or indirect words (in the case of RI modification) are
-// determined as follows:
-// 
-// For the first execution of the repeated instruction pair:
-//      C(C(PPR.IC)+1)0,17 + C(X-even) -> y-even, y-even -> C(X-even)
-//      C(C(PPR.IC)+2)0,17 + C(X-odd) -> y-odd, y-odd -> C(X-odd)
-// 
-// For all successive executions of the repeated instruction pair:
-//      if C(X0)8 = 1, then C(X-even) + Delta -> y-even,
-//           y-even -> C(X-even);
-//      otherwise, C(X-even) -> y-even
-//      if C(X0)9 = 1, then C(X-odd) + Delta -> y-odd,
-//           y-odd -> C(X-odd);
-//      otherwise, C(X-odd) -> y-odd
-// 
-// C(X0)8,9 correspond to control bits A and B, respectively, of the rpd
-// instruction word.
-// 
-
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
-                       cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, 
-                       rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
-
-// Handle first time of a RPT or RPD
-
-            if (cu . repeat_first)
-              {
-                if (cu . rpt || (cu . rd && (PPR.IC & 1)))
-                  cu . repeat_first = false;
-                // For the first execution of the repeated instruction: 
-                // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-                if (cu . rpt ||                                            // rpt
-                    (cu . rd && ((PPR.IC & 1) == 0) /*&& (rX [0] & 01000)*/ ) || // rpd & even & A 
-                    (cu . rd && ((PPR.IC & 1) != 0) /*&& (rX [0] & 0400)*/))   // rpd & odd & B 
-                  {
-#define RPT_TRY3
-#ifdef RPT_TRY3
-                    word18 offset;
-                    //if (i -> a)
-                      //offset = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-                    //else
-                      //offset = GET_ADDR (cu . IWB);
-                    if (i -> a)
-                      offset = SIGNEXT15_18 (i -> address & MASK15);
-                    else
-                      offset = i -> address;
-                    offset &= AMASK;
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; offset is %06o\n", offset);
-
-                    word6 Td = GET_TD (i -> tag);
-                    uint Xn = X (Td);  // Get Xn of next instruction
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA was %06o\n", TPR . CA);
-                    TPR . CA = (TPR . CA + rX [Xn] + offset) & AMASK;
-                    //TPR . CA = (rX [Xn] + TPR.CA) & AMASK;
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA is  %06o\n", TPR . CA);
-                    rX [Xn] = (rX [Xn] + offset) & AMASK;
-                    //rX [Xn] = TPR . CA;
-#else
-                    word6 Td = GET_TD (i -> tag);
-                    uint Xn = X (Td);  // Get Xn of next instruction
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA was %06o\n", TPR . CA);
-                    TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA is  %06o\n", TPR . CA);
-                    // No; rX does not have address added in, even if AL-39
-                    // says so.
-                    // rX [Xn] = TPR . CA;
-
-#endif
-                  }
-              }
-            else // not first
-              {
-                if (cu . rpt ||                                            // rpt
-                    (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
-                    (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))   // rpd & odd & B 
-                  {
-#ifdef RPT_TRY3
-                    // rY = TPR.CA;
-                    word6 Td = GET_TD(i -> tag);
-                    uint Xn = X(Td);  // Get Xn of instruction
-                    // Delta is handled in executeInstruction
-                    // TPR . CA = rX [Xn] + cu . delta;
-                    TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
-                    //rX [Xn] = TPR . CA;
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (a)           CA is  %06o\n", TPR . CA);
-#else
-                    // rY = TPR.CA;
-                    word6 Td = GET_TD(i -> tag);
-                    uint Xn = X(Td);  // Get Xn of instruction
-                    // Delta is handled in executeInstruction
-                    // TPR . CA = rX [Xn] + cu . delta;
-                    // AL-39 says the X register has the address added in;
-                    // that is wrong. Add it in each time.
-                    // TPR . CA = rX [Xn];
-                    TPR . CA = (rX [Xn] + TPR . CA) & AMASK;
-                    // rX [Xn] = TPR . CA;
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (a)           CA is  %06o\n", TPR . CA);
-#endif
-                  }
-                else if (cu . rd)
-                  {
-#ifdef RPT_TRY3
-                    word6 Td = GET_TD(i -> tag);
-                    uint Xn = X(Td);  // Get Xn of instruction
-                    TPR . CA = rX [Xn];
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (b)           CA is  %06o\n", TPR . CA);
-#else
-                    word6 Td = GET_TD(i -> tag);
-                    uint Xn = X(Td);  // Get Xn of instruction
-                    TPR . CA = rX [Xn];
-                    sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (b)           CA is  %06o\n", TPR . CA);
-#endif
-                  }
-              }
-          } // cu . rpt || cu . rpd
-
-        else // not repeat
-          {
-            TPR . CA += Cr;
-            TPR . CA &= MASK18;   // keep to 18-bits
-          }
-#endif
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR . CA);
 
-#ifndef RPT_TRY4
-        if (! (cu . rpt || cu . rd))
-          updateIWB (TPR . CA, 0);
-#else
         // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, 0);
-#endif
         return SCPE_OK;
       } // R_MOD
 
@@ -712,135 +531,17 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
-
-#ifdef RPT_TRY4
-        if (cu . rpt || cu . rd)
-          {
-             word6 Td = GET_TD (i -> tag);
-             uint Xn = X (Td);  // Get Xn of next instruction
-             tmpCA = rX [Xn];
-          }
-        else
-          {
-            tmpCA += Cr;
-            tmpCA &= MASK18;   // keep to 18-bits
-          }
-#else
             if (cu . rpt || cu . rd)
               {
-                sim_debug (DBG_TRACE, & cpu_dev,
-                   "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
-                   cu . repeat_first, cu . rpt, cu . rd, PPR . IC & 1, 
-                   rX [0], !! (rX [0] & 01000), !! (rX [0] & 0400));
-
-// Handle first time of a RPT or RPD
-
-                if (cu . repeat_first)
-                  {
-                    if (cu . rpt || (cu . rd && (PPR.IC & 1)))
-                      cu . repeat_first = false;
-                    // For the first execution of the repeated instruction: 
-                    // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-                    if (cu . rpt ||                                            // rpt
-                        (cu . rd && ((PPR.IC & 1) == 0) /*&& (rX [0] & 01000)*/ ) || // rpd & even & A 
-                        (cu . rd && ((PPR.IC & 1) != 0) /*&& (rX [0] & 0400)*/))   // rpd & odd & B 
-                      {
-#ifdef RPT_TRY3
-                        word18 offset;
-                        //if (i -> a)
-                          //offset = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-                        //else
-                          //offset = GET_ADDR (cu . IWB);
-                        if (i -> a)
-                          offset = SIGNEXT15_18 (i -> address & MASK15);
-                        else
-                          offset = i -> address;
-                        offset &= AMASK;
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; offset is %06o\n", offset);
-
-                        word6 Td = GET_TD (i -> tag);
-                        uint Xn = X (Td);  // Get Xn of next instruction
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA was %06o\n", tmpCA);
-                        tmpCA = (TPR . CA + rX [Xn] + offset) & AMASK;
-                        //tmpCA = (rX [Xn] + offset) & AMASK;
-//                        tmpCA = (rX [Xn] + TPR . CA) & AMASK;
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA is  %06o\n", tmpCA);
-                        //rX [Xn] = tmpCA;
-                        rX [Xn] = (rX [Xn] + offset) & AMASK;
-#else
-                        word6 Td = GET_TD (i -> tag);
-                        uint Xn = X (Td);  // Get Xn of next instruction
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA was %06o\n", tmpCA);
-                        tmpCA = (rX [Xn] + tmpCA) & AMASK;
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd repeat first; CA is  %06o\n", tmpCA);
-                        // No; rX does not have address added in, even if AL-39
-                        // says so.
-                        // rX [Xn] = tmpCA;
-#endif
-                      }
-                  }
-                else // not first
-                  {
-                    if (cu . rpt ||                                            // rpt
-                        (cu . rd && ((PPR.IC & 1) == 0) && (rX [0] & 01000)) || // rpd & even & A 
-                        (cu . rd && ((PPR.IC & 1) != 0) && (rX [0] & 0400)))   // rpd & odd & B 
-                      {
-#ifdef RPT_TRY3
-                        // rY = tmpCA;
-                        word6 Td = GET_TD(i -> tag);
-                        uint Xn = X(Td);  // Get Xn of instruction
-                        // Delta is handled in executeInstruction
-                        // tmpCA = rX [Xn] + cu . delta;
-                        //tmpCA = rX [Xn];
-                        tmpCA = (rX [Xn] + TPR . CA) & AMASK;
-                        rX [Xn] = tmpCA;
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (a)           CA is  %06o\n", tmpCA);
-#else
-                        // rY = tmpCA;
-                        word6 Td = GET_TD(i -> tag);
-                        uint Xn = X(Td);  // Get Xn of instruction
-                        // Delta is handled in executeInstruction
-                        // tmpCA = rX [Xn] + cu . delta;
-                        // AL-39 says the X register has the address added in;
-                        // that is wrong. Add it in each time.
-                        // tmpCA = rX [Xn];
-                        tmpCA = (rX [Xn] + tmpCA) & AMASK;
-                        // rX [Xn] = tmpCA;
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (a)           CA is  %06o\n", tmpCA);
-#endif
-                      }
-                    else if (cu . rd)
-                      {
-#ifdef RPT_TRY3
-                        word6 Td = GET_TD(i -> tag);
-                        uint Xn = X(Td);  // Get Xn of instruction
-                        tmpCA = rX [Xn];
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (b)           CA is  %06o\n", tmpCA);
-#else
-                        word6 Td = GET_TD(i -> tag);
-                        uint Xn = X(Td);  // Get Xn of instruction
-                        tmpCA = rX [Xn];
-                        sim_debug (DBG_TRACE, & cpu_dev, 
-                               "rpt/rd (b)           CA is  %06o\n", tmpCA);
-#endif
-                      }
-                  }
-              } // cu . rpt || cu . rpd
-
-            else // not repeat
+                 word6 Td = GET_TD (i -> tag);
+                 uint Xn = X (Td);  // Get Xn of next instruction
+                 tmpCA = rX [Xn];
+              }
+            else
               {
                 tmpCA += Cr;
                 tmpCA &= MASK18;   // keep to 18-bits
               }
-#endif
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
           }
@@ -900,16 +601,11 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
                    indword, TPR . CA, rTAG);
-#ifndef RPT_TRY4
-        if (! (cu . rpt || cu . rd))
-          updateIWB (TPR . CA, rTAG);
-#else
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, rTAG);
-#endif
         goto startCA;
       } // RI_MOD
 
