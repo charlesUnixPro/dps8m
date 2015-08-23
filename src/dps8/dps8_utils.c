@@ -181,6 +181,485 @@ char *getModString(int32 tag)
  */
 /* Single word integer routines */
 
+word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 37 bit arithmetic for the above N+1 algorithm
+    word37 op1e = op1 & MASK36;
+    word37 op2e = op2 & MASK36;
+    word37 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN36)
+      op1e |= BIT37;
+    if (op2e & SIGN36)
+      op2e |= BIT37;
+
+    // Do the math
+    word37 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r37 = res & BIT37 ? true : false;
+    bool r36 = res & SIGN36 ? true : false;
+
+    // Truncate the result
+    res &= MASK36;
+
+    // Check for overflow 
+    bool ovf = r37 ^ r36;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r37)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN36)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add36b overflow fault");
+          }
+      }
+
+    return res;
+  }
+
+word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 37 bit arithmetic for the above N+1 algorithm
+    word37 op1e = op1 & MASK36;
+    word37 op2e = op2 & MASK36;
+    // Note that carryin has an inverted sense for borrow
+    word37 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN36)
+      op1e |= BIT37;
+    if (op2e & SIGN36)
+      op2e |= BIT37;
+
+    // Do the math
+    word37 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r37 = res & BIT37 ? true : false;
+    bool r36 = res & SIGN36 ? true : false;
+
+    // Truncate the result
+    res &= MASK36;
+
+    // Check for overflow 
+    bool ovf = r37 ^ r36;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r37)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN36)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add36b overflow fault");
+          }
+      }
+
+    return res;
+  }
+
+word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 19 bit arithmetic for the above N+1 algorithm
+    word19 op1e = op1 & MASK18;
+    word19 op2e = op2 & MASK18;
+    word19 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN18)
+      op1e |= BIT19;
+    if (op2e & SIGN18)
+      op2e |= BIT19;
+
+    // Do the math
+    word19 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r19 = res & BIT19 ? true : false;
+    bool r18 = res & SIGN18 ? true : false;
+
+    // Truncate the result
+    res &= MASK18;
+
+    // Check for overflow 
+    bool ovf = r18 ^ r18;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r19)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN36)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add18b overflow fault");
+          }
+      }
+
+    return res;
+  }
+
+word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 19 bit arithmetic for the above N+1 algorithm
+    word19 op1e = op1 & MASK18;
+    word19 op2e = op2 & MASK18;
+    // Note that carryin has an inverted sense for borrow
+    word19 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN18)
+      op1e |= BIT19;
+    if (op2e & SIGN18)
+      op2e |= BIT19;
+
+    // Do the math
+    word19 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r19 = res & BIT19 ? true : false;
+    bool r18 = res & SIGN18 ? true : false;
+
+    // Truncate the result
+    res &= MASK18;
+
+    // Check for overflow 
+    bool ovf = r19 ^ r18;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r19)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN18)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add18b overflow fault");
+          }
+      }
+
+    return res;
+  }
+
+word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 73 bit arithmetic for the above N+1 algorithm
+    word73 op1e = op1 & MASK72;
+    word73 op2e = op2 & MASK72;
+    word73 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN72)
+      op1e |= BIT73;
+    if (op2e & SIGN72)
+      op2e |= BIT73;
+
+    // Do the math
+    word73 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r73 = res & BIT73 ? true : false;
+    bool r72 = res & SIGN72 ? true : false;
+
+    // Truncate the result
+    res &= MASK72;
+
+    // Check for overflow 
+    bool ovf = r73 ^ r72;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r73)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN72)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add72b overflow fault");
+          }
+      }
+
+    return res;
+  }
+
+word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 73 bit arithmetic for the above N+1 algorithm
+    word73 op1e = op1 & MASK72;
+    word73 op2e = op2 & MASK72;
+    // Note that carryin has an inverted sense for borrow
+    word73 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN72)
+      op1e |= BIT73;
+    if (op2e & SIGN72)
+      op2e |= BIT73;
+
+    // Do the math
+    word73 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r73 = res & BIT73 ? true : false;
+    bool r72 = res & SIGN72 ? true : false;
+
+    // Truncate the result
+    res &= MASK72;
+
+    // Check for overflow 
+    bool ovf = r73 ^ r72;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (r73)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN72)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add72b overflow fault");
+          }
+      }
+
+    return res;
+  }
 
 // XXX ticket #3 isSigned
 // CANFAULT

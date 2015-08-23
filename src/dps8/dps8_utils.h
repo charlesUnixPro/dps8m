@@ -149,3 +149,11 @@ void sim_printl (const char * format, ...)
   __attribute__ ((format (printf, 1, 2)))
 #endif
 ;
+
+word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+

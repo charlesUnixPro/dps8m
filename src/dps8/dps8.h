@@ -94,15 +94,18 @@ typedef uint16      word14;
 typedef uint16      word15;
 typedef uint16      word16;
 typedef uint32      word18;
+typedef uint32      word19;
 typedef int32       word18s;
 typedef uint32      word20;
 typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word32;
 typedef uint64      word36;
+typedef uint64      word37;
 typedef int64       word36s;
 typedef __uint128_t word72;
 typedef __int128_t  word72s;
+typedef __uint128_t word73;
 
 typedef __uint128_t uint128;
 typedef __int128_t  int128;
