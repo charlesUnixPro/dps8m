@@ -44,6 +44,8 @@ extern uint64 sim_deb_break;
 #define NO_SUCH_RINGNO ((uint64) -1ll)
 extern uint64 sim_deb_segno;
 extern uint64 sim_deb_ringno;
+extern uint64 sim_deb_skip_limit;
+extern uint64 sim_deb_skip_cnt;
 extern bool sim_deb_bar;
 extern DEVICE *sim_devices[];
 
