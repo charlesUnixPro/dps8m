@@ -8,9 +8,60 @@
 
 \begin{document}
 \title{Emulation Implementation Notes}
-%\author{}
-%\date{}
+%\author{Charles Anthony and others}
+%\date{2015-08-21}
 \maketitle
+
+% \part{Source Code Layout}
+%   \section{dps8\_sys}
+%     \subsection{dps8\_cable}
+%   \section{dps8\_cpu}
+%     \subsection{dsp8\_iefp}
+%     \subsection{dps8\_addrmods}
+%     \subsection{dps8\_append}
+%     \subsection{dps8\_bar}
+%     \subsection{dps8\_ins}
+%     \subsection{dps8\_eis}
+%      \subsection{dps8\_math}
+%     \subsection{dps8\_opcodetable}
+%     \subsection{dps8\_faults}
+%     \subsection{dps8\_decimal}
+%   \section{dps8\_scu}
+%   \section{dps8\_iom}
+%     \subsection{dps8\_console}
+%     \subsection{dps8\_disk}
+%     \subsection{dps8\_mt}
+%     \subsection{dps8\_fnp, fnp\_ipc}
+%     \subsection{dps8\_lp}
+%     \subsection{dps8\_crdrdr}
+%   \section{dps8\_utils}
+%     \subsection{shm}
+%   \section{Other}
+
+% \part{CPU operation}
+%   \section{simh}
+%   \section{CPU emulation organization}
+%   \section{FETCH\_cycle}
+%   \section{EXEC\_cycle}
+%   \section{Instruction execution: `executeInstruction'}
+%   \section{Instruction execution: `doInstruction'}
+%     \subsection{LCA Load Complement A}
+%     \subsection{LREG Load Registers}
+%     \subsection{STA Store A}
+%     \subsection{STXn Store Index Register n}
+%     \subsection {TRA Transfer}
+%   \section{RPT/RPD}
+%   \section{XEC/XED}
+%   \section{EIS}
+%   \section{Computed Address Formation}
+%   \section{Append Unit}
+%   \section{Interrupts}
+%   \section{Faults}
+%     \subsection{doFault()}
+%     \subsection{RCU}
+
+% \part{"As-built"}
+%   \section{Variations between the hardware and the emulator}
 
 \part{Source Code Layout}
 
@@ -115,16 +166,6 @@ dps8\_loader Segment loader for unit tests \\
 dps8\_stddev Vestigial \\
 dps8\_fxe Faux Multics Execution module
 
-%+ Variations between the hardware and the emulator ("as built" drawings).
-%
-%DPS8 memory is managed by the CPU code, not the SCU code.
-%
-%The history registers are not implemented.
-%
-%The RPL instruction is not implemented.
-%
-%The MPCs have been abstracted into the device code.
-%
 \part{CPU operation}
 
 \section{simh}
@@ -335,7 +376,7 @@ Now that the instruction is in the IWB, switch to EXEC state.
 The execute cycle starts right off with:
 
 \begin{verbatim}
-    t_stat ret = executeInstruction ();
+    t\_stat ret = executeInstruction ();
 \end{verbatim}
 
 A return value of greater than 0 indicates that the CPU needs to halt:
@@ -356,10 +397,10 @@ the code that increments the IC is skipped. The CPU state is set to
 EXEC\_cycle, and it all repeats.
 
 \begin{verbatim}
-    if (ret == CONT_TRA)
+    if (ret == CONT\_TRA)
       {
         cpu . wasXfer = true;
-        setCpuCycle (FETCH_cycle);
+        setCpuCycle (FETCH\_cycle);
         break;   // don't bump PPR.IC, instruction already did it
       }
     cpu . wasXfer = false;
@@ -376,7 +417,7 @@ The CPU state is set to FETCH\_cycle, and it all repeats.
       PPR.IC += ci->info->ndes;
 
     cpu . wasXfer = false;
-    setCpuCycle (FETCH_cycle);
+    setCpuCycle (FETCH\_cycle);
     break;
 \end{verbatim}
 
@@ -414,32 +455,32 @@ The flags in the `info' structure are used to check instruction restrictions,
 such as privilege and allowed modifiers; violation causes a fault.
 
 \begin{verbatim}
-    if ((ci -> info -> flags & PRIV_INS) && ! is_priv_mode ())
-        doFault (FAULT_IPR, ill_proc, 
+    if ((ci -> info -> flags & PRIV\_INS) && ! is\_priv\_mode ())
+        doFault (FAULT\_IPR, ill\_proc, 
                  "Attempted execution of privileged instruction.");
     // No CI/SC/SCR allowed
-    if (ci->info->mods == NO_CSS)
+    if (ci->info->mods == NO\_CSS)
     {
-        if (_nocss[ci->tag])
-            doFault(FAULT_IPR, ill_mod, "Illegal CI/SC/SCR modification");
+        if (\_nocss[ci->tag])
+            doFault(FAULT\_IPR, ill\_mod, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DDCSS)
+    else if (ci->info->mods == NO\_DDCSS)
     {
-        if (_noddcss[ci->tag])
-            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
+        if (\_noddcss[ci->tag])
+            doFault(FAULT\_IPR, ill\_mod, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DLCSS)
+    else if (ci->info->mods == NO\_DLCSS)
     {
-        if (_nodlcss[ci->tag])
-            doFault(FAULT_IPR, ill_mod, "Illegal DL/CI/SC/SCR modification");
+        if (\_nodlcss[ci->tag])
+            doFault(FAULT\_IPR, ill\_mod, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
-    else if (ci->info->mods == NO_DUDL)
+    else if (ci->info->mods == NO\_DUDL)
     {
-        if (_nodudl[ci->tag])
-            doFault(FAULT_IPR, ill_mod, "Illegal DU/DL modification");
+        if (\_nodudl[ci->tag])
+            doFault(FAULT\_IPR, ill\_mod, "Illegal DU/DL modification");
     }
 \end{verbatim}
 
@@ -472,10 +513,10 @@ If the instruction has EIS operands, they are read into holding variables.
 // to the condition we know it should be in.
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
-            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0);
+            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS\_OPERAND\_READ, 0);
           }
         // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
+        if (! (cu . IR & I\_MIIF))
           {
             du . CHTALLY = 0;
             du . Z = 1;
@@ -487,7 +528,7 @@ If the instruction expects the address field to be converted to the
 Computed Address, do that.
 
 \begin{verbatim}
-        if (ci->info->flags & PREPARE_CA)
+        if (ci->info->flags & PREPARE\_CA)
           {
             doComputedAddressFormation ();
             iefpFinalAddress = TPR . CA;
@@ -508,7 +549,7 @@ Otherwise if the instruction wants the operand value, do that. `readOperands' wi
 Now that the operands have sorted, the instruction is executed.
 
 \begin{verbatim}
-    t_stat ret = doInstruction ();
+    t\_stat ret = doInstruction ();
 \end{verbatim}
 
 If an transfer instruction has the A bit set, and accesses the Append Unit
@@ -516,12 +557,12 @@ during the Computed Address formation, the processor is switch to Append
 mode.
 
 \begin{verbatim}
-    if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
+    if (info->ndes == 0 && a && (info->flags & TRANSFER\_INS))
       {
-        if (get_addr_mode () == BAR_mode)
-          set_addr_mode(APPEND_BAR_mode);
+        if (get\_addr\_mode () == BAR\_mode)
+          set\_addr\_mode(APPEND\_BAR\_mode);
         else
-          set_addr_mode(APPEND_mode);
+          set\_addr\_mode(APPEND\_mode);
       }
 \end{verbatim}
 
@@ -650,7 +691,211 @@ function return value is used to signal that a transfer is to occur.
     case 0710:  ///< tra
       PPR.IC = TPR.CA;
       PPR.PSR = TPR.TSR;
-      return CONT_TRA;
+      return CONT\_TRA;
 \end{verbatim}
+
+\section{RPT/RPD}
+
+TODO
+
+\section{XEC/XED}
+
+TODO
+
+\section{EIS}
+
+TODO
+
+\section{Computed Address Formation}
+
+TODO
+
+\section{Append Unit}
+
+TODO
+
+\section{Interrupts}
+
+Interrupts are handled at the start of the CPU fetch cycle:
+
+\begin{verbatim}
+    if (cpu . interrupt\_flag)
+      {
+        setCpuCycle (INTERRUPT\_cycle);
+        break;
+      }
+\end{verbatim}
+
+The DPS8M interrupt handling logic is to save the system state, place the processor in "temporary absolute 
+mode", fetch a pair of instructions from the indicated location in memory and execute them. If one
+of the pair of instructions is a transfer instruction, the processor is set to absolute mode. If
+neither of the instructions transfers, the Control Unit is restored from the saved state and the
+processor is switched back to the fetch cycle.
+
+The INTERRUPT\_cycle handler saves the Control Unit state so the processor can return to the
+state that was extant at the time the interrupt was handled. The interrupt number being serviced
+is stored in the Control Unit, where the guest operating system can inspect it.
+
+\begin{verbatim}
+  // In the INTERRUPT CYCLE, the processor safe-stores
+  // the Control Unit Data (see Section 3) into 
+  // program-invisible holding registers in preparation 
+  // for a Store Control Unit (scu) instruction, enters 
+  // temporary absolute mode, and forces the current 
+  // ring of execution C(PPR.PRR) to
+  // 0. It then issues an XEC system controller command 
+  // to the system controller on the highest priority 
+  // port for which there is a bit set in the interrupt 
+  // present register.  
+
+  uint intr\_pair\_addr = get\_highest\_intr ();
+  cu . FI\_ADDR = intr\_pair\_addr / 2;
+  cu\_safe\_store ();
+\end{verbatim}
+
+Next, the processor is placed in  "temporary absolute mode":
+
+\begin{verbatim}
+    // Temporary absolute mode
+    set\_TEMPORARY\_ABSOLUTE\_mode ();
+
+    // Set to ring 0
+    PPR . PRR = 0;
+    TPR . TRR = 0;
+\end{verbatim}
+
+The interrupt pair is fetched and scheduled for execution:
+
+\begin{verbatim}
+    // get interrupt pair
+    core\_read2 (intr\_pair\_addr, instr\_buf, instr\_buf + 1, \_\_func\_\_);
+
+    cpu . interrupt\_flag = false;
+    setCpuCycle (INTERRUPT\_EXEC\_cycle);
+    break;
+\end{verbatim}
+
+The INTERRUPT\_EXEC\_cycle handler recovers an instruction from holding and executes it.
+
+\begin{verbatim}
+    case INTERRUPT\_EXEC\_cycle:
+    case INTERRUPT\_EXEC2\_cycle:
+      {
+        if (cpu . cycle == INTERRUPT\_EXEC\_cycle)
+          cu . IWB = instr\_buf [0];
+        else
+          cu . IWB = instr\_buf [1];
+
+        t\_stat ret = executeInstruction ();
+\end{verbatim}
+
+If the instruction was a transfer instruction, set the processor to absolute mode and start
+normal fetch/execute processing.
+
+\begin{verbatim}
+    if (ret == CONT\_TRA)
+      {
+        cpu . wasXfer = true;
+        setCpuCycle (FETCH\_cycle);
+        set\_addr\_mode (ABSOLUTE\_mode);
+        break;
+      }
+\end{verbatim}
+
+Otherwise, if the instruction just executed was the first of the pair, schedule the execution of
+the second.
+
+\begin{verbatim}
+    if (cpu . cycle == INTERRUPT\_EXEC\_cycle)
+      {
+        setCpuCycle (INTERRUPT\_EXEC2\_cycle);
+        break;
+      }
+\end{verbatim}
+
+The only possibility now is that both instructions have been executed and neither transferred, so restore
+the saved state and resume processing.
+
+\begin{verbatim}
+    clear\_TEMPORARY\_ABSOLUTE\_mode ();
+    cu\_safe\_restore ();
+    cpu . wasXfer = false;
+    setCpuCycle (FETCH\_cycle);
+    break;
+\end{verbatim}
+ 
+\section{Faults}
+
+Faults fall (mostly) into two categories, ones that are generated by instruction execution (page faults,
+overflow, etc.), and those that are independent of the instruction (timer run-out, lockup fault, etc.).
+
+
+The Group 7 faults are handled similarly to interrupts; at the start of the CPU fetch cycle the
+Group 7 fault pending flag is queried.
+
+\begin{verbatim}
+    if (cpu . g7\_flag)
+      {
+        cpu . g7\_flag = false;
+        doG7Fault ();
+      }
+\end{verbatim}
+
+`doG7Fault' is invoked rather then switching 
+cycles directly.
+
+\begin{verbatim}
+void doG7Fault (void)
+  {
+     if (g7Faults & (1u << FAULT\_TRO))
+       {
+         g7Faults &= ~(1u << FAULT_TRO);
+         doFault (FAULT\_TRO, 0, "Timer runout");
+       }
+
+     if (g7Faults & (1u << FAULT\_CON))
+       {
+         g7Faults &= ~(1u << FAULT\_CON);
+         cu . CNCHN = g7SubFaults [FAULT\_CON] & MASK3;
+         doFault (FAULT\_CON, g7SubFaults [FAULT\_CON], "Connect");
+       }
+
+     // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
+     // we are allowing the current instruction to complete, simplifying
+     // implementation
+     if (g7Faults & (1u << FAULT\_EXF))
+       {
+         g7Faults &= ~(1u << FAULT\_EXF);
+         doFault (FAULT\_EXF, 0, "Execute fault");
+       }
+     doFault (FAULT\_TRB, (\_fault\_subtype) g7Faults, "Dazed and confused in doG7Fault");
+  }
+\end{verbatim}
+
+Both the interrupt and fault paths involve saving the Control Unit, but the fault case was abstracted into
+`doFault', due to the large number of code paths leading there; while there is only the single entry into
+the INTERRUPT\_cycle, and the Control Unit save is done in the INTERRUPT\_cycle state handler.
+
+TODO
+
+\subsection{doFault()}
+
+TODO
+
+\subsection{RCU}
+
+TODO
+
+\part{"As-built"}
+
+\section{Variations between the hardware and the emulator}
+
+DPS8 memory is managed by the CPU code, not the SCU code.
+
+The history registers are not implemented.
+
+The RPL instruction is not implemented.
+
+The MPCs have been abstracted into the device code.
 
 \end{document}
