@@ -5,8 +5,6 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
-#define ABUSE_CT_HOLD2
-
 //#define DBGF // eis page fault debugging
 #include <stdio.h>
 
@@ -32,6 +30,14 @@
 #define ASSUME0 0
 // XXX Use this for places where is matters when we have multiple CPUs
 #define ASSUME_CPU0 0
+
+// In the case of RPDA, the odd instruction has been observed to reference the
+// same X register as the even instruction, and does not expect the X register
+// to be updated until after the odd instruction as executed. The code needs a
+// way to remember what the even instruction register number was so that
+// it can be updated. Stash it in cu.CT_HOLD; this is safe, as the repeated 
+// instructions are not allowed to use addressing modes that would disturb it.
+#define ABUSE_CT_HOLD2
 
 word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
