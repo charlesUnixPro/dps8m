@@ -744,12 +744,6 @@ void fetchInstruction (word18 addr)
         TPR . TRR = 0;
         RSDWH_R1 = 0;
       }
-#if 0
-    if (get_addr_mode() == ABSOLUTE_mode)
-      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %06o\n", PPR . IC);
-    else
-      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %05o:%06o\n", PPR . PSR, PPR . IC);
-#endif
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
@@ -797,17 +791,6 @@ static t_stat setupForOperandRead (void)
 
 void traceInstruction (uint flag)
   {
-#if 0
-if (PPR.PSR == 037 && PPR.IC == 03232) { sim_printf ("%05o:%06o\n", PAR[2].SNR,PAR[2].WORDNO);
-word24 res;
-if (dbgLookupAddress (PAR[2].SNR, PAR[2].WORDNO, & res, NULL))
-sim_printf ("?\n");
-else
-{
-sim_printf ("%06o %012llo %012llo\n", res, M [res],M [res + 1]);
-}
-}
-#endif
     if (! flag) goto force;
     if_sim_debug (flag, &cpu_dev)
       {
@@ -1320,18 +1303,6 @@ restart_1:
         //   lda  ...,2
         //   cmpa .,.,2
 
-#if 0
-        if (cu . rpt || // rpt
-            (cu . rd && icEven && rptA) || // rpda
-            (cu . rd && icOdd && rptB)) // rpdb
-          {
-            word6 Td = GET_TD(ci -> tag);
-            uint Xn = X(Td);  // Get Xn of instruction
-            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
-          }
-#else
         if (cu . rpt) // rpt
           {
             word6 Td = GET_TD(ci -> tag);
@@ -1345,14 +1316,6 @@ restart_1:
         // here specically: if it is correct that the x register should
         // only be update once, then that case needs to be addressed here
         // with additional logic
-#if 0
-        if (cu . rd && icOdd && rptA) // rpda
-          {
-            rX[xEven] = (rX[xEven] + cu . delta) & AMASK;
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", xEven, rX [xEven]);
-          }
-#else
         if (cu . rd && icEven && rptA) // rpda, even instruction
           {
 // We can use CT_HOLD here, because the repeated instructions are constrained
@@ -1373,14 +1336,12 @@ restart_1:
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
           }
-#endif
         if (cu . rd && icOdd && rptB) // rpdb, odd instruction
           {
             rX[xN] = (rX[xN] + cu . delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
           }
-#endif
         // Check for termination conditions.
 
         if (cu . rpt || (cu . rd & (PPR.IC & 1)))
@@ -4946,25 +4907,13 @@ static t_stat DoBasicInstruction (void)
             doFault(FAULT_MME4, 0, "Master Mode Entry 4 (mme4)");
             // break;
 
-        case 0011:   ///< nop
+        case 0011:   // nop
             break;
 
-        case 0012:   ///< puls1
-            // For emulation purposes, a nop
-            {
-#if 0
-            // just generate a register dump
-            sim_printf("A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(cu.IR));
-            sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
-            sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
-                for(uint32 n = 0 ; n < 8 ; n++)
-                    sim_printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
-#endif
-            }
+        case 0012:   // puls1
             break;
 
-        case 0013:   ///< puls2
-            // For emulation purposes, a nop
+        case 0013:   // puls2
             break;
          
         case 0560:  // rpd
@@ -5171,99 +5120,10 @@ static t_stat DoBasicInstruction (void)
                 case 001: // C(fault register) -> C(Y-pair)0,35
                           // 00...0 -> C(Y-pair)36,71
                   {
-#if 0
-                    Ypair [0] = 0;
-                    // a 0 ILL OP
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_op)
-                      putbits36 (& Ypair [0], 0, 1, 1); 
-
-                    // b 1 ILL MOD
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_mod)
-                      putbits36 (& Ypair [0], 1, 1, 1); 
-
-                    // c 2 ILL SLV
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_slv)
-                      putbits36 (& Ypair [0], 2, 1, 1);
-
-                    // d 3 ILL PROC
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_proc)
-                      putbits36 (& Ypair [0], 3, 1, 1);
-
-                    // e 4 NEM 
-                    if (cpu . faultNumber == FAULT_ONC &&
-                        cpu . subFault == nem)
-                      putbits36 (& Ypair [0], 4, 1, 1);
-
-                    // f 5 OOB
-                    if (cpu . faultNumber == FAULT_STR &&
-                        cpu . subFault == oob)
-                      putbits36 (& Ypair [0], 5, 1, 1);
-
-                    // g 6 ILL DIG
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_dig)
-                      putbits36 (& Ypair [0], 6, 1, 1);
-
-                    // h 7 PROC PARU
-
-                    // i 8 PROC PARU
-
-                    // j 9 $CON A
-
-                    // k 10 $CON B
-
-                    // l 11 $CON C
-
-                    // m 12 $CON D
-
-                    // n 13 DA ERR
-
-                    // o 14 DA ERR2
-
-                    //   15 zero
-
-                    //   16-19 IAA
-
-                    //   20-23 IAB
-
-                    //   24-27 IAC
-
-                    //   28-31 IAD
-
-                    // p 32 CPAR DIR
-
-                    // q 33 CPAR STR
-
-                    // r 34 CPAR IA
-
-                    // s 35 CPAR BLK
-
-                    Ypair [1] = 0;
-
-                    // t 36 Port A
-                    // u 37 Port B
-                    // v 38 Port C
-                    // w 39 Port D
-                    // x 40 WNO buffer ov
-                    // y 41 WNO parity err
-                    // z 42 Level 0
-                    // A 43 Level 1
-                    // B 44 Level 2
-                    // C 45 Level 3
-                    // D 46 CDDMM
-                    // E 47 SDWAM parity error
-                    // F 48 PTWAM parity error
-                    //   49-71 zero
-#else
                     Ypair [0] = faultRegister [0];
                     Ypair [1] = faultRegister [1];
                     faultRegister [0] = 0;
                     faultRegister [1] = 0;
-#endif
                   }
                   break;
 
@@ -5772,42 +5632,8 @@ static t_stat DoBasicInstruction (void)
 //      3. The use of this instruction in the Slave or Master mode causes a 
 //         Command fault.
 
-#if 0
-            while (1)
-              {
-                t_stat rc = simh_hooks ();
-                if (rc)
-                  return rc;
-                if (sample_interrupts ())
-                  {
-                    sim_printf ("leaving dis 'cause of interrupt\n");
-                    break;
-                  }
-                //if (rTR)
-                  {
-                    rTR = (rTR - 1) & MASK27;
-                    if (GET_I (cu . IWB) == 0) // Not inhibited
-                      {
-                        if (switches . tro_enable)
-                          {
-                            if (rTR == MASK27)
-                              {
-                                //doFault (FAULT_TRO, 0, "Timer runout");
-                                setG7fault (FAULT_TRO);
-                        sim_printf ("leaving dis 'cause of TRO\n");
-                                break;
-                              }
-                          }
-                      }
-                  }
-              }
-            sim_printf ("left DIS_cycle\n");
-            break;
-#else
-//sim_debug (DBG_FAULT, & cpu_dev, "DIS rTR %d (%o)\n", rTR, rTR);
             if (sample_interrupts ())
               {
-//sim_debug (DBG_FAULT, & cpu_dev, "DIS saw interrupt\n");
                 cpu . interrupt_flag = true;
                 break;
               }
@@ -5815,7 +5641,6 @@ static t_stat DoBasicInstruction (void)
             // this code suffices for "all other G7 faults."
             if (GET_I (cu . IWB) ? bG7PendingNoTRO () : bG7Pending ())
               {
-//sim_debug (DBG_TRACE, & cpu_dev, "DIS saw g7 fault\n");
                 cpu . g7_flag = true;
                 break;
               }
@@ -5824,8 +5649,6 @@ static t_stat DoBasicInstruction (void)
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
-#endif
- 
             
         default:
             if (switches . halt_on_unimp)
@@ -7686,41 +7509,8 @@ static int doABSA (word36 * result)
           }
       }
 
-#if 0
-      {
-        word36 dis = M [PPR . IC + 1];
-        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-          sim_printf ("we didn't fault\n");
-        else
-          {
-            // Fetch the  LDA instruction
-            word36 lda = M [PPR . IC + 2];
-            //sim_printf ("lda %012llo\n",  lda);
-            // Extract the address
-            word18 ans_addr = GETHI (lda);
-            // Get the answer
-            word36 ans = M [ans_addr];
-           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
-             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
-         }
-      }
-#endif
 
     * result = res;
-#if 0
-    else // APPEND_mode; XXX handle BAR mode someday
-      {
-sim_debug (DBG_FAULT, & cpu_dev, "absa TPR.CA %08o finalAddress %08o\n", TPR.CA, finalAddress);
-        if (! i -> a && i -> tag == 0)
-        {
-            Read (i, TPR.CA, NULL, PrepareCA, 0);
-sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08o\n", TPR.CA, finalAddress);
-
-        }
-        //* result = ((word36) TPR.CA) << 12; // 24:12 format
-        * result = ((word36) finalAddress) << 12; // 24:12 format
-      }
-#endif
 
     return SCPE_OK;
   }
