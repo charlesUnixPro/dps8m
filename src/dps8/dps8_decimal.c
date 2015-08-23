@@ -2218,10 +2218,11 @@ void ad2d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -2518,10 +2519,11 @@ void ad3d (void)
     cleanupOperandDescriptor(2, e);
     cleanupOperandDescriptor(3, e);
 #endif
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
     }
     
     if (Ovr)
@@ -2786,9 +2788,10 @@ void sb2d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"sb2d truncation (overflow) fault");
     }
     
@@ -3067,10 +3070,11 @@ void sb3d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -3334,10 +3338,11 @@ void mp2d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -3615,10 +3620,11 @@ void mp3d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -3879,10 +3885,11 @@ void dv2d (void)
     cleanupOperandDescriptor(3, e);
 #endif
 
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -4184,10 +4191,11 @@ void dv3d (void)
     cleanupOperandDescriptor(3, e);
 #endif
     
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
     }
 
     if (Ovr)
@@ -4579,12 +4587,11 @@ void mvn (void)
     cleanupOperandDescriptor(2, e);
 #endif
     
-    if (e->T && Trunc)
+    if (Trunc)
     {
-        // According to eis_tester, test mvn2, the overflow bit is not
-        // set on trucation.
-        //SETF(cu.IR, I_OFLOW);
-        doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+            doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
     }
     
     if (Ovr)
