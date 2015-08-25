@@ -5,8 +5,6 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
-#define ABUSE_CT_HOLD2
-
 //#define DBGF // eis page fault debugging
 #include <stdio.h>
 
@@ -32,6 +30,14 @@
 #define ASSUME0 0
 // XXX Use this for places where is matters when we have multiple CPUs
 #define ASSUME_CPU0 0
+
+// In the case of RPDA, the odd instruction has been observed to reference the
+// same X register as the even instruction, and does not expect the X register
+// to be updated until after the odd instruction as executed. The code needs a
+// way to remember what the even instruction register number was so that
+// it can be updated. Stash it in cu.CT_HOLD; this is safe, as the repeated 
+// instructions are not allowed to use addressing modes that would disturb it.
+#define ABUSE_CT_HOLD2
 
 word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
@@ -744,12 +750,6 @@ void fetchInstruction (word18 addr)
         TPR . TRR = 0;
         RSDWH_R1 = 0;
       }
-#if 0
-    if (get_addr_mode() == ABSOLUTE_mode)
-      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %06o\n", PPR . IC);
-    else
-      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %05o:%06o\n", PPR . PSR, PPR . IC);
-#endif
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
@@ -797,17 +797,6 @@ static t_stat setupForOperandRead (void)
 
 void traceInstruction (uint flag)
   {
-#if 0
-if (PPR.PSR == 037 && PPR.IC == 03232) { sim_printf ("%05o:%06o\n", PAR[2].SNR,PAR[2].WORDNO);
-word24 res;
-if (dbgLookupAddress (PAR[2].SNR, PAR[2].WORDNO, & res, NULL))
-sim_printf ("?\n");
-else
-{
-sim_printf ("%06o %012llo %012llo\n", res, M [res],M [res + 1]);
-}
-}
-#endif
     if (! flag) goto force;
     if_sim_debug (flag, &cpu_dev)
       {
@@ -1033,8 +1022,6 @@ restart_1:
 /// executeInstruction: RPT/RPD special processing for 'first time'
 ///
 
-#define RPT_TRY4
-#ifdef RPT_TRY4
     // possible states
     // repeat_first rpt rd    do it?
     //       f       f   f      y
@@ -1125,7 +1112,6 @@ restart_1:
               }
           }
       } // cu . rpt || cu . rpd
-#endif
 
 ///
 /// executeInstruction: EIS operand processing
@@ -1323,18 +1309,6 @@ restart_1:
         //   lda  ...,2
         //   cmpa .,.,2
 
-#if 0
-        if (cu . rpt || // rpt
-            (cu . rd && icEven && rptA) || // rpda
-            (cu . rd && icOdd && rptB)) // rpdb
-          {
-            word6 Td = GET_TD(ci -> tag);
-            uint Xn = X(Td);  // Get Xn of instruction
-            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
-          }
-#else
         if (cu . rpt) // rpt
           {
             word6 Td = GET_TD(ci -> tag);
@@ -1348,14 +1322,6 @@ restart_1:
         // here specically: if it is correct that the x register should
         // only be update once, then that case needs to be addressed here
         // with additional logic
-#if 0
-        if (cu . rd && icOdd && rptA) // rpda
-          {
-            rX[xEven] = (rX[xEven] + cu . delta) & AMASK;
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", xEven, rX [xEven]);
-          }
-#else
         if (cu . rd && icEven && rptA) // rpda, even instruction
           {
 // We can use CT_HOLD here, because the repeated instructions are constrained
@@ -1376,14 +1342,12 @@ restart_1:
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
           }
-#endif
         if (cu . rd && icOdd && rptB) // rpdb, odd instruction
           {
             rX[xN] = (rX[xN] + cu . delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
           }
-#endif
         // Check for termination conditions.
 
         if (cu . rpt || (cu . rd & (PPR.IC & 1)))
@@ -2393,7 +2357,8 @@ static t_stat DoBasicInstruction (void)
              
             */
         
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0077:   ///< adaq
@@ -2401,7 +2366,8 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -2410,7 +2376,8 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) + C(Y) sign extended -> C(AQ)
             {
                 word72 tmp72 = SIGNEXT36_72(CY); // sign extend Cy
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -2422,19 +2389,22 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0035:   ///< adla
             /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0036:   ///< adlq
             /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rQ = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0020:   ///< adlx0
@@ -2447,12 +2417,14 @@ static t_stat DoBasicInstruction (void)
         case 0027:   ///< adlx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
             
         case 0076:   ///< adq
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Add36b(rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
 
         case 0060:   ///< adx0
@@ -2465,24 +2437,28 @@ static t_stat DoBasicInstruction (void)
         case 0067:   ///< adx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
         
         case 0054:   ///< aos
             /// C(Y)+1->C(Y)
             
-            CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (CY, 1, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
         
         case 0055:   ///< asa
             /// C(A) + C(Y) -> C(Y)
-            CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0056:   ///< asq
             /// C(Q) + C(Y) -> C(Y)
-            CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0040:   ///< asx0
@@ -2498,7 +2474,8 @@ static t_stat DoBasicInstruction (void)
             ///    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
             
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                word18 tmp18 = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -2507,9 +2484,10 @@ static t_stat DoBasicInstruction (void)
         case 0071:   ///< awca
             /// If carry indicator OFF, then C(A) + C(Y) -> C(A)
             /// If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
-            if (TSTF(cu.IR, I_CARRY))
-                rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (TSTF(cu.IR, I_CARRY))
+                //rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Add36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
             
@@ -2517,9 +2495,10 @@ static t_stat DoBasicInstruction (void)
         case 0072:   ///< awcq
             /// If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
             /// If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
-            if (TSTF(cu.IR, I_CARRY))
-                rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (TSTF(cu.IR, I_CARRY))
+                //rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Add36b (rQ, CY, TSTF(cu.IR, I_CARRY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
            
@@ -2527,7 +2506,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0175:  ///< sba
             /// C(A) - C(Y) -> C(A)
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0177:  ///< sbaq
@@ -2535,14 +2515,16 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Sub72b (convertToWord72(rA, rQ), tmp72, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
           
         case 0135:  ///< sbla
             /// C(A) - C(Y) -> C(A) logical
-            rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0137:  ///< sblaq
@@ -2551,14 +2533,16 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
+                tmp72 = Sub72b (convertToWord72(rA, rQ), 1, tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0136:  ///< sblq
             ///< C(Q) - C(Y) -> C(Q)
-            rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0120:  ///< sblx0
@@ -2573,13 +2557,15 @@ static t_stat DoBasicInstruction (void)
             /// \brief     C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
          
         case 0176:  ///< sbq
             /// C(Q) - C(Y) -> C(Q)
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0160:  ///< sbx0
@@ -2594,19 +2580,22 @@ static t_stat DoBasicInstruction (void)
             /// \brief  C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
 
         case 0155:  ///< ssa
             /// C(A) - C(Y) -> C(Y)
-            CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
 
         case 0156:  ///< ssq
             /// C(Q) - C(Y) -> C(Y)
-            CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
         
@@ -2622,7 +2611,8 @@ static t_stat DoBasicInstruction (void)
             /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn) - C(Y)0,17 -> C(Y)0,17
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                word18 tmp18 = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -2632,18 +2622,20 @@ static t_stat DoBasicInstruction (void)
         case 0171:  ///< swca
             /// If carry indicator ON, then C(A)- C(Y) -> C(A)
             /// If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
-            if (!TSTF(cu.IR, I_CARRY))
-                rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (!TSTF(cu.IR, I_CARRY))
+                //rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
          
         case 0172:  ///< swcq
             /// If carry indicator ON, then C(Q) - C(Y) -> C(Q)
             /// If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
-            if (!TSTF(cu.IR, I_CARRY))
-                rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (!TSTF(cu.IR, I_CARRY))
+                //rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
         
@@ -4949,25 +4941,13 @@ static t_stat DoBasicInstruction (void)
             doFault(FAULT_MME4, 0, "Master Mode Entry 4 (mme4)");
             // break;
 
-        case 0011:   ///< nop
+        case 0011:   // nop
             break;
 
-        case 0012:   ///< puls1
-            // For emulation purposes, a nop
-            {
-#if 0
-            // just generate a register dump
-            sim_printf("A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(cu.IR));
-            sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
-            sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
-                for(uint32 n = 0 ; n < 8 ; n++)
-                    sim_printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
-#endif
-            }
+        case 0012:   // puls1
             break;
 
-        case 0013:   ///< puls2
-            // For emulation purposes, a nop
+        case 0013:   // puls2
             break;
          
         case 0560:  // rpd
@@ -5174,99 +5154,10 @@ static t_stat DoBasicInstruction (void)
                 case 001: // C(fault register) -> C(Y-pair)0,35
                           // 00...0 -> C(Y-pair)36,71
                   {
-#if 0
-                    Ypair [0] = 0;
-                    // a 0 ILL OP
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_op)
-                      putbits36 (& Ypair [0], 0, 1, 1); 
-
-                    // b 1 ILL MOD
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_mod)
-                      putbits36 (& Ypair [0], 1, 1, 1); 
-
-                    // c 2 ILL SLV
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_slv)
-                      putbits36 (& Ypair [0], 2, 1, 1);
-
-                    // d 3 ILL PROC
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_proc)
-                      putbits36 (& Ypair [0], 3, 1, 1);
-
-                    // e 4 NEM 
-                    if (cpu . faultNumber == FAULT_ONC &&
-                        cpu . subFault == nem)
-                      putbits36 (& Ypair [0], 4, 1, 1);
-
-                    // f 5 OOB
-                    if (cpu . faultNumber == FAULT_STR &&
-                        cpu . subFault == oob)
-                      putbits36 (& Ypair [0], 5, 1, 1);
-
-                    // g 6 ILL DIG
-                    if (cpu . faultNumber == FAULT_IPR &&
-                        cpu . subFault == ill_dig)
-                      putbits36 (& Ypair [0], 6, 1, 1);
-
-                    // h 7 PROC PARU
-
-                    // i 8 PROC PARU
-
-                    // j 9 $CON A
-
-                    // k 10 $CON B
-
-                    // l 11 $CON C
-
-                    // m 12 $CON D
-
-                    // n 13 DA ERR
-
-                    // o 14 DA ERR2
-
-                    //   15 zero
-
-                    //   16-19 IAA
-
-                    //   20-23 IAB
-
-                    //   24-27 IAC
-
-                    //   28-31 IAD
-
-                    // p 32 CPAR DIR
-
-                    // q 33 CPAR STR
-
-                    // r 34 CPAR IA
-
-                    // s 35 CPAR BLK
-
-                    Ypair [1] = 0;
-
-                    // t 36 Port A
-                    // u 37 Port B
-                    // v 38 Port C
-                    // w 39 Port D
-                    // x 40 WNO buffer ov
-                    // y 41 WNO parity err
-                    // z 42 Level 0
-                    // A 43 Level 1
-                    // B 44 Level 2
-                    // C 45 Level 3
-                    // D 46 CDDMM
-                    // E 47 SDWAM parity error
-                    // F 48 PTWAM parity error
-                    //   49-71 zero
-#else
                     Ypair [0] = faultRegister [0];
                     Ypair [1] = faultRegister [1];
                     faultRegister [0] = 0;
                     faultRegister [1] = 0;
-#endif
                   }
                   break;
 
@@ -5775,42 +5666,8 @@ static t_stat DoBasicInstruction (void)
 //      3. The use of this instruction in the Slave or Master mode causes a 
 //         Command fault.
 
-#if 0
-            while (1)
-              {
-                t_stat rc = simh_hooks ();
-                if (rc)
-                  return rc;
-                if (sample_interrupts ())
-                  {
-                    sim_printf ("leaving dis 'cause of interrupt\n");
-                    break;
-                  }
-                //if (rTR)
-                  {
-                    rTR = (rTR - 1) & MASK27;
-                    if (GET_I (cu . IWB) == 0) // Not inhibited
-                      {
-                        if (switches . tro_enable)
-                          {
-                            if (rTR == MASK27)
-                              {
-                                //doFault (FAULT_TRO, 0, "Timer runout");
-                                setG7fault (FAULT_TRO);
-                        sim_printf ("leaving dis 'cause of TRO\n");
-                                break;
-                              }
-                          }
-                      }
-                  }
-              }
-            sim_printf ("left DIS_cycle\n");
-            break;
-#else
-//sim_debug (DBG_FAULT, & cpu_dev, "DIS rTR %d (%o)\n", rTR, rTR);
             if (sample_interrupts ())
               {
-//sim_debug (DBG_FAULT, & cpu_dev, "DIS saw interrupt\n");
                 cpu . interrupt_flag = true;
                 break;
               }
@@ -5818,7 +5675,6 @@ static t_stat DoBasicInstruction (void)
             // this code suffices for "all other G7 faults."
             if (GET_I (cu . IWB) ? bG7PendingNoTRO () : bG7Pending ())
               {
-//sim_debug (DBG_TRACE, & cpu_dev, "DIS saw g7 fault\n");
                 cpu . g7_flag = true;
                 break;
               }
@@ -5827,8 +5683,6 @@ static t_stat DoBasicInstruction (void)
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
-#endif
- 
             
         default:
             if (switches . halt_on_unimp)
@@ -7689,41 +7543,8 @@ static int doABSA (word36 * result)
           }
       }
 
-#if 0
-      {
-        word36 dis = M [PPR . IC + 1];
-        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-          sim_printf ("we didn't fault\n");
-        else
-          {
-            // Fetch the  LDA instruction
-            word36 lda = M [PPR . IC + 2];
-            //sim_printf ("lda %012llo\n",  lda);
-            // Extract the address
-            word18 ans_addr = GETHI (lda);
-            // Get the answer
-            word36 ans = M [ans_addr];
-           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
-             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
-         }
-      }
-#endif
 
     * result = res;
-#if 0
-    else // APPEND_mode; XXX handle BAR mode someday
-      {
-sim_debug (DBG_FAULT, & cpu_dev, "absa TPR.CA %08o finalAddress %08o\n", TPR.CA, finalAddress);
-        if (! i -> a && i -> tag == 0)
-        {
-            Read (i, TPR.CA, NULL, PrepareCA, 0);
-sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08o\n", TPR.CA, finalAddress);
-
-        }
-        //* result = ((word36) TPR.CA) << 12; // 24:12 format
-        * result = ((word36) finalAddress) << 12; // 24:12 format
-      }
-#endif
 
     return SCPE_OK;
   }

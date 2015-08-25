@@ -73,6 +73,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
 
 stats_t sys_stats;
 
+static t_stat dps_debug_skip (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat dps_debug_stop (int32 arg, char * buf);
 static t_stat dps_debug_break (int32 arg, char * buf);
@@ -116,6 +117,7 @@ static CTAB dps8_cmds[] =
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
 #endif
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
+    {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
     {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
     {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL},
@@ -237,7 +239,17 @@ uint64 sim_deb_stop = 0;
 uint64 sim_deb_break = 0;
 uint64 sim_deb_segno = NO_SUCH_SEGNO;
 uint64 sim_deb_ringno = NO_SUCH_RINGNO;
+uint64 sim_deb_skip_limit = 0;
+uint64 sim_deb_skip_cnt = 0;
 bool sim_deb_bar = false;
+
+static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
+  {
+    sim_deb_skip_cnt = 0;
+    sim_deb_skip_limit = strtoull (buf, NULL, 0);
+    sim_printf ("Debug skip set to %lld\n", sim_deb_skip_limit);
+    return SCPE_OK;
+  }
 
 static t_stat dps_debug_start (UNUSED int32 arg, char * buf)
   {

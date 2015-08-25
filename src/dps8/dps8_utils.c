@@ -181,7 +181,641 @@ char *getModString(int32 tag)
  */
 /* Single word integer routines */
 
+word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
 
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 37 bit arithmetic for the above N+1 algorithm
+    word38 op1e = op1 & MASK36;
+    word38 op2e = op2 & MASK36;
+    word38 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN36)
+      op1e |= BIT37;
+    if (op2e & SIGN36)
+      op2e |= BIT37;
+
+    // Do the math
+    word38 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r37 = res & BIT37 ? true : false;
+    bool r36 = res & SIGN36 ? true : false;
+
+    // Extract the carry bit
+    bool r38 = res & BIT38 ? true : false;
+   
+    // Check for overflow 
+    bool ovf = r37 ^ r36;
+
+    // Check for carry 
+    bool cry = r38;
+
+    // Truncate the result
+    res &= MASK36;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN36)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add36b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word36 cac = AddSub36b ('+', false, op1, op2, flagsToSet, & flags0);
+      if (carryin) cac ++;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Add36b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          sim_printf ("%012llo %06o\n", cac, flags0);
+          sim_printf ("%012llo %06o\n", res, * flags);
+          sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
+        }
+    }
+#endif
+    return res;
+  }
+
+word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 38 bit arithmetic for the above N+1 algorithm
+    word38 op1e = op1 & MASK36;
+    word38 op2e = op2 & MASK36;
+    // Note that carryin has an inverted sense for borrow
+    word38 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN36)
+      op1e |= BIT37;
+    if (op2e & SIGN36)
+      op2e |= BIT37;
+
+    // Do the math
+    word38 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r37 = (res & BIT37) ? true : false;
+    bool r36 = (res & SIGN36) ? true : false;
+
+    // Extract the carry bit
+    bool r38 = res & BIT38 ? true : false;
+   
+    // Truncate the result
+    res &= MASK36;
+
+    // Check for overflow 
+    bool ovf = r37 ^ r36;
+
+    // Check for carry 
+    bool cry = r38;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry) // Note inverted logic for subtraction
+          CLRF (* flags, I_CARRY);
+        else
+          SETF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN36)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Sub36b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word36 cac = AddSub36b ('-', false, op1, op2, flagsToSet, & flags0);
+      if (!carryin) cac --;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Sub36b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          sim_printf ("%012llo %06o\n", cac, flags0);
+          sim_printf ("%012llo %06o\n", res, * flags);
+          sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
+        }
+    }
+#endif
+    return res;
+  }
+
+word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
+
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 19 bit arithmetic for the above N+1 algorithm
+    word20 op1e = op1 & MASK18;
+    word20 op2e = op2 & MASK18;
+    word20 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN18)
+      op1e |= BIT19;
+    if (op2e & SIGN18)
+      op2e |= BIT19;
+
+    // Do the math
+    word20 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r19 = (res & BIT19) ? true : false;
+    bool r18 = (res & SIGN18) ? true : false;
+
+    // Extract the carry bit
+    bool r20 = res & BIT20 ? true : false;
+   
+    // Truncate the result
+    res &= MASK18;
+
+    // Check for overflow 
+    bool ovf = r19 ^ r18;
+
+    // Check for carry 
+    bool cry = r20;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN18)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add18b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word18 cac = AddSub18b ('+', false, op1, op2, flagsToSet, & flags0);
+      if (carryin) cac ++;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Add18b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          sim_printf ("%06o %06o\n", cac, flags0);
+          sim_printf ("%06o %06o\n", res, * flags);
+          sim_printf ("%o %06o %06o\n", carryin, op1, op2);
+        }
+    }
+#endif
+    return res;
+  }
+
+word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 19 bit arithmetic for the above N+1 algorithm
+    word20 op1e = op1 & MASK18;
+    word20 op2e = op2 & MASK18;
+    // Note that carryin has an inverted sense for borrow
+    word20 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN18)
+      op1e |= BIT19;
+    if (op2e & SIGN18)
+      op2e |= BIT19;
+
+    // Do the math
+    word20 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r19 = res & BIT19 ? true : false;
+    bool r18 = res & SIGN18 ? true : false;
+
+    // Extract the carry bit
+    bool r20 = res & BIT38 ? true : false;
+   
+    // Truncate the result
+    res &= MASK18;
+
+    // Check for overflow 
+    bool ovf = r19 ^ r18;
+
+    // Check for carry 
+    bool cry = r20;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry) // Note inverted logic for subtraction
+          CLRF (* flags, I_CARRY);
+        else
+          SETF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN18)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Sub18b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word18 cac = AddSub18b ('-', false, op1, op2, flagsToSet, & flags0);
+      if (!carryin) cac --;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Sub18b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          sim_printf ("%06o %06o\n", cac, flags0);
+          sim_printf ("%06o %06o\n", res, * flags);
+          sim_printf ("%o %06o %06o\n", carryin, op1, op2);
+        }
+    }
+#endif
+    return res;
+  }
+
+word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
+
+// https://en.wikipedia.org/wiki/Two%27s_complement#Addition
+//
+// In general, any two N-bit numbers may be added without overflow, by first
+// sign-extending both of them to N + 1 bits, and then adding as above. The
+// N + 1 bits result is large enough to represent any possible sum (N = 5 two's
+// complement can represent values in the range −16 to 15) so overflow will
+// never occur. It is then possible, if desired, to 'truncate' the result back
+// to N bits while preserving the value if and only if the discarded bit is a
+// proper sign extension of the retained result bits. This provides another
+// method of detecting overflow—which is equivalent to the method of comparing
+// the carry bits—but which may be easier to implement in some situations,
+// because it does not require access to the internals of the addition.
+
+    // 73 bit arithmetic for the above N+1 algorithm
+    word74 op1e = op1 & MASK72;
+    word74 op2e = op2 & MASK72;
+    word74 ci = carryin ? 1 : 0;
+
+    // extend sign bits
+    if (op1e & SIGN72)
+      op1e |= BIT73;
+    if (op2e & SIGN72)
+      op2e |= BIT73;
+
+    // Do the math
+    word74 res = op1e + op2e + ci;
+
+    // Extract the overflow bits
+    bool r73 = res & BIT73 ? true : false;
+    bool r72 = res & SIGN72 ? true : false;
+
+    // Extract the carry bit
+    bool r74 = res & BIT74 ? true : false;
+   
+    // Truncate the result
+    res &= MASK72;
+
+    // Check for overflow 
+    bool ovf = r73 ^ r72;
+
+    // Check for carry 
+    bool cry = r74;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN72)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Add72b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word72 cac = AddSub72b ('+', false, op1, op2, flagsToSet, & flags0);
+      if (carryin) cac ++;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Add72b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          //sim_printf ("%012llo %06o\n", cac, flags0);
+          //sim_printf ("%012llo %06o\n", res, * flags);
+          //sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
+          }
+    }
+#endif
+    return res;
+  }
+
+#ifdef DEGBUG_MATH
+static void print_int128o (word72 v, char * p)
+  {
+    for (uint i = 0; i < 24; i ++)
+      {
+        p [23 - i] = (v & 7) + '0';
+        v >>= 3;
+      }
+    p [24] = 0;
+   }
+#endif
+
+word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+  {
+#ifdef DEGBUG_MATH
+    word18 flags0 = * flags;
+#endif
+
+// https://en.wikipedia.org/wiki/Two%27s_complement
+//
+// As for addition, overflow in subtraction may be avoided (or detected after
+// the operation) by first sign-extending both inputs by an extra bit.
+//
+// AL39:
+//
+//  If carry indicator ON, then C(A) - C(Y) -> C(A)
+//  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+    // 73 bit arithmetic for the above N+1 algorithm
+    word74 op1e = op1 & MASK72;
+    word74 op2e = op2 & MASK72;
+    // Note that carryin has an inverted sense for borrow
+    word74 ci = carryin ? 0 : 1;
+
+    // extend sign bits
+    if (op1e & SIGN72)
+      op1e |= BIT73;
+    if (op2e & SIGN72)
+      op2e |= BIT73;
+
+    // Do the math
+    word74 res = op1e - op2e - ci;
+
+    // Extract the overflow bits
+    bool r73 = res & BIT73 ? true : false;
+    bool r72 = res & SIGN72 ? true : false;
+
+    // Extract the carry bit
+    bool r74 = res & BIT74 ? true : false;
+   
+    // Truncate the result
+    res &= MASK72;
+
+    // Check for overflow 
+    bool ovf = r73 ^ r72;
+
+    // Check for carry 
+    bool cry = r74;
+
+    if (flagsToSet & I_CARRY)
+      {
+        if (cry) // Note inverted logic for subtraction
+          CLRF (* flags, I_CARRY);
+        else
+          SETF (* flags, I_CARRY);
+      }
+ 
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf)
+          SETF (* flags, I_OFLOW);      // overflow
+      }
+    
+    if (flagsToSet & I_ZERO)
+      {
+        if (res)
+          CLRF (* flags, I_ZERO);
+        else
+          SETF (* flags, I_ZERO);       // zero result
+      }
+    
+    if (flagsToSet & I_NEG)
+      {
+        if (res & SIGN72)
+          SETF (* flags, I_NEG);
+        else
+          CLRF (* flags, I_NEG);
+      }
+    
+    if (flagsToSet & I_OFLOW)
+      {
+        if (ovf && ! TSTF (* flags, I_OMASK))
+          {
+            doFault(FAULT_OFL, 0,"Sub72b overflow fault");
+          }
+      }
+
+#ifdef DEGBUG_MATH
+    {
+      word72 cac = AddSub72b ('-', false, op1, op2, flagsToSet, & flags0);
+      if (!carryin) cac --;
+      if (cac != res || flags0 != * flags)
+      //if (cac != res)
+        {
+          sim_printf ("Sub72b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
+          char cacb [132], resb [132], op1b [132], op2b [132];
+          print_int128o (cac, cacb);
+          print_int128o (res, resb);
+          print_int128o (op1, op1b);
+          print_int128o (op2, op2b);
+          sim_printf ("%s %06o\n", cacb, flags0);
+          sim_printf ("%s %06o\n", resb, * flags);
+          sim_printf ("%o %s %s\n", carryin, op1b, op2b);
+        }
+    }
+#endif
+    return res;
+  }
+#if 0
 // XXX ticket #3 isSigned
 // CANFAULT
 word36 AddSub36b(char op, UNUSED bool  isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
@@ -427,6 +1061,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     
     return res & MASK72;           // 128 => 72-bit. Mask off unnecessary bits ...
 }
+#endif
 
 // CANFAULT
 word36 compl36(word36 op1, word18 *flags)

@@ -2852,10 +2852,14 @@ void btd(DCDstruct *ins)
     
     EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
     
+#if 0
     e->_flags = cu.IR;
     
     CLRF(e->_flags, I_NEG);     // If a minus sign character is moved to C(Y-charn2), then ON; otherwise OFF
     CLRF(e->_flags, I_ZERO);    // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
+#else
+    e -> _flags = 0;
+#endif
 
     _btd(e);
     
@@ -2864,9 +2868,20 @@ void btd(DCDstruct *ins)
     cleanupOperandDescriptor(2, e);
 #endif
     
+// XXX wrong; see ticket 76
+#if 0
     cu.IR = e->_flags;
     if (TSTF(cu.IR, I_OFLOW))
         doFault(FAULT_OFL, 0, "btd() overflow!");   // XXX generate overflow fault
+#else
+    SCF (e -> _flags & I_ZERO, cu . IR, I_ZERO);
+    SCF (e -> _flags & I_NEG, cu . IR, I_NEG);
+    if (e -> _flags & I_OFLOW)
+      {
+        SETF (cu . IR, I_OFLOW);
+        doFault(FAULT_OFL, 0, "btd overflow fault");
+      }
+#endif
 }
 
 // CANFAULT
@@ -4699,12 +4714,6 @@ void mlr(DCDstruct *ins)
     //Attempted execution with the xed instruction causes an illegal procedure fault.
     //Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
     
-    /// XXX when do we do a truncation fault?
-    
-    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    //if (e->N1 > e->N2 && e -> T)
-      //doFault(FAULT_OFL, 0, "mlr truncation fault");
-    
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
     bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1 
@@ -4746,6 +4755,7 @@ void mlr(DCDstruct *ins)
 #endif
         // truncation fault check does need to be checked for here since 
         // it is known that N1 == N2
+        CLRF(cu.IR, I_TRUNC);
         return;
       }
 
@@ -4774,6 +4784,7 @@ void mlr(DCDstruct *ins)
 #endif
         // truncation fault check does need to be checked for here since 
         // it is known that N1 <= N2
+        CLRF(cu.IR, I_TRUNC);
         return;
       }
 
@@ -4846,9 +4857,15 @@ void mlr(DCDstruct *ins)
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
 #endif
-    if (e->N1 > e->N2 && e -> T)
-      doFault(FAULT_OFL, 0, "mlr truncation fault");
-}
+    if (e->N1 > e->N2)
+      {
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+          doFault(FAULT_OFL, 0, "mlr truncation fault");
+      }
+    else
+      CLRF(cu.IR, I_TRUNC);
+} 
 
 /*
  * return CN (char position) and word offset given:
@@ -4992,12 +5009,6 @@ void mrl(DCDstruct *ins)
     //Attempted execution with the xed instruction causes an illegal procedure fault.
     //Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
     
-    /// XXX when do we do a truncation fault?
-    
-    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    //if (e->N1 > e->N2 && e -> T)
-      //doFault(FAULT_OFL, 0, "mrl truncation fault");
-    
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
     bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1
@@ -5075,8 +5086,14 @@ void mrl(DCDstruct *ins)
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
 #endif
-    if (e->N1 > e->N2 && e -> T)
-      doFault(FAULT_OFL, 0, "mrl truncation fault");
+    if (e->N1 > e->N2)
+      {
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+          doFault(FAULT_OFL, 0, "mrl truncation fault");
+      }
+    else
+      CLRF(cu.IR, I_TRUNC);
 }
 
 static word9 xlate(word36 *xlatTbl, int dstTA, int c)
@@ -5253,12 +5270,6 @@ void mvt(DCDstruct *ins)
     //int xlatAddr = 0;
     //int xlatCN = 0;
 
-    /// XXX when do we do a truncation fault?
-    
-    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
-    if (e->N1 > e->N2 && e -> T)
-      doFault(FAULT_OFL, 0, "mvt truncation fault");
-
     //SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
@@ -5367,6 +5378,14 @@ void mvt(DCDstruct *ins)
     cleanupOperandDescriptor(2, e);
     cleanupOperandDescriptor(3, e);
 #endif
+    if (e->N1 > e->N2)
+      {
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+          doFault(FAULT_OFL, 0, "mvt truncation fault");
+      }
+    else
+      CLRF(cu.IR, I_TRUNC);
 }
 
 #if 0 // UNUSED
@@ -7244,13 +7263,7 @@ void csl(DCDstruct *ins, bool isSZTL)
                e -> addr [1] . SNR, e -> addr [1] . address, 
                e -> addr [1] . cPos, e -> addr [1] . bPos);
 
-    //SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
-    // du.Z initialized to 1 by instruction setup // assume all Y-bit2 == 0
-    CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
-    
     bool bR = false; // result bit
-    //uint i = 0;
-//du.CHTALLY=0;
 //sim_printf ("CHTALLY %d N1 %d N2 %d\n", du . CHTALLY, e -> N1, e -> N2);
     for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
     {
@@ -7348,34 +7361,32 @@ void csl(DCDstruct *ins, bool isSZTL)
 #endif
             }
         }
-    } else if (e->N1 > e->N2)
-    {
-        // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not processed and the truncation indicator is set ON.
-        //
-        // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
-        
-        SETF(cu.IR, I_TRUNC);
-        if (e->T)
-        {
-            if (du . Z)
-              SETF (cu . IR, I_ZERO);
-            else
-              CLRF (cu . IR, I_ZERO);
-#ifdef EIS_CACHE
-            cleanupOperandDescriptor(1, e);
-            cleanupOperandDescriptor(2, e);
-#endif
-            doFault(FAULT_OFL, 0, "csl truncation fault");
-        }
     }
-    if (du . Z)
-      SETF (cu . IR, I_ZERO);
-    else
-      CLRF (cu . IR, I_ZERO);
+    
 #ifdef EIS_CACHE
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
 #endif
+    if (du . Z)
+      SETF (cu . IR, I_ZERO);
+    else
+      CLRF (cu . IR, I_ZERO);
+    if (e->N1 > e->N2)
+    {
+        // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
+        // processed and the truncation indicator is set ON.
+        //
+        // If T = 1 and the truncation indicator is set ON by execution of the
+        // instruction, then a truncation (overflow) fault occurs.
+        
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+        {
+            doFault(FAULT_OFL, 0, "csl truncation fault");
+        }
+    }
+    else
+        CLRF(cu.IR, I_TRUNC);
 }
 
 
@@ -7588,7 +7599,16 @@ void csr(DCDstruct *ins, bool isSZTR)
 #endif
             }
         }
-    } else if (e->N1 > e->N2)
+    }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+    if (du . Z)
+      SETF (cu . IR, I_ZERO);
+    else
+      CLRF (cu . IR, I_ZERO);
+    if (e->N1 > e->N2)
     {
         // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not processed and the truncation indicator is set ON.
         //
@@ -7597,26 +7617,12 @@ void csr(DCDstruct *ins, bool isSZTR)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
-            if (du . Z)
-              SETF (cu . IR, I_ZERO);
-            else
-              CLRF (cu . IR, I_ZERO);
-#ifdef EIS_CACHE
-            cleanupOperandDescriptor(1, e);
-            cleanupOperandDescriptor(2, e);
-#endif
             doFault(FAULT_OFL, 0, "csr truncation fault");
             //sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
-    if (du . Z)
-      SETF (cu . IR, I_ZERO);
     else
-      CLRF (cu . IR, I_ZERO);
-#ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-#endif
+        CLRF(cu.IR, I_TRUNC);
 }
 
 

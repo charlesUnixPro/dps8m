@@ -7,6 +7,7 @@ DF_OBJS = dumpFile.o bit36.o
 RST_OBJS = restore.o bit36.o 
 SCN_OBJS = scan.o bit36.o
 DIS_OBJS = disasm.o bit36.o
+DIS2_OBJS = dis.o bit36.o
 PK_OBJS = pack.o bit36.o
 UP_OBJS = unpack.o bit36.o
 EBL0_OBJS = extract_bound_bootload_0.o bit36.o
@@ -20,9 +21,9 @@ P72A_OBJS = p72archive_to_acsii.o bit36.o
 P72S_OBJS = p72archive_to_segment.o bit36.o
 DD_OBJS = diskDump.o bit36.o
 
-EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump
+EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS)
 
 all : $(EXES)
 
@@ -33,6 +34,7 @@ dumpFile : $(DF_OBJS)
 restore : $(RST_OBJS)
 scan : $(SCN_OBJS)
 disasm : $(DIS_OBJS)
+dis : $(DIS2_OBJS)
 pack : $(PK_OBJS)
 extract_bound_bootload_0 : $(EBL0_OBJS)
 unpack : $(UP_OBJS)
