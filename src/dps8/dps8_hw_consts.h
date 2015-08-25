@@ -39,6 +39,7 @@
 #define MAX18NEG        0400000U                 // -2**17 
 #define SIGN18          0400000U
 #define BIT19          01000000U                 // carry out bit from 18 bit arithmetic
+#define BIT20          02000000U                 // carry out bit from 19 bit arithmetic
 #define MASK36          0777777777777LLU         // data mask 
 #define DMASK           MASK36
 #define MASK10          0001777U                 // 10-bit data mask
@@ -53,6 +54,7 @@
 #define MASK24          077777777U               // 24-bit data mask
 #define SIGN36          0400000000000LLU         // sign bit of a 36-bit word
 #define BIT37          01000000000000LLU         // carry out bit from 36 bit arithmetic
+#define BIT38          02000000000000LLU         // carry out bit from 37 bit arithmetic
 #define MASK15          077777U
 #define SMASK           MASK15                   // Segment number mask
 #define SIGN15          040000U                  // sign mask 15-bit number
@@ -70,6 +72,7 @@
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
 #define SIGN72          ((word72)1U << 71)
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
+#define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
 #define MASK72          ZEROEXT72
 
 #define SIGN64          ((uint64)1U << 63)

@@ -102,10 +102,12 @@ typedef uint32      word27;
 typedef uint32      word32;
 typedef uint64      word36;
 typedef uint64      word37;
+typedef uint64      word38;
 typedef int64       word36s;
 typedef __uint128_t word72;
 typedef __int128_t  word72s;
 typedef __uint128_t word73;
+typedef __uint128_t word74;
 
 typedef __uint128_t uint128;
 typedef __int128_t  int128;
