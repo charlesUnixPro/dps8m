@@ -2357,7 +2357,8 @@ static t_stat DoBasicInstruction (void)
              
             */
         
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0077:   ///< adaq
@@ -2365,7 +2366,8 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -2374,7 +2376,8 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) + C(Y) sign extended -> C(AQ)
             {
                 word72 tmp72 = SIGNEXT36_72(CY); // sign extend Cy
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -2386,19 +2389,22 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0035:   ///< adla
             /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0036:   ///< adlq
             /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rQ = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0020:   ///< adlx0
@@ -2411,12 +2417,14 @@ static t_stat DoBasicInstruction (void)
         case 0027:   ///< adlx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
             
         case 0076:   ///< adq
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Add36b(rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
 
         case 0060:   ///< adx0
@@ -2429,24 +2437,28 @@ static t_stat DoBasicInstruction (void)
         case 0067:   ///< adx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
         
         case 0054:   ///< aos
             /// C(Y)+1->C(Y)
             
-            CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (CY, 1, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
         
         case 0055:   ///< asa
             /// C(A) + C(Y) -> C(Y)
-            CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0056:   ///< asq
             /// C(Q) + C(Y) -> C(Y)
-            CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0040:   ///< asx0
@@ -2462,7 +2474,8 @@ static t_stat DoBasicInstruction (void)
             ///    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
             
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                word18 tmp18 = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -2471,9 +2484,10 @@ static t_stat DoBasicInstruction (void)
         case 0071:   ///< awca
             /// If carry indicator OFF, then C(A) + C(Y) -> C(A)
             /// If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
-            if (TSTF(cu.IR, I_CARRY))
-                rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (TSTF(cu.IR, I_CARRY))
+                //rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Add36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
             
@@ -2481,9 +2495,10 @@ static t_stat DoBasicInstruction (void)
         case 0072:   ///< awcq
             /// If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
             /// If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
-            if (TSTF(cu.IR, I_CARRY))
-                rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (TSTF(cu.IR, I_CARRY))
+                //rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Add36b (rQ, CY, TSTF(cu.IR, I_CARRY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
            
@@ -2491,7 +2506,8 @@ static t_stat DoBasicInstruction (void)
             
         case 0175:  ///< sba
             /// C(A) - C(Y) -> C(A)
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0177:  ///< sbaq
@@ -2499,14 +2515,16 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                tmp72 = Sub72b (convertToWord72(rA, rQ), tmp72, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
           
         case 0135:  ///< sbla
             /// C(A) - C(Y) -> C(A) logical
-            rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0137:  ///< sblaq
@@ -2515,14 +2533,16 @@ static t_stat DoBasicInstruction (void)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
+                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
+                tmp72 = Sub72b (convertToWord72(rA, rQ), 1, tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0136:  ///< sblq
             ///< C(Q) - C(Y) -> C(Q)
-            rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0120:  ///< sblx0
@@ -2537,13 +2557,15 @@ static t_stat DoBasicInstruction (void)
             /// \brief     C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
+                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
          
         case 0176:  ///< sbq
             /// C(Q) - C(Y) -> C(Q)
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0160:  ///< sbx0
@@ -2558,19 +2580,22 @@ static t_stat DoBasicInstruction (void)
             /// \brief  C(Xn) - C(Y)0,17 -> C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
 
         case 0155:  ///< ssa
             /// C(A) - C(Y) -> C(Y)
-            CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
 
         case 0156:  ///< ssq
             /// C(Q) - C(Y) -> C(Y)
-            CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            CY = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
         
@@ -2586,7 +2611,8 @@ static t_stat DoBasicInstruction (void)
             /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn) - C(Y)0,17 -> C(Y)0,17
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                //word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+                word18 tmp18 = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -2596,18 +2622,20 @@ static t_stat DoBasicInstruction (void)
         case 0171:  ///< swca
             /// If carry indicator ON, then C(A)- C(Y) -> C(A)
             /// If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
-            if (!TSTF(cu.IR, I_CARRY))
-                rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (!TSTF(cu.IR, I_CARRY))
+                //rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = Sub36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
          
         case 0172:  ///< swcq
             /// If carry indicator ON, then C(Q) - C(Y) -> C(Q)
             /// If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
-            if (!TSTF(cu.IR, I_CARRY))
-                rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //if (!TSTF(cu.IR, I_CARRY))
+                //rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = Sub36b (rQ, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
         

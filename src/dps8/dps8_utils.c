@@ -815,6 +815,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #endif
     return res;
   }
+#if 0
 // XXX ticket #3 isSigned
 // CANFAULT
 word36 AddSub36b(char op, UNUSED bool  isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
@@ -1060,6 +1061,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     
     return res & MASK72;           // 128 => 72-bit. Mask off unnecessary bits ...
 }
+#endif
 
 // CANFAULT
 word36 compl36(word36 op1, word18 *flags)

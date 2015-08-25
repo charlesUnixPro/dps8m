@@ -29,9 +29,11 @@ char *getModString(int32 tag);
 #ifndef QUIET_UNUSED
 word36 AddSub36 (char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
 #endif
+#if 0
 word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
 word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags);
 word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags);
+#endif
 word72 convertToWord72(word36 even, word36 odd);
 void convertToWord36(word72 src, word36 *even, word36 *odd);
 
