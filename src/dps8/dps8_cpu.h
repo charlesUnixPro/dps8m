@@ -29,8 +29,10 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
+#if 0
     BAR_mode,
     APPEND_BAR_mode,
+#endif
   } addr_modes_t;
 
 
