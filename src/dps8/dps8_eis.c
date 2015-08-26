@@ -92,7 +92,11 @@ static word36 EIScac (EISaddr * p, int offset, int ta)
       }
     else
       {
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
           {
             TPR . TRR = PPR . PRR;
             TPR . TSR = PPR . PSR;
@@ -326,7 +330,11 @@ word3 saveTRR = TPR . TRR;
             word15 offset = GET_OFFSET (operandDesc);
             address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
+#if 0
             if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+            if (get_addr_mode() == APPEND_mode)
+#endif
               {
                 TPR . TSR = AR [arn] . SNR;
                 TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
@@ -603,7 +611,11 @@ static void EISWriteCache(EISaddr *p)
         }
         else
         {
+#if 0
             if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+            if (get_addr_mode() == APPEND_mode)
+#endif
             {
                 TPR.TRR = PPR.PRR;
                 TPR.TSR = PPR.PSR;
@@ -644,7 +656,11 @@ static void EISWrite(EISaddr *p, word36 data)
     }
     else
     {
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
@@ -707,7 +723,11 @@ static void myEISDevelop (uint k, uint opType, uint pos,
             word15 offset = address & MASK15;
             address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
+#if 0
             if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+            if (get_addr_mode() == APPEND_mode)
+#endif
               {
                 TPR . TSR = AR [arn] . SNR;
                 TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
@@ -762,7 +782,11 @@ static void myEISDevelop (uint k, uint opType, uint pos,
         word15 offset = address & MASK15;
         address = (AR [arn] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
           {
             TPR . TSR = AR [arn] . SNR;
             TPR . TRR = max3 (AR [arn] . RNR, TPR . TRR, PPR . PRR);
@@ -1041,7 +1065,11 @@ static word36 EISRead(EISaddr *p)
     }
     else
     {
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
@@ -1308,7 +1336,11 @@ void setupOperandDescriptor(int k, EISstruct *e)
             address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
             e->addr[k-1].address = address;
+#if 0
             if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+            if (get_addr_mode() == APPEND_mode)
+#endif
             {
                 e->addr[k-1].SNR = PR[n].SNR;
                 e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -1379,7 +1411,11 @@ static void parseAlphanumericOperandDescriptor(uint k, EISstruct *e, uint useTA)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -1552,7 +1588,11 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -1662,7 +1702,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -5201,7 +5245,11 @@ void mvt(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -5579,7 +5627,11 @@ void scm(DCDstruct *ins)
         
 sim_debug (DBG_TRACEEXT, & cpu_dev, "SCM y3a n: %o offset: %o y3: %o\n",
 n, offset, y3);
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -5765,7 +5817,11 @@ void scmr(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -5915,7 +5971,11 @@ void tct(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -6001,7 +6061,11 @@ void tct(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
           {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -6167,7 +6231,11 @@ void tctr(DCDstruct *ins)
         
 // XXX CAC this check doesn't seem right; the address is from a PR register,
 // therefore, it is a virtual address, regardless of get_addr_mode().
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -6236,7 +6304,11 @@ void tctr(DCDstruct *ins)
         
 // XXX CAC this check doesn't seem right; the address is from a PR register,
 // therefore, it is a virtual address, regardless of get_addr_mode().
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -6591,7 +6663,11 @@ void scd(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             e->ADDR3.SNR = PR[n].SNR;
             e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -6763,7 +6839,11 @@ void scdr(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
