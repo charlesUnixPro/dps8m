@@ -439,7 +439,7 @@ static void du2words (word36 * words)
 
     // Word 3
 
-    putbits36 (& words [3],  9,  1, du . LEVEL1);
+    putbits36 (& words [3],  0, 10, du . LEVEL1);
     putbits36 (& words [3], 12, 24, du . D1_RES);
     
     // Word 4
@@ -493,7 +493,7 @@ static void words2du (word36 * words)
 
     // Word 3
 
-    du . LEVEL1   = getbits36 (words [3],  9,  1);
+    du . LEVEL1   = getbits36 (words [3],  0, 10);
     du . D1_RES   = getbits36 (words [3], 12, 24);
     
     // Word 4
