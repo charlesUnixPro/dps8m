@@ -606,7 +606,7 @@ static void EISWriteCache(EISaddr *p)
         
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
                        "%s: writeCache (PR) %012llo@%o:%06o\n", 
-                       __func__, p -> cachedWord, p -> SNR, p -> address);
+                       __func__, p -> cachedWord, p -> SNR, p -> cachedAddr);
             Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, true); // write data
         }
         else
@@ -623,7 +623,7 @@ static void EISWriteCache(EISaddr *p)
         
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
                        "%s: writeCache %012llo@%o:%06o\n", 
-                       __func__, p -> cachedWord, TPR . TSR, p -> address);
+                       __func__, p -> cachedWord, TPR . TSR, p -> cachedAddr);
             Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, false); // write data
         }
     }
@@ -668,6 +668,45 @@ static void EISWrite(EISaddr *p, word36 data)
         
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
         Write (p->address, data, EIS_OPERAND_STORE, false); // write data
+    }
+#endif
+    TPR . TRR = saveTRR;
+}
+
+static void EISWrite_N (EISaddr *p, uint n, word36 data)
+{
+    word3 saveTRR = TPR . TRR;
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
+#ifdef EIS_CACHE
+    if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != addressN)
+      {
+        EISWriteCache (p);
+      }
+    p -> cacheValid = true;
+    p -> cacheDirty = true;
+    p -> cachedAddr = addressN;
+    p -> cachedWord = data;
+//EISWriteCache (p);
+#else
+    if (p->mat == viaPR)
+    {
+        TPR.TRR = p->RNR;
+        TPR.TSR = p->SNR;
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, p -> SNR, addressN);
+        Write (addressN, data, EIS_OPERAND_STORE, true); // write data
+    }
+    else
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, addressN);
+        Write (addressN, data, EIS_OPERAND_STORE, false); // write data
     }
 #endif
     TPR . TRR = saveTRR;
@@ -1091,6 +1130,70 @@ static word36 EISRead(EISaddr *p)
 #endif
     p -> cacheValid = true;
     p -> cachedAddr = p -> address;
+    p -> cachedWord = data;
+#endif
+    TPR . TRR = saveTRR;
+    return data;
+}
+
+// CANFAULT
+static word36 EISRead_N (EISaddr *p, uint n)
+{
+    word36 data;
+
+    word3 saveTRR = TPR . TRR;
+
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
+#ifdef EIS_CACHE
+#ifndef EIS_CACHE_READTEST
+    if (p -> cacheValid && p -> cachedAddr == addressN)
+      {
+        return p -> cachedWord;
+      }
+    if (p -> cacheValid && p -> cacheDirty)
+      {
+        EISWriteCache (p);
+      }
+    p -> cacheDirty = false;
+#endif
+#endif
+
+    if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
+    {
+        TPR.TRR = p->RNR;
+        TPR.TSR = p->SNR;
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %o:%06o\n", __func__, TPR . TSR, addressN);
+        Read (addressN, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+//sim_printf ("%s: read* %012llo@%o:%06o\n", __func__, data, TPR . TSR, addressN);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read* %012llo@%o:%06o\n", __func__, data, TPR . TSR, addressN);
+    }
+    else
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        Read (addressN, &data, EIS_OPERAND_READ, false);  // read operand
+//sim_printf ("%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, addressN);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, addressN);
+    }
+#ifdef EIS_CACHE
+#ifdef EIS_CACHE_READTEST
+    if (p -> cacheValid && p -> cachedAddr == addressN)
+      {
+        if (p -> cachedData != * data)
+          {
+            sim_printf ("cache read data fail %012llo %012llo %08o\n",
+                        p -> cachedData, * data, addressN);
+          }
+      }
+#endif
+    p -> cacheValid = true;
+    p -> cachedAddr = addressN;
     p -> cachedWord = data;
 #endif
     TPR . TRR = saveTRR;
@@ -4692,6 +4795,9 @@ void mlr(DCDstruct *ins)
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
+#ifdef EIS_CACHE
+    setupOperandDescriptorCache(3, e);
+#endif
     
     parseAlphanumericOperandDescriptor(1, e, 1);
     parseAlphanumericOperandDescriptor(2, e, 2);
@@ -4783,15 +4889,19 @@ void mlr(DCDstruct *ins)
         e -> CN2 == 0)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
-        uint nwords = e -> N2 / 4;
-        for (uint i = 0 ; i < nwords; i ++)
+        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
           {
-            word36 w = EISRead (& e -> ADDR1);
-            e -> ADDR1 . address += 1;
-            e -> ADDR1 . address &= AMASK;
-            EISWrite (& e -> ADDR2, w);
-            e -> ADDR2 . address += 1;
-            e -> ADDR2 . address &= AMASK;
+            uint n = du . CHTALLY / 4;
+            word36 w = EISRead_N (& e -> ADDR1, n);
+            EISWrite_N (& e -> ADDR2, n, w);
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+            EISWriteCache (&e->ADDR2);
+#endif
           }
 #ifdef EIS_CACHE
         cleanupOperandDescriptor(1, e);
@@ -4815,12 +4925,18 @@ void mlr(DCDstruct *ins)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
         word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
-        uint nwords = e -> N2 / 4;
-        for (uint i = 0; i < nwords; i ++)
+        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
           {
-            EISWrite (& e -> ADDR2, w);
-            e -> ADDR2 . address += 1;
-            e -> ADDR2 . address &= AMASK;
+            uint n = du . CHTALLY / 4;
+            EISWrite_N (& e -> ADDR2, n, w);
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+            EISWriteCache (&e->ADDR2);
+#endif
           }
 #ifdef EIS_CACHE
         cleanupOperandDescriptor(1, e);
