@@ -6432,12 +6432,12 @@ static t_stat DoEISInstruction (void)
             mvt(i);
             break;
             
-        case 0124:  ///< scm
+        case 0124:  // scm
             scm ();
             break;
 
-        case 0125:  ///< scmr
-            scmr(i);
+        case 0125:  // scmr
+            scmr ();
             break;
 
         case 0164:  ///< tct
