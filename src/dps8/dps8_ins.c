@@ -6440,9 +6440,9 @@ static t_stat DoEISInstruction (void)
             scmr ();
             break;
 
-        case 0164:  ///< tct
-            tct(i);
-            break;
+        case 0164:  // tct
+          tct ();
+          break;
 
         case 0165:  ///< tctr
             tctr(i);

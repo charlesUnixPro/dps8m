@@ -1,3 +1,5 @@
+#include <ctype.h>
+
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_cpu.h"
@@ -280,7 +282,7 @@ static void EISWriteCache (EISaddr * p)
     TPR . TRR = saveTRR;
   }
 
-static void EISWrite_N (EISaddr *p, uint n, word36 data)
+static void EISWriteIdx (EISaddr *p, uint n, word36 data)
 {
     word3 saveTRR = TPR . TRR;
     word18 addressN = p -> address + n;
@@ -350,6 +352,16 @@ static word36 EISRead (EISaddr * p)
     p -> cachedWord = data;
     TPR . TRR = saveTRR;
     return data;
+  }
+
+static void EISReadN (EISaddr * p, uint N, word36 *dst)
+  {
+    for (uint n = 0; n < N; n ++)
+      {
+        * dst ++ = EISRead (p);
+        p -> address ++;
+        p -> address &= AMASK;
+      }
   }
 
 static uint EISget469 (int k, uint i)
@@ -1367,7 +1379,7 @@ void scd ()
     
     SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
     
-    EISWrite_N (& e -> ADDR3, 0, CY3);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
     cleanupOperandDescriptor(3, e);
@@ -1482,7 +1494,7 @@ void scdr (void)
     
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
-    EISWrite_N (& e -> ADDR3, 0, CY3);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
     cleanupOperandDescriptor(3, e);
@@ -1541,19 +1553,6 @@ void scm (void)
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
 
-    switch (e -> TA1)
-      {
-        case CTA4:
-          e->srcSZ = 4;
-          break;
-        case CTA6:
-          e->srcSZ = 6;
-          break;
-        case CTA9:
-          e->srcSZ = 9;
-          break;
-      }
-    
     // get 'mask'
     uint mask = (uint) bitfieldExtract36 (e -> op0, 27, 9);
     
@@ -1616,7 +1615,7 @@ void scm (void)
     
     SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
     
-    EISWrite_N (& e -> ADDR3, 0, CY3);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1, e);
     cleanupOperandDescriptor (2, e);
@@ -1674,19 +1673,6 @@ void scmr (void)
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
 
-    switch (e -> TA1)
-      {
-        case CTA4:
-          e->srcSZ = 4;
-          break;
-        case CTA6:
-          e->srcSZ = 6;
-          break;
-        case CTA9:
-          e->srcSZ = 9;
-          break;
-      }
-    
     // get 'mask'
     uint mask = (uint) bitfieldExtract36 (e -> op0, 27, 9);
     
@@ -1748,9 +1734,166 @@ void scmr (void)
     
     SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
     
-    EISWrite_N (& e -> ADDR3, 0, CY3);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1, e);
     cleanupOperandDescriptor (2, e);
     cleanupOperandDescriptor (3, e);
   }
+
+/*
+ * TCT - Test Character and Translate
+ */
+
+static word9 xlate (word36 * xlatTbl, uint dstTA, uint c)
+  {
+    uint idx = (c / 4) & 0177;      // max 128-words (7-bit index)
+    word36 entry = xlatTbl [idx];
+
+    uint pos9 = c % 4;      // lower 2-bits
+    uint cout = GETBYTE (entry, pos9);
+    switch (dstTA)
+      {
+        case CTA4:
+          return cout & 017;
+        case CTA6:
+          return cout & 077;
+        case CTA9:
+          return cout;
+      }
+    return 0;
+  }
+
+
+void tct (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., N1
+    //   m = C(Y-charn1)i-1
+    //   If C(Y-char92)m ≠ 00...0, then
+    //     C(Y-char92)m → C(Y3)0,8
+    //     000 → C(Y3)9,11
+    //     i-1 → C(Y3)12,35
+    //   otherwise, continue scan of C(Y-charn1)
+    // If a non-zero table entry was not found, then 00...0 → C(Y3)0,11
+    // N1 → C(Y3)12,35
+    //
+    // Indicators: Tally Run Out. If the string length count exhausts, then ON;
+    // otherwise, OFF
+    //
+    // If the data type of the string to be scanned is not 9-bit (TA1 ≠ 0),
+    // then characters from C(Y-charn1) are high-order zero filled in forming
+    // the table index, m.
+    // Instruction execution proceeds until a non-zero table entry is found or
+    // the string length count is exhausted.
+    // The character number of Y-char92 must be zero, i.e., Y-char92 must start
+    // on a word boundary.
+    
+    
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptorCache (2, e);
+    setupOperandDescriptorCache (3, e);
+    
+    parseAlphanumericOperandDescriptor (1, e, 1);
+    parseArgOperandDescriptor (2, e);
+    parseArgOperandDescriptor (3, e);
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
+
+    uint srcSZ;
+
+    switch (e -> TA1)
+      {
+        case CTA4:
+            srcSZ = 4;
+            break;
+        case CTA6:
+            srcSZ = 6;
+            break;
+        case CTA9:
+            srcSZ = 9;
+            break;
+      }
+    
+    
+    // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
+    // XXX handle, later. (Yeah, just like everything else hard.)
+    //  Prepage Check in a Multiword Instruction
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    
+    // TA1              TRANSLATE TABLE SIZE
+    // 4-BIT CHARACTER      4 WORDS
+    // 6-BIT CHARACTER     16 WORDS
+    // 9-BIT CHARACTER    128 WORDS
+    
+    uint xlatSize = 0;   // size of xlation table in words .....
+    switch(e -> TA1)
+    {
+        case CTA4:
+            xlatSize = 4;
+            break;
+        case CTA6:
+            xlatSize = 16;
+            break;
+        case CTA9:
+            xlatSize = 128;
+            break;
+    }
+    
+    word36 xlatTbl [128];
+    memset (xlatTbl, 0, sizeof (xlatTbl));    // 0 it out just in case
+    
+    // XXX here is where we probably need to to the prepage thang...
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    EISReadN (& e -> ADDR2, xlatSize, xlatTbl);
+    
+    word36 CY3 = 0;
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT N1 %d\n", e -> N1);
+
+    for ( ; du . CHTALLY < e->N1 ; du . CHTALLY += 1)
+      {
+        uint c = EISget469 (1, du . CHTALLY); // get src char
+
+        uint m = 0;
+        
+        switch (srcSZ)
+          {
+            case 4:
+              m = c & 017;    // truncate upper 2-bits
+              break;
+            case 6:
+              m = c & 077;    // truncate upper 3-bits
+              break;
+            case 9:
+              m = c;          // keep all 9-bits
+              break;              // should already be 0-filled
+          }
+        
+        word9 cout = xlate (xlatTbl, CTA9, m);
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "TCT c %03o %c cout %03o %c\n",
+                   m, isprint (m) ? '?' : m, 
+                   cout, isprint (cout) ? '?' : cout);
+
+        if (cout)
+          {
+            CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            break;
+          }
+      }
+    
+    SCF (du . CHTALLY == e -> N1, cu . IR, I_TALLY);
+    
+    CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
+    
+    cleanupOperandDescriptor (1, e);
+    cleanupOperandDescriptor (2, e);
+    cleanupOperandDescriptor (3, e);
+  }
+
