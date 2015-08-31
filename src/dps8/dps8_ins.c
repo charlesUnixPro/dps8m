@@ -6453,9 +6453,9 @@ static t_stat DoEISInstruction (void)
           cmpc ();
           break;
             
-        case 0120:  ///< scd
-            scd(i);
-            break;
+        case 0120:  // scd
+          scd ();
+          break;
       
         case 0121:  ///< scdr
             scdr(i);

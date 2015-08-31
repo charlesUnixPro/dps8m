@@ -19,7 +19,6 @@ void scm(DCDstruct *i);
 void scmr(DCDstruct *i);
 void tct(DCDstruct *i);
 void tctr(DCDstruct *i);
-void scd(DCDstruct *i);
 void scdr(DCDstruct *i);
 void cmpb(DCDstruct *i);
 void csl(DCDstruct *ins, bool isSZTL);
