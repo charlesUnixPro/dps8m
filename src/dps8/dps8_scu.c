@@ -1913,7 +1913,7 @@ static config_list_t scu_config_list [] =
 
     // Hacks
 
-    /* 14 */ { "elapsed_days", 0, 1000, NULL },
+    /* 14 */ { "elapsed_days", 0, 10000, NULL },
 
     { NULL, 0, 0, NULL }
   };
