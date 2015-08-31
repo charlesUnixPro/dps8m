@@ -206,6 +206,7 @@ C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_disk.c
 C_SRCS += ./dps8_eis.c
+C_SRCS += ./dps8_eis2.c
 C_SRCS += ./dps8_fnp.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
@@ -219,6 +220,7 @@ C_SRCS += ./dps8_stddev.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_utils.c
 C_SRCS += ./dps8_decimal.c
+C_SRCS += ./dps8_decimal2.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
@@ -282,6 +284,9 @@ H_SRCS += shm.h
 
 
 all: locallibs_then_dps8 
+
+cscope:
+	cscope $(C_SRCS)
 
 android : 
 	ndk-build APP_BUILD_SCRIPT=./Android.mk APP_ABI=arm64-v8a APP_PLATFORM=android-21

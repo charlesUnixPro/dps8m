@@ -91,6 +91,7 @@ static inline word36 getbits36(word36 x, uint i, uint n) {
     } else
         return (x >> (unsigned) shift) & ~ (~0U << n);
 }
+
 static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;
@@ -105,6 +106,7 @@ static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
     word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
     return result;
 }
+
 static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
   {
     int shift = 36 - (int) p - (int) n;
@@ -121,9 +123,24 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     return;
   }
 #endif
-#define getbits6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
-#define getbits15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
-#define getbits24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
+#define getbits36_6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
+#define getbits36_15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
+#define getbits36_24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
+
+//  getbits18 (data, starting bit, number of bits)
+
+static inline word36 getbits18 (word18 x, uint i, uint n)
+  {
+    // bit 17 is right end, bit zero is 18th from the right
+    int shift = 17 - (int) i - (int) n + 1;
+    if (shift < 0 || shift > 17)
+      {
+        sim_printf ("getbits18: bad args (%06o,i=%d,n=%d)\n", x, i, n);
+        return 0;
+      }
+    else
+      return (x >> (unsigned) shift) & ~ (~0U << n);
+  }
 
 char * strdupesc (const char * str);
 

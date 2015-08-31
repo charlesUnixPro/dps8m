@@ -514,6 +514,11 @@ struct EISstruct
 #define CN2 CN [1]
 #define CN3 CN [2]
 
+    uint   WN [3];
+#define WN1 WN [0]
+#define WN2 WN [1]
+#define WN3 CN [2]
+
     uint   C [3];
 #define C1 C [0]
 #define C2 C [1]
