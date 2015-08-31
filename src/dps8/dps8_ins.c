@@ -158,7 +158,6 @@ static word36 scu_data[8];    // For SCU instruction
 
 static void scu2words(word36 *words)
   {
-if (PPR.PSR == 0365 && PPR.IC == 0145777) sim_printf ("scu [%lld] tally %d\n", sim_timell (), du . CHTALLY);
     memset (words, 0, 8 * sizeof (* words));
     
     // words [0]
@@ -6434,7 +6433,7 @@ static t_stat DoEISInstruction (void)
             break;
             
         case 0124:  ///< scm
-            scm(i);
+            scm ();
             break;
 
         case 0125:  ///< scmr

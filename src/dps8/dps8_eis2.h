@@ -11,3 +11,4 @@ void swd (void);
 void cmpc (void);
 void scd (void);
 void scdr (void);
+void scm (void);

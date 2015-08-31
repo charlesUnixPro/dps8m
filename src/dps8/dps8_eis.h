@@ -15,7 +15,6 @@ void mve(DCDstruct *i);
 void mlr(DCDstruct *i);
 void mrl(DCDstruct *i);
 void mvt(DCDstruct *i);
-void scm(DCDstruct *i);
 void scmr(DCDstruct *i);
 void tct(DCDstruct *i);
 void tctr(DCDstruct *i);
