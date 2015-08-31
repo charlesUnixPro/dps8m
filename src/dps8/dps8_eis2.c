@@ -1277,6 +1277,7 @@ void cmpc (void)
 /*
  * SCD - Scan Characters Double
  */
+
 void scd ()
   {
     EISstruct * e = & currentInstruction . e;
@@ -1305,14 +1306,9 @@ void scd ()
     parseAlphanumericOperandDescriptor (2, e, 1); // use TA1
     parseArgOperandDescriptor (3, e);
     
-    e->srcCN = e->CN1;  // starting at char pos CN
-    e->srcCN2= e->CN2;  // character number
-    
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
-    e->srcTA = e->TA1;
-    e->srcTA2 = e->TA1;
     
     // fetch 'test' char - double
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -1345,12 +1341,12 @@ void scd ()
           }
       }
     else
-     {  
+      {  
         c1 = EISget469 (2, 0);
         c2 = EISget469 (2, 1);
-     }
+      }
 
-    switch (e -> srcTA2)
+    switch (e -> TA1) // Use TA1, not TA2
       {
         case CTA4:
           c1 &= 017;    // keep 4-bits
@@ -1368,64 +1364,142 @@ void scd ()
           break;
       }
     
-#if 0
-    word18 y3 = GETHI(e->OP3);
-    int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
-    int y3REG = e->OP3 & 0xf;
-    
-    word36 r = getMFReg36(y3REG, false);
-    
-    word8 ARn_CHAR = 0;
-    word6 ARn_BITNO = 0;
-    if (y3A)
-    {
-        // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not
-        // the memory address of the data but is a reference to a pointer
-        // register pointing to the data.
-        uint n = (int)bitfieldExtract36(y3, 15, 3);
-        word15 offset = y3 & MASK15;  // 15-bit signed number
-        y3 = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
-        
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
-        
-#if 0
-        if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
-#else
-        if (get_addr_mode() == APPEND_mode)
-#endif
-        {
-            e->ADDR3.SNR = PR[n].SNR;
-            e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-            
-            e->ADDR3.mat = viaPR;
-        }
-    }
-    
-    y3 +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
-    y3 &= AMASK;
-    
-    e->ADDR3.address = y3;
-#endif
 
     uint yCharn11;
     uint yCharn12;
-    
-    for ( ; du . CHTALLY < e -> N1 - 1; du . CHTALLY ++)
+    uint limit = e -> N1 - 1;
+
+    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
       {
         yCharn11 = EISget469 (1, du . CHTALLY);
         yCharn12 = EISget469 (1, du . CHTALLY + 1);
-    //sim_printf ("yCharn11 %o c1 %o yCharn12 %o c2 %o\n", yCharn11, c1, yCharn12, c2);
+        // sim_printf ("yCharn11 %o c1 %o yCharn12 %o c2 %o\n",
+                      //  yCharn11, c1, yCharn12, c2);
         if (yCharn11 == c1 && yCharn12 == c2)
           break;
       }
     
     word36 CY3 = bitfieldInsert36 (0, du . CHTALLY, 0, 24);
     
-    SCF (du . CHTALLY == e -> N1 - 1, cu . IR, I_TALLY);
+    SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
     
     EISWrite_N (& e -> ADDR3, 0, CY3);
     cleanupOperandDescriptor(1, e);
     cleanupOperandDescriptor(2, e);
     cleanupOperandDescriptor(3, e);
-}
+ }
+
+/*
+ * SCDR - Scan Characters Double Reverse
+ */
+
+void scdr (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., N1-1
+    //   C(Y-charn1)N1-i-1,N1-i :: C(Y-charn2)0,1
+    // On instruction completion, if a match was found:
+    //   00...0 → C(Y3)0,11
+    //   i-1 → C(Y3)12,35
+    // If no match was found:
+    //   00...0 → C(Y3)0,11
+    //      N1-1→ C(Y3)12,35
+    //
+    
+    // The REG field of MF1 is checked for a legal code. If DU is specified in
+    // the REG field of MF2 in one of the four multiword instructions (SCD,
+    // SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and
+    // the character or characters are arranged within the 18 bits of the word
+    // address portion of the operand descriptor.
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    setupOperandDescriptorCache(3, e);
+
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
+    parseArgOperandDescriptor (3, e);
+    
+    // Both the string and the test character pair are treated as the data type
+    // given for the string, TA1. A data type given for the test character
+    // pair, TA2, is ignored.
+
+    // fetch 'test' char - double
+    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // instruction word does not contain an operand descriptor for the test
+    // character; instead, it contains the test character as a direct upper
+    // operand in bits 0,8.
+    
+    uint c1 = 0;
+    uint c2 = 0;
+    
+    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.du
+      {
+        // per Bull RJ78, p. 5-45
+        switch (e -> TA1)
+          {
+            case CTA4:
+              c1 = (e -> ADDR2 . address >> 13) & 017;
+              c2 = (e -> ADDR2 . address >>  9) & 017;
+              break;
+
+            case CTA6:
+              c1 = (e -> ADDR2 . address >> 12) & 077;
+              c2 = (e -> ADDR2 . address >>  6) & 077;
+              break;
+
+            case CTA9:
+              c1 = (e -> ADDR2 . address >> 9) & 0777;
+              c2 = (e -> ADDR2 . address     ) & 0777;
+              break;
+          }
+      }
+    else
+      {
+        c1 = EISget469 (2, 0);
+        c2 = EISget469 (2, 1);
+      }
+
+    switch (e -> TA1) // Use TA1, not TA2
+      {
+        case CTA4:
+          c1 &= 017;    // keep 4-bits
+          c2 &= 017;    // keep 4-bits
+          break;
+
+        case CTA6:
+          c1 &= 077;    // keep 6-bits
+          c2 &= 077;    // keep 6-bits
+          break;
+
+        case CTA9:
+          c1 &= 0777;   // keep 9-bits
+          c2 &= 0777;   // keep 9-bits
+          break;
+      }
+    
+    uint yCharn11;
+    uint yCharn12;
+    uint limit = e -> N1 - 1;
+    
+    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+      {
+        yCharn11 = EISget469 (1, limit - du . CHTALLY - 1);
+        yCharn12 = EISget469 (1, limit - du . CHTALLY);
+        
+        if (yCharn11 == c1 && yCharn12 == c2)
+            break;
+      }
+    
+    word36 CY3 = bitfieldInsert36(0, du . CHTALLY, 0, 24);
+    
+    SCF(du . CHTALLY == limit, cu . IR, I_TALLY);
+    
+    // write Y3 .....
+    //Write (y3, CY3, OperandWrite, 0);
+    EISWrite_N (& e -> ADDR3, 0, CY3);
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+  }

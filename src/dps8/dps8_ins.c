@@ -6457,9 +6457,9 @@ static t_stat DoEISInstruction (void)
           scd ();
           break;
       
-        case 0121:  ///< scdr
-            scdr(i);
-            break;
+        case 0121:  // scdr
+          scdr ();
+          break;
           
         // bit-string operations
         case 0066:   ///< cmpb

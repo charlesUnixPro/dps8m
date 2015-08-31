@@ -10,3 +10,4 @@ void sbd (void);
 void swd (void);
 void cmpc (void);
 void scd (void);
+void scdr (void);
