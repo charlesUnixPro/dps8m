@@ -6469,9 +6469,9 @@ static t_stat DoEISInstruction (void)
           csl (false);
           break;
 
-        case 0061:   ///< csr
-            csr(i, false);
-            break;
+        case 0061:   // csr
+          csr (false);
+          break;
 
         case 0064:   // sztl
           // The execution of this instruction is identical to the Combine 
@@ -6480,12 +6480,12 @@ static t_stat DoEISInstruction (void)
           csl (true);
           break;
 
-        case 0065:   ///< sztr
-            // The execution of this instruction is identical to the Combine 
-            // Bit Strings Left (csr) instruction except that C(BOLR)m is 
-            // not placed into C(Y-bit2)i-1.
-            csr(i, true);
-            break;
+        case 0065:   // sztr
+          // The execution of this instruction is identical to the Combine 
+          // Bit Strings Left (csr) instruction except that C(BOLR)m is 
+          // not placed into C(Y-bit2)i-1.
+          csr (true);
+          break;
 
         // decimal arithmetic instrutions
         case 0202:  ///< ad2d
