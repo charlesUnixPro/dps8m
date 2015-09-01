@@ -5883,3 +5883,177 @@ void csr (bool isSZTR)
 }
 
 
+/*
+ * CMPB - Compare Bit Strings
+ */
+
+/*
+ * get a bit from memory ....
+ */
+// XXX this is terribly ineffecient, but it'll do for now ......
+
+static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
+{
+    
+    if (!p)
+    {
+        //lastAddress = -1;
+        return 0;
+    }
+    
+    if (*bpos > 8)      // bits 0-8
+    {
+        *bpos = 0;
+        *cpos += 1;
+        if (*cpos > 3)  // chars 0-3
+        {
+            *cpos = 0;
+            p->address += 1;
+            p->address &= AMASK;
+        }
+    }
+    
+    p->data = EISRead(p); // read data word from memory
+    
+    int charPosn = ((3 - *cpos) * 9);     // 9-bit char bit position
+    int bitPosn = charPosn + (8 - *bpos);
+    
+    bool b = (bool)bitfieldExtract36(p->data, bitPosn, 1);
+    
+    *bpos += 1;
+    
+    return b;
+}
+
+void cmpb (void)
+{
+    DCDstruct * ins = & currentInstruction;
+    EISstruct *e = &ins->e;
+
+    
+    // For i = 1, 2, ..., minimum (N1,N2)
+    //   C(Y-bit1)i-1 :: C(Y-bit2)i-1
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //   C(FILL) :: C(Y-bit2)i-1
+    // If N1 > N2, then for i = N2+l, N2+2, ..., N1
+    //   C(Y-bit1)i-1 :: C(FILL)
+    //
+    // Indicators:
+    //    Zero:  If C(Y-bit1)i = C(Y-bit2)i for all i, then ON; otherwise, OFF
+    //    Carry: If C(Y-bit1)i < C(Y-bit2)i for any i, then OFF; otherwise ON
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseBitstringOperandDescriptor(1, e);
+    parseBitstringOperandDescriptor(2, e);
+    
+    //word18 srcAddr1 = e->YBit1;
+    //word18 srcAddr2 = e->YBit2;
+    
+    int charPosn1 = e->C1;
+    int charPosn2 = e->C2;
+    
+    int bitPosn1 = e->B1;
+    int bitPosn2 = e->B2;
+    
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;     // fill bit (was 25)
+
+    SETF(cu.IR, I_ZERO);  // assume all =
+    SETF(cu.IR, I_CARRY); // assume all >=
+    
+    //getBit (0, 0, 0);   // initialize bit getter 1
+    //getBit2(0, 0, 0);   // initialize bit getter 2
+    
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
+
+#if 0
+// RJ78: Notes 1:  If L1 or L2 = 0, both the Zero and Carry indicators are 
+// turned ON, but no Illegal Procedure fault occurs.
+
+// CAC: This makes sense if you s/or/and/; the behavior for the 'or' 
+// condition is well-defined by the text, but the case of 'and' is
+// not covered. However, this test is just an optimization -- the 
+// code behaves this way for the 'and' case.
+
+    //if (e -> N1 == 0 || e -> N2 == 0)
+    if (e -> N1 == 0 && e -> N2 == 0)
+      {
+//sim_printf ("[%lld] cmpb %d %d\n", sim_timell (), e -> N1, e -> N2);
+//traceInstruction (0);
+        //CLRF(cu.IR, I_CARRY);
+        return;
+      }
+#endif
+
+    uint i;
+    for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
+    {
+        //bool b1 = getBit (&srcAddr1, &charPosn1, &bitPosn1);
+        //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
+        bool b1 = EISgetBit (&e->ADDR1, &charPosn1, &bitPosn1);
+        bool b2 = EISgetBit (&e->ADDR2, &charPosn2, &bitPosn2);
+        
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(min(e->N1, e->N2)) i %d b1 %d b2 %d\n", i, b1, b2);
+        if (b1 != b2)
+        {
+            CLRF(cu.IR, I_ZERO);
+            if (!b1 && b2)  // 0 < 1
+                CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+            cleanupOperandDescriptor(1, e);
+            cleanupOperandDescriptor(2, e);
+#endif
+            return;
+        }
+        
+    }
+    if (e->N1 < e->N2)
+    {
+        for(; i < e->N2 ; i += 1)
+        {
+            bool b1 = e->F;
+            //bool b2 = getBit2(&srcAddr2, &charPosn2, &bitPosn2);
+            bool b2 = EISgetBit(&e->ADDR2, &charPosn2, &bitPosn2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 < e->N2) i %d b1fill %d b2 %d\n", i, b1, b2);
+        
+            if (b1 != b2)
+            {
+                CLRF(cu.IR, I_ZERO);
+                if (!b1 && b2)  // 0 < 1
+                    CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
+                return;
+            }
+        }   
+    } else if (e->N1 > e->N2)
+    {
+        for(; i < e->N1 ; i += 1)
+        {
+            //bool b1 = getBit(&srcAddr1, &charPosn1, &bitPosn1);
+            bool b1 = EISgetBit(&e->ADDR1, &charPosn1, &bitPosn1);
+            bool b2 = e->F;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n", i, b1, b2);
+        
+            if (b1 != b2)
+            {
+                CLRF(cu.IR, I_ZERO);
+                if (!b1 && b2)  // 0 < 1
+                    CLRF(cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+                cleanupOperandDescriptor(1, e);
+                cleanupOperandDescriptor(2, e);
+#endif
+                return;
+            }
+        }
+    }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+}
+

@@ -6461,9 +6461,9 @@ static t_stat DoEISInstruction (void)
           break;
           
         // bit-string operations
-        case 0066:   ///< cmpb
-            cmpb(i);
-            break;
+        case 0066:   // cmpb
+          cmpb ();
+          break;
 
         case 0060:   // csl
           csl (false);
