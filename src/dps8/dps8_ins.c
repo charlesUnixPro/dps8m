@@ -6524,9 +6524,9 @@ static t_stat DoEISInstruction (void)
             mvn ();
             break;
         
-        case 0303:  ///< cmpn
-            cmpn ();
-            break;
+        case 0303:  // cmpn
+          cmpn ();
+          break;
 
 #if EMULATOR_ONLY
             

@@ -6,6 +6,7 @@
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_iefp.h"
+#include "dps8_decimal.h"
 
 // Local optimization
 #define ABD_BITS
@@ -4735,4 +4736,135 @@ void mvt (void)
       CLRF(cu.IR, I_TRUNC);
 }
 
+
+/*
+ * cmpn - Compare Numeric
+ */
+
+void cmpn (void)
+{
+    DCDstruct * ins = & currentInstruction;
+    EISstruct *e = &ins->e;
+
+    // C(Y-charn1) :: C(Y-charn2) as numeric values
+    
+    // Zero If C(Y-charn1) = C(Y-charn2), then ON; otherwise OFF
+    // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
+    // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseNumericOperandDescriptor(1, e);
+    parseNumericOperandDescriptor(2, e);
+    
+    e->srcTN = e->TN1;    // type of chars in src
+    e->srcCN = e->CN1;    // starting at char pos CN
+    
+    e->srcTN2 = e->TN2;    // type of chars in dst
+    e->srcCN2 = e->CN2;    // starting at char pos CN
+    
+    decContext set;
+    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
+    
+    EISloadInputBufferNumeric(1);   // according to MF1
+    
+    /*
+     * Here we need to distinguish between 4 type of numbers.
+     *
+     * CSFL - Floating-point, leading sign
+     * CSLS - Scaled fixed-point, leading sign
+     * CSTS - Scaled fixed-point, trailing sign
+     * CSNS - Scaled fixed-point, unsigned
+     */
+    
+    // determine precision
+    switch(e->S1)
+    {
+        case CSFL:
+            n1 = e->N1 - 1; // need to account for the - sign
+            if (e->srcTN == CTN4)
+                n1 -= 2;    // 2 4-bit digits exponent
+            else
+                n1 -= 1;    // 1 9-bit digit exponent
+            sc1 = 0;        // no scaling factor
+            break;
+            
+        case CSLS:
+        case CSTS:
+            n1 = e->N1 - 1; // only 1 sign
+            sc1 = -e->SF1;
+            break;
+            
+        case CSNS:
+            n1 = e->N1;     // no sign
+            sc1 = -e->SF1;
+            break;  // no sign wysiwyg
+    }
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits = DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    
+    EISloadInputBufferNumeric(2);   // according to MF2
+    switch(e->S2)
+    {
+        case CSFL:
+            n2 = e->N2 - 1; // need to account for the sign
+            if (e->srcTN2 == CTN4)
+                n2 -= 2;    // 2 4-bit digit exponent
+            else
+                n2 -= 1;    // 1 9-bit digit exponent
+            sc2 = 0;        // no scaling factor
+            break;
+            
+        case CSLS:
+        case CSTS:
+            n2 = e->N2 - 1; // 1 sign
+            sc2 = -e->SF2;
+            break;
+            
+        case CSNS:
+            n2 = e->N2;     // no sign
+            sc2 = -e->SF2;
+            break;  // no sign wysiwyg
+    }
+    
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    if (e->sign == -1)
+        op2->bits = DECNEG;
+    if (e->S2 == CSFL)
+        op2->exponent = e->exponent;
+    
+    // signed-compare
+    decNumber *cmp = decNumberCompare(&_3, op1, op2, &set); // compare signed op1 :: op2
+    int cSigned = decNumberToInt32(cmp, &set);
+    
+    // take absolute value of operands
+    op1 = decNumberAbs(op1, op1, &set);
+    op2 = decNumberAbs(op2, op2, &set);
+
+    // magnitude-compare
+    decNumber *mcmp = decNumberCompare(&_3, op1, op2, &set); // compare signed op1 :: op2
+    int cMag = decNumberToInt32(mcmp, &set);
+    
+    // Zero If C(Y-charn1) = C(Y-charn2), then ON; otherwise OFF
+    // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
+    // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
+
+    SCF(cSigned == 0, cu.IR, I_ZERO);
+    SCF(cSigned == 1, cu.IR, I_NEG);
+    SCF(cMag != 1, cu.IR, I_CARRY);
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+}
 
