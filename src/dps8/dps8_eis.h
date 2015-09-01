@@ -8,8 +8,3 @@ void parseNumericOperandDescriptor(int k, EISstruct *e);
 void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
 void EISloadInputBufferNumeric(DCDstruct *i, int k);
 
-void dtb(DCDstruct *i);
-//void sztl(DCDstruct *i);
-//void sztr(DCDstruct *i);
-
-

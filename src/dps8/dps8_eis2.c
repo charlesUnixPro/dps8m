@@ -6498,3 +6498,231 @@ void btd (void)
 #endif
 }
 
+/*
+ * load a decimal number into e->x ...
+ */
+
+static void loadDec(EISaddr *p, int pos, EISstruct *e)
+{
+    int128 x = 0;
+    
+    
+    // XXX use get49() for this later .....
+    //word36 data;
+    //Read (sourceAddr, &data, OperandRead, 0);    // read data word from memory
+    p->data = EISRead(p);    // read data word from memory
+    
+    int maxPos = e->TN1 == CTN4 ? 7 : 3;
+
+    int sgn = 1;
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec: maxPos %d N1 %d\n", maxPos, e->N1);
+    for(uint n = 0 ; n < e->N1 ; n += 1)
+    {
+        if (pos > maxPos)   // overflows to next word?
+        {   // yep....
+            pos = 0;        // reset to 1st byte
+            //sourceAddr = (sourceAddr + 1) & AMASK;      // bump source to next address
+            //Read (sourceAddr, &data, OperandRead, 0);    // read it from memory
+            p->address = (p->address + 1) & AMASK;      // bump source to next address
+            p->data = EISRead(p);    // read it from memory
+        }
+        
+        int c = 0;
+        switch(e->TN1)
+        {
+            case CTN4:
+                c = (word4)get4(p->data, pos);
+                break;
+            case CTN9:
+                c = (word9)GETBYTE(p->data, pos);
+                break;
+        }
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "loadDec: n %d c %d(%o)\n", n, c, c);
+        
+        if (n == 0 && e->TN1 == CTN4 && e->S1 == CSLS)
+        {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN4, S1 CSLS\n");
+            switch (c)
+            {
+                case 015:   // 6-bit - sign
+                    SETF(e->_flags, I_NEG);
+                    
+                    sgn = -1;
+                    break;
+                case 013:   // alternate 4-bit + sign
+                case 014:   // default   4-bit + sign
+                    break;
+                default:
+                    sim_printf ("loadDec:1\n");
+                    // not a leading sign
+                    // XXX generate Ill Proc fault
+            }
+            pos += 1;           // onto next posotion
+            continue;
+        }
+
+        if (n == 0 && e->TN1 == CTN9 && e->S1 == CSLS)
+        {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN9, S1 CSLS\n");
+            switch (c)
+            {
+                case '-':
+                    SETF(e->_flags, I_NEG);
+                    
+                    sgn = -1;
+                    break;
+                case '+':
+                    break;
+                default:
+                    sim_printf ("loadDec:2\n");
+                    // not a leading sign
+                    // XXX generate Ill Proc fault
+
+            }
+            pos += 1;           // onto next posotion
+            continue;
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN4 && e->S1 == CSTS)
+        {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN4, S1 CSTS\n");
+            switch (c)
+            {
+                case 015:   // 4-bit - sign
+                    SETF(e->_flags, I_NEG);
+                    
+                    sgn = -1;
+                    break;
+                case 013:   // alternate 4-bit + sign
+                case 014:   // default   4-bit + sign
+                    break;
+                default:
+                    sim_printf ("loadDec:3\n");
+                    // not a trailing sign
+                    // XXX generate Ill Proc fault
+            }
+            break;
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN9 && e->S1 == CSTS)
+        {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN9, S1 CSTS\n");
+            switch (c)
+            {
+                case '-':
+                    SETF(e->_flags, I_NEG);
+                    
+                    sgn = -1;
+                    break;
+                case '+':
+                    break;
+                default:
+                    sim_printf ("loadDec:4\n");
+                    // not a trailing sign
+                    // XXX generate Ill Proc fault
+            }
+            break;
+        }
+        
+        x *= 10;
+        x += c & 0xf;
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec:  x %lld\n", (int64) x);
+        
+        pos += 1;           // onto next posotion
+    }
+    
+    e->x = sgn * x;
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec:  final x %lld\n", (int64) x);
+}
+
+static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
+{
+    /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
+    
+    int N = p->e->N[k-1];            ///< length of output buffer in native chars (4, 6 or 9-bit chunks)
+    int CN = p->e->CN[k-1];          ///< character number 0-3 (9)
+    //word18 address  = e->YChar9[k-1]; ///< current write address
+    
+    /// since we want to write the data in reverse (since it's right justified) we need to determine
+    /// the final address/CN for the type and go backwards from there
+    
+    int numBits = 9 * N;               ///< 4 9-bit bytes / word
+    //int numWords = numBits / 36;       ///< how many additional words will the N chars take up?
+    //int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
+    int numWords = (numBits + CN * 9 + 35) / 36;       ///< how many additional words will the N chars take up?
+    // convert from count to offset
+    int lastWordOffset = numWords - 1;
+    int lastChar = (CN + N - 1) % 4;   ///< last character number
+    
+    if (lastWordOffset > 0)           // more that the 1 word needed?
+        p->address += lastWordOffset;    // highest memory address
+    int pos = lastChar;             // last character number
+    
+    int128 x = p->e->x;
+    
+    for(int n = 0 ; n < N ; n += 1)
+    {
+        int charToWrite = x & 0777; // get 9-bits of data
+        x >>=9;
+        
+        // we should write character to word/pos in memory .....
+        //write9r(e, &address, &pos, charToWrite);
+        EISwrite9r(p, &pos, charToWrite);
+    }
+    
+    // anything left in x?. If it's not all 1's we have an overflow!
+    if (~x && x != 0)    // if it's all 1's this will be 0
+        SETF(p->e->_flags, I_OFLOW);
+}
+
+void dtb (void)
+{
+    DCDstruct * ins = & currentInstruction;
+    EISstruct *e = &ins->e;
+
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseNumericOperandDescriptor(1, e);
+    parseNumericOperandDescriptor(2, e);
+   
+    //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
+    //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
+    if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
+    {
+        ; // XXX generate ill proc fault
+    }
+
+    e->_flags = cu.IR;
+    
+    // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
+    CLRF(e->_flags, I_NEG);
+    
+    //loadDec(e->TN1 == CTN4 ? e->YChar41 : e->YChar91, e->CN1, e);
+    loadDec(&e->ADDR1, e->CN1, e);
+    
+    // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
+    SCF(e->x == 0, e->_flags, I_ZERO);
+    
+    EISwriteToBinaryStringReverse(&e->ADDR2, 2);
+    
+    cu.IR = e->_flags;
+
+    if (TSTF(cu.IR, I_OFLOW))
+    {
+        ;   // XXX generate overflow fault
+    }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+}

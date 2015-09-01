@@ -2562,49 +2562,6 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 
 
 
-// CANFAULT
-// CANFAULT
-void dtb(DCDstruct *ins)
-{
-    EISstruct *e = &ins->e;
-
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
-   
-    //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
-    //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
-    if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
-    {
-        ; // XXX generate ill proc fault
-    }
-
-    e->_flags = cu.IR;
-    
-    // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
-    CLRF(e->_flags, I_NEG);
-    
-    //loadDec(e->TN1 == CTN4 ? e->YChar41 : e->YChar91, e->CN1, e);
-    loadDec(&e->ADDR1, e->CN1, e);
-    
-    // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
-    SCF(e->x == 0, e->_flags, I_ZERO);
-    
-    EISwriteToBinaryStringReverse(&e->ADDR2, 2);
-    
-    cu.IR = e->_flags;
-
-    if (TSTF(cu.IR, I_OFLOW))
-    {
-        ;   // XXX generate overflow fault
-    }
-#ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-#endif
-}
 /*!
  * return a 4- or 9-bit character at memory "*address" and position "*pos". Increment pos (and address if necesary)
  */

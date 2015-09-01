@@ -6408,9 +6408,9 @@ static t_stat DoEISInstruction (void)
           btd ();
           break;
             
-        case 0305:  ///< dtb
-            dtb (i);
-            break;
+        case 0305:  // dtb
+          dtb ();
+          break;
             
         case 0024:   // mvne
           mvne ();
