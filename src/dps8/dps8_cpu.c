@@ -1142,8 +1142,6 @@ jmp_buf jmpMain;        ///< This is where we should return to from a fault or i
 DCDstruct currentInstruction;
 EISstruct currentEISinstruction;
 
-//static EISstruct E;
-
 events_t events;
 switches_t switches;
 // the following two should probably be combined

@@ -514,8 +514,6 @@ typedef struct EISaddr
     word36 cachedWord;
     word18 cachedAddr;
 #endif
-
-    //EISstruct *e;      
 } EISaddr;
 typedef struct EISstruct
   {
@@ -700,8 +698,6 @@ struct DCDstruct
     word6  tag;           // instruction tag
     
     word18 stiTally;      // for sti instruction
-    
-    //EISstruct e;          // info: if instruction is a MW EIS instruction
   };
 
 extern DCDstruct currentInstruction;

@@ -21,13 +21,6 @@
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 
-//void write49(EISstruct *e, word18 *dstAddr, int *pos, int tn, int c49);
-//void loadInputBufferNumeric(EISstruct *e, int k);
-
-//void printBCD(decNumber *a, decContext *set, int width);
-//uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
-
-
 /* ------------------------------------------------------------------ */
 /* HWR 6/28/14 18:54 derived from ......                              */
 /*     decContextDefault(...)                                         */

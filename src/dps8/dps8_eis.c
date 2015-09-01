@@ -641,8 +641,9 @@ static bool EISgetBitRWN (EISaddr * p)
     return p -> bit;
   }
 
-static void setupOperandDescriptorCache(int k, EISstruct *e)
+static void setupOperandDescriptorCache (int k)
   {
+    EISstruct * e = & currentEISinstruction;
     e -> addr [k - 1] .  cacheValid = false;
   }
 
@@ -701,8 +702,9 @@ static void setupOperandDescriptorCache(int k, EISstruct *e)
 // 12. The operand is retrieved from the calculated effective address location.
 //
 
-static void setupOperandDescriptor (int k, EISstruct * e)
+static void setupOperandDescriptor (int k)
   {
+    EISstruct * e = & currentEISinstruction;
     switch (k)
       {
         case 1:
@@ -785,13 +787,13 @@ static void setupOperandDescriptor (int k, EISstruct * e)
         // read EIS operand .. this should be an indirectread
         e -> op [k - 1] = EISRead (& e -> addr [k - 1]); 
     }
-    setupOperandDescriptorCache (k, e);
+    setupOperandDescriptorCache (k);
 }
 
 
-static void parseAlphanumericOperandDescriptor (uint k, EISstruct * e,
-                                                uint useTA)
+static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
   {
+    EISstruct * e = & currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
     
     word36 opDesc = e -> op [k - 1];
@@ -953,8 +955,9 @@ static void parseAlphanumericOperandDescriptor (uint k, EISstruct * e,
     a -> TA = e -> TA [k - 1];
   }
 
-static void parseArgOperandDescriptor (uint k, EISstruct * e)
+static void parseArgOperandDescriptor (uint k)
   {
+    EISstruct * e = & currentEISinstruction;
     word36 opDesc = e -> op [k - 1];
     word18 y = GETHI (opDesc);
     word1 yA = GET_A (opDesc);
@@ -992,8 +995,9 @@ static void parseArgOperandDescriptor (uint k, EISstruct * e)
     e -> addr [k - 1] . address = y;
   }
 
-static void parseNumericOperandDescriptor(int k, EISstruct *e)
+static void parseNumericOperandDescriptor (int k)
 {
+    EISstruct * e = & currentEISinstruction;
     word18 MFk = e->MF[k-1];
 
     word36 opDesc = e->op[k-1];
@@ -1100,8 +1104,9 @@ static void parseNumericOperandDescriptor(int k, EISstruct *e)
 
 }
 
-static void parseBitstringOperandDescriptor(int k, EISstruct *e)
+static void parseBitstringOperandDescriptor (int k)
 {
+    EISstruct * e = & currentEISinstruction;
     word18 MFk = e->MF[k-1];
     
     word36 opDesc = e->op[k-1];
@@ -1178,8 +1183,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     a->_type = eisBIT;
 }
 
-static void cleanupOperandDescriptor(int k, EISstruct *e)
+static void cleanupOperandDescriptor (int k)
   {
+    EISstruct * e = & currentEISinstruction;
     if (e -> addr [k - 1] . cacheValid && e -> addr [k - 1] . cacheDirty)
       {
         EISWriteCache(& e -> addr [k - 1]);
@@ -1678,10 +1684,10 @@ void cmpc (void)
     // larger string length count is exhausted.
     
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseAlphanumericOperandDescriptor (2, e, 1);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (2, 1);
     
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
@@ -1697,8 +1703,8 @@ void cmpc (void)
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
             SCF (c1 > c2, cu . IR, I_CARRY);
-            cleanupOperandDescriptor (1, e);
-            cleanupOperandDescriptor (2, e);
+            cleanupOperandDescriptor (1);
+            cleanupOperandDescriptor (2);
             return;
           }
       }
@@ -1714,8 +1720,8 @@ void cmpc (void)
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 > c2, cu . IR, I_CARRY);
-                cleanupOperandDescriptor (1, e);
-                cleanupOperandDescriptor (2, e);
+                cleanupOperandDescriptor (1);
+                cleanupOperandDescriptor (2);
                 return;
               }
           }
@@ -1731,15 +1737,15 @@ void cmpc (void)
               {
                 CLRF (cu.IR, I_ZERO);  // an inequality found
                 SCF (c1 > c2, cu.IR, I_CARRY);
-                cleanupOperandDescriptor (1, e);
-                cleanupOperandDescriptor (2, e);
+                cleanupOperandDescriptor (1);
+                cleanupOperandDescriptor (2);
                 return;
               }
           }
       }
     // else ==
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
   }
 
 
@@ -1767,13 +1773,13 @@ void scd ()
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseAlphanumericOperandDescriptor (2, e, 1); // use TA1
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (2, 1); // use TA1
+    parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -1853,9 +1859,9 @@ void scd ()
     SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
  }
 
 /*
@@ -1882,13 +1888,13 @@ void scdr (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptorCache(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptorCache(3);
 
-    parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 1); // Use TA1
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor(1, 1);
+    parseAlphanumericOperandDescriptor(2, 1); // Use TA1
+    parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -1968,9 +1974,9 @@ void scdr (void)
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 
@@ -2014,13 +2020,13 @@ void scm (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
 
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseAlphanumericOperandDescriptor (2, e, 1);
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (2, 1);
+    parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -2090,9 +2096,9 @@ void scm (void)
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 /*
  * SCMR - Scan with Mask in Reverse
@@ -2134,13 +2140,13 @@ void scmr (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
 
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseAlphanumericOperandDescriptor (2, e, 1);
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (2, 1);
+    parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -2209,9 +2215,9 @@ void scmr (void)
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 /*
@@ -2264,13 +2270,13 @@ void tct (void)
     // on a word boundary.
     
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptorCache (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptorCache (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseArgOperandDescriptor (2, e);
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseArgOperandDescriptor (2);
+    parseArgOperandDescriptor (3);
     
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
@@ -2365,9 +2371,9 @@ void tct (void)
     CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 void tctr (void)
@@ -2399,13 +2405,13 @@ void tctr (void)
     // on a word boundary.
  
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptorCache (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptorCache (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseArgOperandDescriptor (2, e);
-    parseArgOperandDescriptor (3, e);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseArgOperandDescriptor (2);
+    parseArgOperandDescriptor (3);
     
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
@@ -2501,9 +2507,9 @@ void tctr (void)
     CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 /*
@@ -2549,12 +2555,12 @@ void mlr (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(1, 1);
+    parseAlphanumericOperandDescriptor(2, 2);
     
     int srcSZ, dstSZ;
 
@@ -2654,8 +2660,8 @@ void mlr (void)
             word36 w = EISReadIdx (& e -> ADDR1, n);
             EISWriteIdx (& e -> ADDR2, n, w);
           }
-        cleanupOperandDescriptor (1, e);
-        cleanupOperandDescriptor (2, e);
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 == N2
         CLRF (cu . IR, I_TRUNC);
@@ -2679,8 +2685,8 @@ void mlr (void)
             uint n = du . CHTALLY / 4;
             EISWriteIdx (& e -> ADDR2, n, w);
           }
-        cleanupOperandDescriptor (1, e);
-        cleanupOperandDescriptor (2, e);
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 <= N2
         CLRF (cu . IR, I_TRUNC);
@@ -2766,8 +2772,8 @@ void mlr (void)
               EISput469 (2, du . CHTALLY, fillT);
           }
     }
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 
     if (e -> N1 > e -> N2)
       {
@@ -2790,12 +2796,12 @@ void mrl (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(1, 1);
+    parseAlphanumericOperandDescriptor(2, 2);
     
     int srcSZ, dstSZ;
 
@@ -2896,8 +2902,8 @@ void mrl (void)
             word36 w = EISReadIdx (& e -> ADDR1, n);
             EISWriteIdx (& e -> ADDR2, n, w);
           }
-        cleanupOperandDescriptor (1, e);
-        cleanupOperandDescriptor (2, e);
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 == N2
         CLRF (cu . IR, I_TRUNC);
@@ -2925,8 +2931,8 @@ void mrl (void)
             uint n = (limit - du . CHTALLY - 1) / 4;
             EISWriteIdx (& e -> ADDR2, n, w);
           }
-        cleanupOperandDescriptor (1, e);
-        cleanupOperandDescriptor (2, e);
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 <= N2
         CLRF (cu . IR, I_TRUNC);
@@ -3012,8 +3018,8 @@ void mrl (void)
               EISput469 (2, e -> N2 - du . CHTALLY - 1, fillT);
           }
     }
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 
     if (e -> N1 > e -> N2)
       {
@@ -3206,8 +3212,9 @@ sim_printf ("inBuffer:");
  * sending string count, the remaining receiving string count, and 64.
  */
 
-static void EISloadInputBufferAlphnumeric (EISstruct * e, int k)
+static void EISloadInputBufferAlphnumeric (int k)
   {
+    EISstruct * e = & currentEISinstruction;
     // p points to position in inBuffer where 4-bit chars are stored
     word9 * p = e -> inBuffer;
     memset (e -> inBuffer, 0, sizeof (e -> inBuffer));// initialize to all 0's
@@ -3243,8 +3250,9 @@ static void EISwriteOutputBufferToMemory (int k)
   }
 
 
-static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, int c49)
+static void writeToOutputBuffer (word9 **dstAddr, int szSrc, int szDst, int c49)
 {
+    EISstruct * e = & currentEISinstruction;
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
     //5. If the receiving string is 9-bit characters, high-order fill the (4-bit) digits from the input buffer with bits 0-4 of character 8 of the edit insertion table. If the receiving string is 6-bit characters, high-order fill the digits with "00"b.
 
@@ -3339,8 +3347,9 @@ static char* defaultEditInsertionTable = " *+-$,.0";
  */
 
 // CANFAULT
-static int mopCHT(EISstruct *e)
+static int mopCHT (void)
 {
+    EISstruct * e = & currentEISinstruction;
     memset(&e->editInsertionTable, 0, sizeof(e->editInsertionTable)); // XXX do we really need this?
     for(int i = 0 ; i < 8 ; i += 1)
     {
@@ -3380,21 +3389,22 @@ static int mopCHT(EISstruct *e)
  */
 
 // CANFAULT
-static int mopENF(EISstruct *e)
+static int mopENF (void)
 {
+    EISstruct * e = & currentEISinstruction;
     // For IF(0) = 0 (end floating-sign operation),
     if (!(e->mopIF & 010))
     {
         // If ES is OFF and SN is OFF, then edit insertion table entry 3 is moved to the receiving field and ES is set ON.
         if (!e->mopES && !e->mopSN)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[2]);
             e->mopES = true;
         }
         // If ES is OFF and SN is ON, then edit insertion table entry 4 is moved to the receiving field and ES is set ON.
         if (!e->mopES && e->mopSN)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[3]);
             e->mopES = true;
         }
         // If ES is ON, no action is taken.
@@ -3402,7 +3412,7 @@ static int mopENF(EISstruct *e)
         if (!e->mopES)
         {
             // If ES is OFF, then edit insertion table entry 5 is moved to the receiving field and ES is set ON.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[4]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[4]);
             e->mopES = true;
         }
         // If ES is ON, no action is taken.
@@ -3425,8 +3435,9 @@ static int mopENF(EISstruct *e)
  * FLAGS: None affected
  */
 
-static int mopIGN(EISstruct *e)
+static int mopIGN (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
 
@@ -3451,8 +3462,9 @@ static int mopIGN(EISstruct *e)
  */
 
 // CANFAULT
-static int mopINSA(EISstruct *e)
+static int mopINSA (void)
 {
+    EISstruct * e = & currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3470,7 +3482,7 @@ static int mopINSA(EISstruct *e)
         // If IF is not 0, the next 9 bits are treated as a MOP.
         if (!e->mopES)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[1]);
            
             EISget49(e->mopAddress, &e->mopPos, CTN9);
             e->mopTally -= 1;
@@ -3478,7 +3490,7 @@ static int mopINSA(EISstruct *e)
             // If ES is ON and IF = 0, then the 9-bit character immediately
             // following the INSB micro-instruction is moved to the receiving
             // field.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
             e->mopTally -= 1;
         }
         
@@ -3487,7 +3499,7 @@ static int mopINSA(EISstruct *e)
         // entry (1-8) is to be moved to the receiving field.
         if (e->mopES)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF-1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF-1]);
         }
     }
     return 0;
@@ -3512,8 +3524,9 @@ static int mopINSA(EISstruct *e)
  */
 
 // CANFAULT
-static int mopINSB(EISstruct *e)
+static int mopINSB (void)
 {
+    EISstruct * e = & currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3531,7 +3544,7 @@ static int mopINSB(EISstruct *e)
         // If IF is not 0, the next 9 bits are treated as a MOP.
         if (!e->mopES)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
      
             //get49(e, &e->mopAddr, &e->mopPos, CTN9);
             EISget49(e->mopAddress, &e->mopPos, CTN9);
@@ -3540,7 +3553,7 @@ static int mopINSB(EISstruct *e)
             // If ES is ON and IF = 0, then the 9-bit character immediately
             // following the INSB micro-instruction is moved to the receiving
             // field.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
             e->mopTally -= 1;            
         }
       
@@ -3549,7 +3562,7 @@ static int mopINSB(EISstruct *e)
       // entry (1-8) is to be moved to the receiving field.
         if (e->mopES)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         }
     }
     return 0;
@@ -3566,11 +3579,12 @@ static int mopINSB(EISstruct *e)
  */
 
 // CANFAULT
-static int mopINSM(EISstruct *e)
+static int mopINSM (void)
 {
+    EISstruct * e = & currentEISinstruction;
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
-        writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+        writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
     }
     return 0;
 }
@@ -3593,8 +3607,9 @@ static int mopINSM(EISstruct *e)
  */
 
 // CANFAULT
-static int mopINSN(EISstruct *e)
+static int mopINSN (void)
 {
+    EISstruct * e = & currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3613,12 +3628,12 @@ static int mopINSN(EISstruct *e)
             //If SN is OFF, then edit insertion table entry 1 is moved to the
             //receiving field. If IF = 0, then the next 9 bits are also
             //skipped. If IF is not 0, the next 9 bits are treated as a MOP.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         } else {
             // If SN is ON and IF = 0, then the 9-bit character immediately
             // following the INSN micro-instruction is moved to the receiving
             // field.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
 
             e->mopTally -= 1;   // I think
         }
@@ -3629,7 +3644,7 @@ static int mopINSN(EISstruct *e)
         {
             //If SN is ON and IF <> 0, then IF specifies which edit insertion
             //table entry (1-8) is to be moved to the receiving field.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         }
     }
     return 0;
@@ -3645,8 +3660,9 @@ static int mopINSN(EISstruct *e)
  */
 
 // CANFAULT
-static int mopINSP(EISstruct *e)
+static int mopINSP (void)
 {
+    EISstruct * e = & currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3658,9 +3674,9 @@ static int mopINSP(EISstruct *e)
     {
         if (e->mopSN)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         } else {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
             e->mopTally -= 1;
         }
     }
@@ -3668,7 +3684,7 @@ static int mopINSP(EISstruct *e)
     {
         if (!e->mopSN)
         {
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         }
     }
 
@@ -3686,8 +3702,9 @@ static int mopINSP(EISstruct *e)
  */
 
 // CANFAULT
-static int mopLTE(EISstruct *e)
+static int mopLTE (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
     {
         e->_faults |= FAULT_IPR;
@@ -3740,8 +3757,9 @@ static int mopLTE(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMFLC(EISstruct *e)
+static int mopMFLC (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
 
@@ -3777,14 +3795,14 @@ static int mopMFLC(EISstruct *e)
                 {
                 // edit insertion table entry 1 is moved to the receiving field
                 // in place of the character.
-                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+                writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
             } else {
                 // then edit insertion table entry 5 is moved to the receiving
                 // field, the character is also moved to the receiving field,
                 // and ES is set ON.
-                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[4]);
+                writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[4]);
                 
                 e->in += 1;
                 e->srcTally -= 1;
@@ -3794,13 +3812,13 @@ static int mopMFLC(EISstruct *e)
                     return -1;
                 }
                 
-                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+                writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
                 
                 e->mopES = true;
             }
         } else {
             // If ES is ON, the character is moved to the receiving field.
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
             
             e->in += 1;
             e->srcTally -= 1;
@@ -3859,8 +3877,9 @@ static int mopMFLC(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMFLS(EISstruct *e)
+static int mopMFLS (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3889,7 +3908,7 @@ static int mopMFLS(EISstruct *e)
                 // edit insertion table entry 1 is moved to the receiving field
                 // in place of the character.
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
-                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+                writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
             } else {
@@ -3900,7 +3919,7 @@ static int mopMFLS(EISstruct *e)
                     // receiving field; the character is also moved to the
                     // receiving field, and ES is set ON.
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is off; edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
-                    writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
+                    writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[2]);
 
                     e->in += 1;
                     e->srcTally -= 1;
@@ -3910,7 +3929,7 @@ static int mopMFLS(EISstruct *e)
                         return -1;
                     }
                     
-                    writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+                    writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
 
                     e->mopES = true;
                 } else {
@@ -3918,7 +3937,7 @@ static int mopMFLS(EISstruct *e)
                     //  receiving field; the character is also moved to the
                     //  receiving field, and ES is set ON.
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is OFF; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
-                    writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
+                    writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[3]);
                     
                     e->in += 1;
                     e->srcTally -= 1;
@@ -3928,7 +3947,7 @@ static int mopMFLS(EISstruct *e)
                         return -1;
                     }
                     
-                    writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+                    writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
                     
                     e->mopES = true;
                 }
@@ -3936,7 +3955,7 @@ static int mopMFLS(EISstruct *e)
         } else {
             // If ES is ON, the character is moved to the receiving field.
             sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is ON, the character is moved to the receiving field.\n");
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
             
             e->in += 1;
             e->srcTally -= 1;
@@ -3974,8 +3993,9 @@ static int mopMFLS(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMORS(EISstruct *e)
+static int mopMORS (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3992,7 +4012,7 @@ static int mopMORS(EISstruct *e)
         e->in += 1;
         e->srcTally -= 1;
         
-        writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+        writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
     }
 
     return 0;
@@ -4009,8 +4029,9 @@ static int mopMORS(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMVC(EISstruct *e)
+static int mopMVC (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -4022,7 +4043,7 @@ static int mopMVC(EISstruct *e)
             return -1;
         }
         
-        writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+        writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
         e->in += 1;
         
         e->srcTally -= 1;
@@ -4058,10 +4079,11 @@ static int mopMVC(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMSES(EISstruct *e)
+static int mopMSES (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mvne == true)
-        return mopMVC(e);   // XXX I think!
+        return mopMVC ();   // XXX I think!
         
         
     if (e->mopIF == 0)
@@ -4102,7 +4124,7 @@ static int mopMSES(EISstruct *e)
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
-                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+                writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
                 e->in += 1;
             
                 e->srcTally -= 1;
@@ -4127,7 +4149,7 @@ static int mopMSES(EISstruct *e)
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
-                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+                writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
 
                 e->in += 1;
                 e->srcTally -= 1;
@@ -4155,8 +4177,9 @@ static int mopMSES(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMVZA(EISstruct *e)
+static int mopMVZA (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -4185,7 +4208,7 @@ static int mopMVZA(EISstruct *e)
             //If ES is OFF and the character is zero, then edit insertion table
             //entry 2 is moved to the receiving field in place of the
             //character.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[1]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
         }
@@ -4199,13 +4222,13 @@ static int mopMVZA(EISstruct *e)
         {
             //If ES is OFF and the character is not zero, then the character is
             //moved to the receiving field and ES is set ON.
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
             
             e->mopES = true;
         } else if (e->mopES)
         {
             //If ES is ON, the character is moved to the receiving field.
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
         }
     }
     
@@ -4235,8 +4258,9 @@ static int mopMVZA(EISstruct *e)
  */
 
 // CANFAULT
-static int mopMVZB(EISstruct *e)
+static int mopMVZB (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -4265,7 +4289,7 @@ static int mopMVZB(EISstruct *e)
             //If ES is OFF and the character is zero, then edit insertion table
             //entry 1 is moved to the receiving field in place of the
             //character.
-            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
         //} else if (!e->mopES && c != 0)
         // XXX See srcTA comment in MVNE
         }
@@ -4279,13 +4303,13 @@ static int mopMVZB(EISstruct *e)
         {
             //If ES is OFF and the character is not zero, then the character is
             //moved to the receiving field and ES is set ON.
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
             
             e->mopES = true;
         } else if (e->mopES)
         {
             //If ES is ON, the character is moved to the receiving field.
-            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
         }
     }
 
@@ -4308,8 +4332,9 @@ static int mopMVZB(EISstruct *e)
  * BZ If bit 1 of C(IF) = 1, then ON; otherwise, it is unchanged.
  */
 
-static int mopSES(EISstruct *e)
+static int mopSES (void)
 {
+    EISstruct * e = & currentEISinstruction;
     if (e->mopIF & 010)
         e->mopES = true;
     else
@@ -4324,7 +4349,7 @@ static int mopSES(EISstruct *e)
 struct MOPstruct
 {
     char *mopName;             // name of microoperation
-    int (*f)(EISstruct *e);    // pointer to mop() [returns character to be stored]
+    int (*f)(void);    // pointer to mop() [returns character to be stored]
 };
 
 // Table 4-9. Micro Operation Code Assignment Map
@@ -4380,8 +4405,9 @@ static MOPstruct mopTab[040] = {
  * fetch MOP from e->mopAddr/e->mopCN ...
  */
 
-static MOPstruct* EISgetMop(EISstruct *e)
+static MOPstruct* EISgetMop (void)
 {
+    EISstruct * e = & currentEISinstruction;
     //static word18 lastAddress;  // try to keep memory access' down
     //static word36 data;
     
@@ -4427,8 +4453,9 @@ static MOPstruct* EISgetMop(EISstruct *e)
 }
 
 
-static void mopExecutor (EISstruct * e, int kMop)
+static void mopExecutor (int kMop)
   {
+    EISstruct * e = & currentEISinstruction;
     e->mopAddress = &e->addr[kMop-1];
     e->mopTally = e->N[kMop-1];        // number of micro-ops
     e->mopCN   = e->CN[kMop-1];        // starting at char pos CN
@@ -4445,8 +4472,6 @@ static void mopExecutor (EISstruct * e, int kMop)
     
     e->_faults = 0; // No faults (yet!)
     
-    EISgetMop(NULL);   // initialize mop getter
-
     // execute dstTally micro operations
     // The micro operation sequence is terminated normally when the receiving
     // string length becomes exhausted. The micro operation sequence is
@@ -4458,9 +4483,9 @@ static void mopExecutor (EISstruct * e, int kMop)
 
     while (e->dstTally && e->mopTally)
     {
-        MOPstruct *m = EISgetMop(e);
+        MOPstruct *m = EISgetMop();
         
-        int mres = m->f(e);    // execute mop
+        int mres = m->f();    // execute mop
         if (mres)
             break;        
     }
@@ -4484,13 +4509,13 @@ void mve (void)
   {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptor(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptor(3);
     
-    parseAlphanumericOperandDescriptor(1, e, 1);
-    parseAlphanumericOperandDescriptor(2, e, 2);
-    parseAlphanumericOperandDescriptor(3, e, 3);
+    parseAlphanumericOperandDescriptor(1, 1);
+    parseAlphanumericOperandDescriptor(2, 2);
+    parseAlphanumericOperandDescriptor(3, 3);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4534,32 +4559,32 @@ void mve (void)
       }
     
     // 1. load sending string into inputBuffer
-    EISloadInputBufferAlphnumeric (e, 1);   // according to MF1
+    EISloadInputBufferAlphnumeric (1);   // according to MF1
     
     // 2. Execute micro operation string, starting with first (4-bit) digit.
     e -> mvne = false;
     
-    mopExecutor (e, 2);
+    mopExecutor (2);
     
     e -> dstTally = e -> N3;  // restore dstTally for output
     
     EISwriteOutputBufferToMemory (3);
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 void mvne (void)
   {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptor (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptor (3);
     
-    parseNumericOperandDescriptor (1, e);
-    parseAlphanumericOperandDescriptor (2, e, 2);
-    parseAlphanumericOperandDescriptor (3, e, 3);
+    parseNumericOperandDescriptor (1);
+    parseAlphanumericOperandDescriptor (2, 2);
+    parseAlphanumericOperandDescriptor (3, 3);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4636,14 +4661,14 @@ void mvne (void)
     // 3. Execute micro operation string, starting with first (4-bit) digit.
     e -> mvne = true;
     
-    mopExecutor (e, 2);
+    mopExecutor (2);
 
     e -> dstTally = e -> N3;  // restore dstTally for output
     
     EISwriteOutputBufferToMemory (3);
-    cleanupOperandDescriptor (1, e);
-    cleanupOperandDescriptor (2, e);
-    cleanupOperandDescriptor (3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
   }
 
 /*  
@@ -4663,12 +4688,12 @@ void mvt (void)
     
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
-    setupOperandDescriptor (1, e);
-    setupOperandDescriptor (2, e);
-    setupOperandDescriptorCache (3, e);
+    setupOperandDescriptor (1);
+    setupOperandDescriptor (2);
+    setupOperandDescriptorCache (3);
     
-    parseAlphanumericOperandDescriptor (1, e, 1);
-    parseAlphanumericOperandDescriptor (2, e, 2);
+    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (2, 2);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
@@ -4899,9 +4924,9 @@ void mvt (void)
             EISput469 (2, j, cfill);
     }
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
     if (e->N1 > e->N2)
       {
@@ -4928,11 +4953,11 @@ void cmpn (void)
     // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
     // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -5039,8 +5064,8 @@ void cmpn (void)
     SCF(cSigned == 1, cu.IR, I_NEG);
     SCF(cMag != 1, cu.IR, I_CARRY);
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
 }
 
@@ -5224,11 +5249,11 @@ void mvn (void)
 
     EISstruct * e = & currentEISinstruction;
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -5433,8 +5458,8 @@ void mvn (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
     
     if (Trunc)
@@ -5497,11 +5522,11 @@ void csl (bool isSZTL)
     // Invert           1      1      0      0
     //
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseBitstringOperandDescriptor(1, e);
-    parseBitstringOperandDescriptor(2, e);
+    parseBitstringOperandDescriptor(1);
+    parseBitstringOperandDescriptor(2);
     
     e->ADDR1.cPos = e->C1;
     e->ADDR2.cPos = e->C2;
@@ -5636,8 +5661,8 @@ void csl (bool isSZTL)
     }
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
     if (du . Z)
       SETF (cu . IR, I_ZERO);
@@ -5775,11 +5800,11 @@ void csr (bool isSZTR)
     // Invert           1      1      0      0
     //
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseBitstringOperandDescriptor(1, e);
-    parseBitstringOperandDescriptor(2, e);
+    parseBitstringOperandDescriptor(1);
+    parseBitstringOperandDescriptor(2);
     
     e->ADDR1.cPos = e->C1;
     e->ADDR2.cPos = e->C2;
@@ -5920,8 +5945,8 @@ void csr (bool isSZTR)
         }
     }
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
     if (du . Z)
       SETF (cu . IR, I_ZERO);
@@ -6003,11 +6028,11 @@ void cmpb (void)
     //    Zero:  If C(Y-bit1)i = C(Y-bit2)i for all i, then ON; otherwise, OFF
     //    Carry: If C(Y-bit1)i < C(Y-bit2)i for any i, then OFF; otherwise ON
     
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseBitstringOperandDescriptor(1, e);
-    parseBitstringOperandDescriptor(2, e);
+    parseBitstringOperandDescriptor(1);
+    parseBitstringOperandDescriptor(2);
     
     int charPosn1 = e->C1;
     int charPosn2 = e->C2;
@@ -6059,8 +6084,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(min(e->N1, e->N2)) i %d b1 %d b2 %d\n"
             if (!b1 && b2)  // 0 < 1
                 CLRF(cu.IR, I_CARRY);
 #ifdef EIS_CACHE
-            cleanupOperandDescriptor(1, e);
-            cleanupOperandDescriptor(2, e);
+            cleanupOperandDescriptor (1);
+            cleanupOperandDescriptor (2);
 #endif
             return;
         }
@@ -6081,8 +6106,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 < e->N2) i %d b1fill %d b2 %d\n"
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
 #ifdef EIS_CACHE
-                cleanupOperandDescriptor(1, e);
-                cleanupOperandDescriptor(2, e);
+                cleanupOperandDescriptor (1);
+                cleanupOperandDescriptor (2);
 #endif
                 return;
             }
@@ -6102,16 +6127,16 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
 #ifdef EIS_CACHE
-                cleanupOperandDescriptor(1, e);
-                cleanupOperandDescriptor(2, e);
+                cleanupOperandDescriptor (1);
+                cleanupOperandDescriptor (2);
 #endif
                 return;
             }
         }
     }
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
 }
 
@@ -6207,8 +6232,9 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
 
-static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
+static void EISwriteToOutputStringReverse (int k, int charToWrite)
 {
+    EISstruct * e = & currentEISinstruction;
     // first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
     static int N = 0;           // length of output buffer in native chars (4, 6 or 9-bit chunks)
@@ -6340,8 +6366,9 @@ static word72 signExt9(word72 n128, int N)
  * load a 9*n bit integer into e->x ...
  */
 
-static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
+static void load9x(int n, EISaddr *addr, int pos)
 {
+    EISstruct * e = & currentEISinstruction;
     int128 x = 0;
     
     //word36 data;
@@ -6375,8 +6402,9 @@ static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
  * get sign to buffer position p
  */
 
-static int getSign(word72s n128, EISstruct *e)
+static int getSign (word72s n128)
 {
+    EISstruct * e = & currentEISinstruction;
     // 4- or 9-bit?
     if (e->TN2 == CTN4) // 4-bit
     {
@@ -6433,7 +6461,7 @@ static void _btd (void)
     // handle any trailing sign stuff ...
     if (e->S2 == CSTS)  // a trailing sign
     {
-        EISwriteToOutputStringReverse(e, 0, getSign(sgn, e));
+        EISwriteToOutputStringReverse(0, getSign(sgn));
         if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
             return;
         N -= 1;
@@ -6442,7 +6470,7 @@ static void _btd (void)
     {
         int n = n128 % 10;
         
-        EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? n : (n + '0'));
+        EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? n : (n + '0'));
         
         if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
             return;
@@ -6459,10 +6487,10 @@ static void _btd (void)
     {
         while (N > 1)
         {
-            EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? 0 : '0');
+            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0');
             N -= 1;
         }
-        EISwriteToOutputStringReverse(e, 0, getSign(sgn, e));
+        EISwriteToOutputStringReverse(0, getSign(sgn));
         if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
             return;
     }
@@ -6470,7 +6498,7 @@ static void _btd (void)
     {
         while (N > 0)
         {
-            EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? 0 : '0');
+            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0');
             N -= 1;
         }
     }
@@ -6500,17 +6528,15 @@ void btd (void)
     
     //! The two's complement binary integer starting at location YC1 is converted into a signed string of decimal characters of data type TN2, sign and decimal type S2 (S2 = 00 is illegal) and scale factor 0; and is stored, right-justified, as a string of length L2 starting at location YC2. If the string generated is longer than L2, the high-order excess is truncated and the overflow indicator is set. If strings 1 and 2 are not overlapped, the contents of string 1 remain unchanged. The length of string 1 (L1) is given as the number of 9-bit segments that make up the string. L1 is equal to or is less than 8. Thus, the binary string to be converted can be 9, 18, 27, 36, 45, 54, 63, or 72 bits long. CN1 designates a 9-bit character boundary. If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign. If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
 
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = (bool)bitfieldExtract36(cu . IWB, 35, 1);  // 4-bit data sign character control
     
-    //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
-    //load9x(e->N1, addr, e->CN1, e);
-// ticket #35
+// XXX ticket #35
                   // Technically, ill_proc should be "illegal eis modifier",
                   // but the Fault Register has no such bit; the Fault
                   // register description says ill_proc is anything not
@@ -6518,9 +6544,9 @@ void btd (void)
     if (e->N1 == 0 || e->N1 > 8)
         doFault(FAULT_IPR, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
-    load9x(e->N1, &e->ADDR1, e->CN1, e);
+    load9x(e->N1, &e->ADDR1, e->CN1);
     
-    EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
+    EISwriteToOutputStringReverse(2, 0);    // initialize output writer .....
     
 #if 0
     e->_flags = cu.IR;
@@ -6534,8 +6560,8 @@ void btd (void)
     _btd ();
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
     
 // XXX wrong; see ticket 76
@@ -6558,8 +6584,9 @@ void btd (void)
  * load a decimal number into e->x ...
  */
 
-static void loadDec(EISaddr *p, int pos, EISstruct *e)
+static void loadDec (EISaddr *p, int pos)
 {
+    EISstruct * e = & currentEISinstruction;
     int128 x = 0;
     
     
@@ -6745,11 +6772,11 @@ void dtb (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
    
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
@@ -6763,8 +6790,7 @@ void dtb (void)
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
     CLRF(e->_flags, I_NEG);
     
-    //loadDec(e->TN1 == CTN4 ? e->YChar41 : e->YChar91, e->CN1, e);
-    loadDec(&e->ADDR1, e->CN1, e);
+    loadDec(&e->ADDR1, e->CN1);
     
     // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
     SCF(e->x == 0, e->_flags, I_ZERO);
@@ -6778,8 +6804,8 @@ void dtb (void)
         ;   // XXX generate overflow fault
     }
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
 #endif
 }
 
@@ -6797,14 +6823,14 @@ void dtb (void)
 void ad2d (void)
 {
     EISstruct * e = & currentEISinstruction;
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
 #ifdef EIS_CACHE
-    setupOperandDescriptorCache(3, e);
+    setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -7039,9 +7065,9 @@ void ad2d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -7106,13 +7132,13 @@ void ad3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptor(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptor(3);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
-    parseNumericOperandDescriptor(3, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(3);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -7378,9 +7404,9 @@ void ad3d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
     if (Trunc)
     {
@@ -7405,14 +7431,14 @@ void sb2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
 #ifdef EIS_CACHE
-    setupOperandDescriptorCache(3, e);
+    setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -7645,9 +7671,9 @@ void sb2d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -7673,13 +7699,13 @@ void sb3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptor(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptor(3);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
-    parseNumericOperandDescriptor(3, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(3);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -7926,9 +7952,9 @@ void sb3d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -7954,14 +7980,14 @@ void mp2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
 #ifdef EIS_CACHE
-    setupOperandDescriptorCache(3, e);
+    setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -8193,9 +8219,9 @@ void mp2d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -8222,13 +8248,13 @@ void mp3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptor(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptor(3);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
-    parseNumericOperandDescriptor(3, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(3);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -8474,9 +8500,9 @@ void mp3d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -9279,14 +9305,14 @@ void dv2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
 #ifdef EIS_CACHE
-    setupOperandDescriptorCache(3, e);
+    setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -9514,9 +9540,9 @@ void dv2d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
 
     if (Trunc)
@@ -9544,13 +9570,13 @@ void dv3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
-    setupOperandDescriptor(1, e);
-    setupOperandDescriptor(2, e);
-    setupOperandDescriptor(3, e);
+    setupOperandDescriptor(1);
+    setupOperandDescriptor(2);
+    setupOperandDescriptor(3);
     
-    parseNumericOperandDescriptor(1, e);
-    parseNumericOperandDescriptor(2, e);
-    parseNumericOperandDescriptor(3, e);
+    parseNumericOperandDescriptor(1);
+    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(3);
     
     e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -9819,9 +9845,9 @@ void dv3d (void)
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
 #ifdef EIS_CACHE
-    cleanupOperandDescriptor(1, e);
-    cleanupOperandDescriptor(2, e);
-    cleanupOperandDescriptor(3, e);
+    cleanupOperandDescriptor (1);
+    cleanupOperandDescriptor (2);
+    cleanupOperandDescriptor (3);
 #endif
     
     if (Trunc)
