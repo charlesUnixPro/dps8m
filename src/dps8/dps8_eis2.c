@@ -10,6 +10,17 @@
 // Local optimization
 #define ABD_BITS
 
+//  EISWriteCache  -- flush the cache
+//
+//
+//  EISWriteIdx (p, n, data); -- write to cache at p->addr [n]; updates p->addr
+//  EISRead (p) -- read to cache from p->addr
+//  EISReadIdx (p, n)  -- read to cache from p->addr[n]; updates p->addr
+//  EISReadN (p, n, dst) -- read N words to dst; updates p-> addr
+ 
+//  EISget369 (k, i)
+//  EISput369 (k, i, c)
+
 static word4 get4 (word36 w, int pos)
   {
     switch (pos)
@@ -89,6 +100,88 @@ static word9 get9(word36 w, int pos)
 
       }
     sim_printf ("get9(): How'd we get here?\n");
+    return 0;
+  }
+
+static word36 put4 (word36 w, int pos, word6 c)
+  {
+    switch (pos)
+      {
+        case 0:
+         return bitfieldInsert36 (w, c, 31, 4);
+
+        case 1:
+          return bitfieldInsert36 (w, c, 27, 4);
+
+        case 2:
+          return bitfieldInsert36 (w, c, 22, 4);
+
+        case 3:
+          return bitfieldInsert36 (w, c, 18, 4);
+
+        case 4:
+          return bitfieldInsert36 (w, c, 13, 4);
+
+        case 5:
+          return bitfieldInsert36 (w, c, 9, 4);
+
+        case 6:
+          return bitfieldInsert36 (w, c, 4, 4);
+
+        case 7:
+          return bitfieldInsert36 (w, c, 0, 4);
+
+      }
+    sim_printf ("put4(): How'd we get here?\n");
+    return 0;
+  }
+
+static word36 put6 (word36 w, int pos, word4 c)
+  {
+    switch (pos)
+      {
+        case 0:
+          return bitfieldInsert36 (w, c, 30, 6);
+
+        case 1:
+          return bitfieldInsert36 (w, c, 24, 6);
+
+        case 2:
+          return bitfieldInsert36 (w, c, 18, 6);
+
+        case 3:
+          return bitfieldInsert36 (w, c, 12, 6);
+
+        case 4:
+          return bitfieldInsert36 (w, c, 6, 6);
+
+        case 5:
+          return bitfieldInsert36 (w, c, 0, 6);
+
+      }
+    sim_printf ("put6(): How'd we get here?\n");
+    return 0;
+  }
+
+static word36 put9 (word36 w, int pos, word9 c)
+  {
+    
+    switch (pos)
+      {
+        case 0:
+          return bitfieldInsert36 (w, c, 27, 9);
+
+        case 1:
+          return bitfieldInsert36 (w, c, 18, 9);
+
+        case 2:
+          return bitfieldInsert36 (w, c, 9, 9);
+
+        case 3:
+          return bitfieldInsert36 (w, c, 0, 9);
+
+      }
+    sim_printf ("put9(): How'd we get here?\n");
     return 0;
   }
 
@@ -354,6 +447,15 @@ static word36 EISRead (EISaddr * p)
     return data;
   }
 
+static word36 EISReadIdx (EISaddr * p, uint n)
+  {
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
+    p -> address = addressN;
+    word36 data = EISRead (p);
+    return data;
+  }
+
 static void EISReadN (EISaddr * p, uint N, word36 *dst)
   {
     for (uint n = 0; n < N; n ++)
@@ -407,6 +509,49 @@ static uint EISget469 (int k, uint i)
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISGet469 : k: %u TAk %u coffset %u c %o \n", k, e -> TA [k - 1], residue, c);
     
     return c;
+  }
+
+static void EISput469 (int k, uint i, word9 c469)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    int nPos = 4; // CTA9
+    switch (e -> TA [k - 1])
+      { 
+        case CTA4:
+          nPos = 8;
+          break;
+            
+        case CTA6:
+          nPos = 6;
+          break;
+      }
+
+    word18 address = e -> WN [k - 1];
+    uint nChars = i + e -> CN [k - 1];
+
+    address += nChars / nPos;
+    uint residue = nChars % nPos;
+
+    e -> addr [k - 1] . address = address;
+    word36 data = EISRead (& e -> addr [k - 1]);    // read it from memory
+
+    word36 w;
+    switch (e -> TA [k - 1])
+      {
+        case CTA4:
+          w = put4 (data, residue, c469);
+          break;
+
+        case CTA6:
+          w = put6 (data, residue, c469);
+          break;
+
+        case CTA9:
+          w = put9 (data, residue, c469);
+          break;
+      }
+    EISWriteIdx (& e -> addr [k - 1], 0, w);
   }
 
 static void setupOperandDescriptorCache(int k, EISstruct *e)
@@ -1854,7 +1999,7 @@ void tct (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
-    for ( ; du . CHTALLY < e->N1 ; du . CHTALLY += 1)
+    for ( ; du . CHTALLY < e -> N1; du . CHTALLY ++)
       {
         uint c = EISget469 (1, du . CHTALLY); // get src char
 
@@ -1897,3 +2042,411 @@ void tct (void)
     cleanupOperandDescriptor (3, e);
   }
 
+void tctr (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., N1
+    //   m = C(Y-charn1)N1-i
+    //   If C(Y-char92)m ≠ 00...0, then
+    //     C(Y-char92)m → C(Y3)0,8
+    //     000 → C(Y3)9,11
+    //     i-1 → C(Y3)12,35
+    //   otherwise, continue scan of C(Y-charn1) If a non-zero table entry was
+    //   not found, then
+    // 00...0 → C(Y3)0,11
+    // N1 → C(Y3)12,35
+    //
+    // Indicators: Tally Run Out. If the string length count exhausts, then ON;
+    // otherwise, OFF
+    //
+    // If the data type of the string to be scanned is not 9-bit (TA1 ≠ 0),
+    // then characters from C(Y-charn1) are high-order zero filled in forming
+    // the table index, m.
+
+    // Instruction execution proceeds until a non-zero table entry is found or
+    // the string length count is exhausted.
+
+    // The character number of Y-char92 must be zero, i.e., Y-char92 must start
+    // on a word boundary.
+ 
+    
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptorCache (2, e);
+    setupOperandDescriptorCache (3, e);
+    
+    parseAlphanumericOperandDescriptor (1, e, 1);
+    parseArgOperandDescriptor (2, e);
+    parseArgOperandDescriptor (3, e);
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
+
+    uint srcSZ;
+
+    switch (e -> TA1)
+      {
+        case CTA4:
+            srcSZ = 4;
+            break;
+        case CTA6:
+            srcSZ = 6;
+            break;
+        case CTA9:
+            srcSZ = 9;
+            break;
+      }
+    
+    
+    // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
+    // XXX handle, later. (Yeah, just like everything else hard.)
+    //  Prepage Check in a Multiword Instruction
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    
+    // TA1              TRANSLATE TABLE SIZE
+    // 4-BIT CHARACTER      4 WORDS
+    // 6-BIT CHARACTER     16 WORDS
+    // 9-BIT CHARACTER    128 WORDS
+    
+    uint xlatSize = 0;   // size of xlation table in words .....
+    switch(e -> TA1)
+    {
+        case CTA4:
+            xlatSize = 4;
+            break;
+        case CTA6:
+            xlatSize = 16;
+            break;
+        case CTA9:
+            xlatSize = 128;
+            break;
+    }
+    
+    word36 xlatTbl [128];
+    memset (xlatTbl, 0, sizeof (xlatTbl));    // 0 it out just in case
+    
+    // XXX here is where we probably need to to the prepage thang...
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    EISReadN (& e -> ADDR2, xlatSize, xlatTbl);
+    
+    word36 CY3 = 0;
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "TCT N1 %d\n", e -> N1);
+
+    uint limit = e -> N1;
+    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+      {
+        uint c = EISget469 (1, limit - du . CHTALLY - 1); // get src char
+
+        uint m = 0;
+        
+        switch (srcSZ)
+          {
+            case 4:
+              m = c & 017;    // truncate upper 2-bits
+              break;
+            case 6:
+              m = c & 077;    // truncate upper 3-bits
+              break;
+            case 9:
+              m = c;          // keep all 9-bits
+              break;              // should already be 0-filled
+          }
+        
+        word9 cout = xlate (xlatTbl, CTA9, m);
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+                   "TCT c %03o %c cout %03o %c\n",
+                   m, isprint (m) ? '?' : m, 
+                   cout, isprint (cout) ? '?' : cout);
+
+        if (cout)
+          {
+            CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            break;
+          }
+      }
+    
+    SCF (du . CHTALLY == e -> N1, cu . IR, I_TALLY);
+    
+    CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
+    EISWriteIdx (& e -> ADDR3, 0, CY3);
+    
+    cleanupOperandDescriptor (1, e);
+    cleanupOperandDescriptor (2, e);
+    cleanupOperandDescriptor (3, e);
+  }
+
+/*
+ * MLR - Move Alphanumeric Left to Right
+ *
+ * (Nice, simple instruction if it weren't for the stupid overpunch stuff that ruined it!!!!)
+ */
+
+/*
+ * does 6-bit char represent a GEBCD negative overpuch? if so, whice numeral?
+ * Refer to Bull NovaScale 9000 RJ78 Rev2 p11-178
+ */
+
+static bool isOvp (uint c, uint * on)
+  {
+    // look for GEBCD -' 'A B C D E F G H I (positive overpunch)
+    // look for GEBCD - ^ J K L M N O P Q R (negative overpunch)
+    
+    uint c2 = c & 077;   // keep to 6-bits
+    * on = 0;
+    
+    if (c2 >= 020 && c2 <= 031)   // positive overpunch
+      {
+        * on = c2 - 020;          // return GEBCD number 0-9 (020 is +0)
+        return false;             // well, it's not a negative overpunch is it?
+      }
+    if (c2 >= 040 && c2 <= 052)   // negative overpunch
+      {
+        * on = c2 - 040;  // return GEBCD number 0-9 
+                         // (052 is just a '-' interpreted as -0)
+        return true;
+      }
+    return false;
+}
+
+void xmlr (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., minimum (N1,N2)
+    //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    C(FILL) → C(Y-charn2)N2-i
+    // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
+    
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptor (2, e);
+    setupOperandDescriptorCache (3, e);
+    
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
+    
+    int srcSZ, dstSZ;
+
+    switch (e -> TA1)
+      {
+        case CTA4:
+          srcSZ = 4;
+          break;
+        case CTA6:
+          srcSZ = 6;
+          break;
+        case CTA9:
+          srcSZ = 9;
+          break;
+      }
+    
+    switch (e -> TA2)
+      {
+        case CTA4:
+          dstSZ = 4;
+          break;
+        case CTA6:
+          dstSZ = 6;
+          break;
+        case CTA9:
+          dstSZ = 9;
+          break;
+      }
+    
+    uint T = bitfieldExtract36 (e -> op0, 26, 1) != 0;  // truncation bit
+    
+    uint fill = bitfieldExtract36 (e -> op0, 27, 9);
+    uint fillT = fill;  // possibly truncated fill pattern
+
+    // play with fill if we need to use it
+    switch (dstSZ)
+      {
+        case 4:
+          fillT = fill & 017;    // truncate upper 5-bits
+          break;
+        case 6:
+          fillT = fill & 077;    // truncate upper 3-bits
+          break;
+      }
+    
+    // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved
+    // and the truncation indicator is set ON.
+
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL
+    // characters are high-order truncated as they are moved to C(Y-charn2). No
+    // character conversion takes place.
+
+    // The user of string replication or overlaying is warned that the decimal
+    // unit addresses the main memory in unaligned (not on modulo 8 boundary)
+    // units of Y-block8 words and that the overlayed string, C(Y-charn2), is
+    // not returned to main memory until the unit of Y-block8 words is filled or
+    // the instruction completes.
+
+    // If T = 1 and the truncation indicator is set ON by execution of the
+    // instruction, then a truncation (overflow) fault occurs.
+
+    // Attempted execution with the xed instruction causes an illegal procedure
+    // fault.
+
+    // Attempted repetition with the rpt, rpd, or rpl instructions causes an
+    // illegal procedure fault.
+    
+    bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
+               (e -> TA2 == 2); // (6-4 move)
+    uint on;     // number overpunch represents (if any)
+    bool bOvp = false;  // true when a negative overpunch character has been 
+                        // found @ N1-1 
+
+    
+//
+// Multics frequently uses certain code sequences which are easily detected
+// and optimized; eg. it uses the MLR instruction to copy or zeros segments.
+//
+// The MLR implementation is correct, not efficent. Copy invokes 12 append
+// cycles per word, and fill 8.
+//
+
+// Test for the case of aligned word move; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 % 4 == 0 &&  // a whole number of words in the src
+        e -> N2 == e -> N1 && // the src is the same size as the dest.
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
+        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+          {
+            uint n = du . CHTALLY / 4;
+            word36 w = EISReadIdx (& e -> ADDR1, n);
+            EISWriteIdx (& e -> ADDR2, n, w);
+          }
+        cleanupOperandDescriptor (1, e);
+        cleanupOperandDescriptor (2, e);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
+        CLRF (cu . IR, I_TRUNC);
+        return;
+      }
+
+// Test for the case of aligned word fill; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 && // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 == 0 && // the source is entirely fill
+        e -> N2 % 4 == 0 && // a whole number of words in the dest
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
+        word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
+        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+          {
+            uint n = du . CHTALLY / 4;
+            EISWriteIdx (& e -> ADDR2, n, w);
+          }
+        cleanupOperandDescriptor (1, e);
+        cleanupOperandDescriptor (2, e);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 <= N2
+        CLRF (cu . IR, I_TRUNC);
+        return;
+      }
+
+    for ( ; du . CHTALLY < min (e -> N1, e -> N2); du . CHTALLY ++)
+      {
+        word9 c = EISget469 (1, du . CHTALLY); // get src char
+        word9 cout = 0;
+        
+        if (e -> TA1 == e -> TA2) 
+          EISput469 (2, du . CHTALLY, c);
+        else
+          {
+	  // If data types are dissimilar (TA1 ≠ TA2), each character is
+	  // high-order truncated or zero filled, as appropriate, as it is
+	  // moved. No character conversion takes place.
+            cout = c;
+            switch (srcSZ)
+              {
+                case 6:
+                  switch(dstSZ)
+                    {
+                      case 4:
+                        cout = c & 017;    // truncate upper 2-bits
+                        break;
+                      case 9:
+                        break;              // should already be 0-filled
+                    }
+                  break;
+                case 9:
+                  switch(e->dstSZ)
+                    {
+                      case 4:
+                        cout = c & 017;    // truncate upper 5-bits
+                        break;
+                      case 6:
+                        cout = c & 077;    // truncate upper 3-bits
+                        break;
+                    }
+                  break;
+              }
+
+	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+	  // negative overpunch sign is found, then the minus sign character
+	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+	  // is placed in C(Y-charn2)N2-1.
+            
+            if (ovp && (du . CHTALLY == e -> N1 - 1))
+              {
+	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+	      // there *is* an overpunch char here.
+                bOvp = isOvp (c, & on);
+                cout = on;   // replace char with the digit the overpunch 
+                             // represents
+              }
+            EISput469 (2, du . CHTALLY, cout);
+          }
+      }
+    
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    C(FILL) → C(Y-charn2)N2-i
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL
+    // characters are high-order truncated as they are moved to C(Y-charn2). No
+    // character conversion takes place.
+
+    if (e -> N1 < e -> N2)
+      {
+        for ( ; du . CHTALLY < e -> N2 ; du . CHTALLY ++)
+          {
+            // if there's an overpunch then the sign will be the last of the 
+            // fill
+            if (ovp && (du . CHTALLY == e -> N2 - 1))
+              {
+                if (bOvp)   // is c an GEBCD negative overpunch? and of what?
+                  EISput469 (2, du . CHTALLY, 015); // 015 is decimal -
+                else
+                  EISput469 (2, du . CHTALLY, 014); // 014 is decimal +
+              }
+            else
+              EISput469 (2, du . CHTALLY, fillT);
+          }
+    }
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+
+    if (e -> N1 > e -> N2)
+      {
+        SETF (cu . IR, I_TRUNC);
+        if (T && ! TSTF (cu . IR, I_OMASK))
+          doFault (FAULT_OFL, 0, "mlr truncation fault");
+      }
+    else
+      CLRF (cu . IR, I_TRUNC);
+  } 
