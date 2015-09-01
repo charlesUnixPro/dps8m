@@ -26,3 +26,4 @@ void mvn (void);
 void csl (bool isSZTL);
 void csr (bool isSZTR);
 void cmpb (void);
+void btd (void);

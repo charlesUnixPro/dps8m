@@ -6057,3 +6057,444 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
 #endif
 }
 
+/*
+ * write 4-bit digits to memory @ pos (in reverse) ...
+ */
+
+static void EISwrite4r(EISaddr *p, int *pos, int char4)
+{
+    word36 w;
+    
+    if (*pos < 0)    // out-of-range?
+    {
+        *pos = 7;    // reset to 1st byte
+        p->address = (p->address - 1) & AMASK;         // goto prev dstAddr in memory
+    }
+    //Read (*dstAddr, &w, OperandRead, 0);      // read dst memory into w
+    w = EISRead(p);
+    
+    switch (*pos)
+    {
+        case 0:
+            w = bitfieldInsert36(w, char4, 31, 5);
+            break;
+        case 1:
+            w = bitfieldInsert36(w, char4, 27, 4);
+            break;
+        case 2:
+            w = bitfieldInsert36(w, char4, 22, 5);
+            break;
+        case 3:
+            w = bitfieldInsert36(w, char4, 18, 4);
+            break;
+        case 4:
+            w = bitfieldInsert36(w, char4, 13, 5);
+            break;
+        case 5:
+            w = bitfieldInsert36(w, char4, 9, 4);
+            break;
+        case 6:
+            w = bitfieldInsert36(w, char4, 4, 5);
+            break;
+        case 7:
+            w = bitfieldInsert36(w, char4, 0, 4);
+            break;
+    }
+    
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
+    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    
+    *pos -= 1;       // to prev byte.
+}
+
+/*
+ * write 9-bit bytes to memory @ pos (in reverse)...
+ */
+
+static void EISwrite9r(EISaddr *p, int *pos, int char9)
+{
+    word36 w;
+    if (*pos < 0)    // out-of-range?
+    {
+        *pos = 3;    // reset to 1st byte
+        p->address = (p->address - 1) & AMASK;        // goto next dstAddr in memory
+    }
+    
+    //Read (*dstAddr, &w, OperandRead, 0);      // read dst memory into w
+    w = EISRead(p);      // read dst memory into w
+    
+    switch (*pos)
+    {
+        case 0:
+            w = bitfieldInsert36(w, char9, 27, 9);
+            break;
+        case 1:
+            w = bitfieldInsert36(w, char9, 18, 9);
+            break;
+        case 2:
+            w = bitfieldInsert36(w, char9, 9, 9);
+            break;
+        case 3:
+            w = bitfieldInsert36(w, char9, 0, 9);
+            break;
+    }
+    
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
+    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    
+    *pos -= 1;       // to prev byte.
+}
+
+/*
+ * write char to output string in Reverse. Right Justified and taking into account string length of destination
+ */
+
+static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
+{
+    // first thing we need to do is to find out the last position is the buffer we want to start writing to.
+    
+    static int N = 0;           // length of output buffer in native chars (4, 6 or 9-bit chunks)
+    static int CN = 0;          // character number 0-7 (4), 0-5 (6), 0-3 (9)
+    static int TN = 0;          // type code
+    static int pos = 0;         // current character position
+    //static int size = 0;        // size of char
+    static int _k = -1;         // k of MFk
+
+    if (k)
+    {
+        _k = k;
+        
+        N = e->N[k-1];      // length of output buffer in native chars (4, 9-bit chunks)
+        CN = e->CN[k-1];    // character number (position) 0-7 (4), 0-5 (6), 0-3 (9)
+        TN = e->TN[k-1];    // type code
+        
+        //int chunk = 0;
+        int maxPos = 4;
+        switch (TN)
+        {
+            case CTN4:
+                //address = e->addr[k-1].address;
+                //size = 4;
+                //chunk = 32;
+                maxPos = 8;
+                break;
+            case CTN9:
+                //address = e->addr[k-1].address;
+                //size = 9;
+                //chunk = 36;
+                maxPos = 4;
+                break;
+        }
+        
+        // since we want to write the data in reverse (since it's right 
+        // justified) we need to determine the final address/CN for the 
+        // type and go backwards from there
+        
+        //int numBits = size * N;      // 8 4-bit digits, 4 9-bit bytes / word
+        // (remember there are 4 slop bits in a 36-bit word when dealing with 
+        // BCD)
+
+        // how many additional words will the N chars take up?
+        //int numWords = numBits / ((TN == CTN4) ? 32 : 36);      
+
+// CN+N    numWords  (CN+N+3)/4   lastChar
+//   1       1                      0
+//   2       1                      1
+//   3       1                      2
+//   4       1                      3
+//   5       2                      0
+
+        int numWords = (CN + N + (maxPos - 1)) / maxPos;
+        int lastWordOffset = numWords - 1;
+        int lastChar = (CN + N - 1) % maxPos;   // last character number
+        
+        if (lastWordOffset > 0)           // more that the 1 word needed?
+            //address += lastWordOffset;    // highest memory address
+            e->addr[k-1].address += lastWordOffset;
+        
+        pos = lastChar;             // last character number
+        
+        //sim_printf ("numWords=%d lastChar=%d\n", numWords, lastChar);
+        return;
+    }
+    
+    // any room left in output string?
+    if (N == 0)
+    {
+        return;
+    }
+    
+    // we should write character to word/pos in memory .....
+    switch(TN)
+    {
+        case CTN4:
+            EISwrite4r(&e->addr[_k-1], &pos, charToWrite);
+            break;
+        case CTN9:
+            EISwrite9r(&e->addr[_k-1], &pos, charToWrite);
+            break;
+    }
+    N -= 1;
+}
+
+/*
+ * determine sign of N*9-bit length word
+ */
+static bool sign9n(word72 n128, int N)
+{
+    
+    // sign bit of  9-bit is bit 8  (1 << 8)
+    // sign bit of 18-bit is bit 17 (1 << 17)
+    // .
+    // .
+    // .
+    // sign bit of 72-bit is bit 71 (1 << 71)
+    
+    if (N < 1 || N > 8) // XXX largest int we'll play with is 72-bits? Makes sense
+        return false;
+    
+    word72 sgnmask = (word72)1 << ((N * 9) - 1);
+    
+    return (bool)(sgnmask & n128);
+}
+
+/*
+ * sign extend a N*9 length word to a (word72) 128-bit word
+ */
+static word72 signExt9(word72 n128, int N)
+{
+    // ext mask for  9-bit = 037777777777777777777777777777777777777400  8 0's
+    // ext mask for 18-bit = 037777777777777777777777777777777777400000 17 0's
+    // ext mask for 36-bit = 037777777777777777777777777777400000000000 35 0's
+    // etc...
+    
+    int bits = (N * 9) - 1;
+    if (sign9n(n128, N))
+    {
+        uint128 extBits = ((uint128)-1 << bits);
+        return n128 | extBits;
+    }
+    uint128 zeroBits = ~((uint128)-1 << bits);
+    return n128 & zeroBits;
+}
+
+/*
+ * load a 9*n bit integer into e->x ...
+ */
+
+static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
+{
+    int128 x = 0;
+    
+    //word36 data;
+    //Read (sourceAddr, &data, OperandRead, 0);    // read data word from memory
+    word36 data = EISRead(addr);
+    
+    int m = n;
+    while (m)
+    {
+        x <<= 9;         // make room for next 9-bit byte
+        
+        if (pos > 3)        // overflows to next word?
+        {   // yep....
+            pos = 0;        // reset to 1st byte
+            //sourceAddr = (sourceAddr + 1) & AMASK;          // bump source to next address
+            //Read (sourceAddr, &data, OperandRead, 0);    // read it from memory
+            addr->address = (addr->address + 1) & AMASK;          // bump source to next address
+            data = EISRead(addr);    // read it from memory
+        }
+        
+        x |= GETBYTE(data, pos);   // fetch byte at position pos and 'or' it in
+        
+        pos += 1;           // onto next posotion
+        
+        m -= 1;             // decrement byte counter
+    }
+    e->x = signExt9(x, n);  // form proper 2's-complement integer
+}
+
+/*
+ * get sign to buffer position p
+ */
+
+static int getSign(word72s n128, EISstruct *e)
+{
+    // 4- or 9-bit?
+    if (e->TN2 == CTN4) // 4-bit
+    {
+        // If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign.
+        // If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
+        if (n128 >= 0)
+        {
+            if (e->P)
+                return 013;  // alternate + sign
+            else
+                return 014;  // default + sign
+        }
+        else
+        {
+            SETF(e->_flags, I_NEG); 
+            return 015;      // - sign
+        }
+    }
+    else
+    {   // 9-bit
+        if (n128 >= 0)
+            return 053;     // default 9-bit +
+        else
+        {
+            SETF(e->_flags, I_NEG);
+            return 055;     // default 9-bit -
+        }
+    }
+}
+
+
+// perform a binary to decimal conversion ...
+
+// Since (according to DH02) we want to "right-justify" the output string it
+// might be better to presere the reverse writing and start writing
+// characters directly into the output string taking into account the output
+// string length.....
+
+static void _btd (void)
+{
+    DCDstruct * ins = & currentInstruction;
+    EISstruct *e = &ins->e;
+
+    word72s n128 = e->x;    ///< signExt9(e->x, e->N1);          ///< adjust for +/-
+    int sgn = (n128 < 0) ? -1 : 1;  ///< sgn(x)
+    if (n128 < 0)
+        n128 = -n128;
+    
+    //if (n128 == 0)  // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
+        //SETF(e->_flags, I_ZERO);
+    SCF(n128 == 0, e->_flags, I_ZERO);
+   
+    int N = e->N2;  // number of chars to write ....
+    
+    // handle any trailing sign stuff ...
+    if (e->S2 == CSTS)  // a trailing sign
+    {
+        EISwriteToOutputStringReverse(e, 0, getSign(sgn, e));
+        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
+            return;
+        N -= 1;
+    }
+    do
+    {
+        int n = n128 % 10;
+        
+        EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? n : (n + '0'));
+        
+        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
+            return;
+        
+        N -= 1;
+        
+        n128 /= 10;
+    } while (n128);
+    
+    // at this point we've exhausted our digits, but may still have spaces left.
+    
+    // handle any leading sign stuff ...
+    if (e->S2 == CSLS)  // a leading sign
+    {
+        while (N > 1)
+        {
+            EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? 0 : '0');
+            N -= 1;
+        }
+        EISwriteToOutputStringReverse(e, 0, getSign(sgn, e));
+        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
+            return;
+    }
+    else
+    {
+        while (N > 0)
+        {
+            EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? 0 : '0');
+            N -= 1;
+        }
+    }
+}
+
+void btd (void)
+{
+    DCDstruct * ins = & currentInstruction;
+    EISstruct *e = &ins->e;
+
+    
+    //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
+    /*!
+     * C(Y-char91) contains a twos complement binary integer aligned on 9-bit character boundaries with length 0 < N1 <= 8.
+     * If TN2 and S2 specify a 4-bit signed number and P = 1, then if C(Y-char91) is positive (bit 0 of C(Y-char91)0 = 0), then the 13(8) plus sign character is moved to C(Y-charn2) as appropriate.
+     *   The scaling factor of C(Y-charn2), SF2, must be 0.
+     *   If N2 is not large enough to hold the digits generated by conversion of C(Y-char91) an overflow condition exists; the overflow indicator is set ON and an overflow fault occurs. This implies that an unsigned fixed-point receiving field has a minimum length of 1 character and a signed fixed- point field, 2 characters.
+     * If MFk.RL = 1, then Nk does not contain the operand length; instead; it contains a register code for a register holding the operand length.
+     * If MFk.ID = 1, then the kth word following the instruction word does not contain an operand descriptor; instead, it contains an indirect pointer to the operand descriptor.
+     * C(Y-char91) and C(Y-charn2) may be overlapping strings; no check is made.
+     * Attempted conversion to a floating-point number (S2 = 0) or attempted use of a scaling factor (SF2 ≠ 0) causes an illegal procedure fault.
+     * If N1 = 0 or N1 > 8 an illegal procedure fault occurs.
+     * Attempted execution with the xed instruction causes an illegal procedure fault.
+     * Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
+     */
+    
+    //! C(string 1) -> C(string 2) (converted)
+    
+    //! The two's complement binary integer starting at location YC1 is converted into a signed string of decimal characters of data type TN2, sign and decimal type S2 (S2 = 00 is illegal) and scale factor 0; and is stored, right-justified, as a string of length L2 starting at location YC2. If the string generated is longer than L2, the high-order excess is truncated and the overflow indicator is set. If strings 1 and 2 are not overlapped, the contents of string 1 remain unchanged. The length of string 1 (L1) is given as the number of 9-bit segments that make up the string. L1 is equal to or is less than 8. Thus, the binary string to be converted can be 9, 18, 27, 36, 45, 54, 63, or 72 bits long. CN1 designates a 9-bit character boundary. If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign. If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
+
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+
+    parseNumericOperandDescriptor(1, e);
+    parseNumericOperandDescriptor(2, e);
+    
+    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
+    
+    //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
+    //load9x(e->N1, addr, e->CN1, e);
+// ticket #35
+                  // Technically, ill_proc should be "illegal eis modifier",
+                  // but the Fault Register has no such bit; the Fault
+                  // register description says ill_proc is anything not
+                  // handled by other bits.
+    if (e->N1 == 0 || e->N1 > 8)
+        doFault(FAULT_IPR, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
+
+    load9x(e->N1, &e->ADDR1, e->CN1, e);
+    
+    EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
+    
+#if 0
+    e->_flags = cu.IR;
+    
+    CLRF(e->_flags, I_NEG);     // If a minus sign character is moved to C(Y-charn2), then ON; otherwise OFF
+    CLRF(e->_flags, I_ZERO);    // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
+#else
+    e -> _flags = 0;
+#endif
+
+    _btd ();
+    
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+    
+// XXX wrong; see ticket 76
+#if 0
+    cu.IR = e->_flags;
+    if (TSTF(cu.IR, I_OFLOW))
+        doFault(FAULT_OFL, 0, "btd() overflow!");   // XXX generate overflow fault
+#else
+    SCF (e -> _flags & I_ZERO, cu . IR, I_ZERO);
+    SCF (e -> _flags & I_NEG, cu . IR, I_NEG);
+    if (e -> _flags & I_OFLOW)
+      {
+        SETF (cu . IR, I_OFLOW);
+        doFault(FAULT_OFL, 0, "btd overflow fault");
+      }
+#endif
+}
+

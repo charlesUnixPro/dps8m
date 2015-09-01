@@ -6404,9 +6404,9 @@ static t_stat DoEISInstruction (void)
           break;
             
         /// Multiword EIS ...
-        case 0301:  ///< btd
-            btd (i);
-            break;
+        case 0301:  // btd
+          btd ();
+          break;
             
         case 0305:  ///< dtb
             dtb (i);
