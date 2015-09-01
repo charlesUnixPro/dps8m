@@ -2536,20 +2536,6 @@ int is_priv_mode(void)
             if (switches . super_user)
                 return 1;
 
-// Append cycle should always set this up
-#if 0
-            if (SDW->P && PPR.PRR == 0)
-            {
-                PPR.P = 1;
-                return 1;
-            }
-#endif
-            // [CAC] This generates a lot of traffic because is_priv_mode
-            // is frequntly called to get the state, and not just to trap
-            // priviledge violations.
-            //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
-            break;
-        default:
             break;
     }
     
