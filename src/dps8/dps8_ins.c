@@ -14,7 +14,6 @@
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_eis.h"
-#include "dps8_eis2.h"
 #include "dps8_ins.h"
 #include "dps8_math.h"
 #include "dps8_opcodetable.h"
