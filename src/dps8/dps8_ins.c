@@ -6424,8 +6424,8 @@ static t_stat DoEISInstruction (void)
             mlr();
             break;
 
-        case 0101:  ///< mrl
-            mrl(i);
+        case 0101:  // mrl
+            mrl ();
             break;
         
         case 0160:  ///< mvt

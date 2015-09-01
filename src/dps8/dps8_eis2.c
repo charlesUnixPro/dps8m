@@ -2454,3 +2454,251 @@ void mlr (void)
     else
       CLRF (cu . IR, I_TRUNC);
   } 
+
+
+void mrl (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., minimum (N1,N2)
+    //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    C(FILL) → C(Y-charn2)N2-i
+    // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
+    
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptor (2, e);
+    setupOperandDescriptorCache (3, e);
+    
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
+    
+    int srcSZ, dstSZ;
+
+    switch (e -> TA1)
+      {
+        case CTA4:
+          srcSZ = 4;
+          break;
+        case CTA6:
+          srcSZ = 6;
+          break;
+        case CTA9:
+          srcSZ = 9;
+          break;
+      }
+    
+    switch (e -> TA2)
+      {
+        case CTA4:
+          dstSZ = 4;
+          break;
+        case CTA6:
+          dstSZ = 6;
+          break;
+        case CTA9:
+          dstSZ = 9;
+          break;
+      }
+    
+    uint T = bitfieldExtract36 (e -> op0, 26, 1) != 0;  // truncation bit
+    
+    uint fill = bitfieldExtract36 (e -> op0, 27, 9);
+    uint fillT = fill;  // possibly truncated fill pattern
+
+    // play with fill if we need to use it
+    switch (dstSZ)
+      {
+        case 4:
+          fillT = fill & 017;    // truncate upper 5-bits
+          break;
+        case 6:
+          fillT = fill & 077;    // truncate upper 3-bits
+          break;
+      }
+    
+    // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved
+    // and the truncation indicator is set ON.
+
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL
+    // characters are high-order truncated as they are moved to C(Y-charn2). No
+    // character conversion takes place.
+
+    // The user of string replication or overlaying is warned that the decimal
+    // unit addresses the main memory in unaligned (not on modulo 8 boundary)
+    // units of Y-block8 words and that the overlayed string, C(Y-charn2), is
+    // not returned to main memory until the unit of Y-block8 words is filled or
+    // the instruction completes.
+
+    // If T = 1 and the truncation indicator is set ON by execution of the
+    // instruction, then a truncation (overflow) fault occurs.
+
+    // Attempted execution with the xed instruction causes an illegal procedure
+    // fault.
+
+    // Attempted repetition with the rpt, rpd, or rpl instructions causes an
+    // illegal procedure fault.
+    
+    bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
+               (e -> TA2 == 2); // (6-4 move)
+    uint on;     // number overpunch represents (if any)
+    bool bOvp = false;  // true when a negative overpunch character has been 
+                        // found @ N1-1 
+
+    
+//
+// Multics frequently uses certain code sequences which are easily detected
+// and optimized; eg. it uses the MLR instruction to copy or zeros segments.
+//
+// The MLR implementation is correct, not efficent. Copy invokes 12 append
+// cycles per word, and fill 8.
+//
+
+// Test for the case of aligned word move; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 % 4 == 0 &&  // a whole number of words in the src
+        e -> N2 == e -> N1 && // the src is the same size as the dest.
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
+        uint limit = e -> N2;
+        for ( ; du . CHTALLY < limit; du . CHTALLY += 4)
+          {
+            uint n = (limit - du . CHTALLY - 1) / 4;
+            word36 w = EISReadIdx (& e -> ADDR1, n);
+            EISWriteIdx (& e -> ADDR2, n, w);
+          }
+        cleanupOperandDescriptor (1, e);
+        cleanupOperandDescriptor (2, e);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
+        CLRF (cu . IR, I_TRUNC);
+        return;
+      }
+
+// Test for the case of aligned word fill; and do things a word at a time,
+// instead of a byte at a time...
+
+    if (e -> TA1 == CTA9 && // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 == 0 && // the source is entirely fill
+        e -> N2 % 4 == 0 && // a whole number of words in the dest
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
+        word36 w = (word36) fill |
+                  ((word36) fill << 9) |
+                  ((word36) fill << 18) |
+                  ((word36) fill << 27);
+        uint limit = e -> N2;
+        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+          {
+            uint n = (limit - du . CHTALLY - 1) / 4;
+            EISWriteIdx (& e -> ADDR2, n, w);
+          }
+        cleanupOperandDescriptor (1, e);
+        cleanupOperandDescriptor (2, e);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 <= N2
+        CLRF (cu . IR, I_TRUNC);
+        return;
+      }
+
+    for ( ; du . CHTALLY < min (e -> N1, e -> N2); du . CHTALLY ++)
+      {
+        word9 c = EISget469 (1, e -> N1 - du . CHTALLY - 1); // get src char
+        word9 cout = 0;
+        
+        if (e -> TA1 == e -> TA2) 
+          EISput469 (2, e -> N2 - du . CHTALLY - 1, c);
+        else
+          {
+	  // If data types are dissimilar (TA1 ≠ TA2), each character is
+	  // high-order truncated or zero filled, as appropriate, as it is
+	  // moved. No character conversion takes place.
+            cout = c;
+            switch (srcSZ)
+              {
+                case 6:
+                  switch(dstSZ)
+                    {
+                      case 4:
+                        cout = c & 017;    // truncate upper 2-bits
+                        break;
+                      case 9:
+                        break;              // should already be 0-filled
+                    }
+                  break;
+                case 9:
+                  switch(dstSZ)
+                    {
+                      case 4:
+                        cout = c & 017;    // truncate upper 5-bits
+                        break;
+                      case 6:
+                        cout = c & 077;    // truncate upper 3-bits
+                        break;
+                    }
+                  break;
+              }
+
+	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+	  // negative overpunch sign is found, then the minus sign character
+	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+	  // is placed in C(Y-charn2)N2-1.
+            
+            if (ovp && (du . CHTALLY == e -> N1 - 1))
+              {
+	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+	      // there *is* an overpunch char here.
+                bOvp = isOvp (c, & on);
+                cout = on;   // replace char with the digit the overpunch 
+                             // represents
+              }
+            EISput469 (2, e -> N2 - du . CHTALLY - 1, cout);
+          }
+      }
+    
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    C(FILL) → C(Y-charn2)N2-i
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL
+    // characters are high-order truncated as they are moved to C(Y-charn2). No
+    // character conversion takes place.
+
+    if (e -> N1 < e -> N2)
+      {
+        for ( ; du . CHTALLY < e -> N2 ; du . CHTALLY ++)
+          {
+            // if there's an overpunch then the sign will be the last of the 
+            // fill
+            if (ovp && (du . CHTALLY == e -> N2 - 1))
+              {
+                if (bOvp)   // is c an GEBCD negative overpunch? and of what?
+                  EISput469 (2, e -> N2 - du . CHTALLY - 1, 015); // 015 is decimal -
+                else
+                  EISput469 (2, e -> N2 - du . CHTALLY - 1, 014); // 014 is decimal +
+              }
+            else
+              EISput469 (2, e -> N2 - du . CHTALLY - 1, fillT);
+          }
+    }
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+
+    if (e -> N1 > e -> N2)
+      {
+        SETF (cu . IR, I_TRUNC);
+        if (T && ! TSTF (cu . IR, I_OMASK))
+          doFault (FAULT_OFL, 0, "mlr truncation fault");
+      }
+    else
+      CLRF (cu . IR, I_TRUNC);
+  } 
+
+

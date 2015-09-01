@@ -16,3 +16,4 @@ void scmr (void);
 void tct (void);
 void tctr (void);
 void mlr (void);
+void mrl (void);
