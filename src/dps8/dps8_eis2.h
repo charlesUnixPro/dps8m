@@ -28,3 +28,7 @@ void csr (bool isSZTR);
 void cmpb (void);
 void btd (void);
 void dtb (void);
+void ad2d (void);
+void ad3d (void);
+void sb2d (void);
+void sb3d (void);
