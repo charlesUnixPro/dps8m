@@ -242,6 +242,7 @@ H_SRCS += dps8_cpu.h
 H_SRCS += dps8_decimal.h
 H_SRCS += dps8_disk.h
 H_SRCS += dps8_eis.h
+H_SRCS += dps8_eis2.h
 H_SRCS += dps8_faults.h
 H_SRCS += dps8_fnp.h
 H_SRCS += dps8_fxe.h
