@@ -220,7 +220,6 @@ C_SRCS += ./dps8_stddev.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_utils.c
 C_SRCS += ./dps8_decimal.c
-C_SRCS += ./dps8_decimal2.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_fxe.c
