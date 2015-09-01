@@ -6520,9 +6520,9 @@ static t_stat DoEISInstruction (void)
             dv3d ();
             break;
 
-        case 0300:  ///< mvn
-            mvn ();
-            break;
+        case 0300:  // mvn
+          mvn ();
+          break;
         
         case 0303:  // cmpn
           cmpn ();
