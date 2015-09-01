@@ -13,10 +13,10 @@
 //  EISWriteCache  -- flush the cache
 //
 //
-//  EISWriteIdx (p, n, data); -- write to cache at p->addr [n]; updates p->addr
+//  EISWriteIdx (p, n, data); -- write to cache at p->addr [n]; 
 //  EISRead (p) -- read to cache from p->addr
-//  EISReadIdx (p, n)  -- read to cache from p->addr[n]; updates p->addr
-//  EISReadN (p, n, dst) -- read N words to dst; updates p-> addr
+//  EISReadIdx (p, n)  -- read to cache from p->addr[n]; 
+//  EISReadN (p, n, dst) -- read N words to dst; 
  
 //  EISget369 (k, i)
 //  EISput369 (k, i, c)
@@ -449,21 +449,25 @@ static word36 EISRead (EISaddr * p)
 
 static word36 EISReadIdx (EISaddr * p, uint n)
   {
+    word18 saveAddr = p -> address;
     word18 addressN = p -> address + n;
     addressN &= AMASK;
     p -> address = addressN;
     word36 data = EISRead (p);
+    p -> address = saveAddr;
     return data;
   }
 
 static void EISReadN (EISaddr * p, uint N, word36 *dst)
   {
+    word18 saveAddr = p -> address;
     for (uint n = 0; n < N; n ++)
       {
         * dst ++ = EISRead (p);
         p -> address ++;
         p -> address &= AMASK;
       }
+    p -> address = saveAddr;
   }
 
 static uint EISget469 (int k, uint i)
@@ -2211,7 +2215,7 @@ static bool isOvp (uint c, uint * on)
     return false;
 }
 
-void xmlr (void)
+void mlr (void)
   {
     EISstruct * e = & currentInstruction . e;
 
@@ -2385,7 +2389,7 @@ void xmlr (void)
                     }
                   break;
                 case 9:
-                  switch(e->dstSZ)
+                  switch(dstSZ)
                     {
                       case 4:
                         cout = c & 017;    // truncate upper 5-bits

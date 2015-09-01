@@ -15,3 +15,4 @@ void scm (void);
 void scmr (void);
 void tct (void);
 void tctr (void);
+void mlr (void);
