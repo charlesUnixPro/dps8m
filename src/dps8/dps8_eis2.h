@@ -23,3 +23,4 @@ void mvt (void);
 void mvt (void);
 void cmpn (void);
 void mvn (void);
+void csl (bool isSZTL);

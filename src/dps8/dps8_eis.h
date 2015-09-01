@@ -11,7 +11,6 @@ void EISloadInputBufferNumeric(DCDstruct *i, int k);
 void btd(DCDstruct *i);
 void dtb(DCDstruct *i);
 void cmpb(DCDstruct *i);
-void csl(DCDstruct *ins, bool isSZTL);
 void csr(DCDstruct *ins, bool isSZTR);
 //void sztl(DCDstruct *i);
 //void sztr(DCDstruct *i);

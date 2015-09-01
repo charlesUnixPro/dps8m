@@ -597,6 +597,42 @@ static word9 EISget49 (EISaddr * p, int * pos, int tn)
     return c;
   }
 
+static bool EISgetBitRWN (EISaddr * p)
+  {
+//sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
+    int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
+    int baseBitPosn = baseCharPosn + p -> bPos;
+//sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
+    baseBitPosn += du . CHTALLY;
+//sim_printf ("CHTALLY %d baseBitPosn %d\n", du . CHTALLY, baseBitPosn);
+
+    int bitPosn = baseBitPosn % 36;
+    int woff = baseBitPosn / 36;
+//sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
+
+    word18 saveAddr = p -> address;
+    p -> address += woff;
+
+    p -> data = EISRead (p); // read data word from memory
+//if (PPR . PSR == 0400) sim_printf ("addr %08o pos %d\n", p->address, bitPosn);  
+    
+    if (p -> mode == eRWreadBit)
+      {
+        //p -> bit = (bool) bitfieldExtract36 (p -> data, bitPosn, 1);
+        p -> bit = getbits36 (p -> data, bitPosn, 1);
+      } 
+    else if (p -> mode == eRWwriteBit)
+      {
+        //p -> data = bitfieldInsert36 (p -> data, p -> bit, bitPosn, 1);
+        p -> data = setbits36 (p -> data, bitPosn, 1, p -> bit);
+        
+        EISWriteIdx (p, 0, p -> data); // write data word to memory
+      }
+
+    p -> address = saveAddr;
+    return p -> bit;
+  }
+
 static void setupOperandDescriptorCache(int k, EISstruct *e)
   {
     e -> addr [k - 1] .  cacheValid = false;
@@ -999,6 +1035,85 @@ static void parseNumericOperandDescriptor(int k, EISstruct *e)
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): address:%06o cPos:%d bPos:%d N%u %u\n", a->address, a->cPos, a->bPos, k, e->N[k-1]);
 
+}
+
+static void parseBitstringOperandDescriptor(int k, EISstruct *e)
+{
+    word18 MFk = e->MF[k-1];
+    
+    word36 opDesc = e->op[k-1];
+    
+    word8 ARn_CHAR = 0;
+    word6 ARn_BITNO = 0;
+    
+    word18 address = GETHI(opDesc);
+    if (MFk & MFkAR)
+    {
+        // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
+        uint n = (int)bitfieldExtract36(address, 15, 3);
+        word15 offset = address & MASK15;  // 15-bit signed number
+        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
+        
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        
+#if 0
+        if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
+        {
+            e->addr[k-1].SNR = PR[n].SNR;
+            e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            
+            e->addr[k-1].mat = viaPR;   // ARs involved
+        }
+    }
+    
+    //Operand length. If MFk.RL = 0, this field contains the string length of the operand. If MFk.RL = 1, this field contains the code for a register holding the operand string length. See Table 4-1 and EIS modification fields (MF) above for a discussion of register codes.
+    if (MFk & MFkRL)
+    {
+        int reg = opDesc & 017;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %d val %llo\n", k, reg, getMFReg36(reg, false));
+        e->N[k-1] = getMFReg36(reg, false) & 077777777;
+    }
+    else
+        e->N[k-1] = opDesc & 07777;
+sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    
+    
+    //e->B[k-1] = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;
+    //e->C[k-1] = (int)bitfieldExtract36(opDesc, 16, 2) & 03;
+    int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
+    int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
+    
+    word36 r = getMFReg36(MFk & 017, false);
+    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    {
+        //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
+        address += r;
+        r = 0;
+    }
+
+    //e->effBITNO = (9*ARn_CHAR + 36*r + ARn_BITNO) % 9;
+    //e->effCHAR = ((9*ARn_CHAR + 36*r + ARn_BITNO) % 36) / 9;
+    //e->effWORDNO = address + (9*ARn_CHAR + 36*r + ARn_BITNO) / 36;
+    e->effBITNO = (9*ARn_CHAR + r + ARn_BITNO + B + 9*C) % 9;
+    e->effCHAR = ((9*ARn_CHAR + r + ARn_BITNO + B + 9*C) % 36) / 9;
+    e->effWORDNO = address + (9*ARn_CHAR + r + ARn_BITNO + B + 9*C) / 36;
+    e->effWORDNO &= AMASK;
+    
+    e->B[k-1] = e->effBITNO;
+    e->C[k-1] = e->effCHAR;
+    e->YBit[k-1] = e->effWORDNO;
+    
+    EISaddr *a = &e->addr[k-1];
+    a->address = e->effWORDNO;
+    a->cPos = e->effCHAR;
+    a->bPos = e->effBITNO;
+    a->_type = eisBIT;
 }
 
 static void cleanupOperandDescriptor(int k, EISstruct *e)
@@ -5273,3 +5388,213 @@ void mvn (void)
     }
 
 }
+
+
+void csl (bool isSZTL)
+{
+    DCDstruct * ins = & currentInstruction;
+//sim_printf ("[%lld] %05o\n", sim_timell (), PPR . PSR);
+    EISstruct *e = &ins->e;
+
+    // For i = bits 1, 2, ..., minimum (N1,N2)
+    //   m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
+    //   C(BOLR)m → C(Y-bit2)i-1
+    // If N1 < N2, then for i = N1+l, N1+2, ..., N2
+    //   m = C(F) || C(Y-bit2)i-1 (a 2-bit number)
+    //   C(BOLR)m → C(Y-bit2)i-1
+    //
+    // INDICATORS: (Indicators not listed are not affected)
+    //     Zero If C(Y-bit2) = 00...0, then ON; otherwise OFF
+    //     Truncation If N1 > N2, then ON; otherwise OFF
+    //
+    // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
+    // processed and the truncation indicator is set ON.
+    //
+    // If T = 1 and the truncation indicator is set ON by execution of the
+    // instruction, then a truncation (overflow) fault occurs.
+    //
+    // BOLR
+    // If first operand    and    second operand    then result
+    // bit is:                    bit is:           is from bit:
+    //        0                          0                      5
+    //        0                          1                      6
+    //        1                          0                      7
+    //        1                          1                      8
+    //
+    // The Boolean operations most commonly used are
+    //                  BOLR Field Bits
+    // Operation        5      6      7      8
+    //
+    // MOVE             0      0      1      1
+    // AND              0      0      0      1
+    // OR               0      1      1      1
+    // NAND             1      1      1      0
+    // EXCLUSIVE OR     0      1      1      0
+    // Clear            0      0      0      0
+    // Invert           1      1      0      0
+    //
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseBitstringOperandDescriptor(1, e);
+    parseBitstringOperandDescriptor(2, e);
+    
+    e->ADDR1.cPos = e->C1;
+    e->ADDR2.cPos = e->C2;
+    
+    e->ADDR1.bPos = e->B1;
+    e->ADDR2.bPos = e->B2;
+    
+    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
+    
+    e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
+    bool B5 = (bool)((e->BOLR >> 3) & 1);
+    bool B6 = (bool)((e->BOLR >> 2) & 1);
+    bool B7 = (bool)((e->BOLR >> 1) & 1);
+    bool B8 = (bool)( e->BOLR      & 1);
+    
+    e->ADDR1.incr = true;
+    e->ADDR1.mode = eRWreadBit;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+               "CSL N1 %d N2 %d\n"
+               "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"
+               "CSL BOLR %u%u%u%u\n"
+               "CSL op1 SNR %06o WORDNO %06o CHAR %d BITNO %d\n"
+               "CSL op2 SNR %06o WORDNO %06o CHAR %d BITNO %d\n",
+               e -> N1, e -> N2,
+               e -> C1, e -> C2, e -> B1, e -> B2, e -> F, e -> T,
+               B5, B6, B7, B8,
+               e -> addr [0] . SNR, e -> addr [0] . address, 
+               e -> addr [0] . cPos, e -> addr [0] . bPos,
+               e -> addr [1] . SNR, e -> addr [1] . address, 
+               e -> addr [1] . cPos, e -> addr [1] . bPos);
+
+    bool bR = false; // result bit
+//sim_printf ("CHTALLY %d N1 %d N2 %d\n", du . CHTALLY, e -> N1, e -> N2);
+    for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
+    {
+        //bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
+        bool b1 = EISgetBitRWN(&e->ADDR1);  // read w/ addt incr from src 1
+        
+        // If we are a SZTL, addr2 is read only, increment here.
+        // If we are a CSL, addr2 will be incremented below in the write cycle
+        e->ADDR2.incr = isSZTL;
+        e->ADDR2.mode = eRWreadBit;
+        //bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
+        bool b2 = EISgetBitRWN(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
+        
+        if (!b1 && !b2)
+            bR = B5;
+        else if (!b1 && b2)
+            bR = B6;
+        else if (b1 && !b2)
+            bR = B7;
+        else if (b1 && b2)
+            bR = B8;
+        
+        if (bR)
+        {
+            //CLRF(cu.IR, I_ZERO);
+            du . Z = 0;
+            if (isSZTL)
+                break;
+        }
+
+        if (! isSZTL)
+        {
+            // write out modified bit
+            e->ADDR2.bit = bR ? 1 : 0;              // set bit contents to write
+            e->ADDR2.incr = true;           // we want address incrementing
+            e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
+            //EISgetBitRW(&e->ADDR2);    // write bit w/ addr increment to memory
+            EISgetBitRWN(&e->ADDR2);    // write bit w/ addr increment to memory
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+            EISWriteCache (&e->ADDR2);
+#endif
+        }
+    }
+    
+    if (e->N1 < e->N2)
+    {
+        for(; du . CHTALLY < e->N2 ; du . CHTALLY += 1)
+        {
+            bool b1 = e->F;
+            
+            // If we are a SZTL, addr2 is read only, increment here.
+            // If we are a CSL, addr2 will be incremented below in the write cycle
+            e->ADDR2.incr = isSZTL;
+            e->ADDR2.mode = eRWreadBit;
+            //bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
+            bool b2 = EISgetBitRWN(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
+            
+            if (!b1 && !b2)
+                bR = B5;
+            else if (!b1 && b2)
+                bR = B6;
+            else if (b1 && !b2)
+                bR = B7;
+            else if (b1 && b2)
+                bR = B8;
+            
+            if (bR)
+            {
+                //CLRF(cu.IR, I_ZERO);
+                du . Z = 0;
+                if (isSZTL)
+                  break;
+            }
+        
+            if (! isSZTL)
+            {
+                // write out modified bit
+                e->ADDR2.bit = bR ? 1 : 0;
+                e->ADDR2.mode = eRWwriteBit;
+                e->ADDR2.incr = true;
+                //EISgetBitRW(&e->ADDR2);
+                EISgetBitRWN(&e->ADDR2);
+#ifdef EIS_CACHE
+// XXX ticket #31
+// This a little brute force; it we fault on the next read, the cached value
+// is lost. There might be a way to logic it up so that when the next read
+// word offset changes, then we write the cache before doing the read. For
+// right now, be pessimistic. Sadly, since this is a bit loop, it is very.
+                EISWriteCache (&e->ADDR2);
+#endif
+            }
+        }
+    }
+    
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+#endif
+    if (du . Z)
+      SETF (cu . IR, I_ZERO);
+    else
+      CLRF (cu . IR, I_ZERO);
+    if (e->N1 > e->N2)
+    {
+        // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
+        // processed and the truncation indicator is set ON.
+        //
+        // If T = 1 and the truncation indicator is set ON by execution of the
+        // instruction, then a truncation (overflow) fault occurs.
+        
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+        {
+            doFault(FAULT_OFL, 0, "csl truncation fault");
+        }
+    }
+    else
+        CLRF(cu.IR, I_TRUNC);
+}
+

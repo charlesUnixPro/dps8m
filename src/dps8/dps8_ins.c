@@ -6465,20 +6465,20 @@ static t_stat DoEISInstruction (void)
             cmpb(i);
             break;
 
-        case 0060:   ///< csl
-            csl(i, false);
-            break;
+        case 0060:   // csl
+          csl (false);
+          break;
 
         case 0061:   ///< csr
             csr(i, false);
             break;
 
-        case 0064:   ///< sztl
-            // The execution of this instruction is identical to the Combine 
-            // Bit Strings Left (csl) instruction except that C(BOLR)m is 
-            // not placed into C(Y-bit2)i-1.
-            csl(i, true);
-            break;
+        case 0064:   // sztl
+          // The execution of this instruction is identical to the Combine 
+          // Bit Strings Left (csl) instruction except that C(BOLR)m is 
+          // not placed into C(Y-bit2)i-1.
+          csl (true);
+          break;
 
         case 0065:   ///< sztr
             // The execution of this instruction is identical to the Combine 
