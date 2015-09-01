@@ -4468,5 +4468,271 @@ void mvne (void)
     cleanupOperandDescriptor (3, e);
   }
 
+/*  
+ * MVT - Move Alphanumeric with Translation
+ */
+
+void mvt (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // For i = 1, 2, ..., minimum (N1,N2)
+    //    m = C(Y-charn1)i-1
+    //    C(Y-char93)m → C(Y-charn2)i-1
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    m = C(FILL)
+    //    C(Y-char93)m → C(Y-charn2)i-1
+    
+    // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
+    
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptor (2, e);
+    setupOperandDescriptorCache (3, e);
+    
+    parseAlphanumericOperandDescriptor (1, e, 1);
+    parseAlphanumericOperandDescriptor (2, e, 2);
+    
+    e->srcCN = e->CN1;    // starting at char pos CN
+    e->dstCN = e->CN2;    // starting at char pos CN
+    
+    e->srcTA = e->TA1;
+    e->dstTA = e->TA2;
+    
+    switch (e -> TA1)
+      {
+        case CTA4:
+          e -> srcSZ = 4;
+          break;
+        case CTA6:
+          e -> srcSZ = 6;
+          break;
+        case CTA9:
+          e -> srcSZ = 9;
+         break;
+      }
+    
+    switch (e -> TA2)
+      {
+        case CTA4:
+          e -> dstSZ = 4;
+          break;
+        case CTA6:
+          e -> dstSZ = 6;
+          break;
+        case CTA9:
+          e -> dstSZ = 9;
+          break;
+      }
+    
+    word36 xlat = e -> op [2];  // 3rd word is a pointer to a translation table
+    int xA = (int)bitfieldExtract36(xlat, 6, 1);    // 'A' bit - indirect via pointer register
+    int xREG = xlat & 0xf;
+
+    word36 r = getMFReg36(xREG, false);
+
+    word18 xAddress = GETHI(xlat);
+
+    word8 ARn_CHAR = 0;
+    word6 ARn_BITNO = 0;
+    if (xA)
+    {
+        // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
+        uint n = (int)bitfieldExtract36(xAddress, 15, 3);
+        word15 offset = xAddress & MASK15;  // 15-bit signed number
+        xAddress = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
+        
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        
+#if 0
+        if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
+#else
+        if (get_addr_mode() == APPEND_mode)
+#endif
+        {
+            //TPR.TSR = PR[n].SNR;
+            //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            e->ADDR3.SNR = PR[n].SNR;
+            e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            
+            e->ADDR3.mat = viaPR;
+        }
+    }
+    
+    xAddress +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
+    xAddress &= AMASK;
+    e->ADDR3.address = xAddress;
+    
+    // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
+    // XXX handle, later. (Yeah, just like everything else hard.)
+    //  Prepage Check in a Multiword Instruction
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+        
+    // TA1              TRANSLATE TABLE SIZE
+    // 4-BIT CHARACTER      4 WORDS
+    // 6-BIT CHARACTER     16 WORDS
+    // 9-BIT CHARACTER    128 WORDS
+    
+    int xlatSize = 0;   // size of xlation table in words .....
+    switch(e->TA1)
+    {
+        case CTA4:
+            xlatSize = 4;
+            break;
+        case CTA6:
+            xlatSize = 16;
+            break;
+        case CTA9:
+            xlatSize = 128;
+            break;
+    }
+    
+    word36 xlatTbl[128];
+    memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
+    
+    // XXX here is where we probably need to to the prepage thang...
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    EISReadN(&e->ADDR3, xlatSize, xlatTbl);
+    
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    
+    int fill = (int)bitfieldExtract36(e->op0, 27, 9);
+    int fillT = fill;  // possibly truncated fill pattern
+    // play with fill if we need to use it
+    switch(e->srcSZ)
+    {
+        case 4:
+            fillT = fill & 017;    // truncate upper 5-bits
+            break;
+        case 6:
+            fillT = fill & 077;    // truncate upper 3-bits
+            break;
+    }
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
+      fill, fillT, e -> N1, e -> N2);
+
+    //int xlatAddr = 0;
+    //int xlatCN = 0;
+
+    //SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
+
+    //get469(NULL, 0, 0, 0);    // initialize char getter buffer
+    
+    for(uint i = 0 ; i < min(e->N1, e->N2); i += 1)
+    {
+        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
+        int c = EISget469(1, i); // get src char
+        int cidx = 0;
+    
+        if (e->TA1 == e->TA2)
+            EISput469(2, i, xlate (xlatTbl, e -> dstTA, c));
+        else
+        {
+            // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
+            cidx = c;
+            
+            unsigned int cout = xlate(xlatTbl, e->dstTA, cidx);
+
+//            switch(e->dstSZ)
+//            {
+//                case 4:
+//                    cout &= 017;    // truncate upper 5-bits
+//                    break;
+//                case 6:
+//                    cout &= 077;    // truncate upper 3-bits
+//                    break;
+//            }
+
+            switch (e->srcSZ)
+            {
+                case 6:
+                    switch(e->dstSZ)
+                    {
+                        case 4:
+                            cout &= 017;    // truncate upper 2-bits
+                            break;
+                        case 9:
+                            break;              // should already be 0-filled
+                    }
+                    break;
+                case 9:
+                    switch(e->dstSZ)
+                    {
+                        case 4:
+                            cout &= 017;    // truncate upper 5-bits
+                            break;
+                        case 6:
+                            cout &= 077;    // truncate upper 3-bits
+                            break;
+                    }
+                    break;
+            }
+            
+            EISput469 (2, i, cout);
+        }
+    }
+    
+    // If N1 < N2, then for i = N1+1, N1+2, ..., N2
+    //    C(FILL) → C(Y-charn2)N2-i
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    
+    if (e->N1 < e->N2)
+    {
+        unsigned int cfill = xlate(xlatTbl, e->dstTA, fillT);
+        switch (e->srcSZ)
+        {
+            case 6:
+                switch(e->dstSZ)
+                {
+                    case 4:
+                        cfill &= 017;    // truncate upper 2-bits
+                        break;
+                    case 9:
+                        break;              // should already be 0-filled
+                }
+                break;
+            case 9:
+                switch(e->dstSZ)
+                {
+                    case 4:
+                        cfill &= 017;    // truncate upper 5-bits
+                        break;
+                    case 6:
+                        cfill &= 077;    // truncate upper 3-bits
+                        break;
+                }
+                break;
+        }
+        
+//        switch(e->dstSZ)
+//        {
+//            case 4:
+//                cfill &= 017;    // truncate upper 5-bits
+//                break;
+//            case 6:
+//                cfill &= 077;    // truncate upper 3-bits
+//                break;
+//        }
+        
+        for(uint j = e->N1 ; j < e->N2 ; j += 1)
+            EISput469 (2, j, cfill);
+    }
+#ifdef EIS_CACHE
+    cleanupOperandDescriptor(1, e);
+    cleanupOperandDescriptor(2, e);
+    cleanupOperandDescriptor(3, e);
+#endif
+    if (e->N1 > e->N2)
+      {
+        SETF(cu.IR, I_TRUNC);
+        if (e -> T && ! TSTF (cu.IR, I_OMASK))
+          doFault(FAULT_OFL, 0, "mvt truncation fault");
+      }
+    else
+      CLRF(cu.IR, I_TRUNC);
+}
 
 

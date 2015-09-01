@@ -19,3 +19,4 @@ void mlr (void);
 void mrl (void);
 void mve (void);
 void mvne (void);
+void mvt (void);

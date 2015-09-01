@@ -6421,24 +6421,24 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0100:  // mlr
-            mlr();
-            break;
+          mlr();
+          break;
 
         case 0101:  // mrl
-            mrl ();
-            break;
+          mrl ();
+          break;
         
-        case 0160:  ///< mvt
-            mvt(i);
-            break;
+        case 0160:  // mvt
+          mvt ();
+          break;
             
         case 0124:  // scm
-            scm ();
-            break;
+          scm ();
+          break;
 
         case 0125:  // scmr
-            scmr ();
-            break;
+          scmr ();
+          break;
 
         case 0164:  // tct
           tct ();
