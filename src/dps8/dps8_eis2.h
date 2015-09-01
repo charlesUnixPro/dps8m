@@ -17,3 +17,5 @@ void tct (void);
 void tctr (void);
 void mlr (void);
 void mrl (void);
+void mve (void);
+void mvne (void);

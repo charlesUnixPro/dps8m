@@ -6412,13 +6412,13 @@ static t_stat DoEISInstruction (void)
             dtb (i);
             break;
             
-        case 0024:   ///< mvne
-            mvne(i);
-            break;
+        case 0024:   // mvne
+          mvne ();
+          break;
          
-        case 0020:   ///< mve
-            mve(i);
-            break;
+        case 0020:   // mve
+          mve ();
+          break;
 
         case 0100:  // mlr
             mlr();

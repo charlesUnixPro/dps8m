@@ -18,8 +18,10 @@
 //  EISReadIdx (p, n)  -- read to cache from p->addr[n]; 
 //  EISReadN (p, n, dst) -- read N words to dst; 
  
-//  EISget369 (k, i)
-//  EISput369 (k, i, c)
+//  EISget469 (k, i)
+//  EISput469 (k, i, c)
+
+//  EISget49 (k, *pos, tn) get p->addr[*pos++]
 
 static word4 get4 (word36 w, int pos)
   {
@@ -558,6 +560,42 @@ static void EISput469 (int k, uint i, word9 c469)
     EISWriteIdx (& e -> addr [k - 1], 0, w);
   }
 
+/*
+ * return a 4- or 9-bit character at memory "*address" and position "*pos". 
+ * Increment pos (and address if necesary)
+ */
+
+static word9 EISget49 (EISaddr * p, int * pos, int tn)
+  {
+    int maxPos = tn == CTN4 ? 7 : 3;
+
+    if (* pos > maxPos)        // overflows to next word?
+      {   // yep....
+        * pos = 0;        // reset to 1st byte
+        // bump source to next address
+        p -> address = (p -> address + 1) & AMASK;
+        p -> data = EISRead (p);    // read it from memory
+      }
+    else
+      {
+        p -> data = EISRead (p);   // read data word from memory
+      }
+
+    word9 c = 0;
+    switch (tn)
+      {
+        case CTN4:
+          c = get4 (p -> data, * pos);
+          break;
+        case CTN9:
+          c = get9 (p -> data, * pos);
+          break;
+      }
+
+    (* pos) ++;
+    return c;
+  }
+
 static void setupOperandDescriptorCache(int k, EISstruct *e)
   {
     e -> addr [k - 1] .  cacheValid = false;
@@ -853,6 +891,114 @@ static void parseArgOperandDescriptor (uint k, EISstruct * e)
     
     e -> addr [k - 1] . address = y;
   }
+
+static void parseNumericOperandDescriptor(int k, EISstruct *e)
+{
+    word18 MFk = e->MF[k-1];
+
+    word36 opDesc = e->op[k-1];
+
+    word8 ARn_CHAR = 0;
+    word6 ARn_BITNO = 0;
+
+    word18 address = GETHI(opDesc);
+    if (MFk & MFkAR)
+    {
+        // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
+        uint n = (int)bitfieldExtract36(address, 15, 3);
+        word15 offset = address & MASK15;  ///< 15-bit signed number
+        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
+
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+
+        if (get_addr_mode() == APPEND_mode)
+        {
+            e->addr[k-1].SNR = PR[n].SNR;
+            e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+
+            e->addr[k-1].mat = viaPR;   // ARs involved
+        }
+    }
+
+    word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    ///< character number
+    // XXX need to do some error checking here with CN
+
+    e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
+    e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
+    e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
+
+    // Operand length. If MFk.RL = 0, this field contains the operand length in
+    // digits. If MFk.RL = 1, it contains the REG code for the register holding
+    // the operand length and C(REG) is treated as a 0 modulo 64 number. See
+    // Table 4-1 and EIS modification fields (MF) above for a discussion of
+    // register codes.
+
+    if (MFk & MFkRL)
+    {
+        uint reg = opDesc & 017;
+        e->N[k-1] = getMFReg18(reg, false) & 077;
+    }
+    else
+        e->N[k-1] = opDesc & 077;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %u\n", k, e->N[k-1]);
+
+    word36 r = getMFReg36(MFk & 017, false);
+    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    {
+        //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
+        address += r;
+        r = 0;
+    }
+
+    e->effBITNO = 0;
+    e->effCHAR = 0;
+    e->effWORDNO = 0;
+
+    // If seems that the effect address calcs given in AL39 p.6-27 are not quite right.
+    // E.g. For CTA4/CTN4 because of the 4 "slop" bits you need to do 32-bit calcs not 36-bit!
+
+    switch (e->TN[k-1])
+    {
+        case CTN4:
+            e->effBITNO = 4 * (ARn_CHAR + 2*r + ARn_BITNO/4) % 2 + 1; // XXX check
+            e->effCHAR = ((4*CN + 9*ARn_CHAR + 4*r + ARn_BITNO) % 32) / 4;  //9; 36) / 4;  //9;
+            e->effWORDNO = address + (4*CN + 9*ARn_CHAR + 4*r + ARn_BITNO) / 32;    //36;
+            e->effWORDNO &= AMASK;
+
+            e->CN[k-1] = e->effCHAR;        // ?????
+            //e->YChar4[k-1] = e->effWORDNO;
+
+            break;
+        case CTN9:
+            CN = (CN >> 1) & 07;  // XXX Do error checking
+
+            e->effBITNO = 0;
+            e->effCHAR = (CN + ARn_CHAR + r) % 4;
+            e->effWORDNO = address + (9*CN + 9*ARn_CHAR + 9*r + ARn_BITNO) / 36;
+            e->effWORDNO &= AMASK;
+
+            //e->YChar9[k-1] = e->effWORDNO;
+            e->CN[k-1] = e->effCHAR;        // ?????
+
+            break;
+        default:
+            sim_printf ("parseNumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
+            break;
+    }
+
+    EISaddr *a = &e->addr[k-1];
+    a->address = e->effWORDNO;
+    a->cPos = e->effCHAR;
+    a->bPos = e->effBITNO;
+
+    a->_type = eisTN;
+    a->TN = e->TN[k-1];
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): address:%06o cPos:%d bPos:%d N%u %u\n", a->address, a->cPos, a->bPos, k, e->N[k-1]);
+
+}
 
 static void cleanupOperandDescriptor(int k, EISstruct *e)
   {
@@ -2700,5 +2846,1627 @@ void mrl (void)
     else
       CLRF (cu . IR, I_TRUNC);
   } 
+
+#define V4
+
+#ifdef V1
+// This makes MVE 1-28 and all of MVNE work
+// Fails MVE 29-37 (6->6)
+#define decimalZero (e->srcTA != CTA4 ? '0' : 0)
+#endif
+
+#ifdef V2
+// This makes MVE 1-10 and 20-37 and all of MVNE work
+// Fails MVE 11-19 (6->9)
+#define decimalZero (e->srcTA == CTA9 ? '0' : 0)
+#endif
+
+#ifdef V4
+#define isDecimalZero(c) ((e->srcTA == CTA9) ? \
+                            ((c) == '0') : \
+                            (((c) & 017) == 0)) 
+#endif
+
+/*
+ * Load the entire sending string number (maximum length 63 characters) into
+ * the decimal unit input buffer as 4-bit digits (high-order truncating 9-bit
+ * data). Strip the sign and exponent characters (if any), put them aside into
+ * special holding registers and decrease the input buffer count accordingly.
+ */
+
+static void EISloadInputBufferNumeric(int k)
+{
+    EISstruct * e = & currentInstruction . e;
+
+    word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
+    memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
+
+    int pos = e->CN[k-1];
+
+    int TN = e->TN[k-1];
+    int S = e->S[k-1];  // This is where MVNE gets really nasty.
+    // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
+
+    int N = e->N[k-1];  // number of chars in src string
+
+    EISaddr *a = &e->addr[k-1];
+
+    e->sign = 1;
+    e->exponent = 0;
+
+    for(int n = 0 ; n < N ; n += 1)
+    {
+        word9 c = EISget49(a, &pos, TN);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "src: %d: %o\n", n, c);
+
+        /*
+         * Here we need to distinguish between 4 type of numbers.
+         *
+         * CSFL - Floating-point, leading sign
+         * CSLS - Scaled fixed-point, leading sign
+         * CSTS - Scaled fixed-point, trailing sign
+         * CSNS - Scaled fixed-point, unsigned
+         */
+        switch(S)
+        {
+            case CSFL:  // this is the real evil one ....
+                /* Floating-point:
+                 * [sign=c0] c1×10(n-3) + c2×10(n-4) + ... + c(n-3) [exponent=8 bits]
+                 * where:
+                 *  ci is the decimal value of the byte in the ith byte position.
+                 *  [sign=ci] indicates that ci is interpreted as a sign byte.
+                 *  [exponent=8 bits] indicates that the exponent value is taken from the last 8 bits of the string. If the data is in 9-bit bytes, the exponent is bits 1-8 of c(n-1). If the data is in 4- bit bytes, the exponent is the binary value of the concatenation of c(n-2) and c(n-1).
+                 */
+                if (n == 0) // first had better be a sign ....
+                {
+                    c &= 0xf;   // hack off all but lower 4 bits
+
+                    if (c < 012 || c > 017)
+                        doFault(FAULT_IPR, ill_dig, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+
+                    if (c == 015)   // '-'
+                        e->sign = -1;
+
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else if (TN == CTN9 && n == N-1)    // the 9-bit exponent (of which only 8-bits are used)
+                {
+                    e->exponent = (signed char)(c & 0377); // want to do a sign extend
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else if (TN == CTN4 && n == N-2)    // the 1st 4-chars of the 8-bit exponent
+                {
+                    e->exponent = (c & 0xf);// << 4;
+                    e->exponent <<= 4;
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else if (TN == CTN4 && n == N-1)    // the 2nd 4-chars of the 8-bit exponent
+                {
+                    e->exponent |= (c & 0xf);
+
+                    signed char ce = e->exponent & 0xff;
+                    e->exponent = ce;
+
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else
+                {
+                    c &= 0xf;   // hack off all but lower 4 bits
+                    if (c > 011)
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
+
+                    *p++ = c; // store 4-bit char in buffer
+                }
+                break;
+
+            case CSLS:
+                // Only the byte values [0,11]8 are legal in digit positions and only the byte values [12,17]8 are legal in sign positions. Detection of an illegal byte value causes an illegal procedure fault
+                c &= 0xf;   // hack off all but lower 4 bits
+
+                if (n == 0) // first had better be a sign ....
+                {
+                    if (c < 012 || c > 017)
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
+                    if (c == 015)   // '-'
+                        e->sign = -1;
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else
+                {
+                    if (c > 011)
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                    *p++ = c; // store 4-bit char in buffer
+                }
+                break;
+
+            case CSTS:
+                c &= 0xf;   // hack off all but lower 4 bits
+
+                if (n == N-1) // last had better be a sign ....
+                {
+                    if (c < 012 || c > 017)
+                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
+                    if (c == 015)   // '-'
+                        e->sign = -1;
+                    e->srcTally -= 1;   // 1 less source char
+                }
+                else
+                {
+                    if (c > 011)
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
+                    *p++ = c; // store 4-bit char in buffer
+                }
+                break;
+
+            case CSNS:
+                c &= 0xf; // hack off all but lower 4 bits
+
+                *p++ = c; // the "easy" one
+                break;
+        }
+    }
+    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+      {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "inBuffer:");
+        for (word9 *q = e->inBuffer; q < p; q ++)
+          sim_debug (DBG_TRACEEXT, & cpu_dev, " %02o", * q);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "\n");
+      }
+#if 0
+sim_printf ("inBuffer:");
+        for (word9 *q = e->inBuffer; q < p; q ++)
+          sim_printf (" %02o", * q);
+        sim_printf ("\n");
+#endif
+}
+
+
+/*
+ * Load decimal unit input buffer with sending string characters. Data is read
+ * from main memory in unaligned units (not modulo 8 boundary) of Y-block8
+ * words. The number of characters loaded is the minimum of the remaining
+ * sending string count, the remaining receiving string count, and 64.
+ */
+
+static void EISloadInputBufferAlphnumeric (EISstruct * e, int k)
+  {
+    // p points to position in inBuffer where 4-bit chars are stored
+    word9 * p = e -> inBuffer;
+    memset (e -> inBuffer, 0, sizeof (e -> inBuffer));// initialize to all 0's
+
+    // minimum of the remaining sending string count, the remaining receiving
+    // string count, and 64.
+    uint N = min3 (e -> N1, e -> N3, 64);
+
+    for (uint n = 0 ; n < N ; n ++)
+      {
+        uint c = EISget469 (k, n);
+        * p ++ = c;
+      }
+}
+
+static void EISwriteOutputBufferToMemory (int k)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    // 4. If an edit insertion table entry or MOP insertion character is to be
+    // stored, ANDed, or ORed into a receiving string of 4- or 6-bit
+    // characters, high-order truncate the character accordingly.
+    // 5. If the receiving string is 9-bit characters, high-order fill the
+    // (4-bit) digits from the input buffer with bits 0-4 of character 8 of the
+    // edit insertion table. If the receiving string is 6-bit characters,
+    // high-order fill the digits with "00"b.
+
+    for (int n = 0 ; n < e -> dstTally; n ++)
+      {
+        uint c49 = e -> outBuffer [n];
+        EISput469 (k, n, c49);
+      }
+  }
+
+
+static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, int c49)
+{
+    //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
+    //5. If the receiving string is 9-bit characters, high-order fill the (4-bit) digits from the input buffer with bits 0-4 of character 8 of the edit insertion table. If the receiving string is 6-bit characters, high-order fill the digits with "00"b.
+
+    switch (szSrc)
+    {
+        case 4:
+            switch(szDst)
+            {
+                case 4:
+                    **dstAddr = c49 & 0xf;
+                    break;
+                case 6:
+                    **dstAddr = c49 & 077;   // high-order fill the digits with "00"b.
+                    break;
+                case 9:
+                    **dstAddr = c49 | (e->editInsertionTable[7] & 0760);
+                    break;
+            }
+            break;
+        case 6:
+            switch(szDst)
+            {
+                case 4:
+                    **dstAddr = c49 & 0xf;    // write only-4-bits
+                    break;
+                case 6:
+                    **dstAddr = c49;
+                    break;
+                case 9:
+                    **dstAddr = c49;
+                    break;
+            }
+            break;
+        case 9:
+            switch(szDst)
+            {
+                case 4:
+                    **dstAddr = c49 & 0xf;    // write only-4-bits
+                    break;
+                case 6:
+                    **dstAddr = c49 & 077;   // write only 6-bits
+                    break;
+                case 9:
+                    **dstAddr = c49;
+                    break;
+            }
+            break;
+    }
+    e->dstTally -= 1;
+    *dstAddr += 1; 
+}
+
+/*!
+ * This is the Micro Operation Executor/Interpreter
+ */
+
+static char* defaultEditInsertionTable = " *+-$,.0";
+
+// Edit Flags
+//
+// The processor provides the following four edit flags for use by the micro
+// operations.  
+//
+// bool mopES = false; // End Suppression flag; initially OFF, set ON by a
+// micro operation when zero-suppression ends.
+//
+// bool mopSN = false; 
+// Sign flag; initially set OFF if the sending string has an alphanumeric
+// descriptor or an unsigned numeric descriptor. If the sending string has a
+// signed numeric descriptor, the sign is initially read from the sending
+// string from the digit position defined by the sign and the decimal type
+// field (S); SN is set OFF if positive, ON if negative. If all digits are
+// zero, the data is assumed positive and the SN flag is set OFF, even when the
+// sign is negative.
+//
+//bool mopZ = true;
+// Zero flag; initially set ON and set OFF whenever a sending string character
+// that is not decimal zero is moved into the receiving string.
+//
+//bool mopBZ = false; i
+// Blank-when-zero flag; initially set OFF and set ON by either the ENF or SES
+// micro operation. If, at the completion of a move (L1 exhausted), both the Z
+// and BZ flags are ON, the receiving string is filled with character 1 of the
+// edit insertion table.
+
+/*!
+ * CHT Micro Operation - Change Table
+ * EXPLANATION: The edit insertion table is replaced by the string of eight
+ * 9-bit characters immediately following the CHT micro operation.
+ * FLAGS: None affected
+ * NOTE: C(IF) is not interpreted for this operation.
+ */
+
+// CANFAULT
+static int mopCHT(EISstruct *e)
+{
+    memset(&e->editInsertionTable, 0, sizeof(e->editInsertionTable)); // XXX do we really need this?
+    for(int i = 0 ; i < 8 ; i += 1)
+    {
+        if (e->mopTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;      // Oops! ran out of micro-operations!
+        }
+        word9 entry = EISget49(e->mopAddress, &e->mopPos, CTN9);  // get mop table entries
+        e->editInsertionTable[i] = entry & 0777;            // keep to 9-bits
+        
+        e->mopTally -= 1;
+    }
+    return 0;
+}
+
+/*!
+ * ENF Micro Operation - End Floating Suppression
+ * EXPLANATION:
+ *  Bit 0 of IF, IF(0), specifies the nature of the floating suppression. Bit 1
+ *  of IF, IF(1), specifies if blank when zero option is used.
+ * For IF(0) = 0 (end floating-sign operation),
+ * − If ES is OFF and SN is OFF, then edit insertion table entry 3 is moved to
+ * the receiving field and ES is set ON.
+ * − If ES is OFF and SN is ON, then edit insertion table entry 4 is moved to
+ * the receiving field and ES is set ON.
+ * − If ES is ON, no action is taken.
+ * For IF(0) = 1 (end floating currency symbol operation),
+ * − If ES is OFF, then edit insertion table entry 5 is moved to the receiving
+ * field and ES is set ON.
+ * − If ES is ON, no action is taken.
+ * For IF(1) = 1 (blank when zero): the BZ flag is set ON. For IF(1) = 0 (no
+ * blank when zero): no action is taken.
+ * FLAGS: (Flags not listed are not affected)
+ *      ES - If OFF, then set ON
+ *      BZ - If bit 1 of C(IF) = 1, then set ON; otherwise, unchanged
+ */
+
+// CANFAULT
+static int mopENF(EISstruct *e)
+{
+    // For IF(0) = 0 (end floating-sign operation),
+    if (!(e->mopIF & 010))
+    {
+        // If ES is OFF and SN is OFF, then edit insertion table entry 3 is moved to the receiving field and ES is set ON.
+        if (!e->mopES && !e->mopSN)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
+            e->mopES = true;
+        }
+        // If ES is OFF and SN is ON, then edit insertion table entry 4 is moved to the receiving field and ES is set ON.
+        if (!e->mopES && e->mopSN)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
+            e->mopES = true;
+        }
+        // If ES is ON, no action is taken.
+    } else { // IF(0) = 1 (end floating currency symbol operation),
+        if (!e->mopES)
+        {
+            // If ES is OFF, then edit insertion table entry 5 is moved to the receiving field and ES is set ON.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[4]);
+            e->mopES = true;
+        }
+        // If ES is ON, no action is taken.
+    }
+    
+    // For IF(1) = 1 (blank when zero): the BZ flag is set ON. For IF(1) = 0 (no blank when zero): no action is taken.
+    if (e->mopIF & 04)
+        e->mopBZ = true;
+    
+    return 0;
+}
+
+/*!
+ * IGN Micro Operation - Ignore Source Characters
+ * EXPLANATION:
+ * IF specifies the number of characters to be ignored, where IF = 0 specifies
+ * 16 characters.
+ * The next IF characters in the source data field are ignored and the sending
+ * tally is reduced accordingly.
+ * FLAGS: None affected
+ */
+
+static int mopIGN(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0)
+            return -1;  // sending buffer exhausted.
+        
+        e->srcTally -= 1;
+        e->in += 1;
+    }
+    return 0;
+}
+
+/*!
+ * INSA Micro Operation - Insert Asterisk on Suppression
+ * EXPLANATION:
+ * This MOP is the same as INSB except that if ES is OFF, then edit insertion
+ * table entry 2 is moved to the receiving field.
+ * FLAGS: None affected
+ * NOTE: If C(IF) = 9-15, an IPR fault occurs.
+ */
+
+// CANFAULT
+static int mopINSA(EISstruct *e)
+{
+    // If C(IF) = 9-15, an IPR fault occurs.
+    if (e->mopIF >= 9 && e->mopIF <= 15)
+    {
+        e->_faults |= FAULT_IPR;
+        return -1;
+    }
+    
+    // If IF = 0, the 9 bits immediately following the INSB micro operation are
+    // treated as a 9-bit character (not a MOP) and are moved or skipped
+    // according to ES.
+    if (e->mopIF == 0)
+    {
+        // If ES is OFF, then edit insertion table entry 2 is moved to the
+        // receiving field. If IF = 0, then the next 9 bits are also skipped.
+        // If IF is not 0, the next 9 bits are treated as a MOP.
+        if (!e->mopES)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+           
+            EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;
+        } else {
+            // If ES is ON and IF = 0, then the 9-bit character immediately
+            // following the INSB micro-instruction is moved to the receiving
+            // field.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            e->mopTally -= 1;
+        }
+        
+    } else {
+        // If ES is ON and IF<>0, then IF specifies which edit insertion table
+        // entry (1-8) is to be moved to the receiving field.
+        if (e->mopES)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF-1]);
+        }
+    }
+    return 0;
+}
+
+/*!
+ * INSB Micro Operation - Insert Blank on Suppression
+ * EXPLANATION:
+ * IF specifies which edit insertion table entry is inserted.
+ * If IF = 0, the 9 bits immediately following the INSB micro operation are
+ * treated as a 9-bit character (not a MOP) and are moved or skipped according
+ * to ES.
+ * − If ES is OFF, then edit insertion table entry 1 is moved to the receiving
+ * field. If IF = 0, then the next 9 bits are also skipped. If IF is not 0, the
+ * next 9 bits are treated as a MOP.
+ * − If ES is ON and IF = 0, then the 9-bit character immediately following the
+ * INSB micro-instruction is moved to the receiving field.
+ * − If ES is ON and IF<>0, then IF specifies which edit insertion table entry
+ * (1-8) is to be moved to the receiving field.
+ * FLAGS: None affected
+ * NOTE: If C(IF) = 9-15, an IPR fault occurs.
+ */
+
+// CANFAULT
+static int mopINSB(EISstruct *e)
+{
+    // If C(IF) = 9-15, an IPR fault occurs.
+    if (e->mopIF >= 9 && e->mopIF <= 15)
+    {
+        e->_faults |= FAULT_IPR;
+        return -1;
+    }
+    
+    // If IF = 0, the 9 bits immediately following the INSB micro operation are
+    // treated as a 9-bit character (not a MOP) and are moved or skipped
+    // according to ES.
+    if (e->mopIF == 0)
+    {
+        // If ES is OFF, then edit insertion table entry 1 is moved to the
+        // receiving field. If IF = 0, then the next 9 bits are also skipped.
+        // If IF is not 0, the next 9 bits are treated as a MOP.
+        if (!e->mopES)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+     
+            //get49(e, &e->mopAddr, &e->mopPos, CTN9);
+            EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;
+        } else {
+            // If ES is ON and IF = 0, then the 9-bit character immediately
+            // following the INSB micro-instruction is moved to the receiving
+            // field.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            e->mopTally -= 1;            
+        }
+      
+    } else {
+      // If ES is ON and IF<>0, then IF specifies which edit insertion table
+      // entry (1-8) is to be moved to the receiving field.
+        if (e->mopES)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+        }
+    }
+    return 0;
+}
+
+/*!
+ * INSM Micro Operation - Insert Table Entry One Multiple
+ * EXPLANATION:
+ * IF specifies the number of receiving characters affected, where IF = 0
+ * specifies 16 characters.
+ * Edit insertion table entry 1 is moved to the next IF (1-16) receiving field
+ * characters.
+ * FLAGS: None affected
+ */
+
+// CANFAULT
+static int mopINSM(EISstruct *e)
+{
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+    }
+    return 0;
+}
+
+/*!
+ * INSN Micro Operation - Insert on Negative
+ * EXPLANATION:
+ * IF specifies which edit insertion table entry is inserted. If IF = 0, the 9
+ * bits immediately following the INSN micro operation are treated as a 9-bit
+ * character (not a MOP) and are moved or skipped according to SN.
+ * − If SN is OFF, then edit insertion table entry 1 is moved to the receiving
+ * field. If IF = 0, then the next 9 bits are also skipped. If IF is not 0, the
+ * next 9 bits are treated as a MOP.
+ * − If SN is ON and IF = 0, then the 9-bit character immediately following the
+ * INSN micro-instruction is moved to the receiving field.
+ * − If SN is ON and IF <> 0, then IF specifies which edit insertion table
+ * entry (1-8) is to be moved to the receiving field.
+ * FLAGS: None affected
+ * NOTE: If C(IF) = 9-15, an IPR fault occurs.
+ */
+
+// CANFAULT
+static int mopINSN(EISstruct *e)
+{
+    // If C(IF) = 9-15, an IPR fault occurs.
+    if (e->mopIF >= 9 && e->mopIF <= 15)
+    {
+        e->_faults |= FAULT_IPR;
+        return -1;
+    }
+    
+    // If IF = 0, the 9 bits immediately following the INSN micro operation are
+    // treated as a 9-bit character (not a MOP) and are moved or skipped
+    // according to SN.
+    
+    if (e->mopIF == 0)
+    {
+        if (!e->mopSN)
+        {
+            //If SN is OFF, then edit insertion table entry 1 is moved to the
+            //receiving field. If IF = 0, then the next 9 bits are also
+            //skipped. If IF is not 0, the next 9 bits are treated as a MOP.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+        } else {
+            // If SN is ON and IF = 0, then the 9-bit character immediately
+            // following the INSN micro-instruction is moved to the receiving
+            // field.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+
+            e->mopTally -= 1;   // I think
+        }
+    }
+    else
+    {
+        if (e->mopSN)
+        {
+            //If SN is ON and IF <> 0, then IF specifies which edit insertion
+            //table entry (1-8) is to be moved to the receiving field.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+        }
+    }
+    return 0;
+}
+
+/*!
+ * INSP Micro Operation - Insert on Positive
+ * EXPLANATION:
+ * INSP is the same as INSN except that the responses for the SN values are
+ * reversed.
+ * FLAGS: None affected
+ * NOTE: If C(IF) = 9-15, an IPR fault occurs.
+ */
+
+// CANFAULT
+static int mopINSP(EISstruct *e)
+{
+    // If C(IF) = 9-15, an IPR fault occurs.
+    if (e->mopIF >= 9 && e->mopIF <= 15)
+    {
+        e->_faults |= FAULT_IPR;
+        return -1;
+    }
+    
+    if (e->mopIF == 0)
+    {
+        if (e->mopSN)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+        } else {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            e->mopTally -= 1;
+        }
+    }
+    else
+    {
+        if (!e->mopSN)
+        {
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+        }
+    }
+
+    return 0;
+}
+
+/*!
+ * LTE Micro Operation - Load Table Entry
+ * EXPLANATION:
+ * IF specifies the edit insertion table entry to be replaced.
+ * The edit insertion table entry specified by IF is replaced by the 9-bit
+ * character immediately following the LTE microinstruction.
+ * FLAGS: None affected
+ * NOTE: If C(IF) = 0 or C(IF) = 9-15, an Illegal Procedure fault occurs.
+ */
+
+// CANFAULT
+static int mopLTE(EISstruct *e)
+{
+    if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
+    {
+        e->_faults |= FAULT_IPR;
+        return -1;
+    }
+    word9 next = EISget49(e->mopAddress, &e->mopPos, CTN9);
+    e->mopTally -= 1;
+    
+    e->editInsertionTable[e->mopIF - 1] = next;
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
+    return 0;
+}
+
+/*!
+ * MFLC Micro Operation - Move with Floating Currency Symbol Insertion
+ * EXPLANATION:
+ * IF specifies the number of characters of the sending field upon which the
+ * operation is performed, where IF = 0 specifies 16 characters.
+ * Starting with the next available sending field character, the next IF
+ * characters are individually fetched and the following conditional actions
+ * occur.
+ * − If ES is OFF and the character is zero, edit insertion table entry 1 is
+ * moved to the receiving field in place of the character.
+ * − If ES is OFF and the character is not zero, then edit insertion table
+ * entry 5 is moved to the receiving field, the character is also moved to the
+ * receiving field, and ES is set ON.
+ * − If ES is ON, the character is moved to the receiving field.
+ * The number of characters placed in the receiving field is data-dependent. If
+ * the entire sending field is zero, IF characters are placed in the receiving
+ * field. However, if the sending field contains a nonzero character, IF+1
+ * characters (the insertion character plus the characters from the sending
+ * field) are placed in the receiving field.
+ * An IPR fault occurs when the sending field is exhausted before the receiving
+ * field is filled. In order to provide space in the receiving field for an
+ * inserted currency symbol, the receiving field must have a string length one
+ * character longer than the sending field. When the sending field is all
+ * zeros, no currency symbol is inserted by the MFLC micro operation and the
+ * receiving field is not filled when the sending field is exhausted. The user
+ * should provide an ENF (ENF,12) micro operation after a MFLC micro operation
+ * that has as its character count the number of characters in the sending
+ * field. The ENF micro operation is engaged only when the MFLC micro operation
+ * fails to fill the receiving field. Then it supplies a currency symbol to
+ * fill the receiving field and blanks out the entire field.
+ * FLAGS: (Flags not listed are not affected.)
+ * ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it
+ * is unchanged.
+ * NOTE: Since the number of characters moved to the receiving string is
+ * data-dependent, a possible IPR fault may be avoided by ensuring that the Z
+ * and BZ flags are ON.
+ */
+
+// CANFAULT
+static int mopMFLC(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+
+    //  Starting with the next available sending field character, the next IF
+    //  characters are individually fetched and the following conditional
+    //  actions occur.
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        // If ES is OFF and the character is zero, edit insertion table entry 1
+        // is moved to the receiving field in place of the character.
+        // If ES is OFF and the character is not zero, then edit insertion
+        // table entry 5 is moved to the receiving field, the character is also
+        // moved to the receiving field, and ES is set ON.
+        
+        int c = *(e->in);
+        if (!e->mopES) { // e->mopES is OFF
+            //if (c == 0) {
+            // XXX See srcTA comment in MVNE
+
+
+#ifdef V4
+            if (isDecimalZero (c))
+#elif defined (V3)
+            if ((c & 017) == 0)
+#else
+            if (c == decimalZero)
+#endif
+                {
+                // edit insertion table entry 1 is moved to the receiving field
+                // in place of the character.
+                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+                e->in += 1;
+                e->srcTally -= 1;
+            } else {
+                // then edit insertion table entry 5 is moved to the receiving
+                // field, the character is also moved to the receiving field,
+                // and ES is set ON.
+                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[4]);
+                
+                e->in += 1;
+                e->srcTally -= 1;
+                if (e->srcTally == 0 || e->dstTally == 0)
+                {
+                    e->_faults |= FAULT_IPR;
+                    return -1;
+                }
+                
+                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+                
+                e->mopES = true;
+            }
+        } else {
+            // If ES is ON, the character is moved to the receiving field.
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            
+            e->in += 1;
+            e->srcTally -= 1;
+        }
+    }
+    // ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+    // it is unchanged.
+    // NOTE: Since the number of characters moved to the receiving string is
+    // data-dependent, a possible IPR fault may be avoided by ensuring that the
+    // Z and BZ flags are ON.
+    // XXX Not certain how to interpret either one of these!
+    
+    return 0;
+}
+
+/*!
+ * MFLS Micro Operation - Move with Floating Sign Insertion
+ * EXPLANATION:
+ * IF specifies the number of characters of the sending field upon which the
+ * operation is performed, where IF = 0 specifies 16 characters.
+ * Starting with the next available sending field character, the next IF
+ * characters are individually fetched and the following conditional actions
+ * occur.
+ * − If ES is OFF and the character is zero, edit insertion table entry 1 is
+ * moved to the receiving field in place of the character.
+ * − If ES is OFF, the character is not zero, and SN is OFF; then edit
+ * insertion table entry 3 is moved to the receiving field; the character is
+ * also moved to the receiving field, and ES is set ON.
+ * − If ES is OFF, the character is nonzero, and SN is ON; edit insertion table
+ * entry 4 is moved to the receiving field; the character is also moved to the
+ * receiving field, and ES is set ON.
+ * − If ES is ON, the character is moved to the receiving field.
+ * The number of characters placed in the receiving field is data-dependent. If
+ * the entire sending field is zero, IF characters are placed in the receiving
+ * field. However, if the sending field contains a nonzero character, IF+1
+ * characters (the insertion character plus the characters from the sending
+ * field) are placed in the receiving field.
+ * An IPR fault occurs when the sending field is exhausted before the receiving
+ * field is filled. In order to provide space in the receiving field for an
+ * inserted sign, the receiving field must have a string length one character
+ * longer than the sending field. When the sending field is all zeros, no sign
+ * is inserted by the MFLS micro operation and the receiving field is not
+ * filled when the sending field is exhausted. The user should provide an ENF
+ * (ENF,4) micro operation after a MFLS micro operation that has as its
+ * character count the number of characters in the sending field. The ENF micro
+ * operation is engaged only when the MFLS micro operation fails to fill the
+ * receiving field; then, it supplies a sign character to fill the receiving
+ * field and blanks out the entire field.
+ *
+ * FLAGS: (Flags not listed are not affected.)
+ *     ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+ *     it is unchanged.
+ * NOTE: Since the number of characters moved to the receiving string is
+ * data-dependent, a possible Illegal Procedure fault may be avoided by
+ * ensuring that the Z and BZ flags are ON.
+ */
+
+// CANFAULT
+static int mopMFLS(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 && e->dstTally > 1)
+        {
+            e->_faults = FAULT_IPR;
+            return -1;
+        }
+        
+        int c = *(e->in);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLS n %d c %o\n", n, c);
+        if (!e->mopES) { // e->mopES is OFF
+            //if (c == 0) {
+            // XXX See srcTA comment in MVNE
+
+#ifdef V4
+            if (isDecimalZero (c))
+#elif defined (V3)
+            if ((c & 017) == 0)
+#else
+            if (c == decimalZero)
+#endif
+            {
+                // edit insertion table entry 1 is moved to the receiving field
+                // in place of the character.
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
+                writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+                e->in += 1;
+                e->srcTally -= 1;
+            } else {
+                // c is non-zero
+                if (!e->mopSN)
+                {
+                    // then edit insertion table entry 3 is moved to the
+                    // receiving field; the character is also moved to the
+                    // receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is off; edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
+                    writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
+
+                    e->in += 1;
+                    e->srcTally -= 1;
+                    if (e->srcTally == 0 && e->dstTally > 1)
+                    {
+                        e->_faults |= FAULT_IPR;
+                        return -1;
+                    }
+                    
+                    writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+
+                    e->mopES = true;
+                } else {
+                    //  SN is ON; edit insertion table entry 4 is moved to the
+                    //  receiving field; the character is also moved to the
+                    //  receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is OFF; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
+                    writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
+                    
+                    e->in += 1;
+                    e->srcTally -= 1;
+                    if (e->srcTally == 0 && e->dstTally > 1)
+                    {
+                        e->_faults |= FAULT_IPR;
+                        return -1;
+                    }
+                    
+                    writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+                    
+                    e->mopES = true;
+                }
+            }
+        } else {
+            // If ES is ON, the character is moved to the receiving field.
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is ON, the character is moved to the receiving field.\n");
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            
+            e->in += 1;
+            e->srcTally -= 1;
+        }
+    }
+    
+    // ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+    // it is unchanged.
+    // NOTE: Since the number of characters moved to the receiving string is
+    // data-dependent, a possible Illegal Procedure fault may be avoided by
+    // ensuring that the Z and BZ flags are ON.
+
+    // XXX Have no idea how to interpret either one of these statements.
+    
+    return 0;
+}
+
+/*!
+ * MORS Micro Operation - Move and OR Sign
+ * EXPLANATION:
+ * IF specifies the number of characters of the sending field upon which the
+ * operation is performed, where IF = 0 specifies 16 characters.
+ * Starting with the next available sending field character, the next IF
+ * characters are individually fetched and the following conditional actions
+ * occur.
+ * − If SN is OFF, the next IF characters in the source data field are moved to
+ * the receiving data field and, during the move, edit insertion table entry 3
+ * is ORed to each character.
+ * − If SN is ON, the next IF characters in the source data field are moved to
+ * the receiving data field and, during the move, edit insertion table entry 4
+ * is ORed to each character.
+ * MORS can be used to generate a negative overpunch for a receiving field to
+ * be used later as a sending field.
+ * FLAGS: None affected
+ */
+
+// CANFAULT
+static int mopMORS(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        
+        // XXX this is probably wrong regarding the ORing, but it's a start ....
+        int c = (*e->in | (!e->mopSN ? e->editInsertionTable[2] : e->editInsertionTable[3]));
+        e->in += 1;
+        e->srcTally -= 1;
+        
+        writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+    }
+
+    return 0;
+}
+
+/*!
+ * MVC Micro Operation - Move Source Characters
+ * EXPLANATION:
+ * IF specifies the number of characters to be moved, where IF = 0 specifies 16
+ * characters.
+ * The next IF characters in the source data field are moved to the receiving
+ * data field.
+ * FLAGS: None affected
+ */
+
+// CANFAULT
+static int mopMVC(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        
+        writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+        e->in += 1;
+        
+        e->srcTally -= 1;
+    }
+    
+    return 0;
+}
+
+/*!
+ * MSES Micro Operation - Move and Set Sign
+ * EXPLANATION:
+ * IF specifies the number of characters of the sending field upon which the
+ * operation is performed, where IF = 0 specifies 16 characters. For MVE,
+ * starting with the next available sending field character, the next IF
+ * characters are individually fetched and the following conditional actions
+ * occur.
+ * Starting with the first character during the move, a comparative AND is made
+ * first with edit insertion table entry 3. If the result is nonzero, the first
+ * character and the rest of the characters are moved without further
+ * comparative ANDs. If the result is zero, a comparative AND is made between
+ * the character being moved and edit insertion table entry 4 If that result is
+ * nonzero, the SN indicator is set ON (indicating negative) and the first
+ * character and the rest of the characters are moved without further
+ * comparative ANDs. If the result is zero, the second character is treated
+ * like the first. This process continues until one of the comparative AND
+ * results is nonzero or until all characters are moved.
+ * For MVNE instruction, the sign (SN) flag is already set and IF characters
+ * are moved to the destination field (MSES is equivalent to the MVC
+ * instruction).
+ * FLAGS: (Flags not listed are not affected.)
+ * SN If edit insertion table entry 4 is found in C(Y-1), then ON; otherwise,
+ * it is unchanged.
+ */
+
+// CANFAULT
+static int mopMSES(EISstruct *e)
+{
+    if (e->mvne == true)
+        return mopMVC(e);   // XXX I think!
+        
+        
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        
+        //Starting with the first character during the move, a comparative AND
+        //is made first with edit insertion table entry 3. If the result is
+        //nonzero, the first character and the rest of the characters are moved
+        //without further comparative ANDs. If the result is zero, a
+        //comparative AND is made between the character being moved and edit
+        //insertion table entry 4 If that result is nonzero, the SN indicator
+        //is set ON (indicating negative) and the first character and the rest
+        //of the characters are moved without further comparative ANDs. If the
+        //result is zero, the second character is treated like the first. This
+        //process continues until one of the comparative AND results is nonzero
+        //or until all characters are moved.
+        
+        int c = *(e->in);
+
+        // a comparative AND is made first with edit insertion table entry 3.
+        int cmpAnd = (c & e->editInsertionTable[2]);  // only lower 4-bits are considered
+        //If the result is nonzero, the first character and the rest of the
+        //characters are moved without further comparative ANDs.
+        if (cmpAnd)
+        {
+            for(int n2 = n ; n2 < e->mopIF ; n2 += 1)
+            {
+                if (e->srcTally == 0 || e->dstTally == 0)
+                {
+                    e->_faults |= FAULT_IPR;
+                    return -1;
+                }
+                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+                e->in += 1;
+            
+                e->srcTally -= 1;
+            }
+            return 0;
+        }
+        
+        //If the result is zero, a comparative AND is made between the
+        //character being moved and edit insertion table entry 4 If that result
+        //is nonzero, the SN indicator is set ON (indicating negative) and the
+        //first character and the rest of the characters are moved without
+        //further comparative ANDs.
+        
+        cmpAnd = (c & e->editInsertionTable[3]);  // XXX only lower 4-bits are considered
+        if (cmpAnd)
+        {
+            e->mopSN = true;
+            for(int n2 = n ; n2 < e->mopIF ; n2 += 1)
+            {
+                if (e->srcTally == 0 || e->dstTally == 0)
+                {
+                    e->_faults |= FAULT_IPR;
+                    return -1;
+                }
+                writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, *e->in);
+
+                e->in += 1;
+                e->srcTally -= 1;
+            }
+            return 0;
+        }
+        //If the result is zero, the second character is treated like the
+        //first. This process continues until one of the comparative AND
+        //results is nonzero or until all characters are moved.
+        e->in += 1;
+        e->srcTally -= 1;   // XXX is this correct? No chars have been consumed, but ......
+    }
+    
+    return 0;
+}
+
+/*!
+ * MVZA Micro Operation - Move with Zero Suppression and Asterisk Replacement
+ * EXPLANATION:
+ * MVZA is the same as MVZB except that if ES is OFF and the character is zero,
+ * then edit insertion table entry 2 is moved to the receiving field.
+ * FLAGS: (Flags not listed are not affected.)
+ * ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it
+ * is unchanged.
+ */
+
+// CANFAULT
+static int mopMVZA(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        
+        int c = *e->in;
+        e->in += 1;
+        e->srcTally -= 1;
+        
+        //if (!e->mopES && c == 0)
+        // XXX See srcTA comment in MVNE
+#ifdef V4
+        if (!e->mopES && isDecimalZero (c))
+#elif defined (V3)
+        if (!e->mopES && (c & 017) == 0)
+#else
+        if (!e->mopES && c == decimalZero)
+#endif
+        {
+            //If ES is OFF and the character is zero, then edit insertion table
+            //entry 2 is moved to the receiving field in place of the
+            //character.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+        //} else if (!e->mopES && c != 0)
+        // XXX See srcTA comment in MVNE
+        }
+#ifdef V4
+        else if ((! e->mopES) && (! isDecimalZero (c)))
+#elif defined (V3)
+        else if (!e->mopES && (c & 017) != 0)
+#else
+        else if (!e->mopES && c != decimalZero)
+#endif
+        {
+            //If ES is OFF and the character is not zero, then the character is
+            //moved to the receiving field and ES is set ON.
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            
+            e->mopES = true;
+        } else if (e->mopES)
+        {
+            //If ES is ON, the character is moved to the receiving field.
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+        }
+    }
+    
+    // XXX have no idea how to interpret this
+    // ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+    // it is unchanged.
+
+    return 0;
+}
+
+/*!
+ * MVZB Micro Operation - Move with Zero Suppression and Blank Replacement
+ * EXPLANATION:
+ * IF specifies the number of characters of the sending field upon which the
+ * operation is performed, where IF = 0 specifies 16 characters.
+ * Starting with the next available sending field character, the next IF
+ * characters are individually fetched and the following conditional actions
+ * occur.
+ * − If ES is OFF and the character is zero, then edit insertion table entry 1
+ * is moved to the receiving field in place of the character.
+ * − If ES is OFF and the character is not zero, then the character is moved to
+ * the receiving field and ES is set ON.
+ * − If ES is ON, the character is moved to the receiving field. 
+ * FLAGS: (Flags not listed are not affected.)
+ *   ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+ *   it is unchanged.
+ */
+
+// CANFAULT
+static int mopMVZB(EISstruct *e)
+{
+    if (e->mopIF == 0)
+        e->mopIF = 16;
+    
+    for(int n = 0 ; n < e->mopIF ; n += 1)
+    {
+        if (e->srcTally == 0 || e->dstTally == 0)
+        {
+            e->_faults |= FAULT_IPR;
+            return -1;
+        }
+        
+        int c = *e->in;
+        e->srcTally -= 1;
+        e->in += 1;
+        
+        //if (!e->mopES && c == 0)
+        // XXX See srcTA comment in MVNE
+#ifdef V4
+        if ((!e->mopES) && isDecimalZero (c))
+#elif defined (V3)
+        if (!e->mopES && (c & 017) == 0)
+#else
+        if (!e->mopES && c == decimalZero)
+#endif
+        {
+            //If ES is OFF and the character is zero, then edit insertion table
+            //entry 1 is moved to the receiving field in place of the
+            //character.
+            writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+        //} else if (!e->mopES && c != 0)
+        // XXX See srcTA comment in MVNE
+        }
+#ifdef V4
+        if ((! e->mopES) && (! isDecimalZero (c)))
+#elif defined (V3)
+        else if (!e->mopES && (c & 017) != 0)
+#else
+        else if (!e->mopES && c != decimalZero)
+#endif
+        {
+            //If ES is OFF and the character is not zero, then the character is
+            //moved to the receiving field and ES is set ON.
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+            
+            e->mopES = true;
+        } else if (e->mopES)
+        {
+            //If ES is ON, the character is moved to the receiving field.
+            writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
+        }
+    }
+
+    // XXX have no idea how to interpret this......
+    // ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
+    // it is unchanged.
+    return 0;
+}
+
+/*!
+ * SES Micro Operation - Set End Suppression
+ * EXPLANATION:
+ * Bit 0 of IF (IF(0)) specifies the setting of the ES switch.
+ * If IF(0) = 0, the ES flag is set OFF. If IF(0) = 1, the ES flag is set ON.
+ * Bit 1 of IF (IF(1)) specifies the setting of the blank-when-zero option.
+ * If IF(1) = 0, no action is taken.
+ * If IF(1) = 1, the BZ flag is set ON.
+ * FLAGS: (Flags not listed are not affected.)
+ * ES set by this micro operation
+ * BZ If bit 1 of C(IF) = 1, then ON; otherwise, it is unchanged.
+ */
+
+static int mopSES(EISstruct *e)
+{
+    if (e->mopIF & 010)
+        e->mopES = true;
+    else
+        e->mopES = false;
+    
+    if (e->mopIF & 04)
+        e->mopBZ = true;
+    
+    return 0;
+}
+
+struct MOPstruct
+{
+    char *mopName;             // name of microoperation
+    int (*f)(EISstruct *e);    // pointer to mop() [returns character to be stored]
+};
+
+// Table 4-9. Micro Operation Code Assignment Map
+#ifndef QUIET_UNUSED 
+static char * mopCodes [040] =
+  {
+    //        0       1       2       3       4       5       6       7
+    /* 00 */  0,     "insm", "enf",  "ses",  "mvzb", "mvza", "mfls", "mflc",
+    /* 10 */ "insb", "insa", "insn", "insp", "ign",  "mvc",  "mses", "mors",
+    /* 20 */ "lte",  "cht",   0,      0,      0,      0,      0,      0,
+    /* 30 */   0,      0,     0,      0,      0,      0,      0,      0
+  };
+#endif
+
+
+static MOPstruct mopTab[040] = {
+    {NULL, 0},
+    {"insm", mopINSM },
+    {"enf",  mopENF  },
+    {"ses",  mopSES  },
+    {"mvzb", mopMVZB },
+    {"mvza", mopMVZA },
+    {"mfls", mopMFLS },
+    {"mflc", mopMFLC },
+    {"insb", mopINSB },
+    {"insa", mopINSA },
+    {"insn", mopINSN },
+    {"insp", mopINSP },
+    {"ign",  mopIGN  },
+    {"mvc",  mopMVC  },
+    {"mses", mopMSES },
+    {"mors", mopMORS },
+    {"lte",  mopLTE  },
+    {"cht",  mopCHT  },
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0}
+};
+
+
+/*!
+ * fetch MOP from e->mopAddr/e->mopCN ...
+ */
+
+static MOPstruct* EISgetMop(EISstruct *e)
+{
+    //static word18 lastAddress;  // try to keep memory access' down
+    //static word36 data;
+    
+    
+    if (e == NULL)
+    //{
+    //    p->lastAddress = -1;
+    //    p->data = 0;
+        return NULL;
+    //}
+   
+    EISaddr *p = e->mopAddress;
+    
+    //if (p->lastAddress != p->address)                 // read from memory if different address
+        p->data = EISRead(p);   // read data word from memory
+    
+    if (e->mopPos > 3)   // overflows to next word?
+    {   // yep....
+        e->mopPos = 0;   // reset to 1st byte
+        e->mopAddress->address = (e->mopAddress->address + 1) & AMASK;     // bump source to next address
+        p->data = EISRead(e->mopAddress);   // read it from memory
+    }
+    
+    e->mop9  = (word9)get9(p->data, e->mopPos);       // get 9-bit mop
+    e->mop   = (e->mop9 >> 4) & 037;
+    e->mopIF = e->mop9 & 0xf;
+    
+    MOPstruct *m = &mopTab[e->mop];
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s\n", m -> mopName);
+    e->m = m;
+    if (e->m == NULL || e->m->f == NULL)
+    {
+        sim_printf ("getMop(e->m == NULL || e->m->f == NULL): mop:%d IF:%d\n", e->mop, e->mopIF);
+        return NULL;
+    }
+    
+    e->mopPos += 1;
+    e->mopTally -= 1;
+    
+    //p->lastAddress = p->address;
+    
+    return m;
+}
+
+
+static void mopExecutor (EISstruct * e, int kMop)
+  {
+    e->mopAddress = &e->addr[kMop-1];
+    e->mopTally = e->N[kMop-1];        // number of micro-ops
+    e->mopCN   = e->CN[kMop-1];        // starting at char pos CN
+    e->mopPos  = e->mopCN;
+    
+    word9 *p9 = e->editInsertionTable; // re-initilize edit insertion table
+    char *q = defaultEditInsertionTable;
+    while((*p9++ = *q++))
+        ;
+    
+    e->in = e->inBuffer;    // reset input buffer pointer
+    e->out = e->outBuffer;  // reset output buffer pointer
+    e->outPos = 0;
+    
+    e->_faults = 0; // No faults (yet!)
+    
+    EISgetMop(NULL);   // initialize mop getter
+
+    // execute dstTally micro operations
+    // The micro operation sequence is terminated normally when the receiving
+    // string length becomes exhausted. The micro operation sequence is
+    // terminated abnormally (with an illegal procedure fault) if a move from
+    // an exhausted sending string or the use of an exhausted MOP string is
+    // attempted.
+    
+    //sim_printf ("(I) mopTally=%d srcTally=%d\n", e->mopTally, e->srcTally);
+
+    while (e->dstTally && e->mopTally)
+    {
+        MOPstruct *m = EISgetMop(e);
+        
+        int mres = m->f(e);    // execute mop
+        if (mres)
+            break;        
+    }
+    
+    // XXX this stuff should probably best be done in the mop's themselves. We'll see.
+    if (e->dstTally == 0)  // normal termination
+        return;
+   
+    // mop string exhausted?
+    if (e->mopTally != 0)
+      {
+        e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
+    
+    if (e -> _faults)
+      doFault (FAULT_IPR, ill_proc, "mopExecutor");
+}
+
+
+void mve (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    setupOperandDescriptor(3, e);
+    
+    parseAlphanumericOperandDescriptor(1, e, 1);
+    parseAlphanumericOperandDescriptor(2, e, 2);
+    parseAlphanumericOperandDescriptor(3, e, 3);
+    
+    // initialize mop flags. Probably best done elsewhere.
+    e->mopES = false; // End Suppression flag
+    e->mopSN = false; // Sign flag
+    e->mopZ  = true;  // Zero flag
+    e->mopBZ = false; // Blank-when-zero flag
+    
+    e->srcTally = e->N1;  // number of chars in src (max 63)
+    e->dstTally = e->N3;  // number of chars in dst (max 63)
+    
+    e->srcTA = e->TA1;    // type of chars in src
+    e->srcCN = e->CN1;    // starting at char pos CN
+
+    switch (e -> srcTA)
+      {
+        case CTA4:
+          e -> srcSZ = 4;
+          break;
+        case CTA6:
+          e -> srcSZ = 6;
+          break;
+        case CTA9:
+          e -> srcSZ = 9;
+          break;
+      }
+    
+    e -> dstTA = e -> TA3;    // type of chars in dst
+    e -> dstCN = e -> CN3;    // starting at char pos CN
+
+    switch (e -> dstTA)
+      {
+        case CTA4:
+          e -> dstSZ = 4;
+          break;
+        case CTA6:
+          e -> dstSZ = 6;
+          break;
+        case CTA9:
+          e -> dstSZ = 9;
+          break;
+      }
+    
+    // 1. load sending string into inputBuffer
+    EISloadInputBufferAlphnumeric (e, 1);   // according to MF1
+    
+    // 2. Execute micro operation string, starting with first (4-bit) digit.
+    e -> mvne = false;
+    
+    mopExecutor (e, 2);
+    
+    e -> dstTally = e -> N3;  // restore dstTally for output
+    
+    EISwriteOutputBufferToMemory (3);
+    cleanupOperandDescriptor (1, e);
+    cleanupOperandDescriptor (2, e);
+    cleanupOperandDescriptor (3, e);
+  }
+
+void mvne (void)
+  {
+    EISstruct * e = & currentInstruction . e;
+
+    setupOperandDescriptor (1, e);
+    setupOperandDescriptor (2, e);
+    setupOperandDescriptor (3, e);
+    
+    parseNumericOperandDescriptor (1, e);
+    parseAlphanumericOperandDescriptor (2, e, 2);
+    parseAlphanumericOperandDescriptor (3, e, 3);
+    
+    // initialize mop flags. Probably best done elsewhere.
+    e->mopES = false; // End Suppression flag
+    e->mopSN = false; // Sign flag
+    e->mopZ  = true;  // Zero flag
+    e->mopBZ = false; // Blank-when-zero flag
+    
+    e -> srcTally = e -> N1;  // number of chars in src (max 63)
+    e -> dstTally = e -> N3;  // number of chars in dst (max 63)
+    
+    e -> srcTN = e -> TN1;    // type of chars in src
+
+#if defined(V1) || defined(V2) || defined(V4)
+// XXX Temp hack to get MOP to work. Merge TA/TN?
+// The MOP operators look at srcTA to make 9bit/not 9-bit decisions about
+// the contents of inBuffer; parseNumericOperandDescriptor() always puts
+// 4 bit data in inBuffer, so signal the MOPS code of that.
+    e->srcTA = CTA4;    // type of chars in src
+#endif
+
+    e->srcCN = e->CN1;    // starting at char pos CN
+    switch(e->srcTN)
+    {
+        case CTN4:
+            //e->srcAddr = e->YChar41;
+            e->srcSZ = 4;   // stored as 4-bit decimals
+            break;
+        case CTN9:
+            //e->srcAddr = e->YChar91;
+            e->srcSZ = 4;   // 'cause everything is stored as 4-bit decimals
+            break;
+    }
+
+    e->dstTA = e->TA3;    // type of chars in dst
+    e->dstCN = e->CN3;    // starting at char pos CN
+    switch(e->dstTA)
+    {
+        case CTA4:
+            //e->dstAddr = e->YChar43;
+            e->dstSZ = 4;
+            break;
+        case CTA6:
+            //e->dstAddr = e->YChar63;
+            e->dstSZ = 6;
+            break;
+        case CTA9:
+            //e->dstAddr = e->YChar93;
+            e->dstSZ = 9;
+            break;
+    }
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "mvne N1 %d N2 %d N3 %d TN1 %d CN1 %d TA3 %d CN3 %d\n",
+      e->N1, e->N2, e->N3, e->TN1, e->CN1, e->TA3, e->CN3);
+
+    // 1. load sending string into inputBuffer
+    EISloadInputBufferNumeric(1);   // according to MF1
+    
+    // 2. Test sign and, if required, set the SN flag. (Sign flag; initially
+    // set OFF if the sending string has an alphanumeric descriptor or an
+    // unsigned numeric descriptor. If the sending string has a signed numeric
+    // descriptor, the sign is initially read from the sending string from the
+    // digit position defined by the sign and the decimal type field (S); SN is
+    // set OFF if positive, ON if negative. If all digits are zero, the data is
+    // assumed positive and the SN flag is set OFF, even when the sign is
+    // negative.)
+
+    int sum = 0;
+    for(int n = 0 ; n < e -> srcTally ; n ++)
+        sum += e -> inBuffer [n];
+    if ((e -> sign == -1) && sum)
+        e -> mopSN = true;
+    
+    // 3. Execute micro operation string, starting with first (4-bit) digit.
+    e -> mvne = true;
+    
+    mopExecutor (e, 2);
+
+    e -> dstTally = e -> N3;  // restore dstTally for output
+    
+    EISwriteOutputBufferToMemory (3);
+    cleanupOperandDescriptor (1, e);
+    cleanupOperandDescriptor (2, e);
+    cleanupOperandDescriptor (3, e);
+  }
+
 
 
