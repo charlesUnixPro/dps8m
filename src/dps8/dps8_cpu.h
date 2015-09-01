@@ -464,11 +464,64 @@ extern jmp_buf jmpMain;   // This is where we should return to from a fault to
 
 typedef struct MOPstruct MOPstruct;
 
-struct EISstruct
-  {
-    DCDstruct *ins;         // instruction ins from whence we came
+// address of an EIS operand
+typedef struct EISaddr
+{
+    word18  address;    ///< 18-bit virtual address
+    //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
-    word36  op0;            // 1st instruction word
+    word36  data;
+    word1    bit;
+    bool    incr;      // when true increment bit address
+    bool    decr;      // when true decrement bit address
+    eRW     mode;
+    
+    // for type of data being address by this object
+    
+    eisDataType _type;   ///< type of data - alphunumeric/numeric
+    
+    int     TA;   ///< type of Alphanumeric chars in src
+    int     TN;   ///< type of Numeric chars in src
+    int     SZ;   ///< size of chars in src (4-, 6-, or 9-bits)
+    //int     CN;   ///< char pos CN
+    //int     BIT;  ///< bitno
+    int     cPos;
+    int     bPos;
+    
+    // for when using AR/PR register addressing
+    word15  SNR;        ///< The segment number of the segment containing the data item described by the pointer register.
+    word3   RNR;        ///< The effective ring number value calculated during execution of the instruction that last loaded
+    
+    //bool    bUsesAR;    ///< true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
+    
+    MemoryAccessType    mat;    // memory access type for operation
+
+#ifdef EIS_CACHE    
+    // Cache
+
+    // There is a cache for each operand, but they do not cross check;
+    // this means that if one of them has a cached dirty word, the
+    // others will not check for a hit, and will use the old value.
+    // AL39 warns that overlapping operands can cause unexpected behavior
+    // due to caching issues, so the this behavior is closer to the actual
+    // h/w then to the theoretical need for cache consistancy.
+
+    // We don't need to cache mat or TPR because they will be constant
+    // across an instruction.
+
+    bool cacheValid;
+    bool cacheDirty;
+    word36 cachedWord;
+    word18 cachedAddr;
+#endif
+
+    //EISstruct *e;      
+} EISaddr;
+typedef struct EISstruct
+  {
+//    DCDstruct *ins;         // instruction ins from whence we came
+    
+//    word36  op0;            // 1st instruction word
 
     word36  op [3];         // raw operand descriptors
 #define OP1 op [0]          // 1st descriptor (2nd ins word)
@@ -487,27 +540,6 @@ struct EISstruct
 #define MF2    MF [1]      // Modification field for operand descriptor 2
 #define MF3    MF [2]      // Modification field for operand descriptor 3
 
-#if 0
-    word18  YChar9 [3];
-#define YChar91 YChar9 [0]
-#define YChar92 YChar9 [1]
-#define YChar93 YChar9 [2]
-
-    word18  YChar6 [3];
-#define YChar61 YChar6 [0]
-#define YChar62 YChar6 [1]
-#define YChar63 YChar6 [2]
-
-    word18  YChar4 [3];
-#define YChar41 YChar4 [0]
-#define YChar42 YChar4 [1]
-#define YChar43 YChar4 [2]
-#endif
-
-    word18  YBit [3];
-#define YBit1 YBit [0]
-#define YBit2 YBit [1]
-#define YBit3 YBit [2]
 
     uint   CN [3];
 #define CN1 CN [0]
@@ -653,7 +685,7 @@ struct EISstruct
     int     dstCN;          // starting at char pos CN
     
     bool    mvne;           // for MSES micro-op. True when mvne, false when mve
-  }; // struct EISstruct
+  } EISstruct;
 
 // Instruction decode structure. Used to represent instrucion information
 
@@ -669,10 +701,11 @@ struct DCDstruct
     
     word18 stiTally;      // for sti instruction
     
-    EISstruct e;          // info: if instruction is a MW EIS instruction
+    //EISstruct e;          // info: if instruction is a MW EIS instruction
   };
 
 extern DCDstruct currentInstruction;
+extern EISstruct currentEISinstruction;
 
 // Emulator-only interrupt and fault info
 

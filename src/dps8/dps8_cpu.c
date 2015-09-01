@@ -1140,6 +1140,7 @@ static t_stat reason;
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
 DCDstruct currentInstruction;
+EISstruct currentEISinstruction;
 
 //static EISstruct E;
 
@@ -2490,8 +2491,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
         p->tag = 0;
         if (p->info->ndes > 1)
         {
-            memset(&p->e, 0, sizeof(EISstruct)); // clear out e
-            p->e.op0 = inst;
+            memset (& currentEISinstruction, 0, sizeof (currentEISinstruction)); 
         }
     }
 #ifdef MULTIPASS

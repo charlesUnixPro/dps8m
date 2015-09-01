@@ -483,7 +483,7 @@ static void EISReadN (EISaddr * p, uint N, word36 *dst)
 
 static uint EISget469 (int k, uint i)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
     
     int nPos = 4; // CTA9
     switch (e -> TA [k - 1])
@@ -528,7 +528,7 @@ static uint EISget469 (int k, uint i)
 
 static void EISput469 (int k, uint i, word9 c469)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     int nPos = 4; // CTA9
     switch (e -> TA [k - 1])
@@ -706,13 +706,13 @@ static void setupOperandDescriptor (int k, EISstruct * e)
     switch (k)
       {
         case 1:
-          e -> MF1 = getbits36 (e -> op0, 29, 7);
+          e -> MF1 = getbits36 (cu . IWB, 29, 7);
           break;
         case 2:
-          e -> MF2 = getbits36 (e -> op0, 11, 7);
+          e -> MF2 = getbits36 (cu . IWB, 11, 7);
           break;
         case 3:
-          e -> MF3 = getbits36 (e -> op0,  2, 7);
+          e -> MF3 = getbits36 (cu . IWB,  2, 7);
           break;
       }
     
@@ -1170,7 +1170,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     e->B[k-1] = e->effBITNO;
     e->C[k-1] = e->effCHAR;
-    e->YBit[k-1] = e->effWORDNO;
     
     EISaddr *a = &e->addr[k-1];
     a->address = e->effWORDNO;
@@ -1652,7 +1651,7 @@ void swd (void)
 
 void cmpc (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    C(Y-charn1)i-1 :: C(Y-charn2)i-1
@@ -1750,7 +1749,7 @@ void cmpc (void)
 
 void scd ()
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)i-1,i :: C(Y-charn2)0,1
@@ -1865,7 +1864,7 @@ void scd ()
 
 void scdr (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)N1-i-1,N1-i :: C(Y-charn2)0,1
@@ -1981,7 +1980,7 @@ void scdr (void)
 
 void scm (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -2028,7 +2027,7 @@ void scm (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (e -> op0, 27, 9);
+    uint mask = (uint) bitfieldExtract36 (cu . IWB, 27, 9);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -2101,7 +2100,7 @@ void scm (void)
 
 void scmr (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -2148,7 +2147,7 @@ void scmr (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (e -> op0, 27, 9);
+    uint mask = (uint) bitfieldExtract36 (cu . IWB, 27, 9);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -2241,7 +2240,7 @@ static word9 xlate (word36 * xlatTbl, uint dstTA, uint c)
 
 void tct (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)i-1
@@ -2373,7 +2372,7 @@ void tct (void)
 
 void tctr (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)N1-i
@@ -2542,7 +2541,7 @@ static bool isOvp (uint c, uint * on)
 
 void mlr (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -2585,9 +2584,9 @@ void mlr (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (e -> op0, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36 (cu . IWB, 26, 1) != 0;  // truncation bit
     
-    uint fill = bitfieldExtract36 (e -> op0, 27, 9);
+    uint fill = bitfieldExtract36 (cu . IWB, 27, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2783,7 +2782,7 @@ void mlr (void)
 
 void mrl (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -2826,9 +2825,9 @@ void mrl (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (e -> op0, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36 (cu . IWB, 26, 1) != 0;  // truncation bit
     
-    uint fill = bitfieldExtract36 (e -> op0, 27, 9);
+    uint fill = bitfieldExtract36 (cu . IWB, 27, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -3055,7 +3054,7 @@ void mrl (void)
 
 static void EISloadInputBufferNumeric (int k)
 {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
     memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
@@ -3226,7 +3225,7 @@ static void EISloadInputBufferAlphnumeric (EISstruct * e, int k)
 
 static void EISwriteOutputBufferToMemory (int k)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // 4. If an edit insertion table entry or MOP insertion character is to be
     // stored, ANDed, or ORed into a receiving string of 4- or 6-bit
@@ -4483,7 +4482,7 @@ static void mopExecutor (EISstruct * e, int kMop)
 
 void mve (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -4552,7 +4551,7 @@ void mve (void)
 
 void mvne (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor (1, e);
     setupOperandDescriptor (2, e);
@@ -4653,7 +4652,7 @@ void mvne (void)
 
 void mvt (void)
   {
-    EISstruct * e = & currentInstruction . e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-charn1)i-1
@@ -4773,9 +4772,9 @@ void mvt (void)
     //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
     
-    int fill = (int)bitfieldExtract36(e->op0, 27, 9);
+    int fill = (int)bitfieldExtract36(cu . IWB, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
     switch(e->srcSZ)
@@ -4921,8 +4920,7 @@ void mvt (void)
 
 void cmpn (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     // C(Y-charn1) :: C(Y-charn2) as numeric values
     
@@ -5224,8 +5222,7 @@ void mvn (void)
      * Provided that string 1 and string 2 are not overlapped, the contents of the decimal number that starts in location YC1 remain unchanged.
      */
 
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -5233,9 +5230,9 @@ void mvn (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -5459,9 +5456,8 @@ void mvn (void)
 
 void csl (bool isSZTL)
 {
-    DCDstruct * ins = & currentInstruction;
 //sim_printf ("[%lld] %05o\n", sim_timell (), PPR . PSR);
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
@@ -5513,10 +5509,10 @@ void csl (bool isSZTL)
     e->ADDR1.bPos = e->B1;
     e->ADDR2.bPos = e->B2;
     
-    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
+    e->F = bitfieldExtract36(cu . IWB, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     
-    e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
+    e->BOLR = (int)bitfieldExtract36(cu . IWB, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
     bool B6 = (bool)((e->BOLR >> 2) & 1);
     bool B7 = (bool)((e->BOLR >> 1) & 1);
@@ -5742,8 +5738,7 @@ sim_err ("oops\n");
 
 void csr (bool isSZTR)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)N1-i || C(Y-bit2)N2-i (a 2-bit number)
@@ -5807,10 +5802,10 @@ void csr (bool isSZTR)
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
-    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;   // fill bit
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;   // T (enablefault) bit
+    e->F = bitfieldExtract36(cu . IWB, 35, 1) != 0;   // fill bit
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     
-    e->BOLR = (int)bitfieldExtract36(e->op0, 27, 4);  // BOLR field
+    e->BOLR = (int)bitfieldExtract36(cu . IWB, 27, 4);  // BOLR field
     bool B5 = (bool)((e->BOLR >> 3) & 1);
     bool B6 = (bool)((e->BOLR >> 2) & 1);
     bool B7 = (bool)((e->BOLR >> 1) & 1);
@@ -5994,8 +5989,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 
 void cmpb (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     
     // For i = 1, 2, ..., minimum (N1,N2)
@@ -6015,16 +6009,13 @@ void cmpb (void)
     parseBitstringOperandDescriptor(1, e);
     parseBitstringOperandDescriptor(2, e);
     
-    //word18 srcAddr1 = e->YBit1;
-    //word18 srcAddr2 = e->YBit2;
-    
     int charPosn1 = e->C1;
     int charPosn2 = e->C2;
     
     int bitPosn1 = e->B1;
     int bitPosn2 = e->B2;
     
-    e->F = bitfieldExtract36(e->op0, 35, 1) != 0;     // fill bit (was 25)
+    e->F = bitfieldExtract36(cu . IWB, 35, 1) != 0;     // fill bit (was 25)
 
     SETF(cu.IR, I_ZERO);  // assume all =
     SETF(cu.IR, I_CARRY); // assume all >=
@@ -6426,8 +6417,7 @@ static int getSign(word72s n128, EISstruct *e)
 
 static void _btd (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     word72s n128 = e->x;    ///< signExt9(e->x, e->N1);          ///< adjust for +/-
     int sgn = (n128 < 0) ? -1 : 1;  ///< sgn(x)
@@ -6488,8 +6478,7 @@ static void _btd (void)
 
 void btd (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     
     //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
@@ -6517,7 +6506,7 @@ void btd (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
+    e->P = (bool)bitfieldExtract36(cu . IWB, 35, 1);  // 4-bit data sign character control
     
     //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
     //load9x(e->N1, addr, e->CN1, e);
@@ -6713,10 +6702,11 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
 
 static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 {
+    EISstruct * e = & currentEISinstruction;
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
-    int N = p->e->N[k-1];            ///< length of output buffer in native chars (4, 6 or 9-bit chunks)
-    int CN = p->e->CN[k-1];          ///< character number 0-3 (9)
+    int N = e->N[k-1];            ///< length of output buffer in native chars (4, 6 or 9-bit chunks)
+    int CN = e->CN[k-1];          ///< character number 0-3 (9)
     //word18 address  = e->YChar9[k-1]; ///< current write address
     
     /// since we want to write the data in reverse (since it's right justified) we need to determine
@@ -6734,7 +6724,7 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
         p->address += lastWordOffset;    // highest memory address
     int pos = lastChar;             // last character number
     
-    int128 x = p->e->x;
+    int128 x = e->x;
     
     for(int n = 0 ; n < N ; n += 1)
     {
@@ -6748,13 +6738,12 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     
     // anything left in x?. If it's not all 1's we have an overflow!
     if (~x && x != 0)    // if it's all 1's this will be 0
-        SETF(p->e->_flags, I_OFLOW);
+        SETF(e->_flags, I_OFLOW);
 }
 
 void dtb (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -6807,8 +6796,7 @@ void dtb (void)
 
 void ad2d (void)
 {
-    DCDstruct * i = & currentInstruction;
-    EISstruct *e = &i->e;
+    EISstruct * e = & currentEISinstruction;
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
 #ifdef EIS_CACHE
@@ -6818,9 +6806,9 @@ void ad2d (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -7116,8 +7104,7 @@ static int calcSF(int sf1, int sf2, int sf3)
 // CANFAULT
 void ad3d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -7127,9 +7114,9 @@ void ad3d (void)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -7416,8 +7403,7 @@ void ad3d (void)
 // CANFAULT
 void sb2d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -7428,9 +7414,9 @@ void sb2d (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -7685,8 +7671,7 @@ void sb2d (void)
 // CANFAULT
 void sb3d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -7696,9 +7681,9 @@ void sb3d (void)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -7967,8 +7952,7 @@ void sb3d (void)
 
 void mp2d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -7979,9 +7963,9 @@ void mp2d (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -8236,8 +8220,7 @@ void mp2d (void)
 
 void mp3d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -8247,9 +8230,9 @@ void mp3d (void)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -9294,8 +9277,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 
 void dv2d (void)
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -9306,9 +9288,9 @@ void dv2d (void)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -9560,8 +9542,7 @@ void dv2d (void)
 void dv3d (void)
 
 {
-    DCDstruct * ins = & currentInstruction;
-    EISstruct *e = &ins->e;
+    EISstruct * e = & currentEISinstruction;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -9571,9 +9552,9 @@ void dv3d (void)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
-    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
-    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
