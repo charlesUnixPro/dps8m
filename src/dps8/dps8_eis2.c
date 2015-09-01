@@ -1,3 +1,11 @@
+/**
+ * file dps8_eis.c
+ * project dps8
+ * date 12/31/12
+ * copyright Copyright (c) 2012 Harry Reed. All rights reserved.
+ * brief EIS support code...
+*/
+
 #include <ctype.h>
 
 #include "dps8.h"
@@ -637,6 +645,61 @@ static void setupOperandDescriptorCache(int k, EISstruct *e)
   {
     e -> addr [k - 1] .  cacheValid = false;
   }
+
+//
+// 5.2.10.5  Operand Descriptor Address Preparation Flowchart
+//
+// A flowchart of the operations involved in operand descriptor address
+// preparation is shown in Figure 5-2. The chart depicts the address
+// preparation for operand descriptor 1 of a multiword instruction as described
+// by modification field 1 (MF1). A similar type address preparation would be
+// carried out for each operand descriptor as specified by its MF code.
+//    (Bull Nova 9000 pg 5-40  67 A2 RJ78 REV02)
+//
+// 1. The multiword instruction is obtained from memory.
+//
+// 2. The indirect (ID) bit of MF1 is queried to determine if the descriptor
+// for operand 1 is present or is an indirect word.
+//
+// 3. This step is reached only if an indirect word was in the operand
+// descriptor location. Address modification for the indirect word is now
+// performed. If the AR bit of the indirect word is 1, address register
+// modification step 4 is performed.
+//
+// 4. The y field of the indirect word is added to the contents of the
+// specified address register.
+//
+// 5. A check is now made to determine if the REG field of the indirect word
+// specifies that a register type modification be performed.
+//
+// 6. The indirect address as modified by the address register is now modified
+// by the contents of the specified register, producing the effective address
+// of the operand descriptor.
+//
+// 7. The operand descriptor is obtained from the location determined by the
+// generated effective address in item 6.
+//
+// 8. Modification of the operand descriptor address begins. This step is
+// reached directly from 2 if no indirection is involved. The AR bit of MF1 is
+// checked to determine if address register modification is specified.
+//
+// 9. Address register modification is performed on the operand descriptor as
+// described under "Address Modification with Address Registers" above. The
+// character and bit positions of the specified address register are used in
+// one of two ways, depending on the type of operand descriptor, i.e., whether
+// the type is a bit string, a numeric, or an alphanumeric descriptor.
+//
+// 10. The REG field of MF1 is checked for a legal code. If DU is specified in
+// the REG field of MF2 in one of the four multiword instructions (SCD, SCDR,
+// SCM, or SCMR) for which DU is legal, the CN field is ignored and the
+// character or characters are arranged within the 18 bits of the word address
+// portion of the operand descriptor.
+//
+// 11. The count contained in the register specified by the REG field code is
+// appropriately converted and added to the operand address.
+//
+// 12. The operand is retrieved from the calculated effective address location.
+//
 
 static void setupOperandDescriptor (int k, EISstruct * e)
   {
@@ -5036,6 +5099,7 @@ static void EISwrite4(EISaddr *p, int *pos, int char4)
     *pos += 1;       // to next char.
 }
 
+#if 0
 /*
  * write 6-bit digits to memory @ pos ...
  */
@@ -5078,6 +5142,7 @@ static void EISwrite6(EISaddr *p, int *pos, int char6)
 
     *pos += 1;       // to next byte.
 }
+#endif
 
 /*
  * write 9-bit bytes to memory @ pos ...
@@ -5130,6 +5195,7 @@ static void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
     }
 }
 
+#if 0
 /*
  * write a 4-, 6-, or 9-bit char to dstAddr ....
  */
@@ -5146,6 +5212,7 @@ static void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
             return EISwrite9(p, pos, c469);
     }
 }
+#endif
 
 void mvn (void)
 {
