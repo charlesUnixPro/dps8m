@@ -96,7 +96,9 @@ void setAPUStatus (apuStatusBits status)
 #endif
   }
 
+#ifndef SPEED
 static char *strSDW(_sdw *SDW);
+#endif
 
 static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNOWN;
 
@@ -453,6 +455,7 @@ static void fetchNSDW(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
 }
 
+#ifndef SPEED
 static char *strSDW(_sdw *SDW)
 {
     static char buff[256];
@@ -480,6 +483,7 @@ static char *strSDW(_sdw *SDW)
                 SDW->USE);
     return buff;
 }
+#endif
 
 #ifndef SPEED
 /**

@@ -496,7 +496,6 @@ typedef struct EISaddr
     
     MemoryAccessType    mat;    // memory access type for operation
 
-#ifdef EIS_CACHE    
     // Cache
 
     // There is a cache for each operand, but they do not cross check;
@@ -513,7 +512,7 @@ typedef struct EISaddr
     bool cacheDirty;
     word36 cachedWord;
     word18 cachedAddr;
-#endif
+
 } EISaddr;
 typedef struct EISstruct
   {

@@ -233,16 +233,16 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
     return SCPE_OK;
   }
 
+#ifndef SPEED
 static t_stat dpsCmd_InitSDWAM ()
   {
-#ifndef SPEED
     memset (SDWAM, 0, sizeof (SDWAM));
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
-#endif
     return SCPE_OK;
   }
+#endif
 
 // Assumes unpaged DSBR
 
@@ -2247,6 +2247,7 @@ t_stat memWatch (int32 arg, char * buf)
  * "Raw" core interface ....
  */
 
+#ifndef SPEED
 static void nem_check (word24 addr, char * context)
   {
     if (query_scbank_map (addr) < 0)
@@ -2255,6 +2256,7 @@ static void nem_check (word24 addr, char * context)
         doFault (FAULT_ONC, nem, context);
       }
   }
+#endif
 
 #ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)

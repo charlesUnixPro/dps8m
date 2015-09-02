@@ -4962,11 +4962,11 @@ void mvt (void)
         for(uint j = e->N1 ; j < e->N2 ; j += 1)
             EISput469 (2, j, cfill);
     }
-#ifdef EIS_CACHE
+
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
+
     if (e->N1 > e->N2)
       {
         SETF(cu.IR, I_TRUNC);
@@ -5104,10 +5104,10 @@ void cmpn (void)
     SCF(cSigned == 0, cu.IR, I_ZERO);
     SCF(cSigned == 1, cu.IR, I_NEG);
     SCF(cMag != 1, cu.IR, I_CARRY);
-#ifdef EIS_CACHE
+
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
+
 }
 
 /*
@@ -5500,10 +5500,8 @@ void mvn (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
     
     if (Trunc)
     {
@@ -5644,14 +5642,12 @@ void csl (bool isSZTL)
             e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
             //EISgetBitRW(&e->ADDR2);    // write bit w/ addr increment to memory
             EISgetBitRWN(&e->ADDR2);    // write bit w/ addr increment to memory
-#ifdef EIS_CACHE
 // XXX ticket #31
 // This a little brute force; it we fault on the next read, the cached value
 // is lost. There might be a way to logic it up so that when the next read
 // word offset changes, then we write the cache before doing the read. For
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
             EISWriteCache (&e->ADDR2);
-#endif
         }
     }
     
@@ -5693,22 +5689,19 @@ void csl (bool isSZTL)
                 e->ADDR2.incr = true;
                 //EISgetBitRW(&e->ADDR2);
                 EISgetBitRWN(&e->ADDR2);
-#ifdef EIS_CACHE
 // XXX ticket #31
 // This a little brute force; it we fault on the next read, the cached value
 // is lost. There might be a way to logic it up so that when the next read
 // word offset changes, then we write the cache before doing the read. For
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
                 EISWriteCache (&e->ADDR2);
-#endif
             }
         }
     }
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
+
     if (du . Z)
       SETF (cu . IR, I_ZERO);
     else
@@ -5931,14 +5924,12 @@ void csr (bool isSZTR)
             e->ADDR2.mode = eRWwriteBit;    // we want to write the bit
             //EISgetBitRW(&e->ADDR2);  // write bit w/ addr increment to memory
             EISgetBitRWNR(&e->ADDR2);  // write bit w/ addr increment to memory
-#ifdef EIS_CACHE
 // XXX ticket #31
 // This a little brute force; it we fault on the next read, the cached value
 // is lost. There might be a way to logic it up so that when the next read
 // word offset changes, then we write the cache before doing the read. For
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
             EISWriteCache (&e->ADDR2);
-#endif
         }
     }
     
@@ -5980,21 +5971,19 @@ void csr (bool isSZTR)
                 e->ADDR2.decr = true;
                 //EISgetBitRW(&e->ADDR2);
                 EISgetBitRWNR(&e->ADDR2);
-#ifdef EIS_CACHE
 // XXX ticket #31
 // This a little brute force; it we fault on the next read, the cached value
 // is lost. There might be a way to logic it up so that when the next read
 // word offset changes, then we write the cache before doing the read. For
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
                 EISWriteCache (&e->ADDR2);
-#endif
             }
         }
     }
-#ifdef EIS_CACHE
+
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
+
     if (du . Z)
       SETF (cu . IR, I_ZERO);
     else
@@ -6132,10 +6121,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(min(e->N1, e->N2)) i %d b1 %d b2 %d\n"
             CLRF(cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
                 CLRF(cu.IR, I_CARRY);
-#ifdef EIS_CACHE
+
             cleanupOperandDescriptor (1);
             cleanupOperandDescriptor (2);
-#endif
+
             return;
         }
         
@@ -6154,10 +6143,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 < e->N2) i %d b1fill %d b2 %d\n"
                 CLRF(cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
-#ifdef EIS_CACHE
+
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
-#endif
+
                 return;
             }
         }   
@@ -6175,18 +6164,16 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
                 CLRF(cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
                     CLRF(cu.IR, I_CARRY);
-#ifdef EIS_CACHE
+
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
-#endif
+
                 return;
             }
         }
     }
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
 }
 
 /*
@@ -6610,10 +6597,8 @@ void btd (void)
 
     _btd ();
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
     
 // XXX wrong; see ticket 76
 #if 0
@@ -6856,10 +6841,8 @@ void dtb (void)
     {
         ;   // XXX generate overflow fault
     }
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
-#endif
 }
 
 /*
@@ -7117,11 +7100,9 @@ void ad2d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -7458,11 +7439,10 @@ void ad3d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
+
     if (Trunc)
     {
         SETF(cu.IR, I_TRUNC);
@@ -7725,11 +7705,9 @@ void sb2d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -8008,11 +7986,9 @@ void sb3d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -8275,11 +8251,9 @@ void mp2d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -8558,11 +8532,9 @@ void mp3d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -9598,11 +9570,9 @@ void dv2d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
 
     if (Trunc)
     {
@@ -9905,11 +9875,9 @@ void dv3d (void)
     
     SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
-#ifdef EIS_CACHE
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
-#endif
     
     if (Trunc)
     {
