@@ -1,3 +1,4 @@
+void setupEISoperands (void);
 void a6bd (void);
 void a4bd (void);
 void a9bd (void);

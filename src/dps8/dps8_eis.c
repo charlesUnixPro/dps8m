@@ -19,6 +19,9 @@
 // Local optimization
 #define ABD_BITS
 
+// Enable EIS operand setup refactoring code -- crashes Multics late in boot.
+//#define EIS_SETUP
+
 //  EISWriteCache  -- flush the cache
 //
 //
@@ -790,6 +793,18 @@ static void setupOperandDescriptor (int k)
     setupOperandDescriptorCache (k);
 }
 
+void setupEISoperands (void)
+  {
+#ifdef EIS_SETUP
+    for (int i = 0; i < 3; i ++)
+      {
+        if (i < currentInstruction . info -> ndes)
+          setupOperandDescriptor (i + 1);
+        else
+          setupOperandDescriptorCache (i + 1);
+      }
+#endif
+  }
 
 static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
   {
@@ -1684,10 +1699,12 @@ void cmpc (void)
     // larger string length count is exhausted.
     
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 1);
+#endif
     
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
@@ -1773,9 +1790,11 @@ void scd ()
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 1); // use TA1
@@ -1888,9 +1907,11 @@ void scdr (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptorCache(3);
+#endif
 
     parseAlphanumericOperandDescriptor(1, 1);
     parseAlphanumericOperandDescriptor(2, 1); // Use TA1
@@ -2020,9 +2041,11 @@ void scm (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
 
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 1);
@@ -2140,9 +2163,11 @@ void scmr (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
 
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 1);
@@ -2270,9 +2295,11 @@ void tct (void)
     // on a word boundary.
     
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptorCache (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor (1, 1);
     parseArgOperandDescriptor (2);
@@ -2405,9 +2432,11 @@ void tctr (void)
     // on a word boundary.
  
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptorCache (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor (1, 1);
     parseArgOperandDescriptor (2);
@@ -2555,9 +2584,11 @@ void mlr (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor(1, 1);
     parseAlphanumericOperandDescriptor(2, 2);
@@ -2796,9 +2827,11 @@ void mrl (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor(1, 1);
     parseAlphanumericOperandDescriptor(2, 2);
@@ -4509,9 +4542,11 @@ void mve (void)
   {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptor(3);
+#endif
     
     parseAlphanumericOperandDescriptor(1, 1);
     parseAlphanumericOperandDescriptor(2, 2);
@@ -4578,9 +4613,11 @@ void mvne (void)
   {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptor (3);
+#endif
     
     parseNumericOperandDescriptor (1);
     parseAlphanumericOperandDescriptor (2, 2);
@@ -4688,9 +4725,11 @@ void mvt (void)
     
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+#ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
     setupOperandDescriptorCache (3);
+#endif
     
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 2);
@@ -4953,8 +4992,10 @@ void cmpn (void)
     // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
     // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -5249,8 +5290,10 @@ void mvn (void)
 
     EISstruct * e = & currentEISinstruction;
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -5522,8 +5565,10 @@ void csl (bool isSZTL)
     // Invert           1      1      0      0
     //
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
@@ -5800,8 +5845,10 @@ void csr (bool isSZTR)
     // Invert           1      1      0      0
     //
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
@@ -6028,8 +6075,10 @@ void cmpb (void)
     //    Zero:  If C(Y-bit1)i = C(Y-bit2)i for all i, then ON; otherwise, OFF
     //    Carry: If C(Y-bit1)i < C(Y-bit2)i for any i, then OFF; otherwise ON
     
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
@@ -6528,8 +6577,10 @@ void btd (void)
     
     //! The two's complement binary integer starting at location YC1 is converted into a signed string of decimal characters of data type TN2, sign and decimal type S2 (S2 = 00 is illegal) and scale factor 0; and is stored, right-justified, as a string of length L2 starting at location YC2. If the string generated is longer than L2, the high-order excess is truncated and the overflow indicator is set. If strings 1 and 2 are not overlapped, the contents of string 1 remain unchanged. The length of string 1 (L1) is given as the number of 9-bit segments that make up the string. L1 is equal to or is less than 8. Thus, the binary string to be converted can be 9, 18, 27, 36, 45, 54, 63, or 72 bits long. CN1 designates a 9-bit character boundary. If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign. If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
 
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -6772,8 +6823,10 @@ void dtb (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -6823,9 +6876,9 @@ void dtb (void)
 void ad2d (void)
 {
     EISstruct * e = & currentEISinstruction;
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
-#ifdef EIS_CACHE
     setupOperandDescriptorCache(3);
 #endif
     
@@ -7132,9 +7185,11 @@ void ad3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptor(3);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -7431,9 +7486,9 @@ void sb2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
-#ifdef EIS_CACHE
     setupOperandDescriptorCache(3);
 #endif
     
@@ -7699,9 +7754,11 @@ void sb3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptor(3);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -7980,9 +8037,9 @@ void mp2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
-#ifdef EIS_CACHE
     setupOperandDescriptorCache(3);
 #endif
     
@@ -8248,9 +8305,11 @@ void mp3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptor(3);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -9305,9 +9364,9 @@ void dv2d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
-#ifdef EIS_CACHE
     setupOperandDescriptorCache(3);
 #endif
     
@@ -9570,9 +9629,11 @@ void dv3d (void)
 {
     EISstruct * e = & currentEISinstruction;
 
+#ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
     setupOperandDescriptor(3);
+#endif
     
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);

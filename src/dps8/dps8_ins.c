@@ -1130,6 +1130,7 @@ restart_1:
             TPR.TSR = PPR.PSR;
             Read (PPR . IC + 1 + n, & currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
           }
+        setupEISoperands ();
       }
     else
 
@@ -1488,19 +1489,6 @@ static t_stat doInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
     CLRF(cu.IR, I_MIIF);
-    
-    //if (i->e)
-    if (i->info->ndes > 0)
-    {
-        //i->e.ins = i;
-        //i->e.addr[0].e = &i->e;
-        //i->e.addr[1].e = &i->e;
-        //i->e.addr[2].e = &i->e;
-        
-        currentEISinstruction.addr[0].mat = OperandRead;   // no ARs involved yet
-        currentEISinstruction.addr[1].mat = OperandRead;   // no ARs involved yet
-        currentEISinstruction.addr[2].mat = OperandRead;   // no ARs involved yet
-    }
     
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
