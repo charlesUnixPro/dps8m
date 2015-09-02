@@ -905,7 +905,7 @@ typedef struct
                    //                  23  SDWAM levels C, D enabled
                    //                  24  SDWAM levels A, B match
                    //                  25  SDWAM levels C, D match
-    word1 OFL_INH; // 26             0 -- Borrowed hopefully unused bit
+                   // 26             0
                    // 27-29 CPU      CPU Number
     word6 delta;   // 30-35 DELTA    addr increment for repeats
     

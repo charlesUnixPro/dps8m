@@ -223,7 +223,6 @@ static void scu2words(word36 *words)
     // 18, 4 PTWAM levels enabled
     // 22, 4 SDWAM levels enabled
     // 26, 1 0
-    putbits36 (& words [2], 26,  1, cu . OFL_INH);
     putbits36 (& words [2], 27,  3, switches . cpu_num);
     putbits36 (& words [2], 30,  6, cu . delta);
     
@@ -350,7 +349,6 @@ static void words2scu (word36 * words)
     
     TPR.TRR         = getbits36(words[2], 0, 3);
     TPR.TSR         = getbits36(words[2], 3, 15);
-    cu.OFL_INH      = getbits36(words[2], 26, 1);
     cu.delta        = getbits36(words[2], 30, 6);
     
     // words[3]
@@ -839,7 +837,7 @@ static bool tstOVFfault (void)
     if (cu . rpt || cu . rd) 
       {
         // Did the repeat instruction inhibit overflow faults?
-        if (cu . OFL_INH == 0)
+        if ((rX [0] & 00001) == 0)
           return false;
       }
     return true;
@@ -5127,8 +5125,6 @@ static t_stat DoBasicInstruction (void)
          
         case 0560:  // rpd
             {
-              word1 o = (i->address >> 0) & 1;
-              cu . OFL_INH = o;
               word1 c = (i->address >> 7) & 1;
               cu . delta = i->tag;
               if (c)
