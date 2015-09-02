@@ -181,7 +181,7 @@ char *getModString(int32 tag)
  */
 /* Single word integer routines */
 
-word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -222,7 +222,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     bool r38 = res & BIT38 ? true : false;
    
     // Check for overflow 
-    bool ovf = r37 ^ r36;
+    * ovf = r37 ^ r36;
 
     // Check for carry 
     bool cry = r38;
@@ -240,7 +240,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -260,14 +260,6 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Add36b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word36 cac = AddSub36b ('+', false, op1, op2, flagsToSet, & flags0);
@@ -285,7 +277,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -327,7 +319,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     res &= MASK36;
 
     // Check for overflow 
-    bool ovf = r37 ^ r36;
+    * ovf = r37 ^ r36;
 
     // Check for carry 
     bool cry = r38;
@@ -342,7 +334,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -362,14 +354,6 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Sub36b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word36 cac = AddSub36b ('-', false, op1, op2, flagsToSet, & flags0);
@@ -387,7 +371,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -431,7 +415,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     res &= MASK18;
 
     // Check for overflow 
-    bool ovf = r19 ^ r18;
+    * ovf = r19 ^ r18;
 
     // Check for carry 
     bool cry = r20;
@@ -446,7 +430,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -466,14 +450,6 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Add18b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word18 cac = AddSub18b ('+', false, op1, op2, flagsToSet, & flags0);
@@ -491,7 +467,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -533,7 +509,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     res &= MASK18;
 
     // Check for overflow 
-    bool ovf = r19 ^ r18;
+    * ovf = r19 ^ r18;
 
     // Check for carry 
     bool cry = r20;
@@ -548,7 +524,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -568,14 +544,6 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Sub18b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word18 cac = AddSub18b ('-', false, op1, op2, flagsToSet, & flags0);
@@ -593,7 +561,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -637,7 +605,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     res &= MASK72;
 
     // Check for overflow 
-    bool ovf = r73 ^ r72;
+    * ovf = r73 ^ r72;
 
     // Check for carry 
     bool cry = r74;
@@ -652,7 +620,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -672,14 +640,6 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Add72b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word72 cac = AddSub72b ('+', false, op1, op2, flagsToSet, & flags0);
@@ -709,7 +669,7 @@ static void print_int128o (word72 v, char * p)
    }
 #endif
 
-word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags)
+word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef DEGBUG_MATH
     word18 flags0 = * flags;
@@ -751,7 +711,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     res &= MASK72;
 
     // Check for overflow 
-    bool ovf = r73 ^ r72;
+    * ovf = r73 ^ r72;
 
     // Check for carry 
     bool cry = r74;
@@ -766,7 +726,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
  
     if (flagsToSet & I_OFLOW)
       {
-        if (ovf)
+        if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
       }
     
@@ -786,14 +746,6 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    if (flagsToSet & I_OFLOW)
-      {
-        if (ovf && ! TSTF (* flags, I_OMASK))
-          {
-            doFault(FAULT_OFL, 0,"Sub72b overflow fault");
-          }
-      }
-
 #ifdef DEGBUG_MATH
     {
       word72 cac = AddSub72b ('-', false, op1, op2, flagsToSet, & flags0);
@@ -815,256 +767,9 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #endif
     return res;
   }
-#if 0
-// XXX ticket #3 isSigned
-// CANFAULT
-word36 AddSub36b(char op, UNUSED bool  isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
-{
-    word36 res = 0;
-    op1 &= ZEROEXT;
-    op2 &= ZEROEXT;
-        
-    // perform requested operation
-    bool overflow = false;
-    
-    switch (op)
-    {
-        case '+':
-            res = op1 + op2;
-            overflow = ((~(op1 ^ op2)) & (op1 ^ res) & 0x800000000);
-            break;
-        case '-':
-            res = op1 - op2;
-            //op2 = (1 + ~op2) & DMASK;
-            //res = op1 + op2;
-            overflow = ((~(op1 ^ ~op2)) & (op1 ^ res) & 0x800000000);
-            break;
-            // XXX make provisions for logicals
-    }
-    
-       // now let's set some flags...
-    
-    // carry
-    // NB: CARRY is not an overflow!
-    
-    if (flagsToSet & I_CARRY)
-    {
-        /* const */  bool carry = (res > 0xfffffffff);
-if (op == '-') carry = ! carry; // XXX CAC black magic
-        if (carry)
-            SETF(*flags, I_CARRY);
-        else
-            CLRF(*flags, I_CARRY);
-    }
-    
-    
-    
-    /*
-     oVerflow rules .....
-     
-     oVerflow occurs for addition if the operands have the
-     same sign and the result has a different sign. MSB(a) = MSB(b) and MSB(r) <> MSB(a)
-     
-     oVerflow occurs for subtraction if the operands have
-     different signs and the sign of the result is different from the
-     sign of the first operand. MSB(a) <> MSB(b) and MSB(r) <> MSB(a)
-     */
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow)
-            SETF(*flags, I_OFLOW);      // overflow
-    }
-    
-    if (flagsToSet & I_ZERO)
-    {
-        if ((res & DMASK) == 0)
-            SETF(*flags, I_ZERO);       // zero result
-        else
-            CLRF(*flags, I_ZERO);
-    }
-    
-    if (flagsToSet & I_NEG)
-    {
-        if (res & SIGN36)            // if negative (things seem to want this even if unsigned ops)
-            SETF(*flags, I_NEG);
-        else
-            CLRF(*flags, I_NEG);
-    }
-    
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow && ! TSTF (*flags, I_OMASK))
-        {
-            doFault(FAULT_OFL, 0,"addsub36b overflow fault");
-        }
-    }
-
-    return res & DMASK;           // 64 => 36-bit. Mask off unnecessary bits ...
-}
-
-// XXX ticket #3 isSigned
-// CANFAULT
-word18 AddSub18b(char op, UNUSED bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
-{
-    word18 res = 0;
-    op1 &= ZEROEXT18;
-    op2 &= ZEROEXT18;
-    //word18 op1 = SIGNEXT18(oP1);
-    //word18 op2 = SIGNEXT18(oP2);
-    
-    // perform requested operation
-    bool overflow = false;
-    
-    switch (op)
-    {
-        case '+':
-            res = op1 + op2;
-            overflow = ((~(op1 ^ op2)) & (op1 ^ res) & SIGN18);
-            break;
-        case '-':
-            res = op1 - op2;
-            //op2 = (1 + ~op2) & DMASK;
-            //res = op1 + op2;
-            overflow = ((~(op1 ^ ~op2)) & (op1 ^ res) & SIGN18);
-            break;
-            // XXX make provisions for logicals
-    }
-    
-    // now let's set some flags...
-    
-    // carry
-    // NB: CARRY is not an overflow!
-    
-    if (flagsToSet & I_CARRY)
-    {
-        /* const */ bool carry = (res > 0777777);
-if (op == '-') carry = ! carry; // XXX CAC black magic
-        if (carry)
-            SETF(*flags, I_CARRY);
-        else
-            CLRF(*flags, I_CARRY);
-    }
-    
-    
-    
-    /*
-     oVerflow rules .....
-     
-     oVerflow occurs for addition if the operands have the
-     same sign and the result has a different sign. MSB(a) = MSB(b) and MSB(r) <> MSB(a)
-     
-     oVerflow occurs for subtraction if the operands have
-     different signs and the sign of the result is different from the
-     sign of the first operand. MSB(a) <> MSB(b) and MSB(r) <> MSB(a)
-     */
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow)
-            SETF(*flags, I_OFLOW);      // overflow
-    }
-    
-    if (flagsToSet & I_ZERO)
-    {
-        if ((res & MASK18) == 0)
-            SETF(*flags, I_ZERO);       // zero result
-        else
-            CLRF(*flags, I_ZERO);
-    }
-    
-    if (flagsToSet & I_NEG)
-    {
-        if (res & SIGN18)            // if negative (things seem to want this even if unsigned ops)
-            SETF(*flags, I_NEG);
-        else
-            CLRF(*flags, I_NEG);
-    }
-    
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow && ! TSTF (*flags, I_OMASK))
-        {
-            doFault(FAULT_OFL, 0,"addsub18b overflow fault");
-        }
-    }
-
-    return res & MASK18;           // 32 => 18-bit. Mask off unnecessary bits ...
-}
-
-// XXX ticket #3 isSigned
-// CANFAULT
-word72 AddSub72b(char op, UNUSED bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
-{
-    word72 res = 0;
-    op1 &= ZEROEXT72;
-    op2 &= ZEROEXT72;
-    
-    // perform requested operation
-    bool overflow = false;
-    
-    switch (op)
-    {
-        case '+':
-            res = op1 + op2;
-            overflow = ((~(op1 ^ op2)) & (op1 ^ res) & SIGN72);
-            break;
-        case '-':
-            res = op1 - op2;
-            overflow = ((~(op1 ^ ~op2)) & (op1 ^ res) & SIGN72);
-            break;
-            // XXX make provisions for logicals
-    }
-    
-    // now let's set some flags...
-    
-    // carry
-    // NB: CARRY is not an overflow!
-    
-    if (flagsToSet & I_CARRY)
-    {
-        /* const */ bool carry = (res > MASK72);
-if (op == '-') carry = ! carry; // XXX CAC black magic
-        if (carry)
-            SETF(*flags, I_CARRY);
-        else
-            CLRF(*flags, I_CARRY);
-    }
-
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow)
-            SETF(*flags, I_OFLOW);      // overflow
-    }
-    
-    if (flagsToSet & I_ZERO)
-    {
-        if ((res & MASK72) == 0)
-            SETF(*flags, I_ZERO);       // zero result
-        else
-            CLRF(*flags, I_ZERO);
-    }
-    
-    if (flagsToSet & I_NEG)
-    {
-        if (res & SIGN72)            // if negative (things seem to want this even if unsigned ops)
-            SETF(*flags, I_NEG);
-        else
-            CLRF(*flags, I_NEG);
-    }
-    
-    if (flagsToSet & I_OFLOW)
-    {
-        if (overflow)
-        {
-            doFault(FAULT_OFL, 0,"addsub72 overflow fault");
-        }
-    }
-    
-    return res & MASK72;           // 128 => 72-bit. Mask off unnecessary bits ...
-}
-#endif
 
 // CANFAULT
-word36 compl36(word36 op1, word18 *flags)
+word36 compl36(word36 op1, word18 *flags, bool * ovf)
 {
     //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);
     
@@ -1072,9 +777,11 @@ word36 compl36(word36 op1, word18 *flags)
     
     word36 res = -op1 & DMASK;
     
-    const bool ovr = op1 == MAXNEG;
-    if (ovr)
+    * ovf = op1 == MAXNEG;
+
+    if (* ovf)
         SETF(*flags, I_OFLOW);
+
     if (res & SIGN36)
         SETF(*flags, I_NEG);
     else
@@ -1085,16 +792,11 @@ word36 compl36(word36 op1, word18 *flags)
     else
         CLRF(*flags, I_ZERO);
     
-    if (ovr && ! TSTF (*flags, I_OMASK))
-    {
-        doFault(FAULT_OFL, 0,"compl36 overflow fault");
-    }
-
     return res;
 }
 
 // CANFAULT
-word18 compl18(word18 op1, word18 *flags)
+word18 compl18(word18 op1, word18 *flags, bool * ovf)
 {
     //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);
     
@@ -1102,8 +804,8 @@ word18 compl18(word18 op1, word18 *flags)
     
     word18 res = -op1 & MASK18;
     
-    const bool ovr = op1 == MAX18NEG;
-    if (ovr)
+    * ovf = op1 == MAX18NEG;
+    if (* ovf)
         SETF(*flags, I_OFLOW);
     if (res & SIGN18)
         SETF(*flags, I_NEG);
@@ -1115,9 +817,6 @@ word18 compl18(word18 op1, word18 *flags)
     else
         CLRF(*flags, I_ZERO);
     
-    if (ovr && ! TSTF (*flags, I_OMASK))
-        doFault(FAULT_OFL, 0,"compl18 overflow fault");
-
     return res;
 }
 

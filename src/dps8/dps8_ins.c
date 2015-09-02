@@ -5,7 +5,6 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
-//#define DBGF // eis page fault debugging
 #include <stdio.h>
 
 #include "dps8.h"
@@ -1113,9 +1112,6 @@ restart_1:
             du . Z = 1;
           }
 //else {sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS restart, tally %d\n", du . CHTALLY);}
-#ifdef DBGF
-        doEIS_CAF ();
-#endif
         for(int n = 0; n < info -> ndes; n += 1)
           {
 // XXX This is a bit of a hack; In general the code is good about 
@@ -1539,12 +1535,26 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0335:  ///< lca
-            rA = compl36(CY, &cu.IR);
-            break;
+          {
+            bool ovf;
+            rA = compl36 (CY, & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "lca overflow fault");
+              }
+          }
+          break;
             
         case 0336:  ///< lcq
-            rQ = compl36(CY, &cu.IR);
-            break;
+          {
+            bool ovf;
+            rQ = compl36 (CY, & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "lcq overflow fault");
+              }
+          }
+          break;
             
         case 0320:  ///< lcx0
         case 0321:  ///< lcx1
@@ -1554,34 +1564,45 @@ static t_stat DoBasicInstruction (void)
         case 0325:  ///< lcx5
         case 0326:  ///< lcx6
         case 0327:  ///< lcx7
-            // ToDo: Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
-            {
-                uint32 n = opcode & 07;  // get n
-                rX[n] = compl18(GETHI(CY), &cu.IR);
-            }
-            break;
+          {
+	  // XXX ToDo: Attempted repetition with the rpl instruction and with
+	  // the same register given as target and modifier causes an illegal
+	  // procedure fault.
+
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = compl18 (GETHI (CY), & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "lcxn overflow fault");
+              }
+          }
+          break;
             
-        case 0337:  ///< lcaq
-            // The lcaq instruction changes the number to its negative while moving it from Y-pair to AQ. The operation is executed by forming the twos complement of the string of 72 bits. In twos complement arithmetic, the value 0 is its own negative. An overflow condition exists if C(Y-pair) = -2**71.
-            
-            //Read2(i, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
+        case 0337:  // lcaq
+          {
+	  // The lcaq instruction changes the number to its negative while
+	  // moving it from Y-pair to AQ. The operation is executed by
+	  // forming the twos complement of the string of 72 bits. In twos
+	  // complement arithmetic, the value 0 is its own negative. An
+	  // overflow condition exists if C(Y-pair) = -2**71.
             
             if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
-            {
+              {
                 SETF(cu.IR, I_OFLOW);
                 if (! TSTF (cu.IR, I_OMASK))
-                    doFault(FAULT_OFL, 0,"lcaq overflow fault");
-            }
+                    doFault(FAULT_OFL, 0, "lcaq overflow fault");
+              }
             else if (Ypair[0] == 0 && Ypair[1] == 0)
-            {
+              {
                 rA = 0;
                 rQ = 0;
                 
                 SETF(cu.IR, I_ZERO);
                 CLRF(cu.IR, I_NEG);
-            }
+              }
             else
-            {
+              {
                 word72 tmp72 = 0;
 
                 tmp72 = bitfieldInsert72(tmp72, Ypair[0], 36, 36);
@@ -1596,12 +1617,14 @@ static t_stat DoBasicInstruction (void)
                     SETF(cu.IR, I_ZERO);
                 else
                     CLRF(cu.IR, I_ZERO);
+
                 if (rA & SIGN36)
                     SETF(cu.IR, I_NEG);
                 else
                     CLRF(cu.IR, I_NEG);
-            }
-            break;
+              }
+          }
+          break;
 
         case 0235:  ///< lda
             rA = CY;
@@ -2320,71 +2343,101 @@ static t_stat DoBasicInstruction (void)
             break;
 
         /// Fixed-Point Addition
+
         case 0075:  ///< ada
+          {
             /**
-              \brief C(A) + C(Y) -> C(A)
-              Modifications: All
-             
-            (Indicators not listed are not affected)
-            ZERO: If C(A) = 0, then ON; otherwise OFF
-            NEG: If C(A)0 = 1, then ON; otherwise OFF
-            OVR: If range of A is exceeded, then ON
-            CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
-             
-            TODO: check Michael Mondy's notes on 36-bit addition and T&D stuff. Need to reimplement code
-             
-             
+             * C(A) + C(Y) -> C(A)
+             * Modifications: All
+            *
+            *  (Indicators not listed are not affected)
+            *  ZERO: If C(A) = 0, then ON; otherwise OFF
+            *  NEG: If C(A)0 = 1, then ON; otherwise OFF
+            *  OVR: If range of A is exceeded, then ON
+            *  CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
             */
-        
-            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+
+            bool ovf;
+            rA = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
          
-        case 0077:   ///< adaq
+        case 0077:   // adaq
+          {
             // C(AQ) + C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);
-        
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "adaq overflow fault");
+              }
+          }
+          break;
             
-        case 0033:   ///< adl
+        case 0033:   // adl
+          {
             // C(AQ) + C(Y) sign extended -> C(AQ)
-            {
-                word72 tmp72 = SIGNEXT36_72(CY); // sign extend Cy
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            bool ovf;
+            word72 tmp72 = SIGNEXT36_72 (CY); // sign extend Cy
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                            & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "adl overflow fault");
+              }
+          }
+          break;
             
             
-        case 0037:   ///< adlaq
-            /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// C(AQ) + C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);
+        case 0037:   // adlaq
+          {
+	  // The adlaq instruction is identical to the adaq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adlaq instruction, nor does an overflow fault occur. Operands
+	  // and results are treated as unsigned, positive binary integers.
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
         
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+          }
+          break;
             
-        case 0035:   ///< adla
-            /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            //rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0035:   // adla
+          {
+	  // The adla instruction is identical to the ada instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adla instruction, nor does an overflow fault occur. Operands and
+	  // results are treated as unsigned, positive binary integers. */
+
+            bool ovf;
+            rA = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0036:   ///< adlq
-            /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            //rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rQ = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+          {
+	  // The adlq instruction is identical to the adq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adlq instruction, nor does an overflow fault occur. Operands and
+	  // results are treated as unsigned, positive binary integers. */
+
+            bool ovf;
+            rQ = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0020:   ///< adlx0
         case 0021:   ///< adlx1
@@ -2394,17 +2447,29 @@ static t_stat DoBasicInstruction (void)
         case 0025:   ///< adlx5
         case 0026:   ///< adlx6
         case 0027:   ///< adlx7
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Add18b (rX [n], GETHI (CY), 0, I_ZERO | I_NEG | I_CARRY,
+                             & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "adlxn overflow fault");
+              }
+          }
+          break;
             
-        case 0076:   ///< adq
-            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Add36b(rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0076:   // adq
+          {
+            bool ovf;
+            rQ = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "adq overflow fault");
+              }
+          }
+          break;
 
         case 0060:   ///< adx0
         case 0061:   ///< adx1
@@ -2414,31 +2479,59 @@ static t_stat DoBasicInstruction (void)
         case 0065:   ///< adx5
         case 0066:   ///< adx6
         case 0067:   ///< adx7
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Add18b (rX [n], GETHI (CY), 0,
+                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                             & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "adxn overflow fault");
+              }
+          }
+          break;
         
-        case 0054:   ///< aos
-            /// C(Y)+1->C(Y)
+        case 0054:   // aos
+          {
+            // C(Y)+1->C(Y)
             
-            //CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (CY, 1, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+            bool ovf;
+            CY = Add36b (CY, 1, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "aos overflow fault");
+              }
+          }
+          break;
         
-        case 0055:   ///< asa
-            /// C(A) + C(Y) -> C(Y)
-            //CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0055:   // asa
+          {
+            // C(A) + C(Y) -> C(Y)
+
+            bool ovf;
+            CY = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "asa overflow fault");
+              }
+          }
+          break;
             
-        case 0056:   ///< asq
-            /// C(Q) + C(Y) -> C(Y)
-            //CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0056:   // asq
+          {
+            // C(Q) + C(Y) -> C(Y)
+            bool ovf;
+            CY = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "asq overflow fault");
+              }
+          }
+          break;
          
         case 0040:   ///< asx0
         case 0041:   ///< asx1
@@ -2448,81 +2541,117 @@ static t_stat DoBasicInstruction (void)
         case 0045:   ///< asx5
         case 0046:   ///< asx6
         case 0047:   ///< asx7
-            {
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
-            
-                uint32 n = opcode & 07;  // get n
-                //word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                word18 tmp18 = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                SETHI(CY, tmp18);
-            }
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            //    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            word18 tmp18 = Add18b (rX [n], GETHI (CY), 0,
+                                   I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                                   & cu . IR, & ovf);
+            SETHI (CY, tmp18);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "asxn overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0071:   // awca
+          {
+            // If carry indicator OFF, then C(A) + C(Y) -> C(A)
+            // If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
 
-        case 0071:   ///< awca
-            /// If carry indicator OFF, then C(A) + C(Y) -> C(A)
-            /// If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
-            //if (TSTF(cu.IR, I_CARRY))
-                //rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Add36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            rA = Add36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                          I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "awca overflow fault");
+              }
+          }
+          break;
             
-            break;
-            
-            
-        case 0072:   ///< awcq
-            /// If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
-            /// If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
-            //if (TSTF(cu.IR, I_CARRY))
-                //rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Add36b (rQ, CY, TSTF(cu.IR, I_CARRY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
+        case 0072:   // awcq
+          {
+            // If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
+            // If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
+
+            bool ovf;
+            rQ = Add36b (rQ, CY, TSTF (cu . IR, I_CARRY),
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
            
         /// Fixed-Point Subtraction
             
         case 0175:  ///< sba
-            /// C(A) - C(Y) -> C(A)
-            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+          {
+            // C(A) - C(Y) -> C(A)
+
+            bool ovf;
+            rA = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "sba overflow fault");
+              }
+          }
+          break;
          
         case 0177:  ///< sbaq
-            /// C(AQ) - C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);   //
-        
-                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Sub72b (convertToWord72(rA, rQ), tmp72, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+          {
+            // C(AQ) - C(Y-pair) -> C(AQ)
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair); 
+            tmp72 = Sub72b (convertToWord72 (rA, rQ), tmp72, 1,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
           
-        case 0135:  ///< sbla
-            /// C(A) - C(Y) -> C(A) logical
-            //rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0135:  // sbla
+          {
+            // C(A) - C(Y) -> C(A) logical
+
+            bool ovf;
+            rA = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
-        case 0137:  ///< sblaq
-            /// The sblaq instruction is identical to the sbaq instruction with the exception that the overflow indicator is not affected by the sblaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// \brief C(AQ) - C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);   //
+        case 0137:  // sblaq
+          {
+	  // The sblaq instruction is identical to the sbaq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // sblaq instruction, nor does an overflow fault occur. Operands
+	  // and results are treated as unsigned, positive binary integers.
+            // C(AQ) - C(Y-pair) -> C(AQ)
+
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
         
-                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
-                tmp72 = Sub72b (convertToWord72(rA, rQ), 1, tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            tmp72 = Sub72b (convertToWord72 (rA, rQ), 1, tmp72,
+                            I_ZERO | I_NEG |  I_CARRY, & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+          }
+          break;
             
-        case 0136:  ///< sblq
-            ///< C(Q) - C(Y) -> C(Q)
-            //rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0136:  // sblq
+          {
+            // C(Q) - C(Y) -> C(Q)
+            bool ovf;
+            rQ = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0120:  ///< sblx0
         case 0121:  ///< sblx1
@@ -2532,20 +2661,30 @@ static t_stat DoBasicInstruction (void)
         case 0125:  ///< sblx5
         case 0126:  ///< sblx6
         case 0127:  ///< sblx7
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief     C(Xn) - C(Y)0,17 -> C(Xn)
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Xn)
+
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Sub18b (rX [n], GETHI (CY), 1,
+                             I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
          
         case 0176:  ///< sbq
-            /// C(Q) - C(Y) -> C(Q)
-            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+          {
+            // C(Q) - C(Y) -> C(Q)
+
+            bool ovf;
+            rQ = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "sbq overflow fault");
+              }
+          }
+          break;
             
         case 0160:  ///< sbx0
         case 0161:  ///< sbx1
@@ -2555,28 +2694,49 @@ static t_stat DoBasicInstruction (void)
         case 0165:  ///< sbx5
         case 0166:  ///< sbx6
         case 0167:  ///< sbx7
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief  C(Xn) - C(Y)0,17 -> C(Xn)
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Xn)
 
-        case 0155:  ///< ssa
-            /// C(A) - C(Y) -> C(Y)
-            //CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Sub18b (rX [n], GETHI (CY), 1,
+                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                             & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "sbxn overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0155:  // ssa
+          {
+            // C(A) - C(Y) -> C(Y)
 
-        case 0156:  ///< ssq
-            /// C(Q) - C(Y) -> C(Y)
-            //CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            CY = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ssa overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0156:  // ssq
+          {
+            // C(Q) - C(Y) -> C(Y)
+
+            bool ovf;
+            CY = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ssq overflow fault");
+              }
+          }
+          break;
         
         case 0140:  ///< ssx0
         case 0141:  ///< ssx1
@@ -2586,39 +2746,58 @@ static t_stat DoBasicInstruction (void)
         case 0145:  ///< ssx5
         case 0146:  ///< ssx6
         case 0147:  ///< ssx7
-            {
-            /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn) - C(Y)0,17 -> C(Y)0,17
-                uint32 n = opcode & 07;  // get n
-                //word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                word18 tmp18 = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                SETHI(CY, tmp18);
-            }
+          {
+            // For uint32 n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Y)0,17
 
-            break;
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            word18 tmp18 = Sub18b (rX [n], GETHI (CY), 1,
+                                   I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                                   & cu . IR, & ovf);
+            SETHI (CY, tmp18);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
 
             
-        case 0171:  ///< swca
-            /// If carry indicator ON, then C(A)- C(Y) -> C(A)
-            /// If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
-            //if (!TSTF(cu.IR, I_CARRY))
-                //rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
-         
-        case 0172:  ///< swcq
-            /// If carry indicator ON, then C(Q) - C(Y) -> C(Q)
-            /// If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
-            //if (!TSTF(cu.IR, I_CARRY))
-                //rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
+        case 0171:  // swca
+          {
+            // If carry indicator ON, then C(A)- C(Y) -> C(A)
+            // If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+            bool ovf;
+            rA = Sub36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "swca overflow fault");
+              }
+          }
+          break;
+
+        case 0172:  // swcq
+          {
+            // If carry indicator ON, then C(Q) - C(Y) -> C(Q)
+            // If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
+
+            bool ovf;
+            rQ = Sub36b (rQ, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && ! TSTF (cu . IR, I_OMASK))
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
         
         /// Fixed-Point Multiplication
+
         case 0401:  ///< mpf
             {
             /// C(A) × C(Y) -> C(AQ), left adjusted
