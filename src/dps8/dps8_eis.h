@@ -21,7 +21,6 @@ void mrl (void);
 void mve (void);
 void mvne (void);
 void mvt (void);
-void mvt (void);
 void cmpn (void);
 void mvn (void);
 void csl (bool isSZTL);

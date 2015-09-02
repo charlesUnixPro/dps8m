@@ -16,6 +16,46 @@
 #include "dps8_iefp.h"
 #include "dps8_decimal.h"
 
+//  Restart status
+//
+//  a6bd   n/a
+//  a4bd  n/a
+//  a9bd  n/a
+//  abd  n/a
+//  awd  n/a
+//  s4bd  n/a
+//  s6bd  n/a
+//  s9bd  n/a
+//  sbd  n/a
+//  swd  n/a
+//  cmpc   done
+//  scd   done
+//  scdr   done
+//  scm   done
+//  scmr   done
+//  tct   done
+//  tctr   done
+//  mlr   done
+//  mrl   done
+//  mve
+//  mvne
+//  mvt   done
+//  cmpn
+//  mvn
+//  csl done
+//  csr done
+//  cmpb
+//  btd
+//  dtb
+//  ad2d
+//  ad3d
+//  sb2d
+//  sb3d
+//  mp2d
+//  mp3d
+//  dv2d
+//  dv3d
+
 // Local optimization
 #define ABD_BITS
 
@@ -4733,6 +4773,7 @@ void mvt (void)
     
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 2);
+    parseArgOperandDescriptor (3);
     
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
@@ -4766,49 +4807,17 @@ void mvt (void)
           break;
       }
     
-    word36 xlat = e -> op [2];  // 3rd word is a pointer to a translation table
-    int xA = (int)bitfieldExtract36(xlat, 6, 1);    // 'A' bit - indirect via pointer register
-    int xREG = xlat & 0xf;
 
-    word36 r = getMFReg36(xREG, false);
-
-    word18 xAddress = GETHI(xlat);
-
-    word8 ARn_CHAR = 0;
-    word6 ARn_BITNO = 0;
-    if (xA)
-    {
-        // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        uint n = (int)bitfieldExtract36(xAddress, 15, 3);
-        word15 offset = xAddress & MASK15;  // 15-bit signed number
-        xAddress = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
-        
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
-        
-#if 0
-        if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
-#else
-        if (get_addr_mode() == APPEND_mode)
-#endif
-        {
-            //TPR.TSR = PR[n].SNR;
-            //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-            e->ADDR3.SNR = PR[n].SNR;
-            e->ADDR3.RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-            
-            e->ADDR3.mat = viaPR;
-        }
-    }
-    
-    xAddress +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
-    xAddress &= AMASK;
-    e->ADDR3.address = xAddress;
-    
-    // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
+    // XXX I think this is where prepage mode comes in. Need to ensure that the
+    // translation table's page is im memory.
     // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
-    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The
+    //  size of the translate table is determined by the TA1 data type as shown
+    //  in the table below. Before the instruction is executed, a check is made
+    //  for allocation in memory for the page for the translate table. If the
+    //  page is not in memory, a Missing Page fault occurs before execution of
+    //  the instruction. (Bull RJ78 p.7-75)
         
     // TA1              TRANSLATE TABLE SIZE
     // 4-BIT CHARACTER      4 WORDS
@@ -4833,7 +4842,6 @@ void mvt (void)
     memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
-    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
     e->T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
@@ -4856,21 +4864,14 @@ void mvt (void)
       __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
       fill, fillT, e -> N1, e -> N2);
 
-    //int xlatAddr = 0;
-    //int xlatCN = 0;
-
-    //SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
-
-    //get469(NULL, 0, 0, 0);    // initialize char getter buffer
-    
-    for(uint i = 0 ; i < min(e->N1, e->N2); i += 1)
+    for ( ; du . CHTALLY < min(e->N1, e->N2); du . CHTALLY ++)
     {
         //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
-        int c = EISget469(1, i); // get src char
+        int c = EISget469(1, du . CHTALLY); // get src char
         int cidx = 0;
     
         if (e->TA1 == e->TA2)
-            EISput469(2, i, xlate (xlatTbl, e -> dstTA, c));
+            EISput469(2, du . CHTALLY, xlate (xlatTbl, e -> dstTA, c));
         else
         {
             // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
@@ -4913,7 +4914,7 @@ void mvt (void)
                     break;
             }
             
-            EISput469 (2, i, cout);
+            EISput469 (2, du . CHTALLY, cout);
         }
     }
     
@@ -4949,18 +4950,8 @@ void mvt (void)
                 break;
         }
         
-//        switch(e->dstSZ)
-//        {
-//            case 4:
-//                cfill &= 017;    // truncate upper 5-bits
-//                break;
-//            case 6:
-//                cfill &= 077;    // truncate upper 3-bits
-//                break;
-//        }
-        
-        for(uint j = e->N1 ; j < e->N2 ; j += 1)
-            EISput469 (2, j, cfill);
+        for( ; du . CHTALLY < e->N2 ; du . CHTALLY ++)
+            EISput469 (2, du . CHTALLY, cfill);
     }
 
     cleanupOperandDescriptor (1);
@@ -4975,7 +4966,7 @@ void mvt (void)
       }
     else
       CLRF(cu.IR, I_TRUNC);
-}
+  }
 
 
 /*
