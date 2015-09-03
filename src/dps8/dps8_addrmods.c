@@ -172,38 +172,38 @@ static char * opDescSTR (void)
   }
 
 #ifndef QUIET_UNUSED
-static char * operandSTR(void)
-{
+static char * operandSTR (void)
+  {
     DCDstruct * i = & currentInstruction;
-    if (i->info->ndes > 0)
-        return "operandSTR(): MWEIS not handled yet";
+    if (i -> info -> ndes > 0)
+      return "operandSTR(): MWEIS not handled yet";
 
-    static char temp[1024];
+    static char temp [1024];
 
     int n = OPSIZE ();
     switch (n)
-    {
+      {
         case 1:
-            sprintf(temp, "CY=%012llo", CY);
-            break;
+          sprintf (temp, "CY=%012llo", CY);
+          break;
         case 2:
-            sprintf(temp, "CYpair[0]=%012llo CYpair[1]=%012llo", Ypair[0], Ypair[1]);
-            break;
+          sprintf (temp, "CYpair[0]=%012llo CYpair[1]=%012llo",
+                   Ypair [0], Ypair [1]);
+          break;
         case 8:
         case 16:
         case 32:
         default:
-            sprintf(temp, "Unhandled size: %d", n);
-            break;
-    }
+          sprintf (temp, "Unhandled size: %d", n);
+          break;
+      }
     return temp;
 }
 #endif
 
 
-static word36 itxPair[2];   // a Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
-
-//static bool didITSITP = false; ///< true after an ITS/ITP processing
+// Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
+static word36 itxPair[2];
 
 static void doITP (void)
   {
@@ -213,10 +213,10 @@ static void doITP (void)
                GET_ITP_BITNO (itxPair), GET_ITP_MOD (itxPair));
     //
     // For n = C(ITP.PRNUM):
-    // C(PRn.SNR) → C(TPR.TSR)
-    // maximum of ( C(PRn.RNR), C(SDW.R1), C(TPR.TRR) ) → C(TPR.TRR)
-    // C(ITP.BITNO) → C(TPR.TBR)
-    // C(PRn.WORDNO) + C(ITP.WORDNO) + C(r) → C(TPR.CA)
+    // C(PRn.SNR) -> C(TPR.TSR)
+    // maximum of ( C(PRn.RNR), C(SDW.R1), C(TPR.TRR) ) -> C(TPR.TRR)
+    // C(ITP.BITNO) -> C(TPR.TBR)
+    // C(PRn.WORDNO) + C(ITP.WORDNO) + C(r) -> C(TPR.CA)
 
     // Notes:
     // 1. r = C(CT-HOLD) if the instruction word or preceding indirect word
@@ -224,7 +224,8 @@ static void doITP (void)
     // 2. r = C(ITP.MOD.Td) if the instruction word or preceding indirect word
     //   specified register then indirect modification and ITP.MOD.Tm specifies
     //    either register or register then indirect modification.
-    // 3. SDW.R1 is the upper limit of the read/write ring bracket for the segment C(TPR.TSR) (see Section 8).
+    // 3. SDW.R1 is the upper limit of the read/write ring bracket for the
+    // segment C(TPR.TSR) (see Section 8).
     //
 
     word3 n = GET_ITP_PRNUM (itxPair);
@@ -247,10 +248,10 @@ static void doITS(void)
                GET_ITS_SEGNO (itxPair), GET_ITS_RN (itxPair),
                GET_ITS_WORDNO (itxPair), GET_ITS_BITNO (itxPair),
                GET_ITS_MOD (itxPair));
-    // C(ITS.SEGNO) → C(TPR.TSR)
-    // maximum of ( C(ITS. RN), C(SDW.R1), C(TPR.TRR) ) → C(TPR.TRR)
-    // C(ITS.BITNO) → C(TPR.TBR)
-    // C(ITS.WORDNO) + C(r) → C(TPR.CA)
+    // C(ITS.SEGNO) -> C(TPR.TSR)
+    // maximum of ( C(ITS. RN), C(SDW.R1), C(TPR.TRR) ) -> C(TPR.TRR)
+    // C(ITS.BITNO) -> C(TPR.TBR)
+    // C(ITS.WORDNO) + C(r) -> C(TPR.CA)
     //
     // 1. r = C(CT-HOLD) if the instruction word or preceding indirect word
     //    specified indirect then register modification, or
@@ -662,10 +663,6 @@ startCA:;
                     switch (Td)
                     {
                         case IT_F2:
-                            // sim_printf ("IT_F2 (1): IWB is %012llo %06o %s\n",
-                            //                cu . IWB, GET_ADDR (cu . IWB),
-                            //                extMods [GET_TAG (cu . IWB)] . mod);
-                            // sim_printf ("IT_F2 (1): CA is %08o\n", TPR . CA);
                             TPR . CA = saveCA;
                             doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
 
@@ -799,7 +796,7 @@ startCA:;
 
         switch (Td)
           {
-            // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
+            // XXX this is probably wrong. ITS/ITP are not standard addr mods
             case SPEC_ITP:
             case SPEC_ITS:
               {
@@ -808,8 +805,12 @@ startCA:;
 
             case 2:
               {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
-                doFault(FAULT_IPR, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(): illegal procedure, illegal modifier, "
+                           "fault Td=%o\n", Td);
+                doFault (FAULT_IPR, ill_mod,
+                         "IT_MOD(): illegal procedure, illegal modifier, "
+                         "fault");
               }
 
             case IT_F1:
@@ -974,7 +975,9 @@ startCA:;
                     Yi += 1;
                     Yi &= MASK18;
 
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset characterOperandOffset. Yi now %06o\n", Yi);
+                    sim_debug (DBG_ADDRMOD, &cpu_dev,
+                               "IT_MOD(IT_SC): reset characterOperandOffset. "
+                               "Yi now %06o\n", Yi);
                   }
 
                 tally -= 1;
@@ -1052,7 +1055,8 @@ startCA:;
                 characterOperandOffset = GET_CF (idwtag);   //GET_TAG(indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                          "IT_MOD(IT_SCR): characterOperandSize=%o characterOperandOffset=%o Yi=%06o\n",
+                          "IT_MOD(IT_SCR): characterOperandSize=%o "
+                           "characterOperandOffset=%o Yi=%06o\n",
                            characterOperandSize, characterOperandOffset, Yi);
 
                 // For each reference to the indirect word, the character
@@ -1114,7 +1118,9 @@ startCA:;
 
             case IT_I: // Indirect (Td = 11)
               {
-                sim_debug (DBG_ADDRMOD, & cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(IT_I): reading indirect word from %06o\n",
+                           TPR.CA);
 
                 word36 indword;
                 Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, 0);
@@ -1263,7 +1269,7 @@ startCA:;
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
-                word6 junk = GET_TAG (indword);    // get tag field, but ignore it
+                word6 junk = GET_TAG (indword); // get tag field, but ignore it
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DI): indword=%012llo\n",
@@ -1287,7 +1293,8 @@ startCA:;
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n",
+                           "IT_MOD(IT_DI): writing indword=%012llo to "
+                           "addr %06o\n",
                            indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
@@ -1320,7 +1327,8 @@ startCA:;
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
-                word6 junk = GET_TAG (indword);    // get tag field, but ignore it
+                // get tag field, but ignore it
+                word6 junk = GET_TAG (indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n",
                            indword, Yi, tally);
@@ -1341,7 +1349,8 @@ startCA:;
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n",
+                           "IT_MOD(IT_ID): writing indword=%012llo to "
+                           "addr %06o\n",
                            indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
@@ -1352,7 +1361,8 @@ startCA:;
                 return SCPE_OK;
               } // IT_ID
 
-            case IT_DIC: ///< Decrement address, increment tally, and continue (Td = 15)
+            // Decrement address, increment tally, and continue (Td = 15)
+            case IT_DIC:
               {
                 // The action for this variation is identical to that for the
                 // decrement address, increment tally variation except that the
@@ -1375,7 +1385,10 @@ startCA:;
                 tally = GET_TALLY (indword); // 12-bits
                 idwtag = GET_TAG (indword);
 
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(IT_DIC): indword=%012llo Yi=%06o "
+                           "tally=%04o idwtag=%02o\n", 
+                           indword, Yi, tally, idwtag);
 
                 Yi -= 1;
                 Yi &= MASK18;
@@ -1389,9 +1402,12 @@ startCA:;
                 SCF(tally == 0, cu.IR, I_TALLY);
 
                 // write back out indword
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
+                indword = (word36) (((word36) Yi << 18) |
+                          ((word36) tally << 6) | idwtag);
 
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, saveCA);
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(IT_DIC): writing indword=%012llo to "
+                           "addr %06o\n", indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
 
@@ -1413,7 +1429,8 @@ startCA:;
                 goto startCA;
               } // IT_DIC
 
-            case IT_IDC: ///< Increment address, decrement tally, and continue (Td = 17)
+            // Increment address, decrement tally, and continue (Td = 17)
+            case IT_IDC: 
               {
                 // The action for this variation is identical to that for the
                 // increment address, decrement tally variation except that the
@@ -1437,7 +1454,8 @@ startCA:;
                 idwtag = GET_TAG (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n",
+                           "IT_MOD(IT_IDC): indword=%012llo Yi=%06o "
+                           "tally=%04o idwtag=%02o\n",
                            indword, Yi, tally, idwtag);
 
                 word24 YiSafe = Yi; // save indirect address for later use
@@ -1455,7 +1473,8 @@ startCA:;
                                     idwtag);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n",
+                           "IT_MOD(IT_IDC): writing indword=%012llo"
+                           " to addr %06o\n",
                            indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
