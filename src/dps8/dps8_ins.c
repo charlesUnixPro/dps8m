@@ -2084,35 +2084,34 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0731:  ///< ars
-            {
-            /// Shift C(A) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(A)0.
+        case 0731:  // ars
+          {
+	  // Shift C(A) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(A)0.
             
             rA &= DMASK; // Make sure the shifted in bits are 0
             word18 tmp18 = TPR.CA & 0177;   // CY bits 11-17
 
-            for(uint i = 0 ; i < tmp18 ; i++)
-            {
-                bool a0 = rA & SIGN36;    ///< A0
+            bool a0 = rA & SIGN36;    // A0
+            for (uint i = 0 ; i < tmp18 ; i ++)
+              {
                 rA >>= 1;               // shift right 1
                 if (a0)                 // propagate sign bit
                     rA |= SIGN36;
-            }
+              }
             rA &= DMASK;    // keep to 36-bits
             
             if (rA == 0)
-                SETF(cu.IR, I_ZERO);
+                SETF (cu . IR, I_ZERO);
             else
-                CLRF(cu.IR, I_ZERO);
+                CLRF (cu . IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(cu.IR, I_NEG);
+                SETF (cu . IR, I_NEG);
             else
-                CLRF(cu.IR, I_NEG);
-            }
-
-            break;
+                CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         case 0777:  ///< llr
 
@@ -2151,41 +2150,43 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0737:  ///< lls
-            /// Shift C(AQ) left the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with zeros.
-            {
-                CLRF(cu.IR, I_CARRY);
+        case 0737:  // lls
+          {
+	  // Shift C(AQ) left the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with zeros.
+
+            CLRF (cu . IR, I_CARRY);
  
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                word36 tmpSign = rQ & SIGN36;
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    rA <<= 1;               // shift left 1
+            word36 tmp36 = TPR . CA & 0177;   // CY bits 11-17
+            word36 tmpSign = rQ & SIGN36;
+            for(uint i = 0 ; i < tmp36 ; i ++)
+              {
+                rA <<= 1;               // shift left 1
             
-                    if (tmpSign != (rA & SIGN36))
-                        SETF(cu.IR, I_CARRY);
+                if (tmpSign != (rA & SIGN36))
+                  SETF (cu . IR, I_CARRY);
                 
-                    bool b0 = rQ & SIGN36;    ///< Q0
-                    if (b0)
-                        rA |= 1;            // Q0 => A35
+                bool b0 = rQ & SIGN36;    ///< Q0
+                if (b0)
+                  rA |= 1;            // Q0 => A35
                     
-                    rQ <<= 1;               // shift left 1
-                }
+                rQ <<= 1;               // shift left 1
+              }
                                 
-                rA &= DMASK;    // keep to 36-bits
-                rQ &= DMASK;
+            rA &= DMASK;    // keep to 36-bits
+            rQ &= DMASK;
                 
-                if (rA == 0 && rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
-                if (rA & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-            }
-            break;
+            if (rA == 0 && rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
+
+            if (rA & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         case 0773:  ///< lrl
             /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
@@ -2218,39 +2219,42 @@ static t_stat DoBasicInstruction (void)
             }
             break;
 
-        case 0733:  ///< lrs
-            /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(AQ)0.
-            {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                rA &= DMASK; // Make sure the shifted in bits are 0
-                rQ &= DMASK; // Make sure the shifted in bits are 0
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    bool a0 = rA & SIGN36;    ///< A0
-                    bool a35 = rA & 1;      ///< A35
+        case 0733:  // lrs
+          {
+	  // Shift C(AQ) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(AQ)0.
+
+            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            rA &= DMASK; // Make sure the shifted in bits are 0
+            rQ &= DMASK; // Make sure the shifted in bits are 0
+            bool a0 = rA & SIGN36;    ///< A0
+
+            for (uint i = 0 ; i < tmp36 ; i ++)
+              {
+                bool a35 = rA & 1;      // A35
                     
-                    rA >>= 1;               // shift right 1
-                    if (a0)
-                        rA |= SIGN36;
+                rA >>= 1;               // shift right 1
+                if (a0)
+                  rA |= SIGN36;
                     
-                    rQ >>= 1;               // shift right 1
-                    if (a35)                // propagate sign bit1
-                        rQ |= SIGN36;
-                }
-                rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
-                rQ &= DMASK;
+                rQ >>= 1;               // shift right 1
+                if (a35)                // propagate sign bit1
+                  rQ |= SIGN36;
+              }
+            rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
+            rQ &= DMASK;
                 
-                if (rA == 0 && rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
-                if (rA & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-            }
-            break;
+            if (rA == 0 && rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
+
+            if (rA & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
          
         case 0776:  ///< qlr
             /// Shift C(Q) left the number of positions given in C(TPR.CA)11,17; entering
@@ -2328,33 +2332,33 @@ static t_stat DoBasicInstruction (void)
             }
             break;
 
-        case 0732:  ///< qrs
-            /// Shift C(Q) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(Q)0.
-            {
-                rQ &= DMASK; // Make sure the shifted in bits are 0
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    bool q0 = rQ & SIGN36;    ///< Q0
-                    rQ >>= 1;               // shift right 1
-                    if (q0)                 // propagate sign bit
-                        rQ |= SIGN36;
-                }
-                rQ &= DMASK;    // keep to 36-bits
+        case 0732:  // qrs
+          {
+	  // Shift C(Q) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(Q)0.
+
+            rQ &= DMASK; // Make sure the shifted in bits are 0
+            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            bool q0 = rQ & SIGN36;    // Q0
+            for(uint i = 0 ; i < tmp36 ; i++)
+              {
+                rQ >>= 1;               // shift right 1
+                if (q0)                 // propagate sign bit
+                  rQ |= SIGN36;
+              }
+            rQ &= DMASK;    // keep to 36-bits
                 
-                if (rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
+            if (rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
                 
-                if (rQ & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-                
-            }
-            break;
+            if (rQ & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         /// Fixed-Point Addition
 
