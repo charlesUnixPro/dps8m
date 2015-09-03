@@ -552,6 +552,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     return (char *) out;
 }
 
+#ifndef QUIET_UNUSED
 // If the lhs is less than the rhs in the total order then the number will be set to the value -1. If they are equal, then number is set to 0. If the lhs is greater than the rhs then the number will be set to the value 1.
 int decCompare(decNumber *lhs, decNumber *rhs, decContext *set)
 {
@@ -566,6 +567,7 @@ int decCompare(decNumber *lhs, decNumber *rhs, decContext *set)
     
     return 1;       // lhs > rhs
 }
+
 int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
 {
     decNumber _cmpm, *cmpm;
@@ -579,6 +581,7 @@ int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
     
     return 1;       // lhs > rhs
 }
+#endif
 
 int findFirstDigit(unsigned char *bcd)
 {

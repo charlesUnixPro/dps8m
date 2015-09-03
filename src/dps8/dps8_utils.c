@@ -55,9 +55,6 @@ static char * dps8_strupr(char *str)
     return str;
 }
 
-//extern char *opcodes[], *mods[];
-//extern struct opCode NonEISopcodes[0100], EISopcodes[01000];
-
 //! get instruction info for IWB ...
 
 static opCode UnImp = {"(unimplemented)", 0, 0, 0};
@@ -71,12 +68,12 @@ struct opCode *getIWBInfo(DCDstruct *i)
     else
         p = &EISopcodes[i->opcode];
     
+#ifndef QUIET_UNUSED
     if (p->mne == 0)
     {
-#ifndef QUIET_UNUSED
         int r = 1;
-#endif
     }
+#endif
     
     return p->mne ? p : &UnImp;
 }
@@ -183,9 +180,6 @@ char *getModString(int32 tag)
 
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
@@ -260,28 +254,11 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word36 cac = AddSub36b ('+', false, op1, op2, flagsToSet, & flags0);
-      if (carryin) cac ++;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Add36b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          sim_printf ("%012llo %06o\n", cac, flags0);
-          sim_printf ("%012llo %06o\n", res, * flags);
-          sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
-        }
-    }
-#endif
     return res;
   }
 
 word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -354,28 +331,11 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word36 cac = AddSub36b ('-', false, op1, op2, flagsToSet, & flags0);
-      if (!carryin) cac --;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Sub36b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          sim_printf ("%012llo %06o\n", cac, flags0);
-          sim_printf ("%012llo %06o\n", res, * flags);
-          sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
-        }
-    }
-#endif
     return res;
   }
 
 word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
@@ -450,28 +410,11 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word18 cac = AddSub18b ('+', false, op1, op2, flagsToSet, & flags0);
-      if (carryin) cac ++;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Add18b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          sim_printf ("%06o %06o\n", cac, flags0);
-          sim_printf ("%06o %06o\n", res, * flags);
-          sim_printf ("%o %06o %06o\n", carryin, op1, op2);
-        }
-    }
-#endif
     return res;
   }
 
 word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -544,28 +487,11 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word18 cac = AddSub18b ('-', false, op1, op2, flagsToSet, & flags0);
-      if (!carryin) cac --;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Sub18b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          sim_printf ("%06o %06o\n", cac, flags0);
-          sim_printf ("%06o %06o\n", res, * flags);
-          sim_printf ("%o %06o %06o\n", carryin, op1, op2);
-        }
-    }
-#endif
     return res;
   }
 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
@@ -640,40 +566,12 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word72 cac = AddSub72b ('+', false, op1, op2, flagsToSet, & flags0);
-      if (carryin) cac ++;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Add72b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          //sim_printf ("%012llo %06o\n", cac, flags0);
-          //sim_printf ("%012llo %06o\n", res, * flags);
-          //sim_printf ("%o %012llo %012llo\n", carryin, op1, op2);
-          }
-    }
-#endif
     return res;
   }
 
-#ifdef DEGBUG_MATH
-static void print_int128o (word72 v, char * p)
-  {
-    for (uint i = 0; i < 24; i ++)
-      {
-        p [23 - i] = (v & 7) + '0';
-        v >>= 3;
-      }
-    p [24] = 0;
-   }
-#endif
 
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-#ifdef DEGBUG_MATH
-    word18 flags0 = * flags;
-#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -746,25 +644,6 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-#ifdef DEGBUG_MATH
-    {
-      word72 cac = AddSub72b ('-', false, op1, op2, flagsToSet, & flags0);
-      if (!carryin) cac --;
-      if (cac != res || flags0 != * flags)
-      //if (cac != res)
-        {
-          sim_printf ("Sub72b %c %c\n", cac != res ? 'r' : '.', flags0 != * flags ? 'f' : '.');
-          char cacb [132], resb [132], op1b [132], op2b [132];
-          print_int128o (cac, cacb);
-          print_int128o (res, resb);
-          print_int128o (op1, op1b);
-          print_int128o (op2, op2b);
-          sim_printf ("%s %06o\n", cacb, flags0);
-          sim_printf ("%s %06o\n", resb, * flags);
-          sim_printf ("%o %s %s\n", carryin, op1b, op2b);
-        }
-    }
-#endif
     return res;
   }
 
@@ -846,6 +725,7 @@ void copyBytes(int posn, word36 src, word36 *dst)
 }
 
 
+#ifndef QUIET_UNUSED
 word9 getByte(int posn, word36 src)
 {
     // XXX what's wrong with the macro????
@@ -870,6 +750,7 @@ word9 getByte(int posn, word36 src)
     word9 byteVal = (word9) (src >> (9 * (3 - posn))) & 0777;   ///< get byte bits
     return byteVal;
 }
+#endif
 
 void copyChars(int posn, word36 src, word36 *dst)
 {
@@ -2190,6 +2071,7 @@ void put36 (word36 val, uint8 * bits, uint woffset)
     // mask shouldn't be neccessary but is robust
   }
 
+#ifndef QUIET_UNUSED
 //
 //   extr9
 //     extract the word9 at coffset
@@ -2236,7 +2118,9 @@ word9 extr9 (uint8 * bits, uint coffset)
     // mask shouldn't be neccessary but is robust
     return w & 0777U;
   }
+#endif
 
+#ifndef QUIET_UNUSED
 //
 //   extr18
 //     extract the word18 at coffset
@@ -2279,6 +2163,7 @@ word18 extr18 (uint8 * bits, uint boffset)
     // mask shouldn't be neccessary but is robust
     return w & 0777777U;
   }
+#endif
 
 //
 //  getbit
@@ -2305,6 +2190,7 @@ uint8 getbit (void * bits, int offset)
     return byte;
   }
 
+#ifndef QUIET_UNUSED
 //
 // extr
 //    Get a string of bits (up to 64)
@@ -2322,6 +2208,7 @@ uint64 extr (void * bits, int offset, int nbits)
       }
     return n;
   }
+#endif
 
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
   {
