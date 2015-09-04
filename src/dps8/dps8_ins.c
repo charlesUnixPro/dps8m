@@ -5,7 +5,6 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
-//#define DBGF // eis page fault debugging
 #include <stdio.h>
 
 #include "dps8.h"
@@ -151,36 +150,6 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
 
     ReadOP (TPR.CA, OPERAND_READ, i -> a);
     return;
-}
-
-/**
- * get register value indicated by reg for Address Register operations
- * (not for use with address modifications)
- */
-static word36 getCrAR(word4 reg)
-{
-    if (reg == 0)
-        return 0;
-    
-    if (reg & 010) /* Xn */
-        return rX[X(reg)];
-    
-    switch(reg)
-    {
-        case TD_N:
-            return 0;
-        case TD_AU: // C(A)0,17
-            return GETHI(rA);
-        case TD_QU: //  C(Q)0,17
-            return GETHI(rQ);
-        case TD_IC: // C(PPR.IC)
-            return PPR.IC;
-        case TD_AL: // C(A)18,35
-            return rA; // See AL36, Table 4-1
-        case TD_QL: // C(Q)18,35
-            return rQ; // See AL36, Table 4-1
-    }
-    return 0;
 }
 
 static word36 scu_data[8];    // For SCU instruction
@@ -859,7 +828,21 @@ force:;
 
   }
 
-// CANFAULT
+static bool tstOVFfault (void)
+  {
+    // Masked?
+    if (TSTF (cu . IR, I_OMASK))
+      return false;
+    // Doing a RPx?
+    if (cu . rpt || cu . rd) 
+      {
+        // Did the repeat instruction inhibit overflow faults?
+        if ((rX [0] & 00001) == 0)
+          return false;
+      }
+    return true;
+  }
+
 t_stat executeInstruction (void)
   {
 
@@ -1135,9 +1118,14 @@ restart_1:
 
     if (info -> ndes > 0)
       {
-#ifdef DBGF
-        doEIS_CAF ();
-#endif
+        // This must not happen on instruction restart
+        if (! (cu . IR & I_MIIF))
+          {
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS start\n");
+            du . CHTALLY = 0;
+            du . Z = 1;
+          }
+//else {sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS restart, tally %d\n", du . CHTALLY);}
         for(int n = 0; n < info -> ndes; n += 1)
           {
 // XXX This is a bit of a hack; In general the code is good about 
@@ -1150,14 +1138,9 @@ restart_1:
 // to the condition we know it should be in.
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
-            Read (PPR . IC + 1 + n, & ci -> e . op [n], EIS_OPERAND_READ, 0); // I think.
+            Read (PPR . IC + 1 + n, & currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
           }
-        // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
-          {
-            du . CHTALLY = 0;
-            du . Z = 1;
-          }
+        setupEISoperands ();
       }
     else
 
@@ -1517,19 +1500,6 @@ static t_stat doInstruction (void)
     DCDstruct * i = & currentInstruction;
     CLRF(cu.IR, I_MIIF);
     
-    //if (i->e)
-    if (i->info->ndes > 0)
-    {
-        i->e.ins = i;
-        i->e.addr[0].e = &i->e;
-        i->e.addr[1].e = &i->e;
-        i->e.addr[2].e = &i->e;
-        
-        i->e.addr[0].mat = OperandRead;   // no ARs involved yet
-        i->e.addr[1].mat = OperandRead;   // no ARs involved yet
-        i->e.addr[2].mat = OperandRead;   // no ARs involved yet
-    }
-    
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
 
@@ -1579,12 +1549,26 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0335:  ///< lca
-            rA = compl36(CY, &cu.IR);
-            break;
+          {
+            bool ovf;
+            rA = compl36 (CY, & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "lca overflow fault");
+              }
+          }
+          break;
             
         case 0336:  ///< lcq
-            rQ = compl36(CY, &cu.IR);
-            break;
+          {
+            bool ovf;
+            rQ = compl36 (CY, & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "lcq overflow fault");
+              }
+          }
+          break;
             
         case 0320:  ///< lcx0
         case 0321:  ///< lcx1
@@ -1594,34 +1578,45 @@ static t_stat DoBasicInstruction (void)
         case 0325:  ///< lcx5
         case 0326:  ///< lcx6
         case 0327:  ///< lcx7
-            // ToDo: Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
-            {
-                uint32 n = opcode & 07;  // get n
-                rX[n] = compl18(GETHI(CY), &cu.IR);
-            }
-            break;
+          {
+	  // XXX ToDo: Attempted repetition with the rpl instruction and with
+	  // the same register given as target and modifier causes an illegal
+	  // procedure fault.
+
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = compl18 (GETHI (CY), & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "lcxn overflow fault");
+              }
+          }
+          break;
             
-        case 0337:  ///< lcaq
-            // The lcaq instruction changes the number to its negative while moving it from Y-pair to AQ. The operation is executed by forming the twos complement of the string of 72 bits. In twos complement arithmetic, the value 0 is its own negative. An overflow condition exists if C(Y-pair) = -2**71.
-            
-            //Read2(i, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
+        case 0337:  // lcaq
+          {
+	  // The lcaq instruction changes the number to its negative while
+	  // moving it from Y-pair to AQ. The operation is executed by
+	  // forming the twos complement of the string of 72 bits. In twos
+	  // complement arithmetic, the value 0 is its own negative. An
+	  // overflow condition exists if C(Y-pair) = -2**71.
             
             if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
-            {
+              {
                 SETF(cu.IR, I_OFLOW);
-                if (! TSTF (cu.IR, I_OMASK))
-                    doFault(FAULT_OFL, 0,"lcaq overflow fault");
-            }
+                if (tstOVFfault ())
+                    doFault(FAULT_OFL, 0, "lcaq overflow fault");
+              }
             else if (Ypair[0] == 0 && Ypair[1] == 0)
-            {
+              {
                 rA = 0;
                 rQ = 0;
                 
                 SETF(cu.IR, I_ZERO);
                 CLRF(cu.IR, I_NEG);
-            }
+              }
             else
-            {
+              {
                 word72 tmp72 = 0;
 
                 tmp72 = bitfieldInsert72(tmp72, Ypair[0], 36, 36);
@@ -1636,12 +1631,14 @@ static t_stat DoBasicInstruction (void)
                     SETF(cu.IR, I_ZERO);
                 else
                     CLRF(cu.IR, I_ZERO);
+
                 if (rA & SIGN36)
                     SETF(cu.IR, I_NEG);
                 else
                     CLRF(cu.IR, I_NEG);
-            }
-            break;
+              }
+          }
+          break;
 
         case 0235:  ///< lda
             rA = CY;
@@ -2087,35 +2084,34 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0731:  ///< ars
-            {
-            /// Shift C(A) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(A)0.
+        case 0731:  // ars
+          {
+	  // Shift C(A) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(A)0.
             
             rA &= DMASK; // Make sure the shifted in bits are 0
             word18 tmp18 = TPR.CA & 0177;   // CY bits 11-17
 
-            for(uint i = 0 ; i < tmp18 ; i++)
-            {
-                bool a0 = rA & SIGN36;    ///< A0
+            bool a0 = rA & SIGN36;    // A0
+            for (uint i = 0 ; i < tmp18 ; i ++)
+              {
                 rA >>= 1;               // shift right 1
                 if (a0)                 // propagate sign bit
                     rA |= SIGN36;
-            }
+              }
             rA &= DMASK;    // keep to 36-bits
             
             if (rA == 0)
-                SETF(cu.IR, I_ZERO);
+                SETF (cu . IR, I_ZERO);
             else
-                CLRF(cu.IR, I_ZERO);
+                CLRF (cu . IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(cu.IR, I_NEG);
+                SETF (cu . IR, I_NEG);
             else
-                CLRF(cu.IR, I_NEG);
-            }
-
-            break;
+                CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         case 0777:  ///< llr
 
@@ -2154,41 +2150,43 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0737:  ///< lls
-            /// Shift C(AQ) left the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with zeros.
-            {
-                CLRF(cu.IR, I_CARRY);
+        case 0737:  // lls
+          {
+	  // Shift C(AQ) left the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with zeros.
+
+            CLRF (cu . IR, I_CARRY);
  
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                word36 tmpSign = rQ & SIGN36;
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    rA <<= 1;               // shift left 1
+            word36 tmp36 = TPR . CA & 0177;   // CY bits 11-17
+            word36 tmpSign = rA & SIGN36;
+            for(uint i = 0 ; i < tmp36 ; i ++)
+              {
+                rA <<= 1;               // shift left 1
             
-                    if (tmpSign != (rA & SIGN36))
-                        SETF(cu.IR, I_CARRY);
+                if (tmpSign != (rA & SIGN36))
+                  SETF (cu . IR, I_CARRY);
                 
-                    bool b0 = rQ & SIGN36;    ///< Q0
-                    if (b0)
-                        rA |= 1;            // Q0 => A35
+                bool b0 = rQ & SIGN36;    ///< Q0
+                if (b0)
+                  rA |= 1;            // Q0 => A35
                     
-                    rQ <<= 1;               // shift left 1
-                }
+                rQ <<= 1;               // shift left 1
+              }
                                 
-                rA &= DMASK;    // keep to 36-bits
-                rQ &= DMASK;
+            rA &= DMASK;    // keep to 36-bits
+            rQ &= DMASK;
                 
-                if (rA == 0 && rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
-                if (rA & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-            }
-            break;
+            if (rA == 0 && rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
+
+            if (rA & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         case 0773:  ///< lrl
             /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
@@ -2221,39 +2219,42 @@ static t_stat DoBasicInstruction (void)
             }
             break;
 
-        case 0733:  ///< lrs
-            /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(AQ)0.
-            {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                rA &= DMASK; // Make sure the shifted in bits are 0
-                rQ &= DMASK; // Make sure the shifted in bits are 0
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    bool a0 = rA & SIGN36;    ///< A0
-                    bool a35 = rA & 1;      ///< A35
+        case 0733:  // lrs
+          {
+	  // Shift C(AQ) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(AQ)0.
+
+            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            rA &= DMASK; // Make sure the shifted in bits are 0
+            rQ &= DMASK; // Make sure the shifted in bits are 0
+            bool a0 = rA & SIGN36;    ///< A0
+
+            for (uint i = 0 ; i < tmp36 ; i ++)
+              {
+                bool a35 = rA & 1;      // A35
                     
-                    rA >>= 1;               // shift right 1
-                    if (a0)
-                        rA |= SIGN36;
+                rA >>= 1;               // shift right 1
+                if (a0)
+                  rA |= SIGN36;
                     
-                    rQ >>= 1;               // shift right 1
-                    if (a35)                // propagate sign bit1
-                        rQ |= SIGN36;
-                }
-                rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
-                rQ &= DMASK;
+                rQ >>= 1;               // shift right 1
+                if (a35)                // propagate sign bit1
+                  rQ |= SIGN36;
+              }
+            rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
+            rQ &= DMASK;
                 
-                if (rA == 0 && rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
-                if (rA & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-            }
-            break;
+            if (rA == 0 && rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
+
+            if (rA & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
          
         case 0776:  ///< qlr
             /// Shift C(Q) left the number of positions given in C(TPR.CA)11,17; entering
@@ -2331,100 +2332,130 @@ static t_stat DoBasicInstruction (void)
             }
             break;
 
-        case 0732:  ///< qrs
-            /// Shift C(Q) right the number of positions given in C(TPR.CA)11,17; filling
-            /// vacated positions with initial C(Q)0.
-            {
-                rQ &= DMASK; // Make sure the shifted in bits are 0
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
-                {
-                    bool q0 = rQ & SIGN36;    ///< Q0
-                    rQ >>= 1;               // shift right 1
-                    if (q0)                 // propagate sign bit
-                        rQ |= SIGN36;
-                }
-                rQ &= DMASK;    // keep to 36-bits
+        case 0732:  // qrs
+          {
+	  // Shift C(Q) right the number of positions given in
+	  // C(TPR.CA)11,17; filling vacated positions with initial C(Q)0.
+
+            rQ &= DMASK; // Make sure the shifted in bits are 0
+            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            bool q0 = rQ & SIGN36;    // Q0
+            for(uint i = 0 ; i < tmp36 ; i++)
+              {
+                rQ >>= 1;               // shift right 1
+                if (q0)                 // propagate sign bit
+                  rQ |= SIGN36;
+              }
+            rQ &= DMASK;    // keep to 36-bits
                 
-                if (rQ == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
+            if (rQ == 0)
+              SETF (cu . IR, I_ZERO);
+            else
+              CLRF (cu . IR, I_ZERO);
                 
-                if (rQ & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-                
-            }
-            break;
+            if (rQ & SIGN36)
+              SETF (cu . IR, I_NEG);
+            else
+              CLRF (cu . IR, I_NEG);
+          }
+          break;
 
         /// Fixed-Point Addition
+
         case 0075:  ///< ada
+          {
             /**
-              \brief C(A) + C(Y) -> C(A)
-              Modifications: All
-             
-            (Indicators not listed are not affected)
-            ZERO: If C(A) = 0, then ON; otherwise OFF
-            NEG: If C(A)0 = 1, then ON; otherwise OFF
-            OVR: If range of A is exceeded, then ON
-            CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
-             
-            TODO: check Michael Mondy's notes on 36-bit addition and T&D stuff. Need to reimplement code
-             
-             
+             * C(A) + C(Y) -> C(A)
+             * Modifications: All
+            *
+            *  (Indicators not listed are not affected)
+            *  ZERO: If C(A) = 0, then ON; otherwise OFF
+            *  NEG: If C(A)0 = 1, then ON; otherwise OFF
+            *  OVR: If range of A is exceeded, then ON
+            *  CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
             */
-        
-            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+
+            bool ovf;
+            rA = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
          
-        case 0077:   ///< adaq
+        case 0077:   // adaq
+          {
             // C(AQ) + C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);
-        
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "adaq overflow fault");
+              }
+          }
+          break;
             
-        case 0033:   ///< adl
+        case 0033:   // adl
+          {
             // C(AQ) + C(Y) sign extended -> C(AQ)
-            {
-                word72 tmp72 = SIGNEXT36_72(CY); // sign extend Cy
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            bool ovf;
+            word72 tmp72 = SIGNEXT36_72 (CY); // sign extend Cy
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                            & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "adl overflow fault");
+              }
+          }
+          break;
             
             
-        case 0037:   ///< adlaq
-            /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// C(AQ) + C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);
+        case 0037:   // adlaq
+          {
+	  // The adlaq instruction is identical to the adaq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adlaq instruction, nor does an overflow fault occur. Operands
+	  // and results are treated as unsigned, positive binary integers.
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
         
-                //tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                tmp72 = Add72b (convertToWord72(rA, rQ), tmp72, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
+                            I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+          }
+          break;
             
-        case 0035:   ///< adla
-            /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            //rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rA = Add36b(rA, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0035:   // adla
+          {
+	  // The adla instruction is identical to the ada instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adla instruction, nor does an overflow fault occur. Operands and
+	  // results are treated as unsigned, positive binary integers. */
+
+            bool ovf;
+            rA = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0036:   ///< adlq
-            /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            //rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rQ = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+          {
+	  // The adlq instruction is identical to the adq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // adlq instruction, nor does an overflow fault occur. Operands and
+	  // results are treated as unsigned, positive binary integers. */
+
+            bool ovf;
+            rQ = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0020:   ///< adlx0
         case 0021:   ///< adlx1
@@ -2434,17 +2465,25 @@ static t_stat DoBasicInstruction (void)
         case 0025:   ///< adlx5
         case 0026:   ///< adlx6
         case 0027:   ///< adlx7
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Add18b (rX [n], GETHI (CY), 0, I_ZERO | I_NEG | I_CARRY,
+                             & cu . IR, & ovf);
+          }
+          break;
             
-        case 0076:   ///< adq
-            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Add36b(rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0076:   // adq
+          {
+            bool ovf;
+            rQ = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "adq overflow fault");
+              }
+          }
+          break;
 
         case 0060:   ///< adx0
         case 0061:   ///< adx1
@@ -2454,31 +2493,59 @@ static t_stat DoBasicInstruction (void)
         case 0065:   ///< adx5
         case 0066:   ///< adx6
         case 0067:   ///< adx7
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                rX[n] = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Add18b (rX [n], GETHI (CY), 0,
+                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                             & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "adxn overflow fault");
+              }
+          }
+          break;
         
-        case 0054:   ///< aos
-            /// C(Y)+1->C(Y)
+        case 0054:   // aos
+          {
+            // C(Y)+1->C(Y)
             
-            //CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (CY, 1, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+            bool ovf;
+            CY = Add36b (CY, 1, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "aos overflow fault");
+              }
+          }
+          break;
         
-        case 0055:   ///< asa
-            /// C(A) + C(Y) -> C(Y)
-            //CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (rA, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0055:   // asa
+          {
+            // C(A) + C(Y) -> C(Y)
+
+            bool ovf;
+            CY = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "asa overflow fault");
+              }
+          }
+          break;
             
-        case 0056:   ///< asq
-            /// C(Q) + C(Y) -> C(Y)
-            //CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Add36b (rQ, CY, 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+        case 0056:   // asq
+          {
+            // C(Q) + C(Y) -> C(Y)
+            bool ovf;
+            CY = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "asq overflow fault");
+              }
+          }
+          break;
          
         case 0040:   ///< asx0
         case 0041:   ///< asx1
@@ -2488,81 +2555,117 @@ static t_stat DoBasicInstruction (void)
         case 0045:   ///< asx5
         case 0046:   ///< asx6
         case 0047:   ///< asx7
-            {
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
-            
-                uint32 n = opcode & 07;  // get n
-                //word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                word18 tmp18 = Add18b (rX[n], GETHI(CY), 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                SETHI(CY, tmp18);
-            }
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            //    \brief C(Xn) + C(Y)0,17 -> C(Y)0,17
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            word18 tmp18 = Add18b (rX [n], GETHI (CY), 0,
+                                   I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                                   & cu . IR, & ovf);
+            SETHI (CY, tmp18);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "asxn overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0071:   // awca
+          {
+            // If carry indicator OFF, then C(A) + C(Y) -> C(A)
+            // If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
 
-        case 0071:   ///< awca
-            /// If carry indicator OFF, then C(A) + C(Y) -> C(A)
-            /// If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
-            //if (TSTF(cu.IR, I_CARRY))
-                //rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Add36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            rA = Add36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                          I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "awca overflow fault");
+              }
+          }
+          break;
             
-            break;
-            
-            
-        case 0072:   ///< awcq
-            /// If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
-            /// If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
-            //if (TSTF(cu.IR, I_CARRY))
-                //rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Add36b (rQ, CY, TSTF(cu.IR, I_CARRY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
+        case 0072:   // awcq
+          {
+            // If carry indicator OFF, then C(Q) + C(Y) -> C(Q)
+            // If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
+
+            bool ovf;
+            rQ = Add36b (rQ, CY, TSTF (cu . IR, I_CARRY),
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
            
         /// Fixed-Point Subtraction
             
         case 0175:  ///< sba
-            /// C(A) - C(Y) -> C(A)
-            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+          {
+            // C(A) - C(Y) -> C(A)
+
+            bool ovf;
+            rA = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "sba overflow fault");
+              }
+          }
+          break;
          
         case 0177:  ///< sbaq
-            /// C(AQ) - C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);   //
-        
-                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                tmp72 = Sub72b (convertToWord72(rA, rQ), tmp72, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+          {
+            // C(AQ) - C(Y-pair) -> C(AQ)
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair); 
+            tmp72 = Sub72b (convertToWord72 (rA, rQ), tmp72, 1,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
           
-        case 0135:  ///< sbla
-            /// C(A) - C(Y) -> C(A) logical
-            //rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0135:  // sbla
+          {
+            // C(A) - C(Y) -> C(A) logical
+
+            bool ovf;
+            rA = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
-        case 0137:  ///< sblaq
-            /// The sblaq instruction is identical to the sbaq instruction with the exception that the overflow indicator is not affected by the sblaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
-            /// \brief C(AQ) - C(Y-pair) -> C(AQ)
-            {
-                word72 tmp72 = YPAIRTO72(Ypair);   //
+        case 0137:  // sblaq
+          {
+	  // The sblaq instruction is identical to the sbaq instruction with
+	  // the exception that the overflow indicator is not affected by the
+	  // sblaq instruction, nor does an overflow fault occur. Operands
+	  // and results are treated as unsigned, positive binary integers.
+            // C(AQ) - C(Y-pair) -> C(AQ)
+
+            bool ovf;
+            word72 tmp72 = YPAIRTO72 (Ypair);
         
-                //tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
-                tmp72 = Sub72b (convertToWord72(rA, rQ), 1, tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
-                convertToWord36(tmp72, &rA, &rQ);
-            }
-            break;
+            tmp72 = Sub72b (convertToWord72 (rA, rQ), 1, tmp72,
+                            I_ZERO | I_NEG |  I_CARRY, & cu . IR, & ovf);
+            convertToWord36 (tmp72, & rA, & rQ);
+          }
+          break;
             
-        case 0136:  ///< sblq
-            ///< C(Q) - C(Y) -> C(Q)
-            //rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            break;
+        case 0136:  // sblq
+          {
+            // C(Q) - C(Y) -> C(Q)
+            bool ovf;
+            rQ = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
             
         case 0120:  ///< sblx0
         case 0121:  ///< sblx1
@@ -2572,20 +2675,30 @@ static t_stat DoBasicInstruction (void)
         case 0125:  ///< sblx5
         case 0126:  ///< sblx6
         case 0127:  ///< sblx7
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief     C(Xn) - C(Y)0,17 -> C(Xn)
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
-                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Xn)
+
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Sub18b (rX [n], GETHI (CY), 1,
+                             I_ZERO | I_NEG | I_CARRY, & cu . IR, & ovf);
+          }
+          break;
          
         case 0176:  ///< sbq
-            /// C(Q) - C(Y) -> C(Q)
-            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            break;
+          {
+            // C(Q) - C(Y) -> C(Q)
+
+            bool ovf;
+            rQ = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "sbq overflow fault");
+              }
+          }
+          break;
             
         case 0160:  ///< sbx0
         case 0161:  ///< sbx1
@@ -2595,28 +2708,49 @@ static t_stat DoBasicInstruction (void)
         case 0165:  ///< sbx5
         case 0166:  ///< sbx6
         case 0167:  ///< sbx7
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief  C(Xn) - C(Y)0,17 -> C(Xn)
-            {
-                uint32 n = opcode & 07;  // get n
-                //rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                rX[n] = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            }
-            break;
+          {
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Xn)
 
-        case 0155:  ///< ssa
-            /// C(A) - C(Y) -> C(Y)
-            //CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Sub36b (rA, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            rX [n] = Sub18b (rX [n], GETHI (CY), 1,
+                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                             & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "sbxn overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0155:  // ssa
+          {
+            // C(A) - C(Y) -> C(Y)
 
-        case 0156:  ///< ssq
-            /// C(Q) - C(Y) -> C(Y)
-            //CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            CY = Sub36b (rQ, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            bool ovf;
+            CY = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ssa overflow fault");
+              }
+          }
+          break;
 
-            break;
+        case 0156:  // ssq
+          {
+            // C(Q) - C(Y) -> C(Y)
+
+            bool ovf;
+            CY = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ssq overflow fault");
+              }
+          }
+          break;
         
         case 0140:  ///< ssx0
         case 0141:  ///< ssx1
@@ -2626,39 +2760,58 @@ static t_stat DoBasicInstruction (void)
         case 0145:  ///< ssx5
         case 0146:  ///< ssx6
         case 0147:  ///< ssx7
-            {
-            /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
-            /// \brief C(Xn) - C(Y)0,17 -> C(Y)0,17
-                uint32 n = opcode & 07;  // get n
-                //word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                word18 tmp18 = Sub18b (rX[n], GETHI(CY), 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-                SETHI(CY, tmp18);
-            }
+          {
+            // For uint32 n = 0, 1, ..., or 7 as determined by operation code
+            // C(Xn) - C(Y)0,17 -> C(Y)0,17
 
-            break;
+            bool ovf;
+            uint32 n = opcode & 07;  // get n
+            word18 tmp18 = Sub18b (rX [n], GETHI (CY), 1,
+                                   I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                                   & cu . IR, & ovf);
+            SETHI (CY, tmp18);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
 
             
-        case 0171:  ///< swca
-            /// If carry indicator ON, then C(A)- C(Y) -> C(A)
-            /// If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
-            //if (!TSTF(cu.IR, I_CARRY))
-                //rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rA = Sub36b (rA, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
-         
-        case 0172:  ///< swcq
-            /// If carry indicator ON, then C(Q) - C(Y) -> C(Q)
-            /// If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
-            //if (!TSTF(cu.IR, I_CARRY))
-                //rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            //rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            rQ = Sub36b (rQ, CY, TSTF(cu.IR, I_CARRY) ? 1 : 0, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
-            
-            break;
+        case 0171:  // swca
+          {
+            // If carry indicator ON, then C(A)- C(Y) -> C(A)
+            // If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
+
+            bool ovf;
+            rA = Sub36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "swca overflow fault");
+              }
+          }
+          break;
+
+        case 0172:  // swcq
+          {
+            // If carry indicator ON, then C(Q) - C(Y) -> C(Q)
+            // If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
+
+            bool ovf;
+            rQ = Sub36b (rQ, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+                         & cu . IR, & ovf);
+            if (ovf && tstOVFfault ())
+              {
+                doFault (FAULT_OFL, 0, "ada overflow fault");
+              }
+          }
+          break;
         
         /// Fixed-Point Multiplication
+
         case 0401:  ///< mpf
             {
             /// C(A) × C(Y) -> C(AQ), left adjusted
@@ -2680,7 +2833,7 @@ static t_stat DoBasicInstruction (void)
                 SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
                 SCF(rA & SIGN36, cu.IR, I_NEG);
             
-                if (isovr && ! TSTF (cu.IR, I_OMASK))
+                if (isovr && tstOVFfault ())
                     doFault(FAULT_OFL, 0,"mpf overflow fault");
                 }
             }
@@ -2828,7 +2981,7 @@ static t_stat DoBasicInstruction (void)
                 if (ov)
                 {
                     SETF(cu.IR, I_OFLOW);
-                    if (! TSTF (cu.IR, I_OMASK))
+                    if (tstOVFfault ())
                         doFault(FAULT_OFL, 0,"neg overflow fault");
                 }
             }
@@ -2861,7 +3014,7 @@ static t_stat DoBasicInstruction (void)
                     if (ov)
                     {
                         SETF(cu.IR, I_OFLOW);
-                        if (! TSTF (cu.IR, I_OMASK))
+                        if (tstOVFfault ())
                             doFault(FAULT_OFL, 0,"negl overflow fault");
                     }
                 
@@ -4976,7 +5129,7 @@ static t_stat DoBasicInstruction (void)
          
         case 0560:  // rpd
             {
-              uint c = (i->address >> 7) & 1;
+              word1 c = (i->address >> 7) & 1;
               cu . delta = i->tag;
               if (c)
                 rX[0] = i->address;    // Entire 18 bits
@@ -5725,7 +5878,7 @@ static t_stat DoEISInstruction (void)
     
     int32 opcode = i->opcode;
     //if (i->e)
-        i->e.ins = i;
+        //i->e.ins = i;
 
     switch (opcode)
     {
@@ -6388,543 +6541,131 @@ static t_stat DoEISInstruction (void)
           break;
             
         // EIS - Address Register Special Arithmetic
-        case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
-            {
-                word3 ARn = GET_ARN (cu . IWB); // 3-bit register specifier
-                word15 address = GET_OFFSET (cu . IWB); // 15-bit Address
-                // 4-bit register modification (None except au, qu, al, ql, xn)
-                word4 reg = GET_TAG (cu . IWB); 
-
-                // The contents of the register is a 9-bit character count
-                word36 r = getCrAR (reg);
-
-                // The a bit is zero if IGN_B29 is set;
-                //if (! i -> a)
-                if (! GET_A (cu . IWB))
-                  {
-                    // If A = 0, then
-                    //   ADDRESS + C(REG) / 4 -> C(ARn.WORDNO)
-                    //   C(REG)mod4 -> C(ARn.CHAR)
-                    AR [ARn] . WORDNO = (address + r / 4);
-                    // AR[ARn].CHAR = r % 4;
-                    SET_AR_CHAR_BIT (ARn, r % 4, 0);
-                  }
-                else
-                  {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 
-                    //     4 -> C(ARn.WORDNO)
-                    //   (C(ARn.CHAR) + C(REG))mod4 -> C(ARn.CHAR)
-                    // (r and AR_CHAR are 18 bit values, but we want not to 
-                    // lose most significant digits in the addition.
-                    AR [ARn] . WORDNO += 
-                      (address + (r + ((word36) GET_AR_CHAR (ARn))) / 4);
-                    // AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (r + ((word36) GET_AR_CHAR (ARn))) % 4, 0);
-                  }
-                AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-
-                // 0000 -> C(ARn.BITNO)
-                // Zero set in SET_AR_CHAR_BIT calls above
-                // AR[ARn].ABITNO = 0;
-              }
-            break;
+        case 0500:  // a9bd Add 9-bit Displacement to Address Register
+          a9bd ();
+          break;
             
-        case 0501:  ///< a6bd        Add 6-bit Displacement to Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                //int r = SIGNEXT18(getCrAR(reg));
-                word36 r = getCrAR(reg);
-                
-                // If A = 0, then
-                //   ADDRESS + C(REG) / 6 -> C(ARn.WORDNO)
-                //   ((6 * C(REG))mod36) / 9 -> C(ARn.CHAR)
-                //   (6 * C(REG))mod9 -> C(ARn.BITNO)
-                //If A = 1, then
-                //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                //   ((9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                //   (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu . IWB))
-                {
-                    AR[ARn].WORDNO = address + r / 6;
-                    // AR[ARn].CHAR = ((6 * r) % 36) / 9;
-                    // AR[ARn].ABITNO = (6 * r) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((6 * r) % 36) / 9, (6 * r) % 9);
-                }
-                else
-                {
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 6 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
-                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 36) / 9;
-                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) + 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) + 6 * r + GET_AR_BITNO (ARn)) % 9);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-            }
-            break;
+        case 0501:  // a6bd Add 6-bit Displacement to Address Register
+          a6bd ();
+          break;
             
-        case 0502:  ///< a4bd        Add 4-bit Displacement to Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                //int r = SIGNEXT18(getCrAR(reg));
-                word36 r = getCrAR(reg);
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   ADDRESS + C(REG) / 4 -> C(ARn.WORDNO)
-                    //   C(REG)mod4 -> C(ARn.CHAR)
-                    //   4 * C(REG)mod2 + 1 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = address + r / 4;
-                    // AR[ARn].CHAR = r % 4;
-                    // AR[ARn].ABITNO = 4 * r % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, r % 4, 4 * r % 2 + 1);
-                } else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                    //   4 * (C(ARn.CHAR) + 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) + 4 * r + GET_AR_BITNO (ARn)) / 36;
-                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9;
-                    // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     4 * (GET_AR_CHAR (ARn) + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-            }
-            break;
+        case 0502:  // a4bd Add 4-bit Displacement to Address Register
+          a4bd ();
+          break;
             
 // If defined, do all ABD calculations in bits, not chars and bits in chars.
 #define ABD_BITS
-        case 0503:  ///< abd         Add   bit Displacement to Address Register
-            {
-                // 3-bit register specifier
-                uint ARn = bitfieldExtract36 (cu . IWB, 33, 3);
-//#define dbg if (PPR.PSR == 0400 && PPR.IC == 024025)
-//sim_printf ("ABD IC %06o address %06o\n", PPR . IC, currentInstruction . address);
-//sim_printf ("    AR%d was WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
-//ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
-//sim_printf ("    A %d address %05llo reg %llo cr %lld (%06llo)\n",
-//GET_A (cu . IWB) ? 1 : 0, getbits36 (cu . IWB, 3, 15), getbits36 (cu . IWB, 32, 4), getCrAR (getbits36 (cu . IWB, 32, 4)), getCrAR (getbits36 (cu . IWB, 32, 4)));
-//word18 wwordno = AR [ARn] . WORDNO;
-//word18 wbitno = AR [ARn] . BITNO;
-//word36 waddend = getCrAR (getbits36 (cu . IWB, 32, 4));
-//word36 waddr = 0;
-
-                // 4-bit register modification (None except au, qu, al, ql, xn)
-                uint reg = getbits36 (cu . IWB, 32, 4);
-                
-// The bit string count in the register specified in the DR field is divided by
-// 36. The quotient is taken as the word count and the remainder is taken as
-// the bit count. The word count is added to the y field for which bit 3 of the
-// instruction word is extended and the sum is taken.
-
-                word36 bitStringCnt = getCrAR (reg);
-                word36 wordCnt = bitStringCnt / 36u;
-                word36 bitCnt = bitStringCnt % 36u;
-
-                word18 address = 
-                  SIGNEXT15_18 ((word15)getbits36 (cu . IWB, 3, 15)) & AMASK;
-//waddr = address;
-                address += wordCnt;
-
-                if (! GET_A (cu . IWB))
-                  {
-
-// If bit 29=0, the sum is loaded into bits 0-17 of the specified AR, and the
-// character portion and the bit portion of the remainder are loaded into bits
-// 18-23 of the specified AR.
-
-                    AR [ARn] . WORDNO = address;
-#ifdef ABD_BITS
-                    AR [ARn] . BITNO = bitCnt;
-#else
-                    SET_AR_CHAR_BIT (ARn, bitCnt / 9u, bitCnt % 9u);
-#endif
-                  }
-                else
-                  {
-// If bit 29=1, the sum is added to bits 0-17 of the specified AR.
-                    AR [ARn] . WORDNO += address;
-//  The CHAR and BIT fields (bits 18-23) of the specified AR are added to the 
-//  character portion and the bit portion of the remainder. 
-
-#ifdef ABD_BITS
-                    word36 bits = AR [ARn] . BITNO + bitCnt;
-                    AR [ARn] . WORDNO += bits / 36;
-                    AR [ARn] . BITNO = bits % 36;
-#else
-                    word36 charPortion = bitCnt / 9;
-                    word36 bitPortion = bitCnt % 9;
-
-                    charPortion += GET_AR_CHAR (ARn);
-                    bitPortion += GET_AR_BITNO (ARn);
-
-// WORD, CHAR and BIT fields generated in this manner are loaded into bits 0-23
-// of the specified AR. With this addition, carry from the BIT field (bit 20)
-// and the CHAR field (bit 18) is transferred (when BIT field >8, CHAR field
-// >3).
-
-// XXX replace with modulus arithmetic
-
-                    while (bitPortion > 8)
-                      {
-                        bitPortion -= 9;
-                        charPortion += 1;
-                      }
-
-                    while (charPortion > 3)
-                      {
-                        charPortion -= 3;
-                        AR [ARn] . WORDNO += 1;
-                      }
-
-
-                    SET_AR_CHAR_BIT (ARn, charPortion, bitPortion);
-#endif
-                  }
-                AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-//dbg sim_printf ("    AR%d is  WORDNO %06o BITNO %u AR_BITNO %u AR_CHAR %u\n",
-//ARn, AR [ARn] . WORDNO, AR [ARn] . BITNO, GET_AR_BITNO (ARn), GET_AR_CHAR (ARn));
-#if 0
-if (PPR.PSR == 0400 && PPR.IC == 024025)
-{
-word36 cacbits = wbitno + waddend;
-word18 cacw = wwordno + cacbits / 36;
-word18 cacbitno = cacbits % 36;
-sim_printf ("%012llo   %08o.%02o + %08llo + %08llo.%02llo (%08llo) -> %08o.%02o     [%08o.%02o]%c%c\n", rQ, wwordno, wbitno, waddr, waddend / 36, waddend % 36, waddend, AR [ARn] . WORDNO, AR [ARn] . BITNO,
-cacw, cacbitno, cacw == AR [ARn] . WORDNO ? '.' : '!', cacbitno == AR [ARn] . BITNO ? '.' : '!');
-AR [ARn] . WORDNO = cacw;
-AR [ARn] . BITNO = cacbitno;
-}
-#endif
-            }
-            break;
+        case 0503:  // abd  Add bit Displacement to Address Register
+          abd ();
+          break;
             
-        case 0507:  ///< awd         Add  word Displacement to Address Register
-            {
+        case 0507:  // awd Add  word Displacement to Address Register
+          awd ();
+          break;
             
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                
-                // If A = 0, then
-                //   ADDRESS + C(REG) -> C(ARn.WORDNO)
-                // If A = 1, then
-                //   C(ARn.WORDNO) + ADDRESS + C(REG) -> C(ARn.WORDNO)
-                // 00 -> C(ARn.CHAR)
-                // 0000 -> C(ARn.BITNO)
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                    AR[ARn].WORDNO = (address + getCrAR(reg));
-                else
-                    AR[ARn].WORDNO += (address + getCrAR(reg));
-                
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // AR[ARn].CHAR = 0;
-                // AR[ARn].ABITNO = 0;
-                SET_AR_CHAR_BIT (ARn, 0, 0);
-            }
-            break;
+        case 0520:  // s9bd   Subtract 9-bit Displacement from Address Register
+          s9bd ();
+          break;
             
-        case 0520:  ///< s9bd   Subtract 9-bit Displacement from Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-
-                word36 r = getCrAR(reg);
+        case 0521:  // s6bd   Subtract 6-bit Displacement from Address Register
+          s6bd ();
+          break;
                 
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 4) -> C(ARn.WORDNO)
-                    //   - C(REG)mod4 -> C(ARn.CHAR)
-                    AR[ARn].WORDNO = -(address + r / 4);
-                    // AR[ARn].CHAR = - (r % 4);
-                    SET_AR_CHAR_BIT (ARn, (r % 4), 0);
-                }
-                else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (C(ARn.CHAR) - C(REG)) / 4 -> C(ARn.WORDNO)
-                    //   (C(ARn.CHAR) - C(REG))mod4 -> C(ARn.CHAR)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (GET_AR_CHAR (ARn) - r) / 4;
-                    // AR[ARn].CHAR = (AR[ARn].CHAR - r) % 4;
-                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) - r) % 4, 0);
-                }
-                
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // 0000 -> C(ARn.BITNO)
-                // Zero set above in macro call
-                // AR[ARn].ABITNO = 0;
-            }
-            break;
+        case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
+          s4bd ();
+          break;
             
-        case 0521:  ///< s6bd   Subtract 6-bit Displacement from Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                word36 r = getCrAR(reg);
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 6) -> C(ARn.WORDNO)
-                    //   - ((6 * C(REG))mod36) / 9 -> C(ARn.CHAR)
-                    //   - (6 * C(REG))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = -(address + r / 6);
-                    // AR[ARn].CHAR = -((6 * r) % 36) / 9;
-                    // AR[ARn].ABITNO = -(6 * r) % 9;
-                    SET_AR_CHAR_BIT (ARn, -((6 * r) % 36) / 9, -(6 * r) % 9);
-                }
-                else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                    //   (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) / 36;
-                    //AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 36) / 9;
-                    //AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) - 6 * r + GET_AR_BITNO (ARn)) % 9);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-            }
-            break;
-                
-        case 0522:  ///< s4bd   Subtract 4-bit Displacement from Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                word36 r = getCrAR(reg);
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 4) -> C(ARn.WORDNO)
-                    //   - C(REG)mod4 -> C(ARn.CHAR)
-                    //   - 4 * C(REG)mod2 + 1 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = -(address + r / 4);
-                    // AR[ARn].CHAR = -(r % 4);
-                    // AR[ARn].ABITNO = -4 * r % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, -(r % 4), -4 * r % 2 + 1);
-                }
-                else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                    //   ((9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                    //   4 * (C(ARn.CHAR) - 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 -> C(ARn.BITNO)
-
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 4 * r + GET_AR_BITNO (ARn)) / 36;
-                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) % 36) / 9;
-                    // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR - 2 * r + AR[ARn].ABITNO / 4) % 2 + 1;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     4 * (GET_AR_CHAR (ARn) - 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-            }
-            break;
+        case 0523:  // sbd Subtract   bit Displacement from Address Register
+          sbd ();
+          break;
             
-        case 0523:  ///< sbd    Subtract   bit Displacement from Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                word36 r = getCrAR(reg);
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   - (ADDRESS + C(REG) / 36) -> C(ARn.WORDNO)
-                    //   - (C(REG)mod36) / 9 -> C(ARn.CHAR)
-                    //   - C(REG)mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = -(address + r / 36);
-                    // AR[ARn].CHAR = -(r %36) / 9;
-                    // AR[ARn].ABITNO = -(r % 9);
-                    SET_AR_CHAR_BIT (ARn, -(r %36) / 9, -(r % 9));
-                }
-                else
-                {
-                    // If A = 1, then
-                    //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO)) / 36 -> C(ARn.WORDNO)
-                    //  ((9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod36) / 9 -> C(ARn.CHAR)
-                    //  (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod9 -> C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) / 36;
-                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 36) / 9;
-                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 9;
-                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
-                                     (9 * GET_AR_CHAR (ARn) - 36 * r + GET_AR_BITNO (ARn)) % 9);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // Masking done in SET_AR_CHAR_BIT
-                // AR[ARn].CHAR &= 03;
-                // AR[ARn].ABITNO &= 077;
-            }
-            break;
-            
-        case 0527:  ///< swd    Subtract  word Displacement from Address Register
-            {
-                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
-                word18 address = SIGNEXT15_18((word15)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
-                
-                word36 r = getCrAR(reg);
-                
-                // The a bit is zero if IGN_B29 is set;
-                //if (!i->a)
-                if (! GET_A (cu. IWB))
-                {
-                    // If A = 0, then
-                    //   - (ADDRESS + C(REG)) -> C(ARn.WORDNO)
-                    AR[ARn].WORDNO = -(address + r);
-                }
-                else
-                {
-                    // If A = 1, then
-                    //     C(ARn.WORDNO) - (ADDRESS + C(REG)) -> C(ARn.WORDNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - (address + r);
-                }
-                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                // 00 -> C(ARn.CHAR)
-                // 0000 -> C(ARn.BITNO)
-                // AR[ARn].CHAR = 0;
-                // AR[ARn].ABITNO = 0;
-                SET_AR_CHAR_BIT (ARn, 0, 0);
-            }
-            break;
+        case 0527:  // swd Subtract  word Displacement from Address Register
+          swd ();
+          break;
             
         /// Multiword EIS ...
-        case 0301:  ///< btd
-            btd (i);
-            break;
+        case 0301:  // btd
+          btd ();
+          break;
             
-        case 0305:  ///< dtb
-            dtb (i);
-            break;
+        case 0305:  // dtb
+          dtb ();
+          break;
             
-        case 0024:   ///< mvne
-            mvne(i);
-            break;
+        case 0024:   // mvne
+          mvne ();
+          break;
          
-        case 0020:   ///< mve
-            mve(i);
-            break;
+        case 0020:   // mve
+          mve ();
+          break;
 
-        case 0100:  ///< mlr
-            mlr(i);
-            break;
+        case 0100:  // mlr
+          mlr();
+          break;
 
-        case 0101:  ///< mrl
-            mrl(i);
-            break;
+        case 0101:  // mrl
+          mrl ();
+          break;
         
-        case 0160:  ///< mvt
-            mvt(i);
-            break;
+        case 0160:  // mvt
+          mvt ();
+          break;
             
-        case 0124:  ///< scm
-            scm(i);
-            break;
+        case 0124:  // scm
+          scm ();
+          break;
 
-        case 0125:  ///< scmr
-            scmr(i);
-            break;
+        case 0125:  // scmr
+          scmr ();
+          break;
 
-        case 0164:  ///< tct
-            tct(i);
-            break;
+        case 0164:  // tct
+          tct ();
+          break;
 
-        case 0165:  ///< tctr
-            tctr(i);
-            break;
+        case 0165:  // tctr
+          tctr ();
+          break;
             
-        case 0106:  ///< cmpc
-            cmpc(i);
-            break;
+        case 0106:  // cmpc
+          cmpc ();
+          break;
             
-        case 0120:  ///< scd
-            scd(i);
-            break;
+        case 0120:  // scd
+          scd ();
+          break;
       
-        case 0121:  ///< scdr
-            scdr(i);
-            break;
+        case 0121:  // scdr
+          scdr ();
+          break;
           
         // bit-string operations
-        case 0066:   ///< cmpb
-            cmpb(i);
-            break;
+        case 0066:   // cmpb
+          cmpb ();
+          break;
 
-        case 0060:   ///< csl
-            csl(i, false);
-            break;
+        case 0060:   // csl
+          csl (false);
+          break;
 
-        case 0061:   ///< csr
-            csr(i, false);
-            break;
+        case 0061:   // csr
+          csr (false);
+          break;
 
-        case 0064:   ///< sztl
-            // The execution of this instruction is identical to the Combine 
-            // Bit Strings Left (csl) instruction except that C(BOLR)m is 
-            // not placed into C(Y-bit2)i-1.
-            csl(i, true);
-            break;
+        case 0064:   // sztl
+          // The execution of this instruction is identical to the Combine 
+          // Bit Strings Left (csl) instruction except that C(BOLR)m is 
+          // not placed into C(Y-bit2)i-1.
+          csl (true);
+          break;
 
-        case 0065:   ///< sztr
-            // The execution of this instruction is identical to the Combine 
-            // Bit Strings Left (csr) instruction except that C(BOLR)m is 
-            // not placed into C(Y-bit2)i-1.
-            csr(i, true);
-            break;
+        case 0065:   // sztr
+          // The execution of this instruction is identical to the Combine 
+          // Bit Strings Left (csr) instruction except that C(BOLR)m is 
+          // not placed into C(Y-bit2)i-1.
+          csr (true);
+          break;
 
         // decimal arithmetic instrutions
         case 0202:  ///< ad2d
@@ -6959,13 +6700,13 @@ AR [ARn] . BITNO = cacbitno;
             dv3d ();
             break;
 
-        case 0300:  ///< mvn
-            mvn ();
-            break;
+        case 0300:  // mvn
+          mvn ();
+          break;
         
-        case 0303:  ///< cmpn
-            cmpn ();
-            break;
+        case 0303:  // cmpn
+          cmpn ();
+          break;
 
 #if EMULATOR_ONLY
             

@@ -1,6 +1,6 @@
 //#define IOMDBG
 //#define IOMDBG1
-#define DBGFNP
+//#define DBGFNP
 //
 // \file dps8_iom.c
 // \project dps8
@@ -705,7 +705,7 @@ static void fetchAndParseDCW (uint iomUnitNum, uint chanNum, dcw_t * p,
 // XXX ticket #4
     word36 word;
 
-    sim_debug (DBG_CAC, & cpu_dev, "fetchAndParseDCW addr %08o chan_mode %d\n", addr, chan_data -> chan_mode);
+    //sim_debug (DBG_CAC, & cpu_dev, "fetchAndParseDCW addr %08o chan_mode %d\n", addr, chan_data -> chan_mode);
     if (chan_data -> chan_mode == cm_paged_LPW_seg_DCW) // state 4
       {
 #ifdef IOMDBG1
@@ -1841,7 +1841,7 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
 #endif
 
     //sim_printf ("chan_mode %d\n", chan_data -> chan_mode);
-    sim_debug (DBG_CAC, & cpu_dev, "chan_mode %d\n", chan_data -> chan_mode);
+    //sim_debug (DBG_CAC, & cpu_dev, "chan_mode %d\n", chan_data -> chan_mode);
     if (chan_data -> chan_mode == cm_LPW_init_state)
       {
 // It is known that if PGE is set, the mode switch is in paged mode

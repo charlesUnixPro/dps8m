@@ -202,7 +202,7 @@ C_SRCS  = ./dps8_addrmods.c
 C_SRCS += ./dps8_append.c
 C_SRCS += ./dps8_bar.c
 C_SRCS += ./dps8_console.c
-C_SRCS += ./dps8_clk.c
+#C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_disk.c
 C_SRCS += ./dps8_eis.c
@@ -240,7 +240,7 @@ OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 H_SRCS  = dps8_addrmods.h
 H_SRCS += dps8_append.h
 H_SRCS += dps8_bar.h
-H_SRCS += dps8_clk.h
+#H_SRCS += dps8_clk.h
 H_SRCS += dps8_console.h
 H_SRCS += dps8_cpu.h
 H_SRCS += dps8_decimal.h
@@ -288,6 +288,9 @@ H_SRCS += shm.h
 
 
 all: locallibs_then_dps8 
+
+cscope:
+	cscope $(C_SRCS)
 
 android : 
 	ndk-build APP_BUILD_SCRIPT=./Android.mk APP_ABI=arm64-v8a APP_PLATFORM=android-21
