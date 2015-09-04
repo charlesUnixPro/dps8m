@@ -2604,6 +2604,15 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
     return went_appending;
 }
 
+/* 
+ * get_bar_mode: During fault processing, we do not want to fetch and execute the fault vector instructions
+ *   in BAR mode. We leverage the secret_addressing_mode flag that is set in set_TEMPORARY_ABSOLUTE_MODE to
+ *   direct us to ignore the I_NBAR indicator register.
+ */
+bool get_bar_mode(void) {
+  return !(secret_addressing_mode || TSTF(cu.IR, I_NBAR));
+}
+
 addr_modes_t get_addr_mode(void)
 {
     if (secret_addressing_mode)
