@@ -2158,7 +2158,7 @@ static t_stat DoBasicInstruction (void)
             CLRF (cu . IR, I_CARRY);
  
             word36 tmp36 = TPR . CA & 0177;   // CY bits 11-17
-            word36 tmpSign = rQ & SIGN36;
+            word36 tmpSign = rA & SIGN36;
             for(uint i = 0 ; i < tmp36 ; i ++)
               {
                 rA <<= 1;               // shift left 1
