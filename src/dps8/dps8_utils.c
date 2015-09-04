@@ -446,7 +446,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     bool r18 = res & SIGN18 ? true : false;
 
     // Extract the carry bit
-    bool r20 = res & BIT38 ? true : false;
+    bool r20 = res & BIT20 ? true : false;
    
     // Truncate the result
     res &= MASK18;
