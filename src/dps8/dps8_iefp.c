@@ -22,7 +22,8 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
     //word24 finalAddress;
     iefpFinalAddress = address;
 
-    bool isBAR = TSTF (cu . IR, I_NBAR) ? false : true;
+    //bool isBAR = TSTF (cu . IR, I_NBAR) ? false : true;
+    bool isBAR = get_bar_mode();
 
     // XXX went appending in BAR mode?
     if (b29 || get_went_appending ())
