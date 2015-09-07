@@ -2530,14 +2530,14 @@ l6345:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 ""
-"" Test is the fault base is set to Multics norm and absolute mode bit
+"" Test is the fault base is not set to Multics norm and absolute mode bit
 "" is not set.
 ""
 
-" The absolute mode bit is a bit problamatic; we are running in absoulte
+" The absolute mode bit is a bit problematic; we are running in absolute
 " mode and AL30 says that means the bit is on, but this test fails if
 " the bit is on. (The emulator now has an configuration option to flip
-" the sense of the bit in the STI opertion to allow the test to continue.
+" the sense of the bit in the STI operation to allow the test to continue.
 
 test_fault_base:
 
