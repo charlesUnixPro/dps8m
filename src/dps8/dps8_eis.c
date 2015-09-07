@@ -1256,7 +1256,10 @@ void axbd (uint sz)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
-    uint augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+  
+    uint augend = 0;
+    if (GET_A (cu . IWB))
+       augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
     uint addend = address * 36 + r * sz;
     uint sum = augend + addend;
 
@@ -1275,7 +1278,9 @@ void sxbd (uint sz)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
-    uint minuend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+    uint minuend = 0;
+    if (GET_A (cu . IWB))
+       minuend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
     uint subtractend = address * 36 + r * sz;
     uint difference = minuend - subtractend;
 
