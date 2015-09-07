@@ -6542,45 +6542,45 @@ static t_stat DoEISInstruction (void)
             
         // EIS - Address Register Special Arithmetic
         case 0500:  // a9bd Add 9-bit Displacement to Address Register
-          a9bd ();
+          axbd (9);
           break;
             
         case 0501:  // a6bd Add 6-bit Displacement to Address Register
-          a6bd ();
+          axbd (6);
           break;
             
         case 0502:  // a4bd Add 4-bit Displacement to Address Register
-          a4bd ();
+          axbd (4);
           break;
             
 // If defined, do all ABD calculations in bits, not chars and bits in chars.
 #define ABD_BITS
         case 0503:  // abd  Add bit Displacement to Address Register
-          abd ();
+          axbd (1);
           break;
             
         case 0507:  // awd Add  word Displacement to Address Register
-          awd ();
+          axbd (36);
           break;
             
         case 0520:  // s9bd   Subtract 9-bit Displacement from Address Register
-          s9bd ();
+          sxbd (9);
           break;
             
         case 0521:  // s6bd   Subtract 6-bit Displacement from Address Register
-          s6bd ();
+          sxbd (6);
           break;
                 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
-          s4bd ();
+          sxbd (4);
           break;
             
         case 0523:  // sbd Subtract   bit Displacement from Address Register
-          sbd ();
+          sxbd (1);
           break;
             
         case 0527:  // swd Subtract  word Displacement from Address Register
-          swd ();
+          sxbd (36);
           break;
             
         /// Multiword EIS ...
