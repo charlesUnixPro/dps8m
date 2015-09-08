@@ -20,7 +20,7 @@
 
 #define _EIS_ NO_TAG | NO_XED | NO_RPT | IGN_B29
 
-struct opCode NonEISopcodes[01000] = {
+const struct opCode NonEISopcodes[01000] = {
     /* 000 */
     {NULL, 0, 0, 0},
     {"mme", NO_RPT, 0, 0},// XXX "MODIFICATIONS: All, but none affect instruction execution."
@@ -554,7 +554,7 @@ struct opCode NonEISopcodes[01000] = {
 
 };
 
-struct opCode EISopcodes[01000] = {
+const struct opCode EISopcodes[01000] = {
      /* 000 - 017 */ 
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
@@ -1146,7 +1146,7 @@ struct opCode EISopcodes[01000] = {
 };
 
 
-struct adrMods extMods[0100] = {    ///< address modifiers w/ extended info
+const struct adrMods extMods[0100] = {    ///< address modifiers w/ extended info
     /* R */
     {"",   0, 0},
     {"au", 1, 0},
@@ -1220,7 +1220,7 @@ struct adrMods extMods[0100] = {    ///< address modifiers w/ extended info
     {"*7",  63, 0},
 };
 
-char GEBcdToASCII[64] = ///< from pg 271 CPB1004F_GE635pgmRef_Jul69
+char const GEBcdToASCII[64] = ///< from pg 271 CPB1004F_GE635pgmRef_Jul69
 {
 /* 000 - 007 */    '0', '1', '2', '3', '4', '5', '6', '7',
 /* 010 - 017 */    '8', '9', '[', '#', '@', ':', '>', '?',
@@ -1233,7 +1233,7 @@ char GEBcdToASCII[64] = ///< from pg 271 CPB1004F_GE635pgmRef_Jul69
 };
 
 #ifndef QUIET_UNUSED
-char ASCIIToGEBcd[128] =
+char const ASCIIToGEBcd[128] =
 {
 /* 000 - 007 */    -1, -1, -1, -1, -1, -1, -1, -1,
 /* 010 - 017 */    -1, -1, -1, -1, -1, -1, -1, -1,
@@ -1255,7 +1255,7 @@ char ASCIIToGEBcd[128] =
 #endif
 
 #ifndef QUIET_UNUSED
-char *op0text[512] = {
+const char *op0text[512] = {
         // index by upper 9 bits of those opcodes with bit 27 == 0
         NULL,    "mme",   "drl",   NULL,    "mme2",  "mme3",  NULL,    "mme4",
         NULL,    "nop",   "puls1", "puls2", NULL,    "cioc",  NULL,    NULL,
@@ -1325,7 +1325,7 @@ char *op0text[512] = {
 #endif
 
 #ifndef QUIET_UNUSED
-char *op1text[512] = {
+const char *op1text[512] = {
         // index by upper 9 bits of those opcodes with bit 27 == 1
         NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
         NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
@@ -1395,7 +1395,7 @@ char *op1text[512] = {
 #endif
 
 #ifndef QUIET_UNUSED
-char *opcodes2text[1024] = {
+const char *opcodes2text[1024] = {
         // index by all 10 bits of all opcodes
         NULL,    NULL,    "mme",   NULL,    "drl",   NULL,    NULL,    NULL,
         "mme2",  NULL,    "mme3",  NULL,    NULL,    NULL,    "mme4",  NULL,

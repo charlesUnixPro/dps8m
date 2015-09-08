@@ -1,13 +1,13 @@
 
-extern char GEBcdToASCII[64];   ///< GEBCD => ASCII map
+extern const char GEBcdToASCII[64];   ///< GEBCD => ASCII map
 #ifndef QUIET_UNUSED
-extern char ASCIIToGEBcd[128];  ///< ASCII => GEBCD map
+extern const char ASCIIToGEBcd[128];  ///< ASCII => GEBCD map
 #endif
 
 #ifndef QUIET_UNUSED
-extern char *op0text[512];
-extern char *op1text[512];
-extern char *opcodes2text[1024];
+extern const char *op0text[512];
+extern const char *op1text[512];
+extern const char *opcodes2text[1024];
 #endif
 
 struct adrMods {
@@ -17,5 +17,5 @@ struct adrMods {
 };
 typedef struct adrMods adrMods;
 
-extern struct adrMods extMods[0100]; ///< extended address modifiers
-extern struct opCode NonEISopcodes[01000], EISopcodes[01000];
+extern const struct adrMods extMods[0100]; ///< extended address modifiers
+extern const struct opCode NonEISopcodes[01000], EISopcodes[01000];

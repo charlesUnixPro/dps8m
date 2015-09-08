@@ -96,9 +96,7 @@ typedef enum apuStatusBits
 
 void setAPUStatus (apuStatusBits status);
 
-void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-void acvFault(_fault_subtype acvfault, char * msg) NO_RETURN;
 word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
@@ -106,7 +104,6 @@ void do_camp (word36 Y);
 void do_cams (word36 Y);
 int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
                       char * * msg);
-_sdw0 * getSDW (word15 segno);
 
 
 

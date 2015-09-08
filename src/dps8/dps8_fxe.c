@@ -822,7 +822,7 @@ static void initializeDSEG (void)
     // Fill the fault pairs with fxeFaultHandler traps.
 
     // (12-bits of which the top-most 7-bits are used)
-    int fltAddress = (switches . FLT_BASE << 5) & 07740;
+    int fltAddress = (CPU -> switches . FLT_BASE << 5) & 07740;
 
     for (int i = 0; i < N_FAULTS; i ++)
       {
@@ -853,11 +853,11 @@ static void initializeDSEG (void)
         //  EB: 0
         M [descAddress + i * 2 + 1] = 0000000200000;
       }
-    DSBR . ADDR = DESCSEG;
-    DSBR . BND = N_DESCS / 8;
-    DSBR . U = 1;
+    CPU -> DSBR . ADDR = DESCSEG;
+    CPU -> DSBR . BND = N_DESCS / 8;
+    CPU -> DSBR . U = 1;
     // stack segno not yet assigned
-    //DSBR . STACK = KST [STK_SEG + 5] . segno >> 3;
+    //CPU -> DSBR . STACK = KST [STK_SEG + 5] . segno >> 3;
   }
 
 
@@ -1197,8 +1197,8 @@ static void installSDW (int segIdx)
     //putbits36 (odd,  22, 14, e -> entry_bound >> 4);
     putbits36 (odd,  22, 14, e -> entry_bound);
 //if (segno == 0161) sim_printf ("gated %d entry_bound %d\n", e -> gated, e -> entry_bound);
-    do_camp (TPR . CA);
-    do_cams (TPR . CA);
+    do_camp (CPU -> TPR . CA);
+    do_cams (CPU -> TPR . CA);
   }
 
 typedef struct trapNameTableEntry
@@ -2618,11 +2618,11 @@ t_stat fxe (UNUSED int32 arg, char * buf)
     word18 entryOffset = KST [segIdx] . entry;
 
     set_addr_mode (APPEND_mode);
-    PPR . IC = entryOffset;
-    PPR . PRR = 0;
-    PPR . PSR = KST [segIdx] . segno;
-    PPR . P = 0;
-    //DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
+    CPU -> PPR . IC = entryOffset;
+    CPU -> PPR . PRR = 0;
+    CPU -> PPR . PSR = KST [segIdx] . segno;
+    CPU -> PPR . P = 0;
+    //CPU -> DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
 
     run_cmd (RU_CONT, "");
 #else
@@ -2958,44 +2958,44 @@ t_stat fxe (UNUSED int32 arg, char * buf)
           }
 #endif
 
-        PR [0] . SNR = FXE_SEGNO;
-        PR [0] . RNR = FXE_RING;
-        PR [0] . BITNO = 0;
-        PR [0] . WORDNO = (word18) (argBlock - fxeMemPtr);
+        CPU -> PR [0] . SNR = FXE_SEGNO;
+        CPU -> PR [0] . RNR = FXE_RING;
+        CPU -> PR [0] . BITNO = 0;
+        CPU -> PR [0] . WORDNO = (word18) (argBlock - fxeMemPtr);
 
 // AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
 
-        PR [4] . SNR = KST [segIdx] . segno;
-        PR [4] . RNR = FXE_RING;
-        PR [4] . BITNO = 0;
-        PR [4] . WORDNO = KST [segIdx] . linkage_offset;
+        CPU -> PR [4] . SNR = KST [segIdx] . segno;
+        CPU -> PR [4] . RNR = FXE_RING;
+        CPU -> PR [4] . BITNO = 0;
+        CPU -> PR [4] . WORDNO = KST [segIdx] . linkage_offset;
 
 // AK92, pg 2-13: PR7 points to the stack frame
 
-//        PR [6] . SNR = 077777;
-//        PR [6] . RNR = FXE_RING;
-//        PR [6] . BITNO = 0;
-//        PR [6] . WORDNO = 0777777;
-        PR [6] . SNR = STACKS_SEGNO + FXE_RING;
-        PR [6] . RNR = FXE_RING;
-        PR [6] . BITNO = 0;
-        PR [6] . WORDNO = STK_TOP;
+//        CPU -> PR [6] . SNR = 077777;
+//        CPU -> PR [6] . RNR = FXE_RING;
+//        CPU -> PR [6] . BITNO = 0;
+//        CPU -> PR [6] . WORDNO = 0777777;
+        CPU -> PR [6] . SNR = STACKS_SEGNO + FXE_RING;
+        CPU -> PR [6] . RNR = FXE_RING;
+        CPU -> PR [6] . BITNO = 0;
+        CPU -> PR [6] . WORDNO = STK_TOP;
 
 // AK92, pg 2-10: PR7 points to the base of the stack segement
 
-        PR [7] . SNR = STACKS_SEGNO + FXE_RING;
-        PR [7] . RNR = FXE_RING;
-        PR [7] . BITNO = 0;
-        PR [7] . WORDNO = 0;
+        CPU -> PR [7] . SNR = STACKS_SEGNO + FXE_RING;
+        CPU -> PR [7] . RNR = FXE_RING;
+        CPU -> PR [7] . BITNO = 0;
+        CPU -> PR [7] . WORDNO = 0;
 
 
         set_addr_mode (APPEND_mode);
-        //PPR . IC = KST [segIdx] . entry;
-        PPR . IC = entryOffset;
-        PPR . PRR = FXE_RING;
-        PPR . PSR = KST [segIdx] . segno;
-        PPR . P = 0;
-        DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
+        //CPU -> PPR . IC = KST [segIdx] . entry;
+        CPU -> PPR . IC = entryOffset;
+        CPU -> PPR . PRR = FXE_RING;
+        CPU -> PPR . PSR = KST [segIdx] . segno;
+        CPU -> PPR . P = 0;
+        CPU -> DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
       }
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
@@ -3021,10 +3021,10 @@ static word18 c6tPPR_IC;
 
 void fxeSetCall6Trap (void)
   {
-    c6tPPR_P = PPR . P;
-    c6tPPR_PRR = PPR . PRR;
-    c6tPPR_PSR = PPR . PSR;
-    c6tPPR_IC = PPR . IC;
+    c6tPPR_P = CPU -> PPR . P;
+    c6tPPR_PRR = CPU -> PPR . PRR;
+    c6tPPR_PSR = CPU -> PPR . PSR;
+    c6tPPR_IC = CPU -> PPR . IC;
     c6tValid = true;
   }
 
@@ -3040,8 +3040,8 @@ void fxeCall6TrapRestore (void)
         exit (1);
         //return;
       }
-    PPR . PSR = segno;
-    PPR . IC = value; // + 441; // return_main
+    CPU -> PPR . PSR = segno;
+    CPU -> PPR . IC = value; // + 441; // return_main
   }
 
 static void faultTag2Handler (void)
@@ -3274,8 +3274,8 @@ typedef struct argTableEntry
 static int processArgs (uint nargs, int ndescs, argTableEntry * t)
   {
     // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word18 apWordno = PR [0] . WORDNO;
+    word15 apSegno = CPU -> PR [0] . SNR;
+    word18 apWordno = CPU -> PR [0] . WORDNO;
     //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
 
     // Find the argument list in memory
@@ -3606,8 +3606,8 @@ static void trapModes (void)
     // declare iox_$modes entry (ptr, char(*), char(*), fixed bin(35));
 
     // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
+    word15 apSegno = CPU -> PR [0] . SNR;
+    word15 apWordno = CPU -> PR [0] . WORDNO;
     //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
 
     // Find the argument list in memory
@@ -3770,7 +3770,7 @@ static void trapGetSegPtr (void)
     trimTrailingSpaces (name);
     sgIdx idx = getSLTEidx (name);
 
-    makeITS (M + ap2, SLTE  [idx] . segno, PPR . PRR, 0, 0, 0);
+    makeITS (M + ap2, SLTE  [idx] . segno, CPU -> PPR . PRR, 0, 0, 0);
     doRCU (true); // doesn't return
   }
 
@@ -6707,7 +6707,7 @@ static void faultACVHandler (void)
 
 void fxeFaultHandler (void)
   {
-    switch (cpu . faultNumber)
+    switch (CPU -> faultNumber)
       {
         case 20: // access violation
           faultACVHandler ();
@@ -6716,7 +6716,7 @@ void fxeFaultHandler (void)
           faultTag2Handler ();
           break;
         default:
-          sim_printf ("ERROR: fxeFaultHandler: fail: %d\n", cpu . faultNumber);
+          sim_printf ("ERROR: fxeFaultHandler: fail: %d\n", CPU -> faultNumber);
       }
   }
 

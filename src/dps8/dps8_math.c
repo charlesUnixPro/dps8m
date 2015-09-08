@@ -38,10 +38,10 @@ long double exp2l (long double e) {
  */
 long double EAQToIEEElongdouble(void)
 {
-    word8 E = rE;    ///< exponent
-    word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);   ///< mantissa
+    word8 E = CPU -> rE;    ///< exponent
+    word72 M = ((word72)(CPU -> rA & DMASK) << 36) | ((word72) CPU -> rQ & DMASK);   ///< mantissa
 
-    //printf("rA=%012llo rQ=%012llo %s\n", rA, rQ, Qtoo(M));
+    //printf("rA=%012llo rQ=%012llo %s\n", CPU -> rA, CPU -> rQ, Qtoo(M));
     
     if (M == 0)
         return 0;
@@ -196,9 +196,9 @@ void IEEElongdoubleToEAQ(long double f0)
 {
     if (f0 == 0)
     {
-        rA = 0;
-        rQ = 0;
-        rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
+        CPU -> rE = (word8)-128;
         return;
     }
     
@@ -234,9 +234,9 @@ void IEEElongdoubleToEAQ(long double f0)
     if (sign)
         result = -result & (((word72)1 << 72) - 1);
     
-    rE = exp & 0377;
-    rA = (result >> 36) & MASK36;
-    rQ = result & MASK36;
+    CPU -> rE = exp & 0377;
+    CPU -> rA = (result >> 36) & MASK36;
+    CPU -> rQ = result & MASK36;
 }
 #endif
 
@@ -355,10 +355,10 @@ void ufa (void)
     //! * C(AQ)0 is inverted to restore the sign.
     //! * C(E) is increased by one.
 
-    float72 m1 = ((word72)rA << 36) | (word72)rQ;
-    float72 op2 = CY;
+    float72 m1 = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
+    float72 op2 = CPU -> CY;
             
-    int8   e1 = (int8)rE; 
+    int8   e1 = (int8)CPU -> rE; 
     
     int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     word72 m2 = (word72)bitfieldExtract36(op2, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
@@ -439,33 +439,33 @@ void ufa (void)
     
 //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, cu.IR, I_CARRY);
+    SCF(m3 > MASK72, CPU -> cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, cu.IR, I_ZERO);
+    SCF(m3 == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, cu.IR, I_NEG);
+    SCF(m3 & SIGN72, CPU -> cu.IR, I_NEG);
 
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(cu.IR, I_EOFL);
+        SETF(CPU -> cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(cu.IR, I_EUFL);
+        SETF(CPU -> cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
-        rE = (word8)-128;
-        rA = 0;
-        rQ = 0;
+        CPU -> rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
     }
     else
     {
-        rE = e3 & 0377;
-        rA = (m3 >> 36) & MASK36;
-        rQ = m3 & MASK36;
+        CPU -> rE = e3 & 0377;
+        CPU -> rA = (m3 >> 36) & MASK36;
+        CPU -> rQ = m3 & MASK36;
     }
     
 }
@@ -480,7 +480,7 @@ void ufs (void)
     //! They're probably a few gotcha's here but we'll see.
     //! Yup ... when mantissa 1 000 000 .... 000 we can't do 2'c comp.
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) & FLOAT36MASK; ///< 28-bit mantissa (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) & FLOAT36MASK; ///< 28-bit mantissa (incl sign)
     
     // -1  001000000000 = 2^0 * -1 = -1
     // S          S    
@@ -506,24 +506,24 @@ void ufs (void)
     if (ov && m2 != 0)
     {
         //sim_printf ("OV\n");
-        int8   e = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+        int8   e = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
 
         m2c >>= 1;
         m2c &= FLOAT36MASK;
         
         if ((e + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX my interpretation
             e += 1;
         
-        CY = bitfieldInsert36(CY, (word36)e, 28, 8) & DMASK;
+        CPU -> CY = bitfieldInsert36(CPU -> CY, (word36)e, 28, 8) & DMASK;
         
     }
 
     if (m2c == 0)
-        CY = 0400000000000LL;
+        CPU -> CY = 0400000000000LL;
     else
-        CY = bitfieldInsert36(CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
+        CPU -> CY = bitfieldInsert36(CPU -> CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
    
     ufa();
 
@@ -542,42 +542,42 @@ void fno (void)
     //!  Normalization is performed by shifting C(AQ)1,71 one place to the left and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and C(AQ)1 are met. Bits shifted out of AQ1 are lost.
     //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
-    rA &= DMASK;
-    rQ &= DMASK;
-    float72 m = ((word72)rA << 36) | (word72)rQ;
-    if (TSTF(cu.IR, I_OFLOW))
+    CPU -> rA &= DMASK;
+    CPU -> rQ &= DMASK;
+    float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
         m >>= 1;
         m &= MASK72;
         
         m ^= ((word72)1 << 71);
 
-        SCF(rA & SIGN72, cu.IR, I_NEG); // was &&
-        CLRF(cu.IR, I_OFLOW);
+        SCF(CPU -> rA & SIGN72, CPU -> cu.IR, I_NEG); // was &&
+        CLRF(CPU -> cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(CPU -> rE == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rE == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         return; // XXX: ???
     }
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
     if (m == 0) // C(AQ) == 0.
     {
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(CPU -> rE == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rE == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
-    int8   e = (int8)rE;
+    int8   e = (int8)CPU -> rE;
 
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
     //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
@@ -590,29 +590,29 @@ void fno (void)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else    // XXX: my interpretation
             e -= 1;
         
         if (m == 0) // XXX: necessary??
         {
-            rE = (word8)-128;
+            CPU -> rE = (word8)-128;
             break;
         }
     }
       
-    rE = e & 0377;
-    rA = (m >> 36) & MASK36;
-    rQ = m & MASK36;
+    CPU -> rE = e & 0377;
+    CPU -> rA = (m >> 36) & MASK36;
+    CPU -> rQ = m & MASK36;
 
-    if (rA == 0)    // set to normalized 0
-        rE = (word8)-128;
+    if (CPU -> rA == 0)    // set to normalized 0
+        CPU -> rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(rA == 0, cu.IR, I_ZERO);
+    SCF(CPU -> rA == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
 
 }
 
@@ -627,20 +627,20 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
     float72 m = ((word72)*A << 36) | (word72)*Q;
-    if (TSTF(cu.IR, I_OFLOW))
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
         m >>= 1;
         m &= MASK72;
         
         m ^= ((word72)1 << 71);
         
-        CLRF(cu.IR, I_OFLOW);
+        CLRF(CPU -> cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         return; // XXX: ???
     }
     
@@ -651,10 +651,10 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *Q = m & MASK36;
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -671,7 +671,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -690,10 +690,10 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *E = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(*A == 0, cu.IR, I_ZERO);
+    SCF(*A == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(*A & SIGN36, cu.IR, I_NEG);
+    SCF(*A & SIGN36, CPU -> cu.IR, I_NEG);
     
 }
 
@@ -705,16 +705,16 @@ void fneg (void)
     //! This instruction changes the number in C(EAQ) to its normalized negative (if C(AQ) ≠ 0). The operation is executed by first forming the twos complement of C(AQ), and then normalizing C(EAQ).
     //! Even if originally C(EAQ) were normalized, an exponent overflow can still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the twos complement approximation for the decimal value -1.0.
     
-    float72 m = ((word72)rA << 36) | (word72)rQ;
+    float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
     
     if (m == 0) // (if C(AQ) ≠ 0)
     {
-        SETF(cu.IR, I_ZERO);      // it's zero
-        CLRF(cu.IR, I_NEG);       // it ain't negative
+        SETF(CPU -> cu.IR, I_ZERO);      // it's zero
+        CLRF(CPU -> cu.IR, I_NEG);       // it ain't negative
         return; //XXX: ????
     }
     
-    int8 e = (int8)rE;
+    int8 e = (int8)CPU -> rE;
     
     word72 mc = 0;
     if (m == FLOAT72SIGN)
@@ -742,14 +742,14 @@ void fneg (void)
         mc &= ((word72)1 << 72) - 1;
         
         if ((e + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else    // XXX: this is my interpretation
-            rE += 1;
+            CPU -> rE += 1;
     }
     
-    rE = e & 0377;
-    rA = (mc >> 36) & MASK36;
-    rQ = mc & MASK36;
+    CPU -> rE = e & 0377;
+    CPU -> rA = (mc >> 36) & MASK36;
+    CPU -> rQ = mc & MASK36;
 
     fno ();  // normalize
 }
@@ -770,20 +770,20 @@ void ufm (void)
     //! Exp Ovr: If exponent is greater than +127, then ON
     //! Exp Undr: If exponent is less than -128, then ON
     
-    uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; 
-    int8   e1 = (int8)rE;
+    uint64 m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; 
+    int8   e1 = (int8)CPU -> rE;
 
-    uint64 m2 = bitfieldExtract36(CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+    uint64 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
-        rE = (word8)-128;
-        rA = 0;
-        rQ = 0;
+        CPU -> rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return; // normalized 0
     }
@@ -822,21 +822,21 @@ void ufm (void)
     if (sign == -1)
         m3a = (~m3a + 1) & 0xffffffffffffffffLL;
     
-    rE = e3 & 0377;
-    rA = (m3a >> 28) & MASK36;
-    rQ = m3a & MASK36;
+    CPU -> rE = e3 & 0377;
+    CPU -> rA = (m3a >> 28) & MASK36;
+    CPU -> rQ = m3a & MASK36;
     
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    //if ((CPU -> rE == -128 && CPU -> rA == 0 && CPU -> rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno ();
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
+    SCF(CPU -> rA == 0 && CPU -> rQ == 0, CPU -> cu.IR, I_ZERO);
+    //SCF(CPU -> rA && SIGN72, CPU -> cu.IR, I_NEG);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG); // was &&
     
-    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
-    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
+    if (e1 + e2 >  127) SETF(CPU -> cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(CPU -> cu.IR, I_EUFL);
 }
 
 /*!
@@ -867,17 +867,17 @@ static void fdvX(bool bInvert)
     
     if (!bInvert)
     {
-        m1 = rA;    // & 0777777777400LL;
-        e1 = (int8)rE;
+        m1 = CPU -> rA;    // & 0777777777400LL;
+        e1 = (int8)CPU -> rE;
     
-        m2 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
+        e2 = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
-        m2 = rA;    //& 0777777777400LL ;
-        e2 = (int8)rE;
+        m2 = CPU -> rA;    //& 0777777777400LL ;
+        e2 = (int8)CPU -> rE;
     
-        m1 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e1 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        m1 = bitfieldExtract36(CPU -> CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
+        e1 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
 
     // make everything positive, but save sign info for later....
@@ -911,10 +911,10 @@ static void fdvX(bool bInvert)
         
         // NB: If C(Y)8,35 ==0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
         
-        rA = m1;
+        CPU -> rA = m1;
         
         doFault(FAULT_DIV, 0, "DFDV: divide check fault");
     }
@@ -924,7 +924,7 @@ static void fdvX(bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -938,15 +938,15 @@ static void fdvX(bool bInvert)
     if (sign == -1)
         m3b = (~m3b + 1) & 0777777777777LL;
     
-    rE = e3 & 0377;
-    rA = m3b & MASK36;
-    rQ = 0;
+    CPU -> rE = e3 & 0377;
+    CPU -> rA = m3b & MASK36;
+    CPU -> rQ = 0;
     
-    SCF(rA == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(CPU -> rA == 0, CPU -> cu.IR, I_ZERO);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
     
-    if (rA == 0)    // set to normalized 0
-        rE = (word8)-128;
+    if (CPU -> rA == 0)    // set to normalized 0
+        CPU -> rE = (word8)-128;
 }
 
 void fdv (void)
@@ -1012,12 +1012,12 @@ void frd (void)
     
     //! So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in later models.) I'll assume AL39 is wrong.
     
-    float72 m = ((word72)rA << 36) | (word72)rQ;
+    float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
     if (m == 0)
     {
-        rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        CPU -> rE = (word8)-128;
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -1046,30 +1046,30 @@ void frd (void)
         if (s1) // (was s2) restore sign if necessary
             m |= SIGN72;
         
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
         
-        if (rE + 1 > 127)
-            SETF(cu.IR, I_EOFL);
-        rE +=  1;
+        if (CPU -> rE + 1 > 127)
+            SETF(CPU -> cu.IR, I_EOFL);
+        CPU -> rE +=  1;
     }
     else
     {
         // If overflow does not occur, C(EAQ) is normalized.
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
         
         fno ();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    if (rA == 0 && rQ == 0)
+    if (CPU -> rA == 0 && CPU -> rQ == 0)
     {
-        rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        CPU -> rE = (word8)-128;
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
     
 }
 
@@ -1080,8 +1080,8 @@ void fstr(word36 *Y)
     //The definition of normalization is located under the description of the fno instruction.
     //Attempted repetition with the rpl instruction causes an illegal procedure fault.
     
-    word36 A = rA, Q = rQ;
-    word8 E = rE;
+    word36 A = CPU -> rA, Q = CPU -> rQ;
+    word8 E = CPU -> rE;
     A &= DMASK;
     Q &= DMASK;
     E &= MASK8;
@@ -1090,8 +1090,8 @@ void fstr(word36 *Y)
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
         return;
@@ -1125,7 +1125,7 @@ void fstr(word36 *Y)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -1141,10 +1141,10 @@ void fstr(word36 *Y)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, cu.IR, I_NEG);
+    SCF(A & SIGN36, CPU -> cu.IR, I_NEG);
     
     *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
 }
@@ -1164,11 +1164,11 @@ void fcmp(void)
     //! The mantissas are aligned by shifting the mantissa of the operand with the algebraically smaller exponent to the right the number of places equal to the difference in the two exponents.
     //! The aligned mantissas are compared and the indicators set accordingly.
     
-    word36 m1 = rA & 0777777777400LL;
-    int8   e1 = (int8)rE;
+    word36 m1 = CPU -> rA & 0777777777400LL;
+    int8   e1 = (int8)CPU -> rE;
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int e3 = -1;
        
@@ -1212,8 +1212,8 @@ void fcmp(void)
     }
     
     // need to do algebraic comparisons of mantissae
-    SCF((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2), cu.IR, I_ZERO);
-    SCF((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2), cu.IR, I_NEG);
+    SCF((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2), CPU -> cu.IR, I_ZERO);
+    SCF((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2), CPU -> cu.IR, I_NEG);
 }
 
 /*!
@@ -1230,11 +1230,11 @@ void fcmg ()
     //! The mantissas are aligned by shifting the mantissa of the operand with the algebraically smaller exponent to the right the number of places equal to the difference in the two exponents.
     //! The aligned mantissas are compared and the indicators set accordingly.
     
-    word36 m1 = rA & 0777777777400LL;
-    int8   e1 = (int8)rE;
+    word36 m1 = CPU -> rA & 0777777777400LL;
+    int8   e1 = (int8)CPU -> rE;
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int e3 = -1;
     
@@ -1284,8 +1284,8 @@ void fcmg ()
     if (m2 & SIGN36)
         m2 = (~m2 + 1) & MASK36;
     
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 < m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 < m2, CPU -> cu.IR, I_NEG);
 }
 
 /*
@@ -1326,17 +1326,17 @@ void dufa (void)
     //! *  C(AQ)0 is inverted to restore the sign.
     //! *  C(E) is increased by one.
     
-    rA &= DMASK;
-    rQ &= DMASK;
-    rE &= MASK8;
+    CPU -> rA &= DMASK;
+    CPU -> rQ &= DMASK;
+    CPU -> rE &= MASK8;
 
-    float72 m1 = ((word72)rA << 36) | (word72)rQ;
-    int8   e1 = (int8)rE;
+    float72 m1 = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
+    int8   e1 = (int8)CPU -> rE;
     
     float72 m2 = 0;
     int8 e2 = -128;
     
-    YPairToExpMant(Ypair, &m2, &e2);
+    YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     int e3 = -1;
     word72 m3 = 0;
@@ -1400,33 +1400,33 @@ void dufa (void)
     
     //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, cu.IR, I_CARRY);
+    SCF(m3 > MASK72, CPU -> cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, cu.IR, I_ZERO);
+    SCF(m3 == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, cu.IR, I_NEG);
+    SCF(m3 & SIGN72, CPU -> cu.IR, I_NEG);
     
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(cu.IR, I_EOFL);
+        SETF(CPU -> cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(cu.IR, I_EUFL);
+        SETF(CPU -> cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
-        rE = (word8)-128;
-        rA = 0;
-        rQ = 0;
+        CPU -> rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
     }
     else
     {
-        rE = e3 & 0377;
-        rA = (m3 >> 36) & MASK36;
-        rQ = m3 & MASK36;
+        CPU -> rE = e3 & 0377;
+        CPU -> rA = (m3 >> 36) & MASK36;
+        CPU -> rQ = m3 & MASK36;
     }
 }
 
@@ -1446,7 +1446,7 @@ void dufs (void)
     float72 m2 = 0;
     int8 e2 = -128;
     
-    YPairToExpMant(Ypair, &m2, &e2);
+    YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     word72 m2c = ~m2 + 1;     ///< & 01777777777LL;     ///< take 2-comp of mantissa
     m2c &= MASK72;
@@ -1463,23 +1463,23 @@ void dufs (void)
         m2c &= MASK72;
         
         if ((e2 + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX my interpretation
             e2 += 1;
     }
     
     if (m2c == 0)
     {
-//      Ypair[0] = 0400000000000LL;
-//      Ypair[1] = 0;
-        ExpMantToYpair(0, -128, Ypair);
+//      CPU -> Ypair[0] = 0400000000000LL;
+//      CPU -> Ypair[1] = 0;
+        ExpMantToYpair(0, -128, CPU -> Ypair);
     }
     else
     {
 //        Ypair[0]  = ((word36)e2 & 0377) << 28;
 //        Ypair[0] |= (m2c >> 44) & 01777777777LL;
 //        Ypair[1]  = (m2c >> 8) &  0777777777400LL;
-        ExpMantToYpair(m2c, e2, Ypair);
+        ExpMantToYpair(m2c, e2, CPU -> Ypair);
     }
     
     dufa ();
@@ -1505,28 +1505,28 @@ void dufm (void)
     //! * Exp Ovr: If exponent is greater than +127, then ON
     //! * Exp Undr: If exponent is less than -128, then ON
     
-    uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; ///< only keep the 1st 64-bits :(
-    int8   e1 = (int8)rE;
+    uint64 m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; ///< only keep the 1st 64-bits :(
+    int8   e1 = (int8)CPU -> rE;
     
-    uint64 m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-           m2 |= Ypair[1];
+    uint64 m2  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+           m2 |= CPU -> Ypair[1];
     
-    int8   e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     
     //float72 m2 = 0;
     //int8 e2 = -128;
     
-    //YPairToExpMant(Ypair, &m2, &e2);
+    //YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
-        rE = (word8)-128;
-        rA = 0;
-        rQ = 0;
+        CPU -> rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return; // normalized 0
     }
@@ -1563,22 +1563,22 @@ void dufm (void)
     if (sign == -1)
         m3a = (~m3a + 1) & (((word72)1 << 71) - 1);    //0xffffffffffffffff;
     
-    rE = e3 & 0377;
-    rA = (m3a >> 28) & MASK36;
-    rQ = m3a & MASK36;
-    //rQ = (m3a & 01777777777LL) << 8;
+    CPU -> rE = e3 & 0377;
+    CPU -> rA = (m3a >> 28) & MASK36;
+    CPU -> rQ = m3a & MASK36;
+    //CPU -> rQ = (m3a & 01777777777LL) << 8;
     
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    //if ((CPU -> rE == -128 && CPU -> rA == 0 && CPU -> rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno ();
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
+    SCF(CPU -> rA == 0 && CPU -> rQ == 0, CPU -> cu.IR, I_ZERO);
+    //SCF(CPU -> rA && SIGN72, CPU -> cu.IR, I_NEG);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG); // was &&
     
-    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
-    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
+    if (e1 + e2 >  127) SETF(CPU -> cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(CPU -> cu.IR, I_EUFL);
 }
 
 /*!
@@ -1608,32 +1608,32 @@ static void dfdvX (bool bInvert)
     
     if (!bInvert)
     {
-        m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ;  // only keep the 1st 64-bits :(
-        e1 = (int8)rE;
+        m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ;  // only keep the 1st 64-bits :(
+        e1 = (int8)CPU -> rE;
         
-        m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m2 |= Ypair[1];
+        m2  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
+        m2 |= CPU -> Ypair[1];
         
-        e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        e2 = (int8)(bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
-        m2 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
-        e2 = (int8)rE;
+        m2 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
+        e2 = (int8)CPU -> rE;
         
-        m1  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m1 |= Ypair[1];
+        m1  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
+        m1 |= CPU -> Ypair[1];
         
-        e1 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        e1 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
     
     if (m1 == 0)
     {
         // XXX check flags
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
         
-        rE = (word8)-128;
-        rA = 0;
-        rQ = 0;
+        CPU -> rE = (word8)-128;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return;
     }
@@ -1670,10 +1670,10 @@ static void dfdvX (bool bInvert)
         
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
         
-        rA = m1;
+        CPU -> rA = m1;
         
         doFault(FAULT_DIV, 0, "DFDV: divide check fault");
     }
@@ -1683,7 +1683,7 @@ static void dfdvX (bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -1705,15 +1705,15 @@ static void dfdvX (bool bInvert)
     if (sign == -1)
         m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
     
-    rE = e3 & 0377;
-    rA = (m3b >> 28) & MASK36;
-    rQ = (m3b & 01777777777LL) << 8;//MASK36;
+    CPU -> rE = e3 & 0377;
+    CPU -> rA = (m3b >> 28) & MASK36;
+    CPU -> rQ = (m3b & 01777777777LL) << 8;//MASK36;
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(CPU -> rA == 0 && CPU -> rQ == 0, CPU -> cu.IR, I_ZERO);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
     
-    if (rA == 0 && rQ == 0)    // set to normalized 0
-        rE = (word8)-128;
+    if (CPU -> rA == 0 && CPU -> rQ == 0)    // set to normalized 0
+        CPU -> rE = (word8)-128;
 }
 
 // CANFAULT 
@@ -1759,8 +1759,8 @@ void dvf (void)
     // m1 divedend
     // m2 divisor
 
-    word72 m1 = SIGNEXT36_72((rA << 36) | (rQ & 0777777777776LLU));
-    word72 m2 = SIGNEXT36_72(CY);
+    word72 m1 = SIGNEXT36_72((CPU -> rA << 36) | (CPU -> rQ & 0777777777776LLU));
+    word72 m2 = SIGNEXT36_72(CPU -> CY);
 
 //sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
 //sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
@@ -1770,11 +1770,11 @@ void dvf (void)
     if (m2 == 0)
     {
         // XXX check flags
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
         
-        rA = 0;
-        rQ = 0;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return;
     }
@@ -1797,12 +1797,12 @@ void dvf (void)
     
     if (m2 == 0)
     {        
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
         
-        //rA = m1;
-        rA = (m1 >> 36) & MASK36;
-        rQ = m1 & 0777777777776LLU;
+        //CPU -> rA = m1;
+        CPU -> rA = (m1 >> 36) & MASK36;
+        CPU -> rQ = m1 & 0777777777776LLU;
         
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
     }
@@ -1821,26 +1821,26 @@ void dvf (void)
     if (dividendSign == -1) // The remainder sign is equal to the dividend sign unless the remainder is zero.
         m3r = -m3r; //(~m3r + 1);
     
-    rA = (m3 >> 64) & MASK36;
-    rQ = m3r & MASK36;   //01777777777LL;
+    CPU -> rA = (m3 >> 64) & MASK36;
+    CPU -> rQ = m3r & MASK36;   //01777777777LL;
 #endif
 
 // canonial code
 #ifdef DVF_FRACTIONAL
 
 sim_printf ("dvf [%lld]\n", sim_timell ());
-sim_printf ("rA %llu\n", rA);
-sim_printf ("rQ %llu\n", rQ);
-sim_printf ("CY %llu\n", CY);
+sim_printf ("rA %llu\n", CPU -> rA);
+sim_printf ("rQ %llu\n", CPU -> rQ);
+sim_printf ("CY %llu\n", CPU -> CY);
 
-    if (CY == 0)
+    if (CPU -> CY == 0)
       {
         // XXX check flags
-        SETF (cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SETF (CPU -> cu . IR, I_ZERO);
+        SCF (CPU -> rA & SIGN36, CPU -> cu . IR, I_NEG);
         
-        rA = 0;
-        rQ = 0;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return;
     }
@@ -1853,15 +1853,15 @@ sim_printf ("CY %llu\n", CY);
     //  C(AQ)
 
     int sign = 1;
-    bool dividendNegative = (getbits36 (rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+    bool dividendNegative = (getbits36 (CPU -> rA, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CPU -> CY, 0, 1) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.
 
     // dividend format:   . d(0) ...  d(69)
 
-    uint128 zFrac = ((rA & MASK35) << 35) | ((rQ >> 1) & MASK35);
+    uint128 zFrac = ((CPU -> rA & MASK35) << 35) | ((CPU -> rQ >> 1) & MASK35);
     if (dividendNegative)
       {
         zFrac = ~zFrac + 1;
@@ -1876,7 +1876,7 @@ sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
     
 #if 1
     // divisor goes in the high half
-    uint128 dFrac = (CY & MASK35) << 35;
+    uint128 dFrac = (CPU -> CY & MASK35) << 35;
     if (divisorNegative)
       {
         dFrac = ~dFrac + 1;
@@ -1885,7 +1885,7 @@ sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
     dFrac &= MASK35 << 35;
 #else
     // divisor goes in the low half
-    uint128 dFrac = CY & MASK35;
+    uint128 dFrac = CPU -> CY & MASK35;
     if (divisorNegative)
       {
         dFrac = ~dFrac + 1;
@@ -1916,8 +1916,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-    rA = quot & MASK36;
-    rQ = remainder & MASK36;
+    CPU -> rA = quot & MASK36;
+    CPU -> rQ = remainder & MASK36;
  
 #endif
 
@@ -1925,18 +1925,18 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 #ifdef DVF_CAC
 
 //sim_debug (DBG_CAC, & cpu_dev, "dvf [%lld]\n", sim_timell ());
-//sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", rA);
-//sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", rQ);
-//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
+//sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", CPU -> rA);
+//sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", CPU -> rQ);
+//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CPU -> CY);
 
-    if (CY == 0)
+    if (CPU -> CY == 0)
       {
         // XXX check flags
-        SETF (cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SETF (CPU -> cu . IR, I_ZERO);
+        SCF (CPU -> rA & SIGN36, CPU -> cu . IR, I_NEG);
         
-        rA = 0;
-        rQ = 0;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
         
         return;
     }
@@ -1947,15 +1947,15 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     //  C(AQ)
 
     int sign = 1;
-    bool dividendNegative = (getbits36 (rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+    bool dividendNegative = (getbits36 (CPU -> rA, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CPU -> CY, 0, 1) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.
 
     // dividend format:   . d(0) ...  d(69)
 
-    uint128 zFrac = ((rA & MASK35) << 35) | ((rQ >> 1) & MASK35);
+    uint128 zFrac = ((CPU -> rA & MASK35) << 35) | ((CPU -> rQ >> 1) & MASK35);
     if (dividendNegative)
       {
         zFrac = ~zFrac + 1;
@@ -1972,7 +1972,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
     
     // divisor goes in the low half
-    uint128 dFrac = CY & MASK35;
+    uint128 dFrac = CPU -> CY & MASK35;
     if (divisorNegative)
       {
         dFrac = ~dFrac + 1;
@@ -1998,15 +1998,15 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-    rA = quot & MASK36;
-    rQ = remainder & MASK36;
+    CPU -> rA = quot & MASK36;
+    CPU -> rQ = remainder & MASK36;
  
 #endif
 
-//sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", rA, rA);
-//sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", rQ);
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+//sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", CPU -> rA, CPU -> rA);
+//sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", CPU -> rQ);
+    SCF(CPU -> rA == 0 && CPU -> rQ == 0, CPU -> cu.IR, I_ZERO);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
 }
 
 
@@ -2027,12 +2027,12 @@ void dfrd (void)
     //! * If overflow does not occur, C(EAQ) is normalized.
     //! * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
         
-    float72 m = ((word72)rA << 36) | (word72)rQ;
+    float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
     if (m == 0)
     {
-        rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        CPU -> rE = (word8)-128;
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -2060,30 +2060,30 @@ void dfrd (void)
         if (s1) // restore sign if necessary (was s2)
             m |= SIGN72;
         
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
         
-        if (rE + 1 > 127)
-            SETF(cu.IR, I_EOFL);
-        rE +=  1;
+        if (CPU -> rE + 1 > 127)
+            SETF(CPU -> cu.IR, I_EOFL);
+        CPU -> rE +=  1;
     }
     else
     {
         // If overflow does not occur, C(EAQ) is normalized.
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
         
         fno ();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    if (rA == 0 && rQ == 0)
+    if (CPU -> rA == 0 && CPU -> rQ == 0)
     {
-        rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        CPU -> rE = (word8)-128;
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
 }
 
 void dfstr (word36 *Ypair)
@@ -2107,18 +2107,18 @@ void dfstr (word36 *Ypair)
     
     //! I believe AL39 is incorrect; bits 64-71 should be set to 0, not 65-71. DH02-01 & Bull 9000 is correct.
     
-    word36 A = rA, Q = rQ;
-    word8 E = rE;
+    word36 A = CPU -> rA, Q = CPU -> rQ;
+    word8 E = CPU -> rE;
     A &= DMASK;
     Q &= DMASK;
     E &= MASK8;
 
-    float72 m = ((word72)A << 36) | (word72)rQ;
+    float72 m = ((word72)A << 36) | (word72)CPU -> rQ;
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
         Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
@@ -2154,7 +2154,7 @@ void dfstr (word36 *Ypair)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -2170,10 +2170,10 @@ void dfstr (word36 *Ypair)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, cu.IR, I_NEG);
+    SCF(A & SIGN36, CPU -> cu.IR, I_NEG);
     
     Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
@@ -2196,13 +2196,13 @@ void dfcmp (void)
     //! The mantissas are aligned by shifting the mantissa of the operand with the algebraically smaller exponent to the right the number of places equal to the difference in the two exponents.
     //! The aligned mantissas are compared and the indicators set accordingly.
     
-    int64 m1 = (int64) ((rA << 28) | ((rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
-    int8  e1 = (int8)rE;
+    int64 m1 = (int64) ((CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
+    int8  e1 = (int8)CPU -> rE;
     
-    int64 m2  = (int64) (bitfieldExtract36(Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
-          m2 |= Ypair[1];
+    int64 m2  = (int64) (bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
+          m2 |= CPU -> Ypair[1];
     
-    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     //which exponent is smaller???
     
@@ -2224,8 +2224,8 @@ void dfcmp (void)
     }
     
     // need to do algebraic comparisons of mantissae
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 <  m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 <  m2, CPU -> cu.IR, I_NEG);
 }
 
 /*!
@@ -2244,13 +2244,13 @@ void dfcmg (void)
     
     //! The dfcmg instruction is identical to the dfcmp instruction except that the magnitudes of the mantissas are compared instead of the algebraic values.
     
-    int64 m1 = (int64) ((rA << 28) | ((rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
-    int8  e1 = (int8)rE;
+    int64 m1 = (int64) ((CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
+    int8  e1 = (int8)CPU -> rE;
     
-    int64 m2  = (int64) bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-    m2 |= Ypair[1];
+    int64 m2  = (int64) bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+    m2 |= CPU -> Ypair[1];
     
-    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //which exponent is smaller???
     
@@ -2276,6 +2276,6 @@ void dfcmg (void)
     m1 = llabs(m1);
     m2 = llabs(m2);
     
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 < m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 < m2, CPU -> cu.IR, I_NEG);
 }

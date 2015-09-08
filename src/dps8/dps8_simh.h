@@ -6,9 +6,9 @@
   if ( \
       sim_deb && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
-      ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == PPR . PSR) && \
-      ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == PPR. PRR) && \
-      ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TSTF (cu . IR, I_NBAR))) && \
+      ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == CPU -> PPR . PSR) && \
+      ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == CPU -> PPR. PRR) && \
+      ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TSTF (CPU->cu . IR, I_NBAR))) && \
       sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
       ((dptr != & cpu_dev) | (((dbits) & DBG_TRACE) ? (sim_deb_skip_cnt ++ >= sim_deb_skip_limit) : (sim_deb_skip_cnt >= sim_deb_skip_limit))) \

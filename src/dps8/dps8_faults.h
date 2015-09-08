@@ -59,7 +59,7 @@ struct dps8faults
 };
 typedef struct dps8faults dps8faults;
 
-extern char * faultNames [N_FAULTS];
+extern const char * faultNames [N_FAULTS];
 void check_events (void);
 void clearFaultCycle (void);
 void emCallReportFault (void);

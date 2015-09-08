@@ -718,10 +718,11 @@ typedef struct {
 
 // ============================================================================
 
-static int64 userCorrection = 0;
+
+static uint64 last [N_SCU_UNITS_MAX] = {0, 0, 0, 0};
 
 // The SCU clock is 52 bits long; fits in t_uint64
-static uint64 getSCUclock (void)
+static uint64 getSCUclock (uint scu_unit_num)
   {
 
 // The emulator supports two clock models: steady and real
@@ -729,7 +730,7 @@ static uint64 getSCUclock (void)
 // allowing reproducible behavior. In real, the clock is
 // coupled to the actual time-of-day.
 
-    if (switches . steady_clock)
+    if (steady_clock)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
@@ -737,8 +738,6 @@ static uint64 getSCUclock (void)
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;
-        if (switches . bullet_time)
-          big *= 10000;
 
         big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
         // Boot time
@@ -755,19 +754,18 @@ static uint64 getSCUclock (void)
         // now determine uSecs since Jan 1, 1901 ...
         uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 
-        MulticsuSecs += userCorrection;
+        MulticsuSecs += scu [scu_unit_num] . userCorrection;
 
         // The get calendar clock function is guaranteed to return
         // different values on successive calls. 
 
-        static uint64 last = 0;
-        if (last >= MulticsuSecs)
+        if (last [scu_unit_num] >= MulticsuSecs)
           {
             sim_debug (DBG_TRACE, & scu_dev, "finagle clock\n");
-            MulticsuSecs = last + 1;
+            MulticsuSecs = last [scu_unit_num] + 1;
           }
-        last = MulticsuSecs;
-        return last;
+        last [scu_unit_num] = MulticsuSecs;
+        return last [scu_unit_num];
       }
 
     // The calendar clock consists of a 52-bit register which counts
@@ -786,7 +784,7 @@ static uint64 getSCUclock (void)
     struct timeval now;
     gettimeofday(& now, NULL);
                 
-    if (switches . y2k) // subtract 20 years....
+    if (y2k) // subtract 20 years....
       {
         // Back the clock up to just after the MR12.3 release (12/89
         // according to http://www.multicians.org/chrono.html
@@ -823,7 +821,7 @@ static uint64 getSCUclock (void)
  
     // Correction factor from the set time command
 
-    MulticsuSecs += userCorrection;
+    MulticsuSecs += scu [scu_unit_num] . userCorrection;
 
     static uint64 lastRccl;                    //  value from last call
  
@@ -1127,10 +1125,10 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
         case 00005: 
           {
             // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
-            word16 b0_15 = (word16) getbits36 (rA, 20, 16);
-            word36 b16_51 = rQ;
+            word16 b0_15 = (word16) getbits36 (CPU -> rA, 20, 16);
+            word36 b16_51 = CPU -> rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
-            userCorrection = newClk - getSCUclock ();
+            scu [scu_unit_num] . userCorrection = newClk - getSCUclock (scu_unit_num);
             //sim_printf ("sscr %o\n", function);
           }
           break;
@@ -1361,9 +1359,6 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
                 big *= 4u;
                 //big /= 100u;
-                if (switches . bullet_time)
-                  big *= 10000;
-
                 big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
                 // Boot time
 
@@ -1395,8 +1390,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                   }
                 last = MulticsuSecs;
 
-                rA = (MulticsuSecs >> 36) & DMASK;
-                rQ = (MulticsuSecs >>  0) & DMASK;
+                CPU -> rA = (MulticsuSecs >> 36) & DMASK;
+                CPU -> rQ = (MulticsuSecs >>  0) & DMASK;
                 break;
               }
             /// The calendar clock consists of a 52-bit register which counts
@@ -1415,7 +1410,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             struct timeval now;
             gettimeofday(& now, NULL);
                 
-            if (switches . y2k) // subtract 20 years....
+            if (y2k) // subtract 20 years....
               {
                 // Back the clock up to just after the MR12.3 release (12/89
                 // according to http://www.multicians.org/chrono.html
@@ -1455,12 +1450,12 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             else
                 lastRccl = MulticsuSecs;
 
-            rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
-            rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
+            CPU -> rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
+            CPU -> rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
 #else
-            uint64 clk = getSCUclock ();
-            rQ =  clk & 0777777777777;     // lower 36-bits of clock
-            rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
+            uint64 clk = getSCUclock (scu_unit_num);
+            CPU -> rQ =  clk & 0777777777777;     // lower 36-bits of clock
+            CPU -> rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
 #endif
           }
         break;
@@ -1676,12 +1671,12 @@ static void deliverInterrupts (uint scu_unit_num)
             if (scu [scu_unit_num] . cells [inum] &&
                 (mask & (1 << (31 - inum))) != 0)
               {
-                events . XIP [scu_unit_num] = true;
+                CPU -> events . XIP [scu_unit_num] = true;
                 return;
               }
           }
       }
-    events . XIP [scu_unit_num] = false;
+    CPU -> events . XIP [scu_unit_num] = false;
   }
 
 uint scuGetHighestIntr (uint scuUnitNum)

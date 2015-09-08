@@ -583,14 +583,6 @@ int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
 }
 #endif
 
-int findFirstDigit(unsigned char *bcd)
-{
-    int i = 0;
-    while (bcd[i] == '0' && bcd[i])
-        i += 1;
-    
-    return i;
-}
 
 
 

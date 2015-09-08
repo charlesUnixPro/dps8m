@@ -1,10 +1,3 @@
-// XXX these ought to moved to DCDstruct 
-extern word36 CY;
-extern word36 Ypair[2];
-extern word36 Yblock8[8];
-extern word36 Yblock16[16];
-extern word36 Yblock32[32];
-
 void tidy_cu (void);
 void cu_safe_store(void);
 void initializeTheMatrix (void);

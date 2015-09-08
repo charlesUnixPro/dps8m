@@ -22,7 +22,7 @@ typedef struct config_state
 int cfgparse (const char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
 void cfgparse_done (config_state_t * state);
 
-struct opCode *getIWBInfo(DCDstruct *i);
+const struct opCode *getIWBInfo(DCDstruct *i);
 char * dumpFlags(word18 flags);
 char *disAssemble(word36 instruction);
 char *getModString(int32 tag);

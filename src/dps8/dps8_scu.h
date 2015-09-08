@@ -49,6 +49,7 @@ typedef struct
     word4 id;
     word18 modeReg;
 
+    int64 userCorrection;
 } scu_t;
 
 extern scu_t scu [N_SCU_UNITS_MAX];

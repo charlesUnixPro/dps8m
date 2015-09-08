@@ -125,7 +125,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 /////
 
 
-extern enum _processor_cycle_type {
+enum _processor_cycle_type {
     UNKNOWN_CYCLE = 0,
     APPEND_CYCLE,
     CA_CYCLE,

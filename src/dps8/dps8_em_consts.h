@@ -92,6 +92,7 @@ typedef struct pcw_t
 // CPU
 //
 
+enum { N_CPU_UNITS_MAX = 8 };
 enum { N_CPU_PORTS = 4 };
 
 //

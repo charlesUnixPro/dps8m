@@ -1,8 +1,4 @@
 
-// simh only explicitly supports a single cpu
-
-#define N_CPU_UNITS 1
-#define CPU_UNIT_NUM 0
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
@@ -29,10 +25,6 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
-#if 0
-    BAR_mode,
-    APPEND_BAR_mode,
-#endif
   } addr_modes_t;
 
 
@@ -54,36 +46,8 @@ typedef enum
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
-#ifndef QUIET_UNUSED
-// MF fields of EIS multi-word instructions -- 7 bits 
 
-typedef struct
-  {
-    bool ar;
-    bool rl;
-    bool id;
-    uint reg;  // 4 bits
-  } eis_mf_t;
-#endif
-
-// [map] designates mapping into 36-bit word from DPS-8 proc manual
-
-extern word36   rA;     // accumulator
-extern word36   rQ;     // quotient
-extern word8    rE;     // exponent [map: rE, 28 0's]
-
-extern word18   rX [8]; // index
-#ifndef REAL_TR
-extern word27   rTR;    // timer [map: TR, 9 0's]
-#endif
-extern word24   rY;     // address operand
-extern word8    rTAG;   // instruction tag
-extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]
-extern word8    tCF;    // character position field [3b]
-extern word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
-extern word3    RSDWH_R1; // Track the ring number of the last SDW
-
-extern struct _tpr
+struct _tpr
   {
     word3   TRR; // The current effective ring number
     word15  TSR; // The current effective segment number
@@ -91,9 +55,9 @@ extern struct _tpr
                  // pointer pairs.
     word18  CA;  // The current computed address relative to the origin of the 
                  // segment whose segment number is in TPR . TSR
-  } TPR;
+  };
 
-extern struct _ppr
+struct _ppr
   {
     word3   PRR; // The number of the ring in which the process is executing. 
                  // It is set to the effective ring number of the procedure 
@@ -106,7 +70,7 @@ extern struct _ppr
                  // 1; otherwise, its value is 0.
     word18  IC;  // The word offset from the origin of the procedure segment
                  //  to the current instruction. (same as PPR . IC)
-  } PPR;
+  };
 
 /////
 
@@ -165,7 +129,7 @@ extern struct _ppr
 //                    first bit of the next data item element.
 //
 
-extern struct _par
+struct _par
   {
     word15  SNR;    // The segment number of the segment containing the data 
                     //item described by the pointer register.
@@ -191,7 +155,7 @@ extern struct _par
                     //  items may have any value in the range [1,35].
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
-  } PAR [8];
+  };
 
 // N.B. remember there are subtle differences between AR/PR . BITNO
 
@@ -200,13 +164,13 @@ extern struct _par
 
 // Support code to access ARn . BITNO and CHAR
 
-#define GET_AR_BITNO(n) (PAR [n] . BITNO % 9)
-#define GET_AR_CHAR(n) (PAR [n] . BITNO / 9)
-#define SET_AR_BITNO(n, b) PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
-#define SET_AR_CHAR(n, c) PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
-#define SET_AR_CHAR_BIT(n, c, b) PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
+#define GET_AR_BITNO(n) (CPU -> PAR [n] . BITNO % 9)
+#define GET_AR_CHAR(n) (CPU -> PAR [n] . BITNO / 9)
+#define SET_AR_BITNO(n, b) CPU -> PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
+#define SET_AR_CHAR(n, c) CPU -> PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
+#define SET_AR_CHAR_BIT(n, c, b) CPU -> PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
 
-extern struct _bar
+struct _bar
   {
     word9 BASE;     // Contains the 9 high-order bits of an 18-bit address 
                     // relocation constant. The low-order bits are generated 
@@ -216,9 +180,9 @@ extern struct _bar
                     // zeros. An attempt to access main memory beyond this 
                     // limit causes a store fault, out of bounds. A value of 
                     // 0 is truly 0, indicating a null memory range.
-  } BAR;
+  };
 
-extern struct _dsbr
+struct _dsbr
   {
     word24  ADDR;   // If DSBR . U = 1, the 24-bit absolute main memory address
                     //  of the origin of the current descriptor segment;
@@ -234,14 +198,14 @@ extern struct _dsbr
                     // number. It is used only during the execution of the 
                     // call6 instruction. (See Section 8 for a discussion
                     //  of generation of the stack segment number.)
-  } DSBR;
+  };
 
 // The segment descriptor word (SDW) pair contains information that controls
 // the access to a segment. The SDW for segment n is located at offset 2n in
 // the descriptor segment whose description is currently loaded into the
 // descriptor segment base register (DSBR).
 
-extern struct _sdw
+struct _sdw
   {
     word24  ADDR;    // The 24-bit absolute main memory address of the page
                      //  table for the target segment if SDWAM . U = 0;
@@ -293,18 +257,13 @@ extern struct _sdw
                      //  and the queue is reordered. SDWs newly fetched from
                      //  main memory replace the SDW with USE value 0 (oldest)
                      //  and the queue is reordered.
-  }
-#ifdef SPEED
-     SDWAM0, * SDW;
-#else
-     SDWAM [64], * SDW;
-#endif
+  };
 
 typedef struct _sdw _sdw;
 
 // in-core SDW (i.e. not cached, or in SDWAM)
 
-extern struct _sdw0
+struct _sdw0
   {
     // even word
     word24  ADDR;    // The 24-bit absolute main memory address of the page
@@ -350,15 +309,15 @@ extern struct _sdw0
                      //  cache memory.
     word14  EB;      // Entry bound. Any call into this segment must be to
                      //  an offset less than EB if G=0
-} SDW0;
+  };
 
 typedef struct _sdw0 _sdw0;
 
 
 // PTW as used by APU
 
-extern struct _ptw
- {
+struct _ptw
+  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
     word1   M;       // Page modified flag bit. This bit is set ON whenever
@@ -384,18 +343,13 @@ extern struct _ptw
                      //  PTW with USE value 0 (oldest) and the queue is
                      //  reordered.
     
-  }
-#ifdef SPEED
-     PTWAM0, * PTW;
-#else
-     PTWAM [64], * PTW;
-#endif
+  };
 
 typedef struct _ptw _ptw;
 
 // in-core PTW
 
-extern struct _ptw0
+struct _ptw0
   {
     word18  ADDR;   // The 18 high-order bits of the 24-bit absolute main
                     //  memory address of the page.
@@ -406,7 +360,7 @@ extern struct _ptw0
                     // * 1 = page is in main memory
     word2   FC;     // Directed fault number for page fault.
     
-  } PTW0;
+  };
 
 typedef struct _ptw0 _ptw0;
 
@@ -437,7 +391,6 @@ struct _cache_mode_register
   };
 
 typedef struct _cache_mode_register _cache_mode_register;
-extern _cache_mode_register CMR;
 
 typedef struct mode_registr
   {
@@ -456,7 +409,6 @@ typedef struct mode_registr
     word1 emr;
   } _mode_register;
 
-extern _mode_register MR;
 
 extern DEVICE cpu_dev;
 extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
@@ -640,7 +592,7 @@ typedef struct EISstruct
 
 struct DCDstruct
   {
-    opCode * info;        // opCode *
+    const opCode * info;        // opCode *
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     word18 address;       // bits 0-17 of instruction
@@ -650,9 +602,6 @@ struct DCDstruct
     
     word18 stiTally;      // for sti instruction
   };
-
-extern DCDstruct currentInstruction;
-extern EISstruct currentEISinstruction;
 
 // Emulator-only interrupt and fault info
 
@@ -666,8 +615,6 @@ typedef struct
     //bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
     bool XIP [N_SCU_UNITS_MAX];
   } events_t;
-
-extern events_t events;
 
 // Physical Switches
 
@@ -695,7 +642,6 @@ typedef struct
     uint dis_enable;      // If non-zero, DIS works
     uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
     uint lprp_highonly;   // If non-zero lprp only sets the high bits
-    uint steady_clock;    // If non-zero the clock is tied to the cycle counter
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after;
     uint super_user;
@@ -703,54 +649,14 @@ typedef struct
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
     uint disable_wam;     // If non-zero, disable PTWAM, STWAM
-    uint bullet_time;
     uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
-    uint y2k;
     uint drl_fatal;
   } switches_t;
 
-extern switches_t switches;
-
-
-// More emulator state variables for the cpu
-// These probably belong elsewhere, perhaps control unit data or the
-// cu-history regs...
-
-typedef struct
-  {
-    cycles_t cycle;
-    uint IC_abs; // translation of odd IC to an absolute address; see
-                 // ADDRESS of cu history
-    bool irodd_invalid;
-                // cached odd instr invalid due to memory write by even instr
-
-    // The following are all from the control unit history register:
-
-    bool trgo;               // most recent instruction caused a transfer?
-    bool ic_odd;             // executing odd pair?
-    bool poa;                // prepare operand address
-    uint opcode;             // currently executing opcode
-    struct
-      {
-        bool fhld; // An access violation or directed fault is waiting.
-                   // AL39 mentions that the APU has this flag, but not
-                   // where scpr stores it
-      } apu_state;
-
-    bool interrupt_flag;     // an interrupt is pending in this cycle
-    bool g7_flag;            // a g7 fault is pending in this cycle;
-    _fault faultNumber;      // fault number saved by doFault
-    _fault_subtype subFault; // saved by doFault
-
-    bool wasXfer;  // The previous instruction was a transfer
-
-    bool wasInhibited; // One or both of the previous instruction 
-                       // pair was interrupr inhibited.
-  } cpu_state_t;
-
-extern cpu_state_t cpu;
+extern uint steady_clock;    // If non-zero the clock is tied to the cycle counter
+extern uint y2k;
 
 // Control unit data (288 bits) 
 
@@ -928,8 +834,6 @@ typedef struct
     
  } ctl_unit_data_t;
 
-extern ctl_unit_data_t cu;
-
 // Control unit data (288 bits) 
 
 typedef struct du_unit_data_t
@@ -1066,23 +970,105 @@ typedef struct du_unit_data_t
 
   } du_unit_data_t;
 
-extern du_unit_data_t du;
+typedef struct
+  {
+    cycles_t cycle;
+    uint IC_abs; // translation of odd IC to an absolute address; see
+                 // ADDRESS of cu history
+    bool irodd_invalid;
+                // cached odd instr invalid due to memory write by even instr
 
+    // The following are all from the control unit history register:
 
+    bool trgo;               // most recent instruction caused a transfer?
+    bool ic_odd;             // executing odd pair?
+    bool poa;                // prepare operand address
+    uint opcode;             // currently executing opcode
+    struct
+      {
+        bool fhld; // An access violation or directed fault is waiting.
+                   // AL39 mentions that the APU has this flag, but not
+                   // where scpr stores it
+      } apu_state;
 
-// XXX when multiple cpus are supported, make the cpu  data structure
-// an array and merge the unit state info into here; coding convention
-// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
-// is taken. It should probably be merged into here, and then this
-// should then be renamed.
+    bool interrupt_flag;     // an interrupt is pending in this cycle
+    bool g7_flag;            // a g7 fault is pending in this cycle;
+    _fault faultNumber;      // fault number saved by doFault
+    _fault_subtype subFault; // saved by doFault
 
-#define N_CPU_UNITS_MAX 1
+    bool wasXfer;  // The previous instruction was a transfer
 
-word36 faultRegister [2];
+    bool wasInhibited; // One or both of the previous instruction 
+                       // pair was interrupr inhibited.
 
+    DCDstruct currentInstruction;
+    EISstruct currentEISinstruction;
 
-//extern int stop_reason;     // sim_instr return value for JMP_STOP
-//void cancel_run (t_stat reason);
+    events_t events;
+    switches_t switches;
+    ctl_unit_data_t cu;
+    du_unit_data_t du;
+    word36 faultRegister [2];
+
+    word36   rA;     // accumulator
+    word36   rQ;     // quotient
+    word8    rE;     // exponent [map: rE, 28 0's]
+    word18   rX [8]; // index
+#ifndef REAL_TR
+    word27   rTR;    // timer [map: TR, 9 0's]
+#endif
+    word24   rY;     // address operand
+    word8    rTAG;   // instruction tag
+    word8    tCF;    // character position field [3b]
+    word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
+    word3    RSDWH_R1; // Track the ring number of the last SDW
+    struct _tpr TPR; // Temporary Pointer Register
+    struct _ppr PPR; // Procedure Pointer Register
+    struct _par PAR [8]; // pointer/address resisters
+    struct _bar BAR;
+    struct _dsbr DSBR;
+#ifdef SPEED
+    struct _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+#else
+    struct _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+#endif
+    struct _sdw * SDW; // working SDW
+    struct _sdw0 SDW0; // a SDW not in SDWAM
+#ifdef SPEED
+    struct _ptw PTWAM0;
+#else
+    struct _ptw PTWAM [64];
+#endif
+    struct _ptw * PTW;
+    struct _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
+    _cache_mode_register CMR;
+    _mode_register MR;
+    bool directOperandFlag;
+    bool characterOperandFlag;
+    int characterOperandSize;
+    int characterOperandOffset;
+    word36 directOperand;
+    bool bTroubleFaultCycle;       // when true then in TROUBLE FAULT CYCLE
+    uint g7Faults;
+    _fault_subtype g7SubFaults [N_FAULTS];
+    word24 iefpFinalAddress;
+    word36 CY;
+    word36 Ypair[2];
+    word36 Yblock8[8];
+    word36 Yblock16[16];
+    word36 Yblock32[32];
+    word36 scu_data[8];    // For SCU instruction
+#ifdef REAL_TR
+    uint timerRegVal;
+    struct timeval timerRegT0;
+#endif
+
+  } cpu_state_t;
+
+extern cpu_state_t cpu [N_CPU_UNITS_MAX];
+extern uint currentRunningCPUnum;
+extern cpu_state_t * CPU;
+
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);

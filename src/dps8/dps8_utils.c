@@ -59,9 +59,9 @@ static char * dps8_strupr(char *str)
 
 static opCode UnImp = {"(unimplemented)", 0, 0, 0};
 
-struct opCode *getIWBInfo(DCDstruct *i)
+const struct opCode *getIWBInfo(DCDstruct *i)
 {
-    opCode *p;
+    const opCode *p;
     
     if (i->opcodeX == false)
         p = &NonEISopcodes[i->opcode];
