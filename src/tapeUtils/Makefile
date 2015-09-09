@@ -17,6 +17,7 @@ P9_OBJS = pack9.o
 RTOC_OBJS = restore_toc.o bit36.o
 RTT_OBJS = restore_tape.o bit36.o simhtapes.o
 P72_OBJS = p72_to_acsii.o bit36.o
+P72B_OBJS = p72_to_binary.o bit36.o
 P72A_OBJS = p72archive_to_acsii.o bit36.o
 P72S_OBJS = p72archive_to_segment.o bit36.o
 DD_OBJS = diskDump.o bit36.o
@@ -44,6 +45,7 @@ pack9 : $(P9_OBJS)
 restore_toc: $(RTOC_OBJS)
 restore_tape: $(RTT_OBJS)
 p72_to_acsii: $(P72_OBJS)
+p72_to_binary: $(P72B_OBJS)
 p72archive_to_acsii: $(P72A_OBJS)
 p72archive_to_segment: $(P72S_OBJS)
 diskDump: $(DD_OBJS)
