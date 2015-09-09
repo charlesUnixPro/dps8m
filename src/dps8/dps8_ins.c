@@ -439,7 +439,7 @@ static void du2words (word36 * words)
 
     // Word 3
 
-    putbits36 (& words [3],  9,  1, du . LEVEL1);
+    putbits36 (& words [3],  0, 10, du . LEVEL1);
     putbits36 (& words [3], 12, 24, du . D1_RES);
     
     // Word 4
@@ -493,7 +493,7 @@ static void words2du (word36 * words)
 
     // Word 3
 
-    du . LEVEL1   = getbits36 (words [3],  9,  1);
+    du . LEVEL1   = getbits36 (words [3],  0, 10);
     du . D1_RES   = getbits36 (words [3], 12, 24);
     
     // Word 4
@@ -745,7 +745,8 @@ void fetchInstruction (word18 addr)
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
 
-    if (get_addr_mode() == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
+    //if (get_addr_mode() == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
+    if (get_addr_mode() == ABSOLUTE_mode)
       {
         TPR . TRR = 0;
         RSDWH_R1 = 0;
@@ -804,42 +805,55 @@ force:;
         char * compname;
         word18 compoffset;
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
+        bool isBAR = TSTF (cu . IR, I_NBAR) ? false : true;
         if (where)
           {
             if (get_addr_mode() == ABSOLUTE_mode)
               {
-                sim_debug(flag, &cpu_dev, "%06o %s\n", PPR.IC, where);
+                if (isBAR)
+                  {
+                    sim_debug(flag, &cpu_dev, "%06o|%06o %s\n", BAR.BASE, PPR.IC, where);
+                  }
+                else
+                  {
+                    sim_debug(flag, &cpu_dev, "%06o %s\n", PPR.IC, where);
+                  }
               }
             else if (get_addr_mode() == APPEND_mode)
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
-              }
-            else if (get_addr_mode() == BAR_mode)
-              {
-                sim_debug(flag, &cpu_dev, "%06o|%06o %s\n", BAR.BASE, PPR.IC, where);
-              }
-            else if (get_addr_mode() == APPEND_BAR_mode)
-              {
-                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %s\n", PPR.PSR, BAR.BASE, PPR.IC, where);
+                if (isBAR)
+                  {
+                    sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %s\n", PPR.PSR, BAR.BASE, PPR.IC, where);
+                  }
+                else
+                  {
+                    sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+                  }
               }
             listSource (compname, compoffset, flag);
           }
 
         if (get_addr_mode() == ABSOLUTE_mode)
           {
-            sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            if (isBAR)
+              {
+                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+              }
+            else
+              {
+                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+              }
           }
         else if (get_addr_mode() == APPEND_mode)
           {
-            sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
-          }
-        else if (get_addr_mode() == BAR_mode)
-          {
-            sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
-          }
-        else if (get_addr_mode() == APPEND_BAR_mode)
-          {
-            sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+            if (isBAR)
+              {
+                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+              }
+            else
+              {
+                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+              }
           }
       }
 
@@ -975,9 +989,11 @@ t_stat executeInstruction (void)
     {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
         {
+#if 0
             if (get_addr_mode () == BAR_mode)
               set_addr_mode(APPEND_BAR_mode);
             else
+#endif
               set_addr_mode(APPEND_mode);
         }
     }
@@ -1158,7 +1174,8 @@ restart_1:
             else
               {
                 TPR . TBR = 0;
-                if (get_addr_mode () == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
+                //if (get_addr_mode () == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
+                if (get_addr_mode() == ABSOLUTE_mode)
                   {
                     TPR . TSR = PPR . PSR;
                     TPR . TRR = 0;
@@ -1234,9 +1251,11 @@ restart_1:
     {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
         {
+#if 0
             if (get_addr_mode () == BAR_mode)
               set_addr_mode(APPEND_BAR_mode);
             else
+#endif
               set_addr_mode(APPEND_mode);
         }
     }
@@ -4254,7 +4273,11 @@ static t_stat DoBasicInstruction (void)
             PPR.IC = TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
             PPR.PSR = TPR.TSR;
 
+#if 0
             set_addr_mode (BAR_mode);
+#else
+            CLRF(cu.IR, I_NBAR);
+#endif
             return CONT_TRA;
             
         case 0700:  ///< tsx0
@@ -4466,7 +4489,8 @@ static t_stat DoBasicInstruction (void)
                 Ypair[1] = Yblock16[n * 2 + 1]; // Odd word of ITS pointer pair
                 
                 word3 Crr = (GETLO(Ypair[0]) >> 15) & 07;       ///< RNR from ITS pair
-                if (get_addr_mode () == APPEND_mode || get_addr_mode () == APPEND_BAR_mode)
+                //if (get_addr_mode () == APPEND_mode || get_addr_mode () == APPEND_BAR_mode)
+                if (get_addr_mode () == APPEND_mode)
                   PR[n].RNR = max3(Crr, SDW->R1, TPR.TRR) ;
                 else
                   PR[n].RNR = Crr;
@@ -7559,6 +7583,7 @@ void doRCU (bool fxeTrap)
 
 // Restore addressing mode
 
+#if 0
     if ((cu . IR & I_NBAR) == 0) // BAR
       {
         if ((cu . IR & I_ABS) == 0)
@@ -7572,7 +7597,14 @@ void doRCU (bool fxeTrap)
           set_addr_mode (APPEND_mode);
         else
           set_addr_mode (ABSOLUTE_mode);
+
       }
+#else
+    if ((cu . IR & I_ABS) == 0)
+      set_addr_mode (APPEND_mode);
+    else
+      set_addr_mode (ABSOLUTE_mode);
+#endif
 
 
     if (fxeTrap)

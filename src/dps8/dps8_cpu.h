@@ -29,8 +29,10 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
+#if 0
     BAR_mode,
     APPEND_BAR_mode,
+#endif
   } addr_modes_t;
 
 
@@ -1139,6 +1141,7 @@ int is_priv_mode (void);
 void set_went_appending (void);
 void clr_went_appending (void);
 bool get_went_appending (void);
+bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
