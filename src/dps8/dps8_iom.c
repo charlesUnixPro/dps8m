@@ -920,7 +920,7 @@ static void setup_iom_scbank_map (void)
             uint sz = 1 << (store_size + 16);
     
             // Calculate the base address of the memor in wordsy
-            uint assignment = switches . assignment [port_num];
+            uint assignment = p -> configSwPortAddress [port_num];
             uint base = assignment * sz;
     
             // Now convert to SCBANKs
