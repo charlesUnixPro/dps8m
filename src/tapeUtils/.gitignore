@@ -16,4 +16,5 @@ restore_toc
 p72archive_to_segment
 p72archive_to_acsii
 p72_to_acsii
+p72_to_binary
 diskDump
