@@ -5818,6 +5818,7 @@ static t_stat DoBasicInstruction (void)
                 return STOP_DIS;
               }
 
+#if 0
             if ((! CPU -> switches . tro_enable) &&
                 (! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
@@ -5829,7 +5830,7 @@ static t_stat DoBasicInstruction (void)
                 //stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);
               }
-
+#endif
             sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
             //sim_printf ("entered DIS_cycle\n");
 

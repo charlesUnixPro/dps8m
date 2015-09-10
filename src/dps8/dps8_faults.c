@@ -507,7 +507,6 @@ if (faultNumber == FAULT_F1) { sim_printf ("FAULT F1 [%lld] %05o:%06o\n", sim_ti
       }
 
     // If already in a FAULT CYCLE then signal trouble fault
-
     if (CPU -> cycle == FAULT_EXEC_cycle ||
         CPU -> cycle == FAULT_EXEC2_cycle)
       {
@@ -517,6 +516,7 @@ if (faultNumber == FAULT_F1) { sim_printf ("FAULT F1 [%lld] %05o:%06o\n", sim_ti
         // XXX Does the CU or FR need fixing? ticket #36
         if (CPU -> bTroubleFaultCycle)
           {
+#if 0
             if ((! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
@@ -527,6 +527,7 @@ if (faultNumber == FAULT_F1) { sim_printf ("FAULT F1 [%lld] %05o:%06o\n", sim_ti
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
+#endif
           }
         else
           {

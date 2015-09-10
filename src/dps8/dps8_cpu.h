@@ -42,7 +42,8 @@ typedef enum
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
-    FETCH_cycle = INSTRUCTION_FETCH
+    FETCH_cycle = INSTRUCTION_FETCH,
+    SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
@@ -1034,6 +1035,7 @@ typedef struct
 #endif
     struct _sdw * SDW; // working SDW
     struct _sdw0 SDW0; // a SDW not in SDWAM
+    struct _sdw0 _s;
 #ifdef SPEED
     struct _ptw PTWAM0;
 #else
@@ -1061,8 +1063,18 @@ typedef struct
 #ifdef REAL_TR
     uint timerRegVal;
     struct timeval timerRegT0;
+    uint trSubsample;
+#else
+    uint rTRlsb;
 #endif
-
+    int jmpval;
+    // XXX this is used to store the fault/interrupt pair, and really should be IWB, IWB+1
+    word36 instr_buf [2];
+    uint64 lufCounter;
+    uint queueSubsample;
+    bool secret_addressing_mode;
+// XXX loss of data on page fault: ticket #5
+    bool went_appending; // we will go....
   } cpu_state_t;
 
 extern cpu_state_t cpu [N_CPU_UNITS_MAX];

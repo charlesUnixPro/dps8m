@@ -42,7 +42,7 @@
 #define RALR_FIX_0
 
 // Enable blinkenLights interface
-#define MULTIPASS
+//#define MULTIPASS
 
 // Enable IPC
 #define VM_DPS8
@@ -51,7 +51,7 @@
 #define REAL_TR
 
 // Enable speed over debuggibility
-#define SPEED
+//#define SPEED
 
 #include "sim_defs.h"                                   /* simulator defns */
 

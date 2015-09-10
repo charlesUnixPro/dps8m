@@ -1,5 +1,4 @@
  /**
- * \file dps8_cpu.c
  * \project dps8
  * \date 9/17/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
@@ -49,10 +48,12 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEM
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat cpu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat cpu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 
 static MTAB cpu_mod[] = {
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
       "CONFIG",     /* print string */
       "CONFIG",         /* match string */
@@ -64,6 +65,16 @@ static MTAB cpu_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      cpu_set_nunits, /* validation routine */
+      cpu_show_nunits, /* display routine */
+      "Number of DISK units in the system", /* value descriptor */
+      NULL // Help
+    },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -140,7 +151,6 @@ const char *sim_stop_messages[] = {
  *
  */
 
-static uint64_t lufCounter;
 
 
 /*
@@ -250,10 +260,9 @@ _sdw0 *fetchSDW (word15 segno)
     core_read2 ((CPU -> DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
     
     // even word
-    static _sdw0 _s;
     
-    _sdw0 *SDW = &_s;
-    memset (SDW, 0, sizeof (_s));
+    _sdw0 *SDW = & CPU -> _s;
+    memset (SDW, 0, sizeof (CPU -> _s));
     
     SDW -> ADDR = (SDWeven >> 12) & 077777777;
     SDW -> R1 = (SDWeven >> 9) & 7;
@@ -755,35 +764,45 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     for (uint i = 0; i < MEMSIZE; i ++)
       M [i] = MEM_UNINITIALIZED;
 
-    currentRunningCPUnum = 0;
-    CPU = & cpu [currentRunningCPUnum];
+    for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
+      {
 
-    CPU -> rA = 0;
-    CPU -> rQ = 0;
+        currentRunningCPUnum = i;
+        CPU = & cpu [currentRunningCPUnum];
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
     
-    CPU -> PPR.IC = 0;
-    CPU -> PPR.PRR = 0;
-    CPU -> PPR.PSR = 0;
-    CPU -> PPR.P = 1;
-    CPU -> RSDWH_R1 = 0;
+        CPU -> PPR.IC = 0;
+        CPU -> PPR.PRR = 0;
+        CPU -> PPR.PSR = 0;
+        CPU -> PPR.P = 1;
+        CPU -> RSDWH_R1 = 0;
 
 #ifdef REAL_TR
-    setTR (0);
+        setTR (0);
 #else
-    CPU -> rTR = 0;
+        CPU -> rTR = 0;
 #endif
  
-    processorCycle = UNKNOWN_CYCLE;
-    set_addr_mode(ABSOLUTE_mode);
-    SETF(CPU -> cu.IR, I_NBAR);
-    
+        set_addr_mode(ABSOLUTE_mode);
+        SETF(CPU -> cu.IR, I_NBAR);
+
+        CPU -> CMR.luf = 3;    // default of 16 mS
+
+        CPU -> cu.SD_ON = 1;
+        CPU -> cu.PT_ON = 1;
+
+        setCpuCycle (FETCH_cycle);
+  }
+
+    currentRunningCPUnum = 0;
+    CPU = & cpu [currentRunningCPUnum];
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
     sys_stats . total_cycles = 0;
     for (int i = 0; i < N_FAULTS; i ++)
       sys_stats . total_faults [i] = 0;
     
-    CPU -> CMR.luf = 3;    // default of 16 mS
     
     // XXX free up previous deferred segments (if any)
     
@@ -800,14 +819,8 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     currentRunningCPUnum = 0;
     CPU = & cpu [currentRunningCPUnum];
 
-    CPU -> cu.SD_ON = 1;
-    CPU -> cu.PT_ON = 1;
-    
     // TODO: reset *all* other structures to zero
     
-    set_addr_mode(ABSOLUTE_mode);
-    SETF(CPU -> cu.IR, I_NBAR);
-
     sys_stats . total_cycles = 0;
     for (int i = 0; i < N_FAULTS; i ++)
       sys_stats . total_faults [i] = 0;
@@ -876,6 +889,7 @@ enum _processor_cycle_type processorCycle;  // to keep tract of what type of cyc
  * register stuff ...
  */
 static REG cpu_reg[] = {
+    { ORDATA (IC, cpu [0] . PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 };
 
@@ -1002,7 +1016,7 @@ static uint get_highest_intr (void)
 
 bool sample_interrupts (void)
   {
-    lufCounter = 0;
+    CPU -> lufCounter = 0;
     for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
         if (CPU -> events . XIP [scuUnitNum])
@@ -1043,7 +1057,7 @@ t_stat simh_hooks (void)
     return reason;
   }       
 
-static char * cycleStr (cycles_t cycle)
+char * cycleStr (cycles_t cycle)
   {
     switch (cycle)
       {
@@ -1065,6 +1079,8 @@ static char * cycleStr (cycles_t cycle)
           return "INTERRUPT_EXEC2_cycle";
         case FETCH_cycle:
           return "FETCH_cycle";
+        case SYNC_FAULT_RTN_cycle:
+          return "SYNC_FAULT_RTN_cycle";
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
@@ -1127,8 +1143,6 @@ static void setCpuCycle (cycles_t cycle)
 // other extant cycles:
 //  ABORT_cycle
 
-static word36 instr_buf [2];
-
 static void ipcCleanup (void)
   {
     //printf ("cleanup\n");
@@ -1142,11 +1156,13 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
+#if 0
     // IPC initalization stuff
     bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
     ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
     ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+
     if (!ipc_running)
     {
         sim_printf("Info: ");
@@ -1155,32 +1171,30 @@ t_stat sim_instr (void)
     }
      
     // End if IPC init stuff
+#endif
       
       
+setCPU:
+
+    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev . numunits;
+    CPU = & cpu [currentRunningCPUnum];
+
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
 
     switch (val)
-    {
+      {
         case JMP_ENTRY:
         case JMP_REENTRY:
             reason = 0;
             break;
         case JMP_NEXT:
-            goto nextInstruction;
-#if 0
-        case JMP_RETRY:
-            goto jmpRetry;
-        case JMP_TRA:
-            goto jmpTra;
-        case JMP_INTR:
-            goto jmpIntr;
-#endif
+        case JMP_SYNC_FAULT_RETURN:
+            setCpuCycle (SYNC_FAULT_RTN_cycle);
+            break;
         case JMP_STOP:
             reason = STOP_HALT;
             goto leave;
-        case JMP_SYNC_FAULT_RETURN:
-            goto syncFaultReturn;
         case JMP_REFETCH:
 
             // Not necessarily so, but the only times
@@ -1190,7 +1204,6 @@ t_stat sim_instr (void)
             // which case we want it false so interrupts 
             // can happen.
             CPU -> wasXfer = false;
-             
             setCpuCycle (FETCH_cycle);
             break;
         case JMP_RESTART:
@@ -1198,8 +1211,8 @@ t_stat sim_instr (void)
             break;
         default:
           sim_printf ("longjmp value of %d unhandled\n", val);
-            goto leave;
-    }
+          goto leave;
+      }
 
     // Main instruction fetch/decode loop 
 
@@ -1235,10 +1248,9 @@ last = M[01007040];
             break;
           }
 
-        static uint queueSubsample = 0;
-        if (queueSubsample ++ > 10240) // ~ 100Hz
+        if (CPU -> queueSubsample ++ > 10240) // ~ 100Hz
           {
-            queueSubsample = 0;
+            CPU -> queueSubsample = 0;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
@@ -1287,10 +1299,9 @@ last = M[01007040];
              // instead of breaking.
 
 #ifdef REAL_TR
-        static uint trSubsample = 0;
-        if (trSubsample ++ > 1024)
+        if (CPU -> trSubsample ++ > 1024)
           {
-            trSubsample = 0;
+            CPU -> trSubsample = 0;
             bool overrun;
             UNUSED word27 rTR = getTR (& overrun);
             if (overrun)
@@ -1303,13 +1314,12 @@ last = M[01007040];
           }
 #else
         // Sync. the TR with the emulator clock.
-        static uint rTRlsb = 0;
-        rTRlsb ++;
+        CPU -> rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (rTRlsb >= 7)
+        if (CPU -> rTRlsb >= 7)
           {
-            rTRlsb = 0;
+            CPU -> rTRlsb = 0;
             CPU -> rTR = (CPU -> rTR - 1) & MASK27;
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", CPU -> rTR);
             if (CPU -> rTR == 0) // passing thorugh 0...
@@ -1321,8 +1331,8 @@ last = M[01007040];
           }
 #endif
 
-        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
-                   cycleStr (CPU -> cycle));
+        sim_debug (DBG_CYCLE, & cpu_dev, "CPU%d Cycle switching to %s\n",
+                   currentRunningCPUnum, cycleStr (CPU -> cycle));
         switch (CPU -> cycle)
           {
             case INTERRUPT_cycle:
@@ -1376,7 +1386,7 @@ last = M[01007040];
                           }
 #endif
                         // get interrupt pair
-                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1, __func__);
+                        core_read2 (intr_pair_addr, CPU -> instr_buf, CPU -> instr_buf + 1, __func__);
 
                         CPU -> interrupt_flag = false;
                         setCpuCycle (INTERRUPT_EXEC_cycle);
@@ -1406,9 +1416,9 @@ last = M[01007040];
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (CPU -> cycle == INTERRUPT_EXEC_cycle)
-                  CPU -> cu . IWB = instr_buf [0];
+                  CPU -> cu . IWB = CPU -> instr_buf [0];
                 else
-                  CPU -> cu . IWB = instr_buf [1];
+                  CPU -> cu . IWB = CPU -> instr_buf [1];
 
                 if (GET_I (CPU -> cu . IWB))
                   CPU -> wasInhibited = true;
@@ -1509,12 +1519,12 @@ last = M[01007040];
                     CPU -> g7_flag = false;
                     doG7Fault ();
                   }
-                lufCounter ++;
+                CPU -> lufCounter ++;
 
                 // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
-                if (lufCounter > 32000)
+                if (CPU -> lufCounter > 32000)
                   {
-                    lufCounter = 0;
+                    CPU -> lufCounter = 0;
                     doFault (FAULT_LUF, 0, "instruction cycle lockup");
                   }
 
@@ -1661,10 +1671,12 @@ last = M[01007040];
 
                 CPU -> wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
-                break;
+              }
+              break;
 
-nextInstruction:;
-syncFaultReturn:;
+
+            case SYNC_FAULT_RTN_cycle:
+              {
                 CPU -> PPR.IC ++;
                 CPU -> wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
@@ -1724,14 +1736,13 @@ syncFaultReturn:;
 
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * CPU -> faultNumber;
-  
 #ifdef MULTIPASS
                 if (multipassStatsPtr)
                   {
                     multipassStatsPtr -> faultNumber = CPU -> faultNumber;
                   }
 #endif
-                core_read2 (addr, instr_buf, instr_buf + 1, __func__);
+                core_read2 (addr, CPU -> instr_buf, CPU -> instr_buf + 1, __func__);
 
                 setCpuCycle (FAULT_EXEC_cycle);
 
@@ -1745,9 +1756,9 @@ syncFaultReturn:;
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (CPU -> cycle == FAULT_EXEC_cycle)
-                  CPU -> cu . IWB = instr_buf [0];
+                  CPU -> cu . IWB = CPU -> instr_buf [0];
                 else
-                  CPU -> cu . IWB = instr_buf [1];
+                  CPU -> cu . IWB = CPU -> instr_buf [1];
 
                 if (GET_I (CPU -> cu . IWB))
                   CPU -> wasInhibited = true;
@@ -1822,13 +1833,18 @@ syncFaultReturn:;
               }
           }  // switch (CPU -> cycle)
 
-      } while (reason == 0);
+      //} while (reason == 0);
+        } while (0);
+
+      if (reason == 0) goto setCPU;
 
 leave:
 
+#if 0
     // if IPC was running before G leave it running - don't stop it, else stop it
     if (!ipc_running)
         ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
+#endif
       
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
@@ -2298,23 +2314,20 @@ int is_priv_mode(void)
 }
 
 
-static bool secret_addressing_mode;
-// XXX loss of data on page fault: ticket #5
-static bool went_appending; // we will go....
 
 void set_went_appending (void)
   {
-    went_appending = true;
+    CPU -> went_appending = true;
   }
 
 void clr_went_appending (void)
   {
-    went_appending = false;
+    CPU -> went_appending = false;
   }
 
 bool get_went_appending (void)
   {
-    return went_appending;
+    return CPU -> went_appending;
   }
 
 /*
@@ -2329,15 +2342,15 @@ bool get_went_appending (void)
 
 static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
-    secret_addressing_mode = true;
-    went_appending = false;
+    CPU -> secret_addressing_mode = true;
+    CPU -> went_appending = false;
 }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
-    secret_addressing_mode = false;
+    CPU -> secret_addressing_mode = false;
     //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", went_appending ? "true" : "false");
-    return went_appending;
+    return CPU -> went_appending;
 }
 
 /* 
@@ -2346,15 +2359,15 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
  *   direct us to ignore the I_NBAR indicator register.
  */
 bool get_bar_mode(void) {
-  return !(secret_addressing_mode || TSTF(CPU -> cu.IR, I_NBAR));
+  return !(CPU -> secret_addressing_mode || TSTF(CPU -> cu.IR, I_NBAR));
 }
 
 addr_modes_t get_addr_mode(void)
 {
-    if (secret_addressing_mode)
+    if (CPU -> secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
-    if (went_appending)
+    if (CPU -> went_appending)
         return APPEND_mode;
 
     if (TSTF(CPU -> cu.IR, I_ABS))
@@ -2388,7 +2401,7 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
-    went_appending = false;
+    CPU -> went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
@@ -2396,7 +2409,7 @@ void set_addr_mode(addr_modes_t mode)
     //if (secret_addressing_mode && mode == APPEND_mode)
       //set_went_appending ();
 
-    secret_addressing_mode = false;
+    CPU -> secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
 
@@ -2727,6 +2740,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
         sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
         return SCPE_ARG;
       }
+
+    cpu_state_t * CPU = & cpu [cpu_unit_num];
 
     static int port_num = 0;
 
@@ -3342,4 +3357,19 @@ static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr,
     return cmd_stack_trace(0, NULL);
   }
 
+
+static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+  {
+    sim_printf("Number of CPUs in system is %d\n", cpu_dev . numunits);
+    return SCPE_OK;
+  }
+
+static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 1 || n > N_CPU_UNITS_MAX)
+      return SCPE_ARG;
+    cpu_dev . numunits = n;
+    return SCPE_OK;
+  }
 

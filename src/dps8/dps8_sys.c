@@ -1757,7 +1757,7 @@ sysinfo_t sys_opts =
 // still get a little jitter, and once a hang in DIS. very strange
       -1, /* iom_times.connect */
        0,  /* iom_times.chan_activate */
-      10, /* boot_time */
+      100, /* boot_time */
       10000, /* terminate_time */
     },
     {
