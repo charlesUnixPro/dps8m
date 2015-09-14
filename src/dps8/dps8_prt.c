@@ -161,6 +161,55 @@ static int findPrtUnit (int iomUnitNum, int chan_num, int dev_code)
     return -1;
   }
 
+#if 0
+static char * pcw2text (const pcw_t * p)
+  {
+    // WARNING: returns single static buffer
+    static char buf[200];
+    sprintf (buf, "[dev-cmd=0%o, dev-code=0%o, ext=0%o, mask=%u, ctrl=0%o, "
+                  "chan-cmd=0%o, chan-data=0%o, chan=0%o]",
+             p -> dev_cmd, p -> dev_code, p -> ext, p -> mask, p -> control, 
+             p -> chan_cmd, p -> chan_data, p -> chan);
+    return buf;
+  }
+#endif
+
+#if 0
+static char * dcw2text (const dcw_t * p)
+  {
+    // WARNING: returns single static buffer
+    static char buf[200];
+    if (p -> type == ddcw)
+      {
+        uint dtype = p -> fields . ddcw . type;
+        const char* type =
+        (dtype == 0) ? "IOTD" :
+        (dtype == 1) ? "IOTP" :
+        (dtype == 2) ? "transfer" :
+        (dtype == 3) ? "IONTP" :
+        "<illegal>";
+        sprintf (buf, "D-DCW: type=%u (%s), addr=%06o, cp=0%o, tally=0%o "
+                      "(%d) tally-ctl=%d",
+                 dtype, type, p -> fields . ddcw . daddr, 
+                 p -> fields . ddcw . cp, p -> fields . ddcw . tally,
+                 p -> fields . ddcw . tally, p -> fields . ddcw . tctl);
+      }
+    else if (p -> type == tdcw)
+      {
+        sprintf (buf, "T-DCW: ...");
+      }
+    else if (p -> type == idcw)
+      {
+        sprintf (buf, "I-DCW: %s", pcw2text (&p -> fields . instr));
+      }
+    else
+      {
+        strcpy (buf, "<not a dcw>");
+      }
+    return buf;
+  }
+#endif
+
 /*
  * prt_init()
  *
@@ -202,6 +251,9 @@ static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     * disc = false;
 
     int chan = pcwp-> chan;
+    prt_statep -> chan = pcwp -> chan;
+    prt_statep -> mask = pcwp -> mask;
+    prt_statep -> ext = pcwp -> ext;
 
     iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
 #if 0
@@ -221,73 +273,66 @@ static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
           break;
 
-
-
         case 001: // CMD 001 -- load image buffer
           {
 #if 0
-            // Get the DDCW
 sim_printf ("load image buffer\n");
+#endif
+            // buffer for any DDCWs we need
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
-            if (rc)
-              {
+	    // number of DDCWs to read
+	    int count = 1;
+
+	    for (int i=0; i<count; i++) {
+	      int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+	      if (rc) {
                 sim_printf ("list service failed\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncomplete;
                 break;
               }
-            if (dcw . type != ddcw)
-              {
+	      if (dcw . type != ddcw) {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
-
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            // uint cp = dcw.fields.ddcw.cp;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            if (type == 0) // IOTD
-              * disc = true;
-            else if (type == 1) // IOTP
-              * disc = false;
-            else
-              {
+	      
+#if 0
+    sim_printf("DCW (load image buffer): %s\n", dcw2text(&dcw));
+#endif
+	      uint type = dcw.fields.ddcw.type;
+	      uint tally = dcw.fields.ddcw.tally;
+	      uint daddr = dcw.fields.ddcw.daddr;
+	      // uint cp = dcw.fields.ddcw.cp;
+	      if (prt_statep -> mask)
+		daddr |= ((pcwp -> ext) & MASK6) << 18;
+	      if (type == 0) // IOTD
+		* disc = true;
+	      else if (type == 1) // IOTP
+		* disc = false;
+	      else {
                 sim_printf ("uncomfortable with this\n"); // XXX
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
-            if (tally == 0)
-              {
+	      if (tally == 0) {
                 sim_debug (DBG_DEBUG, & prt_dev,
                            "%s: Tally of zero interpreted as 010000(4096)\n",
                            __func__);
                 tally = 4096;
               }
-
-            sim_debug (DBG_DEBUG, & prt_dev,
-                       "%s: Tally %d (%o)\n", __func__, tally, tally);
-
-
+	      
+	      sim_debug (DBG_DEBUG, & prt_dev,
+			 "%s: Tally %d (%o)\n", __func__, tally, tally);
+	      
+	    }
             // We don't actually have a print chain, so just pretend we loaded the image data
             chan_data -> stati = 04000; 
-#else
-            sim_debug (DBG_NOTIFY, & prt_dev, "load image buffer %d\n", prt_unit_num);
-            chan_data -> isRead = false;
-            prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
-            chan_data -> stati = 04000;
-#endif
           }
           break;
-
-
 
 // load_vfc: entry (pip, pcip, iop, rcode);
 // 
@@ -313,138 +358,132 @@ sim_printf ("load image buffer\n");
 //      bop_pattern init ("060"b3))                            /* bottom of page pattern */
 //      bit (9) static options (constant);
 
-
         case 005: // CMD 001 -- load vfc image
           {
 #if 0
-            // Get the DDCW
 sim_printf ("load vfc image\n");
+#endif
+            // buffer for any DDCWs we need
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
-            if (rc)
-              {
+	    // number of DDCWs to read
+	    int count = 1;
+
+	    for (int i=0; i<count; i++) {
+	      int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+	      if (rc) {
                 sim_printf ("list service failed\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncomplete;
                 break;
               }
-            if (dcw . type != ddcw)
-              {
+	      if (dcw . type != ddcw) {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
+	      
+#if 0
+    sim_printf("DCW (load vfc): %s\n", dcw2text(&dcw));
+#endif
 
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            // uint cp = dcw.fields.ddcw.cp;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            if (type == 0) // IOTD
-              * disc = true;
-            else if (type == 1) // IOTP
-              * disc = false;
-            else
-              {
+	      uint type = dcw.fields.ddcw.type;
+	      uint tally = dcw.fields.ddcw.tally;
+	      uint daddr = dcw.fields.ddcw.daddr;
+	      // uint cp = dcw.fields.ddcw.cp;
+	      if (prt_statep -> mask)
+		daddr |= ((pcwp -> ext) & MASK6) << 18;
+	      if (type == 0) // IOTD
+		* disc = true;
+	      else if (type == 1) // IOTP
+		* disc = false;
+	      else {
                 sim_printf ("uncomfortable with this\n"); // XXX
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
-            if (tally == 0)
-              {
+	      if (tally == 0) {
                 sim_debug (DBG_DEBUG, & prt_dev,
                            "%s: Tally of zero interpreted as 010000(4096)\n",
                            __func__);
                 tally = 4096;
               }
-
-            sim_debug (DBG_DEBUG, & prt_dev,
-                       "%s: Tally %d (%o)\n", __func__, tally, tally);
-
-            // We don't actually have a print chain, so just pretend we loaded the image data
-            chan_data -> stati = 04000; 
-#else
-            sim_debug (DBG_NOTIFY, & prt_dev, "load vfc image %d\n", prt_unit_num);
-            chan_data -> isRead = false;
-            prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
-            chan_data -> stati = 04000;
-#endif
+	      
+	      sim_debug (DBG_DEBUG, & prt_dev,
+			 "%s: Tally %d (%o)\n", __func__, tally, tally);
+	    }
+	    // We don't actually have a print chain, so just pretend we loaded the image data
+	    chan_data -> stati = 04000; 
           }
           break;
 
-
-
-
         case 034: // CMD 034 -- print edited ascii
           {
-#if 0
-            // Get the DDCW
-sim_printf ("print edited ASCII\n");
+            // buffer for any DDCWs we need
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
 
-            if (rc)
-              {
+	    // number of DDCWs to read
+	    unsigned int count = pcwp->chan_data + 2;
+
+	    for (unsigned int i=0; i<count; i++) {
+	      int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+	      if (rc) {
                 sim_printf ("list service failed\n");
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncomplete;
                 break;
               }
-            if (dcw . type != ddcw)
-              {
+	      if (dcw . type != ddcw) {
                 sim_printf ("not ddcw? %d\n", dcw . type);
                 chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
                 chan_data -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
+	      
+#if 0
+    sim_printf("DCW (print edited ascii): %s\n", dcw2text(&dcw));
+#endif
 
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            // uint cp = dcw.fields.ddcw.cp;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            if (type == 0) // IOTD
-              * disc = true;
-            else if (type == 1) // IOTP
-              * disc = false;
-            else
-              {
-                sim_printf ("uncomfortable with this\n"); // XXX
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-sim_printf ("disc is %s\n", * disc ? "true" : "false");
-            if (tally == 0)
-              {
+              // ignore the DDCWs after the number in pcwp->chan_data
+              if (i >= pcwp->chan_data)
+		break;
+
+	      uint type = dcw.fields.ddcw.type;
+	      uint tally = dcw.fields.ddcw.tally;
+	      uint daddr = dcw.fields.ddcw.daddr;
+	      // uint cp = dcw.fields.ddcw.cp;
+	      if (prt_statep -> mask)
+		daddr |= ((pcwp -> ext) & MASK6) << 18;
+	      if (type == 0) // IOTD
+		* disc = true;
+	      else if (type == 1) // IOTP
+		* disc = false;
+	      else {
+		sim_printf ("uncomfortable with this\n"); // XXX
+		chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+		chan_data -> chanStatus = chanStatIncorrectDCW;
+		break;
+	      }
+	      //sim_printf ("disc is %s\n", * disc ? "true" : "false");
+	      if (tally == 0) {
                 sim_debug (DBG_DEBUG, & prt_dev,
                            "%s: Tally of zero interpreted as 010000(4096)\n",
                            __func__);
                 tally = 4096;
               }
+	      
+	      sim_debug (DBG_DEBUG, & prt_dev,
+			 "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-            sim_debug (DBG_DEBUG, & prt_dev,
-                       "%s: Tally %d (%o)\n", __func__, tally, tally);
-
-            uint8  asciiBuffer [tally * 4 + 1];
-            memset (asciiBuffer, 0, sizeof (asciiBuffer));
-            uint words_processed = 0;
-
-            word36 buffer [tally];
-            if (chan_data -> ptp)
-              {
+	      word36 buffer [tally];
+	      if (chan_data -> ptp) {
                 // copy from core into buffer
                 indirectDataService (iomUnitNum, chan, daddr, tally, buffer,
                                      idsTypeW36, false, & chan_data -> isOdd);
               }
-            else
-              {
+	      else {
                 // copy from core into buffer
                 for (uint i = 0; i < tally; i ++)
                   {
@@ -452,16 +491,15 @@ sim_printf ("disc is %s\n", * disc ? "true" : "false");
                   }
               }
 
-#if 1
+#if 0
 for (uint i = 0; i < tally; i ++)
    sim_printf (" %012llo", buffer [i]);
 sim_printf ("\n");
 #endif
 
 #if 0
-            sim_printf ("<");
-            for (uint i = 0; i < tally * 4; i ++)
-              {
+              sim_printf ("<");
+	      for (uint i = 0; i < tally * 4; i ++) {
                 uint wordno = i / 4;
                 uint charno = i % 4;
                 uint ch = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
@@ -470,24 +508,19 @@ sim_printf ("\n");
                 else
                   sim_printf ("\\%03o", ch);
               }
-            sim_printf (">\n");
+	      sim_printf (">\n");
 #endif
 
-            if (prt_state [prt_unit_num] . prtfile == -1)
-              openPrtFile (prt_unit_num);
+	      if (prt_state [prt_unit_num] . prtfile == -1)
+		openPrtFile (prt_unit_num);
 
-            uint8 bytes [tally * 4];
-            for (uint i = 0; i < tally * 4; i ++)
-              {
+	      uint8 bytes [tally * 4];
+	      for (uint i = 0; i < tally * 4; i ++) {
                 uint wordno = i / 4;
                 uint charno = i % 4;
                 bytes [i] = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
               }
 
-#if 0
-            if (prt_state [prt_unit_num] . prtfile != -1)
-               write (prt_state [prt_unit_num] . prtfile, bytes, tally * 4);
-#else
             for (uint i = 0; i < tally * 4; i ++)
               {
                 uint8 ch = bytes [i];
@@ -509,7 +542,6 @@ sim_printf ("\n");
                   {
                     const uint8 ff = '\f';
                     i ++;
-                    //uint8 n = bytes [i] & 0177;
                     write (prt_state [prt_unit_num] . prtfile, & ff, 1);
                   }
                 else if (ch)
@@ -517,39 +549,13 @@ sim_printf ("\n");
                     write (prt_state [prt_unit_num] . prtfile, & ch, 1);
                   }
               }
-#endif
-
-            if (prt_state [prt_unit_num] . last)
-              {
-                close (prt_state [prt_unit_num] . prtfile);
-                prt_state [prt_unit_num] . prtfile = -1;
-                prt_state [prt_unit_num] . last = false;
-              }
-            // Check for slew to bottom of page
-            prt_state [prt_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
-
+	    }
 
             chan_data -> tallyResidue = 0;
             chan_data -> isOdd = 0;
             chan_data -> stati = 04000; 
-#else
-            sim_debug (DBG_NOTIFY, & prt_dev, "print edited ascii %d\n", prt_unit_num);
-            chan_data -> isRead = false;
-            prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
-            chan_data -> stati = 04000;
-#endif
           }
           break;
-
-
-
-
-
-
-
-
-
 
 // dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
 //   (
@@ -570,14 +576,74 @@ sim_printf ("\n");
 
         case 040: // CMD 40 Reset status
           {
+            // buffer for any DDCWs we need
+            dcw_t dcw;
+
+	    // for Reset Status (040) we will get one DDCW to read. Not sure what it is
+	    // for, so we'll just ignore it.
+
+	    // number of DDCWs to read
+	    int count = 0;
+	    if (pcwp->control == 0)
+	      count = 1;
+	    
+	    for (int i=0; i<count; i++) {
+	      int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+	      if (rc) {
+                sim_printf ("list service failed\n");
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncomplete;
+                break;
+              }
+	      if (dcw . type != ddcw) {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncorrectDCW;
+                break;
+              }
+	      
+#if 0
+    sim_printf("DCW (reset status): %s\n", dcw2text(&dcw));
+#endif
+
+	      uint type = dcw.fields.ddcw.type;
+	      uint tally = dcw.fields.ddcw.tally;
+	      uint daddr = dcw.fields.ddcw.daddr;
+	      // uint cp = dcw.fields.ddcw.cp;
+	      if (prt_statep -> mask)
+		daddr |= ((pcwp -> ext) & MASK6) << 18;
+	      if (type == 0) // IOTD
+		* disc = true;
+	      else if (type == 1) // IOTP
+		* disc = false;
+	      else {
+                sim_printf ("uncomfortable with this\n"); // XXX
+                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+                chan_data -> chanStatus = chanStatIncorrectDCW;
+                break;
+              }
+	      if (tally == 0) {
+                sim_debug (DBG_DEBUG, & prt_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+	      
+	      sim_debug (DBG_DEBUG, & prt_dev,
+			 "%s: Tally %d (%o)\n", __func__, tally, tally);
+	    }
+
             chan_data -> stati = 04000;
             prt_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
             chan_data -> initiate = true;
             * disc = true;
+
+	    if (prt_state[prt_unit_num].prtfile != -1) {
+	      close (prt_state [prt_unit_num] . prtfile);
+	    }
           }
           break;
-
 
         default:
           {
@@ -588,12 +654,12 @@ sim_printf ("prt daze %o\n", pcwp -> dev_cmd);
             * disc = true;
           }
           break;
-      
       }
 
     return 0;
   }
 
+#if 0
 static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
   {
     int prt_unit_num = PRT_UNIT_NUM (unitp);
@@ -605,14 +671,19 @@ static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
       {
         case no_mode:
           {
+sim_printf ("DDCW when io_mode == no_mode\n");
             sim_debug (DBG_ERR, & prt_dev, "DDCW when io_mode == no_mode\n");
+// commented out temporarily by ejs
+#if 0
             chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
             chan_data -> chanStatus = chanStatIncorrectDCW;
+#endif
           }
           break;
 
         case ignore_mode:
           {
+sim_printf ("DDCW when io_mode == ignore_mode\n");
 #if 0
             uint tally = ddcwp -> fields.ddcw.tally;
             uint daddr = ddcwp -> fields.ddcw.daddr;
@@ -629,12 +700,15 @@ static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
               }
 #endif
 
-            chan_data -> stati = 00000; // Channel ready
+	    // ejs: debugging
+            //chan_data -> stati = 00000; // Channel ready
+            chan_data -> stati = 04000;
           }
           break;
 
         case print_editted_mode:
           {
+sim_printf ("DDCW when io_mode == print_edited_mode\n");
             uint tally = ddcwp -> fields.ddcw.tally;
             uint daddr = ddcwp -> fields.ddcw.daddr;
             if (prt_statep -> mask)
@@ -654,85 +728,67 @@ static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
       }
     return 0;
   }
+#endif
 
-int prt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
-  {
+int prt_iom_cmd (UNIT * unitp, pcw_t * pcwp) {
     int prt_unit_num = PRT_UNIT_NUM (unitp);
     int iomUnitNum = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitNum;
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
 
-    // First, execute the command in the PCW, and then walk the 
-    // payload channel mbx looking for IDCWs.
+    // First, execute the command in the PCW. Then, invoke the list service to find an IDCW to execute.
 
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
-    //lpw_t lpw;
-    //fetch_and_parse_lpw (& lpw, chanloc, false);
-
-// Ignore a CMD 051 in the PCW
+    // Ignore a CMD 051 in the PCW. This is sent during boot to all devices (to look for a console)
     if (pcwp -> dev_cmd == 051)
       return 1;
+
+#if 0
+    sim_printf("PCW (prt_iom_cmd): %s\n", pcw2text(pcwp));
+#endif
 
     bool disc;
     prt_cmd (unitp, pcwp, & disc);
 
-    // ctrl of the pcw is observed to be 0 even when there are idcws in the
-    // list so ignore that and force it to 2.
-    //uint ctrl = pcwp -> control;
-    //uint ctrl = 2;
-    //while ((! disc) && ctrl == 2)
-    int ptro = 0;
-    for (;;)
-      {
-sim_printf ("perusing channel mbx lpw....\n");
-        dcw_t dcw;
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
-        if (rc)
-          {
-sim_printf ("list service denies!\n");
-            break;
-          }
-sim_printf ("persuing got type %d %012llo\n", dcw . type, dcw . raw);
-        if (dcw . type == idcw)
-          {
+    // invoke list service to read a single DCW. It is expected to be an IDCW
+    dcw_t dcw;
+    int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, NULL);
+    if (rc) {
+      sim_printf ("list service failed\n");
+      chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+      chan_data -> dev_code = pcwp->dev_code;
+      chan_data -> chanStatus = chanStatIncomplete;
+      goto term;
+    }
 
-            // The dcw does not necessarily have the same dev_code as the pcw....
-sim_printf ("pcw dev_code %o\n", dcw . fields . instr. dev_code);
-            prt_unit_num = findPrtUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
-sim_printf ("pcw prt_unit_num %d\n", prt_unit_num);
-            if (prt_unit_num < 0)
-              {
-// 04502 : COMMAND REJECTED, invalid device code
-                iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-                chan_data -> stati = 04502; 
-                chan_data -> dev_code = dcw . fields . instr. dev_code;
-                chan_data -> chanStatus = chanStatInvalidInstrPCW;
-                //status_service (iomUnitNum, pcwp -> chan, false);
-                break;
-              }
-            unitp = & prt_unit [prt_unit_num];
-            prt_cmd (unitp, & dcw . fields . instr, & disc);
 #if 0
-            ctrl = dcw . fields . instr . control;
-sim_printf ("set ctrl to %d\n", ctrl);
-sim_printf ("disc is %s\n", disc ? "true" : "false");
-            if (ctrl != 2 && disc)
-              break;
+sim_printf("DCW (prt_iom_cmd): %s\n", dcw2text(&dcw));
 #endif
-          }
-        else if (dcw . type == ddcw)
-          {
-sim_printf ("data dcw\n");
-            unitp = & prt_unit [prt_unit_num];
-            prt_ddcw (unitp, & dcw);
-sim_printf ("data dcw type %d\n", dcw . fields . ddcw . type);
-            if (dcw . fields . ddcw . type == 0) // IOTD
-              break;
-          }
-      }
-//sim_printf ("prt interrupts\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
 
+    if (dcw . type == idcw) {
+      // The dcw does not necessarily have the same dev_code as the pcw....
+      prt_unit_num = findPrtUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+      if (prt_unit_num < 0) {
+	// 04502 : COMMAND REJECTED, invalid device code
+	chan_data -> stati = 04502; 
+	chan_data -> dev_code = dcw . fields . instr. dev_code;
+	chan_data -> chanStatus = chanStatInvalidInstrPCW;
+	//status_service (iomUnitNum, pcwp -> chan, false);
+	goto term;
+      }
+
+      unitp = & prt_unit [prt_unit_num];
+      prt_cmd (unitp, & dcw . fields . instr, & disc);
+    }
+    else {
+      chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
+      chan_data -> dev_code = dcw . fields . instr. dev_code;
+      chan_data -> chanStatus = chanStatIncorrectDCW;
+      goto term;
+   }
+term:;
+    //sim_printf ("prt interrupts\n");
+    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
     return 1;
-  }
+}
 
 static t_stat prt_svc (UNIT * unitp)
   {

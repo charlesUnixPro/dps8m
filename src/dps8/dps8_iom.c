@@ -1852,16 +1852,10 @@ sim_printf ("adding addressExtension %o to dcw_addr %o\n",
             // Look at LPW23 (srel) & LPW20 (ae)
             if (lpwp -> lpw20_ae || lpwp -> lpw23_srel)
               {
-                sim_printf ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
-                          lpwp -> lpw20_ae, lpwp -> lpw23_srel); 
+                //sim_printf ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
+		//  lpwp -> lpw20_ae, lpwp -> lpw23_srel); 
                 //sim_err ("PGE && (AE || SREL) set in iomListService; fail. LPW20 (ae)  %o LPW23 (srel) %o\n",
                           //lpwp -> lpw20_ae, lpwp -> lpw23_srel); // Doesn't return
-// XXX
-// XXX
-// XXX
-// XXX this needs fixing; if both AE and Srel, then mode 4
-                // mode is SEG DCW/PAGED LPW (4)
-// XXX putting it in mode 3 b for the momemt/
                 chan_data -> chan_mode = cm_paged_LPW_seg_DCW;
                 sim_debug (DBG_TRACE, & iom_dev, "chan_mode set to cm_paged_LPW_seg_DCW\n");
               
