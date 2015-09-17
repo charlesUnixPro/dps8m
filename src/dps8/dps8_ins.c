@@ -5690,12 +5690,12 @@ static t_stat DoBasicInstruction (void)
               {
                 //sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", iefpFinalAddress);
                 //cpu_port_num = 0;
-                doFault (FAULT_ONC, nem, "(smcm)");
+                doFault (FAULT_ONC, nem, "(cioc)");
               }
             int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
             if (scu_unit_num < 0)
               {
-                doFault (FAULT_ONC, nem, "(smcm)");
+                doFault (FAULT_ONC, nem, "(cioc)");
               }
             uint scu_port_num = CY & MASK3;
             scu_cioc ((uint) scu_unit_num, scu_port_num);
