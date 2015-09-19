@@ -6550,7 +6550,7 @@ static t_stat DoEISInstruction (void)
           break;
             
         case 0502:  // a4bd Add 4-bit Displacement to Address Register
-          axbd (4);
+          a4bd ();
           break;
             
 // If defined, do all ABD calculations in bits, not chars and bits in chars.
@@ -6572,7 +6572,7 @@ static t_stat DoEISInstruction (void)
           break;
                 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
-          sxbd (4);
+          s4bd ();
           break;
             
         case 0523:  // sbd Subtract   bit Displacement from Address Register
