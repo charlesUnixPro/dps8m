@@ -709,7 +709,7 @@ t_stat dequeue_fnp_command (void)
         //sim_printf("received output_fc_chars %d\n", p1);
         if (p1 < 0 && p1 >= MAX_LINES)
         {
-            sim_printf("err: disconnect_line p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
+            sim_printf("err: output_fc_chars p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
         size_t retSize;
@@ -741,10 +741,10 @@ t_stat dequeue_fnp_command (void)
         int n = sscanf(arg3, "%*s %d %d %d", &p1, &d1, &d2);
         if (n != 3)
             goto scpe_arg;
-        //sim_printf("received set_delay_table %d %d %d %d %d %d %d...\n", p1, d1, d2, d3, d4, d5, d6);
+        //sim_printf("received set_framing_chars %d %d %d %d %d %d %d...\n", p1, d1, d2, d3, d4, d5, d6);
         if (p1 < 0 && p1 >= MAX_LINES)
         {
-            sim_printf("err: set_delay_table p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
+            sim_printf("err: set_framing_chars p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
         MState . line [p1] . frame_begin = d1;
@@ -762,10 +762,15 @@ t_stat dequeue_fnp_command (void)
         //sim_printf("received dumpoutput %d...\n", p1);
         if (p1 < 0 && p1 >= MAX_LINES)
         {
-            sim_printf("err: set_delay_table p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
+            sim_printf("err: dumpoutput p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
         // XXX ignored
+        char msg [256];
+        sprintf (msg, "send_output %d", p1);
+//ipc_printf ("tell CPU to send_output\n");
+        tellCPU (0, msg);
+
 
 
 
@@ -880,5 +885,11 @@ void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
         tellCPU (0, cmd);
         offset += thisSize;
         remaining -= thisSize;
+
+
+        char msg [256];
+        sprintf (msg, "send_output %d", hsla_line_num);
+//ipc_printf ("tell CPU to send_output\n");
+        tellCPU (0, msg);
       }
   }
