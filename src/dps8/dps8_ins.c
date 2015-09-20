@@ -5820,6 +5820,14 @@ static t_stat DoBasicInstruction (void)
                 longjmp (jmpMain, JMP_STOP);
               }
 
+// Multics/BCE halt
+            if (PPR . PSR == 0430 && PPR . IC == 012)
+                {
+                  sim_printf ("BCE DIS causes CPU halt\n");
+                  sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+                  longjmp (jmpMain, JMP_STOP);
+                }
+
             sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
             //sim_printf ("entered DIS_cycle\n");
 
