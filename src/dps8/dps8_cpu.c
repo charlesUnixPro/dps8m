@@ -1290,6 +1290,8 @@ static char * cycleStr (cycles_t cycle)
           return "INTERRUPT_EXEC2_cycle";
         case FETCH_cycle:
           return "FETCH_cycle";
+        case SYNC_FAULT_RTN_cycle:
+          return "SYNC_FAULT_RTN_cycle";
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
@@ -1396,20 +1398,12 @@ t_stat sim_instr (void)
             reason = 0;
             break;
         case JMP_NEXT:
-            goto nextInstruction;
-#if 0
-        case JMP_RETRY:
-            goto jmpRetry;
-        case JMP_TRA:
-            goto jmpTra;
-        case JMP_INTR:
-            goto jmpIntr;
-#endif
+        case JMP_SYNC_FAULT_RETURN:
+            setCpuCycle (SYNC_FAULT_RTN_cycle);
+            break;
         case JMP_STOP:
             reason = STOP_HALT;
             goto leave;
-        case JMP_SYNC_FAULT_RETURN:
-            goto syncFaultReturn;
         case JMP_REFETCH:
 
             // Not necessarily so, but the only times
@@ -1888,10 +1882,11 @@ last = M[01007040];
 
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
-                break;
+              }
+              break;
 
-nextInstruction:;
-syncFaultReturn:;
+            case SYNC_FAULT_RTN_cycle:
+              {
                 PPR.IC ++;
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);

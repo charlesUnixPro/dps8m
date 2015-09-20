@@ -50,7 +50,8 @@ typedef enum
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
-    FETCH_cycle = INSTRUCTION_FETCH
+    FETCH_cycle = INSTRUCTION_FETCH,
+    SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
