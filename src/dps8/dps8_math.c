@@ -1988,8 +1988,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
 
     //if (dFrac == 0 || zFrac >= dFrac)
-    if (dFrac == 0 || zFrac >= dFrac << 35)
-    //if (dFrac == 0)
+    //if (dFrac == 0 || zFrac >= dFrac << 35)
+    if (dFrac == 0)
       {
         SCF (dFrac == 0, cu . IR, I_ZERO);
         SCF (rA & SIGN36, cu . IR, I_NEG);
@@ -2002,6 +2002,20 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
 
+
+    // I am surmising that the "If | dividend | >= | divisor |" is an
+    // overflow prediction; implement it by checking that the calculated
+    // quotient will fit in 35 bits.
+
+    if (quot & ~MASK35)
+      {
+        SCF (dFrac == 0, cu . IR, I_ZERO);
+        SCF (rA & SIGN36, cu . IR, I_NEG);
+        
+        rA = (zFrac >> 31) & MASK35;
+        rQ = (zFrac & MASK35) << 1;
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
     //char buf3 [128] = "";
     //print_int128 (remainder, buf3);
     //sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
