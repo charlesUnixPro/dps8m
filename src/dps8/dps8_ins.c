@@ -4088,7 +4088,10 @@ static t_stat DoBasicInstruction (void)
             fxeSetCall6Trap ();
             if (TPR.TRR > PPR.PRR)
             {
-                acvFault(OCALL, "call6 access violation fault (outward call)");
+                sim_debug (DBG_APPENDING, & cpu_dev,
+                           "call6 access violation fault (outward call)");
+                doFault (FAULT_ACV, OCALL,
+                         "call6 access violation fault (outward call)");
             }
             if (TPR.TRR < PPR.PRR)
                 PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & MASK15; // keep to 15-bits
