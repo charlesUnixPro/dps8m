@@ -1929,6 +1929,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
 
+#if 0
     if (CY == 0)
       {
         // XXX check flags
@@ -1940,6 +1941,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         
         return;
     }
+#endif
+
 
     // dividend format
     // 0  1     70 71
@@ -1963,8 +1966,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
       }
     zFrac &= MASK70;
 
-    char buf [128] = "";
-    print_int128 (zFrac, buf);
+    //char buf [128] = "";
+    //print_int128 (zFrac, buf);
     //sim_debug (DBG_CAC, & cpu_dev, "zFrac %s\n", buf);
 
     // Get the 35 bits of the divisor (36 bits less the sign bit)
@@ -1980,16 +1983,27 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
       }
     dFrac &= MASK35;
 
-    char buf2 [128] = "";
-    print_int128 (dFrac, buf2);
+    //char buf2 [128] = "";
+    //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
 
+    //if (dFrac == 0 || zFrac >= dFrac)
+    if (dFrac == 0 || zFrac >= dFrac << 35)
+    //if (dFrac == 0)
+      {
+        SCF (dFrac == 0, cu . IR, I_ZERO);
+        SCF (rA & SIGN36, cu . IR, I_NEG);
+        
+        rA = (zFrac >> 31) & MASK35;
+        rQ = (zFrac & MASK35) << 1;
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
 
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
 
-    char buf3 [128] = "";
-    print_int128 (remainder, buf3);
+    //char buf3 [128] = "";
+    //print_int128 (remainder, buf3);
     //sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
 
     if (sign == -1)
