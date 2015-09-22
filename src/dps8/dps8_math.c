@@ -568,10 +568,11 @@ void fno (void)
     {
         rA = (m >> 36) & MASK36;
         rQ = m & MASK36;
-
+        rE = 0200U; /*-128*/
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
         // Neg:
         CLRF(cu.IR, I_NEG);
         
