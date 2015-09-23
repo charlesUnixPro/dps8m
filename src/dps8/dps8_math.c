@@ -650,10 +650,12 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     {
         *A = (m >> 36) & MASK36;
         *Q = m & MASK36;
+        *E = 0200U; /*-128*/
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
         // Neg:
         CLRF(cu.IR, I_NEG);
         
@@ -1690,11 +1692,23 @@ static void dfdvX (bool bInvert)
     }
     
     int e3 = e1 - e2;
+#if 0
     if (e3 > 127 || e3 < -128)
     {
         // XXX ahndle correctly
         sim_printf ("Exp Underflow/Overflow (%d)\n", e3);
     }
+#endif
+    if (e3 > 127)
+      {
+         e3 = 127;
+         SETF (cu.IR, I_EOFL);
+       }
+    else if (e3 < -127)
+      {
+         e3 = -127;
+         SETF (cu.IR, I_EUFL);
+       }
     //uint128 M1 = (uint128)m1 << 63;
     //uint128 M2 = (uint128)m2; ///< << 36;
     
