@@ -38,41 +38,34 @@ long double exp2l (long double e) {
  */
 long double EAQToIEEElongdouble(void)
 {
-    word8 E = rE;    ///< exponent
-    word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);   ///< mantissa
+    // mantissa
+    word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);
 
-    //printf("rA=%012llo rQ=%012llo %s\n", rA, rQ, Qtoo(M));
-    
     if (M == 0)
         return 0;
     
-    bool S = M & SIGN72; ///< sign of mantissa
+    bool S = M & SIGN72; // sign of mantissa
     if (S)
         M = (-M) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
     
-    long double m = 0;  ///< mantissa value;
-    int8 e = (int8)E;  ///< make signed
-    
+    long double m = 0;  // mantissa value;
+    int e = (int8) rE; // make signed
+
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1)
     {
         if (M & ((word72)1 << n))
         {
             m += v;
-            //printf("1");
-        }   //else
-        //printf("0");
+        }
         v /= 2.0;
     }
-    //printf("\n");
-    //sim_printf ("E=%o m=%Lf e=%d\n", E, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
     if (m == 0)
         return (S ? -1 : 1) * exp2l(e);
     
-    //sim_printf ("frac=%Lf e=%d\n", m, e);
     return (S ? -1 : 1) * ldexpl(m, e);
 }
 
@@ -244,14 +237,12 @@ void IEEElongdoubleToEAQ(long double f0)
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
-double float36ToIEEEdouble(float36 f36)
+double float36ToIEEEdouble(uint64_t f36)
 {
-    word8 E;    ///< exponent
-    word36 M;   ///< mantissa
-    //                         off len
-    E = bitfieldExtract36(f36, 28, 8);      ///< 8-bit signed integer (incl sign)
-    M = bitfieldExtract36(f36, 0, 28);      ///< 28-bit mantissa (incl sign)
-    
+    unsigned char E;    ///< exponent
+    uint64_t M;         ///< mantissa
+    E = (f36 >> 28) & 0xff;
+    M = f36 & 01777777777LL;
     if (M == 0)
         return 0;
     
@@ -260,7 +251,7 @@ double float36ToIEEEdouble(float36 f36)
         M = (-M) & 0777777777; // 27 bits (not 28!)
     
     double m = 0;       ///< mantissa value;
-    int8 e = (uint8)E;  ///< make signed
+    int e = (char)E;  ///< make signed
     
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1)
@@ -268,13 +259,9 @@ double float36ToIEEEdouble(float36 f36)
         if (M & (1 << n))
         {
             m += v;
-            //printf("1");
         }   //else
-            //printf("0");
         v /= 2.0;
     }
-    //printf("\n");
-    //sim_printf ("s72=%012llo, E=%o M=%llo m=%f e=%d\n", f36, E, M, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
@@ -578,43 +565,38 @@ void fno (void)
         
         return;
     }
-    int8   e = (int8)rE;
+    int   e = rE;
 
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
     //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
-    while (bitfieldExtract72(m, 71, 1) == bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
+    while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
     {
         m <<= 1;
-        m &= MASK72;
-        
-        if (s)
-            m |= SIGN72;
-        
-        if ((e - 1) < -128)
-            SETF(cu.IR, I_EOFL);
-        else    // XXX: my interpretation
-            e -= 1;
-        
+        e -= 1;
         if (m == 0) // XXX: necessary??
-        {
-            rE = (word8)-128;
             break;
-        }
     }
+
+    m &= MASK71;
+        
+    if (s)
+      m |= SIGN72;
       
+    if (e < -127)
+      SETF(cu.IR, I_EOFL);
+
     rE = e & 0377;
     rA = (m >> 36) & MASK36;
     rQ = m & MASK36;
 
-    if (rA == 0)    // set to normalized 0
+    if (rA == 0 && rQ == 0)    // set to normalized 0
         rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(rA == 0, cu.IR, I_ZERO);
+    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
     SCF(rA & SIGN36, cu.IR, I_NEG);
-
 }
 
 // XXX eventually replace fno() with fnoEAQ()
@@ -700,14 +682,20 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     
 }
 
-/*!
+/*
  * floating negate ...
  */
 void fneg (void)
 {
-    //! This instruction changes the number in C(EAQ) to its normalized negative (if C(AQ) ≠ 0). The operation is executed by first forming the twos complement of C(AQ), and then normalizing C(EAQ).
-    //! Even if originally C(EAQ) were normalized, an exponent overflow can still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the twos complement approximation for the decimal value -1.0.
+    // This instruction changes the number in C(EAQ) to its normalized negative
+    // (if C(AQ) ≠ 0). The operation is executed by first forming the twos
+    // complement of C(AQ), and then normalizing C(EAQ).
+    //
+    // Even if originally C(EAQ) were normalized, an exponent overflow can
+    // still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the
+    // twos complement approximation for the decimal value -1.0.
     
+#if 0
     float72 m = ((word72)rA << 36) | (word72)rQ;
     
     if (m == 0) // (if C(AQ) ≠ 0)
@@ -747,13 +735,38 @@ void fneg (void)
         if ((e + 1) > 127)
             SETF(cu.IR, I_EOFL);
         else    // XXX: this is my interpretation
-            rE += 1;
+            e += 1;
     }
     
     rE = e & 0377;
     rA = (mc >> 36) & MASK36;
     rQ = mc & MASK36;
+#else
+    // Form the mantissa from AQ
+    word72 m = ((word72)(rA & MASK36) << 36) | (word72)(rQ & MASK36);
 
+    // If the mantissa is 4000...00 (least negative value, it is negable in two's
+    // complement arithmetic. Divide it by 2, losing a bit of precision, and increment
+    // the exponent.
+    if (m == SIGN72)
+      {
+        // Negation of 400..0 / 2 is 200..0; we can get there shifting; we know that
+        // a zero will be shifted into the sign bit becuase fo the masking in 'm='.
+        m >>= 1;
+        // Increment the exp, checking for overflow.
+        if (rE == 127)
+          SETF(cu.IR, I_EOFL);
+        else
+          rE ++;
+      }
+    else
+      {
+        // Do the negation
+        m = -m;
+      }
+    rA = (m >> 36) & MASK36;
+    rQ = m & MASK36;
+#endif
     fno ();  // normalize
 }
 
