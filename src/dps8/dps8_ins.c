@@ -2959,31 +2959,28 @@ static t_stat DoBasicInstruction (void)
             /// XXX: what if C(A) == 0? Are flags affected? Assume yes, for now.
 
             rA &= DMASK;
-            if (rA != 0)
-            {
-                // bool ov = rA & 0400000000000LL;
-                bool ov = rA == 0400000000000ULL;
+            // bool ov = rA & 0400000000000LL;
+            bool ov = rA == 0400000000000ULL;
                 
-                rA = -rA;
+            rA = -rA;
  
-                rA &= DMASK;    // keep to 36-bits
+            rA &= DMASK;    // keep to 36-bits
                 
-                if (rA == 0)
-                    SETF(cu.IR, I_ZERO);
-                else
-                    CLRF(cu.IR, I_ZERO);
-                
-                if (rA & SIGN36)
-                    SETF(cu.IR, I_NEG);
-                else
-                    CLRF(cu.IR, I_NEG);
-                
-                if (ov)
-                {
-                    SETF(cu.IR, I_OFLOW);
-                    if (tstOVFfault ())
-                        doFault(FAULT_OFL, 0,"neg overflow fault");
-                }
+            if (rA == 0)
+                SETF(cu.IR, I_ZERO);
+            else
+                CLRF(cu.IR, I_ZERO);
+            
+            if (rA & SIGN36)
+                SETF(cu.IR, I_NEG);
+            else
+                CLRF(cu.IR, I_NEG);
+            
+            if (ov)
+            {
+                SETF(cu.IR, I_OFLOW);
+                if (tstOVFfault ())
+                    doFault(FAULT_OFL, 0,"neg overflow fault");
             }
             break;
             
