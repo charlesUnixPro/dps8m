@@ -2953,13 +2953,11 @@ static t_stat DoBasicInstruction (void)
             
             break;
             
-        /// Fixed-Point Negate
-        case 0531:  ///< neg
-            /// -C(A) -> C(A) if C(A) ≠ 0
-            /// XXX: what if C(A) == 0? Are flags affected? Assume yes, for now.
+        // Fixed-Point Negate
+        case 0531:  // neg
+            // -C(A) -> C(A) if C(A) ≠ 0
 
             rA &= DMASK;
-            // bool ov = rA & 0400000000000LL;
             bool ov = rA == 0400000000000ULL;
                 
             rA = -rA;
@@ -2984,39 +2982,35 @@ static t_stat DoBasicInstruction (void)
             }
             break;
             
-        case 0533:  ///< negl
-            /// -C(AQ) -> C(AQ) if C(AQ) ≠ 0
-            /// XXX same problem as neg above - fixed
+        case 0533:  // negl
+            // -C(AQ) -> C(AQ) if C(AQ) ≠ 0
             {
                 rA &= DMASK;
                 rQ &= DMASK;
                 word72 tmp72 = convertToWord72(rA, rQ);
-                if (tmp72 != 0)
+
+                bool ov = (rA == 0400000000000ULL) & (rQ == 0);
+                
+                tmp72 = -tmp72;
+                
+                if (tmp72 == 0)
+                    SETF(cu.IR, I_ZERO);
+                else
+                    CLRF(cu.IR, I_ZERO);
+                
+                if (tmp72 & SIGN72)
+                    SETF(cu.IR, I_NEG);
+                else
+                    CLRF(cu.IR, I_NEG);
+                
+                if (ov)
                 {
-                    //bool ov = (rA & 0400000000000LL) & (rQ == 0);
-                    bool ov = (rA == 0400000000000ULL) & (rQ == 0);
-                
-                    tmp72 = -tmp72;
-                
-                    if (tmp72 == 0)
-                        SETF(cu.IR, I_ZERO);
-                    else
-                        CLRF(cu.IR, I_ZERO);
-                
-                    if (tmp72 & SIGN72)
-                        SETF(cu.IR, I_NEG);
-                    else
-                        CLRF(cu.IR, I_NEG);
-                
-                    if (ov)
-                    {
-                        SETF(cu.IR, I_OFLOW);
-                        if (tstOVFfault ())
-                            doFault(FAULT_OFL, 0,"negl overflow fault");
-                    }
-                
-                    convertToWord36(tmp72, &rA, &rQ);
+                    SETF(cu.IR, I_OFLOW);
+                    if (tstOVFfault ())
+                        doFault(FAULT_OFL, 0,"negl overflow fault");
                 }
+                
+                convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
