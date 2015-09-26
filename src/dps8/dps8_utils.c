@@ -851,57 +851,78 @@ void convertToWord36(word72 src, word36 *even, word36 *odd)
     *odd = (word36)src & DMASK;
 }
 
-//! XXX the following compare routines probably need sign extension
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
-{
+  {
     t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
     t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
-    if (!((word36)op1 & SIGN36) && ((word36)op2 & SIGN36) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if (((word36)op1 & SIGN36) == ((word36)op2 & SIGN36) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if ((((word36)op1 & SIGN36) && !((word36)op2 & SIGN36)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-}
+    word36 sign1 = op1 & SIGN36;
+    word36 sign2 = op2 & SIGN36;
+
+    if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
+      CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
+
+    else if (sign1 == sign2) // both operands have the same sogn
+      {
+         if (op1 > op2)
+           {
+             SETF (* flags, I_CARRY);
+             CLRF (* flags, I_ZERO | I_NEG);
+           }
+         else if (op1 == op2)
+           {
+             SETF (* flags, I_ZERO | I_CARRY);
+             CLRF (* flags, I_NEG);
+           }
+         else //  op1 < op2
+          {
+            SETF (* flags, I_NEG);
+            CLRF (* flags, I_ZERO | I_CARRY);
+          }
+      }
+    else // op1 < 0, op2 > 0 :: op1 < op2
+      {
+        SETF (* flags, I_CARRY | I_NEG);
+        CLRF (* flags, I_ZERO);
+      }
+  }
+
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
-{
+  {
     int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
     int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
-    if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if (((word18)op1 & SIGN18) == ((word18)op2 & SIGN18) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if ((((word18)op1 & SIGN18) && !((word18)op2 & SIGN18)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-}
+    word18 sign1 = op1 & SIGN18;
+    word18 sign2 = op2 & SIGN18;
+
+    if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
+      CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
+
+    else if (sign1 == sign2) // both operands have the same sogn
+      {
+         if (op1 > op2)
+           {
+             SETF (* flags, I_CARRY);
+             CLRF (* flags, I_ZERO | I_NEG);
+           }
+         else if (op1 == op2)
+           {
+             SETF (* flags, I_ZERO | I_CARRY);
+             CLRF (* flags, I_NEG);
+           }
+         else //  op1 < op2
+          {
+            SETF (* flags, I_NEG);
+            CLRF (* flags, I_ZERO | I_CARRY);
+          }
+      }
+    else // op1 < 0, op2 > 0 :: op1 < op2
+      {
+        SETF (* flags, I_CARRY | I_NEG);
+        CLRF (* flags, I_ZERO);
+      }
+  }
+
 void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 {
     // This is wrong; signed math is needed.
