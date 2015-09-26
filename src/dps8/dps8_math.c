@@ -516,18 +516,29 @@ void ufs (void)
 
 }
 
-/*!
+/*
  * floating normalize ...
  */
 
 void fno (void)
 {
-    //! The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF.
-    //!    A normalized floating number is defined as one whose mantissa lies in the interval [0.5,1.0) such that
-    //!    0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.
-    //!    If the overflow indicator is ON, then C(AQ) is shifted one place to the right, C(AQ)0 is inverted to reconstitute the actual sign, and the overflow indicator is set OFF. This action makes the fno instruction useful in correcting overflows that occur with fixed point numbers.
-    //!  Normalization is performed by shifting C(AQ)1,71 one place to the left and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and C(AQ)1 are met. Bits shifted out of AQ1 are lost.
-    //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
+    // The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the
+    // overflow indicator is OFF.
+    //
+    // A normalized floating number is defined as one whose mantissa lies in
+    // the interval [0.5,1.0) such that
+    //     0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.
+    //
+    // If the overflow indicator is ON, then C(AQ) is shifted one place to the
+    // right, C(AQ)0 is inverted to reconstitute the actual sign, and the
+    // overflow indicator is set OFF. This action makes the fno instruction
+    // useful in correcting overflows that occur with fixed point numbers.
+    //
+    // Normalization is performed by shifting C(AQ)1,71 one place to the left
+    // and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and
+    // C(AQ)1 are met. Bits shifted out of AQ1 are lost.
+    //
+    // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
     rA &= DMASK;
     rQ &= DMASK;
@@ -543,10 +554,14 @@ void fno (void)
         CLRF(cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
-        // Neg:
+        if (m == 0)
+        {
+            rE = -128;
+            SETF(cu.IR, I_ZERO);
+        }
+
         CLRF(cu.IR, I_NEG);
+
         return; // XXX: ???
     }
     
@@ -556,19 +571,13 @@ void fno (void)
         rA = (m >> 36) & MASK36;
         rQ = m & MASK36;
         rE = 0200U; /*-128*/
-        // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
-        //SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
         SETF(cu.IR, I_ZERO);
-        // Neg:
         CLRF(cu.IR, I_NEG);
-        
         return;
     }
     int   e = rE;
 
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
-    //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
     while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
     {
         m <<= 1;
@@ -583,13 +592,14 @@ void fno (void)
       m |= SIGN72;
       
     if (e < -127)
-      SETF(cu.IR, I_EOFL);
+      SETF(cu.IR, I_EUFL);
 
     rE = e & 0377;
     rA = (m >> 36) & MASK36;
     rQ = m & MASK36;
 
-    if (rA == 0 && rQ == 0)    // set to normalized 0
+    // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
+    if (rA == 0)    // set to normalized 0
         rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
@@ -599,6 +609,7 @@ void fno (void)
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }
 
+#if 0
 // XXX eventually replace fno() with fnoEAQ()
 void fnoEAQ(word8 *E, word36 *A, word36 *Q)
 {
@@ -621,7 +632,12 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        if (m == 0)
+        {
+            *E = -128;
+            SETF(cu.IR, I_ZERO);
+        }
         // Neg:
         CLRF(cu.IR, I_NEG);
         return; // XXX: ???
@@ -656,7 +672,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(cu.IR, I_EOFL);
+            SETF(cu.IR, I_EUFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -671,6 +687,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     *A = (m >> 36) & MASK36;
     *Q = m & MASK36;
     
+    // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
     if (*A == 0)    // set to normalized 0
         *E = (word8)-128;
     
@@ -681,6 +698,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     SCF(*A & SIGN36, cu.IR, I_NEG);
     
 }
+#endif
 
 /*
  * floating negate ...
@@ -1091,10 +1109,14 @@ void frd (void)
 
 void fstr(word36 *Y)
 {
-    //The fstr instruction performs a true round and normalization on C(EAQ) as it is stored.
-    //The definition of true round is located under the description of the frd instruction.
-    //The definition of normalization is located under the description of the fno instruction.
-    //Attempted repetition with the rpl instruction causes an illegal procedure fault.
+    //The fstr instruction performs a true round and normalization on C(EAQ) as
+    //it is stored.
+    //The definition of true round is located under the description of the frd
+    //instruction.
+    //The definition of normalization is located under the description of the
+    //fno instruction.
+    //Attempted repetition with the rpl instruction causes an illegal procedure
+    //fault.
     
     word36 A = rA, Q = rQ;
     word8 E = rE;
@@ -1150,7 +1172,7 @@ void fstr(word36 *Y)
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         
-        fnoEAQ(&E, &A, &Q);
+        fno();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -2219,7 +2241,7 @@ void dfstr (word36 *Ypair)
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         
-        fnoEAQ(&E, &A, &Q);
+        fno();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
