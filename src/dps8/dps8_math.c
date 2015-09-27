@@ -545,14 +545,17 @@ void fno (void)
     float72 m = ((word72)rA << 36) | (word72)rQ;
     if (TSTF(cu.IR, I_OFLOW))
     {
-        m >>= 1;
-        m &= MASK72;
-        
-        m ^= ((word72)1 << 71);
-
-        SCF(rA & SIGN72, cu.IR, I_NEG); // was &&
         CLRF(cu.IR, I_OFLOW);
-        
+        word72 s = m & SIGN72; // save the sign bit
+        m >>= 1; // renormalize the mantissa
+        m |= SIGN72; // set the sign bit
+        m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
+
+        if (rE < 127)
+            rE ++;
+        else
+            SETF(cu.IR, I_EOFL);
+
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
         {
@@ -560,16 +563,18 @@ void fno (void)
             SETF(cu.IR, I_ZERO);
         }
 
-        CLRF(cu.IR, I_NEG);
+        rA = (m >> 36) & MASK36;
+        rQ = m & MASK36;
+        SCF(rA & SIGN72, cu.IR, I_NEG);
 
-        return; // XXX: ???
+        return;
     }
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
     if (m == 0) // C(AQ) == 0.
     {
-        rA = (m >> 36) & MASK36;
-        rQ = m & MASK36;
+        //rA = (m >> 36) & MASK36;
+        //rQ = m & MASK36;
         rE = 0200U; /*-128*/
         SETF(cu.IR, I_ZERO);
         CLRF(cu.IR, I_NEG);
