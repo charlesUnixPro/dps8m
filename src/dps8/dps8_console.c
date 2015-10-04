@@ -1182,6 +1182,10 @@ eol:
 
     if (isprint (c))
       {
+        // silently drop buffer overrun
+        if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+          return;
+
         * console_state . tailp ++ = c;
         sim_putchar (c);
         return;

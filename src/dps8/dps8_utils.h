@@ -26,24 +26,18 @@ struct opCode *getIWBInfo(DCDstruct *i);
 char * dumpFlags(word18 flags);
 char *disAssemble(word36 instruction);
 char *getModString(int32 tag);
-#ifndef QUIET_UNUSED
-word36 AddSub36 (char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
-#endif
-#if 0
-word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
-word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags);
-word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags);
-#endif
 word72 convertToWord72(word36 even, word36 odd);
 void convertToWord36(word72 src, word36 *even, word36 *odd);
 
-word36 compl36(word36 op1, word18 *flags);
-word18 compl18(word18 op1, word18 *flags);
+word36 compl36(word36 op1, word18 *flags, bool * ovf);
+word18 compl18(word18 op1, word18 *flags, bool * ovf);
 
 void copyBytes(int posn, word36 src, word36 *dst);
 void copyChars(int posn, word36 src, word36 *dst);
 
+#ifndef QUIET_UNUSED
 word9 getByte(int posn, word36 src);
+#endif
 void putByte(word36 *dst, word9 data, int posn);
 void putChar(word36 *dst, word6 data, int posn);
 
@@ -74,11 +68,6 @@ void sim_printf( const char * format, ... )    // not really simh, by my impl
 #endif
 ;
 
-#if 0
-word36 getbits36 (word36 x, uint i, uint n);
-word36 setbits36 (word36 x, uint p, uint n, word36 val);
-void putbits36 (word36 * x, uint p, uint n, word36 val);
-#else
 
 //  getbits36 (data, starting bit, number of bits)
 
@@ -91,6 +80,7 @@ static inline word36 getbits36(word36 x, uint i, uint n) {
     } else
         return (x >> (unsigned) shift) & ~ (~0U << n);
 }
+
 static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;
@@ -105,6 +95,7 @@ static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
     word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
     return result;
 }
+
 static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
   {
     int shift = 36 - (int) p - (int) n;
@@ -120,19 +111,36 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
     return;
   }
-#endif
-#define getbits6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
-#define getbits15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
-#define getbits24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
+
+#define getbits36_6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
+#define getbits36_15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
+#define getbits36_24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
+
+//  getbits18 (data, starting bit, number of bits)
+
+static inline word36 getbits18 (word18 x, uint i, uint n)
+  {
+    // bit 17 is right end, bit zero is 18th from the right
+    int shift = 17 - (int) i - (int) n + 1;
+    if (shift < 0 || shift > 17)
+      {
+        sim_printf ("getbits18: bad args (%06o,i=%d,n=%d)\n", x, i, n);
+        return 0;
+      }
+    else
+      return (x >> (unsigned) shift) & ~ (~0U << n);
+  }
 
 char * strdupesc (const char * str);
 
 
 word36 extr36 (uint8 * bits, uint woffset);
+#ifndef QUIET_UNUSED
 word9 extr9 (uint8 * bits, uint coffset);
 word18 extr18 (uint8 * bits, uint coffset);
-uint8 getbit (void * bits, int offset);
 uint64 extr (void * bits, int offset, int nbits);
+#endif
+uint8 getbit (void * bits, int offset);
 void put36 (word36 val, uint8 * bits, uint woffset);
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp);
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, uint64 *wordp);
@@ -152,10 +160,10 @@ void sim_printl (const char * format, ...)
 #endif
 ;
 
-word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags);
-word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags);
-word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags);
-word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags);
-word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags);
-word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags);
+word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
+word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
+word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
+word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
+word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
+word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 
