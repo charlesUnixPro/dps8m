@@ -73,6 +73,7 @@
 #define SIGN72          ((word72)1U << 71)
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
+#define MASK71          (((word72)1U << 71) - 1U)
 #define MASK72          ZEROEXT72
 
 #define SIGN64          ((uint64)1U << 63)

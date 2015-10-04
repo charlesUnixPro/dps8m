@@ -233,16 +233,16 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
     return SCPE_OK;
   }
 
+#ifndef SPEED
 static t_stat dpsCmd_InitSDWAM ()
   {
-#ifndef SPEED
     memset (SDWAM, 0, sizeof (SDWAM));
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
-#endif
     return SCPE_OK;
   }
+#endif
 
 // Assumes unpaged DSBR
 
@@ -1140,8 +1140,7 @@ static t_stat reason;
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
 DCDstruct currentInstruction;
-
-//static EISstruct E;
+EISstruct currentEISinstruction;
 
 events_t events;
 switches_t switches;
@@ -1291,6 +1290,8 @@ static char * cycleStr (cycles_t cycle)
           return "INTERRUPT_EXEC2_cycle";
         case FETCH_cycle:
           return "FETCH_cycle";
+        case SYNC_FAULT_RTN_cycle:
+          return "SYNC_FAULT_RTN_cycle";
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
@@ -1397,20 +1398,12 @@ t_stat sim_instr (void)
             reason = 0;
             break;
         case JMP_NEXT:
-            goto nextInstruction;
-#if 0
-        case JMP_RETRY:
-            goto jmpRetry;
-        case JMP_TRA:
-            goto jmpTra;
-        case JMP_INTR:
-            goto jmpIntr;
-#endif
+        case JMP_SYNC_FAULT_RETURN:
+            setCpuCycle (SYNC_FAULT_RTN_cycle);
+            break;
         case JMP_STOP:
             reason = STOP_HALT;
             goto leave;
-        case JMP_SYNC_FAULT_RETURN:
-            goto syncFaultReturn;
         case JMP_REFETCH:
 
             // Not necessarily so, but the only times
@@ -1889,10 +1882,11 @@ last = M[01007040];
 
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
-                break;
+              }
+              break;
 
-nextInstruction:;
-syncFaultReturn:;
+            case SYNC_FAULT_RTN_cycle:
+              {
                 PPR.IC ++;
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
@@ -2248,6 +2242,7 @@ t_stat memWatch (int32 arg, char * buf)
  * "Raw" core interface ....
  */
 
+#ifndef SPEED
 static void nem_check (word24 addr, char * context)
   {
     if (query_scbank_map (addr) < 0)
@@ -2256,6 +2251,7 @@ static void nem_check (word24 addr, char * context)
         doFault (FAULT_ONC, nem, context);
       }
   }
+#endif
 
 #ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
@@ -2490,8 +2486,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
         p->tag = 0;
         if (p->info->ndes > 1)
         {
-            memset(&p->e, 0, sizeof(EISstruct)); // clear out e
-            p->e.op0 = inst;
+            memset (& currentEISinstruction, 0, sizeof (currentEISinstruction)); 
         }
     }
 #ifdef MULTIPASS
@@ -2536,20 +2531,6 @@ int is_priv_mode(void)
             if (switches . super_user)
                 return 1;
 
-// Append cycle should always set this up
-#if 0
-            if (SDW->P && PPR.PRR == 0)
-            {
-                PPR.P = 1;
-                return 1;
-            }
-#endif
-            // [CAC] This generates a lot of traffic because is_priv_mode
-            // is frequntly called to get the state, and not just to trap
-            // priviledge violations.
-            //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
-            break;
-        default:
             break;
     }
     

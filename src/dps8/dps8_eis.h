@@ -1,31 +1,32 @@
-void doEIS_CAF (void);
-void setupOperandDescriptor(int k, EISstruct *e);
-#ifdef EIS_CACHE
-void setupOperandDescriptorCache(int k, EISstruct *e);
-void cleanupOperandDescriptor(int k, EISstruct *e);
-#endif
-void parseNumericOperandDescriptor(int k, EISstruct *e);
-void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
-void EISloadInputBufferNumeric(DCDstruct *i, int k);
-
-void btd(DCDstruct *i);
-void dtb(DCDstruct *i);
-void mvne(DCDstruct *i);
-void mve(DCDstruct *i);
-void mlr(DCDstruct *i);
-void mrl(DCDstruct *i);
-void mvt(DCDstruct *i);
-void scm(DCDstruct *i);
-void scmr(DCDstruct *i);
-void tct(DCDstruct *i);
-void tctr(DCDstruct *i);
-void cmpc(DCDstruct *i);
-void scd(DCDstruct *i);
-void scdr(DCDstruct *i);
-void cmpb(DCDstruct *i);
-void csl(DCDstruct *ins, bool isSZTL);
-void csr(DCDstruct *ins, bool isSZTR);
-//void sztl(DCDstruct *i);
-//void sztr(DCDstruct *i);
-
-
+void setupEISoperands (void);
+void a4bd (void);
+void s4bd (void);
+void axbd (uint sz);
+void sxbd (uint sz);
+void cmpc (void);
+void scd (void);
+void scdr (void);
+void scm (void);
+void scmr (void);
+void tct (void);
+void tctr (void);
+void mlr (void);
+void mrl (void);
+void mve (void);
+void mvne (void);
+void mvt (void);
+void cmpn (void);
+void mvn (void);
+void csl (bool isSZTL);
+void csr (bool isSZTR);
+void cmpb (void);
+void btd (void);
+void dtb (void);
+void ad2d (void);
+void ad3d (void);
+void sb2d (void);
+void sb3d (void);
+void mp2d (void);
+void mp3d (void);
+void dv2d (void);
+void dv3d (void);

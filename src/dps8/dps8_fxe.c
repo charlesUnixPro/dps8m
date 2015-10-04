@@ -732,10 +732,10 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
     word36 even = * its;
     word36 odd = * (its + 1);
 
-    word15 segno = getbits15 (even, 3);
+    word15 segno = getbits36_15 (even, 3);
     word18 wordno = (word18) getbits36 (odd, 0, 18);
     if (bitno)
-      * bitno = getbits6 (odd, 57 - 36);
+      * bitno = getbits36_6 (odd, 57 - 36);
 
     word24 physmem = KST [segnoMap [segno]] . physmem  + wordno;
     return physmem;
@@ -3064,7 +3064,7 @@ static void faultTag2Handler (void)
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
-    word24 segBaseAddr = getbits24 (* even, 0);
+    word24 segBaseAddr = getbits36_24 (* even, 0);
     word24 addr = (segBaseAddr + offset) & MASK24;
     //sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
 
@@ -5351,7 +5351,7 @@ static void trapHCS_FsGetPathName (void)
     word24 ap1 = t [ARG1] . argAddr;
 
     //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
-    word15 segno = getbits15 (M [ap1], 3);
+    word15 segno = getbits36_15 (M [ap1], 3);
 
     if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
@@ -5428,7 +5428,7 @@ static void trapHCS_chnameSeg (void)
     word24 ap1 = t [ARG1] . argAddr;
 
     //sim_printf ("%012llo %012llo\n", M [ap1], M [ap1 + 1]);
-    word15 segno = getbits15 (M [ap1], 3);
+    word15 segno = getbits36_15 (M [ap1], 3);
 
     if (segno >= N_SEGNOS) // bigger segno then we deal with
       {
@@ -5875,7 +5875,7 @@ static void trapHCS_TruncateSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits15 (M [ap1], 3);
+    word15 segno = getbits36_15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
@@ -5933,7 +5933,7 @@ static void trapHCS_GetMaxLengthSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits15 (M [ap1], 3);
+    word15 segno = getbits36_15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
@@ -5983,7 +5983,7 @@ static void trapHCS_SetMaxLengthSeg (void)
 
     // Argument 1: seg ptr 
     word24 ap1 = t [ARG1] . argAddr;
-    word15 segno = getbits15 (M [ap1], 3);
+    word15 segno = getbits36_15 (M [ap1], 3);
 
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
