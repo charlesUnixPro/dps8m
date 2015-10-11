@@ -40,7 +40,7 @@ int main (int argc, char * argv [])
     fdin = open (argv [1], O_RDONLY);
     if (fdin < 0)
       {
-        fprintf (stderr, "can't open input file\n");
+        fprintf (stderr, "can't open input file <%s>\n", argv [1]);
         exit (1);
       }
     makeDirs (argv [2]);
@@ -48,7 +48,7 @@ int main (int argc, char * argv [])
     fdout = creat (argv [2], 0777);
     if (fdout < 0)
       {
-        fprintf (stderr, "can't open output file\n");
+        fprintf (stderr, "can't open output file <%s>\n", argv [2]);
         exit (1);
       }
     
