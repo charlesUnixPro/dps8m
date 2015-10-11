@@ -23,18 +23,8 @@
 
 #define ASSUME0 0
 
-/*
- console.c -- operator's console
- 
- CAVEAT
- This code has not been updated to use the generalized async handling
- that was added to the IOM code.  Instead it blocks.
- 
- See manual AN87.  See also mtb628.
- 
- */
-
 #define N_OPCON_UNITS 1 // default
+
 /* config switch -- The bootload console has a 30-second timer mechanism. When
 reading from the console, if no character is typed within 30 seconds, the read
 operation is terminated. The timer is controlled by an enable switch, must be
@@ -298,7 +288,7 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
  
 t_stat console_attn (UNUSED UNIT * uptr)
   {
-    send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitNum,
+    send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
                             cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
                             ASSUME0, 0, 0);
     return SCPE_OK;
@@ -451,11 +441,11 @@ static void sendConsole (uint stati)
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
     int con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
-    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx;
     
     int chan = console_state . chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
+    iomChanData_t * chan_data = & iomChanData [iomUnitIdx] [chan];
     while (tally && console_state . readp < console_state . tailp)
       {
         int charno;
@@ -480,35 +470,34 @@ static void sendConsole (uint stati)
     console_state . io_mode = no_mode;
 
     chan_data -> stati = stati;
-    send_terminate_interrupt (iomUnitNum, chan);
+    send_terminate_interrupt (iomUnitIdx, chan);
   }
 
 
-// return value:
-//   0 cmd completed; send terminate intr.
-//   1 cmd in process; do not send terminate intr.
 
-static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
+static int con_cmd (uint iomUnitIdx, uint chan)
   {
-    int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
-    
-    int chan = pcwp-> chan;
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    UNIT * unitp = & mt_unit [devUnitIdx];
 
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
-    if (chan_data -> ptp)
+    if (p -> PCW_PTP)
       sim_err ("PTP in console\n");
-    chan_data -> dev_code = pcwp -> dev_code;
-    chan_data -> stati = 0;
-    switch (pcwp -> dev_cmd)
+
+    p -> dev_code = p -> IDCW_DEV_CODE;
+    p -> stati = 0;
+
+    switch (p -> IDCW_DEV_CMD)
       {
         case 0: // CMD 00 Request status
           {
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Status request cmd received",
                        __func__);
-            chan_data -> stati = 04000;
-            chan_data -> initiate = true;
+            p -> stati = 04000;
+            p -> initiate = true;
           }
           break;
 
@@ -526,38 +515,58 @@ static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
 
             // Get the DDCW
 
-            dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            bool ptro, send, uff;
+
+            // We only expect one DCW, so no loop
+            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                sim_printf ("console read list service failed\n");
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                p -> chanStatus = chanStatIncomplete;
+                return -1;
+              }
+            if (uff)
+              {
+                sim_printf ("console read ignoring uff\n"); // XXX
+              }
+            if (! send)
+              {
+                sim_printf ("console read nothing to send\n");
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                p -> chanStatus = chanStatIncomplete;
+                return  -1;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_printf ("console read expected DDCW\n");
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                p -> chanStatus = chanStatIncorrectDCW;
+                return -1;
+              }
 
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncomplete;
-                break;
-              }
-            if (dcw . type != ddcw)
-              {
-                sim_printf ("not ddcw? %d\n", dcw . type);
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                p -> chanStatus = chanStatIncomplete;
+                return -1;
               }
 
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            // uint cp = dcw.fields.ddcw.cp;
+// XXX ???
+            //if (pcwp -> mask)
+              //daddr |= ((pcwp -> ext) & MASK6) << 18;
 
-            if (type != 0 && type != 1) //IOTD, IOTP
+            if (p -> DDCW_22_23_TYPE != 0 && p -> DDCW_22_23_TYPE != 1) //IOTD, IOTP
               {
 sim_printf ("uncomfortable with this\n");
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                p -> chanStatus = chanStatIncorrectDCW;
+                return -1;
               }
+
+            uint tally = p -> DDCW_TALLY;
+            uint daddr = p -> DDCW_ADDR;
 
             if (tally == 0)
               {
@@ -573,12 +582,12 @@ sim_printf ("uncomfortable with this\n");
             console_state . chan = chan;
           }
           //break;
-          return 1; // command in progress; do not send terminate interrupt
+          return 3; // command in progress; do not send terminate interrupt
 
 
         case 033:               // Write ASCII
           {
-            chan_data -> isRead = false;
+            p -> isRead = false;
             console_state . io_mode = write_mode;
 
             sim_debug (DBG_NOTIFY, & opcon_dev,
@@ -588,367 +597,342 @@ sim_printf ("uncomfortable with this\n");
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
               }
 
-            // Get the DDCW
+            // Get the DDCWs
 
-            dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
-
-            if (rc)
+            bool ptro;
+            bool send;
+            bool uff;
+            do
               {
-                sim_printf ("list service failed\n");
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncomplete;
-                break;
-              }
-            if (dcw . type != ddcw)
-              {
-                sim_printf ("not ddcw? %d\n", dcw . type);
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            // uint cp = dcw.fields.ddcw.cp;
-
-            if (type != 0 && type != 1) //IOTD, IOTP
-              {
-                chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
-
-            //sim_printf ("CONSOLE: ");
-            //sim_puts ("CONSOLE: ");
-
-
-            // When the console prints out "Command:", press the Attention
-            // key one second later
-            if (attn_hack &&
-                tally == 3 &&
-                M [daddr + 0] == 0103157155155llu &&
-                M [daddr + 1] == 0141156144072llu &&
-                M [daddr + 2] == 0040177177177llu)
-              {
-                //sim_printf ("attn!\n");
-                if (! console_state . once_per_boot)
+                int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+                if (rc < 0)
                   {
-                    sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
-                    console_state . once_per_boot = true;
+                    sim_printf ("console write list service failed\n");
+                    p -> stati = 05001; // BUG: arbitrary error code; config switch
+                    p -> chanStatus = chanStatIncomplete;
+                    return -1;
                   }
-              }
-
-            // When the console prints out "Ready", press the Attention
-            // key one second later
-            if (attn_hack &&
-                tally == 2 &&
-                M [daddr + 0] == 0122145141144llu &&
-                M [daddr + 1] == 0171015012177llu)
-              {
-                //sim_printf ("attn!\n");
-                if (! console_state . once_per_boot)
+                if (uff)
                   {
-                    sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
-                    console_state . once_per_boot = true;
+                    sim_printf ("console write ignoring uff\n"); // XXX
                   }
-              }
-
-
-            // 1642.9  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_00 for Initialize
-            // tally 21
-            //    0 061066064062  1642
-            //    1 056071040040  .9  
-            //    2 122103120072  RCP:
-            //    3 040115157165   Mou
-            //    4 156164040122  nt R
-            //    5 145145154040  eel 
-            //    6 061062056063  12.3
-            //    7 105130105103  EXEC
-            //    8 137103106060  _CF0
-            //    9 060061071137  019_
-            //   10 061040167151  1 wi
-            //   11 164150157165  thou
-            //   12 164040162151  t ri
-            //   13 156147040157  ng o
-            //   14 156040164141  n ta
-            //   15 160141137060  pa_0
-            //   16 060040146157  0 fo
-            //   17 162040111156  r In
-            //   18 151164151141  itia
-            //   19 154151172145  lize
-            //   20 015012177177  ....
-
-#if 0
-            if (mount_hack &&
-                tally > 6 &&
-                M [daddr + 2] == 0122103120072llu && // RCP
-                M [daddr + 3] == 0040115157165llu && //  Mou
-                M [daddr + 4] == 0156164040122llu && // nt R
-                M [daddr + 5] == 0145145154040llu)   // eel
-              {
-                if (M [daddr + 6] == 0061062056063llu && // 12/3 
-                    M [daddr + 7] == 0105130105103llu && // EXEC
-                    M [daddr + 8] == 0137103106060llu && // _CF0
-                    M [daddr + 9] == 0060061071137llu && // 019_
-                    (M [daddr + 10] & 0777777000000llu) == 0061040000000) // 1_
+                if (! send)
                   {
-                    sim_printf ("loading 12.3EXEC_CF0019_1\n");
-                    mount_unit . up7 = "88534.tap";
-                    sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                    sim_printf ("console write nothing to send\n");
+                    p -> stati = 05001; // BUG: arbitrary error code; config switch
+                    p -> chanStatus = chanStatIncomplete;
+                    return  -1;
                   }
-                else if (M [daddr + 6] == 0061062056063llu && // 12/3 
-                         M [daddr + 7] == 0105130105103llu && // EXEC
-                         M [daddr + 8] == 0137103106060llu && // _CF0
-                         M [daddr + 9] == 0060061071137llu && // 019_
-                         (M [daddr + 10] & 0777777000000llu) == 0062040000000) // 2_
+                if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
                   {
-                    sim_printf ("loading 12.3EXEC_DF0019_2\n");
-                    mount_unit . up7 = "88631.tap";
-                    sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                    sim_printf ("console write expected DDCW\n");
+                    p -> stati = 05001; // BUG: arbitrary error code; config switch
+                    p -> chanStatus = chanStatIncorrectDCW;
+                    return -1;
                   }
-                else if (M [daddr + 6] == 0061062056063llu && // 12/3 
-                         M [daddr + 7] == 0105130105103llu && // EXEC
-                         M [daddr + 8] == 0137104106060llu && // _DF0
-                         M [daddr + 9] == 0060061071137llu && // 019_
-                         (M [daddr + 10] & 0777777000000llu) == 0062040000000) // 2_
+
+                if (rc)
                   {
-                    sim_printf ("loading 12.3EXEC_DF0019_2\n");
-                    mount_unit . up7 = "88631.tap";
-                    sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                    sim_printf ("list service failed\n");
+                    p -> stati = 05001; // BUG: arbitrary error code; config switch
+                    p -> chanStatus = chanStatIncomplete;
+                    return -1;
                   }
-                else
+
+                uint tally = p -> DDCW_TALLY;
+                uint daddr = p -> DDCW_ADDR;
+// XXX
+                //if (pcwp -> mask)
+                  //daddr |= ((pcwp -> ext) & MASK6) << 18;
+
+                if (p -> DDCW_22_23_TYPE != 0 && p -> DDCW_22_23_TYPE != 1) //IOTD, IOTP
                   {
-                    sim_printf ("unrecognized mount_hack\n");
-                    sim_printf ("  %012llo\n", M [daddr + 6]);
-                    sim_printf ("  %012llo\n", M [daddr + 7]);
-                    sim_printf ("  %012llo\n", M [daddr + 8]);
-                    sim_printf ("  %012llo\n", M [daddr + 9]);
-                    sim_printf ("  %012llo\n", M [daddr + 10]);
-                    sim_printf ("  %012llo\n", M [daddr + 11]);
+sim_printf ("uncomfortable with this\n");
+                    p -> stati = 05001; // BUG: arbitrary error code; config switch
+                    p -> chanStatus = chanStatIncorrectDCW;
+                    return -1;
                   }
-              }
-#endif
-            if (mount_hack &&
-                tally > 6 &&
-                M [daddr + 2] == 0122103120072llu && // RCP
-                M [daddr + 3] == 0040115157165llu && //  Mou
-                M [daddr + 4] == 0156164040122llu && // nt R
-                M [daddr + 5] == 0145145154040llu)   // eel
-              {
-                switch (mount_hack)
+
+                if (tally == 0)
                   {
-                    case 1:
-                      {
-                        sim_printf ("loading 12.3EXEC_CF0019_1\n");
-                        mount_unit . u3 = 1;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88534.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 2:
-                      {
-                        sim_printf ("loading 12.3EXEC_DF0019_2.tap\n");
-                        mount_unit . u3 = 2;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88631.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 3:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_1\n");
-                        mount_unit . u3 = 1;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88632.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 4:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_2\n");
-                        mount_unit . u3 = 2;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88633.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 5:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_3\n");
-                        mount_unit . u3 = 3;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88634.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 6:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_4\n");
-                        mount_unit . u3 = 4;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88635.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 7:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_5\n");
-                        mount_unit . u3 = 5;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "88636.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 8:
-                      {
-                        sim_printf ("loading 12.3LDD_STANDARD_CF0019_6\n");
-                        mount_unit . u3 = 6;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "99020.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 9:
-                      {
-                        sim_printf ("loading 12.3UNBUNDLED_DF0019_1\n");
-                        mount_unit . u3 = 7;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "98570.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 10:
-                      {
-                        sim_printf ("loading 12.3UNBUNDLED_CF0019_2\n");
-                        mount_unit . u3 = 8;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "99019.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 11:
-                      {
-                        sim_printf ("loading 12.3MISC_CF0019\n");
-                        mount_unit . u3 = 9;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "93085.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 12:
-                      {
-                        sim_printf ("loading 12.5EXEC_CF0019_1\n");
-                        mount_unit . u3 = 1;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "20185.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 13:
-                      {
-                        sim_printf ("loading 12.5LDD_STANDARD_CF0019_1\n");
-                        mount_unit . u3 = 2;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "20186.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 14:
-                      {
-                        sim_printf ("loading 12.5UNBUNDLED_CF0019_1\n");
-                        mount_unit . u3 = 3;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "20188.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 15:
-                      {
-                        sim_printf ("loading 12.5MISC_CF0015\n");
-                        mount_unit . u3 = 4;
-                        mount_unit . u4 = 1;
-                        mount_unit . up7 = "20187.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    case 20:
-                      {
-                        sim_printf ("loading cac\n");
-                        mount_unit . u3 = 1;
-                        mount_unit . u4 = 0;
-                        mount_unit . up7 = "cac.tap";
-                        sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                      }
-                      break;
-
-                    default:
-                      {
-                        sim_printf ("out of mount hacks\n");
-                      }
-                      break;
+                    sim_debug (DBG_DEBUG, & iom_dev,
+                               "%s: Tally of zero interpreted as 010000(4096)\n",
+                               __func__);
+                    tally = 4096;
                   }
-                mount_hack ++;
-              }
 
-            // Tally is in words, not chars.
-
-            char text [tally * 4 + 1];
-            * text = 0;
-            char * textp = text;
-            newlineOff ();
-            while (tally)
-              {
-                word36 datum = M [daddr ++];
-                tally --;
-
-                for (int i = 0; i < 4; i ++)
+                // When the console prints out "Command:", press the Attention
+                // key one second later
+                if (attn_hack &&
+                    tally == 3 &&
+                    M [daddr + 0] == 0103157155155llu &&
+                    M [daddr + 1] == 0141156144072llu &&
+                    M [daddr + 2] == 0040177177177llu)
                   {
-                    word36 wide_char = datum >> 27; // slide leftmost char into low byte
-                    datum = datum << 9; // lose the leftmost char
-                    char ch = wide_char & 0x7f;
-                    if (ch != 0177 && ch != 0)
+                    //sim_printf ("attn!\n");
+                    if (! console_state . once_per_boot)
                       {
-//if (ch == '\r') sim_printf ("hmm\n");
-//if (ch == '\n') sim_printf ("er\n");
-                        sim_putchar (ch);
-                        * textp ++ = ch;
+                        sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+                        console_state . once_per_boot = true;
                       }
                   }
-              }
-            * textp ++ = 0;
-            handleRCP (text);
-            // sim_printf ("\n");
-            newlineOn ();
-            chan_data -> stati = 04000;
+
+                // When the console prints out "Ready", press the Attention
+                // key one second later
+                if (attn_hack &&
+                    tally == 2 &&
+                    M [daddr + 0] == 0122145141144llu &&
+                    M [daddr + 1] == 0171015012177llu)
+                  {
+                    //sim_printf ("attn!\n");
+                    if (! console_state . once_per_boot)
+                      {
+                        sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+                        console_state . once_per_boot = true;
+                      }
+                  }
+
+
+                // 1642.9  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_00 for Initialize
+                // tally 21
+                //    0 061066064062  1642
+                //    1 056071040040  .9  
+                //    2 122103120072  RCP:
+                //    3 040115157165   Mou
+                //    4 156164040122  nt R
+                //    5 145145154040  eel 
+                //    6 061062056063  12.3
+                //    7 105130105103  EXEC
+                //    8 137103106060  _CF0
+                //    9 060061071137  019_
+                //   10 061040167151  1 wi
+                //   11 164150157165  thou
+                //   12 164040162151  t ri
+                //   13 156147040157  ng o
+                //   14 156040164141  n ta
+                //   15 160141137060  pa_0
+                //   16 060040146157  0 fo
+                //   17 162040111156  r In
+                //   18 151164151141  itia
+                //   19 154151172145  lize
+                //   20 015012177177  ....
+    
+                if (mount_hack &&
+                    tally > 6 &&
+                    M [daddr + 2] == 0122103120072llu && // RCP
+                    M [daddr + 3] == 0040115157165llu && //  Mou
+                    M [daddr + 4] == 0156164040122llu && // nt R
+                    M [daddr + 5] == 0145145154040llu)   // eel
+                  {
+                    switch (mount_hack)
+                      {
+                        case 1:
+                          {
+                            sim_printf ("loading 12.3EXEC_CF0019_1\n");
+                            mount_unit . u3 = 1;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88534.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 2:
+                          {
+                            sim_printf ("loading 12.3EXEC_DF0019_2.tap\n");
+                            mount_unit . u3 = 2;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88631.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 3:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_1\n");
+                            mount_unit . u3 = 1;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88632.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 4:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_2\n");
+                            mount_unit . u3 = 2;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88633.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 5:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_3\n");
+                            mount_unit . u3 = 3;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88634.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 6:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_4\n");
+                            mount_unit . u3 = 4;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88635.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 7:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_5\n");
+                            mount_unit . u3 = 5;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "88636.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 8:
+                          {
+                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_6\n");
+                            mount_unit . u3 = 6;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "99020.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 9:
+                          {
+                            sim_printf ("loading 12.3UNBUNDLED_DF0019_1\n");
+                            mount_unit . u3 = 7;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "98570.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 10:
+                          {
+                            sim_printf ("loading 12.3UNBUNDLED_CF0019_2\n");
+                            mount_unit . u3 = 8;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "99019.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 11:
+                          {
+                            sim_printf ("loading 12.3MISC_CF0019\n");
+                            mount_unit . u3 = 9;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "93085.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 12:
+                          {
+                            sim_printf ("loading 12.5EXEC_CF0019_1\n");
+                            mount_unit . u3 = 1;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "20185.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 13:
+                          {
+                            sim_printf ("loading 12.5LDD_STANDARD_CF0019_1\n");
+                            mount_unit . u3 = 2;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "20186.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 14:
+                          {
+                            sim_printf ("loading 12.5UNBUNDLED_CF0019_1\n");
+                            mount_unit . u3 = 3;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "20188.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 15:
+                          {
+                            sim_printf ("loading 12.5MISC_CF0015\n");
+                            mount_unit . u3 = 4;
+                            mount_unit . u4 = 1;
+                            mount_unit . up7 = "20187.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        case 20:
+                          {
+                            sim_printf ("loading cac\n");
+                            mount_unit . u3 = 1;
+                            mount_unit . u4 = 0;
+                            mount_unit . up7 = "cac.tap";
+                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
+                          }
+                          break;
+    
+                        default:
+                          {
+                            sim_printf ("out of mount hacks\n");
+                          }
+                          break;
+                      }
+                    mount_hack ++;
+                  }
+    
+                // Tally is in words, not chars.
+    
+                char text [tally * 4 + 1];
+                * text = 0;
+                char * textp = text;
+                newlineOff ();
+                while (tally)
+                  {
+                    word36 datum = M [daddr ++];
+                    tally --;
+    
+                    for (int i = 0; i < 4; i ++)
+                      {
+                        word36 wide_char = datum >> 27; // slide leftmost char into low byte
+                        datum = datum << 9; // lose the leftmost char
+                        char ch = wide_char & 0x7f;
+                        if (ch != 0177 && ch != 0)
+                          {
+    //if (ch == '\r') sim_printf ("hmm\n");
+    //if (ch == '\n') sim_printf ("er\n");
+                            sim_putchar (ch);
+                            * textp ++ = ch;
+                          }
+                      }
+                  }
+                * textp ++ = 0;
+                handleRCP (text);
+                // sim_printf ("\n");
+                newlineOn ();
+                p -> stati = 04000;
+
+               if (p -> DDCW_22_23_TYPE != 0)
+                 sim_printf ("curious... a console write with more than one DDCW?\n");
+
+             }
+            while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
           }
+    
           break;
 
         case 040:               // Reset
@@ -956,19 +940,19 @@ sim_printf ("uncomfortable with this\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
-            chan_data -> stati = 04000;
-            chan_data -> initiate = true;
+            p -> stati = 04000;
+            p -> initiate = true;
           }
           break;
 
         case 051:               // Write Alert -- Ring Bell
           {
-            chan_data -> isRead = false;
+            p -> isRead = false;
             sim_printf ("CONSOLE: ALERT\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write Alert cmd received\n", __func__);
             sim_putchar('\a');
-            chan_data -> stati = 04000;
+            p -> stati = 04000;
           }
           break;
 
@@ -980,23 +964,21 @@ sim_printf ("uncomfortable with this\n");
             // returned value. Make some thing up.
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Read ID received\n", __func__);
-            chan_data -> stati = 04500;
+            p -> stati = 04500;
           }
           break;
 
         default:
           {
-            chan_data -> stati = 04501; // command reject, invalid instruction code
+            p -> stati = 04501; // command reject, invalid instruction code
             sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
-                       __func__, pcwp -> dev_cmd);
-            chan_data -> chanStatus = chanStatIncorrectDCW;
+                       __func__, p -> IDCW_DEV_CMD);
+            p -> chanStatus = chanStatIncorrectDCW;
 
             break;
           }
       }
-    //status_service (iomUnitNum, chan, false);
-
-    return 0; // send terminate interrupt
+    return 0;
   }
 
 
@@ -1204,30 +1186,26 @@ eol:
 
 // The console is a CPI device; only the PCW command is executed.
 
-int con_iom_cmd (UNUSED UNIT * unitp, pcw_t * pcwp)
-  {
-    int con_unit_num = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCon [con_unit_num] . iomUnitNum;
+int con_iom_cmd (uint iomUnitIdx, uint chan)
 
+  {
     // Execute the command in the PCW.
 
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
+    // uint chanloc = mbx_loc (iomUnitIdx, pcwp -> chan);
 
-    con_cmd (unitp, pcwp);
+    con_cmd (iomUnitIdx, chan);
 
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
+    send_terminate_interrupt (iomUnitIdx, chan);
 
-    return 1;
+    return 2;
   }
 
 static t_stat opcon_svc (UNIT * unitp)
   {
     int conUnitNum = OPCON_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCon [conUnitNum] . iomUnitNum;
-    int chanNum = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
-    con_iom_cmd (unitp, pcwp);
- 
+    int iomUnitIdx = cables -> cablesFromIomToCon [conUnitNum] . iomUnitIdx;
+    int chan = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
+    con_iom_cmd (iomUnitIdx, chan);
     return SCPE_OK;
   }
 

@@ -149,11 +149,11 @@ static struct prt_state
     uint ext;
   } prt_state [N_PRT_UNITS_MAX];
 
-static int findPrtUnit (int iomUnitNum, int chan_num, int dev_code)
+static int findPrtUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables -> cablesFromIomToPrt [i] . iomUnitNum &&
+        if (iomUnitIdx == cables -> cablesFromIomToPrt [i] . iomUnitIdx &&
             chan_num     == cables -> cablesFromIomToPrt [i] . chan_num     &&
             dev_code     == cables -> cablesFromIomToPrt [i] . dev_code)
           return i;
@@ -196,14 +196,15 @@ static void openPrtFile (int prt_unit_num)
 
 static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
+#ifdef IOM2
     int prt_unit_num = PRT_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
     struct prt_state * prt_statep = & prt_state [prt_unit_num];
     * disc = false;
 
     int chan = pcwp-> chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [chan];
 #if 0
     if (chan_data -> ptp)
       sim_printf ("PTP in prt\n");
@@ -229,7 +230,7 @@ static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             // Get the DDCW
 sim_printf ("load image buffer\n");
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -320,7 +321,7 @@ sim_printf ("load image buffer\n");
             // Get the DDCW
 sim_printf ("load vfc image\n");
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -386,7 +387,7 @@ sim_printf ("load vfc image\n");
             // Get the DDCW
 sim_printf ("print edited ASCII\n");
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -440,7 +441,7 @@ sim_printf ("disc is %s\n", * disc ? "true" : "false");
             if (chan_data -> ptp)
               {
                 // copy from core into buffer
-                indirectDataService (iomUnitNum, chan, daddr, tally, buffer,
+                indirectDataService (iomUnitIdx, chan, daddr, tally, buffer,
                                      idsTypeW36, false, & chan_data -> isOdd);
               }
             else
@@ -590,17 +591,18 @@ sim_printf ("prt daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-
+#endif
     return 0;
   }
 
+#ifdef IOM2
 static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
   {
     int prt_unit_num = PRT_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [prt_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToDsk [prt_unit_num] . iomUnitIdx;
 
     struct prt_state * prt_statep = & prt_state [prt_unit_num];
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [prt_statep -> chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [prt_statep -> chan];
     switch (prt_statep -> io_mode)
       {
         case no_mode:
@@ -654,16 +656,18 @@ static int prt_ddcw (UNIT * unitp, dcw_t * ddcwp)
       }
     return 0;
   }
+#endif
 
 int prt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
+#ifdef IOM2
     int prt_unit_num = PRT_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
+    // uint chanloc = mbx_loc (iomUnitIdx, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -684,7 +688,7 @@ int prt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       {
 sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
+        int rc = iomListService (iomUnitIdx, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
 sim_printf ("list service denies!\n");
@@ -696,16 +700,16 @@ sim_printf ("persuing got type %d %012llo\n", dcw . type, dcw . raw);
 
             // The dcw does not necessarily have the same dev_code as the pcw....
 sim_printf ("pcw dev_code %o\n", dcw . fields . instr. dev_code);
-            prt_unit_num = findPrtUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+            prt_unit_num = findPrtUnit (iomUnitIdx, pcwp -> chan, dcw . fields . instr. dev_code);
 sim_printf ("pcw prt_unit_num %d\n", prt_unit_num);
             if (prt_unit_num < 0)
               {
 // 04502 : COMMAND REJECTED, invalid device code
-                iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
+                iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [pcwp -> chan];
                 chan_data -> stati = 04502; 
                 chan_data -> dev_code = dcw . fields . instr. dev_code;
                 chan_data -> chanStatus = chanStatInvalidInstrPCW;
-                //status_service (iomUnitNum, pcwp -> chan, false);
+                //status_service (iomUnitIdx, pcwp -> chan, false);
                 break;
               }
             unitp = & prt_unit [prt_unit_num];
@@ -729,18 +733,20 @@ sim_printf ("data dcw type %d\n", dcw . fields . ddcw . type);
           }
       }
 //sim_printf ("prt interrupts\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
-
+    send_terminate_interrupt (iomUnitIdx, pcwp -> chan);
+#endif
     return 1;
   }
 
 static t_stat prt_svc (UNIT * unitp)
   {
+#ifdef IOM2
     int prtUnitNum = PRT_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToPrt [prtUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToPrt [prtUnitNum] . iomUnitIdx;
     int chanNum = cables -> cablesFromIomToPrt [prtUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
+    pcw_t * pcwp = & iomChannelData [iomUnitIdx] [chanNum] . pcw;
     prt_iom_cmd (unitp, pcwp);
+#endif
     return SCPE_OK;
   }
 

@@ -15,7 +15,7 @@ struct cableFromIomToDev
         enum devType type;
         enum chanType ctype;
         DEVICE * dev; // attached device; points into sim_devices[]
-        uint devUnitNum; // Which unit of the attached device
+        uint devUnitIdx; // simh unit of the attached device
         UNIT * board;  // points into iomUnit
         iomCmd * iomCmd;
       } devices [MAX_CHANNELS] [N_DEV_CODES];
@@ -34,7 +34,7 @@ struct cableFromScuToCpu
 
 struct cableFromIom
   {
-    int iomUnitNum;
+    int iomUnitIdx;
     int chan_num;
     int dev_code;
   };

@@ -244,7 +244,7 @@ static uint virtToPhys (pcw_t * pcwp, uint l66Address)
     uint l66AddressPage = l66Address / 1024u;
 
     word36 ptw;
-    fetch_abs_word (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+    core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
     //sim_printf ("ptw %012llo\n", ptw);
     uint page = getbits36 (ptw, 4, 14);
     //sim_printf ("page %o\n", page);
@@ -618,11 +618,11 @@ drop:
 
 
 #if 0
-static int findFNPUnit (int iomUnitNum, int chan_num, int dev_code)
+static int findFNPUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables -> cablesFromIomToFnp [i] . iomUnitNum &&
+        if (iomUnitIdx == cables -> cablesFromIomToFnp [i] . iomUnitIdx &&
             chan_num     == cables -> cablesFromIomToFnp [i] . chan_num     &&
             dev_code     == cables -> cablesFromIomToFnp [i] . dev_code)
           return i;
@@ -633,14 +633,14 @@ static int findFNPUnit (int iomUnitNum, int chan_num, int dev_code)
 
 int lookupFnpsIomUnitNumber (int fnpUnitNum)
   {
-    return cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    return cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
   }
 
 void fnpInit(void)
   {
     memset(fnpUnitData, 0, sizeof(fnpUnitData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
-      cables -> cablesFromIomToFnp [i] . iomUnitNum = -1;
+      cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
     //fnppInit ();
     if (pthread_mutex_init (& fnpMQlock, NULL) != 0)
       {
@@ -699,14 +699,15 @@ static void tellFNP (int fnpUnitNum, char * msg)
 
 static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
+#ifdef IOM2
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
     //struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
     * disc = false;
 
     int chan = pcwp-> chan;
 
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [chan];
 #if 0 // debugging
     if (chan_data -> ptp)
       {
@@ -750,9 +751,10 @@ static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
           }
       }
 
-    //status_service (iomUnitNum, chan, false);
+    //status_service (iomUnitIdx, chan, false);
 
     return 0;
+#endif
   }
 
 #if 0
@@ -834,8 +836,9 @@ static int findMbx (uint fnpUnitNumber)
 
 int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp)
   {
+#ifdef IOM2
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
     struct fnpUnitData * p = & fnpUnitData [fnpUnitNum];
 
     // First, execute the command in the PCW, and then walk the 
@@ -877,7 +880,7 @@ sim_printf (" pcwp -> aux %0o\n", pcwp -> aux);
     struct mailbox * mbxp = (struct mailbox *) & M [p -> mailboxAddress];
 
     word36 dia_pcw;
-    //fetch_abs_word (p -> mailboxAddress, & dia_pcw, "fnpIOMCmd get dia_pcw");
+    //core_read (p -> mailboxAddress, & dia_pcw, "fnpIOMCmd get dia_pcw");
     dia_pcw = mbxp -> dia_pcw;
 //sim_printf ("mbx %08o:%012llo\n", p -> mailboxAddress, dia_pcw);
 
@@ -997,7 +1000,7 @@ sim_printf (" pcwp -> ptPtr %0o\n", pcwp -> ptPtr);
 
         uint l66AddressPage = l66Address / 1024u;
         word36 ptw;
-        fetch_abs_word (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+        core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
 sim_printf ("ptw %012llo\n", ptw);
         uint page = getbits36 (ptw, 4, 14);
 sim_printf ("page %o\n", page);
@@ -1005,7 +1008,7 @@ sim_printf ("page %o\n", page);
 sim_printf ("addr %o\n", addr);
 
         word36 tcw;
-        fetch_abs_word (addr, & tcw, "fnpIOMCmd get tcw");
+        core_read (addr, & tcw, "fnpIOMCmd get tcw");
 sim_printf ("tcw %012llo\n", tcw);
 
         uint tally = getbits36 (tcw, 24, 12);
@@ -1013,7 +1016,7 @@ sim_printf ("tally %d (%o)\n", tally, tally);
         for (uint i = 0; i < tally; i ++)
           {
             word36 data;
-            fetch_abs_word (addr + 1 + i, & data, "fnpIOMCmd get data");
+            core_read (addr + 1 + i, & data, "fnpIOMCmd get data");
             sim_printf ("%4d %012llo\n", i, data);
           }
 
@@ -1890,12 +1893,12 @@ for (uint i = 0; i < dcwCnt; i ++)
     if (ok)
       {
 //ok:
-        store_abs_word (p -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
+        core_write (p -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
         putbits36 (& bootloadStatus, 0, 1, 1); // real_status = 1
         putbits36 (& bootloadStatus, 3, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36 (& bootloadStatus, 9, 8, 0); // substatus = BOOTLOAD_OK;
         putbits36 (& bootloadStatus, 17, 17, 0); // channel_no = 0;
-        store_abs_word (p -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
+        core_write (p -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
       }
     else
       {
@@ -1903,23 +1906,25 @@ fail:
         dmpmbx (p -> mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36 (& dia_pcw, 18, 1, 1); // set bit 18
-        store_abs_word (p -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
+        core_write (p -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }
 
 intr:;
 //sim_printf ("end of list service; sending terminate interrupt\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
-
+    send_terminate_interrupt (iomUnitIdx, pcwp -> chan);
+#endif
     return 1;
   }
 
 static t_stat fnpSVC (UNIT * unitp)
   {
+#ifdef IOM2
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
     int chanNum = cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
+    pcw_t * pcwp = & iomChannelData [iomUnitIdx] [chanNum] . pcw;
     fnpIOMCmd (unitp, pcwp);
+#endif
     return SCPE_OK;
   }
     
@@ -1928,7 +1933,7 @@ static t_stat fnpSVC (UNIT * unitp)
 static int fnpIOT (UNIT * unitp, dcw_t * dcwp, bool *  disc)
   {
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
     * disc = false;
     if (dcwp -> type == 0) // IOTD
       * disc = true;
@@ -1939,10 +1944,10 @@ static int fnp_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uin
   {
     //sim_debug (DBG_DEBUG, & fnpDev, "%s\n", __func__);
     int fnpUnitNum = FNP_UNIT_NUM (unitp);
-    //int iomUnitNum = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitNum;
+    //int iomUnitIdx = cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx;
 //--     
 //--     int dev_unit_num;
-//--     DEVICE* devp = get_iom_channel_dev (iomUnitNum, chan, dev_code, & dev_unit_num);
+//--     DEVICE* devp = get_iom_channel_dev (iomUnitIdx, chan, dev_code, & dev_unit_num);
 //--     if (devp == NULL || devp->units == NULL) {
 //--         *majorp = 05;
 //--         *subp = 2;

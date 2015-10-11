@@ -143,11 +143,11 @@ static struct crdrdr_state
     char device_name [MAX_DEV_NAME_LEN];
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
-static int findCrdrdrUnit (int iomUnitNum, int chan_num, int dev_code)
+static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables -> cablesFromIomToCrdRdr [i] . iomUnitNum &&
+        if (iomUnitIdx == cables -> cablesFromIomToCrdRdr [i] . iomUnitIdx &&
             chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
             dev_code     == cables -> cablesFromIomToCrdRdr [i] . dev_code)
           return i;
@@ -297,14 +297,15 @@ UNUSED static void asciiToH (char * str, uint * hstr)
 
 static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
+#ifdef IOM2
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
     //struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
     * disc = false;
 
     int chan = pcwp-> chan;
 sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
+    iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [chan];
     if (chan_data -> ptp)
       sim_printf ("PTP in crdrdr\n");
     chan_data -> stati = 0;
@@ -324,7 +325,7 @@ sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary %d\n", crdrdr_unit_num);
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
 
             if (rc)
               {
@@ -397,7 +398,7 @@ w=i;
 
 // hopper empty
             chan_data -> stati = 04201;
-            status_service (iomUnitNum, pcwp -> chan, false);
+            status_service (iomUnitIdx, pcwp -> chan, false);
           }
           break;
 
@@ -449,19 +450,20 @@ sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
-
+#endif
     return 0;
   }
 
 int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
   {
+#ifdef IOM2
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
+    // uint chanloc = mbx_loc (iomUnitIdx, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -490,7 +492,7 @@ int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       {
 sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
+        int rc = iomListService (iomUnitIdx, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
 sim_printf ("list service denies!\n");
@@ -500,25 +502,25 @@ sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
+            iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [pcwp -> chan];
             chan_data -> stati = 04501; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
+            //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }
 
 // The dcw does not necessarily have the same dev_code as the pcw....
 
-        crdrdr_unit_num = findCrdrdrUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+        crdrdr_unit_num = findCrdrdrUnit (iomUnitIdx, pcwp -> chan, dcw . fields . instr. dev_code);
         if (crdrdr_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
+            iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [pcwp -> chan];
             chan_data -> stati = 04502; 
             chan_data -> dev_code = dcw . fields . instr. dev_code;
             chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
+            //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }
         unitp = & crdrdr_unit [crdrdr_unit_num];
@@ -526,18 +528,20 @@ sim_printf ("persuing got type %d\n", dcw . type);
         ctrl = dcw . fields . instr . control;
       }
 sim_printf ("crdrdr interrupts\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
-
+    send_terminate_interrupt (iomUnitIdx, pcwp -> chan);
+#endif
     return 1;
   }
 
 static t_stat crdrdr_svc (UNIT * unitp)
   {
+#ifdef IOM2
     int crdrdrUnitNum = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitIdx;
     int chanNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
+    pcw_t * pcwp = & iomChannelData [iomUnitIdx] [chanNum] . pcw;
     crdrdr_iom_cmd (unitp, pcwp);
+#endif
     return SCPE_OK;
   }
 
@@ -585,7 +589,7 @@ static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
 
 void crdrdrCardReady (int unitNum)
   {
-    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitNum,
+    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
                             cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
                             cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
                             0000, 0001 /* tape drive to ready */);
