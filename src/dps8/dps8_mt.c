@@ -492,7 +492,7 @@ ddcws:;
 
         sim_debug (DBG_DEBUG, & tape_dev,
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
-        if (p -> PCW_PTP)
+        if (p -> PCW_63_PTP)
           {
             word36 buffer [tally];
             uint i;
@@ -2017,9 +2017,9 @@ sim_printf ("read_mode\n");
 
         sim_debug (DBG_DEBUG, & tape_dev,
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
-        if (p -> PCW_PTP)
+        if (p -> PCW_63_PTP)
           {
-sim_printf ("read PCW_PTP\n");
+sim_printf ("read PCW_63_PTP\n");
             word36 buffer [tally];
             uint i;
             for (i = 0; i < tally; i ++)
@@ -2060,7 +2060,7 @@ if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> 
           }
         else
           {
-sim_printf ("read !PCW_PTP\n");
+sim_printf ("read !PCW_63_PTP\n");
             p -> tallyResidue = tally;
 sim_printf ("read tally %u tbc %u\n", tally, tape_statep -> tbc);
 {for (int i = 0; i < 32; i ++) sim_printf (" %03o", tape_statep -> buf [i]); sim_printf ("\n");}

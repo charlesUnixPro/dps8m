@@ -43,17 +43,23 @@ typedef struct
     word9 LPWX_BOUND; // MOD 2 (pg B16) 0-2^19; ie val = LPX_BOUND * 2
     word9 LPWX_SIZE;  // MOD 1 (pg B16) 0-2^18
 
+// PCW_63_PTP indicates paging mode; indicates that a page table
+// is available. 
+// XXX pg B11: cleared by a terminate interrupt service with the
+// character size bit of the transaction command = 1. (bit 32)
+// what is the 'transaction command.?
 
     // packed PCW
     word36 PCW0, PCW1;
     // unpacked PCW
     word6 PCW_CHAN;
     word6 PCW_AE;
+    // Pg B2: "Absolute location (MOD 64) of the channels Page Table"
     word18 PCW_PAGE_TABLE_PTR;
-    word1 PCW_PTP;
-    word1 PCW_PGE;
-    word1 PCW_AUX;
-    word1 PCW_M; // XXX see 3.2.2, pg 25
+    word1 PCW_63_PTP;  // XXX
+    word1 PCW_64_PGE;  // XXX
+    word1 PCW_65_AUX;  // XXX
+    word1 PCW_21_MSK; // Sometimes called 'M' // XXX see 3.2.2, pg 25
 
     // packed DCW
     word36 DCW;
@@ -77,11 +83,59 @@ typedef struct
     word12 DDCW_TALLY;
     word2  DDCW_22_23_TYPE; // '2' indicates TDCW
     // xDCW
-    word3  DCW_18_20_CP; // '7' indicates IDCW
+    word3  DCW_18_20_CP; // '7' indicates IDCW // XXX pg 30; the indirect data service needs to use this.
+
+// XXX CP XXXX
+// "Specifies the positions of the first character withe the first word
+// of the block. The byte size, defined by the channel, determines
+// what CP vaues are valid/
+//  6 bit: 0-5; 9 bit: 0-4; 18 bit: 0-1; 36 bit: 0-6
+//
+// For word channels, CP is sent to the channel during list service,
+// and is zeros when placed in the mailbox for subsequent data
+// services to the channel.
+//
+//  [CAC: I think that this can be elided. To implement correctly,
+//  iomListService and/or doPayloadChannel would have to know the
+//  word or sub-word functionality of the channel. But it would
+//  be simpler to let the device handler just access the CP data,
+//  and make it's own decisions about "zeros". After all, it is 
+//  not clear what a non-zero CP means for a word channel.]
+//
+// For sub-word channels which depent on IOM Central for packing and
+// unpacking words, [IOM Central uses and updates the CP to access
+// sub-words].
+//
+//  [CAC: Again, I think that this can be elided. It is simpler to 
+//  to have the device handler pack and unpoack.]
+//
+
+//
+
+    // pg B2: "Scratchpad area for two Page Table Words ... one
+    // for the DCW List (PTW-LPW) and one for the data (PTW-DCW).
+
+    // PTW format: (pg B8)
+    //   4-17: Address of page table, mod 64
+    //   31: WRC: Write control bit (1: page may be written)
+    //   32: HSE: Housekeeping
+    //   33: PGP: Page present
+    // To read or write PGP must be 1
+    // To write, WRC must be 1, HSE 0; system fault 15 on fail
+// XXX pg b8: PTWs are used iff (indirect store and LPw 23 (segmented)), or
+// direct store.
+//
+//  ADDR  0-13 <- PTW 4-17
+//       14-23 <- LPW 8-17; DCW 8-17; direct channel address 14-23
 
     word36 PTW_DCW;  // pg B8.
     word36 PTW_LPW;  // pg B6.
 
+// XXX pg b11 defines two PTW flags to indicate the validity of the
+// PTW_DCW and PTW_LPW; it is simpler to simply always fetch 
+// the PTWs on demand.
+
+//  flag
     chanMode_t chanMode;
 
     // Information accumulated for status service.
@@ -126,3 +180,4 @@ void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally,
 int iomListService (uint iomUnitIdx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
 int send_terminate_interrupt (uint iomUnitIdx, uint chanNum);
+void iom_interrupt (uint iomUnitIdx);

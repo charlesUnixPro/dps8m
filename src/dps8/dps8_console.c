@@ -444,7 +444,6 @@ static void sendConsole (uint stati)
     int iomUnitIdx = cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx;
     
     int chan = console_state . chan;
-
     iomChanData_t * chan_data = & iomChanData [iomUnitIdx] [chan];
     while (tally && console_state . readp < console_state . tailp)
       {
@@ -481,9 +480,9 @@ static int con_cmd (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
-    UNIT * unitp = & mt_unit [devUnitIdx];
+    UNIT * unitp = & opcon_unit [devUnitIdx];
 
-    if (p -> PCW_PTP)
+    if (p -> PCW_63_PTP)
       sim_err ("PTP in console\n");
 
     p -> dev_code = p -> IDCW_DEV_CODE;
