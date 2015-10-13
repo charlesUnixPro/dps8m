@@ -1391,6 +1391,12 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
 
+// A device command of 051 in the PCW is only meaningful to the operator console;
+// all other channels should ignore it. We use (somewhat bogusly) a chanType of
+// chanTypeCPI to indicate the operator console.
+    if (d -> ctype != chanTypeCPI && p -> IDCW_DEV_CMD == 051)
+      return 0;
+
     if (! d -> iomCmd)
       {
         // XXX: no device connected; what's the appropriate fault code (s) ?
@@ -1411,6 +1417,8 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
     p -> initiate = false;
     p -> chanStatus = chanStatNormal;
 
+// Send the PCW's DCW
+
     int rc = d -> iomCmd (iomUnitIdx, chan);
 
 //
@@ -1422,7 +1430,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //  3; command pending, don't sent terminate interrupt
 // -1: error
 
-    if (rc == 1) // handler ignored CMD 051 in PCW
+    if (rc == 1) // handler ignored command; used to be used for 051, now unused.
       {
         sim_debug (DBG_DEBUG, & iom_dev, "handler ignored cmd\n");
         return 0;
@@ -1481,7 +1489,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             p -> dev_code = getbits36 (p -> DCW, 6, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
             // status_service (iomUnitIdx, pcwp -> chan, false);
-            sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan expected IDCW\n");
+            sim_debug (DBG_ERR, & iom_dev, "doPayloadChan expected IDCW\n");
             return -1;
           }
 
@@ -1493,15 +1501,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         p -> initiate = false;
         p -> chanStatus = chanStatNormal;
 
-        if (! d -> iomCmd)
-          {
-            // XXX: no device connected; what's the appropriate fault code (s) ?
-            sim_debug (DBG_WARN, & iom_dev,
-                       "%s: No device connected to channel %#o (%d)\n",
-                       __func__, chan, chan);
-            iomFault (iomUnitIdx, chan, __func__, 0, 0);
-            return -1;
-          }
+// Send the DCW list's DCW
 
         d -> iomCmd (iomUnitIdx, chan);
       if (p -> IDCW_CONTROL == 0) 

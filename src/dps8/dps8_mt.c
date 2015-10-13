@@ -575,6 +575,7 @@ if (p -> DDCW_22_23_TYPE != 0)
       }
     while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
   }
+
 // Tally: According to tape_ioi_io.pl1:
 //
 // backspace file, forward space file, write EOF, erase:
@@ -642,6 +643,27 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, p -> stati);
+          }
+          break;
+
+// Okay, this is convoluted. Multics locates the console by sending CMD 051
+// to devices in the PCW, with the understanding that only the console 
+// device will "respond", whatever that means.
+// But, bootload_tape_label checks for controller firmware loaded
+// ("intellegence") by sending a 051 in a IDCW.
+// Since it's diffcult here to test for PCW/IDCW, assume that the PCW case
+// has been filtered out at a higher level
+        case 051:               // CMD 051 -- Reset device status
+          {
+            p -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              p -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              p -> stati |= 2;
+            if (sim_tape_eot (unitp))
+              p -> stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Reset device status: %o\n", p -> stati);
           }
           break;
 
@@ -1625,27 +1647,6 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
           }
           break;
 
-// Okay, this is convoluted. Multics locates the console by sending CMD 051
-// to devices in the PCW, with the understanding that only the console 
-// device will "respond", whatever that means.
-// But, bootload_tape_label checks for controller firmware loaded
-// ("intellegence") by sending a 051 in a IDCW.
-// Since it's diffcult here to test for PCW/IDCW, assume that the PCW case
-// has been filtered out at a higher level
-        case 051:               // CMD 051 -- Reset device status
-          {
-            p -> stati = 04000;
-            if (sim_tape_wrp (unitp))
-              p -> stati |= 1;
-            if (sim_tape_bot (unitp))
-              p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "mt_cmd: Reset device status: %o\n", p -> stati);
-          }
-          break;
-
         case 055: // CMD 055 -- Write EOF (tape mark);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -2218,14 +2219,9 @@ int mt_iom_cmd (uint iomUnitIdx, uint chan)
 
     if (p -> DCW_18_20_CP == 7)
       {
-
-        // Ignore a CMD 051 in the PCW
-        if (p -> IDCW_DEV_CMD == 051)
-          return 1;
-
         mt_cmd (iomUnitIdx, chan);
       }
-    else // DDCW
+    else // DDCW/TDCW
       {
         sim_printf ("mt_iom_cmd expected IDCW\n");
         return -1;
@@ -2248,9 +2244,6 @@ int mt_iom_cmd (uint iomUnitIdx, uint chan)
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
-// Ignore a CMD 051 in the PCW
-    if (pcwp -> dev_cmd == 051)
-      return 1;
     bool disc;
 //sim_printf ("1 st call to mt_cmd\n");
     mt_cmd (unitp, pcwp, & disc);
