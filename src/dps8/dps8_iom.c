@@ -14,9 +14,10 @@
 // Snapshot channal not implemented
 // Scratchpad Access channal not implemented
 
+// Direct data service 
 
-
-
+// Pg: B20 "Address Extension bits will be used for core selection when the 
+//          "the IOM is [...] in Paged mode for a non-paged channel.
 
 // Definitions:
 //  unit number -- ambiguous: May indicate either the Multics 
@@ -369,10 +370,12 @@ typedef enum iomSysFaults_t
     // List from 4.5.1; descr from AN87, 3-9
     iomNoFlt = 000,
     iomIllChanFlt = 001,    // PCW to chan with chan number >= 40
+                            // or channel without scratchpad installed
     iomIllSrvReqFlt = 002,  // A channel requested a serice request code
                             // of zero, a channel number of zero, or
                             // a channel number >= 40
     // =003,                // Parity error scratchpad
+    iomBndryVioFlt = 003,   // pg B36
     iom256KFlt = 004,       // 256K overflow -- address decremented to zero, 
                             // but not tally
     iomLPWTRPConnFlt = 005, // tally was zero for an update LPW (LPW bit 
@@ -390,7 +393,7 @@ typedef enum iomSysFaults_t
                             // for the connect channel
     // = 014,               // PTP-Fault: PTP-Flag= zero or PTP address
                             // overflow.
-    // = 015,               // PTW-Flag-Fault: Page Present flag zero, or
+    iomPTWFlagFault = 015,  // PTW-Flag-Fault: Page Present flag zero, or
                             // Write Control Bit 0, or Housekeeping bit set,
     // = 016,               // ILL-LPW-STD LPW had bit 20 on in GCOS mode
     // = 017,               // NO-PRT-SEL No port selected during attempt
@@ -775,6 +778,23 @@ static void fetchLPWPTW (uint iomUnitIdx, int chan, word1 seg, word6 pageNumber)
 // 'write' means periperal write; i.e. the peripheral is writing to core after
 // reading media.
 
+void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+                           bool write)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    uint daddr = p -> DDCW_ADDR;
+// XXX DCW addressing mode
+    if (chan > 7)
+      daddr |= p -> ADDR_EXT << 18;
+    if (write)
+      core_write (daddr, * data, __func__);
+    else
+      core_read (daddr, data, __func__);
+  }
+
+// 'write' means periperal write; i.e. the peripheral is writing to core after
+// reading media.
+
 void indirectDataService (uint iomUnitIdx, int chan, uint daddr, uint tally, 
                           void * data, idsType type, bool write, bool * odd)
   {
@@ -827,6 +847,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     p -> LPW_DCW_PTR = getbits36 (p -> LPW,  0, 18);
     p -> LPW_18_RES =  getbits36 (p -> LPW, 18,  1);
     p -> LPW_19_REL =  getbits36 (p -> LPW, 19,  1);
+if (p -> LPW_19_REL) sim_printf ("LPW_19_REL\n");
     p -> LPW_20_AE =   getbits36 (p -> LPW, 20,  1);
     p -> LPW_21_NC =   getbits36 (p -> LPW, 21,  1);
     p -> LPW_22_TAL =  getbits36 (p -> LPW, 22,  1);
@@ -839,14 +860,44 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
         p -> LPWX = 0;
         p -> LPWX_BOUND = 0;
         p -> LPWX_SIZE = 0;
+
+        p -> lpwAddrMode = LPW_REAL;
       }
     else
       {
         core_read (chanLoc + 1, & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36 (p -> LPWX, 0, 18);
         p -> LPWX_SIZE = getbits36 (p -> LPWX, 18, 18);
+        
+        if (p -> LPW_20_AE == 0)
+          {
+            p -> lpwAddrMode = LPW_REAL;
+          }
+        else
+          {
+            if (p -> PCW_64_PGE == 0)
+              {
+sim_printf ("LPW_EXT\n");
+                p -> lpwAddrMode = LPW_EXT;
+              }
+            else
+              {
+                if (p -> LPW_23_REL == 0)
+                  {
+sim_printf ("LPW_PAGED\n");
+                    p -> lpwAddrMode = LPW_PAGED;
+                  }
+                else
+                  {
+sim_printf ("LPW_SEG\n");
+                    p -> lpwAddrMode = LPW_SEG;
+                  }
+              }
+sim_err ("lpw....\n");
+          }
       }
     //p -> chanMode = cm_LPW_init_state;
+
 
 // Analyzer
 
@@ -881,6 +932,10 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
       { 
         p -> IDCW_DEV_CMD =      getbits36 (p -> DCW,  0,  6);
         p -> IDCW_DEV_CODE =     getbits36 (p -> DCW,  6,  6);
+        if (p -> LPW_23_REL)
+          p -> IDCW_EC = 0;
+        else
+          p -> IDCW_EC =           getbits36 (p -> DCW, 21,  1);
         p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
       }
     else // TDCW or DDCW
@@ -1008,7 +1063,7 @@ static void iomFault (uint iomUnitIdx, uint chan, const char * who,
                    "%s: expected a DDCW; fail\n", __func__);
         return;
       }
-    // XXX Assuming no address extension or paging non-sense
+    // No address extension or paging nonsense for channels 0-7. 
     uint addr = p -> DDCW_ADDR;
     core_write (addr, faultWord, __func__);
 
@@ -1240,6 +1295,7 @@ sim_printf ("LPW_23_REL fail\n");
 
     if (p -> DCW_18_20_CP != 7 && p -> DDCW_22_23_TYPE == 2)
       {
+sim_printf (">>>>>>>>>> TDCW\n");
         // SECOND TDCW?
         if (tdcwFound)
           {
@@ -1255,7 +1311,7 @@ sim_printf ("LPW_23_REL fail\n");
 
         // OR TDCW 33, 34, 35 INTO LPW 20, 18, 23
 // XXX is 33 bogus? it's semantics change based on PCW 64...
-// should be okayl pg B21 says that this is correct; implies that the
+// should be okay; pg B21 says that this is correct; implies that the
 // semantics are handled in the LPW code. Check...
         p -> LPW_20_AE |= p -> TDCW_33_EC;
         p -> LPW_18_RES |= p -> TDCW_34_RES;
@@ -1367,6 +1423,8 @@ D:;
 
   }
 
+// 0 ok
+// -1 uff
 static int doPayloadChan (uint iomUnitIdx, uint chan)
   {
 // A dubious assumption being made is that the device code will always
@@ -1406,6 +1464,12 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         iomFault (iomUnitIdx, chan, __func__, 0, 0);
         return -1;
       }
+
+// 3.2.2. "Bits 12-17 [of the PCW] contain the address extension which is maintained by
+//         the channel for subsequent use by the IOM in generating a 24-bit
+//         address for list of data services for the extended address modes."
+// see also 3.2.3.1
+    p -> ADDR_EXT = p -> PCW_AE;
 
     p -> lsFirst = true;
 
@@ -1460,15 +1524,14 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         return -1;
       }
 
-    bool ptro;
-    bool send;
-    bool uff;
+    bool ptro, send, uff;
 
     do
       {
         int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
         if (rc < 0)
           {
+// XXX set status flags
             sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan list service failed\n");
             return -1;
           }
@@ -1482,7 +1545,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             return 1;
           }
 
-        if (p -> DCW_18_20_CP != 07)
+        if (p -> DCW_18_20_CP != 07) // Not IDCW
           {
 // 04501 : COMMAND REJECTED, invalid command
             p -> stati = 04501;
@@ -1492,6 +1555,14 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             sim_debug (DBG_ERR, & iom_dev, "doPayloadChan expected IDCW\n");
             return -1;
           }
+
+// 3.2.3.1 "If EC - Bit 21 = 1, The channel will replace the present address
+//          extension with the new address extension in bits 12-17. ... In
+//          Multics and NSA systems, EC is inhibited from the payload channel
+//          if LPW bit 23 = 1.
+
+        if (p -> LPW_23_REL == 0 && p -> IDCW_EC == 1)
+          p -> ADDR_EXT = getbits36 (p -> DCW, 12,  6);
 
         p -> recordResidue = 0;
         p -> tallyResidue = 0;
@@ -1540,12 +1611,11 @@ static int doConnectChan (uint iomUnitIdx)
     // the IOM.
 
     iomChanData_t * p = & iomChanData [iomUnitIdx] [IOM_CONNECT_CHAN];
-    bool ptro;
-    bool send;
-    bool uff;
     p -> lsFirst = true;
+    bool ptro, send, uff;
     do
       {
+        // Fetch the next PCW
         int rc = iomListService (iomUnitIdx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
         if (rc < 0)
           {

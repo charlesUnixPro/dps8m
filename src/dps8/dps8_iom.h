@@ -77,13 +77,16 @@ typedef struct
     // IDCW only
     word6  IDCW_DEV_CMD;
     word6  IDCW_DEV_CODE;
+    word1  IDCW_EC;
     word2  IDCW_CONTROL;
     // DDCW only
-    word18 DDCW_ADDR;
+    /*word18*/ uint DDCW_ADDR; // Allow overflow detection
     word12 DDCW_TALLY;
     word2  DDCW_22_23_TYPE; // '2' indicates TDCW
     // xDCW
     word3  DCW_18_20_CP; // '7' indicates IDCW // XXX pg 30; the indirect data service needs to use this.
+
+    word6 ADDR_EXT; // 3.2.2, 3.2.3.1
 
 // XXX CP XXXX
 // "Specifies the positions of the first character withe the first word
@@ -110,7 +113,11 @@ typedef struct
 //  to have the device handler pack and unpoack.]
 //
 
-//
+
+
+// LPW addressing mode
+
+    enum { LPW_REAL, LPW_EXT, LPW_PAGED, LPW_SEG } lpwAddrMode;
 
     // pg B2: "Scratchpad area for two Page Table Words ... one
     // for the DCW List (PTW-LPW) and one for the data (PTW-DCW).
@@ -181,3 +188,5 @@ int iomListService (uint iomUnitIdx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
 int send_terminate_interrupt (uint iomUnitIdx, uint chanNum);
 void iom_interrupt (uint iomUnitIdx);
+void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+                           bool write);

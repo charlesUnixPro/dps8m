@@ -31,6 +31,34 @@
  */
 
 
+//
+// A possible disk data packing algoritim
+//
+// Currently sectors are 512 * word36. Word36 is 64bits; that 56% utilization,
+// A computationally effectent packing would improve disk throughput and storage
+// efficency
+//
+//     word36 in [512]
+//     struct dsksec
+//       {
+//         uint32 low32 [512];
+//         uint8 high4 [512];
+//       } out;
+//     uint32 * map = (uint32 *) in;
+//     uint8 * highmap = (uint8 *) in;
+//
+//     for (uint i = 0; i < 512; i ++)
+//       {
+//         out . low32 [i] = map [i * 2];
+//         out . high4 [i] = (uint8) (map [i * 2 + 1]);
+//       }
+//
+// This 36/40 -- 90% utilization; at the cost of the scatter/gather and
+// the cost of emulated disk sectors size not a multilple of host disk
+// sector size.
+//
+
+
 // assuming 512 word36  sectors; and seekPosition is seek512
 #define SECTOR_SZ_IN_W36 512
 #define SECTOR_SZ_IN_BYTES ((36 * SECTOR_SZ_IN_W36) / 8)
@@ -219,9 +247,6 @@ static struct disk_state
   {
     enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
     uint seekPosition;
-    int chan;
-    uint mask;
-    uint ext;
   } disk_states [N_DISK_UNITS_MAX];
 
 static int findDiskUnit (int iomUnitIdx, int chan_num, int dev_code)
@@ -273,9 +298,7 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
 
 // Process DDCW
 
-    bool ptro;
-    bool send;
-    bool uff;
+    bool ptro, send, uff;
     int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
@@ -299,16 +322,8 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
 
 
     uint tally = p -> DDCW_TALLY;
-    uint daddr = p -> DDCW_ADDR;
-    if (disk_statep -> mask)
-      daddr |= ((disk_statep -> ext) & MASK6) << 18;
-    if (tally == 0)
-      {
-        sim_debug (DBG_DEBUG, & disk_dev,
-                   "%s: Tally of zero interpreted as 010000(4096)\n",
-                   __func__);
-        tally = 4096;
-      }
+    //uint daddr = p -> DDCW_ADDR;
+    //daddr |= p -> ADDR_EXT << 18;
 
     sim_debug (DBG_DEBUG, & disk_dev,
                "%s: Tally %d (%o)\n", __func__, tally, tally);
@@ -324,7 +339,7 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
       }
 
     word36 seekData;
-    core_read (daddr, & seekData, "Disk seek address");
+    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
 
 //sim_printf ("seekData %012llo\n", seekData);
 // Observations about the seek/write stream
@@ -358,92 +373,88 @@ static int diskRead (uint iomUnitIdx, uint chan)
     p -> initiate = true;
     p -> stati = 04000;
 
-// Process DDCW
+// Process DDCWs
 
-    bool ptro;
-    bool send;
-    bool uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-    if (rc < 0)
+    bool ptro, send, uff;
+    do
       {
-        sim_printf ("diskRead list service failed\n");
-        return -1;
-      }
-    if (uff)
-      {
-        sim_printf ("diskRead ignoring uff\n"); // XXX
-      }
-    if (! send)
-      {
-        sim_printf ("diskRead nothing to send\n");
-        return 1;
-      }
-    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-      {
-        sim_printf ("diskRead expected DDCW\n");
-        return -1;
-      }
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            sim_printf ("diskRead list service failed\n");
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("diskRead ignoring uff\n"); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("diskRead nothing to send\n");
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("diskRead expected DDCW\n");
+            return -1;
+          }
 
+        uint tally = p -> DDCW_TALLY;
+        uint daddr = p -> DDCW_ADDR;
+        daddr |= p -> ADDR_EXT << 18;
+        if (tally == 0)
+          {
+            sim_debug (DBG_DEBUG, & disk_dev,
+                       "%s: Tally of zero interpreted as 010000(4096)\n",
+                       __func__);
+            tally = 4096;
+          }
 
-    uint tally = p -> DDCW_TALLY;
-    uint daddr = p -> DDCW_ADDR;
-    if (disk_statep -> mask)
-      daddr |= ((disk_statep -> ext) & MASK6) << 18;
-    if (tally == 0)
-      {
         sim_debug (DBG_DEBUG, & disk_dev,
-                   "%s: Tally of zero interpreted as 010000(4096)\n",
-                   __func__);
-        tally = 4096;
-      }
+                   "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-    sim_debug (DBG_DEBUG, & disk_dev,
-               "%s: Tally %d (%o)\n", __func__, tally, tally);
+        rc = fseek (unitp -> fileref, 
+                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    SEEK_SET);
+        if (rc)
+          {
+            sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            return -1;
+          }
 
-    rc = fseek (unitp -> fileref, 
-                disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
-                SEEK_SET);
-    if (rc)
-      {
-        sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
-        p -> stati = 04202; // attn, seek incomplete
-        return -1;
-      }
+        // Convert from word36 format to packed72 format
 
-    // Convert from word36 format to packed72 format
-
-    // round tally up to sector boundary
+        // round tally up to sector boundary
     
-    // this math assumes tally is even.
+        // this math assumes tally is even.
    
-    uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                         SECTOR_SZ_IN_W36;
-    uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-    //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
-    uint p72ByteCnt = (tallyWords * 36) / 8;
-    uint8 buffer [p72ByteCnt];
-    memset (buffer, 0, sizeof (buffer));
-    sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
-               devUnitIdx, disk_statep -> seekPosition, tallySectors);
-//sim_printf ("Disk read  %8d %3d %08o\n",
-        //disk_statep -> seekPosition, tallySectors, daddr);
+        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                             SECTOR_SZ_IN_W36;
+        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint p72ByteCnt = (tallyWords * 36) / 8;
+        uint8 buffer [p72ByteCnt];
+        memset (buffer, 0, sizeof (buffer));
+        sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
+                   devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
-    rc = fread (buffer, SECTOR_SZ_IN_BYTES,
-                tallySectors,
-                unitp -> fileref);
+        rc = fread (buffer, SECTOR_SZ_IN_BYTES,
+                    tallySectors,
+                    unitp -> fileref);
 
-    if (rc == 0) // eof; reading a sector beyond the high water mark.
-      {
-        // okay; buffer was zero, so just pretend that a zero filled
-        // sector was read (ala demand page zero)
-      }
-    else if (rc != (int) tallySectors)
-      {
-        sim_printf ("read returned %d, errno %d\n", rc, errno);
-        p -> stati = 04202; // attn, seek incomplete
-        p -> chanStatus = chanStatIncorrectDCW;
-        return -1;
-      }
+        if (rc == 0) // eof; reading a sector beyond the high water mark.
+          {
+            // okay; buffer was zero, so just pretend that a zero filled
+            // sector was read (ala demand page zero)
+          }
+        else if (rc != (int) tallySectors)
+          {
+            sim_printf ("read returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            p -> chanStatus = chanStatIncorrectDCW;
+            return -1;
+          }
 //sim_printf ("tallySectors %u\n", tallySectors);
 //sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
 //for (uint i = 0; i < p72ByteCnt; i += 9)
@@ -455,18 +466,19 @@ static int diskRead (uint iomUnitIdx, uint chan)
 //sim_printf ("buffer 0...\n");
 //for (uint i = 0; i < 9; i ++) sim_printf (" %03o", buffer [i]);
 //sim_printf ("\n");
-    disk_statep -> seekPosition += tallySectors;
+        disk_statep -> seekPosition += tallySectors;
 
-    uint wordsProcessed = 0;
-    for (uint i = 0; i < tally; i ++)
-      {
-        word36 w;
-        extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                 & w);
-        core_write (daddr + i, w, "Disk read");
-        p -> isOdd = (daddr + i) % 2;
-      }
+        uint wordsProcessed = 0;
+        for (uint i = 0; i < tally; i ++)
+          {
+            word36 w;
+            extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
+                                     & w);
+            core_write (daddr + i, w, "Disk read");
+            p -> isOdd = (daddr + i) % 2;
+          }
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
+      } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
     return 0;
   }
 
@@ -513,8 +525,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
 
     uint tally = p -> DDCW_TALLY;
     uint daddr = p -> DDCW_ADDR;
-    if (disk_statep -> mask)
-      daddr |= ((disk_statep -> ext) & MASK6) << 18;
+    daddr |= p -> ADDR_EXT << 18;
     if (tally == 0)
       {
         sim_debug (DBG_DEBUG, & disk_dev,
@@ -675,8 +686,6 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
     int chan = pcwp-> chan;
 
     disk_statep -> chan = pcwp -> chan;
-    disk_statep -> mask = pcwp -> mask;
-    disk_statep -> ext = pcwp -> ext;
 
 //sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
     iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
@@ -760,18 +769,8 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
         case seek512_mode:
           {
             uint tally = ddcwp -> fields.ddcw.tally;
-            uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
-
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
+            //uint daddr = ddcwp -> fields.ddcw.daddr;
+            //daddr |= p -> ADDR_EXT << 18;
 
             // Seek specific processing
 
@@ -784,7 +783,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
               }
 
             word36 seekData;
-            core_read (daddr, & seekData, "Disk seek address");
+            iomDirectDataService (iomUnitIdx, chan, & word36, false);
 
 //sim_printf ("seekData %012llo\n", seekData);
 // Observations about the seek/write stream
@@ -817,13 +816,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
 //sim_printf ("disk read [%lld]\n", sim_timell ());
             uint tally = ddcwp -> fields.ddcw.tally;
             uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              {
-                //sim_printf ("mask: daddr was %o; ext %o\n", daddr, disk_statep -> ext);
-                daddr |= ((disk_statep -> ext) & MASK6) << 18;
-                //sim_printf ("mask: daddr now %o\n", daddr);
-               }
-
+            daddr |= p -> ADDR_EXT << 18;
             // uint cp = ddcwp -> fields.ddcw.cp;
 
             if (tally == 0)
@@ -910,10 +903,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
           {
             uint tally = ddcwp -> fields.ddcw.tally;
             uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
-
+            daddr |= p -> ADDR_EXT << 18;
             if (tally == 0)
               {
                 sim_debug (DBG_DEBUG, & iom_dev,
@@ -984,10 +974,7 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
           {
             uint tally = ddcwp -> fields.ddcw.tally;
             uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
-
+            daddr |= p -> ADDR_EXT << 18;
             if (tally != 4)
               {
                 sim_debug (DBG_ERR, &iom_dev, 

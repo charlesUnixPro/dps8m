@@ -667,6 +667,33 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
+        case 070:              // CMD 070 -- Rewind.
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Rewind\n");
+            sim_tape_rewind (unitp);
+
+            tape_statep -> rec_num = 0;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld rewinds\n", MT_UNIT_NUM (unitp));
+
+            p -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              p -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              p -> stati |= 2;
+            if (sim_tape_eot (unitp))
+              p -> stati |= 0340;
+            //rewindDoneUnit . u3 = mt_unit_num;
+            //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
+            send_special_interrupt (cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
+                                    cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
+                                    cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
+                                    0, 0100 /* rewind complete */);
+
+          }
+          break;
+   
         default:
           {
 fail:
