@@ -110,7 +110,7 @@ typedef struct
 // sub-words].
 //
 //  [CAC: Again, I think that this can be elided. It is simpler to 
-//  to have the device handler pack and unpoack.]
+//  to have the device handler pack and unpack.]
 //
 
 
@@ -159,6 +159,8 @@ typedef struct
 
     bool lsFirst;
 
+    bool wasTDCW;
+
   } iomChanData_t;
 extern iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 extern DEVICE iom_dev;
@@ -182,11 +184,11 @@ int send_special_interrupt (uint iomUnitIdx, uint chanNum, uint devCode,
 // -1: error
 
 typedef int iomCmd (uint iomUnitIdx, uint chan);
-void indirectDataService (uint iomUnitNum, int chanNum, uint daddr, uint tally, 
-                          void * data, idsType type, bool write, bool * odd);
 int iomListService (uint iomUnitIdx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
 int send_terminate_interrupt (uint iomUnitIdx, uint chanNum);
 void iom_interrupt (uint iomUnitIdx);
 void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                            bool write);
+void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+                             uint * cnt, bool write);

@@ -445,6 +445,7 @@ static void sendConsole (uint stati)
     
     int chan = console_state . chan;
     iomChanData_t * chan_data = & iomChanData [iomUnitIdx] [chan];
+// XXX this should be iomIndirectDataService
     while (tally && console_state . readp < console_state . tailp)
       {
         int charno;
@@ -900,6 +901,7 @@ sim_printf ("uncomfortable with this\n");
                 * text = 0;
                 char * textp = text;
                 newlineOff ();
+// XXX this should be iomIndirectDataService
                 while (tally)
                   {
                     word36 datum = M [daddr ++];

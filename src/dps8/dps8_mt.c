@@ -453,9 +453,7 @@ ddcws:;
 
 // Process DDCWs
 
-    bool ptro;
-    bool send;
-    bool uff;
+    bool ptro, send, uff;
     do
       {
         int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
@@ -481,7 +479,6 @@ ddcws:;
 
 
         uint tally = p -> DDCW_TALLY;
-        uint daddr = p -> DDCW_ADDR;
         if (tally == 0)
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -492,6 +489,30 @@ ddcws:;
 
         sim_debug (DBG_DEBUG, & tape_dev,
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+        word36 buffer [tally];
+        uint i;
+        for (i = 0; i < tally; i ++)
+          {
+            if (tape_statep -> is9)
+              rc = extractASCII36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
+            else
+              rc = extractWord36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
+            if (rc)
+              {
+                 break;
+              }
+          }
+        iomIndirectDataService (iomUnitIdx, chan, buffer,
+                                & tape_statep -> words_processed, true);
+        if (p -> tallyResidue)
+          {
+            sim_debug (DBG_WARN, & tape_dev,
+                       "%s: Read buffer exhausted on channel %d\n",
+                       __func__, chan);
+
+          }
+#if IOM2
         if (p -> PCW_63_PTP)
           {
             word36 buffer [tally];
@@ -529,7 +550,7 @@ ddcws:;
               }
             p -> tallyResidue = tally - i;
 if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> words_processed, buffer [0], buffer [1]);
-            indirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
+            xindirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
                                  idsTypeW36, true, & p -> isOdd);
           }
         else
@@ -554,13 +575,14 @@ if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> 
                                __func__, chan);
                     break;
                   }
-                core_write (daddr, w, __func__);
+                xcore_write (daddr, w, __func__);
                 p -> isOdd = daddr % 2;
                 daddr ++;
                 tally --;
                 p -> tallyResidue --;
               }
           }
+#endif
         p -> stati = 04000; // BUG: do we need to detect end-of-record?
         if (sim_tape_wrp (unitp))
           p -> stati |= 1;
@@ -574,6 +596,109 @@ if (p -> DDCW_22_23_TYPE != 0)
 
       }
     while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
+  }
+
+// 0 ok
+// -1 problem
+static int surveyDevices (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+// According to rcp_tape_survey_.pl1:
+//
+//       2 survey_data,
+//         3 handler (16) unaligned,
+//           4 pad1 bit (1),               400000
+//           4 reserved bit (1),           200000
+//           4 operational bit (1),        100000
+//           4 ready bit (1),               40000
+//           4 number uns fixed bin (5),    37000
+//           4 pad2 bit (1),                  400
+//           4 speed uns fixed bin (3),       240
+//           4 nine_track bit (1),             20
+//           4 density uns fixed bin (4);      17
+
+    sim_debug (DBG_DEBUG, & tape_dev,
+               "mt_cmd: Survey devices\n");
+    p -> stati = 04000; // have_status = 1
+
+    // Get the DDCW
+    bool ptro, send, uff;
+    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("mtReadRecord list service failed\n");
+        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p -> chanStatus = chanStatIncomplete;
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("mtReadRecord ignoring uff\n"); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("mtReadRecord nothing to send\n");
+        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p -> chanStatus = chanStatIncomplete;
+        return -1;
+      }
+    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("mtReadRecord expected DDCW\n");
+        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p -> chanStatus = chanStatIncorrectDCW;
+        return -1;
+      }
+
+    if (p -> DDCW_TALLY != 8)
+      {
+        sim_debug (DBG_DEBUG, & tape_dev,
+                   "%s: Expected tally of 8; got %d\n",
+                   __func__, p -> DDCW_TALLY);
+        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p -> chanStatus = chanStatIncorrectDCW;
+        return -1;
+      }
+
+    uint bufsz = 8;
+    word36 buffer [bufsz];
+    uint cnt = 0;
+    for (uint i = 0; i < bufsz; i ++)
+      buffer [i] = 0;
+    
+    for (uint i = 1; i < /* N_MT_UNITS_MAX */ 17; i ++)
+      {
+// XXX this is wrong; it assumes a single string of tapes. It should be
+// if unit iom number, channel number match the calling context, and
+// if i == dev_code. find_dev_from_unit?
+        if (cables -> cablesFromIomToTap [i] . iomUnitIdx != -1)
+          {
+            word18 handler = 0;
+            handler |= 0100000; // operational
+            if (mt_unit [i] . filename)
+              {
+                handler |= 0040000; // ready
+              }
+            handler |= (cables -> cablesFromIomToTap [i] . dev_code & 037) << 9; // number
+            handler |= 0000040; // 200 ips
+            handler |= 0000020; // 9 track
+            handler |= 0000007; // 800/1600/6250
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "unit %d handler %06o\n", i, handler);
+            if (cnt % 2 == 0)
+              {
+                buffer [cnt / 2] = ((word36) handler) << 18;
+              }
+            else
+              {
+                buffer [cnt / 2] |= handler;
+              }
+            cnt ++;
+          }
+      }
+    iomIndirectDataService (iomUnitIdx, chan, buffer, & bufsz, true);
+    p -> stati = 04000;
+    return 0;
   }
 
 // Tally: According to tape_ioi_io.pl1:
@@ -664,6 +789,12 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
               p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Reset device status: %o\n", p -> stati);
+          }
+          break;
+
+        case 057:               // CMD 057 -- Survey devices
+          {
+            surveyDevices (iomUnitIdx, chan);
           }
           break;
 
@@ -924,7 +1055,7 @@ sim_printf ("tally %d\n", tally);
 iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
 sim_printf ("chan_mode %d\n", p -> chan_mode);
 #endif
-            indirectDataService (iomUnitIdx, chan, daddr, 8, buffer,
+            xindirectDataService (iomUnitIdx, chan, daddr, 8, buffer,
                                  idsTypeW36, true, & p -> isOdd);
 #endif
             p -> stati = 04000;
@@ -1095,7 +1226,7 @@ sim_printf ("uncomfortable with this\n");
                   }
                 p -> tallyResidue = tally - i;
 if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> words_processed, buffer [0], buffer [1]);
-                indirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
+                xindirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
                                      idsTypeW36, true, & p -> isOdd);
               }
             else
@@ -1215,7 +1346,7 @@ if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> 
                 word36 buffer [tally];
             
                 // copy from core into buffer
-                indirectDataService (iomUnitIdx, chan, daddr, tally, buffer,
+                xindirectDataService (iomUnitIdx, chan, daddr, tally, buffer,
                                      idsTypeW36, false, & p -> isOdd);
                 uint i;
                 for (i = 0; i < tally; i ++)
@@ -1866,7 +1997,7 @@ sim_printf ("uncomfortable with this\n");
 iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
 sim_printf ("chan_mode %d\n", p -> chan_mode);
 #endif
-            indirectDataService (iomUnitIdx, chan, daddr, 8, buffer,
+            xindirectDataService (iomUnitIdx, chan, daddr, 8, buffer,
                                  idsTypeW36, true, & p -> isOdd);
 #endif
             p -> stati = 04000;
@@ -2012,6 +2143,7 @@ fail:
   }
 #endif
 
+#if 0
 static int mt_io_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
@@ -2083,7 +2215,7 @@ sim_printf ("read PCW_63_PTP\n");
               }
             p -> tallyResidue = tally - i;
 if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> words_processed, buffer [0], buffer [1]);
-            indirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
+            xindirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
                                  idsTypeW36, true, & p -> isOdd);
           }
         else
@@ -2112,7 +2244,7 @@ sim_printf ("read tally %u tbc %u\n", tally, tape_statep -> tbc);
                     break;
                   }
 sim_printf ("  %08o %012llo  %d\n", daddr, w, tape_statep -> words_processed);
-                core_write (daddr, w, __func__);
+                xcore_write (daddr, w, __func__);
                 p -> isOdd = daddr % 2;
                 daddr ++;
                 tally --;
@@ -2135,6 +2267,8 @@ sim_printf ("mt_io_cmd fail\n");
     sim_debug (DBG_ERR, & tape_dev, "%s: Bad channel %d\n", __func__, chan);
     return -1;
   }
+#endif
+
 #if 0
   {
     //sim_debug (DBG_DEBUG, & tape_dev, "%s\n", __func__);

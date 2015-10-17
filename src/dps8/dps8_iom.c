@@ -736,10 +736,12 @@ static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pa
     return addr;
   }
 
-static void fetchIDSPTW (uint iomUnitIdx, int chan, word1 seg, word6 pageNumber)
+static void fetchIDSPTW (uint iomUnitIdx, int chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 addr = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, seg, pageNumber);
+    word24 addr = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+                                      p -> TDCW_31_SEG, 
+                                      (p -> LPW_DCW_PTR >> 10) & MASK6);
     core_read (addr, & p -> PTW_DCW, __func__);
   }
 
@@ -768,10 +770,12 @@ static word24 buildLPWPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pa
     return addr;
   }
 
-static void fetchLPWPTW (uint iomUnitIdx, int chan, word1 seg, word6 pageNumber)
+static void fetchLPWPTW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, seg, pageNumber);
+    word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+                                      p -> TDCW_31_SEG,
+                                      (p -> LPW_DCW_PTR >> 10) & MASK6);
     core_read (addr, & p -> PTW_LPW, __func__);
   }
 
@@ -792,10 +796,96 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
       core_read (daddr, data, __func__);
   }
 
+// 'tally' is the transfer size request by Multics.
+// For write, '*cnt' is the number of words in 'data'.
+// For read, '*cnt' will be set to the number of words transfered.
+// Caller responsibility to allocate 'data' large enough to accommodate
+// 'tally' words.
+void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+                             uint * cnt, bool write)
+{
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+//if (p -> PCW_63_PTP)
+//{
+//sim_printf ("iomIndirectDataService PCW_63_PTP\n");
+//sim_printf ("%012llo %012llo\n", data [0], data [1]);
+//}
+    uint tally = p -> DDCW_TALLY;
+    uint daddr = p -> DDCW_ADDR;
+    if (tally == 0)
+      {
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: Tally of zero interpreted as 010000(4096)\n",
+                   __func__);
+        tally = 4096;
+      }
+    p -> tallyResidue = tally;
+
+    if (write)
+      {
+        uint c = * cnt;
+        while (p -> tallyResidue)
+          {
+            if (c == 0)
+              break; // read buffer exhausted; returns w/tallyResidue != 0
+   
+// XXX assuming DCW_ABS
+            if (daddr > MASK18) // 256K overflow
+sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
+
+            if (p -> PCW_63_PTP)
+              {
+                fetchIDSPTW (iomUnitIdx, chan);
+                word24 addr = (getbits36 (p -> PTW_LPW, 4, 14) << 10) | (daddr & MASK10);
+                core_write (addr, * data, __func__);
+              }
+            else
+              {
+                core_write (daddr, * data, __func__);
+              }
+// XXX is isOdd supposed to be odd address or odd count?
+            p -> isOdd = daddr % 2;
+            daddr ++;
+            data ++;
+            p -> tallyResidue --;
+            c --;
+          }
+      }
+    else // read
+      {
+        uint c = 0;
+        while (p -> tallyResidue)
+          {
+// XXX assuming DCW_ABS
+            if (daddr > MASK18) // 256K overflow
+sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
+
+            if (p -> PCW_63_PTP)
+              {
+                fetchIDSPTW (iomUnitIdx, chan);
+                word24 addr = (getbits36 (p -> PTW_LPW, 4, 14) << 10) | (daddr & MASK10);
+                core_read (addr, data, __func__);
+              }
+            else
+              {
+                core_read (daddr, data, __func__);
+              }
+// XXX is isOdd supposed to be odd address or odd count?
+            p -> isOdd = daddr % 2;
+            daddr ++;
+            p -> tallyResidue --;
+            data ++;
+            c ++;
+          }
+        * cnt = c;
+      }
+}
+
+#if IOM2
 // 'write' means periperal write; i.e. the peripheral is writing to core after
 // reading media.
 
-void indirectDataService (uint iomUnitIdx, int chan, uint daddr, uint tally, 
+void xindirectDataService (uint iomUnitIdx, int chan, uint daddr, uint tally, 
                           void * data, idsType type, bool write, bool * odd)
   {
     //sim_debug (DBG_DEBUG, & iom_dev, "%s daddr %08o\n", __func__, daddr);
@@ -824,6 +914,8 @@ void indirectDataService (uint iomUnitIdx, int chan, uint daddr, uint tally,
           break;
       }
   }
+#endif
+
 static void writeLPW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
@@ -849,6 +941,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     p -> LPW_19_REL =  getbits36 (p -> LPW, 19,  1);
 if (p -> LPW_19_REL) sim_printf ("LPW_19_REL\n");
     p -> LPW_20_AE =   getbits36 (p -> LPW, 20,  1);
+if (p -> LPW_20_AE) sim_printf ("LPW_20_AE\n");
     p -> LPW_21_NC =   getbits36 (p -> LPW, 21,  1);
     p -> LPW_22_TAL =  getbits36 (p -> LPW, 22,  1);
     p -> LPW_23_REL =  getbits36 (p -> LPW, 23,  1);
@@ -869,6 +962,8 @@ if (p -> LPW_19_REL) sim_printf ("LPW_19_REL\n");
         p -> LPWX_BOUND = getbits36 (p -> LPWX, 0, 18);
         p -> LPWX_SIZE = getbits36 (p -> LPWX, 18, 18);
         
+//sim_printf ("fetchAndParseLPW LPW_20_AE %u PCW_64_PGE %u\n", p -> LPW_20_AE, p -> PCW_64_PGE);
+//sim_printf ("%d %p\n", chan, p);
         if (p -> LPW_20_AE == 0)
           {
             p -> lpwAddrMode = LPW_REAL;
@@ -877,19 +972,19 @@ if (p -> LPW_19_REL) sim_printf ("LPW_19_REL\n");
           {
             if (p -> PCW_64_PGE == 0)
               {
-sim_printf ("LPW_EXT\n");
+//sim_printf ("LPW_EXT\n");
                 p -> lpwAddrMode = LPW_EXT;
               }
             else
               {
                 if (p -> LPW_23_REL == 0)
                   {
-sim_printf ("LPW_PAGED\n");
+//sim_printf ("LPW_PAGED\n");
                     p -> lpwAddrMode = LPW_PAGED;
                   }
                 else
                   {
-sim_printf ("LPW_SEG\n");
+//sim_printf ("LPW_SEG\n");
                     p -> lpwAddrMode = LPW_SEG;
                   }
               }
@@ -935,7 +1030,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
-          p -> IDCW_EC =           getbits36 (p -> DCW, 21,  1);
+          p -> IDCW_EC =         getbits36 (p -> DCW, 21,  1);
         p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
       }
     else // TDCW or DDCW
@@ -978,13 +1073,17 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
+//sim_printf ("%012llo %012llo\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36 (p -> PCW1, 3, 6);
     p -> PCW_AE = getbits36 (p -> PCW0, 12, 6);
     p -> PCW_21_MSK = getbits36 (p -> PCW0, 21, 1);
     p -> PCW_PAGE_TABLE_PTR = getbits36 (p -> PCW1, 9, 18);
     p -> PCW_63_PTP = getbits36 (p -> PCW1, 27, 1);
     p -> PCW_64_PGE = getbits36 (p -> PCW1, 28, 1);
+//sim_printf ("PCW_64_PGE %u\n", p -> PCW_64_PGE);
+//sim_printf ("%d %p\n", chan, p);
     p -> PCW_65_AUX = getbits36 (p -> PCW1, 29, 1);
+if (p -> PCW_65_AUX) sim_err ("PCW_65_AUX\n");
     p -> DCW = p -> PCW0;
     unpackDCW (iomUnitIdx, chan);
 
@@ -996,6 +1095,7 @@ static void fetchAndParseDCW (uint iomUnitIdx, uint chan, bool read_only)
 
     word24 addr = p -> LPW_DCW_PTR & MASK18;
 
+#if 0
     switch (p -> chanMode)
       {
         case cm_LPW_init_state:
@@ -1016,6 +1116,49 @@ sim_err ("unhandled fetchAndParseDCW\n");
       }
 
     core_read (addr, & p -> DCW, __func__);
+#endif
+    switch (p -> lpwAddrMode)
+      {
+        case LPW_REAL:
+          {
+//sim_printf ("fetchAndParseDCW LPW_REAL\n");
+            core_read (addr, & p -> DCW, __func__);
+          }
+          break;
+
+        case LPW_EXT:
+          {
+//sim_printf ("fetchAndParseDCW LPW_EXT\n");
+            addr |= ((word24) p -> LPWX_BOUND << 18);
+            core_read (addr, & p -> DCW, __func__);
+          }
+          break;
+
+        case LPW_PAGED:
+          {
+sim_err ("fetchAndParseDCW LPW_PAGED\n");
+          }
+          break;
+
+        case LPW_SEG:
+          {
+//sim_printf ("fetchAndParseDCW LPW_SEG\n");
+//sim_printf ("DCW is seg; addr = %o lbnd = %o size = %o\n",
+//                    p -> LPW_DCW_PTR,
+//                    p -> LPWX_BOUND,
+//                    p -> LPWX_SIZE);
+//sim_printf ("ptPtr %o\n", p -> PCW_PAGE_TABLE_PTR);
+            fetchLPWPTW (iomUnitIdx, chan);
+//sim_printf ("PTW %012llo\n", p -> PTW_LPW);
+            // Calculate effective address
+            // PTW 4-17 || LPW 8-17
+            word24 addr = (getbits36 (p -> PTW_LPW, 4, 14) << 10) | ((p -> LPW_DCW_PTR) & MASK10);
+//sim_printf ("addr now %08o\n", addr);
+            core_read (addr, & p -> DCW, __func__);
+//sim_printf ("dcw now %012llo\n", p -> DCW);
+          }
+          break;
+      }
     unpackDCW (iomUnitIdx, chan);
   }
 
@@ -1096,8 +1239,6 @@ int iomListService (uint iomUnitIdx, uint chan,
     * ptro = false; // assume not PTRO
     bool uff = false; // user fault flag
     bool send = false;
-    bool tdcwFound = false;
-
 
 // Figure 4.3.1
 
@@ -1110,6 +1251,7 @@ int iomListService (uint iomUnitIdx, uint chan,
         // PULL LPW AND LPW EXT. FROM CORE MAILBOX
 
         fetchAndParseLPW (iomUnitIdx, chan);
+        p -> wasTDCW = false;
       }
     // else lpw and lpwx are in chanData;
 
@@ -1165,7 +1307,7 @@ int iomListService (uint iomUnitIdx, uint chan,
 
 // B
 
-        fetchAndParsePCW (iomUnitIdx, chan); // fills is DCW*
+        fetchAndParsePCW (iomUnitIdx, chan); // fills in DCW*
 
         // PCW 18-20 == 111?
 
@@ -1270,8 +1412,14 @@ A:;
 
 // Not IDCW
 
+// pg B16: "If the IOM is paged [yes] and PCW bit 64 is off, LPW bit 23
+//          is ignored by the hardware. If bit 64 is set, LPW bit 23 causes
+//          the data to become segmented."
+// Handled in fetchAndParseLPW
+
     // LPW 23 REL?
 
+#if 0
     if (p -> LPW_23_REL)
       {
         // BOUNDARY ERROR
@@ -1287,23 +1435,24 @@ A:;
 
         absolutize address;
 #else
-sim_printf ("LPW_23_REL fail\n");
+//sim_printf ("LPW_23_REL fail\n");
 #endif
       }
+#endif
 
     // TDCW ?
 
     if (p -> DCW_18_20_CP != 7 && p -> DDCW_22_23_TYPE == 2)
       {
-sim_printf (">>>>>>>>>> TDCW\n");
+//sim_printf (">>>>>>>>>> TDCW\n");
         // SECOND TDCW?
-        if (tdcwFound)
+        if (p -> wasTDCW)
           {
+//sim_printf ("2nd TDCW\n");
             uff = true;
             goto uffSet;
           }
-// XXX bogus logic; the test is supposed to be two *sequential* TDCWs
-        // tdcwFound = true;
+        p -> wasTDCW = true;
 
         // PUT ADDRESS N LPW
 
@@ -1317,6 +1466,36 @@ sim_printf (">>>>>>>>>> TDCW\n");
         p -> LPW_18_RES |= p -> TDCW_34_RES;
         p -> LPW_23_REL |= p -> TDCW_35_REL;
         
+
+//sim_printf ("    %012llo\n", p -> DCW);
+
+        if (p -> LPW_20_AE == 0)
+          {
+//sim_printf ("tdcw switches to LPW_REAL\n");
+            p -> lpwAddrMode = LPW_REAL;  // AE = 0
+          }
+        else
+          {
+            if (p -> PCW_64_PGE == 0)
+              {
+//sim_printf ("tdcw switches to LPW_EXT\n");
+                p -> lpwAddrMode = LPW_EXT;  // AE =1, PGE = 0
+              }
+            else
+              {
+                if (p -> LPW_23_REL == 0)
+                  {
+//sim_printf ("LPW_PAGED\n");
+                    p -> lpwAddrMode = LPW_PAGED; // AE = 1, PGE = 1, REL = 0
+                  }
+                else
+                  {
+//sim_printf ("LPW_SEG\n");
+                    p -> lpwAddrMode = LPW_SEG; // AE = 1, PGE = 1, REL = 1
+                  }
+              }
+          }
+
         // Decrement tally
         p -> LPW_TALLY = (p -> LPW_TALLY - 1) & MASK12;
 
@@ -1326,13 +1505,16 @@ sim_printf (">>>>>>>>>> TDCW\n");
 
         if (p -> LPW_18_RES && p -> TDCW_33_EC)
           {
+//sim_printf ("AC CHANGE ERROR\n");
             uff = true;
             goto uffSet;
           }
           
+//sim_printf ("going to A\n");
         goto A;
       }
 
+    p -> wasTDCW = false;
     // NOT TDCW
 
     // CP VIOLATION?
@@ -1445,6 +1627,22 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //     control is 0, indicating last IDCW
 
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+
+
+// Copy the PCW from the connect channel
+
+    {
+      iomChanData_t * q = & iomChanData [iomUnitIdx] [IOM_CONNECT_CHAN];
+      p -> PCW0 =               q -> PCW0;
+      p -> PCW1 =               q -> PCW1;
+      p -> PCW_CHAN =           q -> PCW_CHAN;
+      p -> PCW_AE =             q -> PCW_AE;
+      p -> PCW_PAGE_TABLE_PTR = q -> PCW_PAGE_TABLE_PTR;
+      p -> PCW_63_PTP =         q -> PCW_63_PTP;
+      p -> PCW_64_PGE =         q -> PCW_64_PGE;
+      p -> PCW_65_AUX =         q -> PCW_65_AUX;
+      p -> PCW_21_MSK =         q -> PCW_21_MSK;
+    }
 
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
