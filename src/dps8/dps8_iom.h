@@ -1,12 +1,12 @@
-typedef enum 
-  {
-    cm_LPW_init_state, // No TDCWs encountered; state is:
-                       //    PCW64 (pcw64_pge): on   PAGE CHAN
-                       //    PCW64 (pcw64_pge): off  EXT MODE CHAN
-    cm_real_LPW_real_DCW,
-    cm_ext_LPW_real_DCW,
-    cm_paged_LPW_seg_DCW
-  } chanMode_t;
+//typedef enum 
+  //{
+    //cm_LPW_init_state, // No TDCWs encountered; state is:
+                       ////    PCW64 (pcw64_pge): on   PAGE CHAN
+                       ////    PCW64 (pcw64_pge): off  EXT MODE CHAN
+    //cm_real_LPW_real_DCW,
+    //cm_ext_LPW_real_DCW,
+    //cm_paged_LPW_seg_DCW
+  //} chanMode_t;
 
 typedef enum chanStat
   {
@@ -87,6 +87,10 @@ typedef struct
     word3  DCW_18_20_CP; // '7' indicates IDCW // XXX pg 30; the indirect data service needs to use this.
 
     word6 ADDR_EXT; // 3.2.2, 3.2.3.1
+    word1 SEG;  // pg B21
+
+    enum { /* PGE */ cm1, cm2, cm3a, cm3b, cm4, cm5,
+           /* EXT */ cm1e, cm2e } chanMode;
 
 // XXX CP XXXX
 // "Specifies the positions of the first character withe the first word
@@ -117,7 +121,7 @@ typedef struct
 
 // LPW addressing mode
 
-    enum { LPW_REAL, LPW_EXT, LPW_PAGED, LPW_SEG } lpwAddrMode;
+    //enum { LPW_REAL, LPW_EXT, LPW_PAGED, LPW_SEG } lpwAddrMode;
 
     // pg B2: "Scratchpad area for two Page Table Words ... one
     // for the DCW List (PTW-LPW) and one for the data (PTW-DCW).
@@ -143,7 +147,7 @@ typedef struct
 // the PTWs on demand.
 
 //  flag
-    chanMode_t chanMode;
+    //chanMode_t chanMode;
 
     // Information accumulated for status service.
     word12 stati;
@@ -192,3 +196,4 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                            bool write);
 void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                              uint * cnt, bool write);
+void iom_init (void);

@@ -1196,7 +1196,7 @@ int con_iom_cmd (uint iomUnitIdx, uint chan)
 
     con_cmd (iomUnitIdx, chan);
 
-    send_terminate_interrupt (iomUnitIdx, chan);
+    //send_terminate_interrupt (iomUnitIdx, chan);
 
     return 2;
   }
