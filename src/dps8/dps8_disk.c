@@ -402,7 +402,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
 
         uint tally = p -> DDCW_TALLY;
         uint daddr = p -> DDCW_ADDR;
-// XXX s.b. iomInd?
+// XXX s.b. iomInd? check channel mode?
         daddr |= p -> ADDR_EXT << 18;
         if (tally == 0)
           {
@@ -436,12 +436,12 @@ static int diskRead (uint iomUnitIdx, uint chan)
         uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
         //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
         uint p72ByteCnt = (tallyWords * 36) / 8;
-        uint8 buffer [p72ByteCnt];
-        memset (buffer, 0, sizeof (buffer));
+        uint8 diskBuffer [p72ByteCnt];
+        memset (diskBuffer, 0, sizeof (diskBuffer));
         sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
-        rc = fread (buffer, SECTOR_SZ_IN_BYTES,
+        rc = fread (diskBuffer, SECTOR_SZ_IN_BYTES,
                     tallySectors,
                     unitp -> fileref);
 
@@ -460,25 +460,39 @@ static int diskRead (uint iomUnitIdx, uint chan)
 //sim_printf ("tallySectors %u\n", tallySectors);
 //sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
 //for (uint i = 0; i < p72ByteCnt; i += 9)
-//{ word36 w1 = extr (& buffer [i / 9], 0, 36);
-  //word36 w2 = extr (& buffer [i / 9], 36, 36);
+//{ word36 w1 = extr (& diskBuffer [i / 9], 0, 36);
+  //word36 w2 = extr (& diskBuffer [i / 9], 36, 36);
   //sim_printf ("%5d %012llo %012llo\n", i * 2 / 9, w1, w2);
 //}
 //sim_printf ("read seekPosition %d\n", disk_statep -> seekPosition);
-//sim_printf ("buffer 0...\n");
-//for (uint i = 0; i < 9; i ++) sim_printf (" %03o", buffer [i]);
+//sim_printf ("diskBuffer 0...\n");
+//for (uint i = 0; i < 9; i ++) sim_printf (" %03o", diskBuffer [i]);
 //sim_printf ("\n");
         disk_statep -> seekPosition += tallySectors;
 
         uint wordsProcessed = 0;
+#if 0
         for (uint i = 0; i < tally; i ++)
           {
             word36 w;
-            extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
+            extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
                                      & w);
             core_write (daddr + i, w, "Disk read");
             p -> isOdd = (daddr + i) % 2;
           }
+#else
+        word36 buffer [tally];
+        for (uint i = 0; i < tally; i ++)
+          {
+            word36 w;
+            extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                     & w);
+            buffer [i] = w;
+//sim_printf ("%08o %012llo\n", daddr + i, w);
+          }
+        iomIndirectDataService (iomUnitIdx, chan, buffer,
+                                & wordsProcessed, true);
+#endif
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
     return 0;
@@ -562,21 +576,21 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
     //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
     uint p72ByteCnt = (tallyWords * 36) / 8;
-    uint8 buffer [p72ByteCnt];
-    memset (buffer, 0, sizeof (buffer));
+    uint8 diskBuffer [p72ByteCnt];
+    memset (diskBuffer, 0, sizeof (diskBuffer));
     uint wordsProcessed = 0;
     for (uint i = 0; i < tally; i ++)
       {
         word36 w;
         core_read (daddr + i, & w, "Disk write");
-        insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
+        insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
                               w);
         p -> isOdd = (daddr + i) % 2;
       }
 
     sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
                devUnitIdx, disk_statep -> seekPosition, tallySectors);
-    rc = fwrite (buffer, SECTOR_SZ_IN_BYTES,
+    rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
                  tallySectors,
                  unitp -> fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",

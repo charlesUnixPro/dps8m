@@ -848,7 +848,10 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                 if (daddr > MASK18) // 256K overflow
                   sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
 
-                core_write (daddr, * data, __func__);
+// XXX s.b. iomInd? check channel mode?
+                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                core_write (daddr2, * data, __func__);
+//if (chan == 11) sim_printf ("    %08o %012llo\n", daddr2, * data);
               }
 // XXX is isOdd supposed to be odd address or odd count?
             p -> isOdd = daddr % 2;
