@@ -878,7 +878,10 @@ sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
               }
             else
               {
-                core_read (daddr, data, __func__);
+//                core_read (daddr, data, __func__);
+// XXX s.b. iomInd? check channel mode?
+                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                core_read (daddr2, data, __func__);
               }
 // XXX is isOdd supposed to be odd address or odd count?
             p -> isOdd = daddr % 2;

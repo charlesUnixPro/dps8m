@@ -512,100 +512,114 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     p -> initiate = true;
     p -> stati = 04000;
 
-// Process DDCW
+// Process DDCWs
 
-    bool ptro;
-    bool send;
-    bool uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-    if (rc < 0)
+    bool ptro, send, uff;
+    do
       {
-        sim_printf ("diskWrite list service failed\n");
-        return -1;
-      }
-    if (uff)
-      {
-        sim_printf ("diskWrite ignoring uff\n"); // XXX
-      }
-    if (! send)
-      {
-        sim_printf ("diskWrite nothing to send\n");
-        return 1;
-      }
-    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-      {
-        sim_printf ("diskWrite expected DDCW\n");
-        return -1;
-      }
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            sim_printf ("diskWrite list service failed\n");
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("diskWrite ignoring uff\n"); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("diskWrite nothing to send\n");
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("diskWrite expected DDCW\n");
+            return -1;
+          }
 
 
-    uint tally = p -> DDCW_TALLY;
-    uint daddr = p -> DDCW_ADDR;
+        uint tally = p -> DDCW_TALLY;
+        uint daddr = p -> DDCW_ADDR;
 // XXX s.b. iomInd?
-    daddr |= p -> ADDR_EXT << 18;
+        daddr |= p -> ADDR_EXT << 18;
 
-    if (tally == 0)
-      {
+        if (tally == 0)
+          {
+            sim_debug (DBG_DEBUG, & disk_dev,
+                       "%s: Tally of zero interpreted as 010000(4096)\n",
+                       __func__);
+            tally = 4096;
+          }
+
         sim_debug (DBG_DEBUG, & disk_dev,
-                   "%s: Tally of zero interpreted as 010000(4096)\n",
-                   __func__);
-        tally = 4096;
-      }
+                   "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-    sim_debug (DBG_DEBUG, & disk_dev,
-               "%s: Tally %d (%o)\n", __func__, tally, tally);
+        rc = fseek (unitp -> fileref, 
+                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    SEEK_SET);
+        if (rc)
+          {
+            sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            return -1;
+          }
 
-    rc = fseek (unitp -> fileref, 
-                disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
-                SEEK_SET);
-    if (rc)
-      {
-        sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
-        p -> stati = 04202; // attn, seek incomplete
-        return -1;
-      }
+        // Convert from word36 format to packed72 format
 
-    // Convert from word36 format to packed72 format
-
-    // round tally up to sector boundary
+        // round tally up to sector boundary
     
-    // this math assumes tally is even.
+        // this math assumes tally is even.
    
-    uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                         SECTOR_SZ_IN_W36;
-    uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-    //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
-    uint p72ByteCnt = (tallyWords * 36) / 8;
-    uint8 diskBuffer [p72ByteCnt];
-    memset (diskBuffer, 0, sizeof (diskBuffer));
-    uint wordsProcessed = 0;
-    for (uint i = 0; i < tally; i ++)
-      {
-        word36 w;
-        core_read (daddr + i, & w, "Disk write");
-        insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
-                              w);
-        p -> isOdd = (daddr + i) % 2;
-      }
+        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                             SECTOR_SZ_IN_W36;
+        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint p72ByteCnt = (tallyWords * 36) / 8;
+        uint8 diskBuffer [p72ByteCnt];
+        memset (diskBuffer, 0, sizeof (diskBuffer));
+        uint wordsProcessed = 0;
+#if 0
+        for (uint i = 0; i < tally; i ++)
+          {
+            word36 w;
+            core_read (daddr + i, & w, "Disk write");
+            insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                  w);
+            p -> isOdd = (daddr + i) % 2;
+          }
+#else
+        word36 buffer [tally];
+        iomIndirectDataService (iomUnitIdx, chan, buffer,
+                                & wordsProcessed, false);
+// XXX is this losing information?
+        wordsProcessed = 0;
+        for (uint i = 0; i < tally; i ++)
+          {
+            insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                  buffer [i]);
+          }
+#endif
 
-    sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
-               devUnitIdx, disk_statep -> seekPosition, tallySectors);
-    rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
-                 tallySectors,
-                 unitp -> fileref);
+        sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
+                   devUnitIdx, disk_statep -> seekPosition, tallySectors);
+        rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
+                     tallySectors,
+                     unitp -> fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",
 //disk_statep -> seekPosition, tallySectors, daddr);
               
-    if (rc != (int) tallySectors)
-      {
-        sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
-        p -> stati = 04202; // attn, seek incomplete
-        p -> chanStatus = chanStatIncorrectDCW;
-        return -1;
-      }
+        if (rc != (int) tallySectors)
+          {
+            sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            p -> chanStatus = chanStatIncorrectDCW;
+            return -1;
+          }
 
-    disk_statep -> seekPosition += tallySectors;
+        disk_statep -> seekPosition += tallySectors;
  
+      } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
     return 0;
   }
 
