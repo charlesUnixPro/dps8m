@@ -1714,7 +1714,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
       }
     else
       {
-        dmpmbx (fudp -> mailboxAddress);
+// We know that for some reason Multics sends command zeros; don't dump the mbx for the common case
+        if (command != 0)
+          dmpmbx (fudp -> mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36 (& dia_pcw, 18, 1, 1); // set bit 18
         core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
