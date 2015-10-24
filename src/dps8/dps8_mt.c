@@ -517,6 +517,11 @@ ddcws:;
                                __func__, chan);
 
               }
+// XXX This assumes that the tally was bigger then the record
+            if (tape_statep -> is9)
+              p -> charPos = tape_statep -> tbc % 4;
+            else
+              p -> charPos = (tape_statep -> tbc * 8) / 9 % 4;
           }
 if (p -> DDCW_22_23_TYPE != 0)
   sim_printf ("curious... a tape read with more than one DDCW?\n");
@@ -696,6 +701,10 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           break;
 
 #if 0
+// Read controller main memory is used by the poll_mpc tool to track
+// usage. if we just report illegal command, pool_mpc will give up.
+// XXX ticket #46
+ 
         case 02:               // CMD 02 -- Read controller main memory (ASCII)
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -839,18 +848,13 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           }
           break;
 
-#if 0
-// Read controller main memory is used by the poll_mpc tool to track
-// usage. if we just report illegal command, pool_mpc will give up.
-// XXX ticket #46
- 
-#endif
 
 
 #if 0
         case 013: // CMD 013 -- Write tape 9
         case 015: // CMD 015 -- Write Binary Record
           {
+            p -> isRead = false;
             tape_statep -> is9 = pcwp -> dev_cmd == 013;
             sim_debug (DBG_DEBUG, & tape_dev,
                        tape_statep -> is9 ?" mt_cmd: Write 9 record\n" : "mt_cmd: Write binary record\n");
@@ -1414,6 +1418,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
 #if 0
         case 055: // CMD 055 -- Write EOF (tape mark);
           {
+            p -> isRead = false;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Write tape mark\n");
 

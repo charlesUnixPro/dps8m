@@ -226,6 +226,7 @@ static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         case 001: // CMD 001 -- load image buffer
           {
 #if 0
+            p -> isRead = false;
             // Get the DDCW
 sim_printf ("load image buffer\n");
             dcw_t dcw;
@@ -316,6 +317,7 @@ sim_printf ("load image buffer\n");
         case 005: // CMD 001 -- load vfc image
           {
 #if 0
+            p -> isRead = false;
             // Get the DDCW
 sim_printf ("load vfc image\n");
             dcw_t dcw;
@@ -381,6 +383,7 @@ sim_printf ("load vfc image\n");
         case 034: // CMD 034 -- print edited ascii
           {
 #if 0
+            p -> isRead = false;
             // Get the DDCW
 sim_printf ("print edited ASCII\n");
             dcw_t dcw;

@@ -446,6 +446,7 @@ static void sendConsole (uint stati)
     int chan = console_state . chan;
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // XXX this should be iomIndirectDataService
+    p -> charPos = tally % 4;
     while (tally && console_state . readp < console_state . tailp)
       {
         int charno;
@@ -641,9 +642,9 @@ sim_printf ("uncomfortable with this\n");
 
                 uint tally = p -> DDCW_TALLY;
                 uint daddr = p -> DDCW_ADDR;
-// XXX
-                //if (pcwp -> mask)
-                  //daddr |= ((pcwp -> ext) & MASK6) << 18;
+
+// We would hope that number of valid characters in the last word
+// would be in DCW_18_20_CP, but it seems to reliably be zero.
 
                 if (p -> DDCW_22_23_TYPE != 0 && p -> DDCW_22_23_TYPE != 1) //IOTD, IOTP
                   {

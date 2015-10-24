@@ -465,15 +465,6 @@ static int diskRead (uint iomUnitIdx, uint chan)
         disk_statep -> seekPosition += tallySectors;
 
         uint wordsProcessed = 0;
-#if 0
-        for (uint i = 0; i < tally; i ++)
-          {
-            word36 w;
-            extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
-                                     & w);
-            core_write (daddr + i, w, "Disk read");
-          }
-#else
         word36 buffer [tally];
         for (uint i = 0; i < tally; i ++)
           {
@@ -481,12 +472,10 @@ static int diskRead (uint iomUnitIdx, uint chan)
             extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
                                      & w);
             buffer [i] = w;
-//sim_printf ("%08o %012llo\n", daddr + i, w);
           }
         iomIndirectDataService (iomUnitIdx, chan, buffer,
                                 & wordsProcessed, true);
-#endif
-//for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
+        p -> charPos = tally % 4;
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
     p -> stati = 04000;
     p -> initiate = false;
@@ -682,7 +671,7 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 
     //M [daddr] = SIGN36;
     core_write (daddr, SIGN36, "Disk status register");
-
+    p -> charPos = 0;
     p -> stati = 04000;
     p -> initiate = false;
     return 0;
@@ -737,12 +726,12 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 031: // CMD 31 WRITE
           {
+            p -> isRead = false;
             int rc = diskWrite (iomUnitIdx, chan);
             if (rc)
               return -1;
 
             sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
-            p -> isRead = false;
             disk_statep -> io_mode = write_mode;
 //sim_printf ("disk write [%lld]\n", sim_timell ());
             p -> stati = 04000;
