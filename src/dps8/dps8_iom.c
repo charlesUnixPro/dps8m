@@ -1252,7 +1252,7 @@ if (p -> PCW_65_AUX) sim_err ("PCW_65_AUX\n");
 
   }
  
-static void fetchAndParseDCW (uint iomUnitIdx, uint chan, bool read_only)
+static void fetchAndParseDCW (uint iomUnitIdx, uint chan, UNUSED bool read_only)
   {
     iomChanData_t * p =  & iomChanData [iomUnitIdx] [chan];
 
@@ -1303,7 +1303,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
           {
 sim_err ("fetchAndParseDCW LPW paged\n");
           }
-          break;
+          //break;
 
         case cm3a:
         case cm4:
@@ -1329,7 +1329,7 @@ sim_err ("fetchAndParseDCW LPW paged\n");
     unpackDCW (iomUnitIdx, chan);
   }
 
-static void iomFault (uint iomUnitIdx, uint chan, const char * who,
+static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
                       iomFaultServiceRequest req,
                       iomSysFaults_t signal)
   {
@@ -2768,7 +2768,6 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
 
             case 9: // INTERLACE
               p -> configSwPortInterface [port_num] = v;
-              break;
               break;
 
             case 10: // ENABLE
