@@ -1132,9 +1132,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     p -> LPW_DCW_PTR = getbits36 (p -> LPW,  0, 18);
     p -> LPW_18_RES =  getbits36 (p -> LPW, 18,  1);
     p -> LPW_19_REL =  getbits36 (p -> LPW, 19,  1);
-if (p -> LPW_19_REL) sim_printf ("LPW_19_REL\n");
     p -> LPW_20_AE =   getbits36 (p -> LPW, 20,  1);
-if (p -> LPW_20_AE) sim_printf ("LPW_20_AE\n");
     p -> LPW_21_NC =   getbits36 (p -> LPW, 21,  1);
     p -> LPW_22_TAL =  getbits36 (p -> LPW, 22,  1);
     p -> LPW_23_REL =  getbits36 (p -> LPW, 23,  1);
