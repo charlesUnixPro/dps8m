@@ -17,10 +17,6 @@
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
 
-//-- // XXX We use this where we assume there is only one unit
-//-- #define ASSUME0 0
-//-- 
- 
 /*
  Copyright (c) 2007-2013 Michael Mondy
  
@@ -39,28 +35,26 @@ static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, char * cptr, void * d
 static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
 
-static t_stat crdrdr_svc (UNIT *);
-
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
   {
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define CRDRDR_UNIT_NUM(uptr) ((uptr) - crdrdr_unit)
@@ -143,6 +137,7 @@ static struct crdrdr_state
     char device_name [MAX_DEV_NAME_LEN];
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
+#if 0
 static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
@@ -154,6 +149,7 @@ static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
       }
     return -1;
   }
+#endif 
 
 /*
  * crdrdr_init()
@@ -295,9 +291,9 @@ UNUSED static void asciiToH (char * str, uint * hstr)
       }
  }
 
+#ifdef IOM2
 static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
-#ifdef IOM2
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
     int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
     //struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
@@ -422,12 +418,116 @@ sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
           break;
       
       }
+    return 0;
+  }
 #endif
+
+static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
+
+// XXX fake the read
+
+    // 20 is 80 char / 4 chars/word
+    uint cnt = 20;
+    word36 buffer [cnt];
+    for (uint i = 0; i < cnt; i ++)
+      {
+       word36 w = 0101102103014 + i; // "ABC[DEF...]"
+       buffer [i] = w;
+     }
+
+    p -> stati = 04000;
+    p -> initiate = false;
+
+// Process DDCWs
+
+    bool ptro, send, uff;
+    do
+      {
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            sim_printf ("%s list service failed\n", __func__);
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("%s ignoring uff\n", __func__); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("%s nothing to send\n", __func__);
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("%s expected DDCW\n", __func__);
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            return -1;
+          }
+
+       iomIndirectDataService (iomUnitIdx, chan, buffer,
+                               & cnt, true);
+
+        p -> charPos = 0;
+if (p -> DDCW_22_23_TYPE != 0)
+  sim_printf ("curious... a tape read with more than one DDCW?\n");
+
+      }
+    while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
     return 0;
   }
 
-int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+#if 0
+// hopper empty
+            p -> stati = 04201;
+            status_service (iomUnitIdx, pcwp -> chan, false);
+#endif
+
+static int crdrdr_cmd (uint iomUnitIdx, uint chan)
   {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+
+
+    switch (p -> IDCW_DEV_CMD)
+      {
+        case 000: // CMD 00 Request status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status\n");
+          }
+          break;
+
+        case 001: // CMD 01 Read binary
+          {
+            int rc = crdrdrReadRecord (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status\n");
+          }
+          break;
+
+        default:
+          {
+sim_printf ("crdrdr daze %o\n", p -> IDCW_DEV_CMD);
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
+          }
+          break;
+      }
+    return 0;
+  }
+
 #ifdef IOM2
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
     int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
@@ -502,21 +602,22 @@ sim_printf ("persuing got type %d\n", dcw . type);
 sim_printf ("crdrdr interrupts\n");
     send_terminate_interrupt (iomUnitIdx, pcwp -> chan);
 #endif
-    return 1;
-  }
-
-static t_stat crdrdr_svc (UNIT * unitp)
+int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)
   {
-#ifdef IOM2
-    int crdrdrUnitNum = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitIdx;
-    int chanNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitIdx] [chanNum] . pcw;
-    crdrdr_iom_cmd (unitp, pcwp);
-#endif
-    return SCPE_OK;
-  }
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+// Is it an IDCW?
 
+    if (p -> DCW_18_20_CP == 7)
+      {
+        crdrdr_cmd (iomUnitIdx, chan);
+      }
+    else // DDCW/TDCW
+      {
+        sim_printf ("%s expected IDCW\n", __func__);
+        return -1;
+      }
+    return 0;
+  }
 
 static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
