@@ -598,11 +598,6 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     iomIndirectDataService (iomUnitIdx, chan, buffer,
                             & tape_statep -> words_processed, false);
 
-sim_printf ("words_processed %d\n", tape_statep -> words_processed);
-sim_printf ("tally %d\n", tally);
-for (uint i = 0; i < 4; i ++)
-  sim_printf ("    %012llo\n", buffer [i]);
-
 // XXX char_pos ??
 
     if (tape_statep -> is9)
@@ -611,7 +606,6 @@ for (uint i = 0; i < 4; i ++)
       tape_statep -> tbc = (tape_statep -> words_processed * 9 + 1) / 2;
 
     // Pack data from buffer into tape format
-sim_printf ("tbc %d\n", tape_statep -> tbc);
 
     tape_statep -> words_processed = 0;
     uint i;
@@ -656,8 +650,6 @@ sim_printf ("tbc %d\n", tape_statep -> tbc);
     if (! (unitp -> flags & UNIT_ATT))
       return MTSE_UNATT;
 
-sim_printf ("tbc %d\n", tape_statep -> tbc);
-sim_printf ("%04o %04o %04o %04o\n", tape_statep -> buf [0], tape_statep -> buf [1], tape_statep -> buf [2], tape_statep -> buf [3]);
     int ret = sim_tape_wrrecf (unitp, tape_statep -> buf, tape_statep -> tbc);
 if (tape_statep -> is9) sim_printf ("tbc %d <%s>\n", tape_statep -> tbc, tape_statep -> buf);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_wrrecf returned %d, with tbc %d\n", ret, tape_statep -> tbc);
