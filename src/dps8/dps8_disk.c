@@ -153,9 +153,6 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-//static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
-
-//static t_stat disk_svc (UNIT *);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
@@ -295,7 +292,6 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
     sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%lld]\n", sim_timell ());
     disk_statep -> io_mode = seek512_mode;
-    p -> initiate = true;
 
 // Process DDCW
 
@@ -371,8 +367,6 @@ static int diskRead (uint iomUnitIdx, uint chan)
 
     sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
-    p -> initiate = true;
-    p -> stati = 04000;
 
 // Process DDCWs
 
@@ -478,7 +472,6 @@ static int diskRead (uint iomUnitIdx, uint chan)
             extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
                                      & w);
             core_write (daddr + i, w, "Disk read");
-            p -> isOdd = (daddr + i) % 2;
           }
 #else
         word36 buffer [tally];
@@ -495,6 +488,8 @@ static int diskRead (uint iomUnitIdx, uint chan)
 #endif
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+    p -> stati = 04000;
+    p -> initiate = false;
     return 0;
   }
 
@@ -509,8 +504,6 @@ static int diskWrite (uint iomUnitIdx, uint chan)
 
     sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
-    p -> initiate = true;
-    p -> stati = 04000;
 
 // Process DDCWs
 
@@ -586,7 +579,6 @@ static int diskWrite (uint iomUnitIdx, uint chan)
             core_read (daddr + i, & w, "Disk write");
             insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
                                   w);
-            p -> isOdd = (daddr + i) % 2;
           }
 #else
         word36 buffer [tally];
@@ -620,6 +612,8 @@ static int diskWrite (uint iomUnitIdx, uint chan)
         disk_statep -> seekPosition += tallySectors;
  
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+    p -> stati = 04000;
+    p -> initiate = false;
     return 0;
   }
 
@@ -633,8 +627,6 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 
     sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
-    p -> initiate = true;
-    p -> stati = 04000;
 
 // Process DDCW
 
@@ -691,6 +683,8 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
     //M [daddr] = SIGN36;
     core_write (daddr, SIGN36, "Disk status register");
 
+    p -> stati = 04000;
+    p -> initiate = false;
     return 0;
   }
 
@@ -705,7 +699,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     if (p -> PCW_63_PTP)
       sim_err ("PTP in disk\n");
     disk_statep -> io_mode = no_mode;
-    p -> initiate = false;
     p -> stati = 0;
 
     switch (p -> IDCW_DEV_CMD)
@@ -720,7 +713,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 022: // CMD 22 Read Status Resgister
           {
-            p -> initiate = true;
             int rc = readStatusRegister (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -729,7 +721,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 025: // CMD 25 READ
           {
-            p -> initiate = true;
             int rc = diskRead (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -738,7 +729,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 030: // CMD 30 SEEK_512
           {
-            p -> initiate = true;
             int rc = diskSeek512 (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -747,7 +737,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 031: // CMD 31 WRITE
           {
-            p -> initiate = true;
             int rc = diskWrite (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -755,7 +744,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
             sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
             p -> isRead = false;
             disk_statep -> io_mode = write_mode;
-            p -> initiate = true;
 //sim_printf ("disk write [%lld]\n", sim_timell ());
             p -> stati = 04000;
           }
@@ -768,34 +756,15 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("disk seek [%lld]\n", sim_timell ());
             sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
             disk_statep -> io_mode = seek_mode;
-            p -> initiate = true;
           }
           break;
 #endif
-
-// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
-//   (
-//   2 t bit (1),              /* set to "1"b by IOM */
-//   2 power bit (1),          /* non-zero if peripheral absent or power off */
-//   2 major bit (4),          /* major status */
-//   2 sub bit (6),            /* substatus */
-//   2 eo bit (1),             /* even/odd bit */
-//   2 marker bit (1),         /* non-zero if marker status */
-//   2 soft bit (2),           /* software status */
-//   2 initiate bit (1),       /* initiate bit */
-//   2 abort bit (1),          /* software abort bit */
-//   2 channel_stat bit (3),   /* IOM channel status */
-//   2 central_stat bit (3),   /* IOM central status */
-//   2 mbz bit (6),
-//   2 rcount bit (6)
-//   ) unaligned;              /* record count residue */
 
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", devUnitIdx);
-            p -> initiate = false;
           }
           break;
 

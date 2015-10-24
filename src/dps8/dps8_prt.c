@@ -218,7 +218,6 @@ static int prt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             chan_data -> stati = 04000;
             prt_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & prt_dev, "Request status %d\n", prt_unit_num);
-            chan_data -> initiate = true;
           }
           break;
 
@@ -282,7 +281,6 @@ sim_printf ("load image buffer\n");
             sim_debug (DBG_NOTIFY, & prt_dev, "load image buffer %d\n", prt_unit_num);
             chan_data -> isRead = false;
             prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
             chan_data -> stati = 04000;
 #endif
           }
@@ -372,7 +370,6 @@ sim_printf ("load vfc image\n");
             sim_debug (DBG_NOTIFY, & prt_dev, "load vfc image %d\n", prt_unit_num);
             chan_data -> isRead = false;
             prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
             chan_data -> stati = 04000;
 #endif
           }
@@ -531,50 +528,21 @@ sim_printf ("\n");
 
 
             chan_data -> tallyResidue = 0;
-            chan_data -> isOdd = 0;
             chan_data -> stati = 04000; 
 #else
             sim_debug (DBG_NOTIFY, & prt_dev, "print edited ascii %d\n", prt_unit_num);
             chan_data -> isRead = false;
             prt_statep -> io_mode = ignore_mode;
-            chan_data -> initiate = true;
             chan_data -> stati = 04000;
 #endif
           }
           break;
-
-
-
-
-
-
-
-
-
-
-// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
-//   (
-//   2 t bit (1),              /* set to "1"b by IOM */
-//   2 power bit (1),          /* non-zero if peripheral absent or power off */
-//   2 major bit (4),          /* major status */
-//   2 sub bit (6),            /* substatus */
-//   2 eo bit (1),             /* even/odd bit */
-//   2 marker bit (1),         /* non-zero if marker status */
-//   2 soft bit (2),           /* software status */
-//   2 initiate bit (1),       /* initiate bit */
-//   2 abort bit (1),          /* software abort bit */
-//   2 channel_stat bit (3),   /* IOM channel status */
-//   2 central_stat bit (3),   /* IOM central status */
-//   2 mbz bit (6),
-//   2 rcount bit (6)
-//   ) unaligned;              /* record count residue */
 
         case 040: // CMD 40 Reset status
           {
             chan_data -> stati = 04000;
             prt_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
-            chan_data -> initiate = true;
             * disc = true;
           }
           break;

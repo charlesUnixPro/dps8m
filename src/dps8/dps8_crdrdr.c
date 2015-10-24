@@ -305,18 +305,17 @@ static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
     int chan = pcwp-> chan;
 sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [chan];
-    if (chan_data -> ptp)
+    iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
+    if (p -> ptp)
       sim_printf ("PTP in crdrdr\n");
-    chan_data -> stati = 0;
+    p -> stati = 0;
 
     switch (pcwp -> dev_cmd)
       {
         case 000: // CMD 00 Request status
           {
-            chan_data -> stati = 04000;
+            p -> stati = 04000;
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status %d\n", crdrdr_unit_num);
-            chan_data -> initiate = true;
           }
           break;
 
@@ -330,16 +329,16 @@ sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncomplete;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncorrectDCW;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -357,8 +356,8 @@ sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
             else
               {
 sim_printf ("uncomfortable with this\n");
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncorrectDCW;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -390,52 +389,25 @@ sim_printf ("tally %d\n", tally);
 w=i;
 #endif
                 store_abs_word (daddr + i, w, "Card reader read");
-                chan_data -> isOdd = (daddr + i) % 2;
               }
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
-            chan_data -> stati = 04000;
-            chan_data -> tallyResidue = tally;
+            p -> stati = 04000;
+            p -> initiate = false;
+            p -> tallyResidue = tally;
 
+#if 0
 // hopper empty
-            chan_data -> stati = 04201;
+            p -> stati = 04201;
             status_service (iomUnitIdx, pcwp -> chan, false);
+#endif
           }
           break;
 
-
-
-
-
-
-
-
-
-
-
-
-// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
-//   (
-//   2 t bit (1),              /* set to "1"b by IOM */
-//   2 power bit (1),          /* non-zero if peripheral absent or power off */
-//   2 major bit (4),          /* major status */
-//   2 sub bit (6),            /* substatus */
-//   2 eo bit (1),             /* even/odd bit */
-//   2 marker bit (1),         /* non-zero if marker status */
-//   2 soft bit (2),           /* software status */
-//   2 initiate bit (1),       /* initiate bit */
-//   2 abort bit (1),          /* software abort bit */
-//   2 channel_stat bit (3),   /* IOM channel status */
-//   2 central_stat bit (3),   /* IOM central status */
-//   2 mbz bit (6),
-//   2 rcount bit (6)
-//   ) unaligned;              /* record count residue */
-
         case 040: // CMD 40 Reset status
           {
-            chan_data -> stati = 04000;
+            p -> stati = 04000;
             //crdrdr_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status %d\n", crdrdr_unit_num);
-            chan_data -> initiate = true;
           }
           break;
 
@@ -444,8 +416,8 @@ w=i;
         default:
           {
 sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
-            chan_data -> stati = 04501; // cmd reject, invalid opcode
-            chan_data -> chanStatus = chanStatIncorrectDCW;
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
           }
           break;
       
@@ -502,10 +474,10 @@ sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [pcwp -> chan];
-            chan_data -> stati = 04501; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
+            iomChannelData_ * p = & iomChannelData [iomUnitIdx] [pcwp -> chan];
+            p -> stati = 04501; 
+            p -> dev_code = dcw . fields . instr. dev_code;
+            p -> chanStatus = chanStatInvalidInstrPCW;
             //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }
@@ -516,10 +488,10 @@ sim_printf ("persuing got type %d\n", dcw . type);
         if (crdrdr_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitIdx] [pcwp -> chan];
-            chan_data -> stati = 04502; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
+            iomChannelData_ * p = & iomChannelData [iomUnitIdx] [pcwp -> chan];
+            p -> stati = 04502; 
+            p -> dev_code = dcw . fields . instr. dev_code;
+            p -> chanStatus = chanStatInvalidInstrPCW;
             //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }

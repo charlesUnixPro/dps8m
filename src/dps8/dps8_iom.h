@@ -78,7 +78,7 @@ typedef struct
     word6  IDCW_DEV_CMD;
     word6  IDCW_DEV_CODE;
     word1  IDCW_EC;
-    word2  IDCW_CONTROL;
+    word2  IDCW_CONTROL; // 0 terminate, 2 process, 3 marker
     // DDCW only
     /*word18*/ uint DDCW_ADDR; // Allow overflow detection
     word12 DDCW_TALLY;
@@ -156,7 +156,8 @@ typedef struct
     word12 tallyResidue;
     word3 charPos;
     bool isRead;
-    bool isOdd;
+    // isOdd can be ignored; see http://ringzero.wikidot.com/wiki:cac-2015-10-22
+    // bool isOdd;
     bool initiate;
 
     chanStat chanStatus;

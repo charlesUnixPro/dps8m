@@ -444,7 +444,7 @@ static void sendConsole (uint stati)
     int iomUnitIdx = cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx;
     
     int chan = console_state . chan;
-    iomChanData_t * chan_data = & iomChanData [iomUnitIdx] [chan];
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // XXX this should be iomIndirectDataService
     while (tally && console_state . readp < console_state . tailp)
       {
@@ -469,7 +469,7 @@ static void sendConsole (uint stati)
     console_state . tailp = console_state . buf;
     console_state . io_mode = no_mode;
 
-    chan_data -> stati = stati;
+    p -> stati = stati;
     send_terminate_interrupt (iomUnitIdx, chan);
   }
 
@@ -497,7 +497,6 @@ static int con_cmd (uint iomUnitIdx, uint chan)
                        "%s: Status request cmd received",
                        __func__);
             p -> stati = 04000;
-            p -> initiate = true;
           }
           break;
 
@@ -580,6 +579,7 @@ sim_printf ("uncomfortable with this\n");
             console_state . daddr = daddr;
             console_state . unitp = unitp;
             console_state . chan = chan;
+
           }
           //break;
           return 3; // command in progress; do not send terminate interrupt
@@ -926,6 +926,7 @@ sim_printf ("uncomfortable with this\n");
                 // sim_printf ("\n");
                 newlineOn ();
                 p -> stati = 04000;
+                p -> initiate = false;
 
                if (p -> DDCW_22_23_TYPE != 0)
                  sim_printf ("curious... a console write with more than one DDCW?\n");
@@ -942,7 +943,6 @@ sim_printf ("uncomfortable with this\n");
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
             p -> stati = 04000;
-            p -> initiate = true;
           }
           break;
 

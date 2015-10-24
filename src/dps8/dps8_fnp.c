@@ -721,7 +721,6 @@ static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
         chan_data -> stati = 06000; // Have status; power off?
         //disk_statep -> io_mode = no_mode;
         sim_debug (DBG_NOTIFY, & fnpDev, "Request status %d\n", fnpUnitNum);
-        chan_data -> initiate = true;
         * disc = true;
         return 1;
       }
@@ -738,7 +737,6 @@ static int fnpCmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
               chan_data -> stati = 06000; // Have status; power off?
             //disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & fnpDev, "Request status %d\n", fnpUnitNum);
-            chan_data -> initiate = true;
           }
           break;
 
