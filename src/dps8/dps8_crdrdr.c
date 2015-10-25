@@ -302,8 +302,6 @@ static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     int chan = pcwp-> chan;
 sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
     iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
-    if (p -> ptp)
-      sim_printf ("PTP in crdrdr\n");
     p -> stati = 0;
 
     switch (pcwp -> dev_cmd)

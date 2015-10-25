@@ -685,8 +685,6 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     uint devUnitIdx = d -> devUnitIdx;
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
-    if (p -> PCW_63_PTP)
-      sim_err ("PTP in disk\n");
     disk_statep -> io_mode = no_mode;
     p -> stati = 0;
 
