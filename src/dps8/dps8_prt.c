@@ -180,6 +180,37 @@ static void openPrtFile (int prt_unit_num)
     prt_state [prt_unit_num] . prtfile = mkstemp (template);
   }
 
+// looking for lines "\037\014%%%%%\037\005"
+static int eoj (word36 * buffer, uint tally)
+  {
+    if (tally < 3)
+      return 0;
+    if (getbits36 (buffer [0], 0, 9) != 037)
+      return 0;
+    if (getbits36 (buffer [0], 9, 9) != 014)
+      return 0;
+    word9 ch = getbits36 (buffer [0], 18, 9);
+    if (ch < '0' || ch > '9')
+      return 0;
+    ch = getbits36 (buffer [0], 27, 9);
+    if (ch < '0' || ch > '9')
+      return 0;
+    ch = getbits36 (buffer [1], 0, 9);
+    if (ch < '0' || ch > '9')
+      return 0;
+    ch = getbits36 (buffer [1], 9, 9);
+    if (ch < '0' || ch > '9')
+      return 0;
+    ch = getbits36 (buffer [1], 18, 9);
+    if (ch < '0' || ch > '9')
+      return 0;
+    if (getbits36 (buffer [1], 27, 9) != 037)
+      return 0;
+    if (getbits36 (buffer [2], 0, 9) != 005)
+      return 0;
+    return 1;
+  }
+
 static int prt_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
@@ -348,6 +379,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
                 if (tally == 0)
                   tally = 4096;
+
                 // Copy from core to buffer
                 word36 buffer [tally];
                 uint wordsProcessed = 0;
@@ -415,6 +447,7 @@ sim_printf ("\n");
                       }
                   }
 
+#if 0
                 if (prt_state [prt_unit_num] . last)
                   {
                     close (prt_state [prt_unit_num] . prtfile);
@@ -423,7 +456,15 @@ sim_printf ("\n");
                   }
                 // Check for slew to bottom of page
                 prt_state [prt_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
-
+#else
+                if (eoj (buffer, tally))
+                  {
+                    sim_printf ("prt end of job\n");
+                    close (prt_state [prt_unit_num] . prtfile);
+                    prt_state [prt_unit_num] . prtfile = -1;
+                    prt_state [prt_unit_num] . last = false;
+                  }
+#endif
             } // for (ddcwIdx)
 
             p -> tallyResidue = 0;
