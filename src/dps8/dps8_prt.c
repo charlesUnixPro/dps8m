@@ -309,10 +309,14 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
             p -> isRead = false;
             p -> initiate = false;
 
+// The EURC MPC printer controller sets the number of DCWs in the IDCW and
+// ignores the IOTD bits in the DDCWs.
+
+            uint ddcwCnt = p -> IDCW_COUNT;
             // Process DDCWs
 
             bool ptro, send, uff;
-            do
+            for (uint ddcwIdx = 0; ddcwIdx < ddcwCnt; ddcwIdx ++)
               {
                 int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
                 if (rc < 0)
@@ -420,7 +424,7 @@ sim_printf ("\n");
                 // Check for slew to bottom of page
                 prt_state [prt_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
 
-            } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+            } // for (ddcwIdx)
 
             p -> tallyResidue = 0;
             p -> stati = 04000; 
@@ -447,7 +451,6 @@ sim_printf ("prt daze %o\n", p -> IDCW_DEV_CMD);
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
         send_marker_interrupt (iomUnitIdx, chan);
-sim_printf ("ptr marker\n");
       }
     return 0;
   }

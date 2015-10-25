@@ -79,6 +79,7 @@ typedef struct
     word6  IDCW_DEV_CODE;
     word1  IDCW_EC;
     word2  IDCW_CONTROL; // 0 terminate, 2 process, 3 marker
+    word2  IDCW_COUNT; // 0 terminate, 2 process, 3 marker
     // DDCW only
     /*word18*/ uint DDCW_ADDR; // Allow overflow detection
     word12 DDCW_TALLY;

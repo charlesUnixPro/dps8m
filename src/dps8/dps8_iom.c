@@ -1195,6 +1195,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
         p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
+        p -> IDCW_COUNT =        getbits36 (p -> DCW, 30,  6);
       }
     else // TDCW or DDCW
       {
@@ -1627,7 +1628,6 @@ A:;
         // PUT ADDRESS N LPW
 
         p -> LPW_DCW_PTR = p -> TDCW_DATA_ADDRESS;
-
         // OR TDCW 33, 34, 35 INTO LPW 20, 18, 23
 // XXX is 33 bogus? it's semantics change based on PCW 64...
 // should be okay; pg B21 says that this is correct; implies that the
