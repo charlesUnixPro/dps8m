@@ -880,15 +880,9 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("mt cmd %d %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
-        case 0: // CMD 00 Request status
+        case 0: // CMD 00 Request status -- controler status, not tape drive
           {
             p -> stati = 04000; // have_status = 1
-            if (sim_tape_wrp (unitp))
-              p -> stati |= 1;
-            if (sim_tape_bot (unitp))
-              p -> stati |= 2;
-            //if (sim_tape_eom (unitp))
-              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Request status: %04o\n", __func__, p -> stati);
           }
