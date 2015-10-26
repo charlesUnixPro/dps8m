@@ -1935,7 +1935,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             p -> stati = 04501;
             p -> dev_code = getbits36 (p -> DCW, 6, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
-            sim_debug (DBG_ERR, & iom_dev, "doPayloadChan expected IDCW\n");
+            sim_debug (DBG_ERR, & iom_dev, "doPayloadChan expected IDCW %d (%o)\n", chan, chan);
             goto done;
           }
 
