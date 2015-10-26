@@ -191,7 +191,7 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
 
     // Plug the other end of the cable in
     t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_DN355, 
-                              chanTypePSI, fnpUnitNum, & fnpDev, 
+                              chanTypeDirect, fnpUnitNum, & fnpDev, 
                               & fnp_unit [fnpUnitNum], fnpIOMCmd);
     if (rc)
       return rc;

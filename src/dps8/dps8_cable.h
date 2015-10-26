@@ -6,7 +6,7 @@ typedef enum devType
      DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_PRT
   } devType;
 
-typedef enum chanType { chanTypeCPI, chanTypePSI } chanType;
+typedef enum chanType { chanTypeCPI, chanTypePSI, chanTypeDirect } chanType;
 
 struct cableFromIomToDev
   {

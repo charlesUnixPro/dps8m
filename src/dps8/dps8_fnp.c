@@ -1762,7 +1762,7 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
 intr:;
 //sim_printf ("end of list service; sending terminate interrupt\n");
     send_terminate_interrupt (iomUnitIdx, chan);
-    return 0;
+    return 2; // did command, don't want more
   }
 
     
