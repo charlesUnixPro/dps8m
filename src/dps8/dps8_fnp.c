@@ -1761,7 +1761,7 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
     processMBX (iomUnitIdx, chan);
 intr:;
 //sim_printf ("end of list service; sending terminate interrupt\n");
-    send_terminate_interrupt (iomUnitIdx, chan);
+    //send_terminate_interrupt (iomUnitIdx, chan);
     return 2; // did command, don't want more
   }
 
@@ -1782,14 +1782,11 @@ int fnpIOMCmd (uint iomUnitIdx, uint chan)
 
     if (p -> DCW_18_20_CP == 7)
       {
-        fnpCmd (iomUnitIdx, chan);
+        return fnpCmd (iomUnitIdx, chan);
       }
-    else // DDCW/TDCW
-      {
-        sim_printf ("%s expected IDCW\n", __func__);
-        return -1;
-      }
-    return 0;
+    // else // DDCW/TDCW
+    sim_printf ("%s expected IDCW\n", __func__);
+    return -1;
   }
 
 
