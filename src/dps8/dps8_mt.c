@@ -888,7 +888,22 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-#if 0
+#if 1
+// Temp CMD 02
+        case 02:               // CMD 02 -- Read controller main memory (ASCII)
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "%s: Read controller main memory\n", __func__);
+
+            bool ptro, send, uff;
+            iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+
+            p -> stati = 04501;
+            p -> chanStatus = chanStatIncorrectDCW;
+            sim_warn ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+          }
+         break;
+#else
 // Read controller main memory is used by the poll_mpc tool to track
 // usage. if we just report illegal command, pool_mpc will give up.
 // XXX ticket #46
@@ -1066,50 +1081,6 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip Record\n");
-#if 0
-            // BUG: Do we need to clear the buffer?
-            // BUG? We don't check the channel data for a count
-            // Get the DDCW
-
-            bool ptro, send, uff;
-
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-            if (rc < 0)
-              {
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_printf ("%s list service failed\n", __func__);
-                break;
-              }
-            if (uff)
-              {
-                sim_printf ("%s ignoring uff\n", __func__); // XXX
-              }
-            if (! send)
-              {
-                sim_printf ("%s nothing to send\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-              {
-                sim_printf ("%s expected DDCW\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-
-//
-// dcl ORDERS_PER_IDCW_TALLY  fixed bin static options (constant) init (64);
-//  /* The following orders take a tally */
-//  
-//  QUEUE_ORDER (2): /* backspace record */
-//  QUEUE_ORDER (4): /* forwardspace record */
-//     if count >= ORDERS_PER_IDCW_TALLY then
-//       idcw.count = "00"b3;   do as many as we can */
-//     else idcw.count = bit (bin (count, 6), 6);
-//
-
-            //uint tally = p -> DDCW_TALLY;
-#endif
             uint tally = p -> IDCW_COUNT;
             if (tally == 0)
               {
@@ -1170,39 +1141,6 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip File\n");
-#if 0
-            // XXX Why does this command have a DDCW?
-
-            // Get the DDCW
-
-            bool ptro, send, uff;
-
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-            if (rc < 0)
-              {
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_warn ("%s list service failed\n", __func__);
-                break;
-              }
-            if (uff)
-              {
-                sim_warn ("%s ignoring uff\n", __func__); // XXX
-              }
-            if (! send)
-              {
-                sim_warn ("%s nothing to send\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-              {
-                sim_warn ("%s expected DDCW\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-
-            //uint tally = p -> DDCW_TALLY;
-#endif
             uint tally = 1;
 
             if (tally != 1)
@@ -1251,38 +1189,6 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace Record\n");
-#if 0
-            // BUG: Do we need to clear the buffer?
-            // BUG? We don't check the channel data for a count
-            // Get the DDCW
-
-            bool ptro, send, uff;
-
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-            if (rc < 0)
-              {
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_warn ("%s list service failed\n", __func__);
-                break;
-              }
-            if (uff)
-              {
-                sim_warn ("%s ignoring uff\n", __func__); // XXX
-              }
-            if (! send)
-              {
-                sim_warn ("%s nothing to send\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-              {
-                sim_warn ("%s expected DDCW\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-            //uint tally = p -> DDCW_TALLY;
-#endif
 
             uint tally = p -> IDCW_COUNT;
 
@@ -1359,41 +1265,6 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace File\n");
-#if 0
-            // BUG: Do we need to clear the buffer?
-            // BUG? We don't check the channel data for a count
-            // XXX Why does this command have a DDCW?
-
-            // Get the DDCW
-
-            bool ptro, send, uff;
-
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-            if (rc < 0)
-              {
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_warn ("%s list service failed\n", __func__);
-                break;
-              }
-            if (uff)
-              {
-                sim_warn ("%s ignoring uff\n", __func__); // XXX
-              }
-            if (! send)
-              {
-                sim_warn ("%s nothing to send\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
-              {
-                sim_warn ("%s expected DDCW\n", __func__);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                break;
-              }
-
-            //uint tally = p -> DDCW_TALLY;
-#endif
             uint tally = 1;
 
             if (tally != 1)
@@ -1645,8 +1516,9 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             p -> stati = 04501;
             p -> chanStatus = chanStatIncorrectDCW;
             sim_warn ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
-            break;
           }
+          break;
+
       } // IDCW_DEV_CMD
 
     sim_debug (DBG_DEBUG, & tape_dev, "stati %04o\n", p -> stati);
