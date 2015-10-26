@@ -949,40 +949,6 @@ sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
       }
 }
 
-#if IOM2
-// 'write' means periperal write; i.e. the peripheral is writing to core after
-// reading media.
-
-void xindirectDataService (uint iomUnitIdx, int chan, uint daddr, uint tally, 
-                          void * data, idsType type, bool write, bool * odd)
-  {
-    //sim_debug (DBG_DEBUG, & iom_dev, "%s daddr %08o\n", __func__, daddr);
-    switch (type)
-      {
-        case idsTypeW36:
-          {
-            word36 * dataIn = (word36 *) data;
-            for (uint t = 0; t < tally; t ++)
-              {
-                uint offset = daddr + t;
-                uint pageNumber = offset / 1024u;
-                uint pageOffset = offset % 1024u;
-
-                fetchIDSPTW (iomUnitIdx, chan, p -> SEG, pageNumber);
-                word24 addr = getbits36 (p -> PTW_DCW, 4, 14) << 10 | 
-                              pageOffset;
-                if (write)
-                  core_write (addr, dataIn [t], __func__);
-                else
-                  core_read (addr, & dataIn [t], __func__);
-                * odd = addr % 2;
-              }
-          }
-          break;
-      }
-  }
-#endif
-
 static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
@@ -1000,12 +966,12 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
             if (p -> LPW_20_AE == 0)
               {
-    //sim_printf ("chan %d to cm1e\n", chan);
+//sim_printf ("chan %d to cm1e\n", chan);
                     p -> chanMode = cm1e;  // AE 0
               } 
             else
               {
-    //sim_printf ("chan %d to cm2e\n", chan);
+//sim_printf ("chan %d to cm2e\n", chan);
                     p -> chanMode = cm2e;  // AE 1
               } 
                
@@ -1017,12 +983,12 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
                 if (p -> LPW_23_REL == 0)
                   {
-    //sim_printf ("chan %d to cm1\n", chan);
+//sim_printf ("chan %d to cm1\n", chan);
                     p -> chanMode = cm1;  // AE 0, REL 0
                   }
                 else
                   {
-    //sim_printf ("chan %d to cm3a\n", chan);
+//sim_printf ("chan %d to cm3a\n", chan);
                     p -> chanMode = cm3a;  // AE 0, REL 1
                   }
     
@@ -1032,12 +998,12 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
                 if (p -> LPW_23_REL == 0)
                   {
-    //sim_printf ("chan %d to cm3b\n", chan);
+//sim_printf ("chan %d to cm3b\n", chan);
                     p -> chanMode = cm3b;  // AE 1, REL 0
                   }
                 else
                   {
-    //sim_printf ("chan %d to cm4\n", chan);
+//sim_printf ("chan %d to cm4\n", chan);
                     p -> chanMode = cm4;  // AE 1, REL 1
                   }
     
@@ -1371,8 +1337,7 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     fetchAndParseDCW (iomUnitIdx, chan, false);
     if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
       {
-        sim_debug (DBG_ERR, & iom_dev,
-                   "%s: expected a DDCW; fail\n", __func__);
+        sim_warn ("%s: expected a DDCW; fail\n", __func__);
         return;
       }
     // No address extension or paging nonsense for channels 0-7. 
@@ -1671,8 +1636,8 @@ A:;
 
 //put that wierd SEG logic in here
 
-if (p -> TDCW_31_SEG)
-sim_printf ("TDCW_31_SEG\n");
+        if (p -> TDCW_31_SEG)
+          sim_warn ("TDCW_31_SEG\n");
 
         updateChanMode (iomUnitIdx, chan, true);
 
@@ -1904,7 +1869,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         p -> stati = 04501;
         p -> dev_code = getbits36 (p -> DCW, 6, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
-        sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan handler error\n");
+        sim_warn ("doPayloadChan handler error\n");
         goto done;
       }
 
@@ -1916,16 +1881,16 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         if (rc < 0)
           {
 // XXX set status flags
-            sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan list service failed\n");
+            sim_warn ("doPayloadChan list service failed\n");
             return -1;
           }
         if (uff)
           {
-            sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan ignoring uff\n"); // XXX
+            sim_warn ("doPayloadChan ignoring uff\n"); // XXX
           }
         if (! send)
           {
-            sim_debug (DBG_DEBUG, & iom_dev, "doPayloadChan nothing to send\n");
+            sim_warn ("doPayloadChan nothing to send\n");
             return 1;
           }
 
@@ -1935,7 +1900,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             p -> stati = 04501;
             p -> dev_code = getbits36 (p -> DCW, 6, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
-            sim_debug (DBG_ERR, & iom_dev, "doPayloadChan expected IDCW %d (%o)\n", chan, chan);
+            sim_warn ("doPayloadChan expected IDCW %d (%o)\n", chan, chan);
             goto done;
           }
 
@@ -1956,8 +1921,8 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 // Send the DCW list's DCW
 
         d -> iomCmd (iomUnitIdx, chan);
-      if (p -> IDCW_CONTROL == 0) 
-        ptro = true; 
+        if (p -> IDCW_CONTROL == 0) 
+          ptro = true; 
       } while (! ptro);
  
 done:;
@@ -2000,16 +1965,16 @@ static int doConnectChan (uint iomUnitIdx)
         int rc = iomListService (iomUnitIdx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
         if (rc < 0)
           {
-            sim_debug (DBG_DEBUG, & iom_dev, "connect channel connect failed\n");
+            sim_warn ("connect channel connect failed\n");
             return -1;
           }
         if (uff)
           {
-            sim_debug (DBG_DEBUG, & iom_dev, "connect channel ignoring uff\n"); // XXX
+            sim_warn ("connect channel ignoring uff\n"); // XXX
           }
         if (! send)
           {
-            sim_debug (DBG_DEBUG, & iom_dev, "connect channel nothing to send\n");
+            sim_warn ("connect channel nothing to send\n");
           }
         else
           {
@@ -2213,8 +2178,7 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
                   {
                     if (devp -> units == NULL)
                       {
-                        sim_debug (DBG_ERR, & iom_dev, 
-                          "%s: Device on IOM %c channel %d dev_code %d does not have any units.\n",
+                        sim_warn ("%s: Device on IOM %c channel %d dev_code %d does not have any units.\n",
                           __func__,  'A' + iomUnitIdx, chan, dev_code);
                       }
                   }
@@ -2486,7 +2450,7 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
   {
     if (unitNum < 0 || unitNum >= (int) iom_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, "iomBoot: Invalid unit number %d\n", unitNum);
+        sim_printf ("iomBoot: Invalid unit number %d\n", unitNum);
         return SCPE_ARG;
       }
     uint iomUnitIdx = unitNum;
@@ -2535,8 +2499,6 @@ static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
     uint iomUnitIdx = IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, 
-                   "iomShowConfig: Invalid unit number %d\n", iomUnitIdx);
         sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
         return SCPE_ARG;
       }
@@ -2697,7 +2659,6 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
     uint iomUnitIdx = IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, "iomSetConfig: Invalid unit number %d\n", iomUnitIdx);
         sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
         return SCPE_ARG;
       }
@@ -2757,7 +2718,6 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
                 // all of the remaining assume a valid value in port_num
                 if (/* port_num < 0 || */ port_num > 7)
                   {
-                    sim_debug (DBG_ERR, & iom_dev, "iomSetConfig: cached PORT value out of range: %d\n", port_num);
                     sim_printf ("error: iomSetConfig: cached PORT value out of range: %d\n", port_num);
                     break;
                   } 
@@ -2787,7 +2747,6 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
               break;
 
             default:
-              sim_debug (DBG_ERR, & iom_dev, "iomSetConfig: Invalid cfgparse rc <%d>\n", rc);
               sim_printf ("error: iomSetConfig: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG; 

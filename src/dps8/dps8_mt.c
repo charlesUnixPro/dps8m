@@ -333,7 +333,7 @@ void unloadTape (uint driveNumber)
         t_stat stat = sim_tape_detach (& mt_unit [driveNumber]);
         if (stat != SCPE_OK)
           {
-            sim_printf ("%s sim_tape_detach returned %d\n", __func__, stat);
+            sim_warn ("%s sim_tape_detach returned %d\n", __func__, stat);
             return;
           }
       }
@@ -399,7 +399,7 @@ static int mtReadRecord (uint iomUnitIdx, uint chan)
         p -> stati = 04423; // EOF category EOF file mark
         if (tape_statep -> tbc != 0)
           {
-            sim_printf ("%s: Read %d bytes with EOF.\n", 
+            sim_warn ("%s: Read %d bytes with EOF.\n", 
                         __func__, tape_statep -> tbc);
           }
         tape_statep -> tbc = 0;
@@ -417,7 +417,7 @@ static int mtReadRecord (uint iomUnitIdx, uint chan)
           p -> stati = 04340; // EOT file mark
         if (tape_statep -> tbc != 0)
           {
-            sim_printf ("%s: Read %d bytes with EOM.\n", 
+            sim_warn ("%s: Read %d bytes with EOM.\n", 
                         __func__, tape_statep -> tbc);
             return 0;
           }
@@ -462,22 +462,22 @@ ddcws:;
         if (rc < 0)
           {
             p -> stati = 05001; // BUG: arbitrary error code; config switch
-            sim_printf ("%s list service failed\n", __func__);
+            sim_warn ("%s list service failed\n", __func__);
             return -1;
           }
         if (uff)
           {
-            sim_printf ("%s ignoring uff\n", __func__); // XXX
+            sim_warn ("%s ignoring uff\n", __func__); // XXX
           }
         if (! send)
           {
-            sim_printf ("%s nothing to send\n", __func__);
+            sim_warn ("%s nothing to send\n", __func__);
             p -> stati = 05001; // BUG: arbitrary error code; config switch
             return 1;
           }
         if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
           {
-            sim_printf ("%s expected DDCW\n", __func__);
+            sim_warn ("%s expected DDCW\n", __func__);
             p -> stati = 05001; // BUG: arbitrary error code; config switch
             return -1;
           }
@@ -510,7 +510,7 @@ ddcws:;
                      break;
                   }
               }
-#if 1
+#if 0
             if (tape_statep -> is9) {
               sim_printf ("<");
                 for (uint i = 0; i < tally * 4; i ++) {
@@ -540,8 +540,9 @@ ddcws:;
             else
               p -> charPos = (tape_statep -> tbc * 8) / 9 % 4;
           }
-if (p -> DDCW_22_23_TYPE != 0)
-  sim_printf ("curious... a tape read with more than one DDCW?\n");
+
+        if (p -> DDCW_22_23_TYPE != 0)
+          sim_warn ("curious... a tape read with more than one DDCW?\n");
 
       }
     while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
@@ -575,22 +576,22 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     if (rc < 0)
       {
         p -> stati = 05001; // BUG: arbitrary error code; config switch
-        sim_printf ("%s list service failed\n", __func__);
+        sim_warn ("%s list service failed\n", __func__);
         return -1;
       }
     if (uff)
       {
-        sim_printf ("%s ignoring uff\n", __func__); // XXX
+        sim_warn ("%s ignoring uff\n", __func__); // XXX
       }
     if (! send)
       {
-        sim_printf ("%s nothing to send\n", __func__);
+        sim_warn ("%s nothing to send\n", __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         return 1;
       }
     if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
       {
-        sim_printf ("%s expected DDCW\n", __func__);
+        sim_warn ("%s expected DDCW\n", __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         return -1;
       }
@@ -615,7 +616,7 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     iomIndirectDataService (iomUnitIdx, chan, buffer,
                             & tape_statep -> words_processed, false);
 
-#if 1
+#if 0
             if (tape_statep -> is9) {
               sim_printf ("<");
                 for (uint i = 0; i < tally * 4; i ++) {
@@ -683,7 +684,6 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
       return MTSE_UNATT;
 
     int ret = sim_tape_wrrecf (unitp, tape_statep -> buf, tape_statep -> tbc);
-//if (tape_statep -> is9) sim_printf ("tbc %d <%s>\n", tape_statep -> tbc, tape_statep -> buf);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_wrrecf returned %d, with tbc %d\n", ret, tape_statep -> tbc);
     // XXX put unit number in here...
 
@@ -696,17 +696,14 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
             p -> stati = 04340; // EOT file mark
             if (tape_statep -> tbc != 0)
               {
-                sim_debug (DBG_ERR, &tape_dev,
-                           "%s: Wrote %d bytes with EOM.\n",
+                sim_warn ("%s: Wrote %d bytes with EOM.\n",
                            __func__, tape_statep -> tbc);
               }
             return 0;
           }
-        sim_debug (DBG_ERR, & tape_dev,
-                   "%s: Cannot write tape: %d - %s\n",
+        sim_warn ("%s: Cannot write tape: %d - %s\n",
                    __func__, ret, simh_tape_msg(ret));
-        sim_debug (DBG_ERR, & tape_dev,
-                   "%s: Returning arbitrary error code\n",
+        sim_warn ("%s: Returning arbitrary error code\n",
                    __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         p -> chanStatus = chanStatParityErrPeriph;
@@ -725,8 +722,8 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
                "%s: Wrote %d bytes to simulated tape; status %04o\n",
                __func__, (int) tape_statep -> tbc, p -> stati);
 
-if (p -> DDCW_22_23_TYPE != 0)
-  sim_printf ("curious... a tape write with more than one DDCW?\n");
+    if (p -> DDCW_22_23_TYPE != 0)
+      sim_warn ("curious... a tape write with more than one DDCW?\n");
 
     if (sim_tape_wrp (unitp))
       p -> stati |= 1;
@@ -760,25 +757,25 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
     int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
-        sim_printf ("%s list service failed\n", __func__);
+        sim_warn ("%s list service failed\n", __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         p -> chanStatus = chanStatIncomplete;
         return -1;
       }
     if (uff)
       {
-        sim_printf ("%s ignoring uff\n", __func__); // XXX
+        sim_warn ("%s ignoring uff\n", __func__); // XXX
       }
     if (! send)
       {
-        sim_printf ("%s nothing to send\n", __func__);
+        sim_warn ("%s nothing to send\n", __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         p -> chanStatus = chanStatIncomplete;
         return -1;
       }
     if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
       {
-        sim_printf ("%s expected DDCW\n", __func__);
+        sim_warn ("%s expected DDCW\n", __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         p -> chanStatus = chanStatIncorrectDCW;
         return -1;
@@ -1075,6 +1072,7 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip Record\n");
+#if 0
             // BUG: Do we need to clear the buffer?
             // BUG? We don't check the channel data for a count
             // Get the DDCW
@@ -1117,6 +1115,7 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
 //
 
             //uint tally = p -> DDCW_TALLY;
+#endif
             uint tally = p -> IDCW_COUNT;
             if (tally == 0)
               {
@@ -1150,7 +1149,7 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
               }
             if (skipped != tally)
               {
-sim_printf ("skipped %d != tally %d\n", skipped, tally);
+                sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
             tape_statep -> rec_num += skipped;
@@ -1177,6 +1176,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip File\n");
+#if 0
             // XXX Why does this command have a DDCW?
 
             // Get the DDCW
@@ -1187,27 +1187,28 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_printf ("%s list service failed\n", __func__);
+                sim_warn ("%s list service failed\n", __func__);
                 break;
               }
             if (uff)
               {
-                sim_printf ("%s ignoring uff\n", __func__); // XXX
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
               }
             if (! send)
               {
-                sim_printf ("%s nothing to send\n", __func__);
+                sim_warn ("%s nothing to send\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
             if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
               {
-                sim_printf ("%s expected DDCW\n", __func__);
+                sim_warn ("%s expected DDCW\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
 
             //uint tally = p -> DDCW_TALLY;
+#endif
             uint tally = 1;
 
             if (tally != 1)
@@ -1225,12 +1226,12 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
             t_stat ret = sim_tape_spfilebyrecf (unitp, tally, & skipped, & recsskipped, false);
             if (ret != MTSE_OK && ret != MTSE_TMK && ret != MTSE_LEOT)
               {
-sim_printf ("sim_tape_spfilebyrecf returned %d\n", ret);
+                sim_warn ("sim_tape_spfilebyrecf returned %d\n", ret);
                  break;
               }
             if (skipped != tally)
               {
-sim_printf ("skipped %d != tally %d\n", skipped, tally);
+                sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
             tape_statep -> rec_num += recsskipped;
@@ -1267,22 +1268,22 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_printf ("%s list service failed\n", __func__);
+                sim_warn ("%s list service failed\n", __func__);
                 break;
               }
             if (uff)
               {
-                sim_printf ("%s ignoring uff\n", __func__); // XXX
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
               }
             if (! send)
               {
-                sim_printf ("%s nothing to send\n", __func__);
+                sim_warn ("%s nothing to send\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
             if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
               {
-                sim_printf ("%s expected DDCW\n", __func__);
+                sim_warn ("%s expected DDCW\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
@@ -1337,7 +1338,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
 #endif
             if (skipped != tally)
               {
-sim_printf ("skipped %d != tally %d\n", skipped, tally);
+                sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
             tape_statep -> rec_num -= skipped;
             if (unitp->flags & UNIT_WATCH)
@@ -1364,6 +1365,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace File\n");
+#if 0
             // BUG: Do we need to clear the buffer?
             // BUG? We don't check the channel data for a count
             // XXX Why does this command have a DDCW?
@@ -1376,27 +1378,28 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
-                sim_printf ("%s list service failed\n", __func__);
+                sim_warn ("%s list service failed\n", __func__);
                 break;
               }
             if (uff)
               {
-                sim_printf ("%s ignoring uff\n", __func__); // XXX
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
               }
             if (! send)
               {
-                sim_printf ("%s nothing to send\n", __func__);
+                sim_warn ("%s nothing to send\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
             if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
               {
-                sim_printf ("%s expected DDCW\n", __func__);
+                sim_warn ("%s expected DDCW\n", __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
 
             //uint tally = p -> DDCW_TALLY;
+#endif
             uint tally = 1;
 
             if (tally != 1)
@@ -1428,12 +1431,12 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
             t_stat ret = sim_tape_spfilebyrecr (unitp, tally, & skipped, & recsskipped);
             if (ret != MTSE_OK && ret != MTSE_TMK && ret != MTSE_BOT)
               {
-sim_printf ("sim_tape_spfilebyrecr returned %d\n", ret);
+                sim_warn ("sim_tape_spfilebyrecr returned %d\n", ret);
                  break;
               }
             if (skipped != tally)
               {
-sim_printf ("skipped %d != tally %d\n", skipped, tally);
+                sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
             tape_statep -> rec_num -= recsskipped;
@@ -1498,16 +1501,13 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOM: %s\n", __func__, simh_tape_msg (ret));
                     p -> stati = 04340; // EOT file mark
-                    sim_debug (DBG_ERR, &tape_dev,
-                               "%s: Wrote tape mark with EOM.\n", 
+                    sim_warn ("%s: Wrote tape mark with EOM.\n", 
                                __func__);
                     break;
                   }
-                sim_debug (DBG_ERR, & tape_dev,
-                           "%s: Cannot write tape mark: %d - %s\n",
+                sim_warn ("%s: Cannot write tape mark: %d - %s\n",
                            __func__, ret, simh_tape_msg(ret));
-                sim_debug (DBG_ERR, & tape_dev,
-                           "%s: Returning arbitrary error code\n",
+                sim_warn ("%s: Returning arbitrary error code\n",
                            __func__);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 p -> chanStatus = chanStatParityErrPeriph;
@@ -1565,7 +1565,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
 
         case 063:              // CMD 063 -- Set File Permit.
           {
-            sim_debug (DBG_ERR, & tape_dev, "Set file permit?\n");
+            sim_debug (DBG_WARN, & tape_dev, "Set file permit?\n");
             p -> stati = 04000;
             if (sim_tape_wrp (unitp))
               p -> stati |= 1;
@@ -1636,24 +1636,21 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                           MT_UNIT_NUM (unitp));
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Rewind/unload\n", __func__);
-//sim_printf ("unloading\n");
             sim_tape_detach (unitp);
             //tape_statep -> rec_num = 0;
             p -> stati = 04000;
-    send_special_interrupt (cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
-                            cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
-                            cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
-                            0, 0040 /* unload complete */);
+            send_special_interrupt (cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
+                                    cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
+                                    cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
+                                    0, 0040 /* unload complete */);
           }
           break;
    
         default:
           {
             p -> stati = 04501;
-            sim_debug (DBG_ERR, & tape_dev,
-                       "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
             p -> chanStatus = chanStatIncorrectDCW;
-sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+            sim_warn ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
             break;
           }
       } // IDCW_DEV_CMD
@@ -1677,130 +1674,6 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 
 
 
-#if 0
-static int mt_io_cmd (uint iomUnitIdx, uint chan)
-  {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
-    UNIT * unitp = & mt_unit [devUnitIdx];
-    struct tape_state * tape_statep = & tape_states [devUnitIdx];
-sim_printf ("mt_io_cmd mode %d\n", tape_statep -> io_mode);
-
-    if (tape_statep -> io_mode == read_mode)
-      {
-sim_printf ("read_mode\n");
-        uint tally = p -> DDCW_TALLY;
-        uint daddr = p -> DDCW_ADDR;
-        if (tally == 0)
-          {
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "%s: Tally of zero interpreted as 010000(4096)\n",
-                       __func__);
-            tally = 4096;
-          }
-
-        sim_debug (DBG_DEBUG, & tape_dev,
-                   "%s: Tally %d (%o)\n", __func__, tally, tally);
-        if (p -> PCW_63_PTP)
-          {
-sim_printf ("read PCW_63_PTP\n");
-            word36 buffer [tally];
-            uint i;
-            for (i = 0; i < tally; i ++)
-              {
-                int rc;
-                if (tape_statep -> is9)
-                  rc = extractASCII36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
-                else
-                  rc = extractWord36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
-                if (rc)
-                  {
-                    // BUG: There isn't another word to be read from the tape buffer,
-                    // but the IOM wants  another word.
-                    // BUG: How did this tape hardware handle an attempt to read more
-                    // data than was present?
-                    // One answer is in bootload_tape_label.alm which seems to assume
-                    // a 4000 all-clear status.
-                    // Boot_tape_io.pl1 seems to assume that "short reads" into an
-                    // over-large buffer should not yield any error return.
-                    // So we'll set the flags to all-ok, but return an out-of-band
-                    // non-zero status to make the iom stop.
-                    // BUG: See some of the IOM status fields.
-                    // BUG: The IOM should be updated to return its DCW tally residue
-                    // to the caller.
-                    p -> stati = 04000;
-                    if (sim_tape_wrp (unitp))
-                      p -> stati |= 1;
-                    sim_debug (DBG_WARN, & tape_dev,
-                               "%s: Read buffer exhausted on channel %d\n",
-                               __func__, chan);
-                    break;
-                  }
-              }
-            p -> tallyResidue = tally - i;
-if (tape_statep -> is9) sim_printf ("words %d %012llo %12llo\n", tape_statep -> words_processed, buffer [0], buffer [1]);
-            xindirectDataService (iomUnitIdx, chan, daddr, tape_statep -> words_processed, buffer,
-                                 idsTypeW36, true, & p -> isOdd);
-          }
-        else
-          {
-sim_printf ("read !PCW_63_PTP\n");
-            p -> tallyResidue = tally;
-sim_printf ("read tally %u tbc %u\n", tally, tape_statep -> tbc);
-{for (int i = 0; i < 32; i ++) sim_printf (" %03o", tape_statep -> buf [i]); sim_printf ("\n");}
-            while (tally)
-              {
-                // read
-                word36 w;
-                int rc;
-                if (tape_statep -> is9)
-                  rc = extractASCII36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, & w);
-                else
-                  rc = extractWord36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, & w);
-                if (rc)
-                  {
-                    p -> stati = 04000;
-                    if (sim_tape_wrp (unitp))
-                      p -> stati |= 1;
-                    sim_debug (DBG_WARN, & tape_dev,
-                               "%s: Read buffer exhausted on channel %d\n",
-                               __func__, chan);
-                    break;
-                  }
-sim_printf ("  %08o %012llo  %d\n", daddr, w, tape_statep -> words_processed);
-                xcore_write (daddr, w, __func__);
-                p -> isOdd = daddr % 2;
-                daddr ++;
-                tally --;
-                p -> tallyResidue --;
-              }
-          }
-        p -> stati = 04000; // BUG: do we need to detect end-of-record?
-        if (sim_tape_wrp (unitp))
-          p -> stati |= 1;
-
-        sim_debug (DBG_INFO, & tape_dev,
-                   "%s: Read %d bytes from simulated tape; status %04o\n",
-                   __func__, (int) tape_statep -> tbc, p -> stati);
-        return 0;
-      }
-  }
-#endif
-
-        //        2 survey_data,
-        //          3 handler (16) unaligned,
-        //            4 pad1 bit (1),               // 0
-        //            4 reserved bit (1),           // 1
-        //            4 operational bit (1),        // 2
-        //            4 ready bit (1),              // 3
-        //            4 number uns fixed bin (5),   // 4-8
-        //            4 pad2 bit (1),               // 9
-        //            4 speed uns fixed bin (3),    // 10-12
-        //            4 nine_track bit (1),         // 13
-        //            4 density uns fixed bin (4);  // 14-17
-        
 /*
  * mt_iom_cmd()
  *
@@ -1820,7 +1693,7 @@ int mt_iom_cmd (uint iomUnitIdx, uint chan)
       }
     else // DDCW/TDCW
       {
-        sim_printf ("%s expected IDCW\n", __func__);
+        sim_warn ("%s expected IDCW\n", __func__);
         return -1;
       }
     return 0;
@@ -1956,7 +1829,7 @@ t_stat attachTape (char * label, bool withring, char * drive)
         sim_printf ("can't find device named %s\n", drive);
         return SCPE_ARG;
       }
-sim_printf ("attachTape selected unit %d\n", i);
+    sim_printf ("attachTape selected unit %d\n", i);
     loadTape (i, label, ! withring);
     return SCPE_OK;
   }
