@@ -138,13 +138,9 @@ DEVICE prt_dev = {
 #define MAX_DEV_NAME_LEN 64
 static struct prt_state
   {
-    enum { no_mode, print_editted_mode, ignore_mode } io_mode;
     char device_name [MAX_DEV_NAME_LEN];
     int prtfile; // fd
-    bool last;
-    int chan;
-    uint mask;
-    uint ext;
+    //bool last;
   } prt_state [N_PRT_UNITS_MAX];
 
 /*
@@ -433,7 +429,13 @@ sim_printf ("\n");
                         const uint8 newlines [128] = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
                         i ++;
                         uint8 n = bytes [i] & 0177;
-                        write (prt_state [prt_unit_num] . prtfile, newlines, n);
+                        if (n)
+                          write (prt_state [prt_unit_num] . prtfile, newlines, n);
+                        else
+                          {
+                            const uint cr = '\r';
+                            write (prt_state [prt_unit_num] . prtfile, & cr, 1);
+                          }
                       }
                     else if (ch == 014) // slew
                       {
@@ -459,10 +461,10 @@ sim_printf ("\n");
 #else
                 if (eoj (buffer, tally))
                   {
-                    sim_printf ("prt end of job\n");
+                    //sim_printf ("prt end of job\n");
                     close (prt_state [prt_unit_num] . prtfile);
                     prt_state [prt_unit_num] . prtfile = -1;
-                    prt_state [prt_unit_num] . last = false;
+                    //prt_state [prt_unit_num] . last = false;
                   }
 #endif
             } // for (ddcwIdx)
@@ -537,7 +539,7 @@ static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
     int n = PRT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_PRT_UNITS_MAX)
       return SCPE_ARG;
-    sim_printf("Card reader device name is %s\n", prt_state [n] . device_name);
+    sim_printf("Printer device name is %s\n", prt_state [n] . device_name);
     return SCPE_OK;
   }
 
