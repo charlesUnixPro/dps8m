@@ -1832,7 +1832,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
     p -> chanStatus = chanStatNormal;
 
 // Send the PCW's DCW
-
+    //sim_printf ("PCW chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
     int rc = d -> iomCmd (iomUnitIdx, chan);
 
 //
@@ -1870,6 +1870,15 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         p -> dev_code = getbits36 (p -> DCW, 6, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
         sim_warn ("doPayloadChan handler error\n");
+        goto done;
+      }
+
+// The boot tape loader sends PCWs with control == 0 when it shouldn't
+
+    //if (p -> IDCW_CONTROL == 0)
+    if (p -> IDCW_CONTROL == 0 && d -> type != DEVT_TAPE)
+      {
+        //sim_printf ("ctrl == 0 in chan %d (%o) PCW\n", chan, chan);
         goto done;
       }
 
