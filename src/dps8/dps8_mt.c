@@ -7,6 +7,8 @@
 */
 
 #include <stdio.h>
+#include <ctype.h>
+
 #include "dps8.h"
 #include "dps8_mt.h"
 #include "dps8_sys.h"
@@ -508,6 +510,21 @@ ddcws:;
                      break;
                   }
               }
+#if 1
+            if (tape_statep -> is9) {
+              sim_printf ("<");
+                for (uint i = 0; i < tally * 4; i ++) {
+                uint wordno = i / 4;
+                uint charno = i % 4;
+                uint ch = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
+                if (isprint (ch))
+                  sim_printf ("%c", ch);
+                else
+                  sim_printf ("\\%03o", ch);
+              }
+                sim_printf (">\n");
+            }
+#endif
             iomIndirectDataService (iomUnitIdx, chan, buffer,
                                     & tape_statep -> words_processed, true);
             if (p -> tallyResidue)
@@ -598,6 +615,21 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     iomIndirectDataService (iomUnitIdx, chan, buffer,
                             & tape_statep -> words_processed, false);
 
+#if 1
+            if (tape_statep -> is9) {
+              sim_printf ("<");
+                for (uint i = 0; i < tally * 4; i ++) {
+                uint wordno = i / 4;
+                uint charno = i % 4;
+                uint ch = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
+                if (isprint (ch))
+                  sim_printf ("%c", ch);
+                else
+                  sim_printf ("\\%03o", ch);
+              }
+                sim_printf (">\n");
+            }
+#endif
 // XXX char_pos ??
 
     if (tape_statep -> is9)
@@ -651,7 +683,7 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
       return MTSE_UNATT;
 
     int ret = sim_tape_wrrecf (unitp, tape_statep -> buf, tape_statep -> tbc);
-if (tape_statep -> is9) sim_printf ("tbc %d <%s>\n", tape_statep -> tbc, tape_statep -> buf);
+//if (tape_statep -> is9) sim_printf ("tbc %d <%s>\n", tape_statep -> tbc, tape_statep -> buf);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_wrrecf returned %d, with tbc %d\n", ret, tape_statep -> tbc);
     // XXX put unit number in here...
 
@@ -686,8 +718,8 @@ if (tape_statep -> is9) sim_printf ("tbc %d <%s>\n", tape_statep -> tbc, tape_st
                   MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
     p -> stati = 04000;
-    if (sim_tape_eot (unitp))
-      p -> stati |= 0340;
+    //if (sim_tape_eom (unitp))
+      //p -> stati |= 0340;
 
     sim_debug (DBG_INFO, & tape_dev,
                "%s: Wrote %d bytes to simulated tape; status %04o\n",
@@ -840,6 +872,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
     if (p -> IDCW_DEV_CODE == 0 /* && p -> IDCW_DEV_CMD == 05 */)
         p -> IDCW_DEV_CODE = boot_drive;
 
+    sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CODE %d\n", p -> IDCW_DEV_CODE);
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
@@ -857,8 +890,8 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Request status: %04o\n", __func__, p -> stati);
           }
@@ -1030,8 +1063,8 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, p -> stati);
@@ -1083,7 +1116,8 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
 //     else idcw.count = bit (bin (count, 6), 6);
 //
 
-            uint tally = p -> DDCW_TALLY;
+            //uint tally = p -> DDCW_TALLY;
+            uint tally = p -> IDCW_COUNT;
             if (tally == 0)
               {
                 sim_debug (DBG_DEBUG, & tape_dev,
@@ -1134,8 +1168,87 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
+          }
+          break;
+
+        case 045: // 047 Forward Skip File
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "mt_cmd: Forward Skip File\n");
+            // XXX Why does this command have a DDCW?
+
+            // Get the DDCW
+
+            bool ptro, send, uff;
+
+            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                sim_printf ("%s list service failed\n", __func__);
+                break;
+              }
+            if (uff)
+              {
+                sim_printf ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_printf ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_printf ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            //uint tally = p -> DDCW_TALLY;
+            uint tally = 1;
+
+            if (tally != 1)
+              {
+                sim_debug (DBG_DEBUG, & tape_dev,
+                           "%s: Forward space file: setting tally %d to 1\n",
+                           __func__, tally);
+                tally = 1;
+              }
+
+            sim_debug (DBG_DEBUG, & tape_dev, 
+                       "mt_iom_cmd: Forward space file tally %d\n", tally);
+
+            uint32 skipped, recsskipped;
+            t_stat ret = sim_tape_spfilebyrecf (unitp, tally, & skipped, & recsskipped, false);
+            if (ret != MTSE_OK && ret != MTSE_TMK && ret != MTSE_LEOT)
+              {
+sim_printf ("sim_tape_spfilebyrecf returned %d\n", ret);
+                 break;
+              }
+            if (skipped != tally)
+              {
+sim_printf ("skipped %d != tally %d\n", skipped, tally);
+              }
+
+            tape_statep -> rec_num += recsskipped;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld forward skips to record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
+            p -> tallyResidue = tally - skipped;
+            sim_debug (DBG_NOTIFY, & tape_dev, 
+                       "mt_iom_cmd: Forward space %d files\n", tally);
+
+            p -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              p -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              p -> stati |= 2;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
           }
           break;
 
@@ -1143,6 +1256,7 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace Record\n");
+#if 0
             // BUG: Do we need to clear the buffer?
             // BUG? We don't check the channel data for a count
             // Get the DDCW
@@ -1172,9 +1286,10 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
+            //uint tally = p -> DDCW_TALLY;
+#endif
 
-
-            uint tally = p -> DDCW_TALLY;
+            uint tally = p -> IDCW_COUNT;
 
             if (tally == 0)
               {
@@ -1240,8 +1355,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
           }
           break;
 
@@ -1281,7 +1396,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                 break;
               }
 
-            uint tally = p -> DDCW_TALLY;
+            //uint tally = p -> DDCW_TALLY;
+            uint tally = 1;
 
             if (tally != 1)
               {
@@ -1335,8 +1451,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
           }
           break;
 
@@ -1354,8 +1470,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset device status: %o\n", __func__, p -> stati);
           }
@@ -1404,8 +1520,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
                           MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> stati = 04000; 
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
 
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Wrote tape mark; status %04o\n",
@@ -1426,8 +1542,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Set 800 bpi\n", __func__);
           }
@@ -1440,8 +1556,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Set 556 bpi\n", __func__);
           }
@@ -1465,8 +1581,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Set 200 bpi\n", __func__);
           }
@@ -1479,8 +1595,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Set 1600 CPI\n", __func__);
           }
@@ -1501,8 +1617,8 @@ sim_printf ("skipped %d != tally %d\n", skipped, tally);
               p -> stati |= 1;
             if (sim_tape_bot (unitp))
               p -> stati |= 2;
-            if (sim_tape_eot (unitp))
-              p -> stati |= 0340;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
             //rewindDoneUnit . u3 = mt_unit_num;
             //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
             send_special_interrupt (cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
