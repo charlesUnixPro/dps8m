@@ -1699,7 +1699,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
       }
     else
      {
-       sim_printf ("bogus fnp command %d (%o)\n", command, command);
+       sim_warn ("bogus fnp command %d (%o)\n", command, command);
        ok = false;
      }
 
