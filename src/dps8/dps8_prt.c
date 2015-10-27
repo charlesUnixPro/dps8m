@@ -141,6 +141,7 @@ static struct prt_state
     char device_name [MAX_DEV_NAME_LEN];
     int prtfile; // fd
     //bool last;
+    bool cachedFF;
   } prt_state [N_PRT_UNITS_MAX];
 
 /*
@@ -167,13 +168,92 @@ static t_stat prt_reset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-static void openPrtFile (int prt_unit_num)
+// Given an array of word36 and a 9bit char offset, return the char
+
+static word9 gc (word36 * b, uint os)
   {
+    uint wordno = os / 4;
+    uint charno = os % 4;
+    return (word9) getbits36 (b [wordno], charno * 9, 9);
+  }
+
+// Don't know what the longest user id is...
+#define LONGEST 128
+
+// looking for space/space/5 digit number/\037/\005/name/\037
+// qno will get 5 chars + null;
+
+//  040040061060 060060062037 005101156164 150157156171 056123171163 101144155151 156056141037 145061060060 060062013002
+// <  10002\037\005Anthony.SysAdmin.a\037e10002\013\002>
+//  01234567   8   9
+static int parseID (word36 * b, uint tally, char * qno, char * name)
+  {
+    if (tally < 3)
+      return 0;
+    if (gc (b, 0) != 040)
+      return 0;
+    if (gc (b, 1) != 040)
+      return 0;
+    uint i;
+    for (i = 0; i < 5; i ++)
+      {
+        word9 ch = gc (b, 2 + i);
+        if (ch < '0' || ch > '9')
+          return 0;
+        qno [i] = ch;
+      }
+    qno [5] = 0;
+    if (gc (b, 7) != 037)
+      return 0;
+    //if (gc (b, 8) != 005)
+      //return 0;
+    for (i = 0; i < LONGEST; i ++)
+      {
+        word9 ch = gc (b, 9 + i);
+        if (ch == 037)
+          break;
+        if (! isprint (ch))
+          return 0;
+        name [i] = ch;
+      }
+    name [i] = 0;
+    return 1;
+  }
+
+
+static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
+  {
+//sim_printf ("openPrtFile\n");
     if (prt_state [prt_unit_num] . prtfile != -1)
       return;
-    char template [129];
-    sprintf (template, "prt%c.spool.XXXXXX", 'a' + prt_unit_num - 1);
+
+// The first (spooled) write is a formfeed; special case it and delay opening until
+// the next line
+
+//sim_printf ("openPrtFile 2 %012llo\n", buffer [0]);
+    if (tally == 1 && buffer [0] == 0014013000000llu)
+      {
+        prt_state [prt_unit_num] . cachedFF = true;
+        return;
+      }
+
+    char qno [5], name [LONGEST + 1];
+    int rc = parseID (buffer, tally, qno, name);
+    char template [129 + LONGEST];
+    if (rc == 0)
+      sprintf (template, "prt%c.spool.XXXXXX", 'a' + prt_unit_num - 1);
+    else
+      sprintf (template, "prt%c.spool.%s.%s.XXXXXX", 'a' + prt_unit_num - 1, qno, name);
     prt_state [prt_unit_num] . prtfile = mkstemp (template);
+    if (prt_state [prt_unit_num] . cachedFF)
+      {
+        // 014 013 is slew to 013 (top of odd page?); just do a ff
+        //char cache [2] = {014, 013};
+        //write (prt_state [prt_unit_num] . prtfile, & cache, 2);
+        char cache = '\f';
+        write (prt_state [prt_unit_num] . prtfile, & cache, 1);
+        prt_state [prt_unit_num] . cachedFF = false;
+      }
   }
 
 // looking for lines "\037\014%%%%%\037\005"
@@ -404,7 +484,7 @@ sim_printf ("\n");
 #endif
 
                 if (prt_state [prt_unit_num] . prtfile == -1)
-                  openPrtFile (prt_unit_num);
+                  openPrtFile (prt_unit_num, buffer, tally);
 
                 uint8 bytes [tally * 4];
                 for (uint i = 0; i < tally * 4; i ++)
@@ -484,7 +564,7 @@ sim_printf ("\n");
 
         default:
           {
-sim_printf ("prt daze %o\n", p -> IDCW_DEV_CMD);
+            sim_warn ("prt daze %o\n", p -> IDCW_DEV_CMD);
             p -> stati = 04501; // cmd reject, invalid opcode
             p -> chanStatus = chanStatIncorrectDCW;
           }
