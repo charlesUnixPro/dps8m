@@ -17,10 +17,6 @@
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
 
-//-- // XXX We use this where we assume there is only one unit
-//-- #define ASSUME0 0
-//-- 
- 
 /*
  Copyright (c) 2007-2013 Michael Mondy
  
@@ -39,28 +35,26 @@ static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, char * cptr, void * d
 static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
 
-static t_stat crdrdr_svc (UNIT *);
-
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
   {
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& crdrdr_svc, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define CRDRDR_UNIT_NUM(uptr) ((uptr) - crdrdr_unit)
@@ -143,17 +137,19 @@ static struct crdrdr_state
     char device_name [MAX_DEV_NAME_LEN];
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
-static int findCrdrdrUnit (int iomUnitNum, int chan_num, int dev_code)
+#if 0
+static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables -> cablesFromIomToCrdRdr [i] . iomUnitNum &&
+        if (iomUnitIdx == cables -> cablesFromIomToCrdRdr [i] . iomUnitIdx &&
             chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
             dev_code     == cables -> cablesFromIomToCrdRdr [i] . dev_code)
           return i;
       }
     return -1;
   }
+#endif 
 
 /*
  * crdrdr_init()
@@ -295,27 +291,25 @@ UNUSED static void asciiToH (char * str, uint * hstr)
       }
  }
 
+#ifdef IOM2
 static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
     //struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
     * disc = false;
 
     int chan = pcwp-> chan;
 sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
-    if (chan_data -> ptp)
-      sim_printf ("PTP in crdrdr\n");
-    chan_data -> stati = 0;
+    iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
+    p -> stati = 0;
 
     switch (pcwp -> dev_cmd)
       {
         case 000: // CMD 00 Request status
           {
-            chan_data -> stati = 04000;
+            p -> stati = 04000;
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status %d\n", crdrdr_unit_num);
-            chan_data -> initiate = true;
           }
           break;
 
@@ -324,21 +318,21 @@ sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary %d\n", crdrdr_unit_num);
             // Get the DDCW
             dcw_t dcw;
-            int rc = iomListService (iomUnitNum, chan, & dcw, NULL);
+            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
 
             if (rc)
               {
                 sim_printf ("list service failed\n");
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncomplete;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncomplete;
                 break;
               }
 //sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncorrectDCW;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 
@@ -356,8 +350,8 @@ sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
             else
               {
 sim_printf ("uncomfortable with this\n");
-                chan_data -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                chan_data -> chanStatus = chanStatIncorrectDCW;
+                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
+                p -> chanStatus = chanStatIncorrectDCW;
                 break;
               }
 #if 0
@@ -389,52 +383,25 @@ sim_printf ("tally %d\n", tally);
 w=i;
 #endif
                 store_abs_word (daddr + i, w, "Card reader read");
-                chan_data -> isOdd = (daddr + i) % 2;
               }
 //for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
-            chan_data -> stati = 04000;
-            chan_data -> tallyResidue = tally;
+            p -> stati = 04000;
+            p -> initiate = false;
+            p -> tallyResidue = tally;
 
+#if 0
 // hopper empty
-            chan_data -> stati = 04201;
-            status_service (iomUnitNum, pcwp -> chan, false);
+            p -> stati = 04201;
+            status_service (iomUnitIdx, pcwp -> chan, false);
+#endif
           }
           break;
 
-
-
-
-
-
-
-
-
-
-
-
-// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
-//   (
-//   2 t bit (1),              /* set to "1"b by IOM */
-//   2 power bit (1),          /* non-zero if peripheral absent or power off */
-//   2 major bit (4),          /* major status */
-//   2 sub bit (6),            /* substatus */
-//   2 eo bit (1),             /* even/odd bit */
-//   2 marker bit (1),         /* non-zero if marker status */
-//   2 soft bit (2),           /* software status */
-//   2 initiate bit (1),       /* initiate bit */
-//   2 abort bit (1),          /* software abort bit */
-//   2 channel_stat bit (3),   /* IOM channel status */
-//   2 central_stat bit (3),   /* IOM central status */
-//   2 mbz bit (6),
-//   2 rcount bit (6)
-//   ) unaligned;              /* record count residue */
-
         case 040: // CMD 40 Reset status
           {
-            chan_data -> stati = 04000;
+            p -> stati = 04000;
             //crdrdr_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status %d\n", crdrdr_unit_num);
-            chan_data -> initiate = true;
           }
           break;
 
@@ -443,25 +410,130 @@ w=i;
         default:
           {
 sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
-            chan_data -> stati = 04501; // cmd reject, invalid opcode
-            chan_data -> chanStatus = chanStatIncorrectDCW;
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
           }
           break;
       
       }
+    return 0;
+  }
+#endif
 
+static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
+
+// XXX fake the read
+
+    // 20 is 80 char / 4 chars/word
+    uint cnt = 20;
+    word36 buffer [cnt];
+    for (uint i = 0; i < cnt; i ++)
+      {
+       word36 w = 0101102103014 + i; // "ABC[DEF...]"
+       buffer [i] = w;
+     }
+
+    p -> stati = 04000;
+    p -> initiate = false;
+
+// Process DDCWs
+
+    bool ptro, send, uff;
+    do
+      {
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            sim_printf ("%s list service failed\n", __func__);
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("%s ignoring uff\n", __func__); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("%s nothing to send\n", __func__);
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("%s expected DDCW\n", __func__);
+            p -> stati = 05001; // BUG: arbitrary error code; config switch
+            return -1;
+          }
+
+       iomIndirectDataService (iomUnitIdx, chan, buffer,
+                               & cnt, true);
+
+        p -> charPos = 0;
+if (p -> DDCW_22_23_TYPE != 0)
+  sim_printf ("curious... a tape read with more than one DDCW?\n");
+
+      }
+    while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
     return 0;
   }
 
-int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+#if 0
+// hopper empty
+            p -> stati = 04201;
+            status_service (iomUnitIdx, pcwp -> chan, false);
+#endif
+
+static int crdrdr_cmd (uint iomUnitIdx, uint chan)
   {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+
+
+    switch (p -> IDCW_DEV_CMD)
+      {
+        case 000: // CMD 00 Request status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status\n");
+          }
+          break;
+
+        case 001: // CMD 01 Read binary
+          {
+            int rc = crdrdrReadRecord (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status\n");
+          }
+          break;
+
+        default:
+          {
+sim_printf ("crdrdr daze %o\n", p -> IDCW_DEV_CMD);
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
+          }
+          break;
+      }
+    return 0;
+  }
+
+#ifdef IOM2
     int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitNum;
+    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
+    // uint chanloc = mbx_loc (iomUnitIdx, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -490,7 +562,7 @@ int crdrdr_iom_cmd (UNIT * unitp, pcw_t * pcwp)
       {
 sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
+        int rc = iomListService (iomUnitIdx, pcwp -> chan, & dcw, & ptro);
         if (rc)
           {
 sim_printf ("list service denies!\n");
@@ -500,25 +572,25 @@ sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
 // 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-            chan_data -> stati = 04501; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
+            iomChannelData_ * p = & iomChannelData [iomUnitIdx] [pcwp -> chan];
+            p -> stati = 04501; 
+            p -> dev_code = dcw . fields . instr. dev_code;
+            p -> chanStatus = chanStatInvalidInstrPCW;
+            //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }
 
 // The dcw does not necessarily have the same dev_code as the pcw....
 
-        crdrdr_unit_num = findCrdrdrUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
+        crdrdr_unit_num = findCrdrdrUnit (iomUnitIdx, pcwp -> chan, dcw . fields . instr. dev_code);
         if (crdrdr_unit_num < 0)
           {
 // 04502 : COMMAND REJECTED, invalid device code
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-            chan_data -> stati = 04502; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
+            iomChannelData_ * p = & iomChannelData [iomUnitIdx] [pcwp -> chan];
+            p -> stati = 04502; 
+            p -> dev_code = dcw . fields . instr. dev_code;
+            p -> chanStatus = chanStatInvalidInstrPCW;
+            //status_service (iomUnitIdx, pcwp -> chan, false);
             break;
           }
         unitp = & crdrdr_unit [crdrdr_unit_num];
@@ -526,21 +598,24 @@ sim_printf ("persuing got type %d\n", dcw . type);
         ctrl = dcw . fields . instr . control;
       }
 sim_printf ("crdrdr interrupts\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
-
-    return 1;
-  }
-
-static t_stat crdrdr_svc (UNIT * unitp)
+    send_terminate_interrupt (iomUnitIdx, pcwp -> chan);
+#endif
+int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    int crdrdrUnitNum = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . iomUnitNum;
-    int chanNum = cables -> cablesFromIomToCrdRdr [crdrdrUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
-    crdrdr_iom_cmd (unitp, pcwp);
-    return SCPE_OK;
-  }
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+// Is it an IDCW?
 
+    if (p -> DCW_18_20_CP == 7)
+      {
+        crdrdr_cmd (iomUnitIdx, chan);
+      }
+    else // DDCW/TDCW
+      {
+        sim_printf ("%s expected IDCW\n", __func__);
+        return -1;
+      }
+    return 0;
+  }
 
 static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
@@ -585,7 +660,7 @@ static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
 
 void crdrdrCardReady (int unitNum)
   {
-    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitNum,
+    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
                             cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
                             cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
                             0000, 0001 /* tape drive to ready */);

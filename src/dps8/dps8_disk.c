@@ -19,9 +19,6 @@
 #include "dps8_cable.h"
 #include "sim_disk.h"
 
-//-- // XXX We use this where we assume there is only one unit
-//-- #define ASSUME0 0
-//-- 
 /*
  disk.c -- disk drives
  
@@ -32,6 +29,34 @@
  See the LICENSE file at the top-level directory of this distribution and
  at http://example.org/project/LICENSE.
  */
+
+
+//
+// A possible disk data packing algoritim
+//
+// Currently sectors are 512 * word36. Word36 is 64bits; that 56% utilization,
+// A computationally effectent packing would improve disk throughput and storage
+// efficency
+//
+//     word36 in [512]
+//     struct dsksec
+//       {
+//         uint32 low32 [512];
+//         uint8 high4 [512];
+//       } out;
+//     uint32 * map = (uint32 *) in;
+//     uint8 * highmap = (uint8 *) in;
+//
+//     for (uint i = 0; i < 512; i ++)
+//       {
+//         out . low32 [i] = map [i * 2];
+//         out . high4 [i] = (uint8) (map [i * 2 + 1]);
+//       }
+//
+// This 36/40 -- 90% utilization; at the cost of the scatter/gather and
+// the cost of emulated disk sectors size not a multilple of host disk
+// sector size.
+//
 
 
 // assuming 512 word36  sectors; and seekPosition is seek512
@@ -128,30 +153,27 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-//static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
-
-static t_stat disk_svc (UNIT *);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
 UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (& disk_svc, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
@@ -222,22 +244,21 @@ static struct disk_state
   {
     enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
     uint seekPosition;
-    int chan;
-    uint mask;
-    uint ext;
   } disk_states [N_DISK_UNITS_MAX];
 
-static int findDiskUnit (int iomUnitNum, int chan_num, int dev_code)
+#if 0
+static int findDiskUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
       {
-        if (iomUnitNum == cables -> cablesFromIomToDsk [i] . iomUnitNum &&
+        if (iomUnitIdx == cables -> cablesFromIomToDsk [i] . iomUnitIdx &&
             chan_num     == cables -> cablesFromIomToDsk [i] . chan_num     &&
             dev_code     == cables -> cablesFromIomToDsk [i] . dev_code)
           return i;
       }
     return -1;
   }
+#endif
 
 /*
  * disk_init()
@@ -261,187 +282,58 @@ static t_stat disk_reset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
+static int diskSeek512 (uint iomUnitIdx, uint chan)
   {
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
-    struct disk_state * disk_statep = & disk_states [disk_unit_num];
-    * disc = false;
-
-// init_toehold.pl1:
-/* write command = "31"b3; read command = "25"b3 */
-//  pcw.command = "40"b3;                      /* reset status */
-
-    int chan = pcwp-> chan;
-
-    disk_statep -> chan = pcwp -> chan;
-    disk_statep -> mask = pcwp -> mask;
-    disk_statep -> ext = pcwp -> ext;
-
-//sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [chan];
-    if (chan_data -> ptp)
-      sim_err ("PTP in disk\n");
-    chan_data -> stati = 0;
-
-    switch (pcwp -> dev_cmd)
-      {
-        case 000: // CMD 00 Request status
-          {
-            chan_data -> stati = 04000;
-            disk_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & disk_dev, "Request status %d\n", disk_unit_num);
-            chan_data -> initiate = true;
-            * disc = true;
-          }
-          break;
-
-        case 022: // CMD 22 Read Status Resgister
-          {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Read Status Register %d\n", disk_unit_num);
-            disk_statep -> io_mode = request_status_mode;
-            chan_data -> initiate = true;
-            chan_data -> stati = 04000;
-          }
-          break;
-
-        case 025: // CMD 25 READ
-          {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", disk_unit_num);
-//sim_printf ("disk read [%lld]\n", sim_timell ());
-            disk_statep -> io_mode = read_mode;
-            chan_data -> initiate = true;
-            chan_data -> stati = 04000;
-          }
-          break;
-
-        case 030: // CMD 30 SEEK_512
-          {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", disk_unit_num);
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%lld]\n", sim_timell ());
-            disk_statep -> io_mode = seek512_mode;
-            chan_data -> initiate = true;
-          }
-          break;
+    disk_statep -> io_mode = seek512_mode;
 
-        case 031: // CMD 31 WRITE
-          {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", disk_unit_num);
-            chan_data -> isRead = false;
-            disk_statep -> io_mode = write_mode;
-            chan_data -> initiate = true;
-//sim_printf ("disk write [%lld]\n", sim_timell ());
-            chan_data -> stati = 04000;
-          }
-//exit(1);
-          break;
+// Process DDCW
 
-        case 034: // CMD 34 SEEK
-          {
-//sim_printf ("disk seek [%lld]\n", sim_timell ());
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", disk_unit_num);
-            disk_statep -> io_mode = seek_mode;
-            chan_data -> initiate = true;
-          }
-          break;
-
-// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
-//   (
-//   2 t bit (1),              /* set to "1"b by IOM */
-//   2 power bit (1),          /* non-zero if peripheral absent or power off */
-//   2 major bit (4),          /* major status */
-//   2 sub bit (6),            /* substatus */
-//   2 eo bit (1),             /* even/odd bit */
-//   2 marker bit (1),         /* non-zero if marker status */
-//   2 soft bit (2),           /* software status */
-//   2 initiate bit (1),       /* initiate bit */
-//   2 abort bit (1),          /* software abort bit */
-//   2 channel_stat bit (3),   /* IOM channel status */
-//   2 central_stat bit (3),   /* IOM central status */
-//   2 mbz bit (6),
-//   2 rcount bit (6)
-//   ) unaligned;              /* record count residue */
-
-        case 040: // CMD 40 Reset status
-          {
-            chan_data -> stati = 04000;
-            disk_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", disk_unit_num);
-            chan_data -> initiate = true;
-            * disc = true;
-          }
-          break;
-
-        case 042: // CMD 42 RESTORE
-          {
-            sim_debug (DBG_NOTIFY, & disk_dev, "Restore %d\n", disk_unit_num);
-            disk_statep -> io_mode = no_mode;
-            chan_data -> stati = 04000;
-            * disc = true;
-          }
-          break;
-
-        default:
-          {
-sim_printf ("disk daze %o\n", pcwp -> dev_cmd);
-            chan_data -> stati = 04501; // cmd reject, invalid opcode
-            disk_statep -> io_mode = no_mode;
-            chan_data -> chanStatus = chanStatIncorrectDCW;
-            * disc = true;
-          }
-          break;
-      
-      }
-    //status_service (iomUnitNum, chan, false);
-
-    return 0;
-  }
-
-static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
-  {
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
-
-    struct disk_state * disk_statep = & disk_states [disk_unit_num];
-    iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [disk_statep -> chan];
-    switch (disk_statep -> io_mode)
+    bool ptro, send, uff;
+    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    if (rc < 0)
       {
-        case no_mode:
-          {
-            sim_debug (DBG_ERR, & disk_dev, "DDCW when io_mode == no_mode\n");
-            chan_data -> stati = 05001; // BUG: arbitrary error code; config switch
-            chan_data -> chanStatus = chanStatIncorrectDCW;
-          }
-          break;
+        sim_printf ("diskSeek512 list service failed\n");
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("diskSeek512 ignoring uff\n"); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("diskSeek512 nothing to send\n");
+        return 1;
+      }
+    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("diskSeek512 expected DDCW\n");
+        return -1;
+      }
 
-        case seek512_mode:
-          {
-            uint tally = ddcwp -> fields.ddcw.tally;
-            uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
 
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
+    uint tally = p -> DDCW_TALLY;
+    sim_debug (DBG_DEBUG, & disk_dev,
+               "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-            // Seek specific processing
+    // Seek specific processing
 
-            if (tally != 1)
-              {
-                sim_printf ("disk seek dazed by tally %d != 1\n", tally);
-                chan_data -> stati = 04510; // Cmd reject, invalid inst. seq.
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
+    if (tally != 1)
+      {
+        sim_printf ("disk seek dazed by tally %d != 1\n", tally);
+        p -> stati = 04510; // Cmd reject, invalid inst. seq.
+        p -> chanStatus = chanStatIncorrectDCW;
+        return -1;
+      }
 
-            word36 seekData;
-            fetch_abs_word (daddr, & seekData, "Disk seek address");
+    word36 seekData;
+    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
 
 //sim_printf ("seekData %012llo\n", seekData);
 // Observations about the seek/write stream
@@ -455,333 +347,490 @@ static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
 //   quentry.sector = bit (sector, 21);  /* Save the disk device address. */
 // suggests seeks are 21 bits.
 //  
-            disk_statep -> seekPosition = seekData & MASK21;
+    disk_statep -> seekPosition = seekData & MASK21;
 //sim_printf ("seek seekPosition %d\n", disk_statep -> seekPosition);
-            chan_data -> stati = 00000; // Channel ready
-          }
-          break;
+    p -> stati = 00000; // Channel ready
+    return 0;
+  }
 
-        case seek_mode:
+static int diskRead (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    UNIT * unitp = & disk_unit [devUnitIdx];
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+
+    sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
+    disk_statep -> io_mode = read_mode;
+
+// Process DDCWs
+
+    bool ptro, send, uff;
+    do
+      {
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
           {
-            sim_printf ("disk seek not here yet\n");
-            chan_data -> stati = 04510; // Cmd reject, invalid inst. seq.
-            chan_data -> chanStatus = chanStatIncorrectDCW;
+            sim_printf ("diskRead list service failed\n");
+            return -1;
           }
-          break;
-
-        case read_mode:
+        if (uff)
           {
-//sim_printf ("disk read [%lld]\n", sim_timell ());
-            uint tally = ddcwp -> fields.ddcw.tally;
-            uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              {
-                //sim_printf ("mask: daddr was %o; ext %o\n", daddr, disk_statep -> ext);
-                daddr |= ((disk_statep -> ext) & MASK6) << 18;
-                //sim_printf ("mask: daddr now %o\n", daddr);
-               }
+            sim_printf ("diskRead ignoring uff\n"); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("diskRead nothing to send\n");
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("diskRead expected DDCW\n");
+            return -1;
+          }
 
-            // uint cp = ddcwp -> fields.ddcw.cp;
+        uint tally = p -> DDCW_TALLY;
+        if (tally == 0)
+          {
+            sim_debug (DBG_DEBUG, & disk_dev,
+                       "%s: Tally of zero interpreted as 010000(4096)\n",
+                       __func__);
+            tally = 4096;
+          }
 
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
+        sim_debug (DBG_DEBUG, & disk_dev,
+                   "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-//sim_printf ("tally %d\n", tally);
+        rc = fseek (unitp -> fileref, 
+                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    SEEK_SET);
+        if (rc)
+          {
+            sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            return -1;
+          }
 
-            int rc = fseek (unitp -> fileref, 
-                        disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
-                        SEEK_SET);
-            if (rc)
-              {
-                sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
-                chan_data -> stati = 04202; // attn, seek incomplete
-                break;
-              }
+        // Convert from word36 format to packed72 format
 
-            // Convert from word36 format to packed72 format
+        // round tally up to sector boundary
+    
+        // this math assumes tally is even.
+   
+        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                             SECTOR_SZ_IN_W36;
+        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint p72ByteCnt = (tallyWords * 36) / 8;
+        uint8 diskBuffer [p72ByteCnt];
+        memset (diskBuffer, 0, sizeof (diskBuffer));
+        sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
+                   devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
-            // round tally up to sector boundary
-            
-            // this math assumes tally is even.
-           
-            uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                                SECTOR_SZ_IN_W36;
-            uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-            //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
-            uint p72ByteCnt = (tallyWords * 36) / 8;
-            uint8 buffer [p72ByteCnt];
-            memset (buffer, 0, sizeof (buffer));
-            sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
-                       disk_unit_num, disk_statep -> seekPosition, tallySectors);
-//sim_printf ("Disk read  %8d %3d %08o\n",
-        //disk_statep -> seekPosition, tallySectors, daddr);
+        rc = fread (diskBuffer, SECTOR_SZ_IN_BYTES,
+                    tallySectors,
+                    unitp -> fileref);
 
-            rc = fread (buffer, SECTOR_SZ_IN_BYTES,
-                        tallySectors,
-                        unitp -> fileref);
-
-            if (rc == 0) // eof; reading a sector beyond the high water mark.
-              {
-                // okay; buffer was zero, so just pretend that a zero filled
-                // sector was read (ala demand page zero)
-              }
-            else if (rc != (int) tallySectors)
-              {
-                sim_printf ("read returned %d, errno %d\n", rc, errno);
-                chan_data -> stati = 04202; // attn, seek incomplete
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
+        if (rc == 0) // eof; reading a sector beyond the high water mark.
+          {
+            // okay; buffer was zero, so just pretend that a zero filled
+            // sector was read (ala demand page zero)
+          }
+        else if (rc != (int) tallySectors)
+          {
+            sim_printf ("read returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            p -> chanStatus = chanStatIncorrectDCW;
+            return -1;
+          }
 //sim_printf ("tallySectors %u\n", tallySectors);
 //sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
 //for (uint i = 0; i < p72ByteCnt; i += 9)
-//{ word36 w1 = extr (& buffer [i / 9], 0, 36);
-  //word36 w2 = extr (& buffer [i / 9], 36, 36);
+//{ word36 w1 = extr (& diskBuffer [i / 9], 0, 36);
+  //word36 w2 = extr (& diskBuffer [i / 9], 36, 36);
   //sim_printf ("%5d %012llo %012llo\n", i * 2 / 9, w1, w2);
 //}
 //sim_printf ("read seekPosition %d\n", disk_statep -> seekPosition);
-//sim_printf ("buffer 0...\n");
-//for (uint i = 0; i < 9; i ++) sim_printf (" %03o", buffer [i]);
+//sim_printf ("diskBuffer 0...\n");
+//for (uint i = 0; i < 9; i ++) sim_printf (" %03o", diskBuffer [i]);
 //sim_printf ("\n");
-            disk_statep -> seekPosition += tallySectors;
+        disk_statep -> seekPosition += tallySectors;
 
-            uint wordsProcessed = 0;
-            for (uint i = 0; i < tally; i ++)
-              {
-                word36 w;
-                extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                         & w);
-                store_abs_word (daddr + i, w, "Disk read");
-                chan_data -> isOdd = (daddr + i) % 2;
-              }
-//for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
-          }
-          break;
-
-        case write_mode:
+        uint wordsProcessed = 0;
+        word36 buffer [tally];
+        for (uint i = 0; i < tally; i ++)
           {
-            uint tally = ddcwp -> fields.ddcw.tally;
-            uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
+            word36 w;
+            extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                     & w);
+            buffer [i] = w;
+          }
+        iomIndirectDataService (iomUnitIdx, chan, buffer,
+                                & wordsProcessed, true);
+        p -> charPos = tally % 4;
+      } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+    p -> stati = 04000;
+    p -> initiate = false;
+    return 0;
+  }
 
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
+static int diskWrite (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    UNIT * unitp = & disk_unit [devUnitIdx];
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
-//sim_printf ("tally %d\n", tally);
+    sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
+    disk_statep -> io_mode = read_mode;
 
-            int rc = fseek (unitp -> fileref, 
-                        disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
-                        SEEK_SET);
-//sim_printf ("write seekPosition %d\n", disk_statep -> seekPosition);
-            if (rc)
-              {
-                sim_printf ("fseek (write) returned %d, errno %d\n", rc, errno);
-                chan_data -> stati = 04202; // attn, seek incomplete
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
+// Process DDCWs
 
-            // Convert from word36 format to packed72 format
+    bool ptro, send, uff;
+    do
+      {
+        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            sim_printf ("diskWrite list service failed\n");
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("diskWrite ignoring uff\n"); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("diskWrite nothing to send\n");
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("diskWrite expected DDCW\n");
+            return -1;
+          }
 
-            // round tally up to sector boundary
-            
-            // this math assumes tally is even.
-           
-            uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                                SECTOR_SZ_IN_W36;
-            uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-            //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
-            uint p72ByteCnt = (tallyWords * 36) / 8;
-            uint8 buffer [p72ByteCnt];
-            memset (buffer, 0, sizeof (buffer));
-            uint wordsProcessed = 0;
-            for (uint i = 0; i < tally; i ++)
-              {
-                word36 w;
-                fetch_abs_word (daddr + i, & w, "Disk write");
-                insertWord36toBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                      w);
-                chan_data -> isOdd = (daddr + i) % 2;
-              }
 
-            sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
-                       disk_unit_num, disk_statep -> seekPosition, tallySectors);
-            rc = fwrite (buffer, SECTOR_SZ_IN_BYTES,
-                         tallySectors,
-                         unitp -> fileref);
+        uint tally = p -> DDCW_TALLY;
+
+        if (tally == 0)
+          {
+            sim_debug (DBG_DEBUG, & disk_dev,
+                       "%s: Tally of zero interpreted as 010000(4096)\n",
+                       __func__);
+            tally = 4096;
+          }
+
+        sim_debug (DBG_DEBUG, & disk_dev,
+                   "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+        rc = fseek (unitp -> fileref, 
+                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    SEEK_SET);
+        if (rc)
+          {
+            sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            return -1;
+          }
+
+        // Convert from word36 format to packed72 format
+
+        // round tally up to sector boundary
+    
+        // this math assumes tally is even.
+   
+        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
+                             SECTOR_SZ_IN_W36;
+        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
+        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint p72ByteCnt = (tallyWords * 36) / 8;
+        uint8 diskBuffer [p72ByteCnt];
+        memset (diskBuffer, 0, sizeof (diskBuffer));
+        uint wordsProcessed = 0;
+#if 0
+        for (uint i = 0; i < tally; i ++)
+          {
+            word36 w;
+            core_read (daddr + i, & w, "Disk write");
+            insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                  w);
+          }
+#else
+        word36 buffer [tally];
+        iomIndirectDataService (iomUnitIdx, chan, buffer,
+                                & wordsProcessed, false);
+// XXX is this losing information?
+        wordsProcessed = 0;
+        for (uint i = 0; i < tally; i ++)
+          {
+            insertWord36toBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                  buffer [i]);
+          }
+#endif
+
+        sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
+                   devUnitIdx, disk_statep -> seekPosition, tallySectors);
+        rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
+                     tallySectors,
+                     unitp -> fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",
-        //disk_statep -> seekPosition, tallySectors, daddr);
-                      
-            if (rc != (int) tallySectors)
-              {
-                sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
-                chan_data -> stati = 04202; // attn, seek incomplete
-                chan_data -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-
-            disk_statep -> seekPosition += tallySectors;
-
-          }
-          break;
-
-        case request_status_mode:
+//disk_statep -> seekPosition, tallySectors, daddr);
+              
+        if (rc != (int) tallySectors)
           {
-            uint tally = ddcwp -> fields.ddcw.tally;
-            uint daddr = ddcwp -> fields.ddcw.daddr;
-            if (disk_statep -> mask)
-              daddr |= ((disk_statep -> ext) & MASK6) << 18;
-            // uint cp = ddcwp -> fields.ddcw.cp;
+            sim_printf ("fwrite returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            p -> chanStatus = chanStatIncorrectDCW;
+            return -1;
+          }
 
-            if (tally != 4)
-              {
-                sim_debug (DBG_ERR, &iom_dev, 
-                  "%s: RSR expected tally of 4, is %d\n",
+        disk_statep -> seekPosition += tallySectors;
+ 
+      } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+    p -> stati = 04000;
+    p -> initiate = false;
+    return 0;
+  }
+
+static int readStatusRegister (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+
+    sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
+    disk_statep -> io_mode = read_mode;
+
+// Process DDCW
+
+    bool ptro;
+    bool send;
+    bool uff;
+    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("readStatusRegister list service failed\n");
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("readStatusRegister ignoring uff\n"); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("readStatusRegister nothing to send\n");
+        return 1;
+      }
+    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("readStatusRegister expected DDCW\n");
+        return -1;
+      }
+
+
+    uint tally = p -> DDCW_TALLY;
+
+    if (tally != 4)
+      {
+        sim_debug (DBG_ERR, &iom_dev, 
+                   "%s: RSR expected tally of 4, is %d\n",
                    __func__, tally);
-              }
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
+      }
+    if (tally == 0)
+      {
+        sim_debug (DBG_DEBUG, & disk_dev,
+                   "%s: Tally of zero interpreted as 010000(4096)\n",
+                   __func__);
+        tally = 4096;
+      }
 
 // XXX need status register data format 
-            sim_debug (DBG_ERR, & disk_dev, "Need status register data format\n");
-            for (uint i = 0; i < tally; i ++)
-              //M [daddr + i] = 0;
-              store_abs_word (daddr + i, 0, "Disk status register");
+// system_library_tools/source/bound_io_tools_.s.archive/analyze_detail_stat_.pl1  anal_fips_disk_().
 
-            //M [daddr] = SIGN36;
-            store_abs_word (daddr, SIGN36, "Disk status register");
+    sim_warn ("Need status register data format\n");
+#if 1
+    word36 buffer [tally];
+    memset (buffer, 0, sizeof (buffer));
+    buffer [0] = SIGN36;
+    uint wordsProcessed = 0;
+    iomIndirectDataService (iomUnitIdx, chan, buffer,
+                            & wordsProcessed, true);
+#else
+    for (uint i = 0; i < tally; i ++)
+      //M [daddr + i] = 0;
+      core_write (daddr + i, 0, "Disk status register");
 
+    //M [daddr] = SIGN36;
+    core_write (daddr, SIGN36, "Disk status register");
+#endif
+    p -> charPos = 0;
+    p -> stati = 04000;
+    p -> initiate = false;
+    return 0;
+  }
+
+static int disk_cmd (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+
+    disk_statep -> io_mode = no_mode;
+    p -> stati = 0;
+
+    switch (p -> IDCW_DEV_CMD)
+      {
+        case 000: // CMD 00 Request status
+          {
+            p -> stati = 04000;
+            disk_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & disk_dev, "Request status %d\n", devUnitIdx);
           }
           break;
+
+        case 022: // CMD 22 Read Status Resgister
+          {
+            int rc = readStatusRegister (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+          }
+          break;
+
+        case 025: // CMD 25 READ
+          {
+            int rc = diskRead (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+          }
+          break;
+
+        case 030: // CMD 30 SEEK_512
+          {
+            int rc = diskSeek512 (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+          }
+          break;
+
+        case 031: // CMD 31 WRITE
+          {
+            p -> isRead = false;
+            int rc = diskWrite (iomUnitIdx, chan);
+            if (rc)
+              return -1;
+
+            sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
+            disk_statep -> io_mode = write_mode;
+//sim_printf ("disk write [%lld]\n", sim_timell ());
+            p -> stati = 04000;
+          }
+//exit(1);
+          break;
+
+#if 0
+        case 034: // CMD 34 SEEK
+          {
+//sim_printf ("disk seek [%lld]\n", sim_timell ());
+            sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
+            disk_statep -> io_mode = seek_mode;
+          }
+          break;
+#endif
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+            disk_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", devUnitIdx);
+          }
+          break;
+
+        case 042: // CMD 42 RESTORE
+          {
+            sim_debug (DBG_NOTIFY, & disk_dev, "Restore %d\n", devUnitIdx);
+            p -> stati = 04000;
+          }
+          break;
+
+
+        default:
+          {
+            p -> stati = 04501;
+            sim_debug (DBG_ERR, & disk_dev,
+                       "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+            p -> chanStatus = chanStatIncorrectDCW;
+sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+            break;
+          }
       }
     return 0;
   }
 
-int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+#ifdef IOM2
+static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
   {
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
+    int devUnitIdx = DISK_UNIT_NUM (unitp);
+    int iomUnitIdx = cables -> cablesFromIomToDsk [devUnitIdx] . iomUnitIdx;
 
-    // First, execute the command in the PCW, and then walk the 
-    // payload channel mbx looking for IDCWs.
-
-    // uint chanloc = mbx_loc (iomUnitNum, pcwp -> chan);
-    //lpw_t lpw;
-    //fetch_and_parse_lpw (& lpw, chanloc, false);
-
-// Ignore the entire operation is a CMD 051 is in the PCW
-    if (pcwp -> dev_cmd == 051)
-      return 1;
-
-    // disc is set by disk_cmd if the IDCW does not expect DDCWS; which
-    // implies means that if disc & ctrl !=2, then the list is done.
-    bool disc;
-    disk_cmd (unitp, pcwp, & disc);
-
-    // ctrl of the pcw is observed to be 0 even when there are idcws in the
-    // list so ignore that and force it to 2.
-    //uint ctrl = pcwp -> control;
-    uint ctrl = 2;
-    int ptro = 0;
-    for (;;)
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    iomChannelData_ * p = & iomChannelData [iomUnitIdx] [disk_statep -> chan];
+    switch (disk_statep -> io_mode)
       {
-//sim_printf ("perusing channel mbx lpw....\n");
-        dcw_t dcw;
-        int rc = iomListService (iomUnitNum, pcwp -> chan, & dcw, & ptro);
-        if (rc)
+        case seek_mode:
           {
-//sim_printf ("list service denies!\n");
-            break;
+            sim_printf ("disk seek not here yet\n");
+            p -> stati = 04510; // Cmd reject, invalid inst. seq.
+            p -> chanStatus = chanStatIncorrectDCW;
           }
-//sim_printf ("persuing got type %d\n", dcw . type);
-#if 0
-        if (dcw . type != idcw)
-          {
-// 04501 : COMMAND REJECTED, invalid command
-            iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-            chan_data -> stati = 04501; 
-            chan_data -> dev_code = dcw . fields . instr. dev_code;
-            chan_data -> chanStatus = chanStatInvalidInstrPCW;
-            //status_service (iomUnitNum, pcwp -> chan, false);
-            break;
-          }
+          break;
+
+      }
+    return 0;
+  }
 #endif
 
+int disk_iom_cmd (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+// Is it an IDCW?
 
-        if (dcw . type == idcw)
-          {
-            // The dcw does not necessarily have the same dev_code as the pcw....
+    if (p -> DCW_18_20_CP == 7)
+      {
 
-            disk_unit_num = findDiskUnit (iomUnitNum, pcwp -> chan, dcw . fields . instr. dev_code);
-            if (disk_unit_num < 0)
+        // Ignore a CMD 051 in the PCW
+        if (p -> IDCW_DEV_CMD == 051)
+          return 1;
+
+        disk_cmd (iomUnitIdx, chan);
+      }
+    else // DDCW/TDCW
+      {
+        sim_printf ("disk_iom_cmd expected IDCW\n");
+        return -1;
+      }
+    return 0;
+#ifdef IOM2
+            if (devUnitIdx < 0)
               {
 // 04502 : COMMAND REJECTED, invalid device code
-                iomChannelData_ * chan_data = & iomChannelData [iomUnitNum] [pcwp -> chan];
-                chan_data -> stati = 04502; 
-                chan_data -> dev_code = dcw . fields . instr. dev_code;
-                chan_data -> chanStatus = chanStatInvalidInstrPCW;
-                //status_service (iomUnitNum, pcwp -> chan, false);
+                iomChannelData_ * p = & iomChannelData [iomUnitIdx] [pcwp -> chan];
+                p -> stati = 04502; 
+                p -> dev_code = dcw . fields . instr. dev_code;
+                p -> chanStatus = chanStatInvalidInstrPCW;
+                //status_service (iomUnitIdx, pcwp -> chan, false);
                 break;
               }
-            unitp = & disk_unit [disk_unit_num];
-            disk_cmd (unitp, & dcw . fields . instr, & disc);
-            ctrl = dcw . fields . instr . control;
-            if (ctrl != 2 && disc)
-              break;
-          }
-        else if (dcw . type == ddcw)
-          {
-            unitp = & disk_unit [disk_unit_num];
-            disk_ddcw (unitp, & dcw);
-            if (ctrl == 0 && dcw . fields . ddcw . type == 0) // IOTD
-              break;
-          }
-      }
-//sim_printf ("disk interrupts\n");
-    send_terminate_interrupt (iomUnitNum, pcwp -> chan);
-
-    return 1;
+#endif
   }
-
-static t_stat disk_svc (UNIT * unitp)
-  {
-#if 1
-    int diskUnitNum = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [diskUnitNum] . iomUnitNum;
-    int chanNum = cables -> cablesFromIomToDsk [diskUnitNum] . chan_num;
-    pcw_t * pcwp = & iomChannelData [iomUnitNum] [chanNum] . pcw;
-    disk_iom_cmd (unitp, pcwp);
-#else
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
-    int iomUnitNum = cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitNum;
-    word24 dcw_ptr = (word24) (unitp -> u3);
-    pcw_t pcw;
-    word36 word0, word1;
-    
-    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
-    decode_idcw (iomUnitNum, & pcw, 1, word0, word1);
-    disk_iom_cmd (unitp, & pcw);
-#endif 
-    return SCPE_OK;
-  }
-
 
 static t_stat disk_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
@@ -820,7 +869,7 @@ void loadDisk (uint driveNumber, char * diskFilename)
 //    substr (w, 34, 3) is the low 3 bits of status 1
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
-    send_special_interrupt (cables -> cablesFromIomToDsk [driveNumber] . iomUnitNum,
+    send_special_interrupt (cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
                             cables -> cablesFromIomToDsk [driveNumber] . chan_num,
                             cables -> cablesFromIomToDsk [driveNumber] . dev_code,
                             0x40, 01 /* disk pack ready */);
