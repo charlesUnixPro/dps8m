@@ -154,6 +154,35 @@
 //  35    REL
 //
 
+// Due to lack of documentation, chan_cmd is largely ignored
+//
+// iom_chan_control_words.incl.pl1
+//
+//   SINGLE_RECORD       init ("00"b3),
+//   NONDATA             init ("02"b3),
+//   MULTIRECORD         init ("06"b3),
+//   SINGLE_CHARACTER    init ("10"b3)
+//   
+// bound_tolts_/mtdsim_.pl1
+//
+//    idcw.chan_cmd = "40"b3;			/* otherwise set special cont. cmd */
+//
+// bound_io_tools/exercise_disk.pl1
+//
+//   idcw.chan_cmd = INHIB_AUTO_RETRY;		/* inhibit mpc auto retries */
+//   dcl     INHIB_AUTO_RETRY       bit (6) int static init ("010001"b);  // 021
+//
+// poll_mpc.pl1:
+//  /* Build dcw list to get statistics from EURC MPC */
+//  idcw.chan_cmd = "41"b3;			/* Indicate special controller command */
+//  /* Build dcw list to get configuration and statistics from DAU MSP */
+//  idcw.chan_cmd = "30"b3;                           /* Want list in dev# order */
+//
+// tape_ioi_io.pl1:
+//   idcw.chan_cmd = "03"b3;			/* data security erase */
+//   dcw.chan_cmd = "30"b3;			/* use normal values, auto-retry */
+
+
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_cpu.h"
@@ -758,27 +787,30 @@ static word24 UNUSED buildAUXPTWaddress (uint iomUnitIdx, int chan)
     return addr;
   }
 
-static word24 buildDDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word6 pageNumber)
+static word24 buildDDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
   {
-
-//    0      5 6            16 17  18               21  22  23
+//    0      5 6        15  16  17  18                       23
 //   ----------------------------------------------------------
-//   | Page Table Pointer         |                           |
+//   | Page Table Pointer | 0 | 0 |                           |
 //   ----------------------------------------------------------
-//                         | Direct Channel Addr 6-13 | 1 | 1 |
-//                         ------------------------------------
+// or
+//                        -------------------------------------
+//                        |  Direct chan addr 6-13            |
+//                        -------------------------------------
 
     word24 addr = (((word24) PCW_PAGE_TABLE_PTR) & MASK18) << 6;
-    addr |= (pageNumber & MASK6) << 2;
-    addr |= 03;
+    addr += pageNumber;
     return addr;
   }
 
-static void UNUSED fetchDDSPTW (uint iomUnitIdx, int chan, word6 pageNumber)
+// Fetch Direct Data Service Page Table Word
+
+static void fetchDDSPTW (uint iomUnitIdx, int chan, word18 addr)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 addr = buildDDSPTWaddress (p ->  PCW_PAGE_TABLE_PTR, pageNumber);
-    core_read (addr, & p ->  PTW_DCW, __func__);
+    word24 pgte = buildDDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+                                      (addr >> 10) & MASK8);
+    core_read (pgte, & p -> PTW_DCW, __func__);
   }
 
 static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
@@ -860,8 +892,35 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint daddr = p -> DDCW_ADDR;
 // XXX DCW addressing mode
-    if (chan > 7)
-      daddr |= p -> ADDR_EXT << 18;
+    //if (chan > 7)
+      //daddr |= p -> ADDR_EXT << 18;
+    switch (p -> chanMode)
+      {
+        // DCW EXT
+        case cm1e:
+        case cm2e:
+        case cm1:
+          daddr |= p -> ADDR_EXT << 18;
+          break;
+
+        case cm2:
+        case cm3b:
+          {
+sim_err ("iomDirectDataService DCW paged\n");
+          }
+          //break;
+
+        case cm3a:
+        case cm4:
+        case cm5:
+          {
+//sim_printf ("iomDirectDataService DCW segmented\n");
+            fetchDDSPTW (iomUnitIdx, chan, daddr);
+            daddr = (getbits36 (p -> PTW_DCW, 4, 14) << 10) | (daddr & MASK8);
+          }
+          break;
+      }
+
     if (write)
       core_write (daddr, * data, __func__);
     else
@@ -1161,6 +1220,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
         p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
+        p -> IDCW_CHAN_CMD =     getbits36 (p -> DCW, 24,  6);
         p -> IDCW_COUNT =        getbits36 (p -> DCW, 30,  6);
       }
     else // TDCW or DDCW
