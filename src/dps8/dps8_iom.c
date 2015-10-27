@@ -1874,9 +1874,10 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       }
 
 // The boot tape loader sends PCWs with control == 0 when it shouldn't
+// BCE sends disk PCWs with control == 0 when it shouldn't
 
     //if (p -> IDCW_CONTROL == 0)
-    if (p -> IDCW_CONTROL == 0 && d -> type != DEVT_TAPE)
+    if (p -> IDCW_CONTROL == 0 && d -> type != DEVT_TAPE && d -> type != DEVT_DISK)
       {
         //sim_printf ("ctrl == 0 in chan %d (%o) PCW\n", chan, chan);
         goto done;
