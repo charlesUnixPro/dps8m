@@ -900,10 +900,25 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 
             p -> stati = 04501;
             p -> chanStatus = chanStatIncorrectDCW;
-            sim_warn ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+            sim_warn ("%s: Unhandled command 0%o\n", __func__, p -> IDCW_DEV_CMD);
           }
          break;
 #else
+
+// dcl  1 stat_buf aligned based (workp),                      /* The IOI buffer segment */
+//        2 idcw1 bit (36),                                    /* Will be read controller main memory */
+//        2 dcw1 bit (36),                                     /* Addr=stat_buf.control, tally=1 */
+//        2 idcw2 bit (36),                                    /* Will be initiate read data transfer */
+//        2 dcw2 bit (36),                                     /* Address=stat_buf.mem, tally=rest of segment */
+//        2 control,                                           /* Describes where data is in mpc */
+//          3 addr bit (16) unal,                              /* Addr in mpc memory */
+//          3 tally bit (16) unal,                             /* Count in mpc words */
+//          3 fill bit (4) unal,
+//        2 stats (0:83) bit (18) unal;                        /* EURC statistics in ASCII */
+
+//       2 mem (0:mpc_memory_size - 1) bit (18) unal;         /* This is the mpc memory */
+
+
 // Read controller main memory is used by the poll_mpc tool to track
 // usage. if we just report illegal command, pool_mpc will give up.
 // XXX ticket #46
@@ -1051,6 +1066,21 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           }
           break;
 
+// 006 initiate read data transfer (stats) (poll_mpc.pl1)
+// Temp CMD 06
+        case 06:               // CMD 06 -- initiate read data transfer
+          {
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "%s: initiate read data transfer\n", __func__);
+
+            bool ptro, send, uff;
+            iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+
+            p -> stati = 04501;
+            p -> chanStatus = chanStatIncorrectDCW;
+            sim_warn ("%s: Unhandled command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+          }
+         break;
 
 
         case 013: // CMD 013 -- Write tape 9
@@ -1061,6 +1091,10 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
               return -1;
           }
           break;
+
+// 016 initiate write data transfer (stats) (poll_mpc.pl1)
+
+// 032: MTP write main memory (binary) (poll_mpc.pl1)
 
         case 040:               // CMD 040 -- Reset Status
           {
