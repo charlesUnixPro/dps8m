@@ -1891,6 +1891,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
     p -> initiate = true;
     p -> chanStatus = chanStatNormal;
 
+//sim_printf ("chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
 // Send the PCW's DCW
     //sim_printf ("PCW chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
     int rc = d -> iomCmd (iomUnitIdx, chan);
@@ -1933,6 +1934,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         goto done;
       }
 
+#if 0
 // The boot tape loader sends PCWs with control == 0 when it shouldn't
 // BCE sends disk PCWs with control == 0 when it shouldn't
 
@@ -1942,6 +1944,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         //sim_printf ("ctrl == 0 in chan %d (%o) PCW\n", chan, chan);
         goto done;
       }
+#endif
 
     bool ptro, send, uff;
 
