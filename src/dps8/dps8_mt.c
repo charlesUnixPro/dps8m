@@ -868,8 +868,11 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 // check the survey code to make sure it's not incorrectly
 // reporting 0 as a valid device.
 
+// Simplifying design decision: tapa_00 is hidden, always has the boot tape.
+#if 0
     if (p -> IDCW_DEV_CODE == 0 /* && p -> IDCW_DEV_CMD == 05 */)
         p -> IDCW_DEV_CODE = boot_drive;
+#endif
 
     sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CODE %d\n", p -> IDCW_DEV_CODE);
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .

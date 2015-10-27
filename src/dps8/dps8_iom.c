@@ -891,9 +891,6 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint daddr = p -> DDCW_ADDR;
-// XXX DCW addressing mode
-    //if (chan > 7)
-      //daddr |= p -> ADDR_EXT << 18;
     switch (p -> chanMode)
       {
         // DCW EXT
@@ -1419,8 +1416,6 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
 // -1 fault
 // There is a path through the code where no DCW is sent (IDCW && LPW_18_RES)
 // Does the -1 return cover that?
-
-// XXX The 2 TDCW logic is wrong; EPS1 says "two *sequential* TDCWS
 
 int iomListService (uint iomUnitIdx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp)

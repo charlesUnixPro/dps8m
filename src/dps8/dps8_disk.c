@@ -319,9 +319,6 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
 
 
     uint tally = p -> DDCW_TALLY;
-    //uint daddr = p -> DDCW_ADDR;
-    //daddr |= p -> ADDR_EXT << 18;
-
     sim_debug (DBG_DEBUG, & disk_dev,
                "%s: Tally %d (%o)\n", __func__, tally, tally);
 
@@ -395,9 +392,6 @@ static int diskRead (uint iomUnitIdx, uint chan)
           }
 
         uint tally = p -> DDCW_TALLY;
-        uint daddr = p -> DDCW_ADDR;
-// XXX s.b. iomInd? check channel mode?
-        daddr |= p -> ADDR_EXT << 18;
         if (tally == 0)
           {
             sim_debug (DBG_DEBUG, & disk_dev,
@@ -522,9 +516,6 @@ static int diskWrite (uint iomUnitIdx, uint chan)
 
 
         uint tally = p -> DDCW_TALLY;
-        uint daddr = p -> DDCW_ADDR;
-// XXX s.b. iomInd?
-        daddr |= p -> ADDR_EXT << 18;
 
         if (tally == 0)
           {
@@ -645,9 +636,6 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 
 
     uint tally = p -> DDCW_TALLY;
-    uint daddr = p -> DDCW_ADDR;
-// XXX s.b. iomInd?
-    daddr |= p -> ADDR_EXT << 18;
 
     if (tally != 4)
       {
@@ -664,13 +652,24 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
       }
 
 // XXX need status register data format 
-    sim_debug (DBG_ERR, & disk_dev, "Need status register data format\n");
+// system_library_tools/source/bound_io_tools_.s.archive/analyze_detail_stat_.pl1  anal_fips_disk_().
+
+    sim_warn ("Need status register data format\n");
+#if 1
+    word36 buffer [tally];
+    memset (buffer, 0, sizeof (buffer));
+    buffer [0] = SIGN36;
+    uint wordsProcessed = 0;
+    iomIndirectDataService (iomUnitIdx, chan, buffer,
+                            & wordsProcessed, true);
+#else
     for (uint i = 0; i < tally; i ++)
       //M [daddr + i] = 0;
       core_write (daddr + i, 0, "Disk status register");
 
     //M [daddr] = SIGN36;
     core_write (daddr, SIGN36, "Disk status register");
+#endif
     p -> charPos = 0;
     p -> stati = 04000;
     p -> initiate = false;

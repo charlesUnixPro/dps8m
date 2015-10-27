@@ -553,10 +553,6 @@ static int con_cmd (uint iomUnitIdx, uint chan)
                 return -1;
               }
 
-// XXX ???
-            //if (pcwp -> mask)
-              //daddr |= ((pcwp -> ext) & MASK6) << 18;
-
             if (p -> DDCW_22_23_TYPE != 0 && p -> DDCW_22_23_TYPE != 1) //IOTD, IOTP
               {
 sim_printf ("uncomfortable with this\n");

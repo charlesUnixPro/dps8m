@@ -56,10 +56,10 @@ typedef struct
     word6 PCW_AE;
     // Pg B2: "Absolute location (MOD 64) of the channels Page Table"
     word18 PCW_PAGE_TABLE_PTR;
-    word1 PCW_63_PTP;  // XXX
-    word1 PCW_64_PGE;  // XXX
+    word1 PCW_63_PTP;
+    word1 PCW_64_PGE;
     word1 PCW_65_AUX;  // XXX
-    word1 PCW_21_MSK; // Sometimes called 'M' // XXX see 3.2.2, pg 25
+    word1 PCW_21_MSK; // Sometimes called 'M' // see 3.2.2, pg 25
 
     // packed DCW
     word36 DCW;
@@ -135,7 +135,7 @@ typedef struct
     //   33: PGP: Page present
     // To read or write PGP must be 1
     // To write, WRC must be 1, HSE 0; system fault 15 on fail
-// XXX pg b8: PTWs are used iff (indirect store and LPw 23 (segmented)), or
+// pg b8: PTWs are used iff (indirect store and LPw 23 (segmented)), or
 // direct store.
 //
 //  ADDR  0-13 <- PTW 4-17
@@ -144,7 +144,7 @@ typedef struct
     word36 PTW_DCW;  // pg B8.
     word36 PTW_LPW;  // pg B6.
 
-// XXX pg b11 defines two PTW flags to indicate the validity of the
+// pg b11 defines two PTW flags to indicate the validity of the
 // PTW_DCW and PTW_LPW; it is simpler to simply always fetch 
 // the PTWs on demand.
 
