@@ -1094,6 +1094,8 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
 
 // 016 initiate write data transfer (stats) (poll_mpc.pl1)
 
+// 026 read control registers
+
 // 032: MTP write main memory (binary) (poll_mpc.pl1)
 
         case 040:               // CMD 040 -- Reset Status
@@ -1110,6 +1112,8 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
                        __func__, p -> stati);
           }
           break;
+
+// 041 set 6250 cpi
 
         case 044: // 044 Forward skip  Record
           {
@@ -1171,7 +1175,7 @@ sim_printf ("chan_mode %d\n", p -> chan_mode);
           }
           break;
 
-        case 045: // 047 Forward Skip File
+        case 045: // 045 Forward Skip File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip File\n");
@@ -1379,6 +1383,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           }
           break;
 
+// 054 erase
+
         case 055: // CMD 055 -- Write EOF (tape mark);
           {
             sim_debug (DBG_DEBUG, & tape_dev,
@@ -1462,6 +1468,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           }
           break;
 
+// 062 reserve device
+
         case 063:              // CMD 063 -- Set File Permit.
           {
             sim_debug (DBG_WARN, & tape_dev, "Set file permit?\n");
@@ -1472,6 +1480,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               p -> stati |= 2;
           }
           break;
+
+// 064 Set file protect
 
         case 064:              // CMD 064 -- Set 200 bpi.
           {
@@ -1500,6 +1510,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                        "%s: Set 1600 CPI\n", __func__);
           }
           break;
+
+// 066 release device
 
         case 070:              // CMD 070 -- Rewind.
           {
@@ -1544,7 +1556,11 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                                     0, 0040 /* unload complete */);
           }
           break;
-   
+
+// 073 data security erase
+// 075  tape load
+// 077 set density
+
         default:
           {
             p -> stati = 04501;
