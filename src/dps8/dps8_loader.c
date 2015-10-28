@@ -24,9 +24,9 @@
 #define FMT_SEG 4
 #define FMT_9   9
 
-//static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
-//static t_stat load_simh (FILE * fileref, int32 segno, int32 ldaddr, 
-//                         bool bDeferred, bool bVerbose);
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
+static t_stat load_simh (FILE * fileref, int32 segno, int32 ldaddr, 
+                         bool bDeferred, bool bVerbose);
 static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 
 #ifndef QUIET_UNUSED
@@ -53,7 +53,6 @@ static void freeSegdef(segdef *p)
 }
 
 
-#if 0
 static segref *newSegref(char *seg, char *sym, int val, int off)
 {
     segref *p = calloc(1, sizeof(segref));
@@ -73,8 +72,6 @@ static segref *newSegref(char *seg, char *sym, int val, int off)
     
     return p;
 }
-#endif
-
 
 static void freeSegref(segref *p)
 {
@@ -141,7 +138,7 @@ static void freeSegment(segment *s)
 }
 
 static segment *segments = NULL;   // segment for current load unit
-// static segment *currSegment = NULL;
+static segment *currSegment = NULL;
 
 // remove segment from list of deferred segments
 
@@ -255,9 +252,8 @@ int removeSegref(char *seg, char *sym)
 }
 
 
-// static int objSize = -1;
+static int objSize = -1;
 
-#if 0
 static int segNamecmp(segment *a, segment *b)
 {
     if (*a->name && *b->name)
@@ -266,14 +262,11 @@ static int segNamecmp(segment *a, segment *b)
       return 1;
     return -1;
 }
-#endif 
 
-#if 0
 static int segdefNamecmp(segdef *a, segdef *b)
 {
     return strcmp(a->symbol, b->symbol);
 }
-#endif
 
 #ifndef QUIET_UNUSED
 static int segrefNamecmp(segref *a, segref *b)
@@ -823,7 +816,6 @@ t_stat setupFXE()
 }
 #endif
 
-#if 0
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
@@ -1040,10 +1032,8 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred,
     fseek(f, curpos, SEEK_SET);    // restore original position
     return SCPE_OK;
 }
-#endif
 
 
-# if 0
 /*!
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
@@ -1162,9 +1152,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
     
     return SCPE_OK;
 }
-#endif
 
-#if 0
 //
 // "simh" simh/dps8 loader (.seg files) ....
 //
@@ -1269,7 +1257,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
     
     return SCPE_OK;
 }
-#endif
+
 /*
  * stuff todo with loading segments ....
  */
@@ -1395,7 +1383,6 @@ t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam,
     return SCPE_OK;
 }
 
-#if 0
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 {
@@ -1565,7 +1552,6 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     sim_printf ("Can't determine load file format\n");
     return SCPE_FMT;
 }
-#endif
 
 
 

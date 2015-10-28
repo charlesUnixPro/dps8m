@@ -46,6 +46,7 @@
 #endif
 
 //#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+#include "fnp.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -173,6 +174,8 @@ static CTAB dps8_cmds[] =
 #endif
  
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+
+    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
 
     { NULL, NULL, 0, NULL, NULL}
 };

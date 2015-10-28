@@ -13,6 +13,7 @@
 
 #include "fnp_defs.h"
 #include "fnp_2.h"
+#include "fnp.h"
 #include "fnp_cmds.h"
 
 
@@ -38,11 +39,16 @@ void fnp_init(void)
     fnpQueueInit ();
 }
 
-t_stat sim_load (FILE *fileref, UNUSED char *cptr, UNUSED char *fnam, int flag)
+t_stat fnpLoad (UNUSED int32 arg, char * buf)
+//static t_stat sim_load0 (FILE *fileref, int flag)
 {
-    if (flag == 1)
-        return SCPE_OK;
-    
+    FILE * fileref = fopen (buf, "r");
+    if (! fileref)
+    {
+        sim_printf("Couldn't open %s\n", buf);
+        return SCPE_ARG;
+    }
+
     FMTI *p = readDevInfo(fileref);
  
     if (sim_switches & SWMASK ('V'))  /* verbose? */
@@ -71,7 +77,7 @@ t_stat sim_load (FILE *fileref, UNUSED char *cptr, UNUSED char *fnam, int flag)
             freeFMTI(fmti, true);
         fmti = p;
     }
-    
+    fclose (fileref);    
     return SCPE_OK;
 }
 
