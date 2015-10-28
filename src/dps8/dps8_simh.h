@@ -87,4 +87,5 @@ void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
   __attribute__ ((format (printf, 3, 4)))
 #endif
 ;
-
+#define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
+#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (jmpMain, JMP_STOP); }

@@ -6,4 +6,4 @@ int lookupFnpsIomUnitNumber (int fnpUnitNum);
 void fnpProcessEvent (void); 
 t_stat diaCommand (char *nodename, char *id, char *arg3);
 void fnpQueueMsg (char * msg);
-int fnpIOMCmd (UNIT * unitp, pcw_t * pcwp);
+int fnpIOMCmd (uint iomUnitIdx, uint chan);
