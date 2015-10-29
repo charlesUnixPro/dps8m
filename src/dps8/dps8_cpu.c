@@ -6,6 +6,7 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -114,6 +115,7 @@ const char *sim_stop_messages[] = {
     "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
     "Illegal Opcode",          // STOP_ILLOP
+    "Simulation stop",         // STOP_STOP
 };
 
 /* End of simh interface */
@@ -1241,6 +1243,9 @@ bool sample_interrupts (void)
 t_stat simh_hooks (void)
   {
     int reason = 0;
+
+    if (stop_cpu)
+      return STOP_STOP;
     // check clock queue 
     if (sim_interval <= 0)
       {
@@ -1356,11 +1361,13 @@ static void setCpuCycle (cycles_t cycle)
 
 static word36 instr_buf [2];
 
+#if 0
 static void ipcCleanup (void)
   {
     //printf ("cleanup\n");
     ipc(ipcStop, 0, 0, 0, 0);
   }
+#endif
 
 // This is part of the simh interface
 t_stat sim_instr (void)
@@ -1369,6 +1376,7 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
 
+#if 0
     // IPC initalization stuff
     bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
@@ -1382,6 +1390,7 @@ t_stat sim_instr (void)
     }
      
     // End if IPC init stuff
+#endif
       
       
     // Heh. This needs to be static; longjmp resets the value to NULL
@@ -2048,9 +2057,11 @@ last = M[01007040];
 
 leave:
 
+#if 0
     // if IPC was running before G leave it running - don't stop it, else stop it
     if (!ipc_running)
         ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
+#endif
       
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());

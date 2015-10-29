@@ -1074,7 +1074,8 @@ eol:
     c = sim_poll_kbd();
 // XXX replace attn key signal with escape char check here
 // XXX check for escape to scpe (^E?)
-
+    if (stop_cpu)
+      return;
     if (c == SCPE_OK)
         return; // no input
     if (c == SCPE_STOP)

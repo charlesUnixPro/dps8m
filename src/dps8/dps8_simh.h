@@ -73,6 +73,7 @@
 #define STOP_FLT_CASCADE   5
 #define STOP_HALT   6
 #define STOP_ILLOP  7
+#define STOP_STOP   8
 
 
 // not really STOP codes, but get returned from instruction loops

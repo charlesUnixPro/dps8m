@@ -186,6 +186,12 @@ static void usr1SignalHandler (UNUSED int sig)
     return;
   }
 
+static void ipcCleanup (void)
+  {
+    //printf ("cleanup\n");
+    ipc(ipcStop, 0, 0, 0, 0);
+  }
+
 // Once-only initialization
 
 static void dps8_init(void)
@@ -222,6 +228,19 @@ static void dps8_init(void)
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
+
+    // IPC initalization stuff
+    bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
+      
+    ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
+    ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+    if (!ipc_running)
+    {
+        sim_printf("Info: ");
+        ipc(ipcStart, fnpName,0,0,0);
+        atexit (ipcCleanup);
+    }
+     
 }
 
 uint64 sim_deb_start = 0;
