@@ -6,6 +6,7 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -114,6 +115,7 @@ const char *sim_stop_messages[] = {
     "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
     "Illegal Opcode",          // STOP_ILLOP
+    "Simulation stop",         // STOP_STOP
 };
 
 /* End of simh interface */
@@ -1244,6 +1246,9 @@ bool sample_interrupts (void)
 t_stat simh_hooks (void)
   {
     int reason = 0;
+
+    if (stop_cpu)
+      return STOP_STOP;
     // check clock queue 
     if (sim_interval <= 0)
       {
