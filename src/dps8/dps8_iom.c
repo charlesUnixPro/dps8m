@@ -2003,6 +2003,15 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
         p -> charPos = 0;
         p -> chanStatus = chanStatNormal;
 
+
+// The device code is per IDCW; look up the device for this IDCW
+
+        d = & cables -> cablesFromIomToDev [iomUnitIdx] .  devices [chan] [p -> IDCW_DEV_CODE];
+        if (! d -> iomCmd)
+          {
+            p -> stati = 06000; // t, power off/missing
+            goto done;
+          }
 // Send the DCW list's DCW
 
         d -> iomCmd (iomUnitIdx, chan);

@@ -397,6 +397,13 @@ w=i;
           }
           break;
 
+        case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Set Diagnostic Mode %d\n", crdpun_unit_num);
+          }
+          break;
+
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;

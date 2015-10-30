@@ -30,8 +30,73 @@ int32   mux_mdm     = 0 ;                               /*  QTY modem control ac
 int32   mux_auto    = 0 ;                               /*  QTY auto disconnect active? */
 int32   mux_polls   = 0 ;                               /*  total 'qty_svc' polls       */
 
-TMLN    mux_ldsc[ MAX_LINES ] = { {0} } ;                 /*  QTY line descriptors        */
-TMXR    mux_desc    = { MAX_LINES, NULL, 0, mux_ldsc } ;     /*  mux descriptor      */
+TMLN    mux_ldsc[ MAX_LINES ] = {                       /*  QTY line descriptors        */
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
+   { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL }
+ }; 
+TMXR    mux_desc    = { MAX_LINES, NULL, 0, mux_ldsc, NULL, NULL, NULL, "", 0, 0, 0, 0, false, false } ;     /*  mux descriptor      */
 int32   mux_status[ MAX_LINES ] = { 0 } ;                 /*  QTY line status             */
                                                         /*  (must be at least 32 bits)  */
 int32   mux_tx_chr[ MAX_LINES ] = { 0 } ;                 /*  QTY line output character   */
@@ -45,8 +110,7 @@ int32 mux_int_req, mux_busy, mux_done, mux_disable;
 
 UNIT mux_unit =
 {
-      UDATA (&mux_svc, (UNIT_DISABLE + UNIT_ATTABLE + UNIT_IDLE), 0), 0
-      //UDATA (&mux_svc, (UNIT_DISABLE + UNIT_ATTABLE), 0)
+      UDATA (&mux_svc, (UNIT_DISABLE + UNIT_ATTABLE + UNIT_IDLE), 0), 0, 0, 0, 0, 0, NULL, NULL
 } ;
 
 DIB mux_dib = { DEV_FNPMUX, FNP_INT_MUX, PI_MUX, &mux } ;
@@ -244,29 +308,29 @@ REG mux_reg[] =  /* */
 //    { FLDATA (MDMCTL, mux_mdm,  0) },
 //    { FLDATA (AUTODS, mux_auto, 0) },
 //    { DRDATA (POLLS, mux_polls, 32) },
-    { DRDATAD (CHARRX, mux_chars_Rx, 32, "Characters received on Multiplexer"), 0 },
+    { DRDATAD (CHARRX, mux_chars_Rx, 32, "Characters received on Multiplexer"), 0, 0 },
 #if defined (SIM_ASYNCH_IO)
     { DRDATA (LATENCY, sim_asynch_latency, 32), PV_LEFT },
     { DRDATA (INST_LATENCY, sim_asynch_inst_latency, 32), PV_LEFT },
 #endif
-    { NULL, 0 }
+    { NULL, 0, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 } ;
 
 MTAB mux_mod[] =
 {
-    { UNIT_8B, 0, "7b", "7B", NULL },
-    { UNIT_8B, UNIT_8B, "8b", "8B", NULL },
+    { UNIT_8B, 0, "7b", "7B", NULL, NULL, NULL, NULL },
+    { UNIT_8B, UNIT_8B, "8b", "8B", NULL, NULL, NULL, NULL },
     { MTAB_XTD | MTAB_VDV, 1, NULL, "DISCONNECT",
-        &tmxr_dscln, NULL, (void *)&mux_desc },
+        &tmxr_dscln, NULL, (void *)&mux_desc, NULL },
     { UNIT_ATT, UNIT_ATT, "connections", NULL,
-        NULL, &tmxr_show_summ, (void *)&mux_desc },
+        NULL, &tmxr_show_summ, (void *)&mux_desc, NULL },
     { MTAB_XTD | MTAB_VDV | MTAB_NMO, 1, "CONNECTIONS", NULL,
-        NULL, &tmxr_show_cstat, (void *)&mux_desc },
+        NULL, &tmxr_show_cstat, (void *)&mux_desc, NULL },
     { MTAB_XTD | MTAB_VDV | MTAB_NMO, 0, "STATISTICS", NULL,
-        NULL, &tmxr_show_cstat, (void *)&mux_desc },
+        NULL, &tmxr_show_cstat, (void *)&mux_desc, NULL },
     { MTAB_XTD | MTAB_VDV, 0, "LINES", "LINES",
-        &mux_setnl, &tmxr_show_lines, (void *) &mux_desc },
-    { 0 }
+        &mux_setnl, &tmxr_show_lines, (void *) &mux_desc, NULL },
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 } ;
 
 t_stat mux_attach(UNIT *unitp, char *cptr)
@@ -671,7 +735,8 @@ DEVICE mux_dev = {
     "MUX",      // lname
     NULL,       // help
     NULL,       // attach help
-    NULL        // help context
+    NULL,       // help context
+    NULL,       // description
 };
 
 int32 mux_tmxr_poll = 16000;
