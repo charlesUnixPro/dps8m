@@ -84,7 +84,8 @@
 // applications and/or direct data channels.
 //
 // Case c. will be used normally only with the connect channel servicing CPI
-// type payload channels.
+// type payload channels. [CAC: "INDICATE PTRO TO CONN. CH." means that the
+// connect channel should not call list service to obtain additional PCW's]
 //
 // If case a. is used with the connect channels, a "System Fault: Tally
 // Control Error, Connect Channel" will be generated. Case c. will be
