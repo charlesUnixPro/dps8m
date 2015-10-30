@@ -31,8 +31,10 @@
 #include "shm.h"
 #endif
 
+#include "fnp_defs.h"
+#include "fnp_cmds.h"
 
-#include "fnp_ipc.h"
+#include "sim_defs.h"
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -594,7 +596,6 @@ t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
         return removeSegref(cmds[0], cmds[3]);
     if (nParams == 4 && !strcasecmp(cmds[1], "segdef") && !strcasecmp(cmds[2], "remove"))
         return removeSegdef(cmds[0], cmds[3]);
-    
     return SCPE_ARG;
 }
 
@@ -1361,37 +1362,18 @@ static void setCpuCycle (cycles_t cycle)
 
 static word36 instr_buf [2];
 
-#if 0
-static void ipcCleanup (void)
-  {
-    //printf ("cleanup\n");
-    ipc(ipcStop, 0, 0, 0, 0);
-  }
-#endif
-
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
 #ifdef USE_IDLE
     sim_rtcn_init (0, 0);
 #endif
+      
+    mux(SLS, 0, 0);
 
-#if 0
-    // IPC initalization stuff
-    bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
-      
-    ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
-    ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
-    if (!ipc_running)
-    {
-        sim_printf("Info: ");
-        ipc(ipcStart, fnpName,0,0,0);
-        atexit (ipcCleanup);
-    }
-     
-    // End if IPC init stuff
-#endif
-      
+    UNIT *u = &mux_unit;
+    if (u->filename == NULL || strlen(u->filename) == 0)
+        sim_printf("Warning: MUX not attached.\n");
       
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
@@ -1472,6 +1454,8 @@ last = M[01007040];
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
+            AIO_CHECK_EVENT;
+            dequeue_fnp_command ();
           }
 #if 0
         if (sim_gtime () % 1024 == 0)
@@ -2056,13 +2040,6 @@ last = M[01007040];
       } while (reason == 0);
 
 leave:
-
-#if 0
-    // if IPC was running before G leave it running - don't stop it, else stop it
-    if (!ipc_running)
-        ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
-#endif
-      
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);

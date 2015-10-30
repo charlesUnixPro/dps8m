@@ -1212,8 +1212,8 @@ bool startsWith(const char *str, const char *pre)
  */
 char *rtrim(char *s)
 {
-    if (s == NULL)
-        return NULL;
+    if (! s)
+      return s;
     int index;
     
     //for (index = (int)strlen(s) - 1; index >= 0 && (s[index] == ' ' || s[index] == '\t'); index--)

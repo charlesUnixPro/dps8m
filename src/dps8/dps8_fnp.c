@@ -13,10 +13,16 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
+#include "dps8_fnp.h"
+//#include "fnp_ipc.h"
 #include "dps8_cable.h"
-#include "fnp_ipc.h"
 #include "utlist.h"
+#include "uthash.h"
 //#include "fnpp.h"
+
+#include "sim_defs.h"
+#include "sim_tmxr.h"
+#include <regex.h>
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
@@ -192,7 +198,7 @@ struct fnpQueueElement
 
 fnpQueueElement * fnpQueue = NULL;
 
-static void fnpQueueMsg (char * msg)
+void fnpQueueMsg (char * msg)
   {
     pthread_mutex_lock (& fnpMQlock);
     fnpQueueElement * element = malloc (sizeof (fnpQueueElement));
@@ -618,6 +624,8 @@ void fnpInit(void)
       {
         sim_debug (DBG_ERR, & fnpDev, "n mutex init failed\n");
       }
+    void fnp_init (void);
+    fnp_init ();
   }
 
 static t_stat fnpReset (DEVICE * dptr)
@@ -630,6 +638,12 @@ static t_stat fnpReset (DEVICE * dptr)
     return SCPE_OK;
   }
 
+#if 1
+static void tellFNP (UNUSED int fnpUnitNum, char * msg)
+  {
+    fnp_command ("fnp-d", "cpu-a", msg);
+  }
+#else
 static void tellFNP (int fnpUnitNum, char * msg)
   {
     //sim_printf ("tellFNP (%s)\n", msg);
@@ -668,7 +682,7 @@ static void tellFNP (int fnpUnitNum, char * msg)
       }
     return;
   }
-
+#endif
 
 static void dmpmbx (uint mailboxAddress)
   {
@@ -1726,12 +1740,6 @@ static void processMBX (uint iomUnitIdx, uint chan)
 static int fnpCmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    if (! findPeer ("fnp-d"))
-      {
-        p -> stati = 06000; // Have status; power off?
-        sim_debug (DBG_NOTIFY, & fnpDev, "Request status\n");
-        goto intr;
-      }
     p -> stati = 0;
 //sim_printf ("fnp cmd %d\n", p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
@@ -1739,10 +1747,14 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
         case 000: // CMD 00 Request status
           {
 //sim_printf ("fnp cmd request status\n");
+#if 0
             if (findPeer ("fnp-d"))
               p -> stati = 04000;
             else
               p -> stati = 06000; // Have status; power off?
+#else
+              p -> stati = 04000;
+#endif
             //disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & fnpDev, "Request status\n");
           }
@@ -1905,3 +1917,4 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
     cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
+

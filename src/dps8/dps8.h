@@ -35,14 +35,14 @@
 #define QUIET_UNUSED
 
 // Enable M[] as shared memory segment
-#define M_SHARED
+//#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
 #define RALR_FIX_0
 
 // Enable blinkenLights interface
-#define MULTIPASS
+//#define MULTIPASS
 
 // Enable IPC
 #define VM_DPS8

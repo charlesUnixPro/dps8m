@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <wordexp.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_console.h"
@@ -45,7 +46,8 @@
 #include <fcntl.h>           /* For O_* constants */
 #endif
 
-#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+//#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+#include "fnp.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -64,9 +66,9 @@ static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
 
-// These are part of the shm interface
-
+#ifdef MULTIPASS
 static pid_t dps8m_sid; // Session id
+#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
@@ -157,12 +159,9 @@ static CTAB dps8_cmds[] =
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
     
-#ifdef VM_DPS8
-    {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
-    {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
-#endif
-    
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+
+    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
 
     { NULL, NULL, 0, NULL, NULL}
 };
@@ -186,12 +185,6 @@ static void usr1SignalHandler (UNUSED int sig)
     return;
   }
 
-static void ipcCleanup (void)
-  {
-    //printf ("cleanup\n");
-    ipc(ipcStop, 0, 0, 0, 0);
-  }
-
 // Once-only initialization
 
 static void dps8_init(void)
@@ -204,11 +197,13 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+#ifdef MULTIPASS
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+#endif
 
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);
@@ -228,18 +223,6 @@ static void dps8_init(void)
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
-
-    // IPC initalization stuff
-    bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
-      
-    ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
-    ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
-    if (!ipc_running)
-    {
-        sim_printf("Info: ");
-        ipc(ipcStart, fnpName,0,0,0);
-        atexit (ipcCleanup);
-    }
      
 }
 
@@ -2158,7 +2141,8 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     & fxe_dev,
-    & ipc_dev,  // for fnp IPC
+    // & ipc_dev,  // for fnp IPC
+    & mux_dev,
     & crdrdr_dev,
     & prt_dev,
     NULL
