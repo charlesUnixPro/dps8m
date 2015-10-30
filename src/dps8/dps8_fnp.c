@@ -14,7 +14,7 @@
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_fnp.h"
-//#include "fnp_ipc.h"
+#include "fnp_cmds.h"
 #include "dps8_cable.h"
 #include "utlist.h"
 #include "uthash.h"
@@ -1771,7 +1771,7 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
 
     //status_service (iomUnitIdx, chan, false);
     processMBX (iomUnitIdx, chan);
-intr:;
+
 //sim_printf ("end of list service; sending terminate interrupt\n");
     //send_terminate_interrupt (iomUnitIdx, chan);
     return 2; // did command, don't want more
