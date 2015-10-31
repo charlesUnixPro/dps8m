@@ -2014,8 +2014,16 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
           }
 // Send the DCW list's DCW
 
-        d -> iomCmd (iomUnitIdx, chan);
-        if (p -> IDCW_CONTROL == 0) 
+        rc = d -> iomCmd (iomUnitIdx, chan);
+
+        if (rc == 3) // handler still processing command, don't set
+                     // terminate intrrupt.
+          {
+            sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
+            return 0;
+          }
+
+        if (rc || p -> IDCW_CONTROL == 0) 
           ptro = true; 
       } while (! ptro);
  

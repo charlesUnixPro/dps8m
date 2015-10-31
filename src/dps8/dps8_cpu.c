@@ -24,6 +24,7 @@
 #include "dps8_fnp.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_crdrdr.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -1447,6 +1448,12 @@ last = M[01007040];
             break;
           }
 
+        static uint slowQueueSubsample = 0;
+        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
+          {
+            slowQueueSubsample = 0;
+            rdrProcessEvent (); 
+          }
         static uint queueSubsample = 0;
         if (queueSubsample ++ > 10240) // ~ 100Hz
           {
