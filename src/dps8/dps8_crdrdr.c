@@ -340,141 +340,6 @@ static void asciiToH (char * str, uint * hstr)
       }
   }
 
-#ifdef IOM2
-static int crdrdr_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
-  {
-    int crdrdr_unit_num = CRDRDR_UNIT_NUM (unitp);
-    int iomUnitIdx = cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx;
-    //struct crdrdr_state * crdrdr_statep = & crdrdr_state [crdrdr_unit_num];
-    * disc = false;
-
-    int chan = pcwp-> chan;
-sim_printf ("crdrdr_cmd %o [%lld]\n", pcwp -> dev_cmd, sim_timell ());
-    iomChannelData_ * p = & iomChannelData [iomUnitIdx] [chan];
-    p -> stati = 0;
-
-    switch (pcwp -> dev_cmd)
-      {
-        case 000: // CMD 00 Request status
-          {
-            p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status %d\n", crdrdr_unit_num);
-          }
-          break;
-
-        case 001: // CMD 01 Read binary
-          {
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary %d\n", crdrdr_unit_num);
-            // Get the DDCW
-            dcw_t dcw;
-            int rc = iomListService (iomUnitIdx, chan, & dcw, NULL);
-
-            if (rc)
-              {
-                sim_printf ("list service failed\n");
-                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                p -> chanStatus = chanStatIncomplete;
-                break;
-              }
-//sim_printf ("read  got type %d\n", dcw . type);
-            if (dcw . type != ddcw)
-              {
-                sim_printf ("not ddcw? %d\n", dcw . type);
-                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                p -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-
-            uint type = dcw.fields.ddcw.type;
-            uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            if (pcwp -> mask)
-              daddr |= ((pcwp -> ext) & MASK6) << 18;
-            // uint cp = dcw.fields.ddcw.cp;
-
-            if (type == 0) // IOTD
-              * disc = true;
-            else if (type == 1) // IOTP
-              * disc = false;
-            else
-              {
-sim_printf ("uncomfortable with this\n");
-                p -> stati = 04504; // BUG: Comand reject, parity,IDCW/LC#
-                p -> chanStatus = chanStatIncorrectDCW;
-                break;
-              }
-#if 0
-            if (type == 3 && tally != 1)
-              {
-                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
-                           __func__, tally);
-              }
-#endif
-            if (tally == 0)
-              {
-                sim_debug (DBG_DEBUG, & iom_dev,
-                           "%s: Tally of zero interpreted as 010000(4096)\n",
-                           __func__);
-                tally = 4096;
-              }
-
-sim_printf ("tally %d\n", tally);
-
-
-            //uint wordsProcessed = 0;
-            for (uint i = 0; i < tally; i ++)
-              {
-                word36 w;
-#if 0
-                extractWord36FromBuffer (buffer, p72ByteCnt, & wordsProcessed,
-                                         & w);
-#else
-w=i;
-#endif
-                store_abs_word (daddr + i, w, "Card reader read");
-              }
-//for (uint i = 0; i < tally; i ++) sim_printf ("%8o %012llo\n", daddr + i, M [daddr + i]);
-            p -> stati = 04000;
-            p -> initiate = false;
-            p -> tallyResidue = tally;
-
-#if 0
-// hopper empty
-            p -> stati = 04201;
-            status_service (iomUnitIdx, pcwp -> chan, false);
-#endif
-          }
-          break;
-
-        case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
-          {
-            p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Set Diagnostic Mode %d\n", crdpun_unit_num);
-          }
-          break;
-
-        case 040: // CMD 40 Reset status
-          {
-            p -> stati = 04000;
-            //crdrdr_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status %d\n", crdrdr_unit_num);
-          }
-          break;
-
-
-
-        default:
-          {
-sim_printf ("crdrdr daze %o\n", pcwp -> dev_cmd);
-            p -> stati = 04501; // cmd reject, invalid opcode
-            p -> chanStatus = chanStatIncorrectDCW;
-          }
-          break;
-      
-      }
-    return 0;
-  }
-#endif
 
 #if 0
 static char * testDeck [] =
@@ -482,7 +347,7 @@ static char * testDeck [] =
     "++eof",
     "++uid cac",
     "++data test \\Anthony \\Sys\\Eng",
-    "++password \\Anthony",
+    "++password \\X\\X\\X",
     "++format rmcc trim  addnl",
     "++input",
     "test",
@@ -495,7 +360,7 @@ static char * testDeck [] =
 static int testDeckLine = 0;
 #endif
  
-#if 1
+#if 0
 static const char *bit_rep[16] = {
     [ 0] = "0000", [ 1] = "0001", [ 2] = "0010", [ 3] = "0011",
     [ 4] = "0100", [ 5] = "0101", [ 6] = "0110", [ 7] = "0111",
@@ -510,16 +375,6 @@ static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
     sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
     uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
 
-#if 0
-    //if (! testDeck [testDeckLine])
-    if (crdrdr_state [unitIdx] . deckfp == NULL || feof (crdrdr_state [unitIdx] . deckfp))
-       {
-          if (crdrdr_state [unitIdx] . deckfp)
-            {
-              fclose (crdrdr_state [unitIdx] . deckfp);
-              crdrdr_state [unitIdx] . deckfp = NULL;
-            }
-#endif
     if (crdrdr_state [unitIdx] . deckfp == NULL)
        {
 empty:;
@@ -546,7 +401,7 @@ sim_printf ("hopper empty\n");
     while (l > 0 && cardImage [l - 1] == '\n')
       cardImage [-- l] = 0;
 
-sim_printf ("card <%s>\n", cardImage);
+    // sim_printf ("card <%s>\n", cardImage);
 
     if (l > 80)
       {
@@ -561,7 +416,7 @@ sim_printf ("card <%s>\n", cardImage);
     // 12 bits / char
     uint nbits = l * 12;
     // 36 bits / word
-    uint tally = (nbits + 35) / 6;
+    uint tally = (nbits + 35) / 36;
 
     if (tally > 27)
       {
@@ -577,7 +432,7 @@ sim_printf ("card <%s>\n", cardImage);
         uint fieldno = col % 3;
         putbits36 (& buffer [wordno], fieldno * 12, 12, hbuf [col]);
       }
-//sim_printf ("test deck buffer\n");
+#if 0
 for (uint i = 0; i < tally; i ++)
   {
     sim_printf ("  %012llo     \n", buffer [i]);
@@ -586,6 +441,7 @@ for (uint i = 0; i < tally; i ++)
       sim_printf ("%s", B(j));
     sim_printf ("\n");
   }
+#endif
     p -> stati = 04000;
     p -> initiate = false;
 
@@ -620,51 +476,18 @@ for (uint i = 0; i < tally; i ++)
         return -1;
       }
 
-#if 0
-    char * str = testDeck [testDeckLine];
-    size_t l = strlen (str);
-//sim_printf ("test deck line <%s>\n", str);
-    uint hbuf [l];
-    asciiToH (str, hbuf);
-//sim_printf ("test deck H\n");
-//for (uint i = 0; i < l; i ++)
-  //sim_printf ("  %s%s%s\n", bit_rep [(hbuf [i] >> 8) & 0x0f], bit_rep [(hbuf [i] >> 4) & 0x0f], bit_rep [(hbuf [i] >> 0) & 0x0f]);
-#endif
-
     iomIndirectDataService (iomUnitIdx, chan, buffer,
                             & tally, true);
-    //testDeckLine ++;
-//sim_printf ("testDeckLine %d\n", testDeckLine);
     p -> stati = 04000; // ok
     p -> initiate = false;
     p -> tallyResidue = tally;
-#if 0
-       else
-         {
-            //p -> stati = 04205; // hopper empty
-            p -> stati = 04200; // offline
-            p -> initiate = false;
-            p -> tallyResidue = 0;
-//sim_printf ("hopper empty\n");
-            return -1;
-         }
-#endif
     p -> charPos = 0;
 
-#if 0
-if (p -> DDCW_22_23_TYPE != 0)
-  sim_printf ("curious... a card read with more than one DDCW?\n");
+    if (p -> DDCW_22_23_TYPE != 0)
+      sim_warn ("curious... a card read with more than one DDCW?\n");
 
-    while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
-#endif
     return 0;
   }
-
-#if 0
-// hopper empty
-            p -> stati = 04201;
-            status_service (iomUnitIdx, pcwp -> chan, false);
-#endif
 
 static int crdrdr_cmd (uint iomUnitIdx, uint chan)
   {
@@ -683,7 +506,6 @@ static int crdrdr_cmd (uint iomUnitIdx, uint chan)
           break;
 
         case 001: // CMD 01 Read binary
-//        case 003: // CMD 03 Read Card Mixed
           {
             int rc = crdrdrReadRecord (iomUnitIdx, chan);
             if (rc)
@@ -700,7 +522,7 @@ static int crdrdr_cmd (uint iomUnitIdx, uint chan)
 
         default:
           {
-sim_printf ("crdrdr daze %o\n", p -> IDCW_DEV_CMD);
+            sim_warn ("crdrdr daze %o\n", p -> IDCW_DEV_CMD);
             p -> stati = 04501; // cmd reject, invalid opcode
             p -> chanStatus = chanStatIncorrectDCW;
           }
@@ -716,8 +538,8 @@ static void submit (char * fname)
       perror ("crdrdr deck open\n");
     int rc = unlink (fname);
     if (rc)
-      perror ("crdred deck unlink\n");
-sim_printf ("submit %s\n", fname);
+      perror ("crdrdr deck unlink\n");
+    sim_printf ("submit %s\n", fname);
     crdrdr_state [0 /* ASSUME0 */] . deckfp = deckfp;
     if (deckfp)
       crdrdrCardReady (0 /*ASSUME0*/);
@@ -734,6 +556,7 @@ void rdrProcessEvent ()
     dp = opendir (qdir);
     if (! dp)
       {
+        sim_warn ("crdrdr opendir '%s' fail.\n", qdir);
         perror ("opendir");
         return;
       }
@@ -757,7 +580,6 @@ void rdrProcessEvent ()
 
 void crdrdrCardReady (int unitNum)
   {
-    //testDeckLine = 0;
     send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
                             cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
                             cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
@@ -767,8 +589,8 @@ void crdrdrCardReady (int unitNum)
 int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-// Is it an IDCW?
 
+    // Is it an IDCW?
     if (p -> DCW_18_20_CP == 7)
       {
         return crdrdr_cmd (iomUnitIdx, chan);
