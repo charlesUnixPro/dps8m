@@ -658,8 +658,10 @@ void rdrProcessEvent ()
     char * qdir = "/tmp/rdra";
     if (! crdrdr_state [0 /* ASSUME0 */] . running)
       return;
+#if 0
     if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
       return;
+#endif
     DIR * dp;
     dp = opendir (qdir);
     if (! dp)
@@ -672,7 +674,8 @@ void rdrProcessEvent ()
     while ((entry = readdir (dp)))
       {
         //printf ("%s\n", entry -> d_name);
-        if (strncmp (entry -> d_name, "deck", 4) == 0)
+        if (crdrdr_state [0 /* ASSUME0 */] . deckfd < 0 &&
+            strncmp (entry -> d_name, "deck", 4) == 0)
           {
             char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
             strcpy (fqname, qdir);
@@ -681,6 +684,23 @@ void rdrProcessEvent ()
             submit (fqname);
             break;
           }
+        if (strcmp (entry -> d_name, "discard") == 0)
+         {
+            char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
+            strcpy (fqname, qdir);
+            strcat (fqname, "/");
+            strcat (fqname, entry -> d_name);
+            int rc = unlink (fqname);
+            if (rc)
+              perror ("crdrdr discark unlink\n");
+            if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
+              {
+                close (crdrdr_state [0 /* ASSUME0 */] . deckfd);
+                crdrdr_state [0 /* ASSUME0 */] . deckfd = -1;
+                crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
+                break;
+             }
+         }
       }
     closedir (dp);
   }
