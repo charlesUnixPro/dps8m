@@ -140,11 +140,16 @@ DEVICE crdrdr_dev = {
 };
 
 #define MAX_DEV_NAME_LEN 64
+
+
+
 static struct crdrdr_state
   {
     char device_name [MAX_DEV_NAME_LEN];
-    FILE * deckfp;
+    //FILE * deckfd;
+    int deckfd;
     bool running;
+    enum { deckStart = 0, eof1Sent, uid1Sent, inputSent, eof2Sent } deckState;
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
 
@@ -176,6 +181,8 @@ sim_printf ("crd rdr signal caught\n");
 void crdrdr_init (void)
   {
     memset (crdrdr_state, 0, sizeof (crdrdr_state));
+    for (uint i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
+      crdrdr_state [i] . deckfd = -1;
     signal (SIGUSR2, usr2signal);
   }
 
@@ -369,13 +376,42 @@ static const char *bit_rep[16] = {
 };
 #endif
 
+static int getCardLine (int fd, char * buffer)
+  {
+    uint n = 0;
+    buffer [n] = 0;
+    while (1)
+      {
+        uint8 ch;
+        int rc = read (fd, & ch, 1);
+        if (rc <= 0) // eof or err
+          return n == 0;
+        if (ch == '\n')
+          return 0;
+        buffer [n ++] = ch;
+        buffer [n] = 0;
+        if (n >= 79)
+         return 0;
+     }
+  }
+
+static int getCardData (int fd, char * buffer)
+  {
+    memset (buffer, 0, 80);
+    int rc = read (fd, buffer, 80);
+    if (rc < 0)
+      return 0;
+    return rc;
+  }
+
 static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
     uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
 
-    if (crdrdr_state [unitIdx] . deckfp == NULL)
+    //if (crdrdr_state [unitIdx] . deckfd == NULL)
+    if (crdrdr_state [unitIdx] . deckfd < 0)
        {
 empty:;
           p -> stati = 04201; // hopper empty
@@ -388,21 +424,91 @@ sim_printf ("hopper empty\n");
           return -1;
        }
 
-    char cardImage [81] = "";
-    char * res = fgets (cardImage, 81, crdrdr_state [unitIdx] . deckfp);
-    if (! res)
+    char cardImage [80] = "";
+    size_t l = 0;
+    static int jobNo = 0;
+    switch (crdrdr_state [unitIdx] . deckState)
       {
-        fclose (crdrdr_state [unitIdx] . deckfp);
-        crdrdr_state [unitIdx] . deckfp = NULL;
-        goto empty;
+        case deckStart:
+          {
+            strcpy (cardImage, "++EOF");
+            l = strlen (cardImage);
+            crdrdr_state [unitIdx] . deckState = eof1Sent;
+            jobNo ++;
+          }
+          break;
+
+        case eof1Sent:
+          {
+            sprintf (cardImage, "++UID %d", jobNo);
+            l = strlen (cardImage);
+            crdrdr_state [unitIdx] . deckState = uid1Sent;
+          }
+          break;
+
+        case uid1Sent:
+          {
+            //char * res = fgets (cardImage, 81, crdrdr_state [unitIdx] . deckfd);
+            //if (! res)
+              //{
+                //fclose (crdrdr_state [unitIdx] . deckfd);
+                //crdrdr_state [unitIdx] . deckfd = NULL;
+                //goto empty;
+               //}
+            int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
+            if (rc)
+              {
+                //fclose (crdrdr_state [unitIdx] . deckfd);
+                //crdrdr_state [unitIdx] . deckfd = NULL;
+                close (crdrdr_state [unitIdx] . deckfd);
+                crdrdr_state [unitIdx] . deckfd = -1;
+                crdrdr_state [unitIdx] . deckState = deckStart;
+                goto empty;
+              }
+            l = strlen (cardImage);
+            if (strncasecmp (cardImage, "++input", 7) == 0)
+              crdrdr_state [unitIdx] . deckState = inputSent;
+          }
+          break;
+
+        case inputSent:
+          {
+            l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
+            if (l)
+              break;
+            strcpy (cardImage, "++EOF");
+            l = strlen (cardImage);
+            crdrdr_state [unitIdx] . deckState = eof2Sent;
+          }
+          break;
+
+        case eof2Sent:
+          {
+            sprintf (cardImage, "++UID %d", jobNo);
+            l = strlen (cardImage);
+            crdrdr_state [unitIdx] . deckState = deckStart;
+            close (crdrdr_state [unitIdx] . deckfd);
+            crdrdr_state [unitIdx] . deckfd = -1;
+          }
+          break;
       }
 
-    size_t l = strlen (cardImage);
+           
+#if 0
     while (l > 0 && cardImage [l - 1] == '\n')
       cardImage [-- l] = 0;
-
-    // sim_printf ("card <%s>\n", cardImage);
-
+#endif
+    //sim_printf ("card <%s>\n", cardImage);
+#if 0
+for (uint i = 0; i < 80; i ++)
+  {
+    if (isprint (cardImage [i]))
+      sim_printf ("%c", cardImage [i]);
+    else
+      sim_printf ("\\%03o", cardImage [i]);
+  }
+sim_printf ("\n");
+#endif
     if (l > 80)
       {
         sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
@@ -533,15 +639,17 @@ static int crdrdr_cmd (uint iomUnitIdx, uint chan)
 
 static void submit (char * fname)
   {
-    FILE * deckfp = fopen (fname, "r");
-    if (! deckfp)
+    //FILE * deckfd = fopen (fname, "r");
+    int deckfd = open (fname, O_RDONLY);
+    if (deckfd < 0)
       perror ("crdrdr deck open\n");
     int rc = unlink (fname);
     if (rc)
       perror ("crdrdr deck unlink\n");
     sim_printf ("submit %s\n", fname);
-    crdrdr_state [0 /* ASSUME0 */] . deckfp = deckfp;
-    if (deckfp)
+    crdrdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
+    crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
+    if (deckfd >= 0)
       crdrdrCardReady (0 /*ASSUME0*/);
   }
 
@@ -550,7 +658,7 @@ void rdrProcessEvent ()
     char * qdir = "/tmp/rdra";
     if (! crdrdr_state [0 /* ASSUME0 */] . running)
       return;
-    if (crdrdr_state [0 /* ASSUME0 */] . deckfp)
+    if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
       return;
     DIR * dp;
     dp = opendir (qdir);
