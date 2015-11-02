@@ -21,7 +21,6 @@
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
-#include "dps8_fxe.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
@@ -4076,7 +4075,6 @@ static t_stat DoBasicInstruction (void)
         /// TRANSFER INSTRUCTIONS
         case 0713:  ///< call6
             
-            fxeSetCall6Trap ();
             if (TPR.TRR > PPR.PRR)
             {
                 sim_debug (DBG_APPENDING, & cpu_dev,
@@ -5307,7 +5305,7 @@ static t_stat DoBasicInstruction (void)
             doFault(FAULT_IPR, ill_proc, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
-            doRCU (false); // never returns
+            doRCU (); // never returns
 
         case 0452:  ///< scpr
           {
@@ -6720,11 +6718,6 @@ static t_stat DoEISInstruction (void)
             break;
         }
 
-        case 0421: // fxe fault handler
-        {
-            fxeFaultHandler ();
-            return STOP_BUG;
-        }
 #endif
         // priviledged instructions
             
@@ -7316,10 +7309,7 @@ static int doABSA (word36 * result)
     return SCPE_OK;
   }
 
-// fxeTrap: If true, the fault was a call6 that was serviced by fxe, so
-// the execution should resume at the instruction after.
-
-void doRCU (bool fxeTrap)
+void doRCU (void)
   {
 
     words2scu (Yblock8);
@@ -7349,13 +7339,6 @@ void doRCU (bool fxeTrap)
       set_addr_mode (ABSOLUTE_mode);
 #endif
 
-
-    if (fxeTrap)
-      {
-        fxeCall6TrapRestore ();
-        cpu . cycle = FETCH_cycle;
-        longjmp (jmpMain, JMP_REENTRY);
-      }
 
 //sim_printf ("F/I is %d\n", cu . FLT_INT);
     if (cu . FLT_INT == 0) // is interrupt, not fault

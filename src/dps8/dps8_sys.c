@@ -26,7 +26,6 @@
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
-#include "dps8_fxe.h"
 #include "dps8_append.h"
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
@@ -138,8 +137,6 @@ static CTAB dps8_cmds[] =
 #define SSH_CL          2                               /* clear */
     {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
     {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL},
-    {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
-    {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
     {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
     {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
@@ -410,9 +407,6 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     if (ret)
       return ret;
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
-    if (ret)
-      return ret;
-    ret = lookupFXESegmentAddress (segno, offset, compname, compoffset);
     return ret;
   }
 
@@ -2140,7 +2134,6 @@ DEVICE * sim_devices [] =
     // & mpc_dev,
     & opcon_dev,
     & sys_dev,
-    & fxe_dev,
     // & ipc_dev,  // for fnp IPC
     & mux_dev,
     & crdrdr_dev,

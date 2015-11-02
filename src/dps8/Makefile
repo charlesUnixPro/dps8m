@@ -219,7 +219,6 @@ C_SRCS += ./dps8_utils.c
 C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
-C_SRCS += ./dps8_fxe.c
 #C_SRCS += ./fnpp.c
 #C_SRCS += ./shm.c
 #C_SRCS += ./fnp_ipc.c
@@ -246,7 +245,6 @@ H_SRCS += dps8_disk.h
 H_SRCS += dps8_eis.h
 H_SRCS += dps8_faults.h
 H_SRCS += dps8_fnp.h
-H_SRCS += dps8_fxe.h
 H_SRCS += dps8.h
 H_SRCS += dps8_hw_consts.h
 H_SRCS += dps8_iefp.h
@@ -269,18 +267,6 @@ H_SRCS += dps8_crdrdr.h
 H_SRCS += dps8_cable.h
 H_SRCS += dps8_prt.h
 
-H_SRCS += area_info.incl.pl1.h
-H_SRCS += bind_map.incl.pl1.h
-H_SRCS += definition_dcls.incl.pl1.h
-H_SRCS += iocbx.incl.pl1.h
-H_SRCS += linkdcl.incl.pl1.h
-H_SRCS += object_map.incl.pl1.h
-H_SRCS += pl1_symbol_block.incl.pl1.h
-H_SRCS += source_map.incl.pl1.h
-H_SRCS += stack_header.incl.pl1.h
-H_SRCS += std_symbol_header.incl.pl1.h
-H_SRCS += symbol_block.incl.pl1.h
-H_SRCS += system_link_names.incl.pl1.h
 H_SRCS += shm.h
 
 
