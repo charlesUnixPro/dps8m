@@ -143,6 +143,8 @@ DEVICE crdrdr_dev = {
 
 
 
+enum deckFormat { rawDeck, cardDeck, streamDeck };
+
 static struct crdrdr_state
   {
     char device_name [MAX_DEV_NAME_LEN];
@@ -150,6 +152,7 @@ static struct crdrdr_state
     int deckfd;
     bool running;
     enum { deckStart = 0, eof1Sent, uid1Sent, inputSent, eof2Sent } deckState;
+    enum deckFormat deckFormat;
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
 
@@ -410,7 +413,6 @@ static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
     sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
     uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
 
-    //if (crdrdr_state [unitIdx] . deckfd == NULL)
     if (crdrdr_state [unitIdx] . deckfd < 0)
        {
 empty:;
@@ -426,7 +428,10 @@ sim_printf ("hopper empty\n");
 
     char cardImage [80] = "";
     size_t l = 0;
+    bool isRaw = false;
+
     static int jobNo = 0;
+
     switch (crdrdr_state [unitIdx] . deckState)
       {
         case deckStart:
@@ -448,18 +453,9 @@ sim_printf ("hopper empty\n");
 
         case uid1Sent:
           {
-            //char * res = fgets (cardImage, 81, crdrdr_state [unitIdx] . deckfd);
-            //if (! res)
-              //{
-                //fclose (crdrdr_state [unitIdx] . deckfd);
-                //crdrdr_state [unitIdx] . deckfd = NULL;
-                //goto empty;
-               //}
             int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
             if (rc)
               {
-                //fclose (crdrdr_state [unitIdx] . deckfd);
-                //crdrdr_state [unitIdx] . deckfd = NULL;
                 close (crdrdr_state [unitIdx] . deckfd);
                 crdrdr_state [unitIdx] . deckfd = -1;
                 crdrdr_state [unitIdx] . deckState = deckStart;
@@ -471,15 +467,43 @@ sim_printf ("hopper empty\n");
           }
           break;
 
+        // Reading the actual data cards
+
         case inputSent:
           {
-            l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
-            if (l)
-              break;
-            strcpy (cardImage, "++EOF");
-            l = strlen (cardImage);
-            crdrdr_state [unitIdx] . deckState = eof2Sent;
-          }
+            switch (crdrdr_state [unitIdx] . deckFormat)
+              {
+                case cardDeck:
+                  {
+                    int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
+                    if (rc)
+                      {
+                        strcpy (cardImage, "++EOF");
+                        crdrdr_state [unitIdx] . deckState = eof2Sent;
+                      }
+                    l = strlen (cardImage);
+                  }
+                  break;
+            
+              case streamDeck:
+              case rawDeck:
+                {
+                  l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
+                  if (l)
+                    {
+                      isRaw = true;
+                    }
+                  else
+                    {
+                      strcpy (cardImage, "++EOF");
+                      l = strlen (cardImage);
+                      crdrdr_state [unitIdx] . deckState = eof2Sent;
+                    }
+                }
+                break;
+
+              } // switch (deckFormat)
+          } // case inputSent
           break;
 
         case eof2Sent:
@@ -500,6 +524,8 @@ sim_printf ("hopper empty\n");
 #endif
     //sim_printf ("card <%s>\n", cardImage);
 #if 0
+sim_printf ("\n");
+sim_printf ("\n");
 for (uint i = 0; i < 80; i ++)
   {
     if (isprint (cardImage [i]))
@@ -507,6 +533,7 @@ for (uint i = 0; i < 80; i ++)
     else
       sim_printf ("\\%03o", cardImage [i]);
   }
+sim_printf ("\n");
 sim_printf ("\n");
 #endif
     if (l > 80)
@@ -516,30 +543,44 @@ sim_printf ("\n");
         cardImage [l] = 0;
       }
 
-    uint hbuf [l];
-    asciiToH (cardImage, hbuf);
-
-    // 12 bits / char
-    uint nbits = l * 12;
-    // 36 bits / word
-    uint tally = (nbits + 35) / 36;
-
-    if (tally > 27)
-      {
-        sim_warn ("Whups. crdrdr tally %d > 27; truncating.\n", tally);
-        tally = 27;
-      }
 
     word36 buffer [27];
-    memset (buffer, 0, sizeof (buffer));
-    for (uint col = 0; col < l; col ++)
+    if (isRaw)
+     {
+       // This will overead cardImage by 12 bits, but that's okay
+       // because Multics will ignore the last 12 bits.
+       for (uint i = 0; i < 27; i ++)
+         buffer [i] = extr36 ((uint8 *) cardImage, i);
+     }
+    else
       {
-        uint wordno = col / 3;
-        uint fieldno = col % 3;
-        putbits36 (& buffer [wordno], fieldno * 12, 12, hbuf [col]);
+        uint hbuf [l];
+        asciiToH (cardImage, hbuf);
+
+        // 12 bits / char
+        uint nbits = l * 12;
+        // 36 bits / word
+        uint tally = (nbits + 35) / 36;
+
+        if (tally > 27)
+          {
+            sim_warn ("Whups. crdrdr tally %d > 27; truncating.\n", tally);
+            tally = 27;
+          }
+
+        // Remember that Hollerith for blank is 0, this is really
+        // filling the buffer with blanks.
+        memset (buffer, 0, sizeof (buffer));
+        for (uint col = 0; col < l; col ++)
+          {
+            uint wordno = col / 3;
+            uint fieldno = col % 3;
+            putbits36 (& buffer [wordno], fieldno * 12, 12, hbuf [col]);
+          }
       }
 #if 0
-for (uint i = 0; i < tally; i ++)
+sim_printf ("\n");
+for (uint i = 0; i < 27; i ++)
   {
     sim_printf ("  %012llo     \n", buffer [i]);
 #define B(n) bit_rep [(buffer [i] >> n) & 0x0f]
@@ -547,12 +588,13 @@ for (uint i = 0; i < tally; i ++)
       sim_printf ("%s", B(j));
     sim_printf ("\n");
   }
+sim_printf ("\n");
 #endif
     p -> stati = 04000;
     p -> initiate = false;
 
     // Card images are 80 columns.
-    tally = 27;
+    uint tally = 27;
 
 // Process DDCW
 
@@ -637,7 +679,7 @@ static int crdrdr_cmd (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static void submit (char * fname)
+static void submit (enum deckFormat fmt, char * fname)
   {
     //FILE * deckfd = fopen (fname, "r");
     int deckfd = open (fname, O_RDONLY);
@@ -649,6 +691,7 @@ static void submit (char * fname)
     sim_printf ("submit %s\n", fname);
     crdrdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
     crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
+    crdrdr_state [0 /* ASSUME0 */] . deckFormat = fmt;
     if (deckfd >= 0)
       crdrdrCardReady (0 /*ASSUME0*/);
   }
@@ -674,22 +717,30 @@ void rdrProcessEvent ()
     while ((entry = readdir (dp)))
       {
         //printf ("%s\n", entry -> d_name);
-        if (crdrdr_state [0 /* ASSUME0 */] . deckfd < 0 &&
-            strncmp (entry -> d_name, "deck", 4) == 0)
+        char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
+        strcpy (fqname, qdir);
+        strcat (fqname, "/");
+        strcat (fqname, entry -> d_name);
+        if (crdrdr_state [0 /* ASSUME0 */] . deckfd < 0)
           {
-            char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
-            strcpy (fqname, qdir);
-            strcat (fqname, "/");
-            strcat (fqname, entry -> d_name);
-            submit (fqname);
-            break;
+            if (strncmp (entry -> d_name, "cdeck.", 6) == 0)
+              {
+                submit (cardDeck, fqname);
+                break;
+              }
+            if (strncmp (entry -> d_name, "rdeck.", 6) == 0)
+              {
+                submit (rawDeck, fqname);
+                break;
+              }
+            if (strncmp (entry -> d_name, "sdeck.", 6) == 0)
+              {
+                submit (streamDeck, fqname);
+                break;
+              }
           }
         if (strcmp (entry -> d_name, "discard") == 0)
-         {
-            char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
-            strcpy (fqname, qdir);
-            strcat (fqname, "/");
-            strcat (fqname, entry -> d_name);
+          {
             int rc = unlink (fqname);
             if (rc)
               perror ("crdrdr discark unlink\n");
@@ -700,7 +751,7 @@ void rdrProcessEvent ()
                 crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
                 break;
              }
-         }
+          }
       }
     closedir (dp);
   }
