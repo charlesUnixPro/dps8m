@@ -1,19 +1,142 @@
-The tape files are in "SIMH" format which tracks tape record sizes and tape 
-marks.
+File formats:
+
+SIMH tape format (*.tap) files. The file contains data records for each tape record
+and tape marks.
+
+"Packed72" (or "p72") The data are 72 bits words packed in to 9 bytes. A trailing
+36-bit word will be in the last 5 bytes.
+
+"Word36". The the data are 36 bit words stored in 64 bit data.
+
+"dot9". The files on the MIT Multics repository are in 9 bit bytes stored
+in 16 bits.
+
+Reading tape files
+
+
+
+  restore_toc
+
+    restore_toc lists the table of contents from a Multics backup tape.
+
+    Usage: restore_toc <tap_file
+
+
+
+  restore_tape
+
+    restore_tape restores a Multics backup tape set.
+
+    Usage: restore_tape directory tape1 [tapen ...]
+
+    The segments will be restored to 'directory'.
+
+    restore_tape will produce a listing of restore files in the same format
+    as the Multics reload command.
+
+    Each segment will generate three files:
+
+      foo         The original segment in packed72 format.
+      foo.ascii   The original segment, interpreted as 9 bit ASCII.
+      .foo.md     Metadata about the segment; bit count is recorded here.
+
+
+
+Manipulating Multics segments
+
+
+
+  dumpFile
+
+    dumpFile takes a pack72 format segment and displays its contents
+    as 36 bit words and 9 bit ASCII, similar to the Multics 'dump_segment'
+    command.
+
+
+
+  p72archive_bind_to_ascii
+
+    p72archive_bind_to_ascii extracts the ".bind" file from a Multics
+    archive, similar to "ac x foo *.bind".
+
+    Usage: p72archive_bind_to_ascii archive directory
+
+    'archive' is an Multics archive segment in packed72 format and 
+    'directory' is the directory that the segment will be extracted to.
+
+
+
+  p72archive_to_ascii
+
+    p72archive_to_ascii extracts segments from a Multics archive and
+    writes them as ASCII files.
+
+    Usage: p72archive_bind_to_ascii archive directory
+
+    'archive' is an Multics archive segment in packed72 format and 
+    'directory' is the directory that the segments will be extracted to.
+
+
+
+
+  p72archive_to_segment
+
+    p72archive_to_segment extracts segments from a Multics archive and
+    writes them as packed72 files.
+
+    Usage: p72archive_bind_to_segment archive directory
+
+    'archive' is an Multics archive segment in packed72 format and 
+    'directory' is the directory that the segments will be extracted to.
+
+    Each segment will generate two files:
+
+      foo         The original segment in packed72 format.
+      .foo.md     Metadata about the segment; bit count is recorded here.
+
+
+
+
+  p72_to_ascii
+
+    p72_to_ascii converts a packed72 format segment to ASCII interpeted
+    9 bit ASCII.
+
+    p72_to_ascii p72File asciiFile
+
+
+
+
+  pack9
+
+    pack9 converts a dot9 format to p72 format.
+
+    Usage: pack9 dot9file p72file.
+
+
+
+
+
+
+
+
+Deprecated:
+
+Reading tape files:
 
 A Multics Standard Tape specifies standard block sizes and a tapemark usage 
 pattern which collects blocks into file-like structure.
 
+
 The dumpTape program displays the contents of a SIMH tape in 36 bit octal
 and 9 bit character formats
 
-    Usage: dupmTape tape_file_name
-
+    Usage: dumpTape tape_file_name
 
 
 The program 'extract_tape_files' reads a SIMH tape and produces a set of files
-containing the MST files. Any tape blocks that are not MST block sized (4680
-bytes) will be written as individual files.
+n packed72 format containing the MST files. Any tape blocks that are not MST 
+block sized (4680 bytes) will be written as individual files.
 
      Usage: extract_tape_files tape_file_name directory_to_extract_to
 
@@ -42,7 +165,7 @@ extract_tape_files has created 3 files; the tape label, a MST tape file, and
 and the end label.
 
 The 'mfile' program tries to identify the .dat file contents, like the Unix 
-'file' command.
+'file' command. mfile expects packed72 format.
 
     Usage: mfile file [file...]
 
@@ -54,13 +177,15 @@ The 'mfile' program tries to identify the .dat file contents, like the Unix
 
 mfile identifies it as a Multics backup format file.
 
+
 The 'restore' program will restore the segments in the backup as files.
 (Forward slashes ('/') in segment names will be placed with '+' signs)
 The program also examines the start of the file, and if it seems to be
 an ASCII file, it will also create a copy of the segment transcribed to
-ASCII with ".ascii" appended to the file name.
+ASCII with ".ascii" appended to the file name. restore expects packed72
+format files.
 
-    Usage: extract_tape_files .dat_file_name directory_to_extract_to
+    Usage: restore .dat_file_name directory_to_extract_to
 
 
     $ restore 20186.tap.00000002.dat .

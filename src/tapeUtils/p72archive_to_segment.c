@@ -105,6 +105,19 @@ int main (int argc, char * argv [])
         trimTrailingSpaces (segname);
         printf ("%s\n", segname);
 
+//for (int xx = 0; xx < 32; xx ++) printf ("   %012lo\n", big [i + xx]);
+printf ("bitcnt %012lo%012lo\n", big [i + 21], big [i + 22]);
+        char bc [9];
+        bc [0] = (big [i + 21] >> 27) & 0177;
+        bc [1] = (big [i + 21] >> 18) & 0177;
+        bc [2] = (big [i + 21] >>  9) & 0177;
+        bc [3] = (big [i + 21] >>  0) & 0177;
+        bc [4] = (big [i + 22] >> 27) & 0177;
+        bc [5] = (big [i + 22] >> 18) & 0177;
+        bc [6] = (big [i + 22] >>  9) & 0177;
+        bc [7] = (big [i + 22] >>  0) & 0177;
+        bc [8] = 0;
+//printf ("bitcnt %s\n", bc);
         for (i += 3; i < nwords; i ++)
           {
             //printf ("try %d (%u)\n", i, i);
@@ -148,7 +161,7 @@ printf ("start %d %o leng %d %o\n", i, i, leng, leng);
         strcat (fname, segname);
 
         int fdout;
-        fdout = creat (fname, 0777);
+        fdout = creat (fname, 0664);
         if (fdout < 0)
           {
             fprintf (stderr, "can't open output file <%s>\n", fname);
@@ -162,6 +175,23 @@ printf ("start %d %o leng %d %o\n", i, i, leng, leng);
             put36 (big [i + w + 1], bytes, 1);
             write (fdout, bytes, 9);
           }
+        close (fdout);
+
+        char mdfname [strlen (dname) + 32 + 3 + 8];
+        strcpy (mdfname, dname);
+        strcat (mdfname, ".");
+        strcat (mdfname, segname);
+        strcat (mdfname, ".md");
+         
+        fdout = creat (mdfname, 0664);
+        if (fdout < 0)
+          {
+            fprintf (stderr, "can't open output file <%s>\n", fname);
+            exit (1);
+          }
+        char bcbuf [128];
+        sprintf (bcbuf, "bitcnt: %s\n", bc);
+        write (fdout, bcbuf, strlen (bcbuf));
         close (fdout);
 
         i = j;
