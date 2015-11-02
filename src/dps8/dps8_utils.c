@@ -1901,16 +1901,16 @@ void cfgparse_done (config_state_t * state)
 //  strdupesc ("foo\nbar") --> 'f' 'o' 'o' 012 'b' 'a' 'r'
 //
 //  Handles:
-//   <backslash><backslash>
-//   \n
-//   \t
-//   \f
-//   \r
+//   \\  backslash
+//   \n  newline
+//   \t  tab
+//   \f  formfeed
+//   \r  carrriage return
 //
 // \\ doesn't seem to work...
 //  Also, a simh specific:
 //
-//   \e   (end simulation)
+//   \e  (end simulation)
 //
 //  the simh parser doesn't handle these very well...
 //
@@ -1918,7 +1918,14 @@ void cfgparse_done (config_state_t * state)
 //   \c  comma
 //   \s  semicolon
 //   \d  dollar
+//   \q  double quote
 //   \w  <backslash>
+//   \z  ^Z
+//
+// And a special case:
+//
+//   \TZ replaced with the timezone string. Three characters are used
+//       to allow for space in the buffer. 
 //
 //  all others silently ignored and left unprocessed
 //
@@ -1960,8 +1967,24 @@ char * strdupesc (const char * str)
           * p = '$';
         else if (p [1] == 'q')       //  \q    double quote (simh parser issue)
           * p = '"';
-        else if (p [1] == 'z')       // \Z     eof (VAXism)
+        else if (p [1] == 'z')       //  \z    ^D  eof (VAXism)
           * p = '\004';
+#if 0
+        else if (p [1] == 'T' && p [2] == 'Z')  // \TZ   time zone
+          {
+            strncpy (p, "pst", 3);
+            time_t t = time (NULL);
+            struct tm * lt = localtime (& t);
+            if (strlen (lt -> tm_zone) == 3)
+              {
+                //strncpy (p, lt -> tm_zone, 3);
+                p [0] = tolower (lt -> tm_zone [0]);
+                p [1] = tolower (lt -> tm_zone [1]);
+                p [2] = tolower (lt -> tm_zone [2]);
+              }
+            p += 2;
+          }
+#endif
         else
           {
             p ++;

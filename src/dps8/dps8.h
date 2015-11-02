@@ -48,7 +48,7 @@
 #define VM_DPS8
 
 // Enable Real time Timer Register
-#define REAL_TR
+//#define REAL_TR
 
 // Enable speed over debuggibility
 #define SPEED

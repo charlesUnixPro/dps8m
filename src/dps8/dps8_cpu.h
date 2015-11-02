@@ -710,6 +710,8 @@ typedef struct
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint y2k;
     uint drl_fatal;
+    uint trlsb; // Timer Register least significent bits: the number of 
+                // instructions that make a timer quantum.
   } switches_t;
 
 extern switches_t switches;
