@@ -370,6 +370,8 @@ static char filename [4097]; // sanatized elem_name
 static char dirname [4097]; // sanatized dir_name
 static char fullname [4097]; // sanatized top_level_dir/dir_name/elem_name
 static char dosname [4097]; 
+static char asciiname [4097]; 
+static char mdname [4097]; 
 static char mkcmd [4097];
 static char * top_level_dir;
 static char dir_name [169];
@@ -627,6 +629,7 @@ int main (int argc, char * argv [])
         for (int i = 0; i < strlen (dosname); i ++)
           if (dosname [i] == '/')
             dosname [i] = '\\';
+
         printf ("      Creating BINARY file %s (%s)\n", dosname, ext);
 
         int fdout = open (fullname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
@@ -639,13 +642,10 @@ int main (int argc, char * argv [])
         int fdouta = -1;
         if (isASCII)
           {
-            strcat (fullname, ".ascii");
-            strcpy (dosname, fullname);
-            for (int i = 0; i < strlen (dosname); i ++)
-              if (dosname [i] == '/')
-                dosname [i] = '\\';
+            strcpy (asciiname, fullname);
+            strcat (asciiname, ".ascii");
             printf ("      Creating ASCII file %s (%s)\n", dosname, ext);
-            fdouta = open (fullname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            fdouta = open (asciiname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
             if (fdouta < 0)
               {
                 printf ("can't open file for writing\n");
@@ -695,6 +695,25 @@ int main (int argc, char * argv [])
               }
             seg_cnt -= mst_datasz_word36;
           }
+
+
+        // Save the metadata.
+
+        strcpy (mdname, path);
+        strcat (mdname, ".");
+        strcat (mdname, filename);
+        strcat (mdname, ".md");
+        int fdoutm = open (mdname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+        if (fdoutm < 0)
+          {
+            printf ("can't open file for writing\n");
+            exit (1);
+          }
+        char mbuf [256];
+        sprintf (mbuf, "bitcnt: %ld\n", bit_count);
+        write (fdoutm, mbuf, strlen (mbuf));
+        close (fdoutm);
+
         rc = get_mst_record (& fd);
         if (rc < 0)
           break;
