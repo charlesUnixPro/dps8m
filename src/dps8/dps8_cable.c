@@ -8,7 +8,9 @@
 #include "dps8_console.h"
 #include "dps8_disk.h"
 #include "dps8_fnp.h"
+#include "dps8_urp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_crdpun.h"
 #include "dps8_prt.h"
 #include "dps8_cable.h"
 #include "dps8_utils.h"
@@ -142,6 +144,38 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
 
+static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num, 
+                            int dev_code)
+  {
+    if (crdpun_unit_num < 0 || crdpun_unit_num >= (int) crdpun_dev . numunits)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_crdpun: crdpun_unit_num out of range <%d>\n", crdpun_unit_num);
+        sim_printf ("cable_crdpun: crdpun_unit_num out of range <%d>\n", 
+                    crdpun_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToCrdPun [crdpun_unit_num] . iomUnitIdx != -1)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_crdpun: socket in use\n");
+        sim_printf ("cable_crdpun: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CRDPUN, 
+                              chanTypePSI, crdpun_unit_num, & crdpun_dev, 
+                              & crdpun_unit [crdpun_unit_num], crdpun_iom_cmd);
+    if (rc)
+      return rc;
+
+    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . iomUnitIdx = iomUnitIdx;
+    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+
 static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
@@ -170,6 +204,38 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
     cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToPrt [prt_unit_num] . chan_num = chan_num;
     cables -> cablesFromIomToPrt [prt_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+
+static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num, 
+                            int dev_code)
+  {
+    if (urp_unit_num < 0 || urp_unit_num >= (int) urp_dev . numunits)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_urp: urp_unit_num out of range <%d>\n", urp_unit_num);
+        sim_printf ("cable_urp: urp_unit_num out of range <%d>\n", 
+                    urp_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToUrp [urp_unit_num] . iomUnitIdx != -1)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_urp: socket in use\n");
+        sim_printf ("cable_urp: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_URP, 
+                              chanTypePSI, urp_unit_num, & urp_dev, 
+                              & urp_unit [urp_unit_num], urp_iom_cmd);
+    if (rc)
+      return rc;
+
+    cables -> cablesFromIomToUrp [urp_unit_num] . iomUnitIdx = iomUnitIdx;
+    cables -> cablesFromIomToUrp [urp_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToUrp [urp_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -537,9 +603,17 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_crdrdr (n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "CRDPUN") == 0)
+      {
+        rc = cable_crdpun (n1, n2, n3, n4);
+      }
     else if (strcasecmp (name, "PRT") == 0)
       {
         rc = cable_prt (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "URP") == 0)
+      {
+        rc = cable_urp (n1, n2, n3, n4);
       }
     else
       {
@@ -583,7 +657,11 @@ void sysCableInit (void)
       cables -> cablesFromIomToDsk [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       cables -> cablesFromIomToCrdRdr [i] . iomUnitIdx = -1;
+    for (int i = 0; i < N_CRDPUN_UNITS_MAX; i ++)
+      cables -> cablesFromIomToCrdPun [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
       cables -> cablesFromIomToPrt [i] . iomUnitIdx = -1;
+    for (int i = 0; i < N_URP_UNITS_MAX; i ++)
+      cables -> cablesFromIomToUrp [i] . iomUnitIdx = -1;
     // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
   }

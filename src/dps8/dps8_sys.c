@@ -30,7 +30,9 @@
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#include "dps8_urp.h"
 #include "dps8_cable.h"
 #include "utlist.h"
 
@@ -216,7 +218,9 @@ static void dps8_init(void)
     scu_init ();
     cpu_init ();
     crdrdr_init ();
+    crdpun_init ();
     prt_init ();
+    urp_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -2136,7 +2140,9 @@ DEVICE * sim_devices [] =
     & sys_dev,
     // & ipc_dev,  // for fnp IPC
     & mux_dev,
+    & urp_dev,
     & crdrdr_dev,
+    & crdpun_dev,
     & prt_dev,
     NULL
   };

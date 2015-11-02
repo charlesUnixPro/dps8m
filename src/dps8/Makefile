@@ -229,8 +229,10 @@ C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./dps8_crdrdr.c
+C_SRCS += ./dps8_crdpun.c
 C_SRCS += ./dps8_cable.c
 C_SRCS += ./dps8_prt.c
+C_SRCS += ./dps8_urp.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -264,8 +266,10 @@ H_SRCS += uthash.h
 H_SRCS += utlist.h
 #H_SRCS += fnpp.h
 H_SRCS += dps8_crdrdr.h
+H_SRCS += dps8_crdpun.h
 H_SRCS += dps8_cable.h
 H_SRCS += dps8_prt.h
+H_SRCS += dps8_urp.h
 
 H_SRCS += shm.h
 

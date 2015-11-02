@@ -10,10 +10,22 @@
 enum { MEMSIZE = MEM_SIZE_MAX };
 
 //
+// Unit record processor
+//
+
+enum { N_URP_UNITS_MAX = 16 };
+
+//
 // Card reader
 //
 
 enum { N_CRDRDR_UNITS_MAX = 16 };
+
+//
+// Card punch
+//
+
+enum { N_CRDPUN_UNITS_MAX = 16 };
 
 //
 // FNP
