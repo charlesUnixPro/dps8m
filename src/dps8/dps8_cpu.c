@@ -766,6 +766,7 @@ void cpu_init (void)
       }
 #endif
     memset (& switches, 0, sizeof (switches));
+    switches . trlsb = 12; // 6 MIP processor
     memset (& watchBits, 0, sizeof (watchBits));
     switches . FLT_BASE = 2; // Some of the UnitTests assume this
     cpu_init_array ();
@@ -1521,7 +1522,7 @@ last = M[01007040];
         rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (rTRlsb >= 7)
+        if (rTRlsb >= switches . trlsb)
           {
             rTRlsb = 0;
             rTR = (rTR - 1) & MASK27;
@@ -2765,6 +2766,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("TRO faults enabled:       %01o(8)\n", switches . tro_enable);
     sim_printf("Y2K enabled:              %01o(8)\n", switches . y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", switches . drl_fatal);
+    sim_printf("trlsb:                  %3d\n",       switches . trlsb);
     return SCPE_OK;
 }
 
@@ -2944,6 +2946,7 @@ static config_list_t cpu_config_list [] =
     /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
     /* 27 */ { "y2k", 0, 1, cfg_on_off },
     /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
+    /* 29 */ { "trlsb", 0, 256, NULL },
     { NULL, 0, 0, NULL }
   };
 
@@ -3091,6 +3094,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 
             case 28: // DRL_FATAL
               switches . drl_fatal = v;
+              break;
+
+            case 29: // TRLSB
+              switches . trlsb = v;
               break;
 
             default:
