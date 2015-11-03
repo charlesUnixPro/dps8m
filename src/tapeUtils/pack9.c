@@ -50,10 +50,12 @@ int main (int argc, char * argv [])
             printf ("error reading in\n");
             exit (1);
           }
+#if 0
         if (sz != sizeof (sixteen_bytes))
           {
             printf ("short read; zero padded\n");
           }
+#endif
 
         uint16_t eight_shorts [8];
         for (int i = 0; i < 8; i ++)
