@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -143,7 +144,7 @@ DEVICE crdrdr_dev = {
 
 
 
-enum deckFormat { rawDeck, cardDeck, streamDeck };
+enum deckFormat { sevenDeck, cardDeck, streamDeck };
 
 static struct crdrdr_state
   {
@@ -407,6 +408,16 @@ static int getCardData (int fd, char * buffer)
     return rc;
   }
 
+#define rawCardImageBytes (80 * 12 / 8)
+static int getRawCardData (int fd, uint8_t * buffer)
+  {
+    memset (buffer, 0, rawCardImageBytes + 2);
+    int rc = read (fd, buffer, rawCardImageBytes);
+    if (rc < 0)
+      return 0;
+    return rc;
+  }
+
 static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
@@ -427,8 +438,9 @@ sim_printf ("hopper empty\n");
        }
 
     char cardImage [80] = "";
+    uint8_t rawCardImage [rawCardImageBytes + 2 ];
     size_t l = 0;
-    bool isRaw = false;
+    enum deckFormat thisCard;
 
     static int jobNo = 0;
 
@@ -438,6 +450,7 @@ sim_printf ("hopper empty\n");
           {
             strcpy (cardImage, "++EOF");
             l = strlen (cardImage);
+            thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = eof1Sent;
             jobNo ++;
           }
@@ -447,6 +460,7 @@ sim_printf ("hopper empty\n");
           {
             sprintf (cardImage, "++UID %d", jobNo);
             l = strlen (cardImage);
+            thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = uid1Sent;
           }
           break;
@@ -462,6 +476,7 @@ sim_printf ("hopper empty\n");
                 goto empty;
               }
             l = strlen (cardImage);
+            thisCard = cardDeck;
             if (strncasecmp (cardImage, "++input", 7) == 0)
               crdrdr_state [unitIdx] . deckState = inputSent;
           }
@@ -483,21 +498,39 @@ sim_printf ("hopper empty\n");
                       }
                     l = strlen (cardImage);
                   }
+                  thisCard = cardDeck;
                   break;
             
               case streamDeck:
-              case rawDeck:
                 {
                   l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
                   if (l)
                     {
-                      isRaw = true;
+                      thisCard = streamDeck;
                     }
                   else
                     {
                       strcpy (cardImage, "++EOF");
                       l = strlen (cardImage);
                       crdrdr_state [unitIdx] . deckState = eof2Sent;
+                      thisCard = cardDeck;
+                    }
+                }
+                break;
+
+              case sevenDeck:
+                {
+                  l = getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
+                  if (l)
+                    {
+                      thisCard = sevenDeck;
+                    }
+                  else
+                    {
+                      strcpy (cardImage, "++EOF");
+                      l = strlen (cardImage);
+                      crdrdr_state [unitIdx] . deckState = eof2Sent;
+                      thisCard = cardDeck;
                     }
                 }
                 break;
@@ -510,6 +543,7 @@ sim_printf ("hopper empty\n");
           {
             sprintf (cardImage, "++UID %d", jobNo);
             l = strlen (cardImage);
+            thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = deckStart;
             close (crdrdr_state [unitIdx] . deckfd);
             crdrdr_state [unitIdx] . deckfd = -1;
@@ -536,47 +570,61 @@ for (uint i = 0; i < 80; i ++)
 sim_printf ("\n");
 sim_printf ("\n");
 #endif
-    if (l > 80)
-      {
-        sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
-        l = 80;
-        cardImage [l] = 0;
-      }
-
-
     word36 buffer [27];
-    if (isRaw)
-     {
-       // This will overead cardImage by 12 bits, but that's okay
-       // because Multics will ignore the last 12 bits.
-       for (uint i = 0; i < 27; i ++)
-         buffer [i] = extr36 ((uint8 *) cardImage, i);
-     }
-    else
+    switch (thisCard)
       {
-        uint hbuf [l];
-        asciiToH (cardImage, hbuf);
-
-        // 12 bits / char
-        uint nbits = l * 12;
-        // 36 bits / word
-        uint tally = (nbits + 35) / 36;
-
-        if (tally > 27)
+        case sevenDeck:
           {
-            sim_warn ("Whups. crdrdr tally %d > 27; truncating.\n", tally);
-            tally = 27;
+            // This will overead rawCardImage by 12 bits, but that's okay
+            // because Multics will ignore the last 12 bits.
+            for (uint i = 0; i < 27; i ++)
+              buffer [i] = extr36 ((uint8 *) rawCardImage, i);
+//sim_printf ("7deck %012llo %012llo %012llo %012llo\n", buffer [0], buffer [1], buffer [2], buffer [3]);
           }
-
-        // Remember that Hollerith for blank is 0, this is really
-        // filling the buffer with blanks.
-        memset (buffer, 0, sizeof (buffer));
-        for (uint col = 0; col < l; col ++)
+          break;
+        case streamDeck:
           {
-            uint wordno = col / 3;
-            uint fieldno = col % 3;
-            putbits36 (& buffer [wordno], fieldno * 12, 12, hbuf [col]);
+            // This will overread cardImage by 12 bits, but that's okay
+            // because Multics will ignore the last 12 bits.
+            for (uint i = 0; i < 27; i ++)
+              buffer [i] = extr36 ((uint8 *) cardImage, i);
           }
+          break;
+        case cardDeck:
+          {
+            if (l > 80)
+              {
+                sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
+                l = 80;
+                cardImage [l] = 0;
+              }
+
+
+            uint hbuf [l];
+            asciiToH (cardImage, hbuf);
+
+            // 12 bits / char
+            uint nbits = l * 12;
+            // 36 bits / word
+            uint tally = (nbits + 35) / 36;
+
+            if (tally > 27)
+              {
+                sim_warn ("Whups. crdrdr tally %d > 27; truncating.\n", tally);
+                tally = 27;
+              }
+
+            // Remember that Hollerith for blank is 0, this is really
+            // filling the buffer with blanks.
+            memset (buffer, 0, sizeof (buffer));
+            for (uint col = 0; col < l; col ++)
+              {
+                uint wordno = col / 3;
+                uint fieldno = col % 3;
+                putbits36 (& buffer [wordno], fieldno * 12, 12, hbuf [col]);
+              }
+          }
+          break;
       }
 #if 0
 sim_printf ("\n");
@@ -728,9 +776,9 @@ void rdrProcessEvent ()
                 submit (cardDeck, fqname);
                 break;
               }
-            if (strncmp (entry -> d_name, "rdeck.", 6) == 0)
+            if (strncmp (entry -> d_name, "7deck.", 6) == 0)
               {
-                submit (rawDeck, fqname);
+                submit (sevenDeck, fqname);
                 break;
               }
             if (strncmp (entry -> d_name, "sdeck.", 6) == 0)
