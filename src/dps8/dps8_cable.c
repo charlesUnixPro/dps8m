@@ -292,7 +292,7 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return SCPE_ARG;
       }
 
-    if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
+    if (cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
         // sim_debug (DBG_ERR, & scu_dev, "cable_scu: port in use\n");
         sim_printf ("cable_scu: port in use\n");
@@ -305,9 +305,9 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
     if (rc)
       return rc;
 
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num = 
       cpu_unit_num;
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num = 
       cpu_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
@@ -570,20 +570,38 @@ void sysCableInit (void)
       }
 
     memset (cables, 0, sizeof (struct cables_t));
+
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
         cables -> cablesFromIomToTap [i] . iomUnitNum = -1;
       }
+
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
-        cables -> cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
-    for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
-      cables -> cablesFromIomToCon [i] . iomUnitNum = -1;
-    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
-      cables -> cablesFromIomToDsk [i] . iomUnitNum = -1;
+        cables -> cablesFromCpus [u] [p] . cpu_unit_num = -1; // not connected
+
+    for (int u = 0; u < N_IOM_UNITS_MAX; u ++)
+      for (int p = 0; p < N_IOM_PORTS; p ++)
+        cables -> cablesFromScus [u] [p] . scuUnitNum = -1; // not connected
+
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       cables -> cablesFromIomToCrdRdr [i] . iomUnitNum = -1;
+
     for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
       cables -> cablesFromIomToPrt [i] . iomUnitNum = -1;
-    // sets cablesFromIomToDev [iomUnitNum] . devices [chanNum] [dev_code] . type to DEVT_NONE
+
+    for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
+      cables -> cablesFromIomToFnp [i] . iomUnitNum = -1;
+
+    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
+      cables -> cablesFromIomToDsk [i] . iomUnitNum = -1;
+
+    for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
+      cables -> cablesFromIomToCon [i] . iomUnitNum = -1;
+
+    for (int i = 0; i < N_MT_UNITS_MAX; i ++)
+      cables -> cablesFromIomToTap [i] . iomUnitNum = -1;
+
+    // cableFromScuToCpu inuse set to false by memset.
+    // cablesFromIomToDev type to DEVT_NONE (0) by memset.
   }

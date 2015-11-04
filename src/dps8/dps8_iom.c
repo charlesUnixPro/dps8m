@@ -2547,6 +2547,10 @@ static t_stat bootSvc (UNIT * unitp)
     // initialize memory with boot program
     init_memory_iom (iomUnitNum);
 
+    // This is needed to reset the interrupt mask registers; Multics tampers
+    // with runtime values, and mucks up rebooting on multi-CPU systems.
+    scu_reset (NULL);
+
     // simulate $CON
     iom_interrupt (iomUnitNum);
 

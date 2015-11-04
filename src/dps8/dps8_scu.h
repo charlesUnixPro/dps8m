@@ -66,4 +66,5 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
 t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq);
 void scu_clear_interrupt (uint scu_unit_num, uint inum);
 uint scuGetHighestIntr (uint scuUnitNum);
+t_stat scu_reset (DEVICE *dptr);
 

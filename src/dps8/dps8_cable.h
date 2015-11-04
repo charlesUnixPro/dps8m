@@ -54,7 +54,7 @@ struct cableFromCpu
 
 struct cables_t
   {
-    struct cableFromCpu cablesFomCpu [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+    struct cableFromCpu cablesFromCpus [N_SCU_UNITS_MAX] [N_SCU_PORTS];
     struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
     struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
     struct cableFromIom cablesFromIomToPrt [N_CRDRDR_UNITS_MAX];

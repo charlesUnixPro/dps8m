@@ -1845,7 +1845,7 @@ static t_stat DoBasicInstruction (void)
 #ifdef REAL_TR
             CPU -> Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (CPU -> rRALR & 07);    // needs checking
 #else
-            CPU -> Yblock8[7] = ((rTR & MASK27) << 9) | (CPU -> rRALR & 07);    // needs checking
+            CPU -> Yblock8[7] = ((CPU -> rTR & MASK27) << 9) | (CPU -> rRALR & 07);    // needs checking
 #endif
                     
             //WriteN(i, 8, TPR.CA, CPU -> Yblock8, OperandWrite, rTAG); // write 8-words to memory
@@ -1981,7 +1981,7 @@ static t_stat DoBasicInstruction (void)
 #ifdef REAL_TR
              CPU -> CY = (getTR (NULL) & MASK27) << 9;
 #else
-             CPU -> CY = (rTR & MASK27) << 9;
+             CPU -> CY = (CPU -> rTR & MASK27) << 9;
 #endif
              break;
             
@@ -5310,8 +5310,8 @@ static t_stat DoBasicInstruction (void)
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
               setTR (val);
 #else
-              rTR = (CPU -> CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
+              CPU -> rTR = (CPU -> CY >> 9) & MASK27;
+              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", CPU -> rTR, CPU -> rTR);
 #endif
               // Undocumented feature. return to bce has been observed to
               // experience TRO while masked, setting the TR to -1, and

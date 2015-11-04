@@ -1277,7 +1277,7 @@ G:;
     if (((address >> 4) & 037777) > CPU -> SDW->BOUND) {
         acvFaults |= ACV15;
         acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";
-        sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
+        sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o\n",
                     address, ((address >> 4) & 037777), CPU -> SDW->BOUND);
     }
     

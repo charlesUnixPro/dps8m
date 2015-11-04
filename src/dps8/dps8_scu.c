@@ -600,7 +600,7 @@ static MTAB scu_mod [] =
   };
 
 
-static t_stat scu_reset (DEVICE *dptr);
+//static t_stat scu_reset (DEVICE *dptr);
 
 static DEBTAB scu_dt [] =
   {
@@ -667,7 +667,7 @@ static struct config_switches
     
 static uint elapsed_days = 0;
 
-static t_stat scu_reset (UNUSED DEVICE * dptr)
+t_stat scu_reset (UNUSED DEVICE * dptr)
   {
     // On reset, instantiate the config switch settings
 
@@ -1241,7 +1241,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             for (int pn = 0; pn < N_SCU_PORTS; pn ++)
               {
-                if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
+                if (cables -> cablesFromCpus [scu_unit_num] [pn] . cpu_unit_num == 
                     (int) cpu_unit_num)
                   {
                     scu_port_num = pn;
@@ -1612,7 +1612,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (FAULT_CON, cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (FAULT_CON, cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else
@@ -1671,7 +1671,16 @@ static void deliverInterrupts (uint scu_unit_num)
             if (scu [scu_unit_num] . cells [inum] &&
                 (mask & (1 << (31 - inum))) != 0)
               {
-                CPU -> events . XIP [scu_unit_num] = true;
+                uint cpu_unit_num = cables -> cablesFromCpus [scu_unit_num] [port] . cpu_unit_num;
+                if (cpu_unit_num >= cpu_dev . numunits)
+                  {
+                    sim_err ("bad cpu_unit_num %u\n", cpu_unit_num);
+                  }
+                else
+                  {
+                    cpu [cpu_unit_num] . events . XIP [scu_unit_num] = true;
+if (cpu_unit_num) sim_printf ("interrupt set for CPU %d\n", cpu_unit_num);
+                  }
                 return;
               }
           }
@@ -2040,7 +2049,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
+        if (cables -> cablesFromCpus [scu_unit_num] [pn] . cpu_unit_num == (int) cpu_unit_num)
           {
             scu_port_num = pn;
             break;
@@ -2138,7 +2147,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 
     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
       {
-        if (cables -> cablesFomCpu [scu_unit_num] [pn] . cpu_unit_num == 
+        if (cables -> cablesFromCpus [scu_unit_num] [pn] . cpu_unit_num == 
             (int) cpu_unit_num)
           {
             scu_port_num = pn;
