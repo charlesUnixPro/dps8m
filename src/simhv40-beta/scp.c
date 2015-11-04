@@ -7163,9 +7163,9 @@ void _sim_err (const char* fmt, ...)
             if (i >= j) {
                 if ((i != j) || (i == 0)) {
                     if (debug_unterm)
-                        fprintf (sim_deb, "%.*s\r\n", i-j, &buf[j]);
+                        fprintf (sim_deb ? sim_deb : stderr, "%.*s\r\n", i-j, &buf[j]);
                     else                                /* print prefix when required */
-                        fprintf (sim_deb, "%s%.*s\r\n", debug_line_prefix, i-j, &buf[j]);
+                        fprintf (sim_deb ? sim_deb : stderr, "%s%.*s\r\n", debug_line_prefix, i-j, &buf[j]);
                     }
                 debug_unterm = 0;
                 }
@@ -7174,9 +7174,9 @@ void _sim_err (const char* fmt, ...)
         }
     if (i > j) {
         if (debug_unterm)
-            fprintf (sim_deb, "%.*s", i-j, &buf[j]);
+            fprintf (sim_deb ? sim_deb : stderr, "%.*s", i-j, &buf[j]);
         else                                        /* print prefix when required */
-            fprintf (sim_deb, "%s%.*s", debug_line_prefix, i-j, &buf[j]);
+            fprintf (sim_deb ? sim_deb : stderr, "%s%.*s", debug_line_prefix, i-j, &buf[j]);
         }
 
 /* Set unterminated flag for next time */

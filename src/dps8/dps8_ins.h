@@ -7,7 +7,7 @@ t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
 void fetchInstruction(word18 addr);
 t_stat executeInstruction (void);
-void doRCU (bool fxeTrap) NO_RETURN;
+void doRCU (void) NO_RETURN;
 void traceInstruction (uint flag);
 
 #ifdef REAL_TR

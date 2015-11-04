@@ -654,6 +654,8 @@ typedef struct
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint drl_fatal;
+    uint trlsb; // Timer Register least significent bits: the number of 
+                // instructions that make a timer quantum.
   } switches_t;
 
 extern uint steady_clock;    // If non-zero the clock is tied to the cycle counter

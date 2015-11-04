@@ -38,41 +38,34 @@ long double exp2l (long double e) {
  */
 long double EAQToIEEElongdouble(void)
 {
-    word8 E = CPU -> rE;    ///< exponent
-    word72 M = ((word72)(CPU -> rA & DMASK) << 36) | ((word72) CPU -> rQ & DMASK);   ///< mantissa
+    // mantissa
+    word72 M = ((word72)(CPU -> rA & DMASK) << 36) | ((word72) CPU -> rQ & DMASK);
 
-    //printf("rA=%012llo rQ=%012llo %s\n", CPU -> rA, CPU -> rQ, Qtoo(M));
-    
     if (M == 0)
         return 0;
     
-    bool S = M & SIGN72; ///< sign of mantissa
+    bool S = M & SIGN72; // sign of mantissa
     if (S)
         M = (-M) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
     
-    long double m = 0;  ///< mantissa value;
-    int8 e = (int8)E;  ///< make signed
-    
+    long double m = 0;  // mantissa value;
+    int e = (int8) CPU -> rE; // make signed
+
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1)
     {
         if (M & ((word72)1 << n))
         {
             m += v;
-            //printf("1");
-        }   //else
-        //printf("0");
+        }
         v /= 2.0;
     }
-    //printf("\n");
-    //sim_printf ("E=%o m=%Lf e=%d\n", E, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
     if (m == 0)
         return (S ? -1 : 1) * exp2l(e);
     
-    //sim_printf ("frac=%Lf e=%d\n", m, e);
     return (S ? -1 : 1) * ldexpl(m, e);
 }
 
@@ -244,14 +237,12 @@ void IEEElongdoubleToEAQ(long double f0)
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
-double float36ToIEEEdouble(float36 f36)
+double float36ToIEEEdouble(uint64_t f36)
 {
-    word8 E;    ///< exponent
-    word36 M;   ///< mantissa
-    //                         off len
-    E = bitfieldExtract36(f36, 28, 8);      ///< 8-bit signed integer (incl sign)
-    M = bitfieldExtract36(f36, 0, 28);      ///< 28-bit mantissa (incl sign)
-    
+    unsigned char E;    ///< exponent
+    uint64_t M;         ///< mantissa
+    E = (f36 >> 28) & 0xff;
+    M = f36 & 01777777777LL;
     if (M == 0)
         return 0;
     
@@ -260,7 +251,7 @@ double float36ToIEEEdouble(float36 f36)
         M = (-M) & 0777777777; // 27 bits (not 28!)
     
     double m = 0;       ///< mantissa value;
-    int8 e = (uint8)E;  ///< make signed
+    int e = (char)E;  ///< make signed
     
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1)
@@ -268,13 +259,9 @@ double float36ToIEEEdouble(float36 f36)
         if (M & (1 << n))
         {
             m += v;
-            //printf("1");
         }   //else
-            //printf("0");
         v /= 2.0;
     }
-    //printf("\n");
-    //sim_printf ("s72=%012llo, E=%o M=%llo m=%f e=%d\n", f36, E, M, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
@@ -529,93 +516,105 @@ void ufs (void)
 
 }
 
-/*!
+/*
  * floating normalize ...
  */
 
 void fno (void)
 {
-    //! The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF.
-    //!    A normalized floating number is defined as one whose mantissa lies in the interval [0.5,1.0) such that
-    //!    0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.
-    //!    If the overflow indicator is ON, then C(AQ) is shifted one place to the right, C(AQ)0 is inverted to reconstitute the actual sign, and the overflow indicator is set OFF. This action makes the fno instruction useful in correcting overflows that occur with fixed point numbers.
-    //!  Normalization is performed by shifting C(AQ)1,71 one place to the left and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and C(AQ)1 are met. Bits shifted out of AQ1 are lost.
-    //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
+    // The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the
+    // overflow indicator is OFF.
+    //
+    // A normalized floating number is defined as one whose mantissa lies in
+    // the interval [0.5,1.0) such that
+    //     0.5<= |C(AQ)| <1.0 which, in turn, requires that C(AQ)0 ≠ C(AQ)1.
+    //
+    // If the overflow indicator is ON, then C(AQ) is shifted one place to the
+    // right, C(AQ)0 is inverted to reconstitute the actual sign, and the
+    // overflow indicator is set OFF. This action makes the fno instruction
+    // useful in correcting overflows that occur with fixed point numbers.
+    //
+    // Normalization is performed by shifting C(AQ)1,71 one place to the left
+    // and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and
+    // C(AQ)1 are met. Bits shifted out of AQ1 are lost.
+    //
+    // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
     CPU -> rA &= DMASK;
     CPU -> rQ &= DMASK;
     float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
     if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
-        m >>= 1;
-        m &= MASK72;
-        
-        m ^= ((word72)1 << 71);
-
-        SCF(CPU -> rA & SIGN72, CPU -> cu.IR, I_NEG); // was &&
         CLRF(CPU -> cu.IR, I_OFLOW);
-        
+        word72 s = m & SIGN72; // save the sign bit
+        m >>= 1; // renormalize the mantissa
+        m |= SIGN72; // set the sign bit
+        m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
+
+        if (CPU -> rE < 127)
+            CPU -> rE ++;
+        else
+            SETF(CPU -> cu.IR, I_EOFL);
+
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(CPU -> rE == -128 && m == 0, CPU -> cu.IR, I_ZERO);
-        SCF(CPU -> rE == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
-        // Neg:
-        CLRF(CPU -> cu.IR, I_NEG);
-        return; // XXX: ???
+        if (m == 0)
+        {
+            CPU -> rE = -128;
+            SETF(CPU -> cu.IR, I_ZERO);
+        }
+
+        CPU -> rA = (m >> 36) & MASK36;
+        CPU -> rQ = m & MASK36;
+        SCF(CPU -> rA & SIGN72, CPU -> cu.IR, I_NEG);
+
+        return;
     }
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
     if (m == 0) // C(AQ) == 0.
     {
-        CPU -> rA = (m >> 36) & MASK36;
-        CPU -> rQ = m & MASK36;
-
-        // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(CPU -> rE == -128 && m == 0, CPU -> cu.IR, I_ZERO);
-        SCF(CPU -> rE == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
-        // Neg:
+        //CPU -> rA = (m >> 36) & MASK36;
+        //CPU -> rQ = m & MASK36;
+        CPU -> rE = 0200U; /*-128*/
+        SETF(CPU -> cu.IR, I_ZERO);
         CLRF(CPU -> cu.IR, I_NEG);
-        
         return;
     }
-    int8   e = (int8)CPU -> rE;
+    int   e = CPU -> rE;
 
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
-    //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
-    while (bitfieldExtract72(m, 71, 1) == bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
+    while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
     {
         m <<= 1;
-        m &= MASK72;
-        
-        if (s)
-            m |= SIGN72;
-        
-        if ((e - 1) < -128)
-            SETF(CPU -> cu.IR, I_EOFL);
-        else    // XXX: my interpretation
-            e -= 1;
-        
+        e -= 1;
         if (m == 0) // XXX: necessary??
-        {
-            CPU -> rE = (word8)-128;
             break;
-        }
     }
+
+    m &= MASK71;
+        
+    if (s)
+      m |= SIGN72;
       
+    if (e < -127)
+      SETF(CPU -> cu.IR, I_EUFL);
+
     CPU -> rE = e & 0377;
     CPU -> rA = (m >> 36) & MASK36;
     CPU -> rQ = m & MASK36;
 
+    // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
     if (CPU -> rA == 0)    // set to normalized 0
         CPU -> rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(CPU -> rA == 0, CPU -> cu.IR, I_ZERO);
+    SCF(CPU -> rA == 0 && CPU -> rQ == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
     SCF(CPU -> rA & SIGN36, CPU -> cu.IR, I_NEG);
-
 }
 
+#if 0
 // XXX eventually replace fno() with fnoEAQ()
 void fnoEAQ(word8 *E, word36 *A, word36 *Q)
 {
@@ -638,7 +637,12 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
+        if (m == 0)
+        {
+            *E = -128;
+            SETF(CPU -> cu.IR, I_ZERO);
+        }
         // Neg:
         CLRF(CPU -> cu.IR, I_NEG);
         return; // XXX: ???
@@ -649,10 +653,12 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     {
         *A = (m >> 36) & MASK36;
         *Q = m & MASK36;
+        *E = 0200U; /*-128*/
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
         // Neg:
         CLRF(CPU -> cu.IR, I_NEG);
         
@@ -671,7 +677,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(CPU -> cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EUFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -686,6 +692,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     *A = (m >> 36) & MASK36;
     *Q = m & MASK36;
     
+    // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
     if (*A == 0)    // set to normalized 0
         *E = (word8)-128;
     
@@ -696,16 +703,23 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     SCF(*A & SIGN36, CPU -> cu.IR, I_NEG);
     
 }
+#endif
 
-/*!
+/*
  * floating negate ...
  */
 void fneg (void)
 {
-    //! This instruction changes the number in C(EAQ) to its normalized negative (if C(AQ) ≠ 0). The operation is executed by first forming the twos complement of C(AQ), and then normalizing C(EAQ).
-    //! Even if originally C(EAQ) were normalized, an exponent overflow can still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the twos complement approximation for the decimal value -1.0.
+    // This instruction changes the number in C(EAQ) to its normalized negative
+    // (if C(AQ) ≠ 0). The operation is executed by first forming the twos
+    // complement of C(AQ), and then normalizing C(EAQ).
+    //
+    // Even if originally C(EAQ) were normalized, an exponent overflow can
+    // still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the
+    // twos complement approximation for the decimal value -1.0.
     
-    float72 m = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
+#if 0
+    float72 m = ((word72) CPU -> rA << 36) | (word72)rQ;
     
     if (m == 0) // (if C(AQ) ≠ 0)
     {
@@ -744,13 +758,38 @@ void fneg (void)
         if ((e + 1) > 127)
             SETF(CPU -> cu.IR, I_EOFL);
         else    // XXX: this is my interpretation
-            CPU -> rE += 1;
+            e += 1;
     }
     
     CPU -> rE = e & 0377;
     CPU -> rA = (mc >> 36) & MASK36;
     CPU -> rQ = mc & MASK36;
+#else
+    // Form the mantissa from AQ
+    word72 m = ((word72)(CPU -> rA & MASK36) << 36) | (word72)(CPU -> rQ & MASK36);
 
+    // If the mantissa is 4000...00 (least negative value, it is negable in two's
+    // complement arithmetic. Divide it by 2, losing a bit of precision, and increment
+    // the exponent.
+    if (m == SIGN72)
+      {
+        // Negation of 400..0 / 2 is 200..0; we can get there shifting; we know that
+        // a zero will be shifted into the sign bit becuase fo the masking in 'm='.
+        m >>= 1;
+        // Increment the exp, checking for overflow.
+        if (CPU -> rE == 127)
+          SETF(CPU -> cu.IR, I_EOFL);
+        else
+          CPU -> rE ++;
+      }
+    else
+      {
+        // Do the negation
+        m = -m;
+      }
+    CPU -> rA = (m >> 36) & MASK36;
+    CPU -> rQ = m & MASK36;
+#endif
     fno ();  // normalize
 }
 
@@ -1075,10 +1114,14 @@ void frd (void)
 
 void fstr(word36 *Y)
 {
-    //The fstr instruction performs a true round and normalization on C(EAQ) as it is stored.
-    //The definition of true round is located under the description of the frd instruction.
-    //The definition of normalization is located under the description of the fno instruction.
-    //Attempted repetition with the rpl instruction causes an illegal procedure fault.
+    //The fstr instruction performs a true round and normalization on C(EAQ) as
+    //it is stored.
+    //The definition of true round is located under the description of the frd
+    //instruction.
+    //The definition of normalization is located under the description of the
+    //fno instruction.
+    //Attempted repetition with the rpl instruction causes an illegal procedure
+    //fault.
     
     word36 A = CPU -> rA, Q = CPU -> rQ;
     word8 E = CPU -> rE;
@@ -1134,7 +1177,7 @@ void fstr(word36 *Y)
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         
-        fnoEAQ(&E, &A, &Q);
+        fno();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -1689,11 +1732,23 @@ static void dfdvX (bool bInvert)
     }
     
     int e3 = e1 - e2;
+#if 0
     if (e3 > 127 || e3 < -128)
     {
         // XXX ahndle correctly
         sim_printf ("Exp Underflow/Overflow (%d)\n", e3);
     }
+#endif
+    if (e3 > 127)
+      {
+         e3 = 127;
+         SETF (CPU -> cu.IR, I_EOFL);
+       }
+    else if (e3 < -127)
+      {
+         e3 = -127;
+         SETF (CPU -> cu.IR, I_EUFL);
+       }
     //uint128 M1 = (uint128)m1 << 63;
     //uint128 M2 = (uint128)m2; ///< << 36;
     
@@ -1929,6 +1984,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", CPU -> rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CPU -> CY);
 
+#if 0
     if (CPU -> CY == 0)
       {
         // XXX check flags
@@ -1940,6 +1996,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         
         return;
     }
+#endif
+
 
     // dividend format
     // 0  1     70 71
@@ -1963,8 +2021,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
       }
     zFrac &= MASK70;
 
-    char buf [128] = "";
-    print_int128 (zFrac, buf);
+    //char buf [128] = "";
+    //print_int128 (zFrac, buf);
     //sim_debug (DBG_CAC, & cpu_dev, "zFrac %s\n", buf);
 
     // Get the 35 bits of the divisor (36 bits less the sign bit)
@@ -1980,16 +2038,41 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
       }
     dFrac &= MASK35;
 
-    char buf2 [128] = "";
-    print_int128 (dFrac, buf2);
+    //char buf2 [128] = "";
+    //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
 
+    //if (dFrac == 0 || zFrac >= dFrac)
+    //if (dFrac == 0 || zFrac >= dFrac << 35)
+    if (dFrac == 0)
+      {
+        SCF (dFrac == 0, CPU -> cu . IR, I_ZERO);
+        SCF (CPU -> rA & SIGN36, CPU -> cu . IR, I_NEG);
+        
+        CPU -> rA = (zFrac >> 31) & MASK35;
+        CPU -> rQ = (zFrac & MASK35) << 1;
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
 
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
 
-    char buf3 [128] = "";
-    print_int128 (remainder, buf3);
+
+    // I am surmising that the "If | dividend | >= | divisor |" is an
+    // overflow prediction; implement it by checking that the calculated
+    // quotient will fit in 35 bits.
+
+    if (quot & ~MASK35)
+      {
+        SCF (dFrac == 0, CPU -> cu . IR, I_ZERO);
+        SCF (CPU -> rA & SIGN36, CPU -> cu . IR, I_NEG);
+        
+        CPU -> rA = (zFrac >> 31) & MASK35;
+        CPU -> rQ = (zFrac & MASK35) << 1;
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
+    //char buf3 [128] = "";
+    //print_int128 (remainder, buf3);
     //sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
 
     if (sign == -1)
@@ -2163,7 +2246,7 @@ void dfstr (word36 *Ypair)
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         
-        fnoEAQ(&E, &A, &Q);
+        fno();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.

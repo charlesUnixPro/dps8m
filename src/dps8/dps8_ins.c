@@ -21,7 +21,6 @@
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
-#include "dps8_fxe.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
@@ -2962,27 +2961,52 @@ static t_stat DoBasicInstruction (void)
             
             break;
             
-        /// Fixed-Point Negate
-        case 0531:  ///< neg
-            /// -C(A) -> C(A) if C(A) ≠ 0
-            /// XXX: what if C(A) == 0? Are flags affected? Assume yes, for now.
+        // Fixed-Point Negate
+        case 0531:  // neg
+            // -C(A) -> C(A) if C(A) ≠ 0
 
             CPU -> rA &= DMASK;
-            if (CPU -> rA != 0)
-            {
-                // bool ov = CPU -> rA & 0400000000000LL;
-                bool ov = CPU -> rA == 0400000000000ULL;
+            bool ov = CPU -> rA == 0400000000000ULL;
                 
-                CPU -> rA = -CPU -> rA;
+            CPU -> rA = - CPU -> rA;
  
-                CPU -> rA &= DMASK;    // keep to 36-bits
+            CPU -> rA &= DMASK;    // keep to 36-bits
                 
-                if (CPU -> rA == 0)
+            if (CPU -> rA == 0)
+                SETF(CPU -> cu.IR, I_ZERO);
+            else
+                CLRF(CPU -> cu.IR, I_ZERO);
+            
+            if (CPU -> rA & SIGN36)
+                SETF(CPU -> cu.IR, I_NEG);
+            else
+                CLRF(CPU -> cu.IR, I_NEG);
+            
+            if (ov)
+            {
+                SETF(CPU -> cu.IR, I_OFLOW);
+                if (tstOVFfault ())
+                    doFault(FAULT_OFL, 0,"neg overflow fault");
+            }
+            break;
+            
+        case 0533:  // negl
+            // -C(AQ) -> C(AQ) if C(AQ) ≠ 0
+            {
+                CPU -> rA &= DMASK;
+                CPU -> rQ &= DMASK;
+                word72 tmp72 = convertToWord72(CPU -> rA, CPU -> rQ);
+
+                bool ov = (CPU -> rA == 0400000000000ULL) & (CPU -> rQ == 0);
+                
+                tmp72 = -tmp72;
+                
+                if (tmp72 == 0)
                     SETF(CPU -> cu.IR, I_ZERO);
                 else
                     CLRF(CPU -> cu.IR, I_ZERO);
                 
-                if (CPU -> rA & SIGN36)
+                if (tmp72 & SIGN72)
                     SETF(CPU -> cu.IR, I_NEG);
                 else
                     CLRF(CPU -> cu.IR, I_NEG);
@@ -2991,44 +3015,10 @@ static t_stat DoBasicInstruction (void)
                 {
                     SETF(CPU -> cu.IR, I_OFLOW);
                     if (tstOVFfault ())
-                        doFault(FAULT_OFL, 0,"neg overflow fault");
+                        doFault(FAULT_OFL, 0,"negl overflow fault");
                 }
-            }
-            break;
-            
-        case 0533:  ///< negl
-            /// -C(AQ) -> C(AQ) if C(AQ) ≠ 0
-            /// XXX same problem as neg above - fixed
-            {
-                CPU -> rA &= DMASK;
-                CPU -> rQ &= DMASK;
-                word72 tmp72 = convertToWord72(CPU -> rA, CPU -> rQ);
-                if (tmp72 != 0)
-                {
-                    //bool ov = (CPU -> rA & 0400000000000LL) & (CPU -> rQ == 0);
-                    bool ov = (CPU -> rA == 0400000000000ULL) & (CPU -> rQ == 0);
                 
-                    tmp72 = -tmp72;
-                
-                    if (tmp72 == 0)
-                        SETF(CPU -> cu.IR, I_ZERO);
-                    else
-                        CLRF(CPU -> cu.IR, I_ZERO);
-                
-                    if (tmp72 & SIGN72)
-                        SETF(CPU -> cu.IR, I_NEG);
-                    else
-                        CLRF(CPU -> cu.IR, I_NEG);
-                
-                    if (ov)
-                    {
-                        SETF(CPU -> cu.IR, I_OFLOW);
-                        if (tstOVFfault ())
-                            doFault(FAULT_OFL, 0,"negl overflow fault");
-                    }
-                
-                    convertToWord36(tmp72, &CPU -> rA, &CPU -> rQ);
-                }
+                convertToWord36(tmp72, &CPU -> rA, &CPU -> rQ);
             }
             break;
             
@@ -4094,10 +4084,8 @@ static t_stat DoBasicInstruction (void)
         /// TRANSFER INSTRUCTIONS
         case 0713:  ///< call6
             
-            fxeSetCall6Trap ();
             if (CPU -> TPR.TRR > CPU -> PPR.PRR)
             {
-                //acvFault(OCALL, "call6 access violation fault (outward call)");
                 sim_debug (DBG_APPENDING, & cpu_dev,
                            "call6 access violation fault (outward call)");
                 doFault (FAULT_ACV, OCALL,
@@ -5326,7 +5314,7 @@ static t_stat DoBasicInstruction (void)
             doFault(FAULT_IPR, ill_proc, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
-            doRCU (false); // never returns
+            doRCU (); // never returns
 
         case 0452:  ///< scpr
           {
@@ -5703,12 +5691,12 @@ static t_stat DoBasicInstruction (void)
               {
                 //sim_debug (DBG_ERR, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", CPU -> iefpFinalAddress);
                 //cpu_port_num = 0;
-                doFault (FAULT_ONC, nem, "(smcm)");
+                doFault (FAULT_ONC, nem, "(cioc)");
               }
             int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
             if (scu_unit_num < 0)
               {
-                doFault (FAULT_ONC, nem, "(smcm)");
+                doFault (FAULT_ONC, nem, "(cioc)");
               }
             uint scu_port_num = CPU -> CY & MASK3;
             scu_cioc ((uint) scu_unit_num, scu_port_num);
@@ -5818,7 +5806,6 @@ static t_stat DoBasicInstruction (void)
                 return STOP_DIS;
               }
 
-#if 0
             if ((! CPU -> switches . tro_enable) &&
                 (! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
@@ -5830,7 +5817,15 @@ static t_stat DoBasicInstruction (void)
                 //stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);
               }
-#endif
+
+// Multics/BCE halt
+            if (CPU -> PPR . PSR == 0430 && CPU -> PPR . IC == 012)
+                {
+                  sim_printf ("BCE DIS causes CPU halt\n");
+                  sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+                  longjmp (jmpMain, JMP_STOP);
+                }
+
             sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
             //sim_printf ("entered DIS_cycle\n");
 
@@ -6564,7 +6559,7 @@ static t_stat DoEISInstruction (void)
           break;
             
         case 0502:  // a4bd Add 4-bit Displacement to Address Register
-          axbd (4);
+          a4bd ();
           break;
             
 // If defined, do all ABD calculations in bits, not chars and bits in chars.
@@ -6586,7 +6581,7 @@ static t_stat DoEISInstruction (void)
           break;
                 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
-          sxbd (4);
+          s4bd ();
           break;
             
         case 0523:  // sbd Subtract   bit Displacement from Address Register
@@ -6732,11 +6727,6 @@ static t_stat DoEISInstruction (void)
             break;
         }
 
-        case 0421: // fxe fault handler
-        {
-            fxeFaultHandler ();
-            return STOP_BUG;
-        }
 #endif
         // priviledged instructions
             
@@ -7328,10 +7318,7 @@ static int doABSA (word36 * result)
     return SCPE_OK;
   }
 
-// fxeTrap: If true, the fault was a call6 that was serviced by fxe, so
-// the execution should resume at the instruction after.
-
-void doRCU (bool fxeTrap)
+void doRCU (void)
   {
 
     words2scu (CPU -> Yblock8);
@@ -7362,14 +7349,7 @@ void doRCU (bool fxeTrap)
 #endif
 
 
-    if (fxeTrap)
-      {
-        fxeCall6TrapRestore ();
-        CPU -> cycle = FETCH_cycle;
-        longjmp (jmpMain, JMP_REENTRY);
-      }
-
-//sim_printf ("F/I is %d\n", CPU -> cu . FLT_INT);
+//sim_printf ("F/I is %d\n", cu . FLT_INT);
     if (CPU -> cu . FLT_INT == 0) // is interrupt, not fault
       {
         //CPU -> cycle = FETCH_cycle;

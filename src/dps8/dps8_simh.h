@@ -73,6 +73,7 @@
 #define STOP_FLT_CASCADE   5
 #define STOP_HALT   6
 #define STOP_ILLOP  7
+#define STOP_STOP   8
 
 
 // not really STOP codes, but get returned from instruction loops
@@ -87,4 +88,5 @@ void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
   __attribute__ ((format (printf, 3, 4)))
 #endif
 ;
-
+#define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
+#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (jmpMain, JMP_STOP); }

@@ -5,6 +5,7 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -22,6 +23,7 @@
 #include "dps8_fnp.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_crdrdr.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -29,8 +31,10 @@
 #include "shm.h"
 #endif
 
+#include "fnp_defs.h"
+#include "fnp_cmds.h"
 
-#include "fnp_ipc.h"
+#include "sim_defs.h"
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -121,6 +125,7 @@ const char *sim_stop_messages[] = {
     "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
     "Illegal Opcode",          // STOP_ILLOP
+    "Simulation stop",         // STOP_STOP
 };
 
 /* End of simh interface */
@@ -598,7 +603,6 @@ t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
         return removeSegref(cmds[0], cmds[3]);
     if (nParams == 4 && !strcasecmp(cmds[1], "segdef") && !strcasecmp(cmds[2], "remove"))
         return removeSegdef(cmds[0], cmds[3]);
-    
     return SCPE_ARG;
 }
 
@@ -736,6 +740,8 @@ void cpu_init (void)
     memset (& watchBits, 0, sizeof (watchBits));
     memset (& cpu, 0, sizeof (cpu));
     cpu [0] . switches . FLT_BASE = 2; // Some of the UnitTests assume this
+    for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
+      cpu [c] . switches . trlsb = 12; // 6 MIP processor
     cpu_init_array ();
   }
 
@@ -1030,6 +1036,9 @@ bool sample_interrupts (void)
 t_stat simh_hooks (void)
   {
     int reason = 0;
+
+    if (stop_cpu)
+      return STOP_STOP;
     // check clock queue 
     if (sim_interval <= 0)
       {
@@ -1143,36 +1152,18 @@ static void setCpuCycle (cycles_t cycle)
 // other extant cycles:
 //  ABORT_cycle
 
-static void ipcCleanup (void)
-  {
-    //printf ("cleanup\n");
-    ipc(ipcStop, 0, 0, 0, 0);
-  }
-
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
 #ifdef USE_IDLE
     sim_rtcn_init (0, 0);
 #endif
-
-#if 0
-    // IPC initalization stuff
-    bool ipc_running = isIPCRunning();  // IPC running on sim_instr() entry?
       
-    ipc_verbose = (ipc_dev.dctrl & DBG_IPCVERBOSE) && sim_deb;
-    ipc_trace   = (ipc_dev.dctrl & DBG_IPCTRACE  ) && sim_deb;
+    mux(SLS, 0, 0);
 
-    if (!ipc_running)
-    {
-        sim_printf("Info: ");
-        ipc(ipcStart, fnpName,0,0,0);
-        atexit (ipcCleanup);
-    }
-     
-    // End if IPC init stuff
-#endif
-      
+    UNIT *u = &mux_unit;
+    if (u->filename == NULL || strlen(u->filename) == 0)
+        sim_printf("Warning: MUX not attached.\n");
       
 setCPU:
 
@@ -1248,12 +1239,21 @@ last = M[01007040];
             break;
           }
 
-        if (CPU -> queueSubsample ++ > 10240) // ~ 100Hz
+        static uint slowQueueSubsample = 0;
+        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
+          {
+            slowQueueSubsample = 0;
+            rdrProcessEvent (); 
+          }
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
           {
             CPU -> queueSubsample = 0;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
+            AIO_CHECK_EVENT;
+            dequeue_fnp_command ();
           }
 #if 0
         if (sim_gtime () % 1024 == 0)
@@ -1317,7 +1317,7 @@ last = M[01007040];
         CPU -> rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (CPU -> rTRlsb >= 7)
+        if (CPU -> rTRlsb >= CPU -> switches . trlsb)
           {
             CPU -> rTRlsb = 0;
             CPU -> rTR = (CPU -> rTR - 1) & MASK27;
@@ -1674,7 +1674,6 @@ last = M[01007040];
               }
               break;
 
-
             case SYNC_FAULT_RTN_cycle:
               {
                 CPU -> PPR.IC ++;
@@ -1839,13 +1838,6 @@ last = M[01007040];
       if (reason == 0) goto setCPU;
 
 leave:
-
-#if 0
-    // if IPC was running before G leave it running - don't stop it, else stop it
-    if (!ipc_running)
-        ipc(ipcStop, 0, 0, 0, 0);     // stop IPC operation
-#endif
-      
 
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
@@ -2547,6 +2539,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("TRO faults enabled:       %01o(8)\n", CPU -> switches . tro_enable);
     sim_printf("Y2K enabled:              %01o(8)\n", y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", CPU -> switches . drl_fatal);
+    sim_printf("trlsb:                  %3d\n",       CPU -> switches . trlsb);
     return SCPE_OK;
 }
 
@@ -2725,6 +2718,7 @@ static config_list_t cpu_config_list [] =
     /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
     /* 27 */ { "y2k", 0, 1, cfg_on_off },
     /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
+    /* 29 */ { "trlsb", 0, 256, NULL },
     { NULL, 0, 0, NULL }
   };
 
@@ -2874,6 +2868,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 
             case 28: // DRL_FATAL
               CPU -> switches . drl_fatal = v;
+              break;
+
+            case 29: // TRLSB
+              CPU -> switches . trlsb = v;
               break;
 
             default:

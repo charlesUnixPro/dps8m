@@ -2,9 +2,14 @@
 #define DPS8_HW_CONSTS_H
 
 //
-// Memory
+// SCU/Memory
 //
 
+
+enum { N_SCU_PORTS = 8 };
+enum { N_ASSIGNMENTS = 2 };
+// Number of interrupts in an interrupt cell register
+enum { N_CELL_INTERRUPTS = 32 };
 
 #define PASIZE          24                       /* phys addr width */
 #define PAMASK          ((1U << PASIZE) - 1U)
@@ -28,6 +33,16 @@
 #define AMASK           ((1U << VASIZE) - 1U)    // virtual addr mask
 #define SEGSIZE         (1U << VASIZE)           // size of segment in words
 
+
+//
+// IOM
+//
+
+
+enum { MAX_CHANNELS = 64 };
+enum { N_IOM_PORTS = 8 };
+// The number of devices that a dev_code can address (6 bit number)
+enum { N_DEV_CODES = 64 };
 
 //
 // Words
@@ -73,6 +88,7 @@
 #define SIGN72          ((word72)1U << 71)
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
+#define MASK71          (((word72)1U << 71) - 1U)
 #define MASK72          ZEROEXT72
 
 #define SIGN64          ((uint64)1U << 63)

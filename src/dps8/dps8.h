@@ -35,7 +35,7 @@
 #define QUIET_UNUSED
 
 // Enable M[] as shared memory segment
-#define M_SHARED
+//#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
@@ -48,7 +48,7 @@
 #define VM_DPS8
 
 // Enable Real time Timer Register
-#define REAL_TR
+//#define REAL_TR
 
 // Enable speed over debuggibility
 //#define SPEED

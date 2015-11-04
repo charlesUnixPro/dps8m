@@ -17,13 +17,15 @@ P9_OBJS = pack9.o
 RTOC_OBJS = restore_toc.o bit36.o
 RTT_OBJS = restore_tape.o bit36.o simhtapes.o
 P72_OBJS = p72_to_acsii.o bit36.o
+P72B_OBJS = p72_to_binary.o bit36.o
 P72A_OBJS = p72archive_to_acsii.o bit36.o
 P72S_OBJS = p72archive_to_segment.o bit36.o
 DD_OBJS = diskDump.o bit36.o
+ABA_OBJS = p72archive_bind_to_ascii.o bit36.o
 
-EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump
+EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS)
 
 all : $(EXES)
 
@@ -44,9 +46,13 @@ pack9 : $(P9_OBJS)
 restore_toc: $(RTOC_OBJS)
 restore_tape: $(RTT_OBJS)
 p72_to_acsii: $(P72_OBJS)
+p72_to_binary: $(P72B_OBJS)
 p72archive_to_acsii: $(P72A_OBJS)
 p72archive_to_segment: $(P72S_OBJS)
 diskDump: $(DD_OBJS)
+p72archive_bind_to_ascii: $(ABA_OBJS)
+dumpDisk: dumpDisk.o bit36.o
+dumpDiskRecords: dumpDiskRecords.o bit36.o
 
 extract_tape_files.o : extract_tape_files.c bit36.h simhtapes.h mst.h
 bit36.o : bit36.c bit36.h
@@ -65,7 +71,7 @@ print_bind_map.o : print_bind_map.c bit36.h
 pack9.o : pack9.c bit36.h
 restore_toc.o : restore_toc.c bit36.h
 restore_tape.o : restore_tape.c bit36.h mst.h simhtapes.h
-
+purge.o : purge.c
 clean:
 	-rm $(OBJS)  $(EXES)
 

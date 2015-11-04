@@ -851,57 +851,78 @@ void convertToWord36(word72 src, word36 *even, word36 *odd)
     *odd = (word36)src & DMASK;
 }
 
-//! XXX the following compare routines probably need sign extension
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
-{
+  {
     t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
     t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
-    if (!((word36)op1 & SIGN36) && ((word36)op2 & SIGN36) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if (((word36)op1 & SIGN36) == ((word36)op2 & SIGN36) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if ((((word36)op1 & SIGN36) && !((word36)op2 & SIGN36)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-}
+    word36 sign1 = op1 & SIGN36;
+    word36 sign2 = op2 & SIGN36;
+
+    if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
+      CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
+
+    else if (sign1 == sign2) // both operands have the same sogn
+      {
+         if (op1 > op2)
+           {
+             SETF (* flags, I_CARRY);
+             CLRF (* flags, I_ZERO | I_NEG);
+           }
+         else if (op1 == op2)
+           {
+             SETF (* flags, I_ZERO | I_CARRY);
+             CLRF (* flags, I_NEG);
+           }
+         else //  op1 < op2
+          {
+            SETF (* flags, I_NEG);
+            CLRF (* flags, I_ZERO | I_CARRY);
+          }
+      }
+    else // op1 < 0, op2 > 0 :: op1 < op2
+      {
+        SETF (* flags, I_CARRY | I_NEG);
+        CLRF (* flags, I_ZERO);
+      }
+  }
+
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
-{
+  {
     int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
     int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
-    if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if (((word18)op1 & SIGN18) == ((word18)op2 & SIGN18) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if ((((word18)op1 & SIGN18) && !((word18)op2 & SIGN18)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-}
+    word18 sign1 = op1 & SIGN18;
+    word18 sign2 = op2 & SIGN18;
+
+    if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
+      CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
+
+    else if (sign1 == sign2) // both operands have the same sogn
+      {
+         if (op1 > op2)
+           {
+             SETF (* flags, I_CARRY);
+             CLRF (* flags, I_ZERO | I_NEG);
+           }
+         else if (op1 == op2)
+           {
+             SETF (* flags, I_ZERO | I_CARRY);
+             CLRF (* flags, I_NEG);
+           }
+         else //  op1 < op2
+          {
+            SETF (* flags, I_NEG);
+            CLRF (* flags, I_ZERO | I_CARRY);
+          }
+      }
+    else // op1 < 0, op2 > 0 :: op1 < op2
+      {
+        SETF (* flags, I_CARRY | I_NEG);
+        CLRF (* flags, I_ZERO);
+      }
+  }
+
 void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 {
     // This is wrong; signed math is needed.
@@ -1191,8 +1212,8 @@ bool startsWith(const char *str, const char *pre)
  */
 char *rtrim(char *s)
 {
-    if (s == NULL)
-        return NULL;
+    if (! s)
+      return s;
     int index;
     
     //for (index = (int)strlen(s) - 1; index >= 0 && (s[index] == ' ' || s[index] == '\t'); index--)
@@ -1726,6 +1747,15 @@ void sim_puts (char * str)
       sim_putchar (* (p ++));
   }
 
+#if 0
+void sim_warn (const char * format, ...)
+  {
+    va_list arglist;
+    va_start (arglist, format);
+    _sim_err (format, arglist);
+    va_end (arglist);
+  }
+
 void sim_err (const char * format, ...)
   {
     va_list arglist;
@@ -1734,6 +1764,7 @@ void sim_err (const char * format, ...)
     va_end (arglist);
     longjmp (jmpMain, JMP_STOP);
   }
+#endif
 
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
@@ -1870,16 +1901,16 @@ void cfgparse_done (config_state_t * state)
 //  strdupesc ("foo\nbar") --> 'f' 'o' 'o' 012 'b' 'a' 'r'
 //
 //  Handles:
-//   <backslash><backslash>
-//   \n
-//   \t
-//   \f
-//   \r
+//   \\  backslash
+//   \n  newline
+//   \t  tab
+//   \f  formfeed
+//   \r  carrriage return
 //
 // \\ doesn't seem to work...
 //  Also, a simh specific:
 //
-//   \e   (end simulation)
+//   \e  (end simulation)
 //
 //  the simh parser doesn't handle these very well...
 //
@@ -1887,7 +1918,14 @@ void cfgparse_done (config_state_t * state)
 //   \c  comma
 //   \s  semicolon
 //   \d  dollar
+//   \q  double quote
 //   \w  <backslash>
+//   \z  ^Z
+//
+// And a special case:
+//
+//   \TZ replaced with the timezone string. Three characters are used
+//       to allow for space in the buffer. 
 //
 //  all others silently ignored and left unprocessed
 //
@@ -1929,8 +1967,24 @@ char * strdupesc (const char * str)
           * p = '$';
         else if (p [1] == 'q')       //  \q    double quote (simh parser issue)
           * p = '"';
-        else if (p [1] == 'z')       // \Z     eof (VAXism)
+        else if (p [1] == 'z')       //  \z    ^D  eof (VAXism)
           * p = '\004';
+#if 0
+        else if (p [1] == 'T' && p [2] == 'Z')  // \TZ   time zone
+          {
+            strncpy (p, "pst", 3);
+            time_t t = time (NULL);
+            struct tm * lt = localtime (& t);
+            if (strlen (lt -> tm_zone) == 3)
+              {
+                //strncpy (p, lt -> tm_zone, 3);
+                p [0] = tolower (lt -> tm_zone [0]);
+                p [1] = tolower (lt -> tm_zone [1]);
+                p [2] = tolower (lt -> tm_zone [2]);
+              }
+            p += 2;
+          }
+#endif
         else
           {
             p ++;

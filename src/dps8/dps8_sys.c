@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <wordexp.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_console.h"
@@ -25,12 +26,13 @@
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
-#include "dps8_fxe.h"
 #include "dps8_append.h"
 #include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
+#include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#include "dps8_urp.h"
 #include "dps8_cable.h"
 #include "utlist.h"
 
@@ -45,7 +47,8 @@
 #include <fcntl.h>           /* For O_* constants */
 #endif
 
-#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+//#include "fnp_ipc.h"        /*  for fnp IPC stuff */
+#include "fnp.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -64,9 +67,9 @@ static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
 
-// These are part of the shm interface
-
+#ifdef MULTIPASS
 static pid_t dps8m_sid; // Session id
+#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
@@ -136,8 +139,6 @@ static CTAB dps8_cmds[] =
 #define SSH_CL          2                               /* clear */
     {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
     {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL},
-    {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
-    {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
     {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
     {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
@@ -157,12 +158,9 @@ static CTAB dps8_cmds[] =
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
     {"LAUNCH", launch, 0, "start subprocess\n", NULL},
     
-#ifdef VM_DPS8
-    {"SHOUT",  ipc_shout,       0, "Shout (broadcast) message to all connected peers\n", NULL},
-    {"WHISPER",ipc_whisper,     0, "Whisper (per-to-peer) message to specified peer\n", NULL},
-#endif
-    
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+
+    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
 
     { NULL, NULL, 0, NULL, NULL}
 };
@@ -198,11 +196,13 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+#ifdef MULTIPASS
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+#endif
 
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);
@@ -218,10 +218,13 @@ static void dps8_init(void)
     scu_init ();
     cpu_init ();
     crdrdr_init ();
+    crdpun_init ();
     prt_init ();
+    urp_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
+     
 }
 
 uint64 sim_deb_start = 0;
@@ -408,9 +411,6 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     if (ret)
       return ret;
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
-    if (ret)
-      return ret;
-    ret = lookupFXESegmentAddress (segno, offset, compname, compoffset);
     return ret;
   }
 
@@ -2138,9 +2138,11 @@ DEVICE * sim_devices [] =
     // & mpc_dev,
     & opcon_dev,
     & sys_dev,
-    & fxe_dev,
-    & ipc_dev,  // for fnp IPC
+    // & ipc_dev,  // for fnp IPC
+    & mux_dev,
+    & urp_dev,
     & crdrdr_dev,
+    & crdpun_dev,
     & prt_dev,
     NULL
   };

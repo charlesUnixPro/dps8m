@@ -10,8 +10,8 @@ ifeq ($(OS),Windows_NT)
 endif
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-#CFLAGS  = -g -O0
-CFLAGS  = -g -O3
+CFLAGS  = -g -O0
+#CFLAGS  = -g -O3
 
 #CFLAGS = -m32
 #CFLAGS = -m64

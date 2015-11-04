@@ -1247,6 +1247,68 @@ static void cleanupOperandDescriptor (int k)
     e -> addr [k - 1] . cacheDirty = false;
   }
 
+void a4bd (void)
+  {
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
+                                  // au, qu, al, ql, xn)
+    // r is the count of characters
+    word36 r = getCrAR (reg);
+
+  
+    uint augend = 0;
+    if (GET_A (CPU -> cu . IWB))
+       augend = CPU -> AR [ARn] . WORDNO * 32 + CPU -> AR [ARn] . BITNO;
+    uint addend = address * 32 + r * 4;
+    uint sum = augend + addend;
+
+    CPU -> AR [ARn] . WORDNO = sum / 32;
+
+    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
+    //             111111 11112222 22222233
+    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
+    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
+                           10, 11, 12, 13, 14, 15, 16, 17,
+                           19, 20, 21, 22, 23, 24, 25, 26,
+                           28, 29, 30, 31, 32, 33, 34, 35};
+
+    uint bitno = sum % 32;
+    CPU -> AR [ARn] . BITNO = tab [bitno];
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+  }
+
+
+void s4bd (void)
+  {
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
+                                  // au, qu, al, ql, xn)
+    // r is the count of characters
+    word36 r = getCrAR (reg);
+
+    uint minuend = 0;
+    if (GET_A (CPU -> cu . IWB))
+       minuend = CPU -> AR [ARn] . WORDNO * 32 + CPU -> AR [ARn] . BITNO;
+    uint subtractend = address * 32 + r * 4;
+    uint difference = minuend - subtractend;
+
+    CPU -> AR [ARn] . WORDNO = difference / 32;
+
+    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
+    //             111111 11112222 22222233
+    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
+    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
+                       10, 11, 12, 13, 14, 15, 16, 17,
+                       19, 20, 21, 22, 23, 24, 25, 26,
+                       28, 29, 30, 31, 32, 33, 34, 35};
+
+    uint bitno = difference % 32;
+    CPU -> AR [ARn] . BITNO = tab [bitno];
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+  }
+
 void axbd (uint sz)
   {
     uint ARn = GET_ARN (CPU -> cu . IWB);

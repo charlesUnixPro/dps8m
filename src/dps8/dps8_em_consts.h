@@ -10,10 +10,22 @@
 enum { MEMSIZE = MEM_SIZE_MAX };
 
 //
+// Unit record processor
+//
+
+enum { N_URP_UNITS_MAX = 16 };
+
+//
 // Card reader
 //
 
 enum { N_CRDRDR_UNITS_MAX = 16 };
+
+//
+// Card punch
+//
+
+enum { N_CRDPUN_UNITS_MAX = 16 };
 
 //
 // FNP
@@ -32,10 +44,6 @@ enum { N_DISK_UNITS_MAX = 17 };
 //
 
 enum { N_SCU_UNITS_MAX = 4 };
-enum { N_SCU_PORTS = 8 };
-enum { N_ASSIGNMENTS = 2 };
-// Number of interrupts in an interrupt cell register
-enum { N_CELL_INTERRUPTS = 32 };
 
 //
 // Operator console
@@ -48,10 +56,6 @@ enum { N_OPCON_UNITS_MAX = 1 };
 //
 
 enum { N_IOM_UNITS_MAX = 4 };
-enum { MAX_CHANNELS = 64 };
-enum { N_IOM_PORTS = 8 };
-// The number of devices that a dev_code can address (6 bit number)
-enum { N_DEV_CODES = 64 };
 
 
 typedef struct pcw_t

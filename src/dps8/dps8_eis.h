@@ -1,4 +1,6 @@
 void setupEISoperands (void);
+void a4bd (void);
+void s4bd (void);
 void axbd (uint sz);
 void sxbd (uint sz);
 void cmpc (void);
