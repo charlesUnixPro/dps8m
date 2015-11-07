@@ -246,12 +246,14 @@ DEVICE tape_dev = {
 
 //-- /* unfinished; copied from tape_dev */
 static const char * simh_tape_msg (int code); // hack
-static const size_t bufsz = 4096 * 9 / 2;
+//static const size_t bufsz = 4096 * 9 / 2;
+#define BUFSZ (4096 * 9 / 2)
+
 static struct tape_state
   {
     enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
     bool is9;
-    uint8 buf [bufsz];
+    uint8 buf [BUFSZ];
     t_mtrlnt tbc; // Number of bytes read into buffer
     uint words_processed; // Number of Word36 processed from the buffer
 // XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
@@ -391,7 +393,7 @@ static int mtReadRecord (uint iomUnitIdx, uint chan)
         goto ddcws;
       }
     int rc = sim_tape_rdrecf (unitp, & tape_statep -> buf [0], & tape_statep -> tbc,
-                               bufsz);
+                               BUFSZ);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_rdrecf returned %d, with tbc %d\n", rc, tape_statep -> tbc);
     if (rc == MTSE_TMK)
        {
