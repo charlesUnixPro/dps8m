@@ -188,6 +188,8 @@ static void usr1SignalHandler (UNUSED int sig)
 
 static void dps8_init(void)
 {
+#include "dps8.sha1.txt"
+    sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
     // These are part of the simh interface

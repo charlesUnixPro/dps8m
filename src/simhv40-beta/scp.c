@@ -2880,7 +2880,7 @@ if (flag) {
 #if defined(SIM_GIT_COMMIT_ID)
 #define S_xstr(a) S_str(a)
 #define S_str(a) #a
-fprintf (st, "%sgit commit id: %8.8s", flag ? "\n        " : "        ", S_xstr(SIM_GIT_COMMIT_ID));
+//fprintf (st, "%sgit commit id: %8.8s", flag ? "\n        " : "        ", S_xstr(SIM_GIT_COMMIT_ID));
 #undef S_str
 #undef S_xstr
 #endif
