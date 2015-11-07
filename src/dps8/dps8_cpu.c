@@ -721,6 +721,41 @@ int query_scbank_map (word24 addr)
     return -1;
   }
 
+//
+// serial.txt format
+//
+//      sn:  number[,number]
+//
+//  Additional numbers will be for multi-cpu systems.
+//  Other fields to be added.
+
+static void getSerialNumber (void)
+  {
+    bool havesn = false;
+    FILE * fp = fopen ("./serial.txt", "r");
+    while (fp && ! feof (fp))
+      {
+        char buffer [81] = "";
+        fgets (buffer, sizeof (buffer), fp);
+        if (sscanf (buffer, "sn: %u", & switches . serno) == 1)
+          {
+            sim_printf ("Serial number is %u\n", switches . serno);
+            havesn = true;
+          }
+      }
+    if (! havesn)
+      {
+        sim_printf ("Please register your system at https://ringzero.wikidot.com/wiki:register\n");
+        sim_printf ("or create the file 'serial.txt' containing the line 'sn: 0'.\n");
+      }
+    if (fp)
+      fclose (fp);
+  }
+
+
+
+
+    
 // called once initialization
 
 void cpu_init (void)
@@ -742,6 +777,9 @@ void cpu_init (void)
     for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
       cpu [c] . switches . trlsb = 12; // 6 MIP processor
     cpu_init_array ();
+
+    getSerialNumber ();
+
   }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.

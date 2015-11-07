@@ -485,7 +485,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
-    sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
+    sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
 
 // Process DDCWs

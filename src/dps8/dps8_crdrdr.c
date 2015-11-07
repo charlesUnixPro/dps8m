@@ -583,6 +583,7 @@ sim_printf ("\n");
           }
           break;
         case streamDeck:
+#if 0
           {
             // This will overread cardImage by 12 bits, but that's okay
             // because Multics will ignore the last 12 bits.
@@ -590,6 +591,8 @@ sim_printf ("\n");
               buffer [i] = extr36 ((uint8 *) cardImage, i);
           }
           break;
+
+#endif
         case cardDeck:
           {
             if (l > 80)

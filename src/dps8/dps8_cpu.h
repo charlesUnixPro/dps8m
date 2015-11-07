@@ -658,6 +658,7 @@ typedef struct
     uint drl_fatal;
     uint trlsb; // Timer Register least significent bits: the number of 
                 // instructions that make a timer quantum.
+    uint serno;
   } switches_t;
 
 extern uint steady_clock;    // If non-zero the clock is tied to the cycle counter

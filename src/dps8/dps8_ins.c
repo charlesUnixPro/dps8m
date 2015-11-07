@@ -5517,12 +5517,22 @@ static t_stat DoBasicInstruction (void)
           {
             if (i -> tag == TD_DL)
               {
+#if 1
+                static unsigned char PROM [1024];
+                memset (PROM, ' ', sizeof (PROM));
+                sprintf ((char *) PROM, "%13s%13d%8s",
+                  "DPS8/70M Emul",  //  0-12 CPU Model number
+                  CPU -> switches . serno, // 13-25 CPU Serial number
+                  "140730  ");      // 26-33 Ship date (YYMMDD)
+                
+#else
                 static unsigned char PROM [1024] =
                   "DPS8/70M Emul" //  0-12 CPU Model number
                   "1            " // 13-25 CPU Serial number
                   "140730  "      // 26-33 Ship date (YYMMDD)
                   ;
                 CPU -> rA = PROM [CPU -> TPR . CA & 1023];
+#endif
                 break;
               }
             uint select = CPU -> TPR.CA & 0x7;
