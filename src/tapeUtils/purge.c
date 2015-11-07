@@ -49,8 +49,8 @@
 #define TEST10 "c\r\nc\r\nc                                          -----------------------------------------------------------\r\nc\r\nc \r\nc \r\nc Historical Background\r\n"
 
 // some .archive files
-#define LEN11 2321
-#define TEST11 "\n\f\r\n\r\n\r\n\r\n\t\t    bull_copyright_notice.txt       08/30/05  1008.4r   08/30/05  1007.3    00020025\r\n\r\n                                          -----------------------------------------------------------\r\n\r\n\r\nHistorical Background\r\n" 
+#define LEN11 2320
+#define TEST11 "\f\r\n\r\n\r\n\r\n\t\t    bull_copyright_notice.txt       08/30/05  1008.4r   08/30/05  1007.3    00020025\r\n\r\n                                          -----------------------------------------------------------\r\n\r\n\r\nHistorical Background\r\n" 
 
 // 355 .asm
 #define LEN12 2280
