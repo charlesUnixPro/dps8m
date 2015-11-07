@@ -1,5 +1,5 @@
 #ifdef SPEED
-#define if_sim_debug(dbits, dptr) if (0)
+#define if_sim_debug(dbits, dptr) if ((0))
 
 #else
 #define if_sim_debug(dbits, dptr) \
