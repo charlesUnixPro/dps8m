@@ -1084,7 +1084,11 @@ typedef struct
 
 extern cpu_state_t cpu [N_CPU_UNITS_MAX];
 extern uint currentRunningCPUnum;
+#ifdef MULTI_CPU
 extern cpu_state_t * restrict CPU;
+#else
+#define CPU (& cpu [0])
+#endif
 
 bool sample_interrupts (void);
 t_stat simh_hooks (void);

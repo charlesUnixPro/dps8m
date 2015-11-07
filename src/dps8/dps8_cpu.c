@@ -737,9 +737,9 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-        if (sscanf (buffer, "sn: %u", & switches . serno) == 1)
+        if (sscanf (buffer, "sn: %u", & CPU -> switches . serno) == 1)
           {
-            sim_printf ("Serial number is %u\n", switches . serno);
+            sim_printf ("Serial number is %u\n", CPU -> switches . serno);
             havesn = true;
           }
       }
@@ -811,7 +811,9 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
       {
 
         currentRunningCPUnum = i;
+#ifdef MULTI_CPU
         CPU = & cpu [currentRunningCPUnum];
+#endif
         CPU -> rA = 0;
         CPU -> rQ = 0;
     
@@ -850,7 +852,9 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
       }
 
     currentRunningCPUnum = 0;
+#ifdef MULTI_CPU
     CPU = & cpu [currentRunningCPUnum];
+#endif
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
     sys_stats . total_cycles = 0;
@@ -871,7 +875,9 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     //memset(&cpu, 0, sizeof(cpu));
 
     currentRunningCPUnum = 0;
+#ifdef MULTI_CPU
     CPU = & cpu [currentRunningCPUnum];
+#endif
 
     // TODO: reset *all* other structures to zero
     
@@ -973,7 +979,9 @@ static t_stat reason;
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
 uint currentRunningCPUnum;
+#ifdef MULTI_CPU
 cpu_state_t * restrict CPU;
+#endif
 cpu_state_t cpu [N_CPU_UNITS_MAX];
 uint steady_clock;    // If non-zero the clock is tied to the cycle counter
 uint y2k;
@@ -1206,7 +1214,9 @@ t_stat sim_instr (void)
 setCPU:
 
     currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev . numunits;
+#ifdef MULTI_CPU
     CPU = & cpu [currentRunningCPUnum];
+#endif
 
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
@@ -2809,7 +2819,9 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
         return SCPE_ARG;
       }
 
+#ifdef MULTI_CPU
     cpu_state_t * CPU = & cpu [cpu_unit_num];
+#endif
 
     static int port_num = 0;
 

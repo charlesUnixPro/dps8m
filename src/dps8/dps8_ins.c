@@ -5531,8 +5531,8 @@ static t_stat DoBasicInstruction (void)
                   "1            " // 13-25 CPU Serial number
                   "140730  "      // 26-33 Ship date (YYMMDD)
                   ;
-                CPU -> rA = PROM [CPU -> TPR . CA & 1023];
 #endif
+                CPU -> rA = PROM [CPU -> TPR . CA & 1023];
                 break;
               }
             uint select = CPU -> TPR.CA & 0x7;
