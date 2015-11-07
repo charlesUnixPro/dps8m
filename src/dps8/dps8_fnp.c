@@ -1256,7 +1256,7 @@ struct header
 //        3 software_xte fixed bin (18) unsigned unaligned,
 //        3 pad bit (18) unaligned,
     word36 software_xte___sync_or_async;
-  };
+  } header;
 //      2 sync_or_async (17) fixed bin;                         /* placeholder for meters for sync or async channels */
 word36 sync_or_async;
   };

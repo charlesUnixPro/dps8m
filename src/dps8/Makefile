@@ -9,9 +9,10 @@ CFLAGS += -Wunused-argument \
 -Wunused-value \
 -Wunused-variable \
 -Wunused \
--Wextra
+-Wextra \
+-Wno-parentheses-equality -Wno-array-bounds
 
-CFLAGS += -Wunreachable-code
+#CFLAGS += -Wunreachable-code
 
 #CFLAGS += -Wsign-conversion
 zzzCFLAGS += \
