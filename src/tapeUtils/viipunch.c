@@ -333,7 +333,11 @@ static uint8_t writeCardBuffer [writeCardBufferSz + 2];
 static void writeCard (void)
   {
     for (int i = 0; i < cardWords36; i ++)
-      put36 (card [i], & writeCardBuffer [0], i);
+      {
+        put36 (card [i], & writeCardBuffer [0], i);
+        //fprintf (stderr, " %012lo", card [i]);
+      }
+    //fprintf (stderr, "\n");
     write (STDOUT_FILENO, writeCardBuffer, writeCardBufferSz);
   }
 
@@ -406,7 +410,7 @@ static void to (void)
             putbits36 (& card [0], 12,  6, (nw >> 0) & 077);  // cntlo
             putbits36 (& card [0], 18,  3,               0);  // tag
             putbits36 (& card [0], 21, 15,       cardSeqNo);  // seq
-fprintf (stderr, "seq %d nw %d %012lo\n", cardSeqNo, nw, card [0]);
+//fprintf (stderr, "seq %d nw %d %012lo\n", cardSeqNo, nw, card [0]);
             for (int i = 0; i < nw; i ++)
               {
                 card [2 + i] = buffer [i]; // data
@@ -420,8 +424,9 @@ fprintf (stderr, "seq %d nw %d %012lo\n", cardSeqNo, nw, card [0]);
             putbits36 (& card [0], 12,  6, (nw > 0) & 077);  // cntlo
             putbits36 (& card [0], 18,  3,             07);  // tag
             putbits36 (& card [0], 21, 15,      cardSeqNo);  // seq
-fprintf (stderr, "last seq %d\n", cardSeqNo);
+//fprintf (stderr, "last seq %d\n", cardSeqNo);
             card [2] = inputWordCnt * 36; // bitcnt
+fprintf (stderr, "bit count %lu\n", card [2]);
           }
 
         word36 check = card [0];

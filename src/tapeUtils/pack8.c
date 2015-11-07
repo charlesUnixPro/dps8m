@@ -90,8 +90,9 @@ int main (int argc, char * argv [])
         // printf ("\n");
         // printf ("\n");
 
-        sz = write (fdout, packed, sizeof (packed));
-        if (sz != sizeof (packed))
+        ssize_t wsz = (sz == 3) ? 5 : 9;
+        sz = write (fdout, packed, wsz);
+        if (sz != wsz)
           {
             printf ("error writing out\n");
             exit (1);
