@@ -121,79 +121,79 @@ int main (int argc, char * argv [])
 
     if (test (LEN1, TEST1))
       {
-        printf ("P1: %s\n", argv [1]);
+        //printf ("P1: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN2, TEST2))
       {
-        printf ("P2: %s\n", argv [1]);
+        //printf ("P2: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN3, TEST3))
       {
-        printf ("P3: %s\n", argv [1]);
+        //printf ("P3: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN4, TEST4))
       {
-        printf ("P4: %s\n", argv [1]);
+        //printf ("P4: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN5, TEST5))
       {
-        printf ("P5: %s\n", argv [1]);
+        //printf ("P5: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN6, TEST6))
       {
-        printf ("P6: %s\n", argv [1]);
+        //printf ("P6: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN7, TEST7))
       {
-        printf ("P7: %s\n", argv [1]);
+        //printf ("P7: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN8, TEST8))
       {
-        printf ("P8: %s\n", argv [1]);
+        //printf ("P8: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN9, TEST9))
       {
-        printf ("P9: %s\n", argv [1]);
+        //printf ("P9: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN10, TEST10))
       {
-        printf ("P10: %s\n", argv [1]);
+        //printf ("P10: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN11, TEST11))
       {
-        printf ("P11: %s\n", argv [1]);
+        //printf ("P11: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN12, TEST12))
       {
-        printf ("P12: %s\n", argv [1]);
+        //printf ("P12: %s\n", argv [1]);
         goto done;
       }
 
     if (test (LEN13, TEST13))
       {
-        printf ("P13: %s\n", argv [1]);
+        //printf ("P13: %s\n", argv [1]);
         goto done;
       }
 

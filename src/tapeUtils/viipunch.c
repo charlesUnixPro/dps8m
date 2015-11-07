@@ -426,7 +426,6 @@ static void to (void)
             putbits36 (& card [0], 21, 15,      cardSeqNo);  // seq
 //fprintf (stderr, "last seq %d\n", cardSeqNo);
             card [2] = inputWordCnt * 36; // bitcnt
-fprintf (stderr, "bit count %lu\n", card [2]);
           }
 
         word36 check = card [0];
