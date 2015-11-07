@@ -45,6 +45,8 @@ typedef enum
     FETCH_cycle = INSTRUCTION_FETCH,
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
+    DIS_cycle,
+    IDIS_cycle,
   } cycles_t;
 
 
@@ -1081,7 +1083,7 @@ typedef struct
 
 extern cpu_state_t cpu [N_CPU_UNITS_MAX];
 extern uint currentRunningCPUnum;
-extern cpu_state_t * CPU;
+extern cpu_state_t * restrict CPU;
 
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
@@ -1143,3 +1145,4 @@ char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
+void setCpuCycle (cycles_t cycle);

@@ -182,7 +182,7 @@ const struct opCode NonEISopcodes[01000] = {
     {"lbar", READ_OPERAND | NO_RPT | NO_BAR, NO_CSS, 0},
     {"rsw", PREPARE_CA | PRIV_INS | NO_RPT, 0, 0},
     {"ldbr", READ_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS, 0},
-    {"rmcm", PRIV_INS, NO_DDCSS, 0},
+    {"rmcm", PREPARE_CA | PRIV_INS, NO_DDCSS, 0},
     {"szn", READ_OPERAND, 0, 0},
     {"lda", READ_OPERAND, 0, 0},
     {"ldq", READ_OPERAND, 0, 0},

@@ -42,7 +42,6 @@
 static void cpu_init_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
-static void setCpuCycle (cycles_t cycle);
 
 // The DPS8M had only 4 ports
 
@@ -798,8 +797,19 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         CPU -> cu.SD_ON = 1;
         CPU -> cu.PT_ON = 1;
 
-        setCpuCycle (FETCH_cycle);
-  }
+        setCpuCycle (IDIS_cycle);
+
+        CPU ->  wasXfer = false;
+        CPU ->  wasInhibited = false;
+
+        CPU ->  interrupt_flag = false;
+        CPU ->  g7_flag = false;
+
+        CPU ->  faultRegister [0] = 0;
+        CPU ->  faultRegister [1] = 0;
+
+        memset (& CPU -> PPR, 0, sizeof(struct _ppr));
+      }
 
     currentRunningCPUnum = 0;
     CPU = & cpu [currentRunningCPUnum];
@@ -840,21 +850,6 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     initializeTheMatrix();
 
     tidy_cu ();
-
-    for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
-      {
-        cpu [i] . cycle = FETCH_cycle;
-
-        cpu [i] . wasXfer = false;
-        cpu [i] . wasInhibited = false;
-
-        cpu [i] . interrupt_flag = false;
-        cpu [i] . g7_flag = false;
-
-        cpu [i] . faultRegister [0] = 0;
-        cpu [i] . faultRegister [1] = 0;
-        memset (& cpu [i] . PPR, 0, sizeof(struct _ppr));
-      }
 
     return SCPE_OK;
 }
@@ -940,7 +935,7 @@ static t_stat reason;
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
 uint currentRunningCPUnum;
-cpu_state_t * CPU;
+cpu_state_t * restrict CPU;
 cpu_state_t cpu [N_CPU_UNITS_MAX];
 uint steady_clock;    // If non-zero the clock is tied to the cycle counter
 uint y2k;
@@ -1027,6 +1022,7 @@ bool sample_interrupts (void)
       {
         if (CPU -> events . XIP [scuUnitNum])
           {
+//sim_printf ("sample_interrupts CPU %ld SCU %d\n", CPU - cpu, scuUnitNum);
             return true;
           }
       }
@@ -1090,6 +1086,10 @@ char * cycleStr (cycles_t cycle)
           return "FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
           return "SYNC_FAULT_RTN_cycle";
+        case DIS_cycle:
+          return "DIS_cycle";
+        case IDIS_cycle:
+          return "IDIS_cycle";
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
@@ -1098,7 +1098,7 @@ char * cycleStr (cycles_t cycle)
      }
   }
 
-static void setCpuCycle (cycles_t cycle)
+void setCpuCycle (cycles_t cycle)
   {
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to %s\n",
                cycleStr (cycle));
@@ -1414,7 +1414,7 @@ last = M[01007040];
               {
                 //     execute instruction in instruction buffer
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
-
+sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                 if (CPU -> cycle == INTERRUPT_EXEC_cycle)
                   CPU -> cu . IWB = CPU -> instr_buf [0];
                 else
@@ -1613,7 +1613,13 @@ last = M[01007040];
               {
                 if (GET_I (CPU -> cu . IWB))
                   CPU -> wasInhibited = true;
-
+                else
+                  CPU -> wasInhibited = false;
+//{
+//static bool was = false;
+//if (GET_I (CPU -> cu . IWB) && ! was) { was = true; sim_printf ("inhibit\n");}
+//else if (! GET_I (CPU -> cu . IWB) && was) { was = false; sim_printf ("disinhibit %d\n", sample_interrupts ());}
+//}
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1822,6 +1828,36 @@ last = M[01007040];
 
                 CPU -> PPR.IC += ci->info->ndes;
                 CPU -> PPR.IC ++;
+                break;
+              }
+
+// Bless NovaScale...
+//  DIS
+// 
+//    NOTES:
+// 
+//      1. The inhibit bit in the DIS instruction only affects the recognition 
+//         of a Timer Runout (TROF) fault.
+//
+//         Inhibit ON delays the recognition of a TROF until the processor 
+//         enters Slave mode.
+//
+//         Inhibit OFF allows the TROF to interrupt the DIS state.
+// 
+//      2. For all other faults and interrupts, the inhibit bit is ignored.
+// 
+
+            case DIS_cycle:
+            case IDIS_cycle:
+              {
+                CPU -> interrupt_flag = sample_interrupts ();
+                CPU -> g7_flag = CPU -> cycle == DIS_cycle ? bG7Pending () : bG7PendingNoTRO ();
+                if (CPU -> interrupt_flag || CPU -> g7_flag)
+                  {
+{static bool f0 = true; if (f0 && currentRunningCPUnum == 0) { f0 = false; sim_printf ("cpu 0 starts\n");}}
+{static bool f1 = true; if (f1 && currentRunningCPUnum == 1) { f1 = false; sim_printf ("cpu 1 starts\n");}}
+                    setCpuCycle (INTERRUPT_cycle);
+                  }
                 break;
               }
 

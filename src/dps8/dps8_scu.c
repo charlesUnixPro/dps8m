@@ -1586,7 +1586,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (iomUnitNum);
+            iom_interrupt (scu_unit_num, iomUnitNum);
             return 0;
           }
         else
@@ -1612,6 +1612,8 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
+// XXX setG7fault expects the processor port number; this may be right.
+        //int cpuUnitNum = portp -> idnum;
         setG7fault (FAULT_CON, cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
@@ -1656,8 +1658,7 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
 
 static void deliverInterrupts (uint scu_unit_num)
   {
-// XXX ASSUME0 CPU 0
-
+    CPU -> events . XIP [scu_unit_num] = false;
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
@@ -1679,13 +1680,11 @@ static void deliverInterrupts (uint scu_unit_num)
                 else
                   {
                     cpu [cpu_unit_num] . events . XIP [scu_unit_num] = true;
-if (cpu_unit_num) sim_printf ("interrupt set for CPU %d\n", cpu_unit_num);
+//sim_printf ("interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
                   }
-                return;
               }
           }
       }
-    CPU -> events . XIP [scu_unit_num] = false;
   }
 
 uint scuGetHighestIntr (uint scuUnitNum)
@@ -2138,6 +2137,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
 t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
   {
+//sim_printf ("scu_smcm scu unit %d cpu unit %d A %012llo Q %012llo\n", scu_unit_num, cpu_unit_num, rega, regq);
     // A lot of guess work here....
 
     // Which port is cpu_unit_num connected to? (i.e. which port did the 
@@ -2159,6 +2159,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 
     if (scu_port_num < 0)
       {
+//sim_printf ("scu_port_num < 0\n");
         sim_debug (DBG_ERR, & scu_dev, 
                    "%s: can't find cpu port in the snarl of cables; "
                    "scu_unit_no %d, cpu_unit_num %d\n", 
@@ -2183,6 +2184,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
  
     if (! n_masks_found)
       {
+//sim_printf ("no masks found\n");
         // Not a problem; defined behavior
         sim_debug (DBG_INFO, & scu_dev, 
                    "%s: No masks assigned to cpu on port %d\n", 
@@ -2192,6 +2194,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 
     if (n_masks_found > 1)
       {
+//sim_printf ("too many masks found\n");
         // Not legal for Multics
         sim_debug (DBG_WARN, & scu_dev,
                    "%s: Multiple masks assigned to cpu on port %d\n",
@@ -2224,6 +2227,15 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     scu [scu_unit_num] . port_enable [5] = (uint) getbits36 (regq, 33, 1);
     scu [scu_unit_num] . port_enable [6] = (uint) getbits36 (regq, 34, 1);
     scu [scu_unit_num] . port_enable [7] = (uint) getbits36 (regq, 35, 1);
+//sim_printf ("port enable %d %d %d %d %d %d %d %d\n",
+//scu [scu_unit_num] . port_enable [0],
+//scu [scu_unit_num] . port_enable [1],
+//scu [scu_unit_num] . port_enable [2],
+//scu [scu_unit_num] . port_enable [3],
+//scu [scu_unit_num] . port_enable [4],
+//scu [scu_unit_num] . port_enable [5],
+//scu [scu_unit_num] . port_enable [6],
+//scu [scu_unit_num] . port_enable [7]);
     deliverInterrupts (scu_unit_num);
     
     return SCPE_OK;

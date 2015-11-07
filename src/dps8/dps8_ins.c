@@ -4996,10 +4996,10 @@ static t_stat DoBasicInstruction (void)
               // 2 bits for the DPS8M.
               //int cpu_port_num = getbits36 (CPU -> TPR.CA, 0, 2);
               uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
-              int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
               if (scu_unit_num < 0)
                 scu_unit_num = 0; // XXX print message
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & CPU -> rA, & CPU -> rQ);
+              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum, 040, & CPU -> rA, & CPU -> rQ);
               if (rc > 0)
                 return rc;
 #ifndef SPEED
@@ -5460,10 +5460,14 @@ static t_stat DoBasicInstruction (void)
                 // specify which processor port (i.e., which system 
                 // controller) is used.
                 uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
                 if (scu_unit_num < 0)
-                  scu_unit_num = 0; // XXX print message
-                t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & CPU -> rA, & CPU -> rQ);
+                  {
+                    sim_warn ("rmcm to non-existent controller on cpu %d port %d\n", currentRunningCPUnum, cpu_port_num);
+                    break;
+                  }
+//sim_printf ("calling scu_rmcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", CPU -> cu . IWB, CPU -> TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
+                t_stat rc = scu_rmcm (scu_unit_num, currentRunningCPUnum, & CPU -> rA, & CPU -> rQ);
                 if (rc)
                     return rc;
                 SCF (CPU -> rA == 0, CPU -> cu.IR, I_ZERO);
@@ -5500,9 +5504,9 @@ static t_stat DoBasicInstruction (void)
                   sim_debug (DBG_ERR, & cpu_dev, "RSCR: Unable to determine port for address %08o; defaulting to port A\n", CPU -> iefpFinalAddress);
                   cpu_port_num = 0;
                 }
-              uint scu_unit_num = cables -> cablesFromScuToCpu [ASSUME_CPU0] . ports [cpu_port_num] . scu_unit_num;
+              uint scu_unit_num = cables -> cablesFromScuToCpu [currentRunningCPUnum] . ports [cpu_port_num] . scu_unit_num;
 
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, CPU -> iefpFinalAddress & MASK15, & CPU -> rA, & CPU -> rQ);
+              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum, CPU -> iefpFinalAddress & MASK15, & CPU -> rA, & CPU -> rQ);
               if (rc)
                 return rc;
             }
@@ -5693,7 +5697,7 @@ static t_stat DoBasicInstruction (void)
                 //cpu_port_num = 0;
                 doFault (FAULT_ONC, nem, "(cioc)");
               }
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
             if (scu_unit_num < 0)
               {
                 doFault (FAULT_ONC, nem, "(cioc)");
@@ -5709,7 +5713,8 @@ static t_stat DoBasicInstruction (void)
                 // specify which processor port (i.e., which system 
                 // controller) is used.
                 uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+#if 0 // not on 4MW
                 if (scu_unit_num < 0)
                   {
                     if (cpu_port_num == 0)
@@ -5722,7 +5727,14 @@ static t_stat DoBasicInstruction (void)
                       putbits36 (& CPU -> faultRegister [0], 28, 4, 010);
                     doFault (FAULT_CMD, not_control, "(smcm)");
                   }
-                t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, CPU -> rA, CPU -> rQ);
+#endif
+                if (scu_unit_num < 0)
+                  {
+                    sim_warn ("smcm to non-existent controller on cpu %d port %d\n", currentRunningCPUnum, cpu_port_num);
+                    break;
+                  }
+//sim_printf ("calling scu_smcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", CPU -> cu . IWB, CPU -> TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
+                t_stat rc = scu_smcm (scu_unit_num, currentRunningCPUnum, CPU -> rA, CPU -> rQ);
                 if (rc)
                     return rc;
             }
@@ -5739,7 +5751,7 @@ static t_stat DoBasicInstruction (void)
             // specify which processor port (i.e., which system 
             // controller) is used.
             uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -5753,7 +5765,7 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& CPU -> faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
-            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, cpu_port_num, CPU -> rA);
+            t_stat rc = scu_smic (scu_unit_num, currentRunningCPUnum, cpu_port_num, CPU -> rA);
             // Not used bu 4MW
             // if (rc == CONT_FAULT)
               // doFault (FAULT_STR, not_control, "(smic)");
@@ -5766,7 +5778,7 @@ static t_stat DoBasicInstruction (void)
         case 0057:  // sscr
           {
             uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -5780,7 +5792,7 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& CPU -> faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, CPU -> iefpFinalAddress & MASK15, CPU -> rA, CPU -> rQ);
+            t_stat rc = scu_sscr (scu_unit_num, currentRunningCPUnum, cpu_port_num, CPU -> iefpFinalAddress & MASK15, CPU -> rA, CPU -> rQ);
             if (rc)
               return rc;
           }
@@ -5834,6 +5846,13 @@ static t_stat DoBasicInstruction (void)
             // external interrupt signal.
             // AND, according to pxss.alm, TRO
 
+#if 1
+            if (GET_I (CPU -> cu . IWB))
+              setCpuCycle (IDIS_cycle);
+            else
+              setCpuCycle (DIS_cycle);
+            break;
+#else
 // Bless NovaScale...
 //  DIS
 // 
@@ -5869,7 +5888,8 @@ static t_stat DoBasicInstruction (void)
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
-            
+#endif
+ 
         default:
             if (CPU -> switches . halt_on_unimp)
                 return STOP_ILLOP;
