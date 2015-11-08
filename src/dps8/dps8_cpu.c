@@ -2589,9 +2589,7 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
 
 static void cpu_init_array (void)
   {
-    for (int i = 0; i < N_SCU_UNITS_MAX; i ++)
-      for (int p = 0; p < N_CPU_UNITS_MAX; p ++)
-        cables -> cablesFromScuToCpu [i] . ports [p] . inuse = false;
+    memset (cables -> cablesFromScuToCpu, 0, sizeof (cables -> cablesFromScuToCpu));
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
