@@ -179,7 +179,7 @@ zzzCFLAGS += \
 # Configuration switches
 
 # Enable M[] as shared memory segment
-#LDFLAGS += -lrt
+LDFLAGS += -lrt
 
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
@@ -221,7 +221,7 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 #C_SRCS += ./fnpp.c
-#C_SRCS += ./shm.c
+C_SRCS += ./shm.c
 #C_SRCS += ./fnp_ipc.c
 C_SRCS += ./fnp.c
 C_SRCS += ./fnp_mux.c

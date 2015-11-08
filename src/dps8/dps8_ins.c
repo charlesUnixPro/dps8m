@@ -5858,10 +5858,8 @@ static t_stat DoBasicInstruction (void)
 
 #if 1
             if (GET_I (CPU -> cu . IWB))
-              setCpuCycle (IDIS_cycle);
-            else
-              setCpuCycle (DIS_cycle);
-            break;
+              return CONT_IDIS;
+            return CONT_DIS;
 #else
 // Bless NovaScale...
 //  DIS

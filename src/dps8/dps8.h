@@ -35,7 +35,7 @@
 #define QUIET_UNUSED
 
 // Enable M[] as shared memory segment
-//#define M_SHARED
+#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
@@ -51,7 +51,9 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-#define SPEED
+//#define SPEED
+
+#define MULTI_CPU
 
 #include "sim_defs.h"                                   /* simulator defns */
 

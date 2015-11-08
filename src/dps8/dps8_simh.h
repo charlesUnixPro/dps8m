@@ -77,9 +77,11 @@
 
 
 // not really STOP codes, but get returned from instruction loops
-#define CONT_TRA    -1  ///< encountered a transfer instruction dont bump PPR.IC
-#define CONT_FAULT  -2  ///< instruction encountered some kind of fault
-#define CONT_INTR   -3  ///< instruction saw interrupt go up
+#define CONT_TRA    -1  // encountered a transfer instruction dont bump PPR.IC
+#define CONT_FAULT  -2  // instruction encountered some kind of fault
+//#define CONT_INTR   -3  // instruction saw interrupt go up
+#define CONT_DIS    -4  // instruction was DIS 
+#define CONT_IDIS   -5  // instruction was DIS with interrupts inhibited
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;

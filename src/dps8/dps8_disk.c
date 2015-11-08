@@ -428,6 +428,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
         memset (diskBuffer, 0, sizeof (diskBuffer));
         sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
+//sim_printf ("Disk read  %3d %8d %3d\n", devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
         rc = fread (diskBuffer, SECTOR_SZ_IN_BYTES,
                     tallySectors,
@@ -573,11 +574,13 @@ static int diskWrite (uint iomUnitIdx, uint chan)
           }
 #endif
 
+//sim_printf ("Disk write %3d %8d %3d\n", devUnitIdx, disk_statep -> seekPosition, tallySectors);
         sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
         rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
                      tallySectors,
                      unitp -> fileref);
+//cpu_dev . dctrl |= DBG_TRACE;
 //sim_printf ("Disk write %8d %3d %08o\n",
 //disk_statep -> seekPosition, tallySectors, daddr);
               

@@ -737,9 +737,9 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-        if (sscanf (buffer, "sn: %u", & CPU -> switches . serno) == 1)
+        if (sscanf (buffer, "sn: %u", & cpu [0] . switches . serno) == 1)
           {
-            sim_printf ("Serial number is %u\n", CPU -> switches . serno);
+            sim_printf ("Serial number is %u\n", cpu [0] . switches . serno);
             havesn = true;
           }
       }
@@ -781,6 +781,8 @@ void cpu_init (void)
     getSerialNumber ();
 
   }
+
+static void setCpuCycle (cycles_t cycle);
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
@@ -1144,7 +1146,7 @@ char * cycleStr (cycles_t cycle)
      }
   }
 
-void setCpuCycle (cycles_t cycle)
+static void setCpuCycle (cycles_t cycle)
   {
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to %s\n",
                cycleStr (cycle));
@@ -1661,8 +1663,8 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
               {
                 if (GET_I (CPU -> cu . IWB))
                   CPU -> wasInhibited = true;
-                else
-                  CPU -> wasInhibited = false;
+                //else
+                  //CPU -> wasInhibited = false;
 //{
 //static bool was = false;
 //if (GET_I (CPU -> cu . IWB) && ! was) { was = true; sim_printf ("inhibit\n");}
@@ -1683,6 +1685,18 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                     break;   // don't bump PPR.IC, instruction already did it
                   }
                 CPU -> wasXfer = false;
+
+                if (ret == CONT_DIS)
+                  {
+                    setCpuCycle (DIS_cycle);
+                    break;
+                  }
+
+                if (ret == CONT_IDIS)
+                  {
+                    setCpuCycle (IDIS_cycle);
+                    break;
+                  }
 
                 if (ret < 0)
                   {
@@ -1723,7 +1737,6 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                 if (ci->info->ndes > 0)
                   CPU -> PPR.IC += ci->info->ndes;
 
-                CPU -> wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
               break;
@@ -1904,6 +1917,7 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                   {
 {static bool f0 = true; if (f0 && currentRunningCPUnum == 0) { f0 = false; sim_printf ("cpu 0 starts\n");}}
 {static bool f1 = true; if (f1 && currentRunningCPUnum == 1) { f1 = false; sim_printf ("cpu 1 starts\n");}}
+                    CPU -> PPR.IC ++;
                     setCpuCycle (INTERRUPT_cycle);
                   }
                 break;
