@@ -301,13 +301,19 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 dps8 : tags $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
+.PHONY: FORCE
+
+dps8_sha1_txt : FORCE
+	git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt 
+
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
-locallibs_then_dps8 :
+locallibs_then_dps8 : 
 	(cd ../simhv40-beta; $(MAKE))
 	(cd ../decNumber; $(MAKE))
 	#$(MAKE) zmq
+	$(MAKE) dps8_sha1_txt
 	$(MAKE) dps8
 
 # Other Targets
