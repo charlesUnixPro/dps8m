@@ -28,6 +28,9 @@ typedef struct
     uint lower_store_size; // In K words, power of 2; 32 - 4096
     uint cyclic; // 7 bits
     uint nea; // 8 bits
+    uint onl; // 4 bits
+    uint interlace; // 1 bit
+    uint lwr; // 1 bit
     
     // Note that SCUs had no switches to designate SCU 'A' or 'B', etc.
     // Instead, SCU "A" is the one with base address switches set for 01400,

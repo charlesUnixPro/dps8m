@@ -660,6 +660,9 @@ static struct config_switches
     uint lower_store_size; // In K words, power of 2; 32 - 4096
     uint cyclic; // 7 bits
     uint nea; // 8 bits
+    uint onl; // 4 bits
+    uint interlace; // 1 bit
+    uint lwr; // 1 bit
   } config_switches [N_SCU_UNITS_MAX];
 
 // System Controller
@@ -690,6 +693,9 @@ t_stat scu_reset (UNUSED DEVICE * dptr)
         up -> lower_store_size = sw -> lower_store_size;
         up -> cyclic = sw -> cyclic;
         up -> nea = sw -> nea;
+        up -> onl = sw -> onl;
+        up -> interlace = sw -> interlace;
+        up -> lwr = sw -> lwr;
 
    
 // CAC - These settings were reversed engineer from the code instead
@@ -987,13 +993,14 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
           {
             scu [scu_unit_num] . id = (word4) getbits36 (regq, 50 - 36,  4);
             scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
+//sim_printf ("Set system controller mode register unit %o id %o modeReg %o\n", scu_unit_num, scu [scu_unit_num] . id, scu [scu_unit_num] . modeReg);
           }
           break;
 
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
-            //sim_printf ("sscr 1 A: %012llo Q: %012llo\n", rega, regq);
+//sim_printf ("sscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, rega, regq);
             scu_t * up = scu + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1014,13 +1021,18 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
          
                   }
               }
+//sim_printf ("write cfg scu %d enb %d %d assign %d %d masks %03llo %03llo\n", scu_unit_num, up -> mask_enable [0], up -> mask_enable [1], up -> mask_assignment [0], up -> mask_assignment [1], (rega >> 27) & 0377, (regq >> 27) & 0377);
             // AN87-00A, pg 2-5, 2-6 specifiy which fields are and are not settable.
  
             //if (up -> lower_store_size != ((rega >> 24) & 07))
               //sim_printf ("??? The CPU tried to change the SCU store size\n");
             up -> lower_store_size = (rega >> 24) & 07;
+//sim_printf ("lower_store_size set to %o\n", up -> lower_store_size);
             up -> cyclic = (regq >> 8) & 0177;
             up -> nea = (rega >> 6) & 0377;
+            up -> onl = (rega >> 20) & 017;
+            up -> interlace = (rega >> 5) & 1;
+            up -> lwr = (rega >> 4) & 1;
             up -> port_enable [0] = (rega >> 3) & 01;
             up -> port_enable [1] = (rega >> 2) & 01;
             up -> port_enable [2] = (rega >> 1) & 01;
@@ -1029,7 +1041,11 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             up -> port_enable [5] = (regq >> 2) & 01;
             up -> port_enable [6] = (regq >> 1) & 01;
             up -> port_enable [7] = (regq >> 0) & 01;
-
+//sim_printf ("sscr %d enable %d%d%d%d%d%d%d%d cyclic %03o nea %03o onl %02o sz %o il %o lwr %o A %o B %o\n", 
+//scu_unit_num, 
+//up -> port_enable [0], up -> port_enable [1], up -> port_enable [2], up -> port_enable [3], up -> port_enable [4], up -> port_enable [5], up -> port_enable [6], up -> port_enable [7],
+//up -> cyclic, up -> nea, up -> onl, up -> lower_store_size, up -> interlace, up -> lwr,
+//up -> mask_assignment [0], up -> mask_assignment [1]);
             // XXX A, A1, B, B1, INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             break;
           }
@@ -1188,6 +1204,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             * regq = 0;
             putbits36 (regq, 50 - 36,  4, scu [scu_unit_num] . id);
             putbits36 (regq, 54 - 36, 18, scu [scu_unit_num] . modeReg);
+//sim_printf ("Read system controller mode unit %o %012llo\n", scu_unit_num, * regq);
             break;
           }
 
@@ -1235,7 +1252,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 else
                   maskab [i] = 0001;
               }
-
+//sim_printf ("read cfg scu %d enb %d %d assign %d %d masks %03o %03o\n", scu_unit_num, up -> mask_enable [0], up -> mask_enable [1], up -> mask_assignment [0], up -> mask_assignment [1], maskab [0], maskab [1]);
             int scu_port_num = -1; // The port that the rscr instruction was
                                    // received on
 
@@ -1301,11 +1318,12 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 // (data, starting bit position, number of bits, value)
             putbits36 (& a,  0,  9, maskab [0]);
             putbits36 (& a,  9,  3, up -> lower_store_size);
-            // XXX A, A1, B, B1 not implemented. (AG87-00A pgs 2-5. 2-6)
-            putbits36 (& a, 12,  4, 017); // A, A1, B, B1 online
+            putbits36 (& a, 12,  4, up -> onl); // A, A1, B, B1 online
             putbits36 (& a, 16,  4, scu_port_num);
             putbits36 (& a, 21,  1, up -> mode);
             putbits36 (& a, 22,  8, up -> nea);
+            putbits36 (& a, 30,  1, up -> interlace);
+            putbits36 (& a, 31,  1, up -> lwr);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
@@ -1327,6 +1345,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             putbits36 (& q, 34,  1, up -> port_enable [6]);
             putbits36 (& q, 35,  1, up -> port_enable [7]);
             * regq = q;
+//sim_printf ("rscr %012llo %012llo  %02llo %02llo\n", a, q, a & 017, q & 017);
+//sim_printf ("rscr %d %d%d%d%d%d%d%d%d\n", scu_unit_num, up -> port_enable [0], up -> port_enable [1], up -> port_enable [2], up -> port_enable [3], up -> port_enable [4], up -> port_enable [5], up -> port_enable [6], up -> port_enable [7]);
 #endif
             break;
           }
@@ -1913,10 +1933,12 @@ static config_list_t scu_config_list [] =
     /* 11 */ { "lwrstoresize", 0, 7, cfg_size_list },
     /* 12 */ { "cyclic", 0, 0177, NULL },
     /* 13 */ { "nea", 0, 0377, NULL },
-
+    /* 14 */ { "onl", 0, 017, NULL }, // mask: 8 a_online, 4 a1_online, 2 b_online, 1, b1_online
+    /* 15 */ { "int", 0, 1, NULL },
+    /* 16 */ { "lwr", 0, 1, NULL },
     // Hacks
 
-    /* 14 */ { "elapsed_days", 0, 10000, NULL },
+    /* 17 */ { "elapsed_days", 0, 10000, NULL },
 
     { NULL, 0, 0, NULL }
   };
@@ -1992,11 +2014,23 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               sw -> cyclic = (uint) v;
               break;
 
-            case 13: // CYCLIC
+            case 13: // NEA
               sw -> nea = (uint) v;
               break;
 
-            case 14: // ELAPSED_DAYS
+            case 14: // ONL
+              sw -> onl = (uint) v;
+              break;
+
+            case 15: // INT
+              sw -> interlace = (uint) v;
+              break;
+
+            case 16: // LWR
+              sw -> lwr = (uint) v;
+              break;
+
+            case 17: // ELAPSED_DAYS
               elapsed_days = (uint) v;
               break;
 

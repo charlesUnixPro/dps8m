@@ -7398,9 +7398,9 @@ void doRCU (void)
 //      AL39 is contradictory or vague about store fault subfaults and store
 //      faults in general. They are mentioned:
 //        SPRPn: store fault (illegal pointer) (assuming STR:ISN)
-//        SMCM: store fault (not control)  \
-//        SMIC: store fault (not control)   > I believe that these should be command fault
-//        SSCR: store fault (not control)  /
+//        SMCM: store fault (not control)  )
+//        SMIC: store fault (not control)  )> I believe that these should be command fault
+//        SSCR: store fault (not control)  )
 //        TSS:  STR:OOB
 //        Bar mode out-of-bounds: STR:OOB
 //     The SCU register doesn't define which bit is "store fault (not control)"
