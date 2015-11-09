@@ -364,7 +364,7 @@ cleaner: clean
 %.d: %.c
 	@set -e; rm -f $@; \
 	$(CC) -MM $(CFLAGS) $< > $@.$$$$; \
-	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	grep -v dps8.sha1.txt $@.$$$$ | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@; \
 	rm -f $@.$$$$
 
 -include $(C_SRCS:.c=.d)
