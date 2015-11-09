@@ -304,7 +304,8 @@ dps8 : tags $(OBJS) $(LOCALLIBS)
 .PHONY: FORCE
 
 dps8_sha1_txt : FORCE
-	git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt 
+	echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt 
+	-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt 
 
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
