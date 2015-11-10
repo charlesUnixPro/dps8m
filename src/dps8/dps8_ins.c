@@ -5504,6 +5504,39 @@ static t_stat DoBasicInstruction (void)
           {
             if (i -> tag == TD_DL)
               {
+// 58009997-040 MULTICS Differences Manual DPS 8-70M Aug83
+// disagress with Multics source, but probably a typo,
+//  0-13 CPU Model Number
+// 13-25 CPU Serial Number
+// 26-33 Date-Ship code (YYMMDD)
+// 34-40 CPU ID Field (reference RSW 2)
+//  Byte 40: Bits 03 (Bits 32-35 of RSW 2 Field
+//           Bit 4=1 Hex Option included
+//           Bit 5=1 RSCR (Clock) is Slave Mode included
+//           Bits 6-7 Reserved for later use.
+//       50: Operating System Use
+// 51-1777(8) To be defined.
+// NOTE: There is the possibility of disagreement between the
+//       ID bits of RSW 2 and the ID bits of PROM locations
+//       35-40. This condition could result when alterable
+//       configuration condition is contained in the PROM.
+//       The user is adviced to ignore the PROM fields which
+//       contain the processor fault vector base (GCOS III)
+//       and the processor number and rely on the RSW 2 bits
+//       for this purpose. Bits 14-16 of the RSW 2 should be
+//       ignored and the bits represnting this information in
+//       the PROM should be treated as valid.
+
+// CAC notes: I interpret the fields as
+//  0-12 CPU Model Number  // 13 chars, typo
+// 13-25 CPU Serial Number // 13 chars
+// 26-33 Date-Ship code (YYMMDD) // 8 chars (enough for YYYYMMDD).
+// 34-40 CPU ID Field (reference RSW 2)
+//  Byte 40: Bits 03 (Bits 32-35 of RSW 2 Field
+//           Bit 4=1 Hex Option included
+//           Bit 5=1 RSCR (Clock) is Slave Mode included
+//           Bits 6-7 Reserved for later use.
+//       50: Operating System Use
 #if 1
                 static unsigned char PROM [1024];
                 memset (PROM, ' ', sizeof (PROM));
