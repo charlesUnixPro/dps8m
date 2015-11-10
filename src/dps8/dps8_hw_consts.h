@@ -70,6 +70,7 @@ enum { N_DEV_CODES = 64 };
 #define SIGN36          0400000000000LLU         // sign bit of a 36-bit word
 #define BIT37          01000000000000LLU         // carry out bit from 36 bit arithmetic
 #define BIT38          02000000000000LLU         // carry out bit from 37 bit arithmetic
+#define MASK32          037777777777U
 #define MASK15          077777U
 #define SMASK           MASK15                   // Segment number mask
 #define SIGN15          040000U                  // sign mask 15-bit number

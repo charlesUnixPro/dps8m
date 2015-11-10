@@ -6,7 +6,9 @@ typedef struct
     uint mode; // program or manual
     uint port_enable [N_SCU_PORTS];  // enable/disable
 
-    // Mask registers A and B, each with 32 interrupt bits.
+    // N_ASSIGNMENTS is {A, B}
+    //
+    // Mask registers A and B, each with N_CELL_INTERRUPTS (32) interrupt bits.
     word32 exec_intr_mask [N_ASSIGNMENTS];
 
     // Mask assignment.

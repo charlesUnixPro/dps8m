@@ -1679,6 +1679,10 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                   }
                 if (ret == CONT_TRA)
                   {
+// It may that this went appending mode belongs in interrupt and fault exec cycles, but the
+// only time it has been needed (init_processor:first_steps) was in normal execution.
+                    if (get_went_appending ())
+                      set_addr_mode (APPEND_mode);
                     CPU -> cu . xde = CPU -> cu . xdo = 0;
                     CPU -> wasXfer = true;
                     setCpuCycle (FETCH_cycle);
