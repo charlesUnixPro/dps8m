@@ -13,6 +13,8 @@
 #include <gtk/gtk.h>
 
 #include "dps8.h"
+extern word36 *M;
+
 #include "dps8_cpu.h"
 
 #include "dps8_mp.h"

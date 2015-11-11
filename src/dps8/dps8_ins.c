@@ -5873,13 +5873,15 @@ static t_stat DoBasicInstruction (void)
 // rTR * 1.9073486
                 int32 t = (uint64_t) rTR * 19073486 / 10000000;
                 sim_activate_after (& dis_unit, t);
+sim_printf ("rTR %d t %d sim_interval %d\n", rTR, t, sim_interval);
 
 int32 i0 = sim_interval;
 //sim_printf ("call %d\n", t);
-sim_set_idle (NULL, 10, NULL, NULL);
-        sim_idle (3, FALSE);
-uint32 idelta = sim_interval - i0;
-//sim_printf ("return %u\n", idelta);
+//sim_set_idle (NULL, 10, NULL, NULL);
+        bool idled = sim_idle (3, FALSE);
+if (! idled) sim_printf ("didn't\n");
+uint32 idelta = i0 - sim_interval;
+//if (idelta)sim_printf ("return i0 %u i %u delta %u\n", i0, sim_interval, idelta);
 
 idelta /= switches . trlsb; // convert from sim_interval units to estimated TR units.
 if (idelta > rTR)
@@ -5887,6 +5889,7 @@ if (idelta > rTR)
     if (switches . tro_enable)
       setG7fault (FAULT_TRO, 0);
   }
+sim_printf ("rTR %d -> %lld\n", rTR, (rTR - idelta) & MASK27);
 rTR = (rTR - idelta) & MASK27;
 
                 sys_stats . total_cycles ++;

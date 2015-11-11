@@ -42,7 +42,7 @@
 #define RALR_FIX_0
 
 // Enable blinkenLights interface
-//#define MULTIPASS
+#define MULTIPASS
 
 // Enable IPC
 #define VM_DPS8

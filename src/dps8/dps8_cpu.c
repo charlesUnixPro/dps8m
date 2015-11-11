@@ -72,6 +72,7 @@ static MTAB cpu_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL },
+ { MTAB_XTD|MTAB_VDV, 0, "IDLE", "IDLE", &sim_set_idle, &sim_show_idle, NULL, NULL },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -645,9 +646,9 @@ static void ic_history_init(void);
 static t_stat cpu_reset_mm (UNUSED DEVICE * dptr)
 {
     
-#ifdef USE_IDLE
-    sim_set_idle (cpu_unit, 512*1024, NULL, NULL);
-#endif
+//#ifdef USE_IDLE
+    sim_set_idle (cpu_unit, 0, NULL, NULL);
+//#endif
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
     
     ic_history_init();

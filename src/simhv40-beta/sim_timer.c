@@ -870,7 +870,10 @@ if (cyc_ms == 0)                                        /* not computed yet? */
 if ((sim_idle_rate_ms == 0) || (cyc_ms == 0)) {         /* not possible? */
     if (sin_cyc)
         sim_interval = sim_interval - 1;
+sim_printf ("not possible %d - %d\n", sim_idle_rate_ms, cyc_ms);
+
     sim_debug (DBG_IDL, &sim_timer_dev, "not possible %d - %d\n", sim_idle_rate_ms, cyc_ms);
+printf ("fail 1\n");
     return FALSE;
     }
 w_ms = (uint32) sim_interval / cyc_ms;                  /* ms to wait */
@@ -879,6 +882,7 @@ if (w_idle == 0) {                                      /* none? */
     if (sin_cyc)
         sim_interval = sim_interval - 1;
     sim_debug (DBG_IDL, &sim_timer_dev, "no wait\n");
+printf ("fail 2 sim_interval %d cyc_ms %d rate %d\n", sim_interval, cyc_ms, sim_idle_rate_ms);
     return FALSE;
     }
 if (sim_clock_queue == QUEUE_LIST_END)
