@@ -221,7 +221,7 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 #C_SRCS += ./fnpp.c
-C_SRCS += ./shm.c
+#C_SRCS += ./shm.c
 #C_SRCS += ./fnp_ipc.c
 C_SRCS += ./fnp.c
 C_SRCS += ./fnp_mux.c
@@ -286,7 +286,7 @@ android :
 
 # # Multipass stuff
 # CFLAGS += -DMULTIPASS
-LDFLAGS += -lrt
+#LDFLAGS += -lrt
 #LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
 
 blinkenLights : blinkenLights.c shm.o

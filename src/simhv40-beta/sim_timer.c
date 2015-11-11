@@ -882,7 +882,6 @@ if (w_idle == 0) {                                      /* none? */
     if (sin_cyc)
         sim_interval = sim_interval - 1;
     sim_debug (DBG_IDL, &sim_timer_dev, "no wait\n");
-printf ("fail 2 sim_interval %d cyc_ms %d rate %d\n", sim_interval, cyc_ms, sim_idle_rate_ms);
     return FALSE;
     }
 if (sim_clock_queue == QUEUE_LIST_END)
