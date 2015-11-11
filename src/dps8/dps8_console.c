@@ -90,7 +90,7 @@ static t_stat opcon_svc (UNIT * unitp);
 
 UNIT opcon_unit [N_OPCON_UNITS_MAX] =
   {
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (& opcon_svc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 DEVICE opcon_dev = {
@@ -301,10 +301,10 @@ static t_stat mount_request (UNIT * uptr)
   }
 
 static UNIT attn_unit = 
-  { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+  { UDATA (& console_attn, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
 static UNIT mount_unit = 
-  { UDATA (& mount_request, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+  { UDATA (& mount_request, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
 static struct termios ttyTermios;
 static bool ttyTermiosOk = false;

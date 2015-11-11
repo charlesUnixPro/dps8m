@@ -13,9 +13,7 @@
 
 #include "dps8.h"
 #include "dps8_console.h"
-#ifndef QUIET_UNUSED
 #include "dps8_clk.h"
-#endif
 #include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
@@ -2129,14 +2127,13 @@ static DEVICE sys_dev = {
 DEVICE * sim_devices [] =
   {
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
+    & dis_dev,
     & iom_dev,
     & tape_dev,
     & fnpDev,
     & disk_dev,
     & scu_dev,
-#ifndef QUIET_UNUSED
-    & clk_dev,
-#endif
+    & idle_clk_dev,
     // & mpc_dev,
     & opcon_dev,
     & sys_dev,

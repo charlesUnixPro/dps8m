@@ -51,7 +51,7 @@ static void setCpuCycle (cycles_t cycle);
 
 // The DPS8M had only 4 ports
 
-static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
+static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_IDLE|UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
@@ -1178,6 +1178,56 @@ DEVICE cpu_dev = {
     NULL            // description
 };
 
+static t_stat dis_svc (UNUSED UNIT * uptr)
+  {
+    return SCPE_OK;
+  }
+
+static t_stat dis_reset (UNUSED DEVICE * dptr)
+  {
+    return SCPE_OK;
+  }
+
+UNIT dis_unit = { UDATA (& dis_svc, UNIT_IDLE, 50), 0, 0, 0, 0, 0, NULL, NULL };
+
+static DEBTAB dis_dt [] =
+  {
+    { "DEBUG", DBG_DEBUG },
+    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { NULL, 0 }
+  };
+
+DEVICE dis_dev =
+  {
+    "DISDEV",
+    & dis_unit,
+    NULL, // registers
+    NULL, // modifiers
+    1, // # units
+    0, // address radix
+    8, // address width
+    4, // address increment
+    0, // data radix
+    32, // data width
+    NULL, // examine routine
+    NULL, // deposit routine
+    & dis_reset, // reset routine
+    NULL,        /* boot routine */
+    NULL,        /* attach routine */
+    NULL,        /* detach routine */
+    NULL,        /* context */
+    DEV_DEBUG,   /* flags */
+    0,           /* debug control flags */
+    dis_dt,      /* debug flag names */
+    NULL,        /* memory size change */
+    NULL,        /* logical name */
+    NULL,        // help
+    NULL,        // attach help
+    NULL,        // help context
+    NULL         // description
+  };
+
+
 static t_stat reason;
 
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
@@ -1500,7 +1550,7 @@ last = M[01007040];
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            AIO_CHECK_EVENT;
+            //AIO_CHECK_EVENT;
             dequeue_fnp_command ();
           }
 #if 0

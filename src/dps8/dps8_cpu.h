@@ -460,6 +460,9 @@ typedef struct mode_registr
 extern _mode_register MR;
 
 extern DEVICE cpu_dev;
+extern DEVICE dis_dev;
+extern UNIT dis_unit;
+
 extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
                           // retry an instruction
 

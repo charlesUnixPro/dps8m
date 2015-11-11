@@ -282,7 +282,7 @@ t_stat rewindDone (UNIT * uptr)
 
 #if 0
 static UNIT rewindDoneUnit =
-  { UDATA (& rewindDone, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+  { UDATA (& rewindDone, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL };
 #endif
 
 #if 0

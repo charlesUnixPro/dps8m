@@ -44,22 +44,22 @@ static t_stat crdpun_set_device_name (UNIT * uptr, int32 value, char * cptr, voi
                      UNIT_IDLE )
 UNIT crdpun_unit [N_CRDPUN_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, UNIT_IDLE), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define CRDPUN_UNIT_NUM(uptr) ((uptr) - crdpun_unit)

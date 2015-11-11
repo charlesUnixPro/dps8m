@@ -217,10 +217,10 @@
 
 static UNIT iomUnit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, void * desc);
@@ -314,10 +314,10 @@ DEVICE iom_dev =
 static t_stat bootSvc (UNIT * unitp);
 static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    { UDATA (& bootSvc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& bootSvc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& bootSvc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& bootSvc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];

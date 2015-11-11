@@ -557,7 +557,10 @@ scu_t scu [N_SCU_UNITS_MAX];
 #define N_SCU_UNITS 1 // Default
 static UNIT scu_unit [N_SCU_UNITS_MAX] =
   {
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (NULL, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 #define UNIT_NUM(uptr) ((uptr) - scu_unit)

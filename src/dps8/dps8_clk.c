@@ -5,47 +5,36 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 
-#define TR_CLK 1 /* SIMH allows clock ids 0..7 */
+#define IDLE_CLK 3
+#define IDLE_CLK_HZ 50
 
-#ifdef USE_IDLE
-#define CLK_TR_HZ (512*1024) // should be 512 kHz, but we'll use 512 Hz for now
-#else
-#define CLK_TR_HZ (512*1) // should be 512 kHz, but we'll use 512 Hz for now
-#endif
+static t_stat idle_clk_svc (UNIT * uptr);
+static t_stat idle_clk_reset (DEVICE * dptr);
 
-#define N_CLK_UNITS 1
-static t_stat clk_svc(UNIT *up);
-UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }};
+static UNIT idle_clk_unit = { UDATA (& idle_clk_svc, UNIT_IDLE, 50), 0, 0, 0, 0, 0, NULL, NULL };
 
 static DEBTAB clk_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
     { "DEBUG", DBG_DEBUG },
     { "ALL", DBG_ALL }, // don't move as it messes up DBG message
     { NULL, 0 }
   };
 
-DEVICE clk_dev = {
-    "CLK",       /* name */
-    TR_clk_unit,    /* units */
-    NULL,        /* registers */
-    NULL,        /* modifiers */
-    N_CLK_UNITS, /* #units */
-    10,          /* address radix */
-    8,           /* address width */
-    1,           /* address increment */
-    8,           /* data radix */
-    8,           /* data width */
-    NULL,        /* examine routine */
-    NULL,        /* deposit routine */
-#ifdef USE_IDLE
-    activate_timer, /* reset routine */
-#else
-    NULL,        /* reset routine */
-#endif
+DEVICE idle_clk_dev =
+  {
+    "IDLECLK",
+    & idle_clk_unit,
+    NULL, // registers
+    NULL, // modifiers
+    1, // # units
+    0, // address radix
+    8, // address width
+    4, // address increment
+    0, // data radix
+    32, // data width
+    NULL, // examine routine
+    NULL, // deposit routine
+    & idle_clk_reset, // reset routine
     NULL,        /* boot routine */
     NULL,        /* attach routine */
     NULL,        /* detach routine */
@@ -59,71 +48,39 @@ DEVICE clk_dev = {
     NULL,        // attach help
     NULL,        // help context
     NULL         // description
-};
+  };
 
+static t_stat idle_clk_reset (DEVICE * dptr)
+  {
+    /* init timer */
+    int32 t = sim_rtcn_init (idle_clk_unit . wait, IDLE_CLK);
+    /* activate unit */
+    sim_activate_after (& idle_clk_unit, 1000000 / IDLE_CLK_HZ);
+    sim_register_clock_unit (&idle_clk_unit);
+    return SCPE_OK;
+  }
 
-static t_stat clk_svc (UNUSED UNIT * up)
-{
-    // only valid for TR
-#ifdef USE_IDLE
-    sim_activate (& TR_clk_unit [0], sim_rtcn_init(CLK_TR_HZ, TR_CLK));
-#else
-    (void) sim_rtcn_calb (CLK_TR_HZ, TR_CLK);   // calibrate clock
-#endif
-    uint32 t = sim_is_active(&TR_clk_unit[0]);
-    sim_debug (DBG_INFO, & clk_dev, "clk_svc: TR has %d time units left\n", t);
-    return 0;
-}
-
-#ifndef QUIET_UNUSED
-static int activate_timer (void)
-{
-    uint32 t;
-    sim_debug (DBG_DEBUG, & clk_dev, "clk_svc: TR has %d time units left\n", t);
-    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %lld %#llo.\n", rTR, rTR);
-    if (bit_is_neg(rTR, 27)) {
-        if ((t = sim_is_active(&TR_clk_unit[0])) != 0)
-            sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR cancelled with %d time units left.\n", t);
-        else
-            sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR loaded with negative value, but it was alread stopped.\n", t);
-        sim_cancel(&TR_clk_unit[0]);
-        return 0;
-    }
-    if ((t = sim_is_active(&TR_clk_unit[0])) != 0) {
-        sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR was still running with %d time units left.\n", t);
-        sim_cancel(&TR_clk_unit[0]);   // BUG: do we need to cancel?
-    }
-    
-#ifdef USE_IDLE
-    if (! sim_is_active (& TR_clk_unit [0]))
-      sim_activate (& TR_clk_unit[ 0], sim_rtcn_init(CLK_TR_HZ, TR_CLK));
-#else
-    (void) sim_rtcn_init(CLK_TR_HZ, TR_CLK);
-    sim_activate(&TR_clk_unit[0], rTR);
-#endif
-    if ((t = sim_is_active(&TR_clk_unit[0])) == 0)
-        sim_debug (DBG_DEBUG, & TR_clk_unit, "activate_timer: TR is not running\n", t);
-    else
-        sim_debug (DBG_DEBUG, & TR_clk_unit, "activate_timer: TR is now running with %d time units left.\n", t);
-    return 0;
-}
+static t_stat idle_clk_svc (UNIT * uptr)
+  {
+#if 0 // debug code
+static time_t t0 = 0;
+static int cnt = 0;
+if (! t0) t0 = time (NULL);
+time_t t = time (NULL);
+if (t == t0)
+  {
+    cnt ++;
+  }
+else
+  {
+    sim_printf ("ping %d\n", cnt);
+    t0 = t;
+    cnt = 0;
+  }
 #endif
 
-#ifndef QUIET_UNUSED
-t_stat XX_clk_svc(UNIT *up)
-{
-    // only valid for TR
-#if 0
-    tmr_poll = sim_rtcn_calb (clk_tps, TMR_CLK);            /* calibrate clock */
-    sim_activate (&clk_unit, tmr_poll);                     /* reactivate unit */
-    tmxr_poll = tmr_poll * TMXR_MULT;                       /* set mux poll */
-    todr_reg = todr_reg + 1;                                /* incr TODR */
-    if ((tmr_iccs & TMR_CSR_RUN) && tmr_use_100hz)          /* timer on, std intvl? */
-        tmr_incr (TMR_INC);                                 /* do timer service */
-    return 0;
-#else
-    return 2;
-#endif
-}
-#endif
+    sim_rtcn_calb (IDLE_CLK_HZ, IDLE_CLK); /* calibrate 50Hz clock */
+    sim_activate_after (& idle_clk_unit, 1000000/ IDLE_CLK_HZ); /* reactivate unit */
+    return SCPE_OK;
+  }
 

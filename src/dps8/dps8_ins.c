@@ -5867,6 +5867,28 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+//sim_printf ("dising %d\n", rTR);
+// sim_activate_after wants the time delta in uSecs.
+// rTR is 512Khz
+// rTR * 1.9073486
+                int32 t = (uint64_t) rTR * 19073486 / 10000000;
+                sim_activate_after (& dis_unit, t);
+
+int32 i0 = sim_interval;
+//sim_printf ("call %d\n", t);
+sim_set_idle (NULL, 10, NULL, NULL);
+        sim_idle (3, FALSE);
+uint32 idelta = sim_interval - i0;
+//sim_printf ("return %u\n", idelta);
+
+idelta /= switches . trlsb; // convert from sim_interval units to estimated TR units.
+if (idelta > rTR)
+  {
+    if (switches . tro_enable)
+      setG7fault (FAULT_TRO, 0);
+  }
+rTR = (rTR - idelta) & MASK27;
+
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
