@@ -20,6 +20,13 @@
 #endif
 struct cables_t * cables = NULL;
 
+//
+// cable_to_iom and cable_to_scu are the "other end handlers"; they are
+// only called indirectly to secure the other end of the cable.
+//
+
+
+
 // cable_to_iom
 //
 // a peripheral is trying to attach a cable
@@ -56,7 +63,7 @@ static t_stat cable_to_iom (uint iomUnitIdx, int chanNum, int dev_code,
 
     if (d -> type != DEVT_NONE)
       {
-        sim_printf ("cable_to_iom: socket in use\n");
+        sim_printf ("cable_to_iom: IOM socket in use: IOM unit number %d, channel number %d. (%o), device code %d. (%o)\n", iomUnitIdx, chanNum, chanNum, dev_code, dev_code);
         return SCPE_ARG;
       }
     d -> type = devType;
@@ -94,8 +101,7 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
 
     if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
       {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: socket in use\n");
-        sim_printf ("cable_to_cpu: socket in use\n");
+        sim_printf ("cable_to_cpu: CPU socket in use; unit number %d, port number %d\n", cpu_unit_num, cpu_port_num);
         return SCPE_ARG;
       }
 
@@ -106,18 +112,21 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
     p -> scu_unit_num = scu_unit_num;
     p -> devp = & scu_dev;
 
-    //sim_printf ("cablesFromScuToCpu [%d] [%d] . scu_unit_num = %d\n", cpu_unit_num, cpu_port_num, scu_unit_num);
     setup_scbank_map ();
 
     return SCPE_OK;
   }
+
+
+
+
+
 
 static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
     if (crdrdr_unit_num < 0 || crdrdr_unit_num >= (int) crdrdr_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_crdrdr: crdrdr_unit_num out of range <%d>\n", crdrdr_unit_num);
         sim_printf ("cable_crdrdr: crdrdr_unit_num out of range <%d>\n", 
                     crdrdr_unit_num);
         return SCPE_ARG;
@@ -125,8 +134,7 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_crdrdr: socket in use\n");
-        sim_printf ("cable_crdrdr: socket in use\n");
+        sim_printf ("cable_crdrdr: Card reader socket in use; unit number %d. (%o); uncabling.\n", crdrdr_unit_num, crdrdr_unit_num);
         return SCPE_ARG;
       }
 
@@ -135,7 +143,10 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, crdrdr_unit_num, & crdrdr_dev, 
                               & crdrdr_unit [crdrdr_unit_num], crdrdr_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_crdrdr: IOM socket error; uncabling Card reader unit number %d. (%o)\n", crdrdr_unit_num, crdrdr_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = chan_num;
@@ -149,7 +160,6 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
   {
     if (crdpun_unit_num < 0 || crdpun_unit_num >= (int) crdpun_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_crdpun: crdpun_unit_num out of range <%d>\n", crdpun_unit_num);
         sim_printf ("cable_crdpun: crdpun_unit_num out of range <%d>\n", 
                     crdpun_unit_num);
         return SCPE_ARG;
@@ -157,8 +167,7 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToCrdPun [crdpun_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_crdpun: socket in use\n");
-        sim_printf ("cable_crdpun: socket in use\n");
+        sim_printf ("cable_crdpun: Card punch socket in use; unit number %d. (%o); uncabling.\n", crdpun_unit_num, crdpun_unit_num);
         return SCPE_ARG;
       }
 
@@ -167,7 +176,10 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, crdpun_unit_num, & crdpun_dev, 
                               & crdpun_unit [crdpun_unit_num], crdpun_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_crdpun: IOM socket error; uncabling Card punch unit number %d. (%o)\n", crdpun_unit_num, crdpun_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToCrdPun [crdpun_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToCrdPun [crdpun_unit_num] . chan_num = chan_num;
@@ -181,7 +193,6 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
   {
     if (prt_unit_num < 0 || prt_unit_num >= (int) prt_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_prt: prt_unit_num out of range <%d>\n", prt_unit_num);
         sim_printf ("cable_prt: prt_unit_num out of range <%d>\n", 
                     prt_unit_num);
         return SCPE_ARG;
@@ -189,8 +200,7 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_prt: socket in use\n");
-        sim_printf ("cable_prt: socket in use\n");
+        sim_printf ("cable_prt: Printer socket in use; unit number %d. (%o); uncabling.\n", prt_unit_num, prt_unit_num);
         return SCPE_ARG;
       }
 
@@ -199,6 +209,10 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, prt_unit_num, & prt_dev, 
                               & prt_unit [prt_unit_num], prt_iom_cmd);
     if (rc)
+      {
+        sim_printf ("cable_prt: IOM socket error; uncabling Printer unit number %d. (%o)\n", prt_unit_num, prt_unit_num);
+        return rc;
+      }
       return rc;
 
     cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx = iomUnitIdx;
@@ -213,7 +227,6 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
   {
     if (urp_unit_num < 0 || urp_unit_num >= (int) urp_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_urp: urp_unit_num out of range <%d>\n", urp_unit_num);
         sim_printf ("cable_urp: urp_unit_num out of range <%d>\n", 
                     urp_unit_num);
         return SCPE_ARG;
@@ -221,8 +234,7 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToUrp [urp_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_urp: socket in use\n");
-        sim_printf ("cable_urp: socket in use\n");
+        sim_printf ("cable_urp: Unit Record Processor socket in use; unit number %d. (%o); uncabling.\n", urp_unit_num, urp_unit_num);
         return SCPE_ARG;
       }
 
@@ -231,7 +243,10 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, urp_unit_num, & urp_dev, 
                               & urp_unit [urp_unit_num], urp_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_urp: IOM socket error; uncabling Unit Record Processor unit number %d. (%o)\n", urp_unit_num, urp_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToUrp [urp_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToUrp [urp_unit_num] . chan_num = chan_num;
@@ -251,7 +266,7 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx != -1)
       {
-        sim_printf ("cableFNP: socket in use\n");
+        sim_printf ("cableFNP: FNP socket in use; unit number %d. (%o); uncabling.\n", fnpUnitNum, fnpUnitNum);
         return SCPE_ARG;
       }
 
@@ -260,7 +275,10 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
                               chanTypeDirect, fnpUnitNum, & fnpDev, 
                               & fnp_unit [fnpUnitNum], fnpIOMCmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cableFNP: IOM socket error; uncabling FNP unit number %d. (%o)\n", fnpUnitNum, fnpUnitNum);
+        return rc;
+      }
 
     cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num = chan_num;
@@ -282,8 +300,7 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_disk: socket in use\n");
-        sim_printf ("cable_disk: socket in use\n");
+        sim_printf ("cable_disk: Disk in use; unit number %d. (%o); uncabling.\n", disk_unit_num, disk_unit_num);
         return SCPE_ARG;
       }
 
@@ -292,7 +309,10 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, disk_unit_num, & disk_dev, 
                               & disk_unit [disk_unit_num], disk_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_disk: IOM socket error; uncabling Disk number %d. (%o)\n", disk_unit_num, disk_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToDsk [disk_unit_num] . chan_num = chan_num;
@@ -313,7 +333,7 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num,
 
     if (cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx != -1)
       {
-        sim_printf ("cable_opcon: socket in use\n");
+        sim_printf ("cable_opcon: Console socket in use; unit number %d. (%o); uncabling.\n", con_unit_num, con_unit_num);
         return SCPE_ARG;
       }
 
@@ -322,7 +342,10 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num,
                               chanTypeCPI, con_unit_num, & opcon_dev, 
                               & opcon_unit [con_unit_num], con_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_opcon: IOM socket error; uncabling Console unit number %d. (%o)\n", con_unit_num, con_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToCon [con_unit_num] . chan_num = chan_num;
@@ -340,9 +363,6 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
                scu_unit_num, scu_port_num, cpu_unit_num, cpu_port_num);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_scu: scu_unit_num out of range <%d>\n", 
-                      // scu_unit_num);
         sim_printf ("cable_scu: scu_unit_num out of range <%d>\n", 
                     scu_unit_num);
         return SCPE_ARG;
@@ -350,9 +370,6 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
 
     if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
       {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_scu: scu_port_num out of range <%d>\n", 
-                      // scu_unit_num);
         sim_printf ("cable_scu: scu_port_num out of range <%d>\n", 
                     scu_unit_num);
         return SCPE_ARG;
@@ -360,8 +377,7 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
 
     if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
-        // sim_debug (DBG_ERR, & scu_dev, "cable_scu: port in use\n");
-        sim_printf ("cable_scu: port in use\n");
+        sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_num, scu_unit_num);
         return SCPE_ARG;
       }
 
@@ -369,7 +385,10 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
     t_stat rc = cable_to_cpu (cpu_unit_num, cpu_port_num, scu_unit_num, 
                               scu_port_num);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_scu: IOM socket error; uncabling SCU unit number %d. (%o)\n", scu_unit_num, scu_unit_num);
+        return rc;
+      }
 
     cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
       cpu_unit_num;
@@ -397,9 +416,6 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
 
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_to_scu: scu_unit_num out of range <%d>\n", 
-                      // scu_unit_num);
         sim_printf ("cable_to_scu: scu_unit_num out of range <%d>\n", 
                     scu_unit_num);
         return SCPE_ARG;
@@ -407,9 +423,6 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
 
     if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
       {
-        // sim_debug (DBG_ERR, & scu_dev, 
-                      // "cable_to_scu: scu_port_num out of range <%d>\n", 
-                      // scu_port_num);
         sim_printf ("cable_to_scu: scu_port_num out of range <%d>\n", 
                     scu_port_num);
         return SCPE_ARG;
@@ -417,8 +430,7 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
 
     if (scu [scu_unit_num] . ports [scu_port_num] . type != ADEV_NONE)
       {
-        // sim_debug (DBG_ERR, & scu_dev, "cable_to_scu: socket in use\n");
-        sim_printf ("cable_to_scu: socket in use\n");
+        sim_printf ("cable_to_scu: SCU socket in use; unit number %d, port number %d\n", scu_unit_num, scu_port_num);
         return SCPE_ARG;
       }
 
@@ -446,14 +458,17 @@ static t_stat cable_iom (uint iomUnitIdx, int iomPortNum, int scuUnitNum,
 
     if (cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . inuse)
       {
-        sim_printf ("cable_iom: port in use\n");
+        sim_printf ("cable_iom: IOM socket in use; unit number %d. (%o); uncabling.\n", iomUnitIdx, iomUnitIdx);
         return SCPE_ARG;
       }
 
     // Plug the other end of the cable in
     t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, iomUnitIdx, iomPortNum);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_iom: SCU socket error; uncabling IOM unit number %d. (%o), port number %d. (%o)\n", iomUnitIdx, iomUnitIdx, iomPortNum, iomPortNum);
+        return rc;
+      }
 
     cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . inuse = true;
     cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuUnitNum = scuUnitNum;
@@ -474,15 +489,13 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
   {
     if (mt_unit_num < 0 || mt_unit_num >= (int) tape_dev . numunits)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
         sim_printf ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
         return SCPE_ARG;
       }
 
     if (cables -> cablesFromIomToTap [mt_unit_num] . iomUnitIdx != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_mt: socket in use\n");
-        sim_printf ("cable_mt: socket in use\n");
+        sim_printf ("cable_mt: Tape socket in use; unit number %d. (%o); uncabling.\n", mt_unit_num, mt_unit_num);
         return SCPE_ARG;
       }
 
@@ -491,7 +504,10 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
                               chanTypePSI, mt_unit_num, & tape_dev, 
                               & mt_unit [mt_unit_num], mt_iom_cmd);
     if (rc)
-      return rc;
+      {
+        sim_printf ("cable_mt: IOM socket error; uncabling Tape unit number %d. (%o)\n", mt_unit_num, mt_unit_num);
+        return rc;
+      }
 
     cables -> cablesFromIomToTap [mt_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToTap [mt_unit_num] . chan_num = chan_num;
