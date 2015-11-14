@@ -1162,7 +1162,9 @@ restart_1:
         if (! (CPU -> cu . IR & I_MIIF))
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
-              doPtrReg ();
+              {
+                doPtrReg ();
+              }
             else
               {
                 CPU -> TPR . TBR = 0;
@@ -4185,8 +4187,6 @@ static t_stat DoBasicInstruction (void)
             /// otherwise 0 -> C(PPR.P)
             /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             
-            //processorCycle = RTCD_OPERAND_FETCH;
-
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RTCD even %012llo odd %012llo\n", CPU -> Ypair [0], CPU -> Ypair [1]);
 

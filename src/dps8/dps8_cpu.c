@@ -65,9 +65,11 @@ static MTAB cpu_mod[] = {
       NULL,          /* value descriptor */
       NULL // help
     },
+#ifndef SPEED
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL },
+#endif
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
@@ -246,8 +248,12 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 #ifndef SPEED
 static t_stat dpsCmd_InitSDWAM ()
   {
+#ifdef MULTI_CPU
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       memset (cpu [i].SDWAM, 0, sizeof (struct _sdw));
+#else
+   memset (cpu.SDWAM, 0, sizeof (struct _sdw));
+#endif
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
@@ -435,6 +441,7 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
     return SCPE_OK;
 }
 
+#if 0 // doesn't work
 static word36 getKST (word24 offset)
   {
     word18 kst_seg = 067; // From system_book
@@ -448,6 +455,7 @@ static word36 getKST (word24 offset)
       }
     return M [fa];
    }
+#endif
 
 // dcl 1 kst aligned based (kstp),                 /* KST header declaration */
 
@@ -538,6 +546,7 @@ static word36 getKST (word24 offset)
 
 
 
+#if 0 // doesn't work
 t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
   {
 #if 0
@@ -563,6 +572,7 @@ t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
       }
     return SCPE_OK;
   }
+#endif
 
 //! custom command "init"
 t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
@@ -737,11 +747,19 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
+#ifdef MULTI_CPU
         if (sscanf (buffer, "sn: %u", & cpu [0] . switches . serno) == 1)
           {
             sim_printf ("Serial number is %u\n", cpu [0] . switches . serno);
             havesn = true;
           }
+#else
+        if (sscanf (buffer, "sn: %u", & cpu . switches . serno) == 1)
+          {
+            sim_printf ("Serial number is %u\n", cpu . switches . serno);
+            havesn = true;
+          }
+#endif
       }
     if (! havesn)
       {
@@ -773,9 +791,15 @@ void cpu_init (void)
 #endif
     memset (& watchBits, 0, sizeof (watchBits));
     memset (& cpu, 0, sizeof (cpu));
+#ifdef MULTI_CPU
     cpu [0] . switches . FLT_BASE = 2; // Some of the UnitTests assume this
     for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
       cpu [c] . switches . trlsb = 12; // 6 MIP processor
+#else
+    cpu . switches . FLT_BASE = 2; // Some of the UnitTests assume this
+    for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
+      cpu . switches . trlsb = 12; // 6 MIP processor
+#endif
     cpu_init_array ();
 
     getSerialNumber ();
@@ -812,8 +836,8 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
 
-        currentRunningCPUnum = i;
 #ifdef MULTI_CPU
+        currentRunningCPUnum = i;
         CPU = & cpu [currentRunningCPUnum];
 #endif
         CPU -> rA = 0;
@@ -853,8 +877,8 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         memset (& CPU -> PPR, 0, sizeof(struct _ppr));
       }
 
-    currentRunningCPUnum = 0;
 #ifdef MULTI_CPU
+    currentRunningCPUnum = 0;
     CPU = & cpu [currentRunningCPUnum];
 #endif
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
@@ -876,8 +900,8 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     
     //memset(&cpu, 0, sizeof(cpu));
 
-    currentRunningCPUnum = 0;
 #ifdef MULTI_CPU
+    currentRunningCPUnum = 0;
     CPU = & cpu [currentRunningCPUnum];
 #endif
 
@@ -927,16 +951,15 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
 }
 
 
-enum _processor_cycle_type processorCycle;  // to keep tract of what type of cycle the processor is in
-
-
-
-
 /*
  * register stuff ...
  */
 static REG cpu_reg[] = {
+#ifdef MULTI_CPU
     { ORDATA (IC, cpu [0] . PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+#else
+    { ORDATA (IC, cpu . PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+#endif
     { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 };
 
@@ -976,15 +999,15 @@ DEVICE cpu_dev = {
     NULL            // description
 };
 
-static t_stat reason;
-
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
-uint currentRunningCPUnum;
 #ifdef MULTI_CPU
+uint currentRunningCPUnum;
 cpu_state_t * restrict CPU;
-#endif
 cpu_state_t cpu [N_CPU_UNITS_MAX];
+#else
+cpu_state_t cpu;
+#endif
 uint steady_clock;    // If non-zero the clock is tied to the cycle counter
 uint y2k;
 
@@ -1203,6 +1226,8 @@ static void setCpuCycle (cycles_t cycle)
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
+    t_stat reason = 0;
+
 #ifdef USE_IDLE
     sim_rtcn_init (0, 0);
 #endif
@@ -1213,10 +1238,10 @@ t_stat sim_instr (void)
     if (u->filename == NULL || strlen(u->filename) == 0)
         sim_printf("Warning: MUX not attached.\n");
       
-setCPU:
+setCPU:;
 
-    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev . numunits;
 #ifdef MULTI_CPU
+    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev . numunits;
     CPU = & cpu [currentRunningCPUnum];
 #endif
 
@@ -1227,7 +1252,6 @@ setCPU:
       {
         case JMP_ENTRY:
         case JMP_REENTRY:
-            reason = 0;
             break;
         case JMP_NEXT:
         case JMP_SYNC_FAULT_RETURN:
@@ -1617,7 +1641,6 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                   }
                 else
                   {
-                    processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
                     fetchInstruction (CPU -> PPR . IC);
@@ -1919,8 +1942,10 @@ sim_debug (DBG_INTR, & cpu_dev, "INTERRUPT_EXEC_cycle\n");
                 CPU -> g7_flag = CPU -> cycle == DIS_cycle ? bG7Pending () : bG7PendingNoTRO ();
                 if (CPU -> interrupt_flag || CPU -> g7_flag)
                   {
+#ifdef MULTI_CPU
 {static bool f0 = true; if (f0 && currentRunningCPUnum == 0) { f0 = false; sim_printf ("cpu 0 starts\n");}}
 {static bool f1 = true; if (f1 && currentRunningCPUnum == 1) { f1 = false; sim_printf ("cpu 1 starts\n");}}
+#endif
                     CPU -> PPR.IC ++;
                     setCpuCycle (INTERRUPT_cycle);
                   }
@@ -1996,6 +2021,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
         else
 #endif
         
+// XXX Review this logic; is there a better way?
     // rtcd is an annoying edge case; ReadOP is called before the instruction
     // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
     // too late. Special case it here my noticing that this is an RTCD
@@ -3048,6 +3074,7 @@ static void print_frame (
 #endif
 }
 
+#ifndef QUIET_UNUSED
 static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, char * ctx)
   {
     char * msg;
@@ -3061,7 +3088,9 @@ static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, 
       }
     return 0;
   }
+#endif
 
+#ifndef QUIET_UNUSED
 static int dumpStack (uint stkBase, uint stkNo)
   {
     word36 w0, w1;
@@ -3190,7 +3219,9 @@ static int dumpStack (uint stkBase, uint stkNo)
     return 0;
     
   }
+#endif
 
+#ifndef QUIET_UNUSED
 int dumpStacks (void)
   {
     sim_printf ("DSBR.STACK %04u\n", CPU -> DSBR . STACK);
@@ -3201,6 +3232,7 @@ int dumpStacks (void)
       }
     return 0;
   }
+#endif
 
 #if 0
 int dumpSystem (void)
@@ -3216,6 +3248,7 @@ int dumpSystem (void)
 #endif
 
     
+#ifndef SPEED
 static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
     // Trace through the Multics stack frames
     // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
@@ -3432,7 +3465,9 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
 
     return 0;
 }
+#endif
 
+#ifndef SPEED
 static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
   {
     walk_stack (1, NULL);
@@ -3448,15 +3483,16 @@ static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
 
     return 0;
   }
+#endif
 
-
+#ifndef SPEED
 static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
                            UNUSED int val, UNUSED void * desc)
   {
     // FIXME: use FILE *st
     return cmd_stack_trace(0, NULL);
   }
-
+#endif
 
 static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {

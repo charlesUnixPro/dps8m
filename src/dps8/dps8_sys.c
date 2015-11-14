@@ -151,7 +151,9 @@ static CTAB dps8_cmds[] =
     {"MDFX3ENTRY", mdfx3entry, 0, "", NULL},
     {"SMFX1ENTRY", smfx1entry, 0, "", NULL},
 #endif
+#if 0 // doesn't work
     {"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
+#endif
     {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL},
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},

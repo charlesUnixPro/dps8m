@@ -1082,12 +1082,14 @@ typedef struct
     bool went_appending; // we will go....
   } cpu_state_t;
 
+#ifdef MULTI_CPU
 extern cpu_state_t cpu [N_CPU_UNITS_MAX];
 extern uint currentRunningCPUnum;
-#ifdef MULTI_CPU
 extern cpu_state_t * restrict CPU;
 #else
-#define CPU (& cpu [0])
+extern cpu_state_t cpu;
+#define CPU (& cpu)
+#define currentRunningCPUnum 0
 #endif
 
 bool sample_interrupts (void);
@@ -1143,7 +1145,9 @@ t_stat dpsCmd_Dump (int32 arg, char *buf);
 t_stat dpsCmd_Init (int32 arg, char *buf);
 t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
+#if 0 // doesn't work
 t_stat dumpKST (int32 arg, char * buf);
+#endif
 t_stat memWatch (int32 arg, char * buf);
 _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);

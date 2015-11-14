@@ -81,6 +81,7 @@ static word18 getCr (word4 Tdes)
     return 0;
   }
 
+#ifndef SPEED
 // Warning: returns ptr to static buffer.
 
 static char * opDescSTR (void)
@@ -164,6 +165,7 @@ static char * opDescSTR (void)
 
     return temp;    //"opDescSTR(???)";
   }
+#endif
 
 #ifndef QUIET_UNUSED
 static char * operandSTR (void)

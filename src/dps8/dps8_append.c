@@ -811,6 +811,8 @@ static char *strACV(_fault_subtype acv)
   return "unhandled acv in strACV";
 }
 
+// This does not need to be in the per CPU structure as its value is 
+// only valid during a singlce call to doAppendCycle().
 static int acvFaults = 0;   ///< pending ACV faults
 
 // CANFAULT

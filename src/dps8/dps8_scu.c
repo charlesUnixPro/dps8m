@@ -1703,7 +1703,11 @@ static void deliverInterrupts (uint scu_unit_num)
                   }
                 else
                   {
+#ifdef MULTI_CPU
                     cpu [cpu_unit_num] . events . XIP [scu_unit_num] = true;
+#else
+                    cpu . events . XIP [scu_unit_num] = true;
+#endif
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
                   }
               }

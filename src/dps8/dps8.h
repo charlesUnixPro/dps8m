@@ -53,7 +53,7 @@
 // Enable speed over debuggibility
 //#define SPEED
 
-#define MULTI_CPU
+//#define MULTI_CPU
 
 #include "sim_defs.h"                                   /* simulator defns */
 
@@ -124,9 +124,6 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 //#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
 #define TSTBIT(dst, bitno)      (((dst) &  (1LLU << (bitno))) ? 1: 0)
 
-/////
-
-
 enum _processor_cycle_type {
     UNKNOWN_CYCLE = 0,
     APPEND_CYCLE,
@@ -146,7 +143,7 @@ enum _processor_cycle_type {
     EIS_OPERAND_STORE,
     EIS_OPERAND_READ
     
-} processorCycle;
+};
 typedef enum _processor_cycle_type _processor_cycle_type;
 
 //! some breakpoint stuff ...
