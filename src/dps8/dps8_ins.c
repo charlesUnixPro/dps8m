@@ -5915,6 +5915,10 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+
+                struct timespec t0;
+                clock_gettime (CLOCK_MONOTONIC, & t0);
+
 // From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
 
                 sigset_t mask, oldmask;
@@ -5942,6 +5946,24 @@ static t_stat DoBasicInstruction (void)
 // usr_interrupt, it just suspends itself again until the “right” kind of
 // signal eventually arrives.
 
+
+                // How long did we sleep, in microseconds?
+
+                struct timespec tnow;
+                clock_gettime (CLOCK_MONOTONIC, & tnow);
+
+                uint64_t t0_us = (uint64_t) t0 . tv_sec * 1000000 + t0 . tv_nsec / 1000;
+                uint64_t tnow_us = (uint64_t) tnow . tv_sec * 1000000 + tnow . tv_nsec / 1000;
+                uint64_t delta_us = tnow_us - t0_us;
+
+                // trlsb is the conversion factor to translate sim_interval into TR ticks.
+                //   TRticks = sim_interval / trlsb
+                // a TR tick is about 2 us, so we can use it to get a rough idea of how
+                // many sim_intervals we slept for.
+
+                uint64_t delta_si = (delta_us / 2) * switches . trlsb;
+                sim_interval -= delta_si;
+                
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
