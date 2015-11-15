@@ -174,11 +174,13 @@ static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
  *
  */
 
+#if 0
 static void usr2signal (UNUSED int signum)
   {
 sim_printf ("crd rdr signal caught\n");
     crdrdrCardReady (0);
   }
+#endif
 
 // Once-only initialization
 
@@ -187,7 +189,9 @@ void crdrdr_init (void)
     memset (crdrdr_state, 0, sizeof (crdrdr_state));
     for (uint i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       crdrdr_state [i] . deckfd = -1;
+#if 0
     signal (SIGUSR2, usr2signal);
+#endif
   }
 
 static t_stat crdrdr_reset (DEVICE * dptr)

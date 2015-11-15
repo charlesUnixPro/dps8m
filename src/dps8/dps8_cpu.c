@@ -7,6 +7,11 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -846,7 +851,11 @@ static t_stat cpu_reset (DEVICE *dptr)
 
 #ifdef REAL_TR
     setTR (0);
-#else
+#endif
+#ifdef POSIX_TR
+    setTR (0);
+#endif
+#ifdef NAIVE_TR
     rTR = 0;
 #endif
  
@@ -927,7 +936,7 @@ word8  rE;      /*!< exponent [map: rE, 28 0's] */
 word18 rX[8];   /*!< index */
 
 
-#ifndef REAL_TR
+#ifdef NAIVE_TR
 word27 rTR; /*!< timer [map: TR, 9 0's] */
 #endif
 word24 rY;     /*!< address operand */
@@ -1192,6 +1201,191 @@ cpu_state_t cpu;
 ctl_unit_data_t cu;
 du_unit_data_t du;
 
+
+#ifdef POSIX_TR
+//
+// TR code
+//
+
+// Code from: http://stackoverflow.com/questions/13904955/how-do-you-make-a-precise-countdown-timer-using-clock-gettime
+// Written by: http://stackoverflow.com/users/1475978/nominal-animal
+// Thank you.
+
+// The TR is a free-running 512KHz countdown timer.
+// It is 27 bits wide, giving it a period of approximately 4.37 minutes.
+// 512KHz is  1.953125 microseconds / decrement.
+
+// AL39 specifies the 512KHz and 1.95 uS numbers. Doing the math
+// would indicate that here K means 1000, not 1024.
+
+// What is the repeat rate in nSecs?
+//   1/512K * 2^27 * 1B
+#define INTERVAL 262144000000
+
+// What the countdown rate in nSecs?
+//   1.953125 us * 1000 -> 1953.125
+// In scaled math?
+#define RATE_SCALED 1953125
+#define RATE_SCALE  1000
+
+// Number of nS in a second.
+
+#define NS_S 1000000000UL
+
+
+static timer_t                  timeout_timer;
+static volatile sig_atomic_t    timeout_state = 0;
+static volatile sig_atomic_t    timeout_armed = 2;
+static const int                timeout_signo = SIGUSR2;
+
+/* Timeout signal handler.
+*/
+static void timeout_handler (int signo, siginfo_t * info, 
+                             UNUSED void * context)
+  {
+    if (timeout_armed == 1)
+      {
+        if (signo == timeout_signo && info && info->si_code == SI_TIMER)
+          {
+            timeout_state = ~0;
+          }
+      }
+  }
+
+/* Set timeout (in wall clock seconds).
+ * Cancels any pending timeouts.
+*/
+
+static void timeout_set (uint ticks)
+  {
+
+// Convert ticks to time in uSecs
+// time = ticks * 1953.125
+    
+    if (ticks > MASK27)
+      ticks = MASK27;
+    uint64_t set_us = (((uint64_t) ticks) * RATE_SCALED) / RATE_SCALE;
+
+    struct itimerspec  t;
+
+    /* Uninitialized yet? */
+    if (timeout_armed == 2)
+      {
+        struct sigaction    act;
+        struct sigevent     evt;
+
+        /* Use timeout_handler() for timeout_signo signal. */
+        sigemptyset (& act . sa_mask);
+        act . sa_sigaction = timeout_handler;
+        act . sa_flags = SA_SIGINFO;
+
+        if (sigaction (timeout_signo, &act, NULL) == -1)
+          {
+            sim_err ("Unable to register TR timeout handler %d\n", errno);
+          }
+
+        /* Create a monotonic timer, delivering timeout_signo signal. */
+        evt . sigev_value . sival_ptr = NULL;
+        evt . sigev_signo = timeout_signo;
+        evt . sigev_notify = SIGEV_SIGNAL;
+
+        if (timer_create(CLOCK_MONOTONIC, & evt, & timeout_timer) == -1)
+          {
+            sim_err ("Unable to create TR timer %d\n", errno);
+          }
+
+        /* Timeout is initialzied but unarmed. */
+        timeout_armed = 0;
+      }
+
+    /* Disarm timer, if armed. */
+    if (timeout_armed == 1)
+      {
+
+        /* Set zero timeout, disarming the timer. */
+        t . it_value . tv_sec = 0;
+        t . it_value . tv_nsec = 0;
+        t . it_interval . tv_sec = 0;
+        t . it_interval . tv_nsec = 0;
+
+        if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
+          {
+            sim_err ("Unable to reset TR timer %d\n", errno);
+          }
+
+        timeout_armed = 0;
+      }
+
+    /* Clear timeout state. It should be safe (no pending signals). */
+    //timeout_state = 0;
+
+//    /* Invalid timeout? */
+//    if (seconds <= 0.0)
+//        return errno = EINVAL;
+
+    /* Set new timeout. */
+    t . it_value . tv_sec =  set_us / NS_S;
+    t . it_value . tv_nsec = set_us % NS_S;
+
+    /* Set it to repeat */
+    t . it_interval . tv_sec =  INTERVAL / NS_S;
+    t . it_interval . tv_nsec = INTERVAL % NS_S;
+//sim_printf ("set %ld%06ld %d\n", t . it_value . tv_sec, t . it_value . tv_nsec, ticks);
+
+    if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
+      {
+        sim_err ("Unable to set TR timer %d\n", errno);
+      }
+
+    timeout_armed = 1;
+  }
+
+void setTR (word27 val)
+  {
+    if (val)
+      timeout_set (val);
+    else
+      timeout_set (MASK27);
+  }
+
+bool getTRO (void)
+  {
+    return timeout_state != 0;
+  }
+
+// To avoid race condition here, only call clrTRO immediately
+// after calling getTRO, and it's returning true.
+// As long as a setTR is not called between the get and the clear,
+// then you have 4.37 minutes to process the setting of timeout_state.
+
+void clrTRO (void)
+  {
+//sim_printf ("ack\n");
+    timeout_state = 0;
+  }
+
+word27 getTR (void)
+  {
+    struct itimerspec  t;
+    if (timer_gettime (timeout_timer, & t) == -1)
+      {
+        sim_err ("Unable to get TR timer %d\n", errno);
+      }
+    uint64_t timeleft_us = t . it_value . tv_sec * NS_S +
+                           t . it_value . tv_nsec;
+
+// Convert time in uSecs to ticks
+// ticks = time / 1.953125
+
+    uint64_t timeleft_ticks = (timeleft_us * RATE_SCALE) / RATE_SCALED;
+
+    if (timeleft_ticks > MASK27)
+      timeleft_ticks = MASK27;
+//sim_printf ("get %ld%06ld %u %lu\n", t . it_value . tv_sec, t . it_value . tv_nsec, rTR, timeleft_ticks);
+    return (word27) timeleft_ticks;
+  }
+
+#endif // POSIX_TR
 
 #if 0
 int stop_reason; // sim_instr return value for JMP_STOP
@@ -1533,7 +1727,11 @@ last = M[01007040];
             multipassStatsPtr -> IR = cu . IR;
 #ifdef REAL_TR
             multipassStatsPtr -> TR = getTR (NULL);
-#else
+#endif
+#ifdef POSIX_TR
+            multipassStatsPtr -> TR = getTR ();
+#endif
+#ifdef NAIVE_TR
             multipassStatsPtr -> TR = rTR;
 #endif
             multipassStatsPtr -> RALR = rRALR;
@@ -1561,7 +1759,20 @@ last = M[01007040];
                   setG7fault (FAULT_TRO, 0);
               }
           }
-#else
+#endif
+#ifdef POSIX_TR
+        if (getTRO ())
+          {
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+            clrTRO ();
+            if (switches . tro_enable)
+              {
+//sim_printf ("FAULT_TRO\n");
+                setG7fault (FAULT_TRO, 0);
+              }
+          }
+#endif
+#ifdef NAIVE_TR
         // Sync. the TR with the emulator clock.
         static uint rTRlsb = 0;
         rTRlsb ++;
@@ -1576,7 +1787,10 @@ last = M[01007040];
               {
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 if (switches . tro_enable)
-                  setG7fault (FAULT_TRO, 0);
+                  {
+//sim_printf ("FAULT_TRO\n");
+                    setG7fault (FAULT_TRO, 0);
+                  }
               }
           }
 #endif

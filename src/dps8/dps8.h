@@ -47,8 +47,10 @@
 // Enable IPC
 #define VM_DPS8
 
-// Enable Real time Timer Register
+// Select Timer Register model; only one at time!
+//#define NAIVE_TR
 //#define REAL_TR
+#define POSIX_TR
 
 // Enable speed over debuggibility
 #define SPEED

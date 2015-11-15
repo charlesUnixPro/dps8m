@@ -1834,7 +1834,11 @@ static t_stat DoBasicInstruction (void)
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
 #ifdef REAL_TR
             Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (rRALR & 07);    // needs checking
-#else
+#endif
+#ifdef POSIX_TR
+            Yblock8[7] = ((getTR () & MASK27) << 9) | (rRALR & 07);    // needs checking
+#endif
+#ifdef NAIVE_TR
             Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
 #endif
                     
@@ -1970,7 +1974,11 @@ static t_stat DoBasicInstruction (void)
         case 0454:  ///< stt
 #ifdef REAL_TR
              CY = (getTR (NULL) & MASK27) << 9;
-#else
+#endif
+#ifdef POSIX_TR
+             CY = (getTR () & MASK27) << 9;
+#endif
+#ifdef NAIVE_TR
              CY = (rTR & MASK27) << 9;
 #endif
              break;
@@ -5288,7 +5296,13 @@ static t_stat DoBasicInstruction (void)
               word27 val = (CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
               setTR (val);
-#else
+#endif
+#ifdef POSIX_TR
+              word27 val = (CY >> 9) & MASK27;
+              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
+              setTR (val);
+#endif
+#ifdef NAIVE_TR
               rTR = (CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
 #endif

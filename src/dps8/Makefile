@@ -181,6 +181,9 @@ zzzCFLAGS += \
 # Enable M[] as shared memory segment
 #LDFLAGS += -lrt
 
+# Needed for POSIX timers
+LDFLAGS += -lrt
+
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
 # simh requires -ldl
