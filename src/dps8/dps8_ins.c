@@ -6,6 +6,7 @@
 */
 
 #include <stdio.h>
+#include <signal.h>
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -5914,6 +5915,33 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+// From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
+
+                sigset_t mask, oldmask;
+
+                /* Set up the mask of signals to temporarily block. */
+                sigemptyset (& mask);
+                sigaddset (& mask, SIGUSR2);
+
+                /* Wait for a signal to arrive. */
+                sigprocmask (SIG_BLOCK, & mask, & oldmask);
+                //while (!usr_interrupt)
+                  sigsuspend (& oldmask);
+                sigprocmask (SIG_UNBLOCK, & mask, NULL);
+// This last piece of code is a little tricky. The key point to remember here
+// is that when sigsuspend returns, it resets the process’s signal mask to the
+// original value, the value from before the call to sigsuspend—in this case,
+// the SIGUSR1 signal is once again blocked. The second call to sigprocmask is
+// necessary to explicitly unblock this signal.
+//
+// One other point: you may be wondering why the while loop is necessary at
+// all, since the program is apparently only waiting for one SIGUSR1 signal.
+// The answer is that the mask passed to sigsuspend permits the process to be
+// woken up by the delivery of other kinds of signals, as well—for example, job
+// control signals. If the process is woken up by a signal that doesn’t set
+// usr_interrupt, it just suspends itself again until the “right” kind of
+// signal eventually arrives.
+
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
