@@ -48,9 +48,9 @@
 #define VM_DPS8
 
 // Select Timer Register model; only one at time!
-//#define NAIVE_TR
+#define NAIVE_TR
 //#define REAL_TR
-#define POSIX_TR
+//#define POSIX_TR
 
 // Enable speed over debuggibility
 #define SPEED

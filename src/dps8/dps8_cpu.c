@@ -6,12 +6,14 @@
 */
 
 #include <stdio.h>
+#ifdef POSIX_TR
 #include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#endif
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
