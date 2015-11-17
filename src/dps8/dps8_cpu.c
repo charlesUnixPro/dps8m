@@ -6,8 +6,8 @@
 */
 
 #include <stdio.h>
-#ifdef POSIX_TR
 #include <unistd.h>
+#ifdef POSIX_TR
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>

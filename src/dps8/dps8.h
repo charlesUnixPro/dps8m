@@ -52,6 +52,9 @@
 //#define REAL_TR
 //#define POSIX_TR
 
+// Make CIOC use sim_activate
+#define CIOC_ACT
+
 // Enable speed over debuggibility
 #define SPEED
 

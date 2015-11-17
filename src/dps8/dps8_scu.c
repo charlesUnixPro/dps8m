@@ -1587,8 +1587,17 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
     if (portp -> type == ADEV_IOM)
       {
         int iomUnitNum = portp -> idnum;
-        //int iom_port_num = portp -> dev_port;
+#ifdef CIOC_ACT
+        sim_debug (DBG_INFO, & scu_dev, 
+                   "scu_cioc: Queuing an IOM for the connect channel\n");
+        int rc;
+        if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 0)) != SCPE_OK) 
+          {
+            sim_err ("sim_activate failed (%d)\n", rc); // Dosen't return
+          }
+        return 0;
 
+#else
         if (sys_opts . iom_times . connect < 0)
           {
             iom_interrupt (iomUnitNum);
@@ -1610,6 +1619,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
               }
             return 0;
           }
+#endif
       }
     else if (portp -> type == ADEV_CPU)
       {

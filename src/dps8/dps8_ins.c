@@ -6,7 +6,9 @@
 */
 
 #include <stdio.h>
+#ifdef POSIX_TR
 #include <signal.h>
+#endif
 
 #include "dps8.h"
 #include "dps8_addrmods.h"
@@ -5915,7 +5917,7 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
-
+#ifdef POSIX_TR
                 struct timespec t0;
                 clock_gettime (CLOCK_MONOTONIC, & t0);
 
@@ -5963,7 +5965,7 @@ static t_stat DoBasicInstruction (void)
 
                 uint64_t delta_si = (delta_us / 2) * switches . trlsb;
                 sim_interval -= delta_si;
-                
+#endif
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
