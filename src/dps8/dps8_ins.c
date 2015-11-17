@@ -1844,6 +1844,9 @@ static t_stat DoBasicInstruction (void)
 #ifdef NAIVE_TR
             Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
 #endif
+#ifdef EMUL_TR
+            Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
+#endif
                     
             //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
@@ -1982,6 +1985,9 @@ static t_stat DoBasicInstruction (void)
              CY = (getTR () & MASK27) << 9;
 #endif
 #ifdef NAIVE_TR
+             CY = (rTR & MASK27) << 9;
+#endif
+#ifdef EMUL_TR
              CY = (rTR & MASK27) << 9;
 #endif
              break;
@@ -5306,6 +5312,10 @@ static t_stat DoBasicInstruction (void)
               setTR (val);
 #endif
 #ifdef NAIVE_TR
+              rTR = (CY >> 9) & MASK27;
+              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
+#endif
+#ifdef EMUL_TR
               rTR = (CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
 #endif

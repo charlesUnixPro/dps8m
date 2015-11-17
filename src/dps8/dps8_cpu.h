@@ -77,6 +77,9 @@ extern word18   rX [8]; // index
 #ifdef NAIVE_TR
 extern word27   rTR;    // timer [map: TR, 9 0's]
 #endif
+#ifdef EMUL_TR
+extern word27   rTR;    // timer [map: TR, 9 0's]
+#endif
 extern word24   rY;     // address operand
 extern word8    rTAG;   // instruction tag
 extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]
@@ -1097,20 +1100,56 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     *data = M[addr] & DMASK;
+#ifdef EMUL_TR
+    sim_interval --;
+#endif
     return 0;
   }
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
     M[addr] = data & DMASK;
+#ifdef EMUL_TR
+    sim_interval --;
+#endif
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
+#ifdef EMUL_TR
+    sim_interval --;
+    sim_interval --;
+#endif
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+    M[addr++] = even;
+    M[addr] = odd;
+#ifdef EMUL_TR
+    sim_interval --;
+    sim_interval --;
+#endif
+    return 0;
+  }
+static inline int core_readq (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    *data = M[addr] & DMASK;
+    return 0;
+  }
+static inline int core_writeq (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    M[addr] = data & DMASK;
+    return 0;
+  }
+static inline int core_read2q (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+    *even = M[addr++] & DMASK;
+    *odd = M[addr] & DMASK;
+    return 0;
+  }
+static inline int core_write2q (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
     M[addr++] = even;
     M[addr] = odd;
@@ -1121,9 +1160,13 @@ int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
-int core_readN (word24 addr, word36 *data, int n, const char * ctx);
-int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
-int core_read72 (word24 addr, word72 *dst, const char * ctx);
+int core_readq (word24 addr, word36 *data, const char * ctx);
+int core_writeq (word24 addr, word36 data, const char * ctx);
+int core_read2q (word24 addr, word36 *even, word36 *odd, const char * ctx);
+int core_write2q (word24 addr, word36 even, word36 odd, const char * ctx);
+//int core_readN (word24 addr, word36 *data, int n, const char * ctx);
+//int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
+//int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
 
 int is_priv_mode (void);

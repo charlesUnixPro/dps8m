@@ -860,6 +860,9 @@ static t_stat cpu_reset (DEVICE *dptr)
 #ifdef NAIVE_TR
     rTR = 0;
 #endif
+#ifdef EMUL_TR
+    rTR = 0;
+#endif
  
     processorCycle = UNKNOWN_CYCLE;
     set_addr_mode(ABSOLUTE_mode);
@@ -939,6 +942,9 @@ word18 rX[8];   /*!< index */
 
 
 #ifdef NAIVE_TR
+word27 rTR; /*!< timer [map: TR, 9 0's] */
+#endif
+#ifdef EMUL_TR
 word27 rTR; /*!< timer [map: TR, 9 0's] */
 #endif
 word24 rY;     /*!< address operand */
@@ -1493,7 +1499,9 @@ t_stat simh_hooks (void)
           return reason;
       }
         
+#ifndef EMUL_TR
     sim_interval --;
+#endif
 
     // breakpoint? 
     //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
@@ -1736,6 +1744,9 @@ last = M[01007040];
 #ifdef NAIVE_TR
             multipassStatsPtr -> TR = rTR;
 #endif
+#ifdef EMUL_TR
+            multipassStatsPtr -> TR = rTR;
+#endif
             multipassStatsPtr -> RALR = rRALR;
           }
 #endif
@@ -1775,6 +1786,28 @@ last = M[01007040];
           }
 #endif
 #ifdef NAIVE_TR
+        // Sync. the TR with the emulator clock.
+        static uint rTRlsb = 0;
+        rTRlsb ++;
+        // The emulator clock runs about 7x as fast at the Timer Register;
+        // see wiki page "CAC 08-Oct-2014"
+        if (rTRlsb >= switches . trlsb)
+          {
+            rTRlsb = 0;
+            rTR = (rTR - 1) & MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
+            if (rTR == 0) // passing thorugh 0...
+              {
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                if (switches . tro_enable)
+                  {
+//sim_printf ("FAULT_TRO\n");
+                    setG7fault (FAULT_TRO, 0);
+                  }
+              }
+          }
+#endif
+#ifdef EMUL_TR
         // Sync. the TR with the emulator clock.
         static uint rTRlsb = 0;
         rTRlsb ++;
@@ -2522,6 +2555,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012llo (%s)\n",
                 addr, * data, ctx);
+#ifdef EMUL_TR
+    sim_interval --;
+#endif
     return 0;
 }
 #endif
@@ -2540,12 +2576,141 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012llo (%s)\n",
                 addr, data, ctx);
+#ifdef EMUL_TR
+    sim_interval --;
+#endif
     return 0;
 }
 #endif
 
 #ifndef SPEED
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
+        addr &= ~1; /* make it an even address */
+    }
+    nem_check (addr,  "core_read2 nem");
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
+    }
+    if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
+      {
+        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        traceInstruction (0);
+      }
+    *even = M[addr++] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo (%s)\n",
+                addr - 1, * even, ctx);
+
+    nem_check (addr,  "core_read2 nem");
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
+    }
+    if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
+      {
+        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        traceInstruction (0);
+      }
+
+    *odd = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo (%s)\n",
+                addr, * odd, ctx);
+#ifdef EMUL_TR
+    sim_interval --;
+    sim_interval --;
+#endif
+    return 0;
+}
+#endif
+//
+////! for working with CY-pairs
+//int core_read72(word24 addr, word72 *dst) // needs testing
+//{
+//    word36 even, odd;
+//    if (core_read2(addr, &even, &odd) == -1)
+//        return -1;
+//    *dst = ((word72)even << 36) | (word72)odd;
+//    return 0;
+//}
+//
+#ifndef SPEED
+int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
+        addr &= ~1; /* make it even a dress, or iron a skirt ;) */
+    }
+    nem_check (addr,  "core_write2 nem");
+    if (watchBits [addr])
+    //if (watchBits [addr] && even==0)
+      {
+        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
+        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, even, ctx);
+        traceInstruction (0);
+      }
+    M[addr++] = even;
+
+    nem_check (addr,  "core_write2 nem");
+    if (watchBits [addr])
+    //if (watchBits [addr] && odd==0)
+      {
+        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
+        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, odd, ctx);
+        traceInstruction (0);
+      }
+    M[addr] = odd;
+    return 0;
+}
+
+int32 core_readq(word24 addr, word36 *data, const char * ctx)
+{
+    nem_check (addr,  "core_read nem");
+    if (M[addr] & MEM_UNINITIALIZED)
+      {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, PPR.PSR, PPR.IC, ctx);
+      }
+    if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
+      {
+        //sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] read   %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        traceInstruction (0);
+      }
+    *data = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read  %08o %012llo (%s)\n",
+                addr, * data, ctx);
+    return 0;
+}
+#endif
+
+#ifndef SPEED
+int core_writeq(word24 addr, word36 data, const char * ctx) {
+    nem_check (addr,  "core_write nem");
+    M[addr] = data & DMASK;
+    if (watchBits [addr])
+    //if (watchBits [addr] && M[addr]==0)
+      {
+        //sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%lld] write  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        traceInstruction (0);
+      }
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write %08o %012llo (%s)\n",
+                addr, data, ctx);
+    return 0;
+}
+#endif
+
+#ifndef SPEED
+int core_read2q(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
@@ -2623,6 +2788,10 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
+#ifdef EMUL_TR
+    sim_interval --;
+    sim_interval --;
+#endif
     return 0;
 }
 #endif

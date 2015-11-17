@@ -48,9 +48,21 @@
 #define VM_DPS8
 
 // Select Timer Register model; only one at time!
-#define NAIVE_TR
+
+// One tick per CPU state engine cycle. Poor relationship with reality.
+//#define NAIVE_TR
+
+// Generate TR values from wall clock time. Very high CPU overhead.
 //#define REAL_TR
+
+// Generate TR values from POSIX timers. Not portable.
 //#define POSIX_TR
+
+// Model TR values by memory access cycles.
+#define EMUL_TR
+
+
+
 
 // Make CIOC use sim_activate
 #define CIOC_ACT
