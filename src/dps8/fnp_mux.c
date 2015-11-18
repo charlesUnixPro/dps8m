@@ -374,7 +374,8 @@ t_stat mux_attach(UNIT *unitp, char *cptr)
         /*  QTY lines are always enabled - force RX and TX to 'enabled' */
         mux_status[ a ] = (MUX_L_RXE | MUX_L_TXE) ;
     }
-    sim_activate( unitp, mux_tmxr_poll ) ;
+    //sim_activate( unitp, mux_tmxr_poll ) ;
+    sim_clock_coschedule( unitp, mux_tmxr_poll ) ;
     
     //memset(ttys, 0, sizeof(ttys));  // resetttys structure
            
@@ -693,7 +694,8 @@ t_stat mux_svc(UNIT * unitp )
     
     mux_update_status( dibp, &mux_desc ) ;              /*  update device status                */
     
-    sim_activate( unitp, mux_tmxr_poll ) ;              /*  restart the bubble machine          */
+    //sim_activate( unitp, mux_tmxr_poll ) ;              /*  restart the bubble machine          */
+    sim_clock_coschedule( unitp, mux_tmxr_poll ) ;              /*  restart the bubble machine          */
     
     // check for any dropped connections ...
     TMXR *mp = &mux_desc;
@@ -756,7 +758,8 @@ t_stat  mux_reset(UNUSED DEVICE *dptr)
     MUX_UPDATE_INTR ;
     if ( MUX_MASTER_ACTIVE(&mux_desc) )
     {
-        sim_activate( unitp, mux_tmxr_poll ) ;
+        //sim_activate( unitp, mux_tmxr_poll ) ;
+        sim_clock_coschedule( unitp, mux_tmxr_poll ) ;
     }
     else
     {

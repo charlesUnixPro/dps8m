@@ -7,14 +7,6 @@
 
 #include <stdio.h>
 #include <unistd.h>
-#ifdef POSIX_TR
-#include <stdlib.h>
-#include <signal.h>
-#include <time.h>
-#include <errno.h>
-#include <string.h>
-#endif
-
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
@@ -43,6 +35,14 @@
 #include "fnp_cmds.h"
 
 #include "sim_defs.h"
+
+#ifdef POSIX_TR
+#include <stdlib.h>
+#include <signal.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
+#endif
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -79,6 +79,9 @@ static MTAB cpu_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL },
+    { MTAB_XTD | MTAB_VDV,
+      0, "IDLE", "IDLE",
+      & sim_set_idle, & sim_show_idle, NULL, NULL },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -652,9 +655,7 @@ static void ic_history_init(void);
 static t_stat cpu_reset_mm (UNUSED DEVICE * dptr)
 {
     
-#ifdef USE_IDLE
-    sim_set_idle (cpu_unit, 512*1024, NULL, NULL);
-#endif
+    sim_set_idle (cpu_unit, 0, NULL, NULL);
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
     
     ic_history_init();
@@ -1350,6 +1351,7 @@ static void timeout_set (uint ticks)
 
 void setTR (word27 val)
   {
+//sim_printf ("set %u\n", val);
     if (val)
       timeout_set (val);
     else
@@ -1483,6 +1485,37 @@ bool sample_interrupts (void)
     return false;
   }
 
+#if 0
+static uint pollingInterval = 0;
+
+void resetPollingIntervals (void)
+  {
+    uint pollingInterval = 0;
+  }
+
+void doPolling (void)
+  {
+
+  }
+#endif
+
+static bool pollingFlag = false;
+
+void setPollingFlag (void)
+  {
+    pollingFlag = true;
+  }
+
+void clrPollingFlag (void)
+  {
+    pollingFlag = false;
+  }
+
+bool tstPollingFlag (void)
+  {
+    return pollingFlag;
+  }
+
 t_stat simh_hooks (void)
   {
     int reason = 0;
@@ -1609,10 +1642,6 @@ static word36 instr_buf [2];
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
-#ifdef USE_IDLE
-    sim_rtcn_init (0, 0);
-#endif
-      
     mux(SLS, 0, 0);
 
     UNIT *u = &mux_unit;
@@ -1691,6 +1720,27 @@ last = M[01007040];
             break;
           }
 
+#if 1
+       // We expect this to be set at 50Hz
+       if (tstPollingFlag ())
+         {
+            clrPollingFlag ();
+
+            static uint slowQueueSubsample = 0;
+            if (slowQueueSubsample ++ > 50) // ~ 1Hz
+              {
+//sim_printf ("click\n");
+                slowQueueSubsample = 0;
+                rdrProcessEvent (); 
+              }
+            scpProcessEvent (); 
+            fnpProcessEvent (); 
+            consoleProcess ();
+            dequeue_fnp_command ();
+            if (check_attn_key ())
+              console_attn (NULL);
+          }
+#else
         static uint slowQueueSubsample = 0;
         if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
           {
@@ -1704,7 +1754,6 @@ last = M[01007040];
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            AIO_CHECK_EVENT;
             dequeue_fnp_command ();
           }
 #if 0
@@ -1721,6 +1770,7 @@ last = M[01007040];
 #else
         if (check_attn_key ())
           console_attn (NULL);
+#endif
 #endif
 
 #ifdef MULTIPASS

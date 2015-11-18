@@ -293,7 +293,7 @@ static void fetchDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
 
     word36 PTWx1;
-    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
+    core_readq((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
     
     PTW0.ADDR = GETHI(PTWx1);
     PTW0.U = TSTBIT(PTWx1, 9);
@@ -321,9 +321,9 @@ static void modifyDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
     
     word36 PTWx1;
-    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
+    core_readq((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
     PTWx1 = SETBIT(PTWx1, 9);
-    core_write((DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
+    core_writeq((DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
     
     PTW0.U = 1;
 }
@@ -384,7 +384,7 @@ static void fetchPSDW(word15 segno)
     
     word36 SDWeven, SDWodd;
     
-    core_read2(((PTW0.ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2q(((PTW0.ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -429,7 +429,7 @@ static void fetchNSDW(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
     word36 SDWeven, SDWodd;
     
-    core_read2((DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2q((DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -661,7 +661,7 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     
     sim_debug (DBG_APPENDING,& cpu_dev, "fetchPTW address %08o\n", sdw->ADDR + x2);
 
-    core_read((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
+    core_readq((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
     
     PTW0.ADDR = GETHI(PTWx2);
     PTW0.U = TSTBIT(PTWx2, 9);
@@ -754,9 +754,9 @@ static void modifyPTW(_sdw *sdw, word18 offset)
     
     setAPUStatus (apuStatus_MPTW);
 
-    core_read((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
+    core_readq((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
     PTWx2 = SETBIT(PTWx2, 6);
-    core_write((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+    core_writeq((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
 //if_sim_debug (DBG_TRACE, & cpu_dev)
 //sim_printf ("modifyPTW 0%o %012llo ADDR %o U %llo M %llo F %llo FC %llo\n",
             //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 
@@ -1470,7 +1470,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         word24 x1 = (2 * segno - y1) / 1024;
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+        core_readq ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
         
         PTW1 . ADDR = GETHI (PTWx1);
         PTW1 . U = TSTBIT (PTWx1, 9);
@@ -1491,7 +1491,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     
         word36 SDWeven, SDWodd;
     
-        core_read2 (((PTW1 .  ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
+        core_read2q (((PTW1 .  ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
     
         // even word
         SDW1 . ADDR = (SDWeven >> 12) & 077777777;
@@ -1518,7 +1518,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
 
         word36 SDWeven, SDWodd;
         
-        core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
+        core_read2q ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
         
         // even word
         SDW1 . ADDR = (SDWeven >> 12) & 077777777;
@@ -1568,7 +1568,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     
         word36 PTWx2;
     
-        core_read ((SDW1 . ADDR + x2) & PAMASK, & PTWx2, __func__);
+        core_readq ((SDW1 . ADDR + x2) & PAMASK, & PTWx2, __func__);
     
         PTW1 . ADDR = GETHI (PTWx2);
         PTW1 . U = TSTBIT (PTWx2, 9);

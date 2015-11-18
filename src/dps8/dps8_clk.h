@@ -1,4 +1,3 @@
-extern UNIT TR_clk_unit [];
-extern DEVICE clk_dev;
+extern DEVICE idle_clk_dev;
 
 

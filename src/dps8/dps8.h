@@ -56,16 +56,16 @@
 //#define REAL_TR
 
 // Generate TR values from POSIX timers. Not portable.
-//#define POSIX_TR
+#define POSIX_TR
 
 // Model TR values by memory access cycles.
-#define EMUL_TR
+//#define EMUL_TR
 
 
 
 
 // Make CIOC use sim_activate
-#define CIOC_ACT
+//#define CIOC_ACT
 
 // Enable speed over debuggibility
 #define SPEED

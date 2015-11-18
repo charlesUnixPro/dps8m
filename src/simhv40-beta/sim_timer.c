@@ -870,6 +870,7 @@ if (cyc_ms == 0)                                        /* not computed yet? */
 if ((sim_idle_rate_ms == 0) || (cyc_ms == 0)) {         /* not possible? */
     if (sin_cyc)
         sim_interval = sim_interval - 1;
+
     sim_debug (DBG_IDL, &sim_timer_dev, "not possible %d - %d\n", sim_idle_rate_ms, cyc_ms);
     return FALSE;
     }
@@ -1385,14 +1386,19 @@ return inst_per_sec;
 
 t_stat sim_timer_activate_after (UNIT *uptr, int32 usec_delay)
 {
-int32 inst_delay;
-double inst_per_sec;
+int inst_delay;
+double inst_delay_d, inst_per_sec;
 
 AIO_VALIDATE;
 if (sim_is_active (uptr))                               /* already active? */
     return SCPE_OK;
 inst_per_sec = sim_timer_inst_per_sec ();
-inst_delay = (int32)((inst_per_sec*usec_delay)/1000000.0);
+inst_delay_d = ((inst_per_sec*usec_delay)/1000000.0);
+/* Bound delay to avoid overflow.  */
+/* Long delays are usually canceled before they expire */
+if (inst_delay_d > 0x7fffffff)
+    inst_delay_d = 0x7fffffff;
+inst_delay = (int32)inst_delay_d;
 #if defined(SIM_ASYNCH_IO) && defined(SIM_ASYNCH_CLOCKS)
 if ((sim_calb_tmr == -1) ||                             /* if No timer initialized */
     (inst_delay < rtc_currd[sim_calb_tmr]) ||           /*    or sooner than next clock tick? */
