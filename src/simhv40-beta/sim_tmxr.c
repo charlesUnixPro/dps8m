@@ -1341,13 +1341,12 @@ void tmxr_poll_rx (TMXR *mp)
 {
 int32 i, nbytes, j;
 TMLN *lp;
-
 tmxr_debug_trace (mp, "tmxr_poll_rx()");
 for (i = 0; i < mp->lines; i++) {                       /* loop thru lines */
     lp = mp->ldsc + i;                                  /* get line desc */
     if (!(lp->sock || lp->serport) || !lp->rcve)        /* skip if not connected */
         continue;
-
+try_again:;
     nbytes = 0;
     if (lp->rxbpi == 0)                                 /* need input? */
         nbytes = tmxr_read (lp,                         /* yes, read */
@@ -1363,7 +1362,6 @@ for (i = 0; i < mp->lines; i++) {                       /* loop thru lines */
         }
 
     else if (nbytes > 0) {                              /* if data rcvd */
-
         tmxr_debug (TMXR_DBG_RCV, lp, "Received", &(lp->rxb[lp->rxbpi]), nbytes);
 
         j = lp->rxbpi;                                  /* start of data */
@@ -1561,6 +1559,7 @@ for (i = 0; i < mp->lines; i++) {                       /* loop thru lines */
                 tmxr_debug (TMXR_DBG_RCV, lp, "Remaining", &(lp->rxb[lp->rxbpi]), lp->rxbpi-lp->rxbpr);
                 }
             }
+goto try_again;
         }                                               /* end else nbytes */
     }                                                   /* end for lines */
 for (i = 0; i < mp->lines; i++) {                       /* loop thru lines */

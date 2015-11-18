@@ -687,7 +687,7 @@ t_stat mux_svc(UNIT * unitp )
     }
     
     tmxr_poll_rx( &mux_desc ) ;                         /*  poll input                          */
-    mux_update_rcvi( &mux_desc ) ;                      /*  update receiver interrupt status    */
+    while (mux_update_rcvi( &mux_desc )) ;                      /*  update receiver interrupt status    */
     
     tmxr_poll_tx( &mux_desc ) ;                         /*  poll output                         */
     mux_update_xmti( &mux_desc ) ;                      /*  update transmitter interrupt status */
