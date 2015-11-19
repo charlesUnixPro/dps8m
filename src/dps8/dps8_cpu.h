@@ -80,6 +80,7 @@ extern word27   rTR;    // timer [map: TR, 9 0's]
 #ifdef EMUL_TR
 extern word27   rTR;    // timer [map: TR, 9 0's]
 #endif
+extern word27   rTR_shadow; 
 extern word24   rY;     // address operand
 extern word8    rTAG;   // instruction tag
 extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]

@@ -966,6 +966,7 @@ word27 rTR; /*!< timer [map: TR, 9 0's] */
 #ifdef EMUL_TR
 word27 rTR; /*!< timer [map: TR, 9 0's] */
 #endif
+word27   rTR_shadow; 
 word24 rY;     /*!< address operand */
 word8 rTAG; /*!< instruction tag */
 
@@ -1293,7 +1294,7 @@ static void timeout_handler (int signo, siginfo_t * info,
   {
     if (timeout_armed == 1)
       {
-        if (signo == timeout_signo && info && info->si_code == SI_TIMER)
+        if (signo == timeout_signo && info && info->si_code == SI_KERNEL)
           {
             timeout_state = ~0;
           }
@@ -1484,6 +1485,7 @@ word27 getTR (void)
     if (timeleft_ticks > MASK27)
       timeleft_ticks = MASK27;
 //sim_printf ("get %ld%06ld %u %lu\n", t . it_value . tv_sec, t . it_value . tv_nsec, rTR, timeleft_ticks);
+    rTR_shadow = (word27) timeleft_ticks;
     return (word27) timeleft_ticks;
   }
 
@@ -2146,6 +2148,10 @@ last = M[01007040];
                 multipassStatsPtr -> PAR [i] = PAR [i];
               }
             multipassStatsPtr -> IR = cu . IR;
+// Don't gather TR while measuring overhead.
+#if 1
+            multipassStatsPtr -> TR = rTR_shadow;
+#else
 #ifdef REAL_TR
             multipassStatsPtr -> TR = getTR (NULL);
 #endif
@@ -2160,6 +2166,7 @@ last = M[01007040];
 #endif
 #ifdef EMUL_TR
             multipassStatsPtr -> TR = rTR;
+#endif
 #endif
             multipassStatsPtr -> RALR = rRALR;
           }

@@ -61,14 +61,14 @@
 //#define POSIX_TR
 
 // Generate TR values form itimers. Slightly more portable.
-//#define ITIMER_TR
+#define ITIMER_TR
 
 // Model TR values by memory access cycles.
 //#define EMUL_TR
 
 // Create a low-resoulution pseudo-timer
-#define PTIMER_TR
-#define PTIMER_TR_HZ 1000
+//#define PTIMER_TR
+//#define PTIMER_TR_HZ 1000
 
 // Some common code
 #ifdef POSIX_TR
