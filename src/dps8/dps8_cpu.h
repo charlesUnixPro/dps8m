@@ -1199,3 +1199,9 @@ bool getTRO (void);
 void clrTRO (void);
 word27 getTR (void);
 #endif
+#ifdef PTIMER_TR
+void setTR (word27 val);
+bool getTRO (void);
+void clrTRO (void);
+word27 getTR (void);
+#endif
