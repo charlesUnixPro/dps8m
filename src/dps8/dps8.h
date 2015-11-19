@@ -56,13 +56,22 @@
 //#define REAL_TR
 
 // Generate TR values from POSIX timers. Not portable.
-#define POSIX_TR
+//#define POSIX_TR
+
+// Generate TR values form itimers. Slightly more portable.
+#define ITIMER_TR
 
 // Model TR values by memory access cycles.
 //#define EMUL_TR
 
 
-
+// Some common code
+#ifdef POSIX_TR
+#define TIMER_TR
+#endif
+#ifdef ITIMER_TR
+#define TIMER_TR
+#endif
 
 // Make CIOC use sim_activate
 //#define CIOC_ACT

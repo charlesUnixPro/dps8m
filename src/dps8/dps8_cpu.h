@@ -1193,7 +1193,7 @@ char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
-#ifdef POSIX_TR
+#ifdef TIMER_TR
 void setTR (word27 val);
 bool getTRO (void);
 void clrTRO (void);

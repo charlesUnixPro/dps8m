@@ -6,7 +6,7 @@
 */
 
 #include <stdio.h>
-#ifdef POSIX_TR
+#ifdef TIMER_TR
 #include <signal.h>
 #endif
 
@@ -1838,7 +1838,7 @@ static t_stat DoBasicInstruction (void)
 #ifdef REAL_TR
             Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (rRALR & 07);    // needs checking
 #endif
-#ifdef POSIX_TR
+#ifdef TIMER_TR
             Yblock8[7] = ((getTR () & MASK27) << 9) | (rRALR & 07);    // needs checking
 #endif
 #ifdef NAIVE_TR
@@ -1981,7 +1981,7 @@ static t_stat DoBasicInstruction (void)
 #ifdef REAL_TR
              CY = (getTR (NULL) & MASK27) << 9;
 #endif
-#ifdef POSIX_TR
+#ifdef TIMER_TR
              CY = (getTR () & MASK27) << 9;
 #endif
 #ifdef NAIVE_TR
@@ -5306,7 +5306,7 @@ static t_stat DoBasicInstruction (void)
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
               setTR (val);
 #endif
-#ifdef POSIX_TR
+#ifdef TIMER_TR
               word27 val = (CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
               setTR (val);
@@ -5928,7 +5928,7 @@ static t_stat DoBasicInstruction (void)
             else
               {
 
-#ifdef POSIX_TR
+#ifdef TIMER_TR
 
 // Should we be saving the value of TRO across the polling borrow?
 
