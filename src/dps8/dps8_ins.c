@@ -5958,8 +5958,10 @@ static t_stat DoBasicInstruction (void)
                     pollingCycle = true;
                    }
 
+#if 0
                 struct timespec t0;
                 clock_gettime (CLOCK_MONOTONIC, & t0);
+#endif
 
 // From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
 
@@ -6041,8 +6043,10 @@ static t_stat DoBasicInstruction (void)
                     pollingCycle = true;
                    }
 
+#if 0
                 struct timespec t0;
                 clock_gettime (CLOCK_MONOTONIC, & t0);
+#endif
 
 // From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
 
