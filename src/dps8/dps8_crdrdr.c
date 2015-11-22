@@ -174,11 +174,13 @@ static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
  *
  */
 
+#if 0
 static void usr2signal (UNUSED int signum)
   {
 sim_printf ("crd rdr signal caught\n");
     crdrdrCardReady (0);
   }
+#endif
 
 // Once-only initialization
 
@@ -187,7 +189,9 @@ void crdrdr_init (void)
     memset (crdrdr_state, 0, sizeof (crdrdr_state));
     for (uint i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       crdrdr_state [i] . deckfd = -1;
+#if 0
     signal (SIGUSR2, usr2signal);
+#endif
   }
 
 static t_stat crdrdr_reset (DEVICE * dptr)
@@ -343,11 +347,14 @@ static uint16 table [128] =
     03004, 03002, 03001, 05000, 04006, 03000, 03400, 00000
   };
 
-static void asciiToH (char * str, uint * hstr)
+static void asciiToH (char * str, uint * hstr, size_t l)
   {
-    for (char * p = str; * p; p ++)
+    char * p = str;
+    for (size_t i = 0; i < l; i ++)
+    //for (char * p = str; * p; p ++)
       {
         * hstr ++ = table [(* p) & 0177];
+        p ++;
       }
   }
 
@@ -599,12 +606,12 @@ sim_printf ("\n");
               {
                 sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
                 l = 80;
-                cardImage [l] = 0;
+                //cardImage [l] = 0;
               }
 
 
             uint hbuf [l];
-            asciiToH (cardImage, hbuf);
+            asciiToH (cardImage, hbuf, l);
 
             // 12 bits / char
             uint nbits = l * 12;
