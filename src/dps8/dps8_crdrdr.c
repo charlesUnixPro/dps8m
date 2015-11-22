@@ -347,11 +347,14 @@ static uint16 table [128] =
     03004, 03002, 03001, 05000, 04006, 03000, 03400, 00000
   };
 
-static void asciiToH (char * str, uint * hstr)
+static void asciiToH (char * str, uint * hstr, size_t l)
   {
-    for (char * p = str; * p; p ++)
+    char * p = str;
+    for (size_t i = 0; i < l; i ++)
+    //for (char * p = str; * p; p ++)
       {
         * hstr ++ = table [(* p) & 0177];
+        p ++;
       }
   }
 
@@ -603,12 +606,12 @@ sim_printf ("\n");
               {
                 sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
                 l = 80;
-                cardImage [l] = 0;
+                //cardImage [l] = 0;
               }
 
 
             uint hbuf [l];
-            asciiToH (cardImage, hbuf);
+            asciiToH (cardImage, hbuf, l);
 
             // 12 bits / char
             uint nbits = l * 12;
