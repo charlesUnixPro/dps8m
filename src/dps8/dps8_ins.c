@@ -5893,6 +5893,9 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+#ifdef DO_SIM_IDLE
+                int32 i0 = sim_interval;
+#endif
 
 #ifdef TIMER_TR
 
@@ -6066,9 +6069,26 @@ static t_stat DoBasicInstruction (void)
 #endif
 #ifdef DO_SIM_IDLE
                 sim_idle (3, FALSE);
+                int32 idelta = i0 - sim_interval;
+                if (idelta < 0)
+                  {
+                    sim_printf ("The chronosynclastic infundibulum went backwards? %d\n", idelta);
+                  }
+                else
+                  {
+                    idelta /= switches . trlsb; // convert from sim_interval units to estimated TR units.
+                    word27 rTR = getTR ();
+                    if (idelta > (int32) rTR)
+                      {
+                        if (switches . tro_enable)
+                          {
+                            setG7fault (FAULT_TRO, 0);
+                          }
+                      }
+                    setTR ((rTR - idelta) & MASK27);
+                   }
 #endif
 //sim_printf ("leaving TRO %s\n", getTRO () ? "on" : "off");
-                sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
             

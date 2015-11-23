@@ -64,9 +64,9 @@
 #define ITIMER_TR
 
 // Model TR values by memory access cycles.
-////#define EMUL_TR
+//#define EMUL_TR
 
-// Create a low-resoulution pseudo-timer
+// Create a low-resoulution pseudo-timer (code unfinished)
 //#define PTIMER_TR
 //#define PTIMER_TR_HZ 1000
 

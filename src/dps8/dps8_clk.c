@@ -82,8 +82,12 @@ else
     sim_rtcn_calb (IDLE_CLK_HZ, IDLE_CLK); /* calibrate 50Hz clock */
     sim_activate_after (uptr, 1000000/ IDLE_CLK_HZ); /* reactivate unit */
     setPollingFlag ();
-//static uint ctr = 0;
-//if (ctr ++ % 50 == 0) sim_printf ("tock\n");
+    if_sim_debug (DBG_DEBUG, & clk_dev)
+      {
+        static uint ctr = 0;
+        if (ctr ++ % 50 == 0)
+          sim_printf ("tock\n");
+      }
     return SCPE_OK;
   }
 
