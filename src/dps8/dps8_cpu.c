@@ -68,7 +68,7 @@ static void setCpuCycle (cycles_t cycle);
 
 // The DPS8M had only 4 ports
 
-static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
+static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_IDLE|UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
@@ -1210,6 +1210,87 @@ cpu_state_t cpu;
 ctl_unit_data_t cu;
 du_unit_data_t du;
 
+#ifdef DO_SIM_IDLE
+static t_stat dis_svc (UNUSED UNIT * uptr)
+  {
+    if (switches . tro_enable)
+      setG7fault (FAULT_TRO, 0);
+    setTR (MASK27);
+    return SCPE_OK;
+  }
+
+static t_stat dis_reset (DEVICE * dptr)
+  {
+  sim_cancel (dptr->units);
+  return SCPE_OK;
+  }
+
+UNIT dis_unit = { UDATA (& dis_svc, UNIT_IDLE, 50), 0, 0, 0, 0, 0, NULL, NULL };
+
+static void dis_set (word27 val)
+  {
+    uint timerRegVal;
+
+    sim_cancel (& dis_unit);
+    val &= MASK27;
+    if (val)
+      {
+        timerRegVal = val & MASK27;
+      }
+    else
+      {
+        // Special case
+        timerRegVal = -1 & MASK27;
+      }
+    int32 t = (uint64_t) timerRegVal * 19073486 / 10000000;
+    sim_activate_after (& dis_unit, t);
+  }
+
+#if 0
+static word27 dis_get (void)
+  {
+    return ((word27) ((512 * 1000) * (sim_activate_time (& dis_unit) / sim_timer_inst_per_sec ()))) & MASK27;
+  }
+#endif
+
+static DEBTAB dis_dt [] =
+  {
+    { "DEBUG", DBG_DEBUG },
+    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { NULL, 0 }
+  };
+
+DEVICE dis_dev =
+  {
+    "DISDEV",
+    & dis_unit,
+    NULL, // registers
+    NULL, // modifiers
+    1, // # units
+    0, // address radix
+    8, // address width
+    4, // address increment
+    0, // data radix
+    32, // data width
+    NULL, // examine routine
+    NULL, // deposit routine
+    & dis_reset, // reset routine
+    NULL,        /* boot routine */
+    NULL,        /* attach routine */
+    NULL,        /* detach routine */
+    NULL,        /* context */
+    DEV_DEBUG,   /* flags */
+    0,           /* debug control flags */
+    dis_dt,      /* debug flag names */
+    NULL,        /* memory size change */
+    NULL,        /* logical name */
+    NULL,        // help
+    NULL,        // attach help
+    NULL,        // help context
+    NULL         // description
+  };
+
+#endif // DO_SIM_IDLE
 
 #ifdef TIMER_TR
 //
@@ -1755,6 +1836,9 @@ void setTR (word27 val)
         // Special case
         emulTR = -1 & MASK27;
       }
+#ifdef DO_SIM_IDLE
+    dis_set (emulTR);
+#endif
   }
 
 word27 getTR (void)
@@ -2127,16 +2211,6 @@ t_stat sim_instr (void)
 
     do
       {
-#if 0
-{
-static word36 last = 0;
-if (M [01007040] != last)
-{
-sim_printf ("[%lld] M[01007040] was %012llo now %012llo\n", sim_timell(), last, M [01007040]);
-last = M[01007040];
-}
-}
-#endif
 
 #if 0
         // XXX Don't trace Multics idle loop
@@ -2155,7 +2229,6 @@ last = M[01007040];
             break;
           }
 
-#if 1
        // We expect this to be set at 50Hz
        if (tstPollingFlag ())
          {
@@ -2175,38 +2248,8 @@ last = M[01007040];
             if (check_attn_key ())
               console_attn (NULL);
           }
-#else
-        static uint slowQueueSubsample = 0;
-        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
-          {
-            slowQueueSubsample = 0;
-            rdrProcessEvent (); 
-          }
-        static uint queueSubsample = 0;
-        if (queueSubsample ++ > 10240) // ~ 100Hz
-          {
-            queueSubsample = 0;
-            scpProcessEvent (); 
-            fnpProcessEvent (); 
-            consoleProcess ();
-            dequeue_fnp_command ();
-          }
-#if 0
-        if (sim_gtime () % 1024 == 0)
-          {
-            t_stat ch = sim_poll_kbd ();
-            if (ch != SCPE_OK)
-              {
-                //sim_printf ("%o\n", ch);
-                if (ch == 010033) // Escape
-                  console_attn (NULL);
-              }
-          }
-#else
         if (check_attn_key ())
           console_attn (NULL);
-#endif
-#endif
 
 #ifdef MULTIPASS
         if (multipassStatsPtr) 

@@ -6064,6 +6064,9 @@ static t_stat DoBasicInstruction (void)
                 sim_interval -= delta_si;
 #endif
 #endif
+#ifdef DO_SIM_IDLE
+                sim_idle (3, FALSE);
+#endif
 //sim_printf ("leaving TRO %s\n", getTRO () ? "on" : "off");
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);

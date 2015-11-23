@@ -64,7 +64,7 @@
 #define ITIMER_TR
 
 // Model TR values by memory access cycles.
-//#define EMUL_TR
+////#define EMUL_TR
 
 // Create a low-resoulution pseudo-timer
 //#define PTIMER_TR
@@ -87,6 +87,12 @@
 #ifdef EMUL_TR
 #define NOTIMER_TR
 #endif
+
+
+
+
+// Enable sim_idle(); only works with NAIVE_TR and EMUL_TR
+//#define DO_SIM_IDLE
 
 // Make CIOC use sim_activate
 //#define CIOC_ACT
