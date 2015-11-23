@@ -5964,13 +5964,14 @@ static t_stat DoBasicInstruction (void)
                 // about that. A better check might be getTR >>> 0, ie.
                 // if the timer has reset to 4 min coundown.
 
-                sim_interval = 0;
+                //sim_interval = 0;
 
                 // We borrowed the timer to schedule the polling; put it back.
                 if (pollingCycle)
                   {
                     setTR (ticksLeft);
                     clrTRO ();
+                    sim_interval = 0;
                   }
 #else
                 // trlsb is the conversion factor to translate sim_interval into TR ticks.
@@ -5981,7 +5982,12 @@ static t_stat DoBasicInstruction (void)
                 uint64_t delta_si = (delta_us / 2) * switches . trlsb;
                 sim_interval -= delta_si;
 #endif
-#endif
+#endif // TIMER_TR
+
+
+
+
+
 #ifdef PTIMER_TR
 
 // Should we be saving the value of TRO across the polling borrow?
@@ -6066,7 +6072,9 @@ static t_stat DoBasicInstruction (void)
                 uint64_t delta_si = (delta_us / 2) * switches . trlsb;
                 sim_interval -= delta_si;
 #endif
-#endif
+#endif // PTIMER_TR
+
+
 #ifdef DO_SIM_IDLE
                 sim_idle (3, FALSE);
                 int32 idelta = i0 - sim_interval;
@@ -6087,7 +6095,11 @@ static t_stat DoBasicInstruction (void)
                       }
                     setTR ((rTR - idelta) & MASK27);
                    }
-#endif
+#endif // DO_SIM_IDLE
+
+
+
+
 //sim_printf ("leaving TRO %s\n", getTRO () ? "on" : "off");
                 longjmp (jmpMain, JMP_REFETCH);
               }

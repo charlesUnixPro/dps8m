@@ -1349,16 +1349,25 @@ static const int                timeout_signo = SIGUSR2;
 static const int                timeout_signo = SIGALRM;
 #endif
 
-/* Timeout signal handler.
-*/
-static void timeout_handler (int signo, siginfo_t * info, 
+//#define TCHECK
+#ifdef TCHECK
+static time_t when_set = 0, delta_caught = 0;
+#endif
+
+// Timeout signal handler.
+
+static void timeout_handler (int signo, UNUSED siginfo_t * info, 
                              UNUSED void * context)
   {
     if (timeout_armed == 1)
       {
-        if (signo == timeout_signo && info && info->si_code == SI_KERNEL)
+        //if (signo == timeout_signo && info && info->si_code == SI_KERNEL)
+        if (signo == timeout_signo)
           {
             timeout_state = ~0;
+#ifdef TCHECK
+            delta_caught = time (NULL) - when_set;
+#endif
           }
       }
   }
@@ -1486,6 +1495,9 @@ static void timeout_set (uint ticks)
       }
 #endif
     timeout_armed = 1;
+#ifdef TCHECK
+    when_set = time (NULL);
+#endif
   }
 
 void setTR (word27 val)
@@ -2047,11 +2059,13 @@ t_stat simh_hooks (void)
 //int32 int0 = sim_interval;
         reason = sim_process_event ();
 //sim_printf ("int delta %d\n", sim_interval - int0);
+//sim_printf ("new sim_interval %d\n", sim_interval);
         if (reason)
           return reason;
       }
         
 #ifndef EMUL_TR
+    // Guarantee the sim_interval will be decremented at least once.
     sim_interval --;
 #endif
 
@@ -2293,6 +2307,9 @@ t_stat sim_instr (void)
 #ifdef TIMER_TR
         if (getTRO ())
           {
+#ifdef TCHECK
+if (delta_caught > 4) sim_printf ("delta_caught %lu\n", delta_caught);
+#endif
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
             clrTRO ();
             if (switches . tro_enable)
