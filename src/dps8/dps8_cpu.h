@@ -74,9 +74,6 @@ extern word36   rQ;     // quotient
 extern word8    rE;     // exponent [map: rE, 28 0's]
 
 extern word18   rX [8]; // index
-#ifdef EMUL_TR
-extern word27   rTR;    // timer [map: TR, 9 0's]
-#endif
 extern word27   rTR_shadow; 
 extern word24   rY;     // address operand
 extern word8    rTAG;   // instruction tag

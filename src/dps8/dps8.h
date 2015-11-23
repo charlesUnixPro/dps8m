@@ -70,12 +70,22 @@
 //#define PTIMER_TR
 //#define PTIMER_TR_HZ 1000
 
-// Some common code
+// Some common code:
+
+//  POSIX_TR and ITIMER_TR both use code fragments marked TIMER_TR
 #ifdef POSIX_TR
 #define TIMER_TR
 #endif
 #ifdef ITIMER_TR
 #define TIMER_TR
+#endif
+
+//  NAIVE_TR and EMUL_TR both use code fragments marked NOTIMER_TR
+#ifdef NAIVE_TR
+#define NOTIMER_TR
+#endif
+#ifdef EMUL_TR
+#define NOTIMER_TR
 #endif
 
 // Make CIOC use sim_activate

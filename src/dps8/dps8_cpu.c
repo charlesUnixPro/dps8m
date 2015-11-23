@@ -1733,14 +1733,14 @@ word27 getTR (void)
     if (timeleft_ticks > MASK27)
       timeleft_ticks = MASK27;
 //sim_printf ("get %ld%06ld %u %lu\n", t . it_value . tv_sec, t . it_value . tv_nsec, rTR, timeleft_ticks);
-sim_printf ("get %lu\n", timeleft_ticks);
+    rTR_shadow = (word27) timeleft_ticks;
     return (word27) timeleft_ticks;
   }
 
 #endif // PTIMER_TR
 
 
-#ifdef NAIVE_TR
+#ifdef NOTIMER_TR
 static word27 emulTR;
 
 void setTR (word27 val)
@@ -1759,6 +1759,7 @@ void setTR (word27 val)
 
 word27 getTR (void)
   {
+    rTR_shadow = emulTR;
     return emulTR;
   }
 
@@ -1766,7 +1767,7 @@ void ackTR (void)
   {
     setTR (0);
   }
-#endif // NAIVE_TR
+#endif // NOTIMER_TR
 
 #ifdef REAL_TR
 static uint timerRegVal;
@@ -1820,6 +1821,7 @@ word27 getTR (bool * runout)
      * runout = delta > timerRegVal;
     word27 val = (timerRegVal - delta) & MASK27;
 //if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
+    rTR_shadow = val;
     return val;
   }
 
@@ -2269,7 +2271,7 @@ last = M[01007040];
               }
           }
 #endif
-#ifdef NAIVE_TR
+#ifdef NOTIMER_TR
         // Sync. the TR with the emulator clock.
         static uint rTRlsb = 0;
         rTRlsb ++;
@@ -2280,28 +2282,6 @@ last = M[01007040];
             rTRlsb = 0;
             word27 rTR = (getTR () - 1) & MASK27;
             setTR (rTR);
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
-            if (rTR == 0) // passing thorugh 0...
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-                if (switches . tro_enable)
-                  {
-//sim_printf ("FAULT_TRO\n");
-                    setG7fault (FAULT_TRO, 0);
-                  }
-              }
-          }
-#endif
-#ifdef EMUL_TR
-        // Sync. the TR with the emulator clock.
-        static uint rTRlsb = 0;
-        rTRlsb ++;
-        // The emulator clock runs about 7x as fast at the Timer Register;
-        // see wiki page "CAC 08-Oct-2014"
-        if (rTRlsb >= switches . trlsb)
-          {
-            rTRlsb = 0;
-            rTR = (rTR - 1) & MASK27;
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
             if (rTR == 0) // passing thorugh 0...
               {
