@@ -24,9 +24,9 @@
 #define LEN4 2283
 #define TEST4 "\"\r\n\"\r\n\"                                          -----------------------------------------------------------\r\n\"\r\n\"\r\n\"\r\n\" Historical Background\r\n\"\r\n"
 
-#define LEN5 2321
+#define LEN5 2322
 //#define TEST5 "\r\f\r\n\r\n\r\n\r\n\t\t    bull_copyright_notice.txt       08/30/05  1008.4r   08/30/05  1007.3    00020025\r\n\r\n                                          -----------------------------------------------------------"
-#define TEST5 "\r\f\r\n\r\n\r\n\r\n\t\t    bull_copyright_notice.txt"
+#define TEST5 "\n\r\f\r\n\r\n\r\n\r\n\t\t    bull_copyright_notice.txt"
 
 // bcpl
 #define LEN6 2312

@@ -86,9 +86,11 @@ int main (int argc, char * argv [])
             //else
               //printf ("\\%03lo", c);
             buf [j] = c & 0177;
+            if (buf [j])
+              write (fdout, & buf [j], 1);
           }
         //printf ("\n");
-        write (fdout, buf, nch);
+        //write (fdout, buf, nch);
       }
     close (fdin);
     close (fdout);
