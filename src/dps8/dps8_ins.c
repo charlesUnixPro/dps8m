@@ -1838,21 +1838,7 @@ static t_stat DoBasicInstruction (void)
             Yblock8[4] = rA;
             Yblock8[5] = rQ;
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
-#ifdef REAL_TR
-            Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (rRALR & 07);    // needs checking
-#endif
-#ifdef TIMER_TR
             Yblock8[7] = ((getTR () & MASK27) << 9) | (rRALR & 07);    // needs checking
-#endif
-#ifdef PTIMER_TR
-            Yblock8[7] = ((getTR () & MASK27) << 9) | (rRALR & 07);    // needs checking
-#endif
-#ifdef NAIVE_TR
-            Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
-#endif
-#ifdef EMUL_TR
-            Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
-#endif
                     
             //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
@@ -1984,21 +1970,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0454:  ///< stt
-#ifdef REAL_TR
-             CY = (getTR (NULL) & MASK27) << 9;
-#endif
-#ifdef TIMER_TR
              CY = (getTR () & MASK27) << 9;
-#endif
-#ifdef PTIMER_TR
-             CY = (getTR () & MASK27) << 9;
-#endif
-#ifdef NAIVE_TR
-             CY = (rTR & MASK27) << 9;
-#endif
-#ifdef EMUL_TR
-             CY = (rTR & MASK27) << 9;
-#endif
              break;
             
             
@@ -5310,29 +5282,9 @@ static t_stat DoBasicInstruction (void)
 
         case 0637:  ///< ldt
             {
-#ifdef REAL_TR
               word27 val = (CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
               setTR (val);
-#endif
-#ifdef TIMER_TR
-              word27 val = (CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
-              setTR (val);
-#endif
-#ifdef PTIMER_TR
-              word27 val = (CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", val, val);
-              setTR (val);
-#endif
-#ifdef NAIVE_TR
-              rTR = (CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
-#endif
-#ifdef EMUL_TR
-              rTR = (CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt rTR %d (%o)\n", rTR, rTR);
-#endif
               // Undocumented feature. return to bce has been observed to
               // experience TRO while masked, setting the TR to -1, and
               // experiencing an unexpected TRo interrupt when unmasking.
@@ -7708,65 +7660,4 @@ void doRCU (void)
     doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");
   }
 
-#ifdef REAL_TR
-static uint timerRegVal;
-static struct timeval timerRegT0;
-//static bool overrunAck;
-
-void setTR (word27 val)
-  {
-    val &= MASK27;
-    if (val)
-      {
-        timerRegVal = val & MASK27;
-      }
-    else
-      {
-        // Special case
-        timerRegVal = -1 & MASK27;
-      }
-    gettimeofday (& timerRegT0, NULL);
-    //overrunAck = false;
-
-//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
-  }
-
-word27 getTR (bool * runout)
-  {
-#if 0
-    struct timeval tnow, tdelta;
-    gettimeofday (& tnow, NULL);
-    timersub (& tnow, & timerRegT0, & tdelta);
-    // 1000000 can be represented in 20 bits; so in a 64 bit word, we have room for
-    // 44 bits of seconds, way more then enough.
-    // Do 64 bit math; much faster.
-    //
-    //delta = (tnowus - t0us) / 1.953125
-    uint64 delta;
-    delta = ((uint64) tdelta . tv_sec) * 1000000 + ((uint64) tdelta . tv_usec);
-    // 1M * 1M ~= 40 bits; still leaves 24bits of seconds.
-    delta = (delta * 1000000) / 1953125;
-#else
-    uint128 t0us, tnowus, delta;
-    struct timeval tnow;
-    gettimeofday (& tnow, NULL);
-    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
-    tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
-    //delta = (tnowus - t0us) / 1.953125
-    delta = ((tnowus - t0us) * 1000000) / 1953125;
-#endif
-    if (runout)
-     //* runout = (! overrunAck) && delta > timerRegVal;
-     * runout = delta > timerRegVal;
-    word27 val = (timerRegVal - delta) & MASK27;
-//if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
-    return val;
-  }
-
-void ackTR (void)
-  {
-    //overrunAck = true;
-    setTR (0);
-  }
-#endif
 

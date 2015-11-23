@@ -867,21 +867,7 @@ static t_stat cpu_reset (DEVICE *dptr)
     PPR.P = 1;
     RSDWH_R1 = 0;
 
-#ifdef REAL_TR
     setTR (0);
-#endif
-#ifdef TIMER_TR
-    setTR (0);
-#endif
-#ifdef PTIMER_TR
-    setTR (0);
-#endif
-#ifdef NAIVE_TR
-    rTR = 0;
-#endif
-#ifdef EMUL_TR
-    rTR = 0;
-#endif
  
     processorCycle = UNKNOWN_CYCLE;
     set_addr_mode(ABSOLUTE_mode);
@@ -960,12 +946,7 @@ word8  rE;      /*!< exponent [map: rE, 28 0's] */
 word18 rX[8];   /*!< index */
 
 
-#ifdef NAIVE_TR
-word27 rTR; /*!< timer [map: TR, 9 0's] */
-#endif
-#ifdef EMUL_TR
-word27 rTR; /*!< timer [map: TR, 9 0's] */
-#endif
+//word27 rTR; /*!< timer [map: TR, 9 0's] */
 word27   rTR_shadow; 
 word24 rY;     /*!< address operand */
 word8 rTAG; /*!< instruction tag */
@@ -1759,6 +1740,95 @@ sim_printf ("get %lu\n", timeleft_ticks);
 #endif // PTIMER_TR
 
 
+#ifdef NAIVE_TR
+static word27 emulTR;
+
+void setTR (word27 val)
+  {
+    val &= MASK27;
+    if (val)
+      {
+        emulTR = val & MASK27;
+      }
+    else
+      {
+        // Special case
+        emulTR = -1 & MASK27;
+      }
+  }
+
+word27 getTR (void)
+  {
+    return emulTR;
+  }
+
+void ackTR (void)
+  {
+    setTR (0);
+  }
+#endif // NAIVE_TR
+
+#ifdef REAL_TR
+static uint timerRegVal;
+static struct timeval timerRegT0;
+//static bool overrunAck;
+
+void setTR (word27 val)
+  {
+    val &= MASK27;
+    if (val)
+      {
+        timerRegVal = val & MASK27;
+      }
+    else
+      {
+        // Special case
+        timerRegVal = -1 & MASK27;
+      }
+    gettimeofday (& timerRegT0, NULL);
+    //overrunAck = false;
+
+//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
+  }
+
+word27 getTR (bool * runout)
+  {
+#if 0
+    struct timeval tnow, tdelta;
+    gettimeofday (& tnow, NULL);
+    timersub (& tnow, & timerRegT0, & tdelta);
+    // 1000000 can be represented in 20 bits; so in a 64 bit word, we have room for
+    // 44 bits of seconds, way more then enough.
+    // Do 64 bit math; much faster.
+    //
+    //delta = (tnowus - t0us) / 1.953125
+    uint64 delta;
+    delta = ((uint64) tdelta . tv_sec) * 1000000 + ((uint64) tdelta . tv_usec);
+    // 1M * 1M ~= 40 bits; still leaves 24bits of seconds.
+    delta = (delta * 1000000) / 1953125;
+#else
+    uint128 t0us, tnowus, delta;
+    struct timeval tnow;
+    gettimeofday (& tnow, NULL);
+    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
+    tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
+    //delta = (tnowus - t0us) / 1.953125
+    delta = ((tnowus - t0us) * 1000000) / 1953125;
+#endif
+    if (runout)
+     //* runout = (! overrunAck) && delta > timerRegVal;
+     * runout = delta > timerRegVal;
+    word27 val = (timerRegVal - delta) & MASK27;
+//if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
+    return val;
+  }
+
+void ackTR (void)
+  {
+    //overrunAck = true;
+    setTR (0);
+  }
+#endif
 
 #if 0
 int stop_reason; // sim_instr return value for JMP_STOP
@@ -2149,26 +2219,7 @@ last = M[01007040];
               }
             multipassStatsPtr -> IR = cu . IR;
 // Don't gather TR while measuring overhead.
-#if 1
             multipassStatsPtr -> TR = rTR_shadow;
-#else
-#ifdef REAL_TR
-            multipassStatsPtr -> TR = getTR (NULL);
-#endif
-#ifdef TIMER_TR
-            multipassStatsPtr -> TR = getTR ();
-#endif
-#ifdef PTIMER_TR
-            multipassStatsPtr -> TR = getTR ();
-#endif
-#ifdef NAIVE_TR
-            multipassStatsPtr -> TR = rTR;
-#endif
-#ifdef EMUL_TR
-            multipassStatsPtr -> TR = rTR;
-#endif
-#endif
-            multipassStatsPtr -> RALR = rRALR;
           }
 #endif
 
@@ -2227,7 +2278,8 @@ last = M[01007040];
         if (rTRlsb >= switches . trlsb)
           {
             rTRlsb = 0;
-            rTR = (rTR - 1) & MASK27;
+            word27 rTR = (getTR () - 1) & MASK27;
+            setTR (rTR);
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
             if (rTR == 0) // passing thorugh 0...
               {

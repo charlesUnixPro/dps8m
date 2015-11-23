@@ -74,9 +74,6 @@ extern word36   rQ;     // quotient
 extern word8    rE;     // exponent [map: rE, 28 0's]
 
 extern word18   rX [8]; // index
-#ifdef NAIVE_TR
-extern word27   rTR;    // timer [map: TR, 9 0's]
-#endif
 #ifdef EMUL_TR
 extern word27   rTR;    // timer [map: TR, 9 0's]
 #endif
@@ -1194,15 +1191,7 @@ char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
-#ifdef TIMER_TR
 void setTR (word27 val);
 bool getTRO (void);
 void clrTRO (void);
 word27 getTR (void);
-#endif
-#ifdef PTIMER_TR
-void setTR (word27 val);
-bool getTRO (void);
-void clrTRO (void);
-word27 getTR (void);
-#endif
