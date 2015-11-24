@@ -1339,7 +1339,7 @@ DEVICE dis_dev =
 #endif
 
 
-static volatile sig_atomic_t    timeout_state = 0;
+volatile sig_atomic_t    timeout_state = 0;
 static volatile sig_atomic_t    timeout_armed = 2;
 #ifdef POSIX_TR
 static timer_t                  timeout_timer;
@@ -1619,13 +1619,8 @@ word27 getTR (void)
 
 static volatile sig_atomic_t    timeout_state = 0;
 static volatile sig_atomic_t    timeout_armed = 2;
-//#ifdef POSIX_TR
 static timer_t                  timeout_timer;
 static const int                timeout_signo = SIGUSR2;
-//#endif
-//#ifdef ITIMER_TR
-//static const int                timeout_signo = SIGALRM;
-//#endif
 static volatile sig_atomic_t    pTR = 0;
 
 // Timeout signal handler.

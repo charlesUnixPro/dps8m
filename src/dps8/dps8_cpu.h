@@ -1164,6 +1164,11 @@ int core_write2q (word24 addr, word36 even, word36 odd, const char * ctx);
 //int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
 
+#ifdef TIMER_TR
+#include <signal.h>
+extern volatile sig_atomic_t    timeout_state;
+#endif
+
 void setPollingFlag (void);
 void clrPollingFlag (void);
 bool tstPollingFlag (void);

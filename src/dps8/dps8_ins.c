@@ -5893,6 +5893,7 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+
 #ifdef DO_SIM_IDLE
                 int32 i0 = sim_interval;
 #endif
@@ -5928,7 +5929,7 @@ static t_stat DoBasicInstruction (void)
 
                 /* Wait for a signal to arrive. */
                 sigprocmask (SIG_BLOCK, & mask, & oldmask);
-                //while (!usr_interrupt)
+                while (!timeout_state)
                   sigsuspend (& oldmask);
                 sigprocmask (SIG_UNBLOCK, & mask, NULL);
 // This last piece of code is a little tricky. The key point to remember here
