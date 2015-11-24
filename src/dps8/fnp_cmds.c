@@ -895,9 +895,11 @@ void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
         remaining -= thisSize;
 
 
+#if 0
         char msg [256];
         sprintf (msg, "send_output %d", hsla_line_num);
 //ipc_printf ("tell CPU to send_output\n");
         tellCPU (0, msg);
+#endif
       }
   }
