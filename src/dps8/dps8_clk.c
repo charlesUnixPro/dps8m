@@ -82,7 +82,7 @@ else
     sim_rtcn_calb (IDLE_CLK_HZ, IDLE_CLK); /* calibrate 50Hz clock */
     sim_activate_after (uptr, 1000000/ IDLE_CLK_HZ); /* reactivate unit */
     setPollingFlag ();
-    if_sim_debug (DBG_DEBUG, & clk_dev)
+    if_sim_debug (DBG_DEBUG, & idle_clk_dev)
       {
         static uint ctr = 0;
         if (ctr ++ % 50 == 0)
