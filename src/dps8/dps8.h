@@ -98,7 +98,7 @@
 //#define CIOC_ACT
 
 // Enable speed over debuggibility
-#define SPEED
+//#define SPEED
 
 #include "sim_defs.h"                                   /* simulator defns */
 
