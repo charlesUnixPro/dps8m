@@ -3162,7 +3162,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //}
 //
 #ifndef SPEED
-int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
+int core_write2q(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
