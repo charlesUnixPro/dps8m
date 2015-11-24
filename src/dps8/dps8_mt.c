@@ -1276,7 +1276,19 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-// 041 set 6250 cpi
+        case 041:              // CMD 041 -- Set 6250 cpi.
+          {
+            p -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              p -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              p -> stati |= 2;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "%s: Set 800 bpi\n", __func__);
+          }
+          break;
 
         case 044: // 044 Forward skip  Record
           {
@@ -1522,6 +1534,20 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               p -> stati |= 2;
             //if (sim_tape_eom (unitp))
               //p -> stati |= 0340;
+          }
+          break;
+
+        case 050:               // CMD 050 -- Request device status
+          {
+            p -> stati = 04000;
+            if (sim_tape_wrp (unitp))
+              p -> stati |= 1;
+            if (sim_tape_bot (unitp))
+              p -> stati |= 2;
+            //if (sim_tape_eom (unitp))
+              //p -> stati |= 0340;
+            sim_debug (DBG_DEBUG, & tape_dev,
+                       "%s: Request device status: %o\n", __func__, p -> stati);
           }
           break;
 
