@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <string.h>
+#include <stdbool.h>
 
 // Each tape block 
 //
@@ -133,18 +134,30 @@ static int tapefd = -1;
 //static word72 blk [blksz_w72];
 static uint8_t blk [blksz_bytes];
 
+static int total_blocks_written;
+static word18 recno = 0;
+static word18 filno = 0;
+
+static void writeMark (void)
+  {
+    const int32_t zero = 0;
+    write (tapefd, & zero, sizeof (zero));
+  }
+
 static void writeBlk (void)
   {
     const int32_t blksiz = blksz_bytes;
     write (tapefd, & blksiz, sizeof (blksiz));
     write (tapefd, & blk [0], sizeof (blk));
     write (tapefd, & blksiz, sizeof (blksiz));
-  }
-
-static void writeMark (void)
-  {
-    const int32_t zero = 0;
-    write (tapefd, & zero, sizeof (zero));
+    total_blocks_written ++;
+    recno ++;
+    if (total_blocks_written % 128 == 1)
+      {
+        writeMark ();
+        recno = 1;
+        filno ++;
+      }
   }
 
 static void zeroBlk (void)
@@ -183,28 +196,28 @@ static void setLabel (void)
     put36 (0040040040040l, & blk [0], 31); // "    "
   }
 
-static void cksum (word36 * a, word1 * carry, word36 val)
+static void cksum (word36 * a, word1 * carry, word36 val, bool rotate)
   {
     //word36 val = extr36 (& blk [0], idx);
-printf ("in %12lo %o %12lo\n", * a, * carry, val);
+//printf ("in %12lo %o %12lo\n", * a, * carry, val);
     (* a) += val + * carry;
     (* carry) = ((* a) & BIT37) ? 1 : 0;
     (* a) &= MASK36;
-    (* a) <<= 1;
-    (* a) |= ((* a) & BIT37) ? 1 : 0;
-    (* a) &= MASK36;
-printf ("out %12lo %o\n", * a, * carry);
+    if (rotate)
+      {
+        (* a) <<= 1;
+        (* a) |= ((* a) & BIT37) ? 1 : 0;
+        (* a) &= MASK36;
+      }
+//printf ("out %12lo %o\n", * a, * carry);
   }
      
-static word18 recno = 0;
-static word18 filno = 0;
 static word72 uid0 = 0000001506575ll;
 static word72 uid1 = 0750560343164ll;
-
+static word72 cumulative = 0;
 
 static void setHdr (word18 ndatabits, 
-                    word1 label, word1 eor, word1 padding, 
-                    word36 cumulative)
+                    word1 label, word1 eor, word1 padding)
   {
     word36 w3 = ((word36) recno) << 18 | filno;
     word36 w4 = ((word36) ndatabits) << 18 | 0110000;
@@ -228,6 +241,7 @@ static void setHdr (word18 ndatabits,
     put36 (0107463422532l, & blk [0], 0 + 8 + 1024);
     put36 (uid0,           & blk [0], 1 + 8 + 1024);
     put36 (uid1,           & blk [0], 2 + 8 + 1024);
+    cumulative += ndatabits;
     put36 (cumulative,     & blk [0], 3 + 8 + 1024);
     put36 (0777777777777l, & blk [0], 4 + 8 + 1024);
     put36 (filno,          & blk [0], 5 + 8 + 1024);
@@ -239,14 +253,13 @@ static void setHdr (word18 ndatabits,
 
     for (int i = 0; i < 8; i ++)
       if (i != 6)
-        cksum (& a, & carry, extr36 (& blk [0], i));
+        cksum (& a, & carry, extr36 (& blk [0], i), true);
     for (int i = 0; i < 8; i ++)
-      cksum (& a, & carry, extr36 (& blk [0], i + 8 + 1024));
-    cksum (& a, & carry, 0);
+      cksum (& a, & carry, extr36 (& blk [0], i + 8 + 1024), true);
+    cksum (& a, & carry, 0, false);
     put36 (a,              & blk [0], 6);
     
     uid1 += 4;
-    recno ++;
   }
 
 static void usage (void)
@@ -301,59 +314,225 @@ static void putStr (int offset, char * str, int len)
 //   /* Dir with security & call_limiter */
 // 
 
-static void setBckupHdr (word36 hdrcnt, word36 segcnt, 
-                         char * mpath, char * name,
+
+
+
+// dcl 1 br (1000) based aligned,   /* branch array returned by list_dir */
+//     2 (vtoc_error bit (1),       /* Vtoc error on this entry */
+//      pad1 bit (1), uid bit (70),
+//      pad2 bit (20), dtu bit (52),
+//      pad3 bit (20), dtm bit (52),
+//      pad4 bit (20), dtd bit (52),
+//      pad5 bit (20), dtbm bit (52),
+//      access_class bit (72),
+//      dirsw bit (1), optionsw bit (2), bc bit (24), consistsw bit (2), mode bit (5), usage bit (2),
+//      usagect bit (17), nomore bit (1), (cl, ml) bit (9),
+//      acct bit (36),
+//     (hlim, llim) bit (17),
+//      multiple_class bit (1), pad7 bit (1),
+//     (rb1, rb2, rb3) bit (6), pad8 bit (18),
+//     (pad9, namerp) bit (18),
+//      ix bit (18), dump_me bit (1), nnames bit (17)) unaligned;  /* ix is pointer to i'th (sorted) entry. */
+
+
+
+
+
+// Pointers in backup_preamble_header are relative to the start of the header
+// (dlen), so the offset in the block is 8 (mst header) + 32 (backup header)
+
+#define BPH_OFFSET 40
+
+static void setBckupHdr (char * mpath, char * name,
                          word36 bitcnt)
   {
 
-    put36 (0040172040172l, & blk [0],   8); // " z z"
-    put36 (0040172040172l, & blk [0],   9); // " z z"
-    put36 (0040172040172l, & blk [0],  10); // " z z"
-    put36 (0040172040172l, & blk [0],  11); // " z z"
-    put36 (0040172040172l, & blk [0],  12); // " z z"
-    put36 (0040172040172l, & blk [0],  13); // " z z"
-    put36 (0040172040172l, & blk [0],  14); // " z z"
-    put36 (0040172040172l, & blk [0],  15); // " z z"
-    put36 (0124150151163l, & blk [0],  16); // "This"
-    put36 (0040151163040l, & blk [0],  17); // " is "
-    put36 (0164150145040l, & blk [0],  18); // "the "
-    put36 (0142145147151l, & blk [0],  19); // "begi"
-    put36 (0156156151156l, & blk [0],  20); // "nnin"
-    put36 (0147040157146l, & blk [0],  21); // "g of"
-    put36 (0040141040142l, & blk [0],  22); // " a b"
-    put36 (0141143153165l, & blk [0],  23); // "acku"
-    put36 (0160040154157l, & blk [0],  24); // "p lo"
-    put36 (0147151143141l, & blk [0],  25); // "gica"
-    put36 (0154040162145l, & blk [0],  26); // "l re"
-    put36 (0143157162144l, & blk [0],  27); // "cord"
-    put36 (0056040040040l, & blk [0],  28); // ".   "
-    put36 (0040040040040l, & blk [0],  29); // "    "
-    put36 (0040172040172l, & blk [0],  30); // " z z"
-    put36 (0040172040172l, & blk [0],  31); // " z z"
-    put36 (0040172040172l, & blk [0],  32); // " z z"
-    put36 (0040172040172l, & blk [0],  33); // " z z"
-    put36 (0040172040172l, & blk [0],  34); // " z z"
-    put36 (0040172040172l, & blk [0],  35); // " z z"
-    put36 (0040172040172l, & blk [0],  36); // " z z"
-    put36 (0040172040172l, & blk [0],  37); // " z z"
-    put36 (hdrcnt,         & blk [0],  38);
-    put36 (segcnt,         & blk [0],  39);
-    put36 (strlen (mpath), & blk [0],  40); // dlen
-    putStr (41, mpath, 42);                 // dname
-    put36 (strlen (name),  & blk [0],  83); // elen
-    putStr (84, name, 8);                   // ename
-    put36 (bitcnt,         & blk [0],  92);
-    put36 (19,             & blk [0],  93); // record type sec_seg
-    putStr (94, "mdump", 8);                // dump procedure id
-    put36 (0,              & blk [0], 102); // bp  branch ptr
-    put36 (0,              & blk [0], 103); // bc  branch cnt
-    put36 (0,              & blk [0], 104); // lp  link ptr
-    put36 (0,              & blk [0], 105); // lc  link cnt
-    put36 (0,              & blk [0], 106); // aclp  acl ptr
-    put36 (0,              & blk [0], 107); // aclc  acl cnt
-    put36 (0,              & blk [0], 108); // actind  file activity indicator
-    put36 (0,              & blk [0], 109); // actime  file activity time
+    word36 segcnt = (bitcnt + 35) / 36;
+    putStr (8 + 00000, " z z z z z z z z z z z z z z z zThis is the beginning of a backup logical record.        z z z z z z z z z z z z z z z z", 30);
+    put36 (1024 - 32,      & blk [0], 8 + 00036); // hdrcnt
+    put36 (segcnt,         & blk [0], 8 + 00037); // segcnt
+    put36 (strlen (mpath), & blk [0], 8 + 00040);  // dlen
+    putStr (8 + 00041, mpath, 42);                // dname
+    put36 (strlen (name),  & blk [0], 8 + 00113); // elen
+    putStr (8 + 00114, name, 8);                  // ename
+    put36 (bitcnt,         & blk [0], 8 + 00124); // bitcnt
+    put36 (19,             & blk [0], 8 + 00125); // record type sec_seg
+    put36 (0,              & blk [0], 8 + 00126); // dtd
+    put36 (0,              & blk [0], 8 + 00127); // dtd
+    putStr (8 + 00130, "mdump", 8);               // dump procedure id
+    put36 (0000232000000,  & blk [0], 8 + 00140); // bp  branch ptr
+    put36 (1,              & blk [0], 8 + 00141); // bc  branch cnt
+    put36 (0,              & blk [0], 8 + 00142); // lp  link ptr
+    put36 (0,              & blk [0], 8 + 00143); // lc  link cnt
+    put36 (0,              & blk [0], 8 + 00144); // aclp  acl ptr
+    put36 (0,              & blk [0], 8 + 00145); // aclc  acl cnt
+    put36 (0,              & blk [0], 8 + 00146); // actind  file activity indicator
+    put36 (0,              & blk [0], 8 + 00147); // actime  file activity time
 
+    put36 (0,              & blk [0], 8 + 00150); // unknown  "Clayton."
+    put36 (0,              & blk [0], 8 + 00151); // unknown
+    put36 (0,              & blk [0], 8 + 00152); // unknown  "SysAdmin"
+    put36 (0,              & blk [0], 8 + 00153); // unknown
+    put36 (0,              & blk [0], 8 + 00154); // unknown  ".a      "
+    put36 (0,              & blk [0], 8 + 00155); // unknown
+    put36 (0,              & blk [0], 8 + 00156); // unknown  "        "
+    put36 (0,              & blk [0], 8 + 00157); // unknown
+
+    put36 (0,              & blk [0], 8 + 00160); // unknown  000000776000
+    put36 (0,              & blk [0], 8 + 00161); // unknown
+    put36 (0,              & blk [0], 8 + 00162); // unknown
+    put36 (0,              & blk [0], 8 + 00163); // unknown
+    put36 (0,              & blk [0], 8 + 00164); // unknown
+    put36 (0,              & blk [0], 8 + 00165); // unknown  000000000002
+    put36 (0,              & blk [0], 8 + 00166); // unknown  000274000000
+    put36 (0,              & blk [0], 8 + 00167); // unknown
+
+    put36 (0,              & blk [0], 8 + 00170); // unknown
+    put36 (0,              & blk [0], 8 + 00171); // unknown
+    put36 (0,              & blk [0], 8 + 00172); // unknown
+    put36 (0,              & blk [0], 8 + 00173); // unknown
+    put36 (0,              & blk [0], 8 + 00174); // unknown
+    put36 (0,              & blk [0], 8 + 00175); // unknown
+    put36 (0,              & blk [0], 8 + 00176); // unknown
+    put36 (0,              & blk [0], 8 + 00177); // unknown
+
+    put36 (0,              & blk [0], 8 + 00200); // unknown
+    put36 (0,              & blk [0], 8 + 00201); // unknown
+    put36 (0,              & blk [0], 8 + 00202); // unknown
+    put36 (0,              & blk [0], 8 + 00203); // unknown
+    put36 (0,              & blk [0], 8 + 00204); // unknown
+    put36 (0,              & blk [0], 8 + 00205); // unknown
+    put36 (0,              & blk [0], 8 + 00206); // unknown
+    put36 (0,              & blk [0], 8 + 00207); // unknown
+
+    put36 (0,              & blk [0], 8 + 00210); // unknown
+    put36 (0,              & blk [0], 8 + 00211); // unknown
+    put36 (0,              & blk [0], 8 + 00212); // unknown
+    put36 (0,              & blk [0], 8 + 00213); // unknown
+    put36 (0,              & blk [0], 8 + 00214); // unknown
+    put36 (0,              & blk [0], 8 + 00215); // unknown
+    put36 (0,              & blk [0], 8 + 00216); // unknown
+    put36 (0,              & blk [0], 8 + 00217); // unknown
+
+    put36 (0,              & blk [0], 8 + 00220); // unknown
+    put36 (0,              & blk [0], 8 + 00221); // unknown
+    put36 (0,              & blk [0], 8 + 00222); // unknown
+    put36 (0,              & blk [0], 8 + 00223); // unknown
+    put36 (0,              & blk [0], 8 + 00224); // unknown
+    put36 (0,              & blk [0], 8 + 00225); // unknown
+    put36 (0,              & blk [0], 8 + 00226); // unknown
+    put36 (0,              & blk [0], 8 + 00227); // unknown
+
+    put36 (0,              & blk [0], 8 + 00230); // unknown "Clayton."
+    put36 (0,              & blk [0], 8 + 00231); // unknown
+    put36 (0,              & blk [0], 8 + 00232); // unknown "SysAdmin"
+    put36 (0,              & blk [0], 8 + 00233); // unknown
+    put36 (0,              & blk [0], 8 + 00234); // unknown ".a      "
+    put36 (0,              & blk [0], 8 + 00235); // unknown
+    put36 (0,              & blk [0], 8 + 00236); // unknown "        "
+    put36 (0,              & blk [0], 8 + 00237); // unknown
+
+    put36 (0,              & blk [0], 8 + 00240); // unknown 000000000001
+    put36 (0,              & blk [0], 8 + 00241); // unknown 775600000000
+    put36 (0,              & blk [0], 8 + 00242); // unknown 000160000000
+    put36 (0,              & blk [0], 8 + 00243); // unknown
+    put36 (0,              & blk [0], 8 + 00244); // unknown
+    put36 (0,              & blk [0], 8 + 00245); // unknown 000010000000
+    put36 (0,              & blk [0], 8 + 00246); // unknown 000150000000
+    put36 (0,              & blk [0], 8 + 00247); // unknown
+
+    put36 (0,              & blk [0], 8 + 00250); // unknown
+    put36 (0,              & blk [0], 8 + 00251); // unknown
+    put36 (0,              & blk [0], 8 + 00252); // unknown
+    put36 (0,              & blk [0], 8 + 00253); // unknown
+    put36 (0,              & blk [0], 8 + 00254); // unknown
+    put36 (0,              & blk [0], 8 + 00255); // unknown
+    put36 (0,              & blk [0], 8 + 00256); // unknown
+    put36 (0,              & blk [0], 8 + 00257); // unknown
+
+    put36 (0,              & blk [0], 8 + 00260); // unknown
+    put36 (0,              & blk [0], 8 + 00261); // unknown
+    put36 (0,              & blk [0], 8 + 00262); // unknown
+    put36 (0,              & blk [0], 8 + 00263); // unknown
+    put36 (0,              & blk [0], 8 + 00264); // unknown
+    put36 (0,              & blk [0], 8 + 00265); // unknown 000000000005
+    put36 (0,              & blk [0], 8 + 00266); // unknown 
+    put36 (0,              & blk [0], 8 + 00267); // unknown 000005000000
+
+    put36 (0,              & blk [0], 8 + 00270); // unknown 000002000026
+    put36 (0,              & blk [0], 8 + 00271); // unknown 001000777750
+
+    // br (1); bp points here
+
+    put36 (0,              & blk [0], 8 + 00272); // vtoc_error, pad, uid
+    put36 (0,              & blk [0], 8 + 00273); // uid cont.
+    put36 (0,              & blk [0], 8 + 00274); // pad2, dtu
+    put36 (0,              & blk [0], 8 + 00275); // dtu cont.
+    put36 (0,              & blk [0], 8 + 00276); // pad3, dtm
+    put36 (0,              & blk [0], 8 + 00277); // dtm cont.
+    put36 (0,              & blk [0], 8 + 00300); // pad3, dtd
+    put36 (0,              & blk [0], 8 + 00301); // dtd cont.
+    put36 (0,              & blk [0], 8 + 00302); // pad3, dtbm
+    put36 (0,              & blk [0], 8 + 00303); // dtbm cont.
+    put36 (0,              & blk [0], 8 + 00304); // access class
+    put36 (0,              & blk [0], 8 + 00305); // access class cont.
+    // irsw bit (1), optionsw bit (2), bc bit (24), consistsw bit (2), 
+    // mode bit (5), usage bit (2)
+    put36 ((bitcnt << 9) | 050, & blk [0], 8 + 00306);
+    put36 (0000000001377,  & blk [0], 8 + 00307); // usagect bit (17), nomore bit (1), (cl, ml) bit (9)
+    put36 (0,              & blk [0], 8 + 00310); // acct
+    put36 (0,              & blk [0], 8 + 00311); // (hlim, llim) bit (17), multiple_class bit (1), pad7 bit (1)
+    put36 (0040404000000,  & blk [0], 8 + 00312); // (rb1, rb2, rb3) bit (6), pad8 bit (18)
+    put36 (0000000000260,  & blk [0], 8 + 00313); // (pad9, namerp) bit (18) namerp points to 8+314
+// XXX what is ix?
+    put36 (0000323400001,  & blk [0], 8 + 00314); // x bit (18), dump_me bit (1), nnames bit (17)
+
+
+
+    put36 (0,              & blk [0], 8 + 00315); // unknown
+    put36 (0,              & blk [0], 8 + 00316); // unknown 000026000014
+    put36 (0,              & blk [0], 8 + 00317); // unknown 001000777722
+    
+// relp 260, br name, pointed to by namerp
+    put36 (0000100000000,  & blk [0], 8 + 00320); // size bit (17) [32 here]
+    putStr (8 + 00321, name, 8); //  string character (32);
+
+
+
+    put36 (0,              & blk [0], 8 + 00331); // unknown
+    put36 (0,              & blk [0], 8 + 00332); // unknown 000014000026
+    put36 (0,              & blk [0], 8 + 00333); // unknown 001000777706
+    put36 (0,              & blk [0], 8 + 00334); // unknown 000000000001
+    put36 (0,              & blk [0], 8 + 00335); // unknown 162157157164 "root"
+    put36 (0,              & blk [0], 8 + 00336); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00337); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00340); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00341); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00342); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00343); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00344); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00345); // unknown 162157157164 "root"
+    put36 (0,              & blk [0], 8 + 00346); // unknown 063040040040 "3   "
+    put36 (0,              & blk [0], 8 + 00347); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00350); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00351); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00352); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00353); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00354); // unknown 040040040040
+    put36 (0,              & blk [0], 8 + 00355); // unknown 552342127741
+    put36 (0,              & blk [0], 8 + 00356); // unknown 265304163531
+    put36 (0,              & blk [0], 8 + 00357); // unknown 000000000000
+    put36 (0,              & blk [0], 8 + 00360); // unknown 000026000030
+    put36 (0,              & blk [0], 8 + 00361); // unknown 001000777660
+
+    // relp 0372 aclp
+    putStr (8 + 00362, "Clayton.SysAdmin.*              ", 8);
+    put36 (0500000000000,  & blk [0], 8 + 00372); 
+    put36 (0,              & blk [0], 8 + 00373); // unknown 0 AIM?
+    put36 (0,              & blk [0], 8 + 00374); // unknown 0 AIM?
+
+    // 2nd ACL, not used here
+    
   }
 
 static void dumpDir (char * mpath, char * fpath, char * name)
@@ -367,7 +546,7 @@ static void dumpDir (char * mpath, char * fpath, char * name)
 //printf ("%s\n", fname);
     zeroBlk ();
     setBckupHdr (0, 0);
-    setHdr (0, 0, 0, 0, 0);
+    setHdr (0, 0, 0, 0);
     writeBlk ();
 #endif
   }
@@ -405,8 +584,8 @@ static void dumpFile (char * mpath, char * fpath, char * name)
     // backup header
 
     zeroBlk ();
-    setBckupHdr (0, 0, mpath, name, bits);
-    setHdr (0, 0, 0, 0, 0);
+    setBckupHdr (mpath, name, bits);
+    setHdr (0110000, 0, 0, 0);
     writeBlk ();
 
     // data
@@ -428,7 +607,17 @@ static void dumpFile (char * mpath, char * fpath, char * name)
           }
         if (nr == 0) // EOF
           break;
-        setHdr (0, 0, 0, 0, 0);
+        if (nr != datasz_bytes)
+          {
+printf ("nr %lu\n", nr);
+            // round up to 256 word
+            // 256 * 36 / 8 = 1152
+            nr += 1152;
+            size_t modulus = nr % 1152;
+            nr -= modulus;
+printf ("nr %lu\n", nr);
+          }
+        setHdr (nr * 8, 0, 0, 0);
         writeBlk ();
       }
     close (datafd);
@@ -480,12 +669,15 @@ static void process (DIR * dirp, char * mpath, char * fpath)
     rewinddir (dirp);
     while ((entry = readdir (dirp)))
       {
-        if (strcmp (entry -> d_name, ".") == 0)
+        if (entry -> d_name [0] == '.')
           continue;
-        if (strcmp (entry -> d_name, "..") == 0)
-          continue;
+        //if (strcmp (entry -> d_name, ".") == 0)
+          //continue;
+        //if (strcmp (entry -> d_name, "..") == 0)
+          //continue;
         if (entry -> d_type == DT_REG)
           {
+//printf ("<%s> %d %lu\n", entry -> d_name, entry -> d_reclen, strlen (entry -> d_name)); 
             dumpFile (mpath, fpath, entry -> d_name);
           }
       }
@@ -504,7 +696,7 @@ int main (int argc, char * argv [])
         exit (1);
       }
 
-    tapefd = open (argv [2], O_RDWR | O_CREAT, 0644);
+    tapefd = open (argv [2], O_RDWR | O_CREAT | O_TRUNC, 0644);
     if (tapefd == -1)
       {
         perror ("tape open");
@@ -514,10 +706,11 @@ int main (int argc, char * argv [])
     // write label
     zeroBlk ();
     setLabel ();
-    setHdr (0001540, 1, 0, 1, 0001540);
+    setHdr (0001540, 1, 0, 1);
     writeBlk ();
     // write mark
-    writeMark ();
+    //writeMark (); handled in write block
+
 
     char * root = strdup (argv [1]);
     char * bn = basename (root);
@@ -529,4 +722,12 @@ int main (int argc, char * argv [])
 
     closedir (dirp);
 
+    writeMark ();
+
+    zeroBlk ();
+    setHdr (0, 0, 1, 1);
+    writeBlk ();
+
+    writeMark ();
+    writeMark ();
   }
