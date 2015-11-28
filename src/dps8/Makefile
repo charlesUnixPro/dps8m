@@ -341,7 +341,7 @@ zyre : ../lib/libzyre.so
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
-tags : $(C_SRCS) $(H_SRCS)
+tags : $(C_SRCS) $(H_SRCS) dps8_sha1_txt
 	-ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
@@ -355,11 +355,13 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 .PHONY : clean cleaner 
 
 clean:
-	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*))
+	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 
 cleaner: clean
 	(cd ../simhv40-beta; $(MAKE) clean)
 	(cd ../decNumber; $(MAKE) clean)
+
+dps8_sys.c : dps8_sha1_txt
 
 %.d: %.c
 	@set -e; rm -f $@; \
