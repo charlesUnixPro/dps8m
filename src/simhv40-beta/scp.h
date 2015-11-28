@@ -152,6 +152,7 @@ void sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...);
 #else
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...);
 #define sim_debug(dbits, dptr, ...) if (sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+void _sim_warn (const char* fmt, ...);
 void _sim_err (const char* fmt, ...);
 #endif
 void fprint_stopped_gen (FILE *st, t_stat v, REG *pc, DEVICE *dptr);

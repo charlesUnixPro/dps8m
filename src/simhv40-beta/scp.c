@@ -7104,6 +7104,88 @@ if (sim_deb && ((dptr->dctrl & dbits) || dbits == 0)) {
     }
 return;
 }
+void _sim_warn (const char* fmt, ...)
+{
+
+    char stackbuf[STACKBUFSIZE];
+    int32 bufsize = sizeof(stackbuf);
+    char *buf = stackbuf;
+    va_list arglist;
+    int32 i, j, len;
+    sprintf(debug_line_prefix, "DBG(%lld)> WARN WARN: ", sim_gtime());
+
+    buf[bufsize-1] = '\0';
+
+    while (1) {                                         /* format passed string, args */
+        va_start (arglist, fmt);
+#if defined(NO_vsnprintf)
+#if defined(HAS_vsprintf_void)
+
+/* Note, this could blow beyond the buffer, and we couldn't tell */
+/* That is a limitation of the C runtime library available on this platform */
+
+        vsprintf (buf, fmt, arglist);
+        for (len = 0; len < bufsize-1; len++)
+            if (buf[len] == 0) break;
+#else
+        len = vsprintf (buf, fmt, arglist);
+#endif                                                  /* HAS_vsprintf_void */
+#else                                                   /* NO_vsnprintf */
+#if defined(HAS_vsnprintf_void)
+        vsnprintf (buf, bufsize-1, fmt, arglist);
+        for (len = 0; len < bufsize-1; len++)
+            if (buf[len] == 0) break;
+#else
+        len = vsnprintf (buf, bufsize-1, fmt, arglist);
+#endif                                                  /* HAS_vsnprintf_void */
+#endif                                                  /* NO_vsnprintf */
+        va_end (arglist);
+
+/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
+
+        if ((len < 0) || (len >= bufsize-1)) {
+            if (buf != stackbuf)
+                free (buf);
+            bufsize = bufsize * 2;
+            buf = (char *) malloc (bufsize);
+            if (buf == NULL)                            /* out of memory */
+                return;
+            buf[bufsize-1] = '\0';
+            continue;
+            }
+        break;
+        }
+
+/* Output the formatted data expanding newlines where they exist */
+
+    for (i = j = 0; i < len; ++i) {
+        if ('\n' == buf[i]) {
+            if (i >= j) {
+                if ((i != j) || (i == 0)) {
+                    if (debug_unterm)
+                        fprintf (sim_deb ? sim_deb : stderr, "%.*s\r\n", i-j, &buf[j]);
+                    else                                /* print prefix when required */
+                        fprintf (sim_deb ? sim_deb : stderr, "%s%.*s\r\n", debug_line_prefix, i-j, &buf[j]);
+                    }
+                debug_unterm = 0;
+                }
+            j = i + 1;
+            }
+        }
+    if (i > j) {
+        if (debug_unterm)
+            fprintf (sim_deb ? sim_deb : stderr, "%.*s", i-j, &buf[j]);
+        else                                        /* print prefix when required */
+            fprintf (sim_deb ? sim_deb : stderr, "%s%.*s", debug_line_prefix, i-j, &buf[j]);
+        }
+
+/* Set unterminated flag for next time */
+
+    debug_unterm = (len && (buf[len-1]=='\n')) ? 0 : 1;
+    if (buf != stackbuf)
+        free (buf);
+return;
+}
 void _sim_err (const char* fmt, ...)
 {
 
