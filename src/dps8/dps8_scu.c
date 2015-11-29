@@ -825,12 +825,11 @@ static uint64 getSCUclock (void)
 
     MulticsuSecs += userCorrection;
 
-    static uint64 lastRccl;                    //  value from last call
+    static uint64 lastRccl = 0;                    //  value from last call
  
-    if (MulticsuSecs == lastRccl)
-        lastRccl = MulticsuSecs + 1;
-    else
-        lastRccl = MulticsuSecs;
+    if (lastRccl >= MulticsuSecs)
+        MulticsuSecs = lastRccl + 1;
+    lastRccl = MulticsuSecs;
 
     return lastRccl;
 
