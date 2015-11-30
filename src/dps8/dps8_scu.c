@@ -818,6 +818,13 @@ static uint64 getSCUclock (void)
     uint64 UnixSecs = (uint64) now.tv_sec;
     uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;
    
+    static uint64 lastUnixuSecs = 0;
+    if (UnixuSecs < lastUnixuSecs)
+      {
+        sim_warn ("gettimeofday() went backwards %ld uS\n", lastUnixuSecs - lastUnixuSecs);
+      }
+    lastUnixuSecs = UnixuSecs;
+
     // now determine uSecs since Jan 1, 1901 ...
     uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
  
