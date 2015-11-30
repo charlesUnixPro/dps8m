@@ -1542,21 +1542,26 @@ void scd ()
 
     uint yCharn11;
     uint yCharn12;
-    uint limit = e -> N1 - 1;
-
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    if (e -> N1)
       {
-        yCharn11 = EISget469 (1, du . CHTALLY);
-        yCharn12 = EISget469 (1, du . CHTALLY + 1);
-        if (yCharn11 == c1 && yCharn12 == c2)
-          break;
+        uint limit = e -> N1 - 1;
+        for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+          {
+            yCharn11 = EISget469 (1, du . CHTALLY);
+            yCharn12 = EISget469 (1, du . CHTALLY + 1);
+            if (yCharn11 == c1 && yCharn12 == c2)
+              break;
+          }
+        SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
+      }
+    else
+      {
+        SCF(true, cu . IR, I_TALLY);
       }
     
     word36 CY3 = bitfieldInsert36 (0, du . CHTALLY, 0, 24);
-    
-    SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
-    
     EISWriteIdx (& e -> ADDR3, 0, CY3);
+
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
@@ -1656,24 +1661,29 @@ void scdr (void)
     
     uint yCharn11;
     uint yCharn12;
-    uint limit = e -> N1 - 1;
-    
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+
+    if (e -> N1)
       {
-        yCharn11 = EISget469 (1, limit - du . CHTALLY - 1);
-        yCharn12 = EISget469 (1, limit - du . CHTALLY);
+        uint limit = e -> N1 - 1;
+    
+        for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+          {
+            yCharn11 = EISget469 (1, limit - du . CHTALLY - 1);
+            yCharn12 = EISget469 (1, limit - du . CHTALLY);
         
-        if (yCharn11 == c1 && yCharn12 == c2)
-            break;
+            if (yCharn11 == c1 && yCharn12 == c2)
+                break;
+          }
+        SCF(du . CHTALLY == limit, cu . IR, I_TALLY);
       }
-    
+    else
+      {
+        SCF(true, cu . IR, I_TALLY);
+      }
+
     word36 CY3 = bitfieldInsert36(0, du . CHTALLY, 0, 24);
-    
-    SCF(du . CHTALLY == limit, cu . IR, I_TALLY);
-    
-    // write Y3 .....
-    //Write (y3, CY3, OperandWrite, 0);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
+
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
@@ -8827,12 +8837,6 @@ void dv3d (void)
     
     decContext set;
     decContextDefaultDPS8(&set);
-    
-    if (R)
-        set.round = DEC_ROUND_UP;
-    else
-        set.round = DEC_ROUND_DOWN;
-    
     set.traps=0;
     
     decNumber _1, _2, _3;
