@@ -8837,6 +8837,12 @@ void dv3d (void)
     
     decContext set;
     decContextDefaultDPS8(&set);
+    
+    if (R)
+        set.round = DEC_ROUND_UP;
+    else
+        set.round = DEC_ROUND_DOWN;
+    
     set.traps=0;
     
     decNumber _1, _2, _3;
