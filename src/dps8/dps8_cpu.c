@@ -149,9 +149,6 @@ const char *sim_stop_messages[] = {
  *
  */
 
-static uint64_t lufCounter;
-
-
 /*
  * init_opcodes()
  *
@@ -1225,7 +1222,7 @@ static uint get_highest_intr (void)
 
 bool sample_interrupts (void)
   {
-    lufCounter = 0;
+    CPU -> lufCounter = 0;
     for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
         if (CPU -> events . XIP [scuUnitNum])
@@ -1355,8 +1352,6 @@ static void setCpuCycle (cycles_t cycle)
 // other extant cycles:
 //  ABORT_cycle
 
-static word36 instr_buf [2];
-
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
@@ -1448,10 +1443,9 @@ last = M[01007040];
             slowQueueSubsample = 0;
             rdrProcessEvent (); 
           }
-        static uint queueSubsample = 0;
-        if (queueSubsample ++ > 10240) // ~ 100Hz
+        if (CPU -> queueSubsample ++ > 10240) // ~ 100Hz
           {
-            queueSubsample = 0;
+            CPU -> queueSubsample = 0;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
@@ -1502,10 +1496,9 @@ last = M[01007040];
              // instead of breaking.
 
 #ifdef REAL_TR
-        static uint trSubsample = 0;
-        if (trSubsample ++ > 1024)
+        if (CPU -> trSubsample ++ > 1024)
           {
-            trSubsample = 0;
+            CPU -> trSubsample = 0;
             bool overrun;
             UNUSED word27 CPU -> rTR = getTR (& overrun);
             if (overrun)
@@ -1518,13 +1511,12 @@ last = M[01007040];
           }
 #else
         // Sync. the TR with the emulator clock.
-        static uint rTRlsb = 0;
-        rTRlsb ++;
+        CPU -> rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (rTRlsb >= CPU -> switches . trlsb)
+        if (CPU -> rTRlsb >= CPU -> switches . trlsb)
           {
-            rTRlsb = 0;
+            CPU -> rTRlsb = 0;
             CPU -> rTR = (CPU -> rTR - 1) & MASK27;
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", CPU -> rTR);
             if (CPU -> rTR == 0) // passing thorugh 0...
@@ -1591,7 +1583,7 @@ last = M[01007040];
                           }
 #endif
                         // get interrupt pair
-                        core_read2 (intr_pair_addr, instr_buf, instr_buf + 1, __func__);
+                        core_read2 (intr_pair_addr, CPU -> instr_buf, CPU -> instr_buf + 1, __func__);
 
                         cpu . interrupt_flag = false;
                         setCpuCycle (INTERRUPT_EXEC_cycle);
@@ -1621,9 +1613,9 @@ last = M[01007040];
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
-                  CPU -> cu . IWB = instr_buf [0];
+                  CPU -> cu . IWB = CPU -> instr_buf [0];
                 else
-                  CPU -> cu . IWB = instr_buf [1];
+                  CPU -> cu . IWB = CPU -> instr_buf [1];
 
                 if (GET_I (CPU -> cu . IWB))
                   cpu . wasInhibited = true;
@@ -1724,12 +1716,12 @@ last = M[01007040];
                     cpu . g7_flag = false;
                     doG7Fault ();
                   }
-                lufCounter ++;
+                CPU -> lufCounter ++;
 
                 // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
-                if (lufCounter > 32000)
+                if (CPU -> lufCounter > 32000)
                   {
-                    lufCounter = 0;
+                    CPU -> lufCounter = 0;
                     doFault (FAULT_LUF, 0, "instruction cycle lockup");
                   }
 
@@ -1947,7 +1939,7 @@ last = M[01007040];
                     multipassStatsPtr -> faultNumber = cpu . faultNumber;
                   }
 #endif
-                core_read2 (addr, instr_buf, instr_buf + 1, __func__);
+                core_read2 (addr, CPU -> instr_buf, CPU -> instr_buf + 1, __func__);
 
                 setCpuCycle (FAULT_EXEC_cycle);
 
@@ -1961,9 +1953,9 @@ last = M[01007040];
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu . cycle == FAULT_EXEC_cycle)
-                  CPU -> cu . IWB = instr_buf [0];
+                  CPU -> cu . IWB = CPU -> instr_buf [0];
                 else
-                  CPU -> cu . IWB = instr_buf [1];
+                  CPU -> cu . IWB = CPU -> instr_buf [1];
 
                 if (GET_I (CPU -> cu . IWB))
                   cpu . wasInhibited = true;
@@ -2527,23 +2519,19 @@ int is_priv_mode(void)
 }
 
 
-static bool secret_addressing_mode;
-// XXX loss of data on page fault: ticket #5
-static bool went_appending; // we will go....
-
 void set_went_appending (void)
   {
-    went_appending = true;
+    CPU -> went_appending = true;
   }
 
 void clr_went_appending (void)
   {
-    went_appending = false;
+    CPU -> went_appending = false;
   }
 
 bool get_went_appending (void)
   {
-    return went_appending;
+    return CPU -> went_appending;
   }
 
 /*
@@ -2558,15 +2546,15 @@ bool get_went_appending (void)
 
 static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
-    secret_addressing_mode = true;
-    went_appending = false;
+    CPU -> secret_addressing_mode = true;
+    CPU -> went_appending = false;
 }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
-    secret_addressing_mode = false;
-    //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", went_appending ? "true" : "false");
-    return went_appending;
+    CPU -> secret_addressing_mode = false;
+    //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", CPU -> went_appending ? "true" : "false");
+    return CPU -> went_appending;
 }
 
 /* 
@@ -2575,15 +2563,15 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
  *   direct us to ignore the I_NBAR indicator register.
  */
 bool get_bar_mode(void) {
-  return !(secret_addressing_mode || TSTF(CPU -> cu.IR, I_NBAR));
+  return !(CPU -> secret_addressing_mode || TSTF(CPU -> cu.IR, I_NBAR));
 }
 
 addr_modes_t get_addr_mode(void)
 {
-    if (secret_addressing_mode)
+    if (CPU -> secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
-    if (went_appending)
+    if (CPU -> went_appending)
         return APPEND_mode;
 
     if (TSTF(CPU -> cu.IR, I_ABS))
@@ -2617,15 +2605,15 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
-    went_appending = false;
+    CPU -> went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
 //   case or ITx.
-    //if (secret_addressing_mode && mode == APPEND_mode)
+    //if (CPU -> secret_addressing_mode && mode == APPEND_mode)
       //set_went_appending ();
 
-    secret_addressing_mode = false;
+    CPU -> secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
 

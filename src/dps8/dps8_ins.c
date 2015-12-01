@@ -7489,8 +7489,6 @@ void doRCU (void)
   }
 
 #ifdef REAL_TR
-static uint timerRegVal;
-static struct timeval timerRegT0;
 //static bool overrunAck;
 
 void setTR (word27 val)
@@ -7498,17 +7496,17 @@ void setTR (word27 val)
     val &= MASK27;
     if (val)
       {
-        timerRegVal = val & MASK27;
+        CPU -> timerRegVal = val & MASK27;
       }
     else
       {
         // Special case
-        timerRegVal = -1 & MASK27;
+        CPU -> timerRegVal = -1 & MASK27;
       }
-    gettimeofday (& timerRegT0, NULL);
+    gettimeofday (& CPU -> timerRegT0, NULL);
     //overrunAck = false;
 
-//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
+//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, CPU -> timerRegVal, CPU -> timerRegT0 . tv_sec, CPU -> timerRegT0 . tv_usec);
   }
 
 word27 getTR (bool * runout)
@@ -7516,7 +7514,7 @@ word27 getTR (bool * runout)
 #if 0
     struct timeval tnow, tdelta;
     gettimeofday (& tnow, NULL);
-    timersub (& tnow, & timerRegT0, & tdelta);
+    timersub (& tnow, & CPU -> timerRegT0, & tdelta);
     // 1000000 can be represented in 20 bits; so in a 64 bit word, we have room for
     // 44 bits of seconds, way more then enough.
     // Do 64 bit math; much faster.
@@ -7530,15 +7528,15 @@ word27 getTR (bool * runout)
     uint128 t0us, tnowus, delta;
     struct timeval tnow;
     gettimeofday (& tnow, NULL);
-    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
+    t0us = CPU -> timerRegT0 . tv_sec * 1000000 + CPU -> timerRegT0 . tv_usec;
     tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
     //delta = (tnowus - t0us) / 1.953125
     delta = ((tnowus - t0us) * 1000000) / 1953125;
 #endif
     if (runout)
-     //* runout = (! overrunAck) && delta > timerRegVal;
-     * runout = delta > timerRegVal;
-    word27 val = (timerRegVal - delta) & MASK27;
+     //* runout = (! overrunAck) && delta > CPU -> timerRegVal;
+     * runout = delta > CPU -> timerRegVal;
+    word27 val = (CPU -> timerRegVal - delta) & MASK27;
 //if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
     return val;
   }
