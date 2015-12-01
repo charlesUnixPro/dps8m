@@ -46,51 +46,51 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    cu . APUCycleBits = status & 07770;
+    CPU -> cu . APUCycleBits = status & 07770;
 #else
-    cu . PI_AP = 0;
-    cu . DSPTW = 0;
-    cu . SDWNP = 0;
-    cu . SDWP  = 0;
-    cu . PTW   = 0;
-    cu . PTW2  = 0;
-    cu . FAP   = 0;
-    cu . FANP  = 0;
-    cu . FABS  = 0;
+    CPU -> cu . PI_AP = 0;
+    CPU -> cu . DSPTW = 0;
+    CPU -> cu . SDWNP = 0;
+    CPU -> cu . SDWP  = 0;
+    CPU -> cu . PTW   = 0;
+    CPU -> cu . PTW2  = 0;
+    CPU -> cu . FAP   = 0;
+    CPU -> cu . FANP  = 0;
+    CPU -> cu . FABS  = 0;
     switch (status)
       {
         case apuStatus_PI_AP:
-          cu . PI_AP = 1;
+          CPU -> cu . PI_AP = 1;
           break;
         case apuStatus_DSPTW:
         case apuStatus_MDSPTW: // XXX this doesn't seem like the right solution.
                                // XXX there is a MDSPTW bit in the APU history
                                // register, but not in the CU.
-          cu . DSPTW = 1;
+          CPU -> cu . DSPTW = 1;
           break;
         case apuStatus_SDWNP:
-          cu . SDWNP = 1;
+          CPU -> cu . SDWNP = 1;
           break;
         case apuStatus_SDWP:
-          cu . SDWP  = 1;
+          CPU -> cu . SDWP  = 1;
           break;
         case apuStatus_PTW:
         case apuStatus_MPTW: // XXX this doesn't seem like the right solution.
                              // XXX there is a MPTW bit in the APU history
                              // XXX register, but not in the CU.
-          cu . PTW   = 1;
+          CPU -> cu . PTW   = 1;
           break;
         case apuStatus_PTW2:
-          cu . PTW2  = 1;
+          CPU -> cu . PTW2  = 1;
           break;
         case apuStatus_FAP:
-          cu . FAP   = 1;
+          CPU -> cu . FAP   = 1;
           break;
         case apuStatus_FANP:
-          cu . FANP  = 1;
+          CPU -> cu . FANP  = 1;
           break;
         case apuStatus_FABS:
-          cu . FABS  = 1;
+          CPU -> cu . FABS  = 1;
           break;
       }
 #endif
@@ -117,8 +117,8 @@ static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNO
 
 void doPtrReg(void)
 {
-    word3 n = GET_PRN(cu.IWB);  // get PRn
-    word15 offset = GET_OFFSET(cu.IWB);
+    word3 n = GET_PRN(CPU -> cu.IWB);  // get PRn
+    word15 offset = GET_OFFSET(CPU -> cu.IWB);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, PAR[n].SNR, PAR[n].RNR, PAR[n].WORDNO, PAR[n].BITNO);
     TPR.TSR = PAR[n].SNR;
@@ -336,7 +336,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
     int nwam = 64;
-    if (switches . disable_wam)
+    if (CPU -> switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
         nwam = 1;
@@ -531,7 +531,7 @@ static void loadSDWAM(word15 segno)
     SDW = & SDWAM0;
             
 #else
-    if (switches . disable_wam)
+    if (CPU -> switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
         _sdw *p = &SDWAM[0];
@@ -617,7 +617,7 @@ static void loadSDWAM(word15 segno)
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
     int nwam = 64;
-    if (switches . disable_wam)
+    if (CPU -> switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
         nwam = 1;
@@ -685,7 +685,7 @@ static void loadPTWAM(word15 segno, word18 offset)
             
     PTW = & PTWAM0;
 #else
-    if (switches . disable_wam)
+    if (CPU -> switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
         _ptw *p = &PTWAM[0];

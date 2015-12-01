@@ -665,8 +665,6 @@ typedef struct
     bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
-extern events_t events;
-
 // Physical Switches
 
 typedef struct
@@ -712,56 +710,6 @@ typedef struct
     uint serno;
   } switches_t;
 
-extern switches_t switches;
-
-
-// More emulator state variables for the cpu
-// These probably belong elsewhere, perhaps control unit data or the
-// cu-history regs...
-
-typedef struct
-  {
-    cycles_t cycle;
-    uint IC_abs; // translation of odd IC to an absolute address; see
-                 // ADDRESS of cu history
-    bool irodd_invalid;
-                // cached odd instr invalid due to memory write by even instr
-
-    // The following are all from the control unit history register:
-
-    bool trgo;               // most recent instruction caused a transfer?
-    bool ic_odd;             // executing odd pair?
-    bool poa;                // prepare operand address
-    uint opcode;             // currently executing opcode
-    struct
-      {
-        bool fhld; // An access violation or directed fault is waiting.
-                   // AL39 mentions that the APU has this flag, but not
-                   // where scpr stores it
-      } apu_state;
-
-    bool interrupt_flag;     // an interrupt is pending in this cycle
-    bool g7_flag;            // a g7 fault is pending in this cycle;
-    _fault faultNumber;      // fault number saved by doFault
-    _fault_subtype subFault; // saved by doFault
-
-    bool wasXfer;  // The previous instruction was a transfer
-
-    bool wasInhibited; // One or both of the previous instruction 
-                       // pair was interrupr inhibited.
-    DCDstruct currentInstruction;
-    EISstruct currentEISinstruction;
-  } cpu_state_t;
-
-#ifdef MULTI_CPU
-extern cpu_state_t cpu [N_CPU_UNITS_MAX];
-extern uint currentRunningCPUnum;
-extern cpu_state_t * restrict CPU;
-#else
-extern cpu_state_t cpu;
-#define CPU (& cpu)
-#define currentRunningCPUnum 0
-#endif
 
 // Control unit data (288 bits) 
 
@@ -939,8 +887,6 @@ typedef struct
     
  } ctl_unit_data_t;
 
-extern ctl_unit_data_t cu;
-
 // Control unit data (288 bits) 
 
 typedef struct du_unit_data_t
@@ -1077,9 +1023,58 @@ typedef struct du_unit_data_t
 
   } du_unit_data_t;
 
-extern du_unit_data_t du;
+// More emulator state variables for the cpu
+// These probably belong elsewhere, perhaps control unit data or the
+// cu-history regs...
 
+typedef struct
+  {
+    cycles_t cycle;
+    uint IC_abs; // translation of odd IC to an absolute address; see
+                 // ADDRESS of cu history
+    bool irodd_invalid;
+                // cached odd instr invalid due to memory write by even instr
 
+    // The following are all from the control unit history register:
+
+    bool trgo;               // most recent instruction caused a transfer?
+    bool ic_odd;             // executing odd pair?
+    bool poa;                // prepare operand address
+    uint opcode;             // currently executing opcode
+    struct
+      {
+        bool fhld; // An access violation or directed fault is waiting.
+                   // AL39 mentions that the APU has this flag, but not
+                   // where scpr stores it
+      } apu_state;
+
+    bool interrupt_flag;     // an interrupt is pending in this cycle
+    bool g7_flag;            // a g7 fault is pending in this cycle;
+    _fault faultNumber;      // fault number saved by doFault
+    _fault_subtype subFault; // saved by doFault
+
+    bool wasXfer;  // The previous instruction was a transfer
+
+    bool wasInhibited; // One or both of the previous instruction 
+                       // pair was interrupr inhibited.
+    DCDstruct currentInstruction;
+    EISstruct currentEISinstruction;
+    events_t events;
+    switches_t switches;
+    ctl_unit_data_t cu;
+    du_unit_data_t du;
+    word36 faultRegister [2];
+  } cpu_state_t;
+
+#ifdef MULTI_CPU
+extern cpu_state_t cpu [N_CPU_UNITS_MAX];
+extern uint currentRunningCPUnum;
+extern cpu_state_t * restrict CPU;
+#else
+extern cpu_state_t cpu;
+#define CPU (& cpu)
+#define currentRunningCPUnum 0
+#endif
 
 // XXX when multiple cpus are supported, make the cpu  data structure
 // an array and merge the unit state info into here; coding convention
@@ -1088,9 +1083,6 @@ extern du_unit_data_t du;
 // should then be renamed.
 
 #define N_CPU_UNITS_MAX 1
-
-word36 faultRegister [2];
-
 
 //extern int stop_reason;     // sim_instr return value for JMP_STOP
 //void cancel_run (t_stat reason);

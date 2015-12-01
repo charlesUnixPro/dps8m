@@ -512,37 +512,37 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     if (faultNumber == FAULT_IPR)
       {
         if (subFault == ill_op)
-          faultRegister [0] |= FR_ILL_OP;
+          CPU -> faultRegister [0] |= FR_ILL_OP;
         else if (subFault == ill_mod)
-          faultRegister [0] |= FR_ILL_MOD;
+          CPU -> faultRegister [0] |= FR_ILL_MOD;
         else if (subFault == ill_dig)
-          faultRegister [0] |= FR_ILL_DIG;
+          CPU -> faultRegister [0] |= FR_ILL_DIG;
         else /* if (subFault == ill_proc) */ // and all others
-          faultRegister [0] |= FR_ILL_PROC;
+          CPU -> faultRegister [0] |= FR_ILL_PROC;
       }
     else if (faultNumber == FAULT_ONC && subFault == nem)
       {
-        faultRegister [0] |= FR_NEM;
+        CPU -> faultRegister [0] |= FR_NEM;
       }
     else if (faultNumber == FAULT_STR && subFault == oob)
       {
-        faultRegister [0] |= FR_OOB;
+        CPU -> faultRegister [0] |= FR_OOB;
       }
     else if (faultNumber == FAULT_CON)
       {
         switch (subFault)
           {
             case 0:
-              faultRegister [0] |= FR_CON_A;
+              CPU -> faultRegister [0] |= FR_CON_A;
               break;
             case 1:
-              faultRegister [0] |= FR_CON_B;
+              CPU -> faultRegister [0] |= FR_CON_B;
               break;
             case 2:
-              faultRegister [0] |= FR_CON_C;
+              CPU -> faultRegister [0] |= FR_CON_C;
               break;
             case 3:
-              faultRegister [0] |= FR_CON_D;
+              CPU -> faultRegister [0] |= FR_CON_D;
               break;
             default:
               break;
@@ -551,38 +551,38 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     // Set cu word1 fault bits
 
-    cu . IRO_ISN = 0;
-    cu . OEB_IOC = 0;
-    cu . EOFF_IAIM = 0;
-    cu . ORB_ISP = 0;
-    cu . ROFF_IPR = 0;
-    cu . OWB_NEA = 0;
-    cu . WOFF_OOB = 0;
-    cu . NO_GA = 0;
-    cu . OCB = 0;
-    cu . OCALL = 0;
-    cu . BOC = 0;
-    cu . PTWAM_ER = 0;
-    cu . CRT = 0;
-    cu . RALR = 0;
-    cu . SWWAM_ER = 0;
-    cu . OOSB = 0;
-    cu . PARU = 0;
-    cu . PARL = 0;
-    cu . ONC1 = 0;
-    cu . ONC2 = 0;
-    cu . IA = 0;
-    cu . IACHN = 0;
-    cu . CNCHN = 0;
+    CPU -> cu . IRO_ISN = 0;
+    CPU -> cu . OEB_IOC = 0;
+    CPU -> cu . EOFF_IAIM = 0;
+    CPU -> cu . ORB_ISP = 0;
+    CPU -> cu . ROFF_IPR = 0;
+    CPU -> cu . OWB_NEA = 0;
+    CPU -> cu . WOFF_OOB = 0;
+    CPU -> cu . NO_GA = 0;
+    CPU -> cu . OCB = 0;
+    CPU -> cu . OCALL = 0;
+    CPU -> cu . BOC = 0;
+    CPU -> cu . PTWAM_ER = 0;
+    CPU -> cu . CRT = 0;
+    CPU -> cu . RALR = 0;
+    CPU -> cu . SWWAM_ER = 0;
+    CPU -> cu . OOSB = 0;
+    CPU -> cu . PARU = 0;
+    CPU -> cu . PARL = 0;
+    CPU -> cu . ONC1 = 0;
+    CPU -> cu . ONC2 = 0;
+    CPU -> cu . IA = 0;
+    CPU -> cu . IACHN = 0;
+    CPU -> cu . CNCHN = 0;
 
     // Set control unit 'fault occured during instruction fetch' flag
-    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
-    cu . FI_ADDR = faultNumber;
+    CPU -> cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
+    CPU -> cu . FI_ADDR = faultNumber;
 
     // Assume no
     // Reading Multics source, it seems like Multics is setting this bit; I'm going
     // to assume that the h/w also sets it to 0, and the s/w has to explicitly set it on.
-    cu . rfi = 0;
+    CPU -> cu . rfi = 0;
 
     if (faultNumber == FAULT_ACV)
       {
@@ -592,67 +592,67 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         // cu . word1_upper_half = subFault.
 
         if (subFault & ACV0)
-          cu . IRO_ISN = 1;
+          CPU -> cu . IRO_ISN = 1;
         if (subFault & ACV1)
-          cu . OEB_IOC = 1;
+          CPU -> cu . OEB_IOC = 1;
         if (subFault & ACV2)
-          cu . EOFF_IAIM = 1;
+          CPU -> cu . EOFF_IAIM = 1;
         if (subFault & ACV3)
-          cu . ORB_ISP = 1;
+          CPU -> cu . ORB_ISP = 1;
         if (subFault & ACV4)
-          cu . ROFF_IPR = 1;
+          CPU -> cu . ROFF_IPR = 1;
         if (subFault & ACV5)
-          cu . OWB_NEA = 1;
+          CPU -> cu . OWB_NEA = 1;
         if (subFault & ACV6)
-          cu . WOFF_OOB = 1;
+          CPU -> cu . WOFF_OOB = 1;
         if (subFault & ACV7)
-          cu . NO_GA = 1;
+          CPU -> cu . NO_GA = 1;
         if (subFault & ACV8)
-          cu . OCB = 1;
+          CPU -> cu . OCB = 1;
         if (subFault & ACV9)
-          cu . OCALL = 1;
+          CPU -> cu . OCALL = 1;
         if (subFault & ACV10)
-          cu . BOC = 1;
+          CPU -> cu . BOC = 1;
         if (subFault & ACV11)
-          cu . PTWAM_ER = 1;
+          CPU -> cu . PTWAM_ER = 1;
         if (subFault & ACV12)
-          cu . CRT = 1;
+          CPU -> cu . CRT = 1;
         if (subFault & ACV13)
-          cu . RALR = 1;
+          CPU -> cu . RALR = 1;
         if (subFault & ACV14)
-          cu . SWWAM_ER = 1;
+          CPU -> cu . SWWAM_ER = 1;
         if (subFault & ACV15)
-          cu . OOSB = 1;
+          CPU -> cu . OOSB = 1;
       }
     else if (faultNumber == FAULT_STR)
       {
         if (subFault == oob)
-          cu . WOFF_OOB = 1;
+          CPU -> cu . WOFF_OOB = 1;
         else if (subFault == ill_ptr)
-          cu . WOFF_OOB = 1;
+          CPU -> cu . WOFF_OOB = 1;
         // Not used by SCU 4MW
         // else if (subFault == not_control)
-          // cu . WOFF_OOB;
+          // CPU -> cu . WOFF_OOB;
       }
     else if (faultNumber == FAULT_IPR)
       {
         if (subFault == ill_op)
-          cu . OEB_IOC = 1;
+          CPU -> cu . OEB_IOC = 1;
         else if (subFault == ill_mod)
-          cu . EOFF_IAIM = 1;
+          CPU -> cu . EOFF_IAIM = 1;
         else if (subFault == ill_slv)
-          cu . ORB_ISP = 1;
+          CPU -> cu . ORB_ISP = 1;
         else if (subFault == ill_dig)
-          cu . ROFF_IPR = 1;
+          CPU -> cu . ROFF_IPR = 1;
         // else if (subFault == ill_proc)
-          // cu . ? = 1;
+          // CPU -> cu . ? = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
         if (subFault == lprpn_bits)
-          cu . IA = 0;
+          CPU -> cu . IA = 0;
         else if (subFault == not_control)
-          cu . IA = 010;
+          CPU -> cu . IA = 010;
       }
 
     // If already in a FAULT CYCLE then signal trouble fault
@@ -661,7 +661,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         cpu . cycle == FAULT_EXEC2_cycle)
       {
         cpu . faultNumber = FAULT_TRB;
-        cu . FI_ADDR = FAULT_TRB;
+        CPU -> cu . FI_ADDR = FAULT_TRB;
         cpu . subFault = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
         if (bTroubleFaultCycle)
@@ -746,7 +746,7 @@ void doG7Fault (void)
        {
          g7Faults &= ~(1u << FAULT_CON);
 
-         cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
+         CPU -> cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
          doFault (FAULT_CON, g7SubFaults [FAULT_CON], "Connect"); 
        }
 

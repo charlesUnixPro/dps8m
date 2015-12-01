@@ -652,7 +652,7 @@ static bool EISgetBitRWN (EISaddr * p)
   {
     int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
     int baseBitPosn = baseCharPosn + p -> bPos;
-    baseBitPosn += du . CHTALLY;
+    baseBitPosn += CPU -> du . CHTALLY;
 
     int bitPosn = baseBitPosn % 36;
     int woff = baseBitPosn / 36;
@@ -744,13 +744,13 @@ static void setupOperandDescriptor (int k)
     switch (k)
       {
         case 1:
-          e -> MF1 = getbits36 (cu . IWB, 29, 7);
+          e -> MF1 = getbits36 (CPU -> cu . IWB, 29, 7);
           break;
         case 2:
-          e -> MF2 = getbits36 (cu . IWB, 11, 7);
+          e -> MF2 = getbits36 (CPU -> cu . IWB, 11, 7);
           break;
         case 3:
-          e -> MF3 = getbits36 (cu . IWB,  2, 7);
+          e -> MF3 = getbits36 (CPU -> cu . IWB,  2, 7);
           break;
       }
     
@@ -1249,16 +1249,16 @@ static void cleanupOperandDescriptor (int k)
 
 void a4bd (void)
   {
-    uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-    uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
   
     uint augend = 0;
-    if (GET_A (cu . IWB))
+    if (GET_A (CPU -> cu . IWB))
        augend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
     uint addend = address * 32 + r * 4;
     uint sum = augend + addend;
@@ -1281,15 +1281,15 @@ void a4bd (void)
 
 void s4bd (void)
   {
-    uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-    uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
     uint minuend = 0;
-    if (GET_A (cu . IWB))
+    if (GET_A (CPU -> cu . IWB))
        minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
     uint subtractend = address * 32 + r * 4;
     uint difference = minuend - subtractend;
@@ -1311,16 +1311,16 @@ void s4bd (void)
 
 void axbd (uint sz)
   {
-    uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-    uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
   
     uint augend = 0;
-    if (GET_A (cu . IWB))
+    if (GET_A (CPU -> cu . IWB))
        augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
     uint addend = address * 36 + r * sz;
     uint sum = augend + addend;
@@ -1333,15 +1333,15 @@ void axbd (uint sz)
 
 void sxbd (uint sz)
   {
-    uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
-    uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
+    uint ARn = GET_ARN (CPU -> cu . IWB);
+    word18 address = SIGNEXT15_18 (GET_OFFSET (CPU -> cu . IWB));
+    uint reg = GET_TD (CPU -> cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
     word36 r = getCrAR (reg);
 
     uint minuend = 0;
-    if (GET_A (cu . IWB))
+    if (GET_A (CPU -> cu . IWB))
        minuend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
     uint subtractend = address * 36 + r * sz;
     uint difference = minuend - subtractend;
@@ -1387,20 +1387,20 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1);
     parseAlphanumericOperandDescriptor (2, 1);
     
-    int fill = (int) getbits36 (cu . IWB, 0, 9);
+    int fill = (int) getbits36 (CPU -> cu . IWB, 0, 9);
     
-    SETF (cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
-    SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
+    SETF (CPU -> cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
+    SETF (CPU -> cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
-    for (; du . CHTALLY < min (e->N1, e->N2); du . CHTALLY ++)
+    for (; CPU -> du . CHTALLY < min (e->N1, e->N2); CPU -> du . CHTALLY ++)
       {
-        uint c1 = EISget469 (1, du . CHTALLY); // get Y-char1n
-        uint c2 = EISget469 (2, du . CHTALLY); // get Y-char2n
+        uint c1 = EISget469 (1, CPU -> du . CHTALLY); // get Y-char1n
+        uint c2 = EISget469 (2, CPU -> du . CHTALLY); // get Y-char2n
 
         if (c1 != c2)
           {
-            CLRF (cu . IR, I_ZERO);  // an inequality found
-            SCF (c1 > c2, cu . IR, I_CARRY);
+            CLRF (CPU -> cu . IR, I_ZERO);  // an inequality found
+            SCF (c1 > c2, CPU -> cu . IR, I_CARRY);
             cleanupOperandDescriptor (1);
             cleanupOperandDescriptor (2);
             return;
@@ -1409,15 +1409,15 @@ void cmpc (void)
 
     if (e -> N1 < e -> N2)
       {
-        for( ; du . CHTALLY < e->N2; du . CHTALLY ++)
+        for( ; CPU -> du . CHTALLY < e->N2; CPU -> du . CHTALLY ++)
           {
             uint c1 = fill;     // use fill for Y-char1n
-            uint c2 = EISget469 (2, du . CHTALLY); // get Y-char2n
+            uint c2 = EISget469 (2, CPU -> du . CHTALLY); // get Y-char2n
             
             if (c1 != c2)
               {
-                CLRF (cu . IR, I_ZERO);  // an inequality found
-                SCF (c1 > c2, cu . IR, I_CARRY);
+                CLRF (CPU -> cu . IR, I_ZERO);  // an inequality found
+                SCF (c1 > c2, CPU -> cu . IR, I_CARRY);
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
                 return;
@@ -1426,15 +1426,15 @@ void cmpc (void)
       }
     else if (e->N1 > e->N2)
       {
-        for ( ; du . CHTALLY < e->N1; du . CHTALLY ++)
+        for ( ; CPU -> du . CHTALLY < e->N1; CPU -> du . CHTALLY ++)
           {
-            uint c1 = EISget469 (1, du . CHTALLY); // get Y-char1n
+            uint c1 = EISget469 (1, CPU -> du . CHTALLY); // get Y-char1n
             uint c2 = fill;   // use fill for Y-char2n
             
             if (c1 != c2)
               {
-                CLRF (cu.IR, I_ZERO);  // an inequality found
-                SCF (c1 > c2, cu.IR, I_CARRY);
+                CLRF (CPU -> cu.IR, I_ZERO);  // an inequality found
+                SCF (c1 > c2, CPU -> cu.IR, I_CARRY);
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
                 return;
@@ -1486,7 +1486,7 @@ void scd ()
     // pair, TA2, is ignored.
     
     // fetch 'test' char - double
-    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // If MF2.ID = 0 and MF2.REG = CPU -> du, then the second word following the
     // instruction word does not contain an operand descriptor for the test
     // character; instead, it contains the test character as a direct upper
     // operand in bits 0,8.
@@ -1494,7 +1494,7 @@ void scd ()
     uint c1 = 0;
     uint c2 = 0;
     
-    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.du
+    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.CPU -> du
       {
         // per Bull RJ78, p. 5-45
         switch (e -> TA1) // Use TA1, not TA2
@@ -1544,17 +1544,17 @@ void scd ()
     uint yCharn12;
     uint limit = e -> N1 - 1;
 
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY ++)
       {
-        yCharn11 = EISget469 (1, du . CHTALLY);
-        yCharn12 = EISget469 (1, du . CHTALLY + 1);
+        yCharn11 = EISget469 (1, CPU -> du . CHTALLY);
+        yCharn12 = EISget469 (1, CPU -> du . CHTALLY + 1);
         if (yCharn11 == c1 && yCharn12 == c2)
           break;
       }
     
-    word36 CY3 = bitfieldInsert36 (0, du . CHTALLY, 0, 24);
+    word36 CY3 = bitfieldInsert36 (0, CPU -> du . CHTALLY, 0, 24);
     
-    SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
+    SCF (CPU -> du . CHTALLY == limit, CPU -> cu . IR, I_TALLY);
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     cleanupOperandDescriptor (1);
@@ -1601,7 +1601,7 @@ void scdr (void)
     // pair, TA2, is ignored.
 
     // fetch 'test' char - double
-    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // If MF2.ID = 0 and MF2.REG = CPU -> du, then the second word following the
     // instruction word does not contain an operand descriptor for the test
     // character; instead, it contains the test character as a direct upper
     // operand in bits 0,8.
@@ -1609,7 +1609,7 @@ void scdr (void)
     uint c1 = 0;
     uint c2 = 0;
     
-    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.du
+    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.CPU -> du
       {
         // per Bull RJ78, p. 5-45
         switch (e -> TA1)
@@ -1658,18 +1658,18 @@ void scdr (void)
     uint yCharn12;
     uint limit = e -> N1 - 1;
     
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY ++)
       {
-        yCharn11 = EISget469 (1, limit - du . CHTALLY - 1);
-        yCharn12 = EISget469 (1, limit - du . CHTALLY);
+        yCharn11 = EISget469 (1, limit - CPU -> du . CHTALLY - 1);
+        yCharn12 = EISget469 (1, limit - CPU -> du . CHTALLY);
         
         if (yCharn11 == c1 && yCharn12 == c2)
             break;
       }
     
-    word36 CY3 = bitfieldInsert36(0, du . CHTALLY, 0, 24);
+    word36 CY3 = bitfieldInsert36(0, CPU -> du . CHTALLY, 0, 24);
     
-    SCF(du . CHTALLY == limit, cu . IR, I_TALLY);
+    SCF(CPU -> du . CHTALLY == limit, CPU -> cu . IR, I_TALLY);
     
     // write Y3 .....
     //Write (y3, CY3, OperandWrite, 0);
@@ -1735,16 +1735,16 @@ void scm (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (cu . IWB, 27, 9);
+    uint mask = (uint) bitfieldExtract36 (CPU -> cu . IWB, 27, 9);
     
     // fetch 'test' char
-    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // If MF2.ID = 0 and MF2.REG = CPU -> du, then the second word following the
     // instruction word does not contain an operand descriptor for the test
     // character; instead, it contains the test character as a direct upper
     // operand in bits 0,8.
     
     uint ctest = 0;
-    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.du
+    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.CPU -> du
       {
         word18 duo = GETHI (e -> OP2);
         // per Bull RJ78, p. 5-45
@@ -1780,21 +1780,21 @@ void scm (void)
 
     uint limit = e -> N1;
 
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY ++)
       {
-        uint yCharn1 = EISget469 (1, du . CHTALLY);
+        uint yCharn1 = EISget469 (1, CPU -> du . CHTALLY);
         uint c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
           {
             //00...0 → C(Y3)0,11
             //i-1 → C(Y3)12,35
-            //Y3 = bitfieldInsert36(Y3, du . CHTALLY, 0, 24);
+            //Y3 = bitfieldInsert36(Y3, CPU -> du . CHTALLY, 0, 24);
             break;
           }
       }
-    word36 CY3 = bitfieldInsert36 (0, du . CHTALLY, 0, 24);
+    word36 CY3 = bitfieldInsert36 (0, CPU -> du . CHTALLY, 0, 24);
     
-    SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
+    SCF (CPU -> du . CHTALLY == limit, CPU -> cu . IR, I_TALLY);
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
@@ -1857,16 +1857,16 @@ void scmr (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (cu . IWB, 27, 9);
+    uint mask = (uint) bitfieldExtract36 (CPU -> cu . IWB, 27, 9);
     
     // fetch 'test' char
-    // If MF2.ID = 0 and MF2.REG = du, then the second word following the
+    // If MF2.ID = 0 and MF2.REG = CPU -> du, then the second word following the
     // instruction word does not contain an operand descriptor for the test
     // character; instead, it contains the test character as a direct upper
     // operand in bits 0,8.
     
     uint ctest = 0;
-    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.du
+    if (! (e -> MF2 & MFkID) && ((e -> MF2 & MFkREGMASK) == 3))  // MF2.CPU -> du
       {
         word18 duo = GETHI (e -> OP2);
         // per Bull RJ78, p. 5-45
@@ -1901,21 +1901,21 @@ void scmr (void)
       }
 
     uint limit = e -> N1;
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY ++)
       {
-        uint yCharn1 = EISget469 (1, limit - du . CHTALLY - 1);
+        uint yCharn1 = EISget469 (1, limit - CPU -> du . CHTALLY - 1);
         uint c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
           {
             //00...0 → C(Y3)0,11
             //i-1 → C(Y3)12,35
-            //Y3 = bitfieldInsert36(Y3, du . CHTALLY, 0, 24);
+            //Y3 = bitfieldInsert36(Y3, CPU -> du . CHTALLY, 0, 24);
             break;
           }
       }
-    word36 CY3 = bitfieldInsert36 (0, du . CHTALLY, 0, 24);
+    word36 CY3 = bitfieldInsert36 (0, CPU -> du . CHTALLY, 0, 24);
     
-    SCF (du . CHTALLY == limit, cu . IR, I_TALLY);
+    SCF (CPU -> du . CHTALLY == limit, CPU -> cu . IR, I_TALLY);
     
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
@@ -2040,9 +2040,9 @@ void tct (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
-    for ( ; du . CHTALLY < e -> N1; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < e -> N1; CPU -> du . CHTALLY ++)
       {
-        uint c = EISget469 (1, du . CHTALLY); // get src char
+        uint c = EISget469 (1, CPU -> du . CHTALLY); // get src char
 
         uint m = 0;
         
@@ -2073,9 +2073,9 @@ void tct (void)
           }
       }
     
-    SCF (du . CHTALLY == e -> N1, cu . IR, I_TALLY);
+    SCF (CPU -> du . CHTALLY == e -> N1, CPU -> cu . IR, I_TALLY);
     
-    CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
+    CY3 = bitfieldInsert36 (CY3, CPU -> du . CHTALLY, 0, 24);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -2179,9 +2179,9 @@ void tctr (void)
                "TCT N1 %d\n", e -> N1);
 
     uint limit = e -> N1;
-    for ( ; du . CHTALLY < limit; du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY ++)
       {
-        uint c = EISget469 (1, limit - du . CHTALLY - 1); // get src char
+        uint c = EISget469 (1, limit - CPU -> du . CHTALLY - 1); // get src char
 
         uint m = 0;
         
@@ -2212,9 +2212,9 @@ void tctr (void)
           }
       }
     
-    SCF (du . CHTALLY == e -> N1, cu . IR, I_TALLY);
+    SCF (CPU -> du . CHTALLY == e -> N1, CPU -> cu . IR, I_TALLY);
     
-    CY3 = bitfieldInsert36 (CY3, du . CHTALLY, 0, 24);
+    CY3 = bitfieldInsert36 (CY3, CPU -> du . CHTALLY, 0, 24);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -2302,9 +2302,9 @@ void mlr (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36 (CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
     
-    uint fill = bitfieldExtract36 (cu . IWB, 27, 9);
+    uint fill = bitfieldExtract36 (CPU -> cu . IWB, 27, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2366,9 +2366,9 @@ void mlr (void)
         e -> CN2 == 0)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
-        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+        for ( ; CPU -> du . CHTALLY < e -> N2; CPU -> du . CHTALLY += 4)
           {
-            uint n = du . CHTALLY / 4;
+            uint n = CPU -> du . CHTALLY / 4;
             word36 w = EISReadIdx (& e -> ADDR1, n);
             EISWriteIdx (& e -> ADDR2, n, w);
           }
@@ -2376,7 +2376,7 @@ void mlr (void)
         cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 == N2
-        CLRF (cu . IR, I_TRUNC);
+        CLRF (CPU -> cu . IR, I_TRUNC);
         return;
       }
 
@@ -2392,26 +2392,26 @@ void mlr (void)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
         word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
-        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+        for ( ; CPU -> du . CHTALLY < e -> N2; CPU -> du . CHTALLY += 4)
           {
-            uint n = du . CHTALLY / 4;
+            uint n = CPU -> du . CHTALLY / 4;
             EISWriteIdx (& e -> ADDR2, n, w);
           }
         cleanupOperandDescriptor (1);
         cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 <= N2
-        CLRF (cu . IR, I_TRUNC);
+        CLRF (CPU -> cu . IR, I_TRUNC);
         return;
       }
 
-    for ( ; du . CHTALLY < min (e -> N1, e -> N2); du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < min (e -> N1, e -> N2); CPU -> du . CHTALLY ++)
       {
-        word9 c = EISget469 (1, du . CHTALLY); // get src char
+        word9 c = EISget469 (1, CPU -> du . CHTALLY); // get src char
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
-          EISput469 (2, du . CHTALLY, c);
+          EISput469 (2, CPU -> du . CHTALLY, c);
         else
           {
 	  // If data types are dissimilar (TA1 ≠ TA2), each character is
@@ -2449,7 +2449,7 @@ void mlr (void)
 	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
 	  // is placed in C(Y-charn2)N2-1.
             
-            if (ovp && (du . CHTALLY == e -> N1 - 1))
+            if (ovp && (CPU -> du . CHTALLY == e -> N1 - 1))
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
@@ -2457,7 +2457,7 @@ void mlr (void)
                 cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
-            EISput469 (2, du . CHTALLY, cout);
+            EISput469 (2, CPU -> du . CHTALLY, cout);
           }
       }
     
@@ -2469,19 +2469,19 @@ void mlr (void)
 
     if (e -> N1 < e -> N2)
       {
-        for ( ; du . CHTALLY < e -> N2 ; du . CHTALLY ++)
+        for ( ; CPU -> du . CHTALLY < e -> N2 ; CPU -> du . CHTALLY ++)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (ovp && (du . CHTALLY == e -> N2 - 1))
+            if (ovp && (CPU -> du . CHTALLY == e -> N2 - 1))
               {
                 if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, du . CHTALLY, 015); // 015 is decimal -
+                  EISput469 (2, CPU -> du . CHTALLY, 015); // 015 is decimal -
                 else
-                  EISput469 (2, du . CHTALLY, 014); // 014 is decimal +
+                  EISput469 (2, CPU -> du . CHTALLY, 014); // 014 is decimal +
               }
             else
-              EISput469 (2, du . CHTALLY, fillT);
+              EISput469 (2, CPU -> du . CHTALLY, fillT);
           }
     }
     cleanupOperandDescriptor (1);
@@ -2489,12 +2489,12 @@ void mlr (void)
 
     if (e -> N1 > e -> N2)
       {
-        SETF (cu . IR, I_TRUNC);
-        if (T && ! TSTF (cu . IR, I_OMASK))
+        SETF (CPU -> cu . IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu . IR, I_OMASK))
           doFault (FAULT_OFL, 0, "mlr truncation fault");
       }
     else
-      CLRF (cu . IR, I_TRUNC);
+      CLRF (CPU -> cu . IR, I_TRUNC);
   } 
 
 
@@ -2545,9 +2545,9 @@ void mrl (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36 (CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
     
-    uint fill = bitfieldExtract36 (cu . IWB, 27, 9);
+    uint fill = bitfieldExtract36 (CPU -> cu . IWB, 27, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2610,9 +2610,9 @@ void mrl (void)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
         uint limit = e -> N2;
-        for ( ; du . CHTALLY < limit; du . CHTALLY += 4)
+        for ( ; CPU -> du . CHTALLY < limit; CPU -> du . CHTALLY += 4)
           {
-            uint n = (limit - du . CHTALLY - 1) / 4;
+            uint n = (limit - CPU -> du . CHTALLY - 1) / 4;
             word36 w = EISReadIdx (& e -> ADDR1, n);
             EISWriteIdx (& e -> ADDR2, n, w);
           }
@@ -2620,7 +2620,7 @@ void mrl (void)
         cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 == N2
-        CLRF (cu . IR, I_TRUNC);
+        CLRF (CPU -> cu . IR, I_TRUNC);
         return;
       }
 
@@ -2640,26 +2640,26 @@ void mrl (void)
                   ((word36) fill << 18) |
                   ((word36) fill << 27);
         uint limit = e -> N2;
-        for ( ; du . CHTALLY < e -> N2; du . CHTALLY += 4)
+        for ( ; CPU -> du . CHTALLY < e -> N2; CPU -> du . CHTALLY += 4)
           {
-            uint n = (limit - du . CHTALLY - 1) / 4;
+            uint n = (limit - CPU -> du . CHTALLY - 1) / 4;
             EISWriteIdx (& e -> ADDR2, n, w);
           }
         cleanupOperandDescriptor (1);
         cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
         // it is known that N1 <= N2
-        CLRF (cu . IR, I_TRUNC);
+        CLRF (CPU -> cu . IR, I_TRUNC);
         return;
       }
 
-    for ( ; du . CHTALLY < min (e -> N1, e -> N2); du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < min (e -> N1, e -> N2); CPU -> du . CHTALLY ++)
       {
-        word9 c = EISget469 (1, e -> N1 - du . CHTALLY - 1); // get src char
+        word9 c = EISget469 (1, e -> N1 - CPU -> du . CHTALLY - 1); // get src char
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
-          EISput469 (2, e -> N2 - du . CHTALLY - 1, c);
+          EISput469 (2, e -> N2 - CPU -> du . CHTALLY - 1, c);
         else
           {
 	  // If data types are dissimilar (TA1 ≠ TA2), each character is
@@ -2697,7 +2697,7 @@ void mrl (void)
 	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
 	  // is placed in C(Y-charn2)N2-1.
             
-            if (ovp && (du . CHTALLY == e -> N1 - 1))
+            if (ovp && (CPU -> du . CHTALLY == e -> N1 - 1))
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
@@ -2705,7 +2705,7 @@ void mrl (void)
                 cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
-            EISput469 (2, e -> N2 - du . CHTALLY - 1, cout);
+            EISput469 (2, e -> N2 - CPU -> du . CHTALLY - 1, cout);
           }
       }
     
@@ -2717,19 +2717,19 @@ void mrl (void)
 
     if (e -> N1 < e -> N2)
       {
-        for ( ; du . CHTALLY < e -> N2 ; du . CHTALLY ++)
+        for ( ; CPU -> du . CHTALLY < e -> N2 ; CPU -> du . CHTALLY ++)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (ovp && (du . CHTALLY == e -> N2 - 1))
+            if (ovp && (CPU -> du . CHTALLY == e -> N2 - 1))
               {
                 if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, e -> N2 - du . CHTALLY - 1, 015); // 015 is decimal -
+                  EISput469 (2, e -> N2 - CPU -> du . CHTALLY - 1, 015); // 015 is decimal -
                 else
-                  EISput469 (2, e -> N2 - du . CHTALLY - 1, 014); // 014 is decimal +
+                  EISput469 (2, e -> N2 - CPU -> du . CHTALLY - 1, 014); // 014 is decimal +
               }
             else
-              EISput469 (2, e -> N2 - du . CHTALLY - 1, fillT);
+              EISput469 (2, e -> N2 - CPU -> du . CHTALLY - 1, fillT);
           }
     }
     cleanupOperandDescriptor (1);
@@ -2737,12 +2737,12 @@ void mrl (void)
 
     if (e -> N1 > e -> N2)
       {
-        SETF (cu . IR, I_TRUNC);
-        if (T && ! TSTF (cu . IR, I_OMASK))
+        SETF (CPU -> cu . IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu . IR, I_OMASK))
           doFault (FAULT_OFL, 0, "mlr truncation fault");
       }
     else
-      CLRF (cu . IR, I_TRUNC);
+      CLRF (CPU -> cu . IR, I_TRUNC);
   } 
 
 // decimalZero
@@ -4405,9 +4405,9 @@ void mvt (void)
     // XXX here is where we probably need to to the prepage thang...
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
     
-    int fill = (int)bitfieldExtract36(cu . IWB, 27, 9);
+    int fill = (int)bitfieldExtract36(CPU -> cu . IWB, 27, 9);
     int fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
     switch(e->srcSZ)
@@ -4425,13 +4425,13 @@ void mvt (void)
       __func__, e -> CN1, e -> CN2, e -> srcSZ, e -> dstSZ, T,
       fill, fillT, e -> N1, e -> N2);
 
-    for ( ; du . CHTALLY < min(e->N1, e->N2); du . CHTALLY ++)
+    for ( ; CPU -> du . CHTALLY < min(e->N1, e->N2); CPU -> du . CHTALLY ++)
     {
-        int c = EISget469(1, du . CHTALLY); // get src char
+        int c = EISget469(1, CPU -> du . CHTALLY); // get src char
         int cidx = 0;
     
         if (e->TA1 == e->TA2)
-            EISput469(2, du . CHTALLY, xlate (xlatTbl, dstTA, c));
+            EISput469(2, CPU -> du . CHTALLY, xlate (xlatTbl, dstTA, c));
         else
         {
             // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
@@ -4474,7 +4474,7 @@ void mvt (void)
                     break;
             }
             
-            EISput469 (2, du . CHTALLY, cout);
+            EISput469 (2, CPU -> du . CHTALLY, cout);
         }
     }
     
@@ -4512,8 +4512,8 @@ void mvt (void)
                 break;
         }
         
-        for( ; du . CHTALLY < e->N2 ; du . CHTALLY ++)
-            EISput469 (2, du . CHTALLY, cfill);
+        for( ; CPU -> du . CHTALLY < e->N2 ; CPU -> du . CHTALLY ++)
+            EISput469 (2, CPU -> du . CHTALLY, cfill);
     }
 
     cleanupOperandDescriptor (1);
@@ -4522,12 +4522,12 @@ void mvt (void)
 
     if (e->N1 > e->N2)
       {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
           doFault(FAULT_OFL, 0, "mvt truncation fault");
       }
     else
-      CLRF(cu.IR, I_TRUNC);
+      CLRF(CPU -> cu.IR, I_TRUNC);
   }
 
 
@@ -4650,9 +4650,9 @@ void cmpn (void)
     // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
     // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
 
-    SCF(cSigned == 0, cu.IR, I_ZERO);
-    SCF(cSigned == 1, cu.IR, I_NEG);
-    SCF(cMag != 1, cu.IR, I_CARRY);
+    SCF(cSigned == 0, CPU -> cu.IR, I_ZERO);
+    SCF(cSigned == 1, CPU -> cu.IR, I_NEG);
+    SCF(cMag != 1, CPU -> cu.IR, I_CARRY);
 
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -4794,9 +4794,9 @@ void mvn (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -4982,30 +4982,30 @@ void mvn (void)
     if (e->S2 == CSFL)
     {
         if (op1->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op1->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op1) && !decNumberIsZero(op1)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op1), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op1) && !decNumberIsZero(op1)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op1), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
           doFault(FAULT_OFL, 0,"mvn overflow fault");
     }
 
@@ -5068,10 +5068,10 @@ void csl (bool isSZTL)
     e->ADDR1.bPos = e->B1;
     e->ADDR2.bPos = e->B2;
     
-    uint F = bitfieldExtract36(cu . IWB, 35, 1) != 0;   // fill bit
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    uint F = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;   // fill bit
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     
-    uint BOLR = (int)bitfieldExtract36(cu . IWB, 27, 4);  // BOLR field
+    uint BOLR = (int)bitfieldExtract36(CPU -> cu . IWB, 27, 4);  // BOLR field
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);
@@ -5095,7 +5095,7 @@ void csl (bool isSZTL)
                e -> addr [1] . cPos, e -> addr [1] . bPos);
 
     bool bR = false; // result bit
-    for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
+    for( ; CPU -> du . CHTALLY < min(e->N1, e->N2) ; CPU -> du . CHTALLY += 1)
     {
         //bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
         bool b1 = EISgetBitRWN(&e->ADDR1);  // read w/ addt incr from src 1
@@ -5118,8 +5118,8 @@ void csl (bool isSZTL)
         
         if (bR)
         {
-            //CLRF(cu.IR, I_ZERO);
-            du . Z = 0;
+            //CLRF(CPU -> cu.IR, I_ZERO);
+            CPU -> du . Z = 0;
             if (isSZTL)
                 break;
         }
@@ -5143,7 +5143,7 @@ void csl (bool isSZTL)
     
     if (e->N1 < e->N2)
     {
-        for(; du . CHTALLY < e->N2 ; du . CHTALLY += 1)
+        for(; CPU -> du . CHTALLY < e->N2 ; CPU -> du . CHTALLY += 1)
         {
             bool b1 = F;
             
@@ -5165,8 +5165,8 @@ void csl (bool isSZTL)
             
             if (bR)
             {
-                //CLRF(cu.IR, I_ZERO);
-                du . Z = 0;
+                //CLRF(CPU -> cu.IR, I_ZERO);
+                CPU -> du . Z = 0;
                 if (isSZTL)
                   break;
             }
@@ -5192,10 +5192,10 @@ void csl (bool isSZTL)
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
 
-    if (du . Z)
-      SETF (cu . IR, I_ZERO);
+    if (CPU -> du . Z)
+      SETF (CPU -> cu . IR, I_ZERO);
     else
-      CLRF (cu . IR, I_ZERO);
+      CLRF (CPU -> cu . IR, I_ZERO);
     if (e->N1 > e->N2)
     {
         // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
@@ -5204,14 +5204,14 @@ void csl (bool isSZTL)
         // If T = 1 and the truncation indicator is set ON by execution of the
         // instruction, then a truncation (overflow) fault occurs.
         
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
         {
             doFault(FAULT_OFL, 0, "csl truncation fault");
         }
     }
     else
-        CLRF(cu.IR, I_TRUNC);
+        CLRF(CPU -> cu.IR, I_TRUNC);
 }
 
 /*
@@ -5245,7 +5245,7 @@ static bool EISgetBitRWNR (EISaddr * p)
   {
     int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
     int baseBitPosn = baseCharPosn + p -> bPos;
-    baseBitPosn -= du . CHTALLY;
+    baseBitPosn -= CPU -> du . CHTALLY;
 
     int bitPosn = baseBitPosn % 36;
     int woff = baseBitPosn / 36;
@@ -5257,7 +5257,7 @@ static bool EISgetBitRWNR (EISaddr * p)
 if (bitPosn < 0) {
 sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
 sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
-sim_printf ("CHTALLY %d baseBitPosn %d\n", du . CHTALLY, baseBitPosn);
+sim_printf ("CHTALLY %d baseBitPosn %d\n", CPU -> du . CHTALLY, baseBitPosn);
 sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
 sim_err ("oops\n");
 }
@@ -5354,10 +5354,10 @@ void csr (bool isSZTR)
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
-    uint F = bitfieldExtract36(cu . IWB, 35, 1) != 0;   // fill bit
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    uint F = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;   // fill bit
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     
-    uint BOLR = (int)bitfieldExtract36(cu . IWB, 27, 4);  // BOLR field
+    uint BOLR = (int)bitfieldExtract36(CPU -> cu . IWB, 27, 4);  // BOLR field
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);
@@ -5367,11 +5367,11 @@ void csr (bool isSZTR)
     e->ADDR1.decr = true;
     e->ADDR1.mode = eRWreadBit;
     
-    CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
+    CLRF(CPU -> cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
     
-    for( ; du . CHTALLY < min(e->N1, e->N2) ; du . CHTALLY += 1)
+    for( ; CPU -> du . CHTALLY < min(e->N1, e->N2) ; CPU -> du . CHTALLY += 1)
     {
         bool b1 = EISgetBitRWNR(&e->ADDR1);  // read w/ addt decr from src 1
         
@@ -5392,7 +5392,7 @@ void csr (bool isSZTR)
         
         if (bR)
         {
-            du . Z = 0;
+            CPU -> du . Z = 0;
             if (isSZTR)
                 break;
         }
@@ -5415,7 +5415,7 @@ void csr (bool isSZTR)
     
     if (e->N1 < e->N2)
     {
-        for(; du . CHTALLY < e->N2 ; du . CHTALLY += 1)
+        for(; CPU -> du . CHTALLY < e->N2 ; CPU -> du . CHTALLY += 1)
         {
             bool b1 = F;
             
@@ -5436,8 +5436,8 @@ void csr (bool isSZTR)
             
             if (bR)
             {
-                //CLRF(cu.IR, I_ZERO);
-                du . Z = 0;
+                //CLRF(CPU -> cu.IR, I_ZERO);
+                CPU -> du . Z = 0;
                 if (isSZTR)
                   break;
             }
@@ -5463,10 +5463,10 @@ void csr (bool isSZTR)
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
 
-    if (du . Z)
-      SETF (cu . IR, I_ZERO);
+    if (CPU -> du . Z)
+      SETF (CPU -> cu . IR, I_ZERO);
     else
-      CLRF (cu . IR, I_ZERO);
+      CLRF (CPU -> cu . IR, I_ZERO);
     if (e->N1 > e->N2)
     {
         // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
@@ -5475,14 +5475,14 @@ void csr (bool isSZTR)
         // If T = 1 and the truncation indicator is set ON by execution of the
         // instruction, then a truncation (overflow) fault occurs.
         
-        SETF(cu.IR, I_TRUNC);
+        SETF(CPU -> cu.IR, I_TRUNC);
         if (T)
         {
             doFault(FAULT_OFL, 0, "csr truncation fault");
         }
     }
     else
-        CLRF(cu.IR, I_TRUNC);
+        CLRF(CPU -> cu.IR, I_TRUNC);
 }
 
 
@@ -5558,10 +5558,10 @@ void cmpb (void)
     int bitPosn1 = e->B1;
     int bitPosn2 = e->B2;
     
-    uint F = bitfieldExtract36(cu . IWB, 35, 1) != 0;     // fill bit (was 25)
+    uint F = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;     // fill bit (was 25)
 
-    SETF(cu.IR, I_ZERO);  // assume all =
-    SETF(cu.IR, I_CARRY); // assume all >=
+    SETF(CPU -> cu.IR, I_ZERO);  // assume all =
+    SETF(CPU -> cu.IR, I_CARRY); // assume all >=
     
 sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
 
@@ -5590,9 +5590,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(min(e->N1, e->N2)) i %d b1 %d b2 %d\n", i, b1, b2);
         if (b1 != b2)
         {
-            CLRF(cu.IR, I_ZERO);
+            CLRF(CPU -> cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
-                CLRF(cu.IR, I_CARRY);
+                CLRF(CPU -> cu.IR, I_CARRY);
 
             cleanupOperandDescriptor (1);
             cleanupOperandDescriptor (2);
@@ -5611,9 +5611,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 < e->N2) i %d b1fill %d b2 %d\n"
         
             if (b1 != b2)
             {
-                CLRF(cu.IR, I_ZERO);
+                CLRF(CPU -> cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
-                    CLRF(cu.IR, I_CARRY);
+                    CLRF(CPU -> cu.IR, I_CARRY);
 
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
@@ -5631,9 +5631,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
         
             if (b1 != b2)
             {
-                CLRF(cu.IR, I_ZERO);
+                CLRF(CPU -> cu.IR, I_ZERO);
                 if (!b1 && b2)  // 0 < 1
-                    CLRF(cu.IR, I_CARRY);
+                    CLRF(CPU -> cu.IR, I_CARRY);
 
                 cleanupOperandDescriptor (1);
                 cleanupOperandDescriptor (2);
@@ -6035,7 +6035,7 @@ void btd (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = (bool)bitfieldExtract36(cu . IWB, 35, 1);  // 4-bit data sign character control
+    e->P = (bool)bitfieldExtract36(CPU -> cu . IWB, 35, 1);  // 4-bit data sign character control
     
 // XXX ticket #35
                   // Technically, ill_proc should be "illegal eis modifier",
@@ -6050,7 +6050,7 @@ void btd (void)
     EISwriteToOutputStringReverse(2, 0);    // initialize output writer .....
     
 #if 0
-    e->_flags = cu.IR;
+    e->_flags = CPU -> cu.IR;
     
     CLRF(e->_flags, I_NEG);     // If a minus sign character is moved to C(Y-charn2), then ON; otherwise OFF
     CLRF(e->_flags, I_ZERO);    // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
@@ -6065,15 +6065,15 @@ void btd (void)
     
 // XXX wrong; see ticket 76
 #if 0
-    cu.IR = e->_flags;
-    if (TSTF(cu.IR, I_OFLOW))
+    CPU -> cu.IR = e->_flags;
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
         doFault(FAULT_OFL, 0, "btd() overflow!");   // XXX generate overflow fault
 #else
-    SCF (e -> _flags & I_ZERO, cu . IR, I_ZERO);
-    SCF (e -> _flags & I_NEG, cu . IR, I_NEG);
+    SCF (e -> _flags & I_ZERO, CPU -> cu . IR, I_ZERO);
+    SCF (e -> _flags & I_NEG, CPU -> cu . IR, I_NEG);
     if (e -> _flags & I_OFLOW)
       {
-        SETF (cu . IR, I_OFLOW);
+        SETF (CPU -> cu . IR, I_OFLOW);
         doFault(FAULT_OFL, 0, "btd overflow fault");
       }
 #endif
@@ -6282,7 +6282,7 @@ void dtb (void)
         ; // XXX generate ill proc fault
     }
 
-    e->_flags = cu.IR;
+    e->_flags = CPU -> cu.IR;
     
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
     CLRF(e->_flags, I_NEG);
@@ -6294,9 +6294,9 @@ void dtb (void)
     
     EISwriteToBinaryStringReverse(&e->ADDR2, 2);
     
-    cu.IR = e->_flags;
+    CPU -> cu.IR = e->_flags;
 
-    if (TSTF(cu.IR, I_OFLOW))
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
         ;   // XXX generate overflow fault
     }
@@ -6327,9 +6327,9 @@ void ad2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -6521,15 +6521,15 @@ void ad2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -6537,15 +6537,15 @@ void ad2d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"ad2d overflow fault");
     }
 }
@@ -6606,9 +6606,9 @@ void ad3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -6817,15 +6817,15 @@ void ad3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -6833,15 +6833,15 @@ void ad3d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"ad3d overflow fault");
     }
 }
@@ -6863,9 +6863,9 @@ void sb2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7048,15 +7048,15 @@ void sb2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -7064,15 +7064,15 @@ void sb2d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"sb2d truncation (overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"sb2d overflow fault");
     }
 }
@@ -7095,9 +7095,9 @@ void sb3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7296,15 +7296,15 @@ void sb3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -7312,15 +7312,15 @@ void sb3d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"sb3d overflow fault");
     }
 }
@@ -7342,9 +7342,9 @@ void mp2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7526,15 +7526,15 @@ void mp2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -7542,15 +7542,15 @@ void mp2d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"mp2d overflow fault");
     }
     
@@ -7574,9 +7574,9 @@ void mp3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7775,15 +7775,15 @@ void mp3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -7791,15 +7791,15 @@ void mp3d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"mp3d overflow fault");
     }
 }
@@ -8578,9 +8578,9 @@ void dv2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -8767,15 +8767,15 @@ void dv2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -8783,15 +8783,15 @@ void dv2d (void)
 
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"dv2d overflow fault");
     }
 }
@@ -8816,9 +8816,9 @@ void dv3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = bitfieldExtract36(CPU -> cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    uint T = bitfieldExtract36(CPU -> cu . IWB, 26, 1) != 0;  // truncation bit
+    uint R = bitfieldExtract36(CPU -> cu . IWB, 25, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9040,15 +9040,15 @@ void dv3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
     }
     
-    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cu.IR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), CPU -> cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), CPU -> cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!R && Trunc, CPU -> cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
 
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
@@ -9056,15 +9056,15 @@ void dv3d (void)
     
     if (Trunc)
     {
-        SETF(cu.IR, I_TRUNC);
-        if (T && ! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_TRUNC);
+        if (T && ! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(cu.IR, I_OFLOW);
-        if (! TSTF (cu.IR, I_OMASK))
+        SETF(CPU -> cu.IR, I_OFLOW);
+        if (! TSTF (CPU -> cu.IR, I_OMASK))
             doFault(FAULT_OFL, 0,"dv3d overflow fault");
     }
 }

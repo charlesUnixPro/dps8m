@@ -426,21 +426,21 @@ void ufa (void)
     
 //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, cu.IR, I_CARRY);
+    SCF(m3 > MASK72, CPU -> cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, cu.IR, I_ZERO);
+    SCF(m3 == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, cu.IR, I_NEG);
+    SCF(m3 & SIGN72, CPU -> cu.IR, I_NEG);
 
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(cu.IR, I_EOFL);
+        SETF(CPU -> cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(cu.IR, I_EUFL);
+        SETF(CPU -> cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
@@ -499,7 +499,7 @@ void ufs (void)
         m2c &= FLOAT36MASK;
         
         if ((e + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX my interpretation
             e += 1;
         
@@ -543,9 +543,9 @@ void fno (void)
     rA &= DMASK;
     rQ &= DMASK;
     float72 m = ((word72)rA << 36) | (word72)rQ;
-    if (TSTF(cu.IR, I_OFLOW))
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
-        CLRF(cu.IR, I_OFLOW);
+        CLRF(CPU -> cu.IR, I_OFLOW);
         word72 s = m & SIGN72; // save the sign bit
         m >>= 1; // renormalize the mantissa
         m |= SIGN72; // set the sign bit
@@ -554,18 +554,18 @@ void fno (void)
         if (rE < 127)
             rE ++;
         else
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
         {
             rE = -128;
-            SETF(cu.IR, I_ZERO);
+            SETF(CPU -> cu.IR, I_ZERO);
         }
 
         rA = (m >> 36) & MASK36;
         rQ = m & MASK36;
-        SCF(rA & SIGN72, cu.IR, I_NEG);
+        SCF(rA & SIGN72, CPU -> cu.IR, I_NEG);
 
         return;
     }
@@ -576,8 +576,8 @@ void fno (void)
         //rA = (m >> 36) & MASK36;
         //rQ = m & MASK36;
         rE = 0200U; /*-128*/
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         return;
     }
     int   e = rE;
@@ -597,7 +597,7 @@ void fno (void)
       m |= SIGN72;
       
     if (e < -127)
-      SETF(cu.IR, I_EUFL);
+      SETF(CPU -> cu.IR, I_EUFL);
 
     rE = e & 0377;
     rA = (m >> 36) & MASK36;
@@ -608,10 +608,10 @@ void fno (void)
         rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+    SCF(rA == 0 && rQ == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
 }
 
 #if 0
@@ -626,25 +626,25 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
     float72 m = ((word72)*A << 36) | (word72)*Q;
-    if (TSTF(cu.IR, I_OFLOW))
+    if (TSTF(CPU -> cu.IR, I_OFLOW))
     {
         m >>= 1;
         m &= MASK72;
         
         m ^= ((word72)1 << 71);
         
-        CLRF(cu.IR, I_OFLOW);
+        CLRF(CPU -> cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        //SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
+        //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
         if (m == 0)
         {
             *E = -128;
-            SETF(cu.IR, I_ZERO);
+            SETF(CPU -> cu.IR, I_ZERO);
         }
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         return; // XXX: ???
     }
     
@@ -656,11 +656,11 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *E = 0200U; /*-128*/
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
-        //SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
-        SETF(cu.IR, I_ZERO);
+        //SCF(*E == -128 && m == 0, CPU -> cu.IR, I_ZERO);
+        //SCF(*E == 0200U /*-128*/ && m == 0, CPU -> cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
         // Neg:
-        CLRF(cu.IR, I_NEG);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -677,7 +677,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(cu.IR, I_EUFL);
+            SETF(CPU -> cu.IR, I_EUFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -697,10 +697,10 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *E = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(*A == 0, cu.IR, I_ZERO);
+    SCF(*A == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(*A & SIGN36, cu.IR, I_NEG);
+    SCF(*A & SIGN36, CPU -> cu.IR, I_NEG);
     
 }
 #endif
@@ -723,8 +723,8 @@ void fneg (void)
     
     if (m == 0) // (if C(AQ) ≠ 0)
     {
-        SETF(cu.IR, I_ZERO);      // it's zero
-        CLRF(cu.IR, I_NEG);       // it ain't negative
+        SETF(CPU -> cu.IR, I_ZERO);      // it's zero
+        CLRF(CPU -> cu.IR, I_NEG);       // it ain't negative
         return; //XXX: ????
     }
     
@@ -756,7 +756,7 @@ void fneg (void)
         mc &= ((word72)1 << 72) - 1;
         
         if ((e + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else    // XXX: this is my interpretation
             e += 1;
     }
@@ -778,7 +778,7 @@ void fneg (void)
         m >>= 1;
         // Increment the exp, checking for overflow.
         if (rE == 127)
-          SETF(cu.IR, I_EOFL);
+          SETF(CPU -> cu.IR, I_EOFL);
         else
           rE ++;
       }
@@ -817,8 +817,8 @@ void ufm (void)
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -870,12 +870,12 @@ void ufm (void)
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno ();
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
+    SCF(rA == 0 && rQ == 0, CPU -> cu.IR, I_ZERO);
+    //SCF(rA && SIGN72, CPU -> cu.IR, I_NEG);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG); // was &&
     
-    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
-    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
+    if (e1 + e2 >  127) SETF(CPU -> cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(CPU -> cu.IR, I_EUFL);
 }
 
 /*!
@@ -950,8 +950,8 @@ static void fdvX(bool bInvert)
         
         // NB: If C(Y)8,35 ==0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
         
         rA = m1;
         
@@ -963,7 +963,7 @@ static void fdvX(bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -981,8 +981,8 @@ static void fdvX(bool bInvert)
     rA = m3b & MASK36;
     rQ = 0;
     
-    SCF(rA == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA == 0, CPU -> cu.IR, I_ZERO);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
     
     if (rA == 0)    // set to normalized 0
         rE = (word8)-128;
@@ -1055,8 +1055,8 @@ void frd (void)
     if (m == 0)
     {
         rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -1089,7 +1089,7 @@ void frd (void)
         rQ = m & MASK36;
         
         if (rE + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         rE +=  1;
     }
     else
@@ -1105,10 +1105,10 @@ void frd (void)
     if (rA == 0 && rQ == 0)
     {
         rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
     
 }
 
@@ -1133,8 +1133,8 @@ void fstr(word36 *Y)
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
         return;
@@ -1168,7 +1168,7 @@ void fstr(word36 *Y)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -1184,10 +1184,10 @@ void fstr(word36 *Y)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, cu.IR, I_NEG);
+    SCF(A & SIGN36, CPU -> cu.IR, I_NEG);
     
     *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
 }
@@ -1255,8 +1255,8 @@ void fcmp(void)
     }
     
     // need to do algebraic comparisons of mantissae
-    SCF((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2), cu.IR, I_ZERO);
-    SCF((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2), cu.IR, I_NEG);
+    SCF((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2), CPU -> cu.IR, I_ZERO);
+    SCF((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2), CPU -> cu.IR, I_NEG);
 }
 
 /*!
@@ -1327,8 +1327,8 @@ void fcmg ()
     if (m2 & SIGN36)
         m2 = (~m2 + 1) & MASK36;
     
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 < m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 < m2, CPU -> cu.IR, I_NEG);
 }
 
 /*
@@ -1443,21 +1443,21 @@ void dufa (void)
     
     //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, cu.IR, I_CARRY);
+    SCF(m3 > MASK72, CPU -> cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, cu.IR, I_ZERO);
+    SCF(m3 == 0, CPU -> cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, cu.IR, I_NEG);
+    SCF(m3 & SIGN72, CPU -> cu.IR, I_NEG);
     
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(cu.IR, I_EOFL);
+        SETF(CPU -> cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(cu.IR, I_EUFL);
+        SETF(CPU -> cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
@@ -1506,7 +1506,7 @@ void dufs (void)
         m2c &= MASK72;
         
         if ((e2 + 1) > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX my interpretation
             e2 += 1;
     }
@@ -1564,8 +1564,8 @@ void dufm (void)
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -1616,12 +1616,12 @@ void dufm (void)
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno ();
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    //SCF(rA && SIGN72, cu.IR, I_NEG);
-    SCF(rA & SIGN36, cu.IR, I_NEG); // was &&
+    SCF(rA == 0 && rQ == 0, CPU -> cu.IR, I_ZERO);
+    //SCF(rA && SIGN72, CPU -> cu.IR, I_NEG);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG); // was &&
     
-    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
-    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
+    if (e1 + e2 >  127) SETF(CPU -> cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(CPU -> cu.IR, I_EUFL);
 }
 
 /*!
@@ -1671,8 +1671,8 @@ static void dfdvX (bool bInvert)
     if (m1 == 0)
     {
         // XXX check flags
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -1713,8 +1713,8 @@ static void dfdvX (bool bInvert)
         
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
         
         rA = m1;
         
@@ -1726,7 +1726,7 @@ static void dfdvX (bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -1742,12 +1742,12 @@ static void dfdvX (bool bInvert)
     if (e3 > 127)
       {
          e3 = 127;
-         SETF (cu.IR, I_EOFL);
+         SETF (CPU -> cu.IR, I_EOFL);
        }
     else if (e3 < -127)
       {
          e3 = -127;
-         SETF (cu.IR, I_EUFL);
+         SETF (CPU -> cu.IR, I_EUFL);
        }
     //uint128 M1 = (uint128)m1 << 63;
     //uint128 M2 = (uint128)m2; ///< << 36;
@@ -1764,8 +1764,8 @@ static void dfdvX (bool bInvert)
     rA = (m3b >> 28) & MASK36;
     rQ = (m3b & 01777777777LL) << 8;//MASK36;
     
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA == 0 && rQ == 0, CPU -> cu.IR, I_ZERO);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
     
     if (rA == 0 && rQ == 0)    // set to normalized 0
         rE = (word8)-128;
@@ -1825,8 +1825,8 @@ void dvf (void)
     if (m2 == 0)
     {
         // XXX check flags
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
         
         rA = 0;
         rQ = 0;
@@ -1852,8 +1852,8 @@ void dvf (void)
     
     if (m2 == 0)
     {        
-        SETF(cu.IR, I_ZERO);
-        SCF(rA & SIGN36, cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
         
         //rA = m1;
         rA = (m1 >> 36) & MASK36;
@@ -1891,8 +1891,8 @@ sim_printf ("CY %llu\n", CY);
     if (CY == 0)
       {
         // XXX check flags
-        SETF (cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SETF (CPU -> cu . IR, I_ZERO);
+        SCF (rA & SIGN36, CPU -> cu . IR, I_NEG);
         
         rA = 0;
         rQ = 0;
@@ -1988,8 +1988,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     if (CY == 0)
       {
         // XXX check flags
-        SETF (cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SETF (CPU -> cu . IR, I_ZERO);
+        SCF (rA & SIGN36, CPU -> cu . IR, I_NEG);
         
         rA = 0;
         rQ = 0;
@@ -2046,8 +2046,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     //if (dFrac == 0 || zFrac >= dFrac << 35)
     if (dFrac == 0)
       {
-        SCF (dFrac == 0, cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SCF (dFrac == 0, CPU -> cu . IR, I_ZERO);
+        SCF (rA & SIGN36, CPU -> cu . IR, I_NEG);
         
         rA = (zFrac >> 31) & MASK35;
         rQ = (zFrac & MASK35) << 1;
@@ -2064,8 +2064,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 
     if (quot & ~MASK35)
       {
-        SCF (dFrac == 0, cu . IR, I_ZERO);
-        SCF (rA & SIGN36, cu . IR, I_NEG);
+        SCF (dFrac == 0, CPU -> cu . IR, I_ZERO);
+        SCF (rA & SIGN36, CPU -> cu . IR, I_NEG);
         
         rA = (zFrac >> 31) & MASK35;
         rQ = (zFrac & MASK35) << 1;
@@ -2088,8 +2088,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 
 //sim_debug (DBG_CAC, & cpu_dev, "Quotient %lld (%llo)\n", rA, rA);
 //sim_debug (DBG_CAC, & cpu_dev, "Remainder %lld\n", rQ);
-    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA == 0 && rQ == 0, CPU -> cu.IR, I_ZERO);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
 }
 
 
@@ -2114,8 +2114,8 @@ void dfrd (void)
     if (m == 0)
     {
         rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         return;
     }
@@ -2147,7 +2147,7 @@ void dfrd (void)
         rQ = m & MASK36;
         
         if (rE + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         rE +=  1;
     }
     else
@@ -2163,10 +2163,10 @@ void dfrd (void)
     if (rA == 0 && rQ == 0)
     {
         rE = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, cu.IR, I_NEG);
+    SCF(rA & SIGN36, CPU -> cu.IR, I_NEG);
 }
 
 void dfstr (word36 *Ypair)
@@ -2200,8 +2200,8 @@ void dfstr (word36 *Ypair)
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
-        CLRF(cu.IR, I_NEG);
+        SETF(CPU -> cu.IR, I_ZERO);
+        CLRF(CPU -> cu.IR, I_NEG);
         
         Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
         Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
@@ -2237,7 +2237,7 @@ void dfstr (word36 *Ypair)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(cu.IR, I_EOFL);
+            SETF(CPU -> cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -2253,10 +2253,10 @@ void dfstr (word36 *Ypair)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(cu.IR, I_ZERO);
+        SETF(CPU -> cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, cu.IR, I_NEG);
+    SCF(A & SIGN36, CPU -> cu.IR, I_NEG);
     
     Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
@@ -2307,8 +2307,8 @@ void dfcmp (void)
     }
     
     // need to do algebraic comparisons of mantissae
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 <  m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 <  m2, CPU -> cu.IR, I_NEG);
 }
 
 /*!
@@ -2359,6 +2359,6 @@ void dfcmg (void)
     m1 = llabs(m1);
     m2 = llabs(m2);
     
-    SCF(m1 == m2, cu.IR, I_ZERO);
-    SCF(m1 < m2, cu.IR, I_NEG);
+    SCF(m1 == m2, CPU -> cu.IR, I_ZERO);
+    SCF(m1 < m2, CPU -> cu.IR, I_NEG);
 }

@@ -729,7 +729,7 @@ static uint64 getSCUclock (void)
 // allowing reproducible behavior. In real, the clock is
 // coupled to the actual time-of-day.
 
-    if (switches . steady_clock)
+    if (CPU -> switches . steady_clock)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
@@ -737,7 +737,7 @@ static uint64 getSCUclock (void)
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;
-        if (switches . bullet_time)
+        if (CPU -> switches . bullet_time)
           big *= 10000;
 
         big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
@@ -786,7 +786,7 @@ static uint64 getSCUclock (void)
     struct timeval now;
     gettimeofday(& now, NULL);
                 
-    if (switches . y2k) // subtract 20 years....
+    if (CPU -> switches . y2k) // subtract 20 years....
       {
         // Back the clock up to just after the MR12.3 release (12/89
         // according to http://www.multicians.org/chrono.html
@@ -1353,7 +1353,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
         case 00005: 
           {
 #if 0
-            if (switches . steady_clock)
+            if (CPU -> switches . steady_clock)
               {
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
@@ -1361,7 +1361,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
                 big *= 4u;
                 //big /= 100u;
-                if (switches . bullet_time)
+                if (CPU -> switches . bullet_time)
                   big *= 10000;
 
                 big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
@@ -1415,7 +1415,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             struct timeval now;
             gettimeofday(& now, NULL);
                 
-            if (switches . y2k) // subtract 20 years....
+            if (CPU -> switches . y2k) // subtract 20 years....
               {
                 // Back the clock up to just after the MR12.3 release (12/89
                 // according to http://www.multicians.org/chrono.html
@@ -1676,12 +1676,12 @@ static void deliverInterrupts (uint scu_unit_num)
             if (scu [scu_unit_num] . cells [inum] &&
                 (mask & (1 << (31 - inum))) != 0)
               {
-                events . XIP [scu_unit_num] = true;
+                CPU -> events . XIP [scu_unit_num] = true;
                 return;
               }
           }
       }
-    events . XIP [scu_unit_num] = false;
+    CPU -> events . XIP [scu_unit_num] = false;
   }
 
 uint scuGetHighestIntr (uint scuUnitNum)
