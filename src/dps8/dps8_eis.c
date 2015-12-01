@@ -264,7 +264,7 @@ static word36 getCrAR (word4 reg)
           return GETHI (CPU -> rQ);
 
         case TD_IC: // C(PPR.IC)
-          return PPR . IC;
+          return CPU -> PPR . IC;
 
         case TD_AL: // C(A)18,35
           return CPU -> rA; // See AL36, Table 4-1
@@ -320,7 +320,7 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
                 // the register is an address offset, not the designation of 
                 // a register containing the operand length.
-          return PPR . IC;
+          return CPU -> PPR . IC;
 
         case 5: // al / a
           return GETLO (CPU -> rA);
@@ -370,7 +370,7 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
                 // the register is an address offset, not the designation of 
                 // a register containing the operand length.
-          return PPR . IC;
+          return CPU -> PPR . IC;
 
         case 5: // al / a
           return CPU -> rA;
@@ -397,14 +397,14 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
 
 static void EISWriteCache (EISaddr * p)
   {
-    word3 saveTRR = TPR . TRR;
+    word3 saveTRR = CPU -> TPR . TRR;
 
     if (p -> cacheValid && p -> cacheDirty)
       {
         if (p -> mat == viaPR)
           {
-            TPR . TRR = p -> RNR;
-            TPR . TSR = p -> SNR;
+            CPU -> TPR . TRR = p -> RNR;
+            CPU -> TPR . TSR = p -> SNR;
         
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
                        "%s: writeCache (PR) %012llo@%o:%06o\n", 
@@ -415,23 +415,23 @@ static void EISWriteCache (EISaddr * p)
           {
             if (get_addr_mode() == APPEND_mode)
               {
-                TPR . TRR = PPR . PRR;
-                TPR . TSR = PPR . PSR;
+                CPU -> TPR . TRR = CPU -> PPR . PRR;
+                CPU -> TPR . TSR = CPU -> PPR . PSR;
               }
         
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
                        "%s: writeCache %012llo@%o:%06o\n", 
-                       __func__, p -> cachedWord, TPR . TSR, p -> cachedAddr);
+                       __func__, p -> cachedWord, CPU -> TPR . TSR, p -> cachedAddr);
             Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, false);
           }
       }
     p -> cacheDirty = false;
-    TPR . TRR = saveTRR;
+    CPU -> TPR . TRR = saveTRR;
   }
 
 static void EISWriteIdx (EISaddr *p, uint n, word36 data)
 {
-    word3 saveTRR = TPR . TRR;
+    word3 saveTRR = CPU -> TPR . TRR;
     word18 addressN = p -> address + n;
     addressN &= AMASK;
     if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != addressN)
@@ -449,14 +449,14 @@ static void EISWriteIdx (EISaddr *p, uint n, word36 data)
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
     EISWriteCache (p);
 
-    TPR . TRR = saveTRR;
+    CPU -> TPR . TRR = saveTRR;
 }
 
 static word36 EISRead (EISaddr * p)
   {
     word36 data;
 
-    word3 saveTRR = TPR . TRR;
+    word3 saveTRR = CPU -> TPR . TRR;
 
     if (p -> cacheValid && p -> cachedAddr == p -> address)
       {
@@ -470,34 +470,34 @@ static word36 EISRead (EISaddr * p)
 
     if (p -> mat == viaPR)
     {
-        TPR . TRR = p -> RNR;
-        TPR . TSR = p -> SNR;
+        CPU -> TPR . TRR = p -> RNR;
+        CPU -> TPR . TSR = p -> SNR;
         
         sim_debug (DBG_TRACEEXT, & cpu_dev,
-                   "%s: read %o:%06o\n", __func__, TPR . TSR, p -> address);
+                   "%s: read %o:%06o\n", __func__, CPU -> TPR . TSR, p -> address);
         // read data via AR/PR. TPR.{TRR,TSR} already set up
         Read (p -> address, & data, EIS_OPERAND_READ, true);
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "%s: read* %012llo@%o:%06o\n", __func__,
-                   data, TPR . TSR, p -> address);
+                   data, CPU -> TPR . TSR, p -> address);
       }
     else
       {
         if (get_addr_mode() == APPEND_mode)
           {
-            TPR . TRR = PPR . PRR;
-            TPR . TSR = PPR . PSR;
+            CPU -> TPR . TRR = CPU -> PPR . PRR;
+            CPU -> TPR . TSR = CPU -> PPR . PSR;
           }
         
         Read (p -> address, & data, EIS_OPERAND_READ, false);  // read operand
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "%s: read %012llo@%o:%06o\n", 
-                   __func__, data, TPR . TSR, p -> address);
+                   __func__, data, CPU -> TPR . TSR, p -> address);
     }
     p -> cacheValid = true;
     p -> cachedAddr = p -> address;
     p -> cachedWord = data;
-    TPR . TRR = saveTRR;
+    CPU -> TPR . TRR = saveTRR;
     return data;
   }
 
@@ -792,15 +792,15 @@ static void setupOperandDescriptor (int k)
             // to C(PRn.WORDNO) if A = 1 (all modes)
             uint n = getbits18 (address, 0, 3);
             word15 offset = address & MASK15;  // 15-bit signed number
-            address = (AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
+            address = (CPU -> AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
             e -> addr [k - 1] . address = address;
             if (get_addr_mode () == APPEND_mode)
               {
-                e -> addr [k - 1] . SNR = PR [n] . SNR;
-                e -> addr [k - 1] . RNR = max3 (PR [n] . RNR,
-                                                TPR . TRR,
-                                                PPR . PRR);
+                e -> addr [k - 1] . SNR = CPU -> PR [n] . SNR;
+                e -> addr [k - 1] . RNR = max3 (CPU -> PR [n] . RNR,
+                                                CPU -> TPR . TRR,
+                                                CPU -> PPR . PRR);
                 
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
               }
@@ -862,15 +862,15 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
         // data.
         uint n = getbits18 (address, 0, 3);
         word18 offset = SIGNEXT15_18 (address);  // 15-bit signed number
-        address = (AR [n] . WORDNO + offset) & AMASK;
+        address = (CPU -> AR [n] . WORDNO + offset) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
           {
-            e -> addr [k - 1] . SNR = PR [n] . SNR;
-            e -> addr [k - 1] . RNR = max3 (PR [n] . RNR, TPR . TRR, PPR . PRR);
+            e -> addr [k - 1] . SNR = CPU -> PR [n] . SNR;
+            e -> addr [k - 1] . RNR = max3 (CPU -> PR [n] . RNR, CPU -> TPR . TRR, CPU -> PPR . PRR);
 
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
           }
@@ -1022,15 +1022,15 @@ static void parseArgOperandDescriptor (uint k)
         // register pointing to the data.
         word3 n = GET_ARN (opDesc);
         word15 offset = y & MASK15;  // 15-bit signed number
-        y = (AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
+        y = (CPU -> AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
           {
-            e -> addr [k - 1] . SNR = PR[n].SNR;
-            e -> addr [k - 1] . RNR = max3 (PR [n] . RNR, TPR . TRR, PPR . PRR);
+            e -> addr [k - 1] . SNR = CPU -> PR[n].SNR;
+            e -> addr [k - 1] . RNR = max3 (CPU -> PR [n] . RNR, CPU -> TPR . TRR, CPU -> PPR . PRR);
             e -> addr [k - 1] . mat = viaPR;
           }
       }
@@ -1059,15 +1059,15 @@ static void parseNumericOperandDescriptor (int k)
         // data.
         uint n = (int)bitfieldExtract36(address, 15, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
+        address = (CPU -> AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
-            e->addr[k-1].SNR = PR[n].SNR;
-            e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            e->addr[k-1].SNR = CPU -> PR[n].SNR;
+            e->addr[k-1].RNR = max3(CPU -> PR[n].RNR, CPU -> TPR.TRR, CPU -> PPR.PRR);
 
             e->addr[k-1].mat = viaPR;   // ARs involved
         }
@@ -1173,7 +1173,7 @@ static void parseBitstringOperandDescriptor (int k)
         // data.
         uint n = (int)bitfieldExtract36(address, 15, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
+        address = (CPU -> AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
@@ -1185,8 +1185,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         if (get_addr_mode() == APPEND_mode)
 #endif
         {
-            e->addr[k-1].SNR = PR[n].SNR;
-            e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
+            e->addr[k-1].SNR = CPU -> PR[n].SNR;
+            e->addr[k-1].RNR = max3(CPU -> PR[n].RNR, CPU -> TPR.TRR, CPU -> PPR.PRR);
             
             e->addr[k-1].mat = viaPR;   // ARs involved
         }
@@ -1259,11 +1259,11 @@ void a4bd (void)
   
     uint augend = 0;
     if (GET_A (CPU -> cu . IWB))
-       augend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
+       augend = CPU -> AR [ARn] . WORDNO * 32 + CPU -> AR [ARn] . BITNO;
     uint addend = address * 32 + r * 4;
     uint sum = augend + addend;
 
-    AR [ARn] . WORDNO = sum / 32;
+    CPU -> AR [ARn] . WORDNO = sum / 32;
 
     // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
     //             111111 11112222 22222233
@@ -1274,8 +1274,8 @@ void a4bd (void)
                            28, 29, 30, 31, 32, 33, 34, 35};
 
     uint bitno = sum % 32;
-    AR [ARn] . BITNO = tab [bitno];
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    CPU -> AR [ARn] . BITNO = tab [bitno];
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 
@@ -1290,11 +1290,11 @@ void s4bd (void)
 
     uint minuend = 0;
     if (GET_A (CPU -> cu . IWB))
-       minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
+       minuend = CPU -> AR [ARn] . WORDNO * 32 + CPU -> AR [ARn] . BITNO;
     uint subtractend = address * 32 + r * 4;
     uint difference = minuend - subtractend;
 
-    AR [ARn] . WORDNO = difference / 32;
+    CPU -> AR [ARn] . WORDNO = difference / 32;
 
     // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
     //             111111 11112222 22222233
@@ -1305,8 +1305,8 @@ void s4bd (void)
                        28, 29, 30, 31, 32, 33, 34, 35};
 
     uint bitno = difference % 32;
-    AR [ARn] . BITNO = tab [bitno];
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    CPU -> AR [ARn] . BITNO = tab [bitno];
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 void axbd (uint sz)
@@ -1321,13 +1321,13 @@ void axbd (uint sz)
   
     uint augend = 0;
     if (GET_A (CPU -> cu . IWB))
-       augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+       augend = CPU -> AR [ARn] . WORDNO * 36 + CPU -> AR [ARn] . BITNO;
     uint addend = address * 36 + r * sz;
     uint sum = augend + addend;
 
-    AR [ARn] . WORDNO = sum / 36;
-    AR [ARn] . BITNO = sum % 36;
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    CPU -> AR [ARn] . WORDNO = sum / 36;
+    CPU -> AR [ARn] . BITNO = sum % 36;
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 
@@ -1342,13 +1342,13 @@ void sxbd (uint sz)
 
     uint minuend = 0;
     if (GET_A (CPU -> cu . IWB))
-       minuend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+       minuend = CPU -> AR [ARn] . WORDNO * 36 + CPU -> AR [ARn] . BITNO;
     uint subtractend = address * 36 + r * sz;
     uint difference = minuend - subtractend;
 
-    AR [ARn] . WORDNO = difference / 36;
-    AR [ARn] . BITNO = difference % 36;
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    CPU -> AR [ARn] . WORDNO = difference / 36;
+    CPU -> AR [ARn] . BITNO = difference % 36;
+    CPU -> AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 void cmpc (void)

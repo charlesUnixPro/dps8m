@@ -66,11 +66,11 @@ static void writeOperands (void)
         if (i->info->flags & READ_OPERAND)
           data = CY;
         else
-          Read (TPR . CA, & data, OPERAND_READ, i -> a);
+          Read (CPU -> TPR . CA, & data, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA, 
+                   data, CPU -> TPR . CA, 
                    characterOperandSize, characterOperandOffset);
 
         // set byte/char
@@ -89,18 +89,18 @@ static void writeOperands (void)
           }
 
         // write it
-        Write (TPR . CA, data, OPERAND_STORE, i -> a);   //TM_IT);
+        Write (CPU -> TPR . CA, data, OPERAND_STORE, i -> a);   //TM_IT);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA, 
+                   data, CPU -> TPR . CA, 
                    characterOperandSize, characterOperandOffset);
 
 
         return;
       }
 
-    WriteOP (TPR . CA, OPERAND_STORE, i -> a);
+    WriteOP (CPU -> TPR . CA, OPERAND_STORE, i -> a);
 
     return;
 }
@@ -111,7 +111,7 @@ static void readOperands (void)
     DCDstruct * i = & CPU -> currentInstruction;
 
     sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(CPU -> cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
-sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
+sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, CPU -> TPR.CA);
     if (directOperandFlag)
       {
         CY = directOperand;
@@ -123,7 +123,7 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
     if (characterOperandFlag)
       {
         word36 data;
-        Read (TPR . CA, & data, OPERAND_READ, i -> a);
+        Read (CPU -> TPR . CA, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands: IT_MOD(IT_SC): indword=%012llo\n", data);
         switch (characterOperandSize)
@@ -142,12 +142,12 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
           }
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands: IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
-                   data, TPR . CA, CY);
+                   data, CPU -> TPR . CA, CY);
 
         return;
       }
 
-    ReadOP (TPR.CA, OPERAND_READ, i -> a);
+    ReadOP (CPU -> TPR.CA, OPERAND_READ, i -> a);
     return;
 }
 
@@ -159,9 +159,9 @@ static void scu2words(word36 *words)
     
     // words [0]
 
-    putbits36 (& words [0],  0,  3, PPR . PRR);
-    putbits36 (& words [0],  3, 15, PPR . PSR);
-    putbits36 (& words [0], 18,  1, PPR . P);
+    putbits36 (& words [0],  0,  3, CPU -> PPR . PRR);
+    putbits36 (& words [0],  3, 15, CPU -> PPR . PSR);
+    putbits36 (& words [0], 18,  1, CPU -> PPR . P);
     // 19, 1 XSF External segment flag
     // 20, 1 SDWAMM Match on SDWAM
     putbits36 (& words [0], 21,  1, CPU -> cu . SD_ON);
@@ -217,8 +217,8 @@ static void scu2words(word36 *words)
 
     // words [2]
     
-    putbits36 (& words [2],  0,  3, TPR . TRR);
-    putbits36 (& words [2],  3, 15, TPR . TSR);
+    putbits36 (& words [2],  0,  3, CPU -> TPR . TRR);
+    putbits36 (& words [2],  3, 15, CPU -> TPR . TSR);
     // 18, 4 PTWAM levels enabled
     // 22, 4 SDWAM levels enabled
     // 26, 1 0
@@ -231,16 +231,16 @@ static void scu2words(word36 *words)
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
     // 22, 4 TSNB pointer register number for EIS operand #2
     // 26, 4 TSNC pointer register number for EIS operand #3
-    putbits36 (& words [3], 30, 6, TPR . TBR);
+    putbits36 (& words [3], 30, 6, CPU -> TPR . TBR);
     
     // words [4]
 
-    putbits36 (& words [4],  0, 18, PPR . IC);
+    putbits36 (& words [4],  0, 18, CPU -> PPR . IC);
     putbits36 (& words [4], 18, 18, CPU -> cu . IR); // HWR
     
     // words [5]
 
-    putbits36 (& words [5],  0, 18, TPR . CA);
+    putbits36 (& words [5],  0, 18, CPU -> TPR . CA);
     putbits36 (& words [5], 18,  1, CPU -> cu . repeat_first);
     putbits36 (& words [5], 19,  1, CPU -> cu . rpt);
     putbits36 (& words [5], 20,  1, CPU -> cu . rd);
@@ -297,9 +297,9 @@ static void words2scu (word36 * words)
     
     // words [0]
 
-    PPR.PRR         = getbits36(words[0], 0, 3);
-    PPR.PSR         = getbits36(words[0], 3, 15);
-    PPR.P           = getbits36(words[0], 18, 1);
+    CPU -> PPR.PRR         = getbits36(words[0], 0, 3);
+    CPU -> PPR.PSR         = getbits36(words[0], 3, 15);
+    CPU -> PPR.P           = getbits36(words[0], 18, 1);
     CPU -> cu.SD_ON        = getbits36(words[0], 21, 1);
     CPU -> cu.PT_ON        = getbits36(words[0], 23, 1);
 #if 0
@@ -346,22 +346,22 @@ static void words2scu (word36 * words)
 
     // words[2]
     
-    TPR.TRR         = getbits36(words[2], 0, 3);
-    TPR.TSR         = getbits36(words[2], 3, 15);
+    CPU -> TPR.TRR         = getbits36(words[2], 0, 3);
+    CPU -> TPR.TSR         = getbits36(words[2], 3, 15);
     CPU -> cu.delta        = getbits36(words[2], 30, 6);
     
     // words[3]
 
-    TPR.TBR         = getbits36(words[3], 30, 6);
+    CPU -> TPR.TBR         = getbits36(words[3], 30, 6);
     
     // words [4]
 
     CPU -> cu.IR           = getbits36(words[4], 18, 18); // HWR
-    PPR.IC          = getbits36(words[4], 0, 18);
+    CPU -> PPR.IC          = getbits36(words[4], 0, 18);
     
     // words [5]
 
-    TPR.CA          = getbits36(words[5], 0, 18);
+    CPU -> TPR.CA          = getbits36(words[5], 0, 18);
     CPU -> cu.repeat_first = getbits36(words[5], 18, 1);
     CPU -> cu.rpt          = getbits36(words[5], 19, 1);
     CPU -> cu.rd           = getbits36(words[5], 20, 1);
@@ -710,13 +710,13 @@ void fetchInstruction (word18 addr)
     memset (p, 0, sizeof (struct DCDstruct));
 
     // since the next memory cycle will be a instruction fetch setup TPR
-    TPR.TRR = PPR.PRR;
-    TPR.TSR = PPR.PSR;
+    CPU -> TPR.TRR = CPU -> PPR.PRR;
+    CPU -> TPR.TSR = CPU -> PPR.PSR;
 
     //if (get_addr_mode() == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
     if (get_addr_mode() == ABSOLUTE_mode)
       {
-        TPR . TRR = 0;
+        CPU -> TPR . TRR = 0;
         CPU -> RSDWH_R1 = 0;
       }
 
@@ -740,10 +740,10 @@ void fetchOperands (void)
     
     if (i->info->ndes > 0)
         for(int n = 0 ; n < i->info->ndes; n += 1)
-            Read(i, PPR.IC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
+            Read(i, CPU -> PPR.IC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
     else
         if (READOP(i) || RMWOP(i))
-            ReadOP(i, TPR.CA, READ_OPERAND, XXX);
+            ReadOP(i, CPU -> TPR.CA, READ_OPERAND, XXX);
     
 }
 #endif
@@ -757,8 +757,8 @@ static t_stat setupForOperandRead (void)
     DCDstruct * i = & CPU -> currentInstruction;
     if (!i->a)   // if A bit set set-up TPR stuff ...
     {
-        TPR.TRR = PPR.PRR;
-        TPR.TSR = PPR.PSR;
+        CPU -> TPR.TRR = CPU -> PPR.PRR;
+        CPU -> TPR.TSR = CPU -> PPR.PSR;
     }
     return SCPE_OK;
 }
@@ -772,7 +772,7 @@ void traceInstruction (uint flag)
 force:;
         char * compname;
         word18 compoffset;
-        char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
+        char * where = lookupAddress (CPU -> PPR.PSR, CPU -> PPR.IC, & compname, & compoffset);
         bool isBAR = TSTF (CPU -> cu . IR, I_NBAR) ? false : true;
         if (where)
           {
@@ -780,22 +780,22 @@ force:;
               {
                 if (isBAR)
                   {
-                    sim_debug(flag, &cpu_dev, "%06o|%06o %s\n", BAR.BASE, PPR.IC, where);
+                    sim_debug(flag, &cpu_dev, "%06o|%06o %s\n", CPU -> BAR.BASE, CPU -> PPR.IC, where);
                   }
                 else
                   {
-                    sim_debug(flag, &cpu_dev, "%06o %s\n", PPR.IC, where);
+                    sim_debug(flag, &cpu_dev, "%06o %s\n", CPU -> PPR.IC, where);
                   }
               }
             else if (get_addr_mode() == APPEND_mode)
               {
                 if (isBAR)
                   {
-                    sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %s\n", PPR.PSR, BAR.BASE, PPR.IC, where);
+                    sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %s\n", CPU -> PPR.PSR, CPU -> BAR.BASE, CPU -> PPR.IC, where);
                   }
                 else
                   {
-                    sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", PPR.PSR, PPR.IC, where);
+                    sim_debug(flag, &cpu_dev, "%05o:%06o %s\n", CPU -> PPR.PSR, CPU -> PPR.IC, where);
                   }
               }
             listSource (compname, compoffset, flag);
@@ -805,22 +805,22 @@ force:;
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", CPU -> BAR.BASE, CPU -> PPR.IC, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, CPU -> cu . IWB, disAssemble (CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", CPU -> PPR.IC, CPU -> cu . IWB, disAssemble (CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
           }
         else if (get_addr_mode() == APPEND_mode)
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", CPU -> PPR.PSR, CPU -> BAR.BASE, CPU -> PPR.IC, CPU -> PPR.PRR, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", CPU -> PPR.PSR, CPU -> PPR.IC, CPU -> PPR.PRR, CPU -> cu . IWB, disAssemble(CPU -> cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
           }
       }
@@ -963,9 +963,9 @@ t_stat executeInstruction (void)
     ///                     Initialize address registers
     ///
 
-    TPR.CA = address;
-    iefpFinalAddress = TPR . CA;
-    CPU -> rY = TPR.CA;
+    CPU -> TPR.CA = address;
+    iefpFinalAddress = CPU -> TPR . CA;
+    CPU -> rY = CPU -> TPR.CA;
 
     if (!CPU -> switches . append_after)
     {
@@ -995,7 +995,7 @@ restart_1:
 ///
 
     // XXX Don't trace Multics idle loop
-    if (PPR.PSR != 061 && PPR.IC != 0307)
+    if (CPU -> PPR.PSR != 061 && CPU -> PPR.IC != 0307)
 
       traceInstruction (DBG_TRACE);
 
@@ -1009,8 +1009,8 @@ restart_1:
       {
         if (! ci -> a)
           {
-            TPR.TRR = PPR.PRR;
-            TPR.TSR = PPR.PSR;
+            CPU -> TPR.TRR = CPU -> PPR.PRR;
+            CPU -> TPR.TSR = CPU -> PPR.PSR;
           }
       }
 
@@ -1066,23 +1066,23 @@ restart_1:
 
         sim_debug (DBG_TRACE, & cpu_dev,
                    "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n", 
-                   CPU -> cu . repeat_first, CPU -> cu . rpt, CPU -> cu . rd, PPR . IC & 1, 
+                   CPU -> cu . repeat_first, CPU -> cu . rpt, CPU -> cu . rd, CPU -> PPR . IC & 1, 
                    CPU -> rX [0], !! (CPU -> rX [0] & 01000), !! (CPU -> rX [0] & 0400));
         sim_debug (DBG_TRACE, & cpu_dev,
-                   "RPT/RPD CA %06o\n", TPR . CA);
+                   "RPT/RPD CA %06o\n", CPU -> TPR . CA);
 
 // Handle first time of a RPT or RPD
 
         if (CPU -> cu . repeat_first)
           {
-            if (CPU -> cu . rpt || (CPU -> cu . rd && (PPR.IC & 1)))
+            if (CPU -> cu . rpt || (CPU -> cu . rd && (CPU -> PPR.IC & 1)))
               CPU -> cu . repeat_first = false;
 
             // For the first execution of the repeated instruction: 
             // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
             if (CPU -> cu . rpt ||                         // rpt
-                (CPU -> cu . rd && ((PPR.IC & 1) == 0)) || // rpd & even & A 
-                (CPU -> cu . rd && ((PPR.IC & 1) != 0)))   // rpd & odd & B 
+                (CPU -> cu . rd && ((CPU -> PPR.IC & 1) == 0)) || // rpd & even & A 
+                (CPU -> cu . rd && ((CPU -> PPR.IC & 1) != 0)))   // rpd & odd & B 
               {
                 word18 offset;
                 if (ci -> a)
@@ -1135,9 +1135,9 @@ restart_1:
 // this should not be an issue, as this folderol would be in the DU, and
 // we would not be re-executing that code, but until then, set the TPR
 // to the condition we know it should be in.
-            TPR.TRR = PPR.PRR;
-            TPR.TSR = PPR.PSR;
-            Read (PPR . IC + 1 + n, & CPU -> currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
+            CPU -> TPR.TRR = CPU -> PPR.PRR;
+            CPU -> TPR.TSR = CPU -> PPR.PSR;
+            Read (CPU -> PPR . IC + 1 + n, & CPU -> currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
           }
         setupEISoperands ();
       }
@@ -1155,12 +1155,12 @@ restart_1:
               doPtrReg ();
             else
               {
-                TPR . TBR = 0;
+                CPU -> TPR . TBR = 0;
                 //if (get_addr_mode () == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
                 if (get_addr_mode() == ABSOLUTE_mode)
                   {
-                    TPR . TSR = PPR . PSR;
-                    TPR . TRR = 0;
+                    CPU -> TPR . TSR = CPU -> PPR . PSR;
+                    CPU -> TPR . TRR = 0;
                     CPU -> RSDWH_R1 = 0;
                   }
                 clr_went_appending ();
@@ -1180,12 +1180,12 @@ restart_1:
         if (ci->info->flags & PREPARE_CA)
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = TPR . CA;
+            iefpFinalAddress = CPU -> TPR . CA;
           }
         else if (READOP (ci))
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = TPR . CA;
+            iefpFinalAddress = CPU -> TPR . CA;
 #if 0 // test code
 // Test to verify that recalling CAF is stable.
         {
@@ -1251,7 +1251,7 @@ restart_1:
         if (! READOP (ci))
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = TPR . CA;
+            iefpFinalAddress = CPU -> TPR . CA;
           }
         writeOperands ();
       }
@@ -1264,7 +1264,7 @@ restart_1:
     // The semantics of these are that even is the first instruction of
     // and RPD, and odd the second.
 
-    bool icOdd = !! (PPR . IC & 1);
+    bool icOdd = !! (CPU -> PPR . IC & 1);
     bool icEven = ! icOdd;
 
     // Here, repeat_first means that the instruction just executed was the
@@ -1351,7 +1351,7 @@ restart_1:
           }
         // Check for termination conditions.
 
-        if (CPU -> cu . rpt || (CPU -> cu . rd & (PPR.IC & 1)))
+        if (CPU -> cu . rpt || (CPU -> cu . rd & (CPU -> PPR.IC & 1)))
           {
             bool exit = false;
             // The repetition cycle consists of the following steps:
@@ -1434,7 +1434,7 @@ restart_1:
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "not terminate\n");
               }
-          } // if (CPU -> cu . rpt || CPU -> cu . rd & (PPR.IC & 1))
+          } // if (CPU -> cu . rpt || CPU -> cu . rd & (CPU -> PPR.IC & 1))
       } // (! rf) && (CPU -> cu . rpt || CPU -> cu . rd)
 
 ///
@@ -1455,13 +1455,13 @@ restart_1:
         for(int n = 0 ; n < 8 ; n++)
         {
             sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+                      n, PRalias[n], CPU -> PR[n].SNR, CPU -> PR[n].RNR, CPU -> PR[n].WORDNO, CPU -> PR[n].BITNO);
         }
         for(int n = 0 ; n < 8 ; n++)
             sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                  n, AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
-        sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
-        sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
+                  n, CPU -> AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
+        sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", CPU -> PPR.PRR, CPU -> PPR.PSR, CPU -> PPR.P, CPU -> PPR.IC);
+        sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", CPU -> DSBR.ADDR, CPU -> DSBR.BND, CPU -> DSBR.U, CPU -> DSBR.STACK);
     }
     
 ///
@@ -1515,19 +1515,19 @@ static t_stat DoBasicInstruction (void)
         /// ￼Fixed-Point Data Movement Load
         case 0635:  ///< eaa
             CPU -> rA = 0;
-            SETHI(CPU -> rA, TPR.CA);
+            SETHI(CPU -> rA, CPU -> TPR.CA);
             
-            SCF(TPR.CA == 0, CPU -> cu.IR, I_ZERO);
-            SCF(TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
+            SCF(CPU -> TPR.CA == 0, CPU -> cu.IR, I_ZERO);
+            SCF(CPU -> TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
             
             break;
             
         case 0636:  ///< eaq
             CPU -> rQ = 0;
-            SETHI(CPU -> rQ, TPR.CA);
+            SETHI(CPU -> rQ, CPU -> TPR.CA);
 
-            SCF(TPR.CA == 0, CPU -> cu.IR, I_ZERO);
-            SCF(TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
+            SCF(CPU -> TPR.CA == 0, CPU -> cu.IR, I_ZERO);
+            SCF(CPU -> TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
             break;
 
         case 0620:  ///< eax0
@@ -1540,10 +1540,10 @@ static t_stat DoBasicInstruction (void)
         case 0627:  ///< eax7
             {
                 uint32 n = opcode & 07;  ///< get n
-                CPU -> rX[n] = TPR.CA;
+                CPU -> rX[n] = CPU -> TPR.CA;
 
-                SCF(TPR.CA == 0, CPU -> cu.IR, I_ZERO);
-                SCF(TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
+                SCF(CPU -> TPR.CA == 0, CPU -> cu.IR, I_ZERO);
+                SCF(CPU -> TPR.CA & SIGN18, CPU -> cu.IR, I_NEG);
             }
             break;
             
@@ -1778,7 +1778,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0073:   ///< lreg
-            //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
+            //ReadN(i, 8, CPU -> TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
             
             CPU -> rX[0] = GETHI(Yblock8[0]);
             CPU -> rX[1] = GETLO(Yblock8[0]);
@@ -1838,7 +1838,7 @@ static t_stat DoBasicInstruction (void)
             Yblock8[7] = ((CPU -> rTR & MASK27) << 9) | (CPU -> rRALR & 07);    // needs checking
 #endif
                     
-            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
+            //WriteN(i, 8, CPU -> TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
             break;
 
@@ -1887,7 +1887,7 @@ static t_stat DoBasicInstruction (void)
         case 0554:  ///< stc1
             // "C(Y)25 reflects the state of the tally runout indicator
             // prior to modification.
-            SETHI(CY, (PPR.IC + 1) & MASK18);
+            SETHI(CY, (CPU -> PPR.IC + 1) & MASK18);
             SETLO(CY, CPU -> cu.IR & 0777760);
             if (i -> stiTally)
               SETF(CY, I_TALLY);
@@ -1898,7 +1898,7 @@ static t_stat DoBasicInstruction (void)
         case 0750:  ///< stc2
             // XXX AL-39 doesn't specify if the low half is set to zero,
             // set to IR, or left unchanged
-            SETHI(CY, (PPR.IC + 2) & MASK18);
+            SETHI(CY, (CPU -> PPR.IC + 2) & MASK18);
 
             break;
             
@@ -1932,13 +1932,13 @@ static t_stat DoBasicInstruction (void)
             //Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PSR, 18, 15);
             //Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PRR, 15,  3);
             //Ypair[0] = bitfieldInsert36(Ypair[0],     043,  0,  6);
-            putbits36 (& Ypair [0],  3, 15, PPR.PSR);
-            putbits36 (& Ypair [0], 18,  3, PPR.PRR);
+            putbits36 (& Ypair [0],  3, 15, CPU -> PPR.PSR);
+            putbits36 (& Ypair [0], 18,  3, CPU -> PPR.PRR);
             putbits36 (& Ypair [0], 30,  6,     043);
             
             Ypair[1] = 0;
             //Ypair[1] = bitfieldInsert36(Ypair[0], PPR.IC + 2, 18, 18);
-            putbits36(& Ypair [1],  0, 18, PPR.IC + 2);
+            putbits36(& Ypair [1],  0, 18, CPU -> PPR.IC + 2);
             
             break;
             
@@ -2012,7 +2012,7 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Data Movement Shift
         case 0775:  ///< alr
             {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
                 for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a0 = CPU -> rA & SIGN36;    ///< A0
@@ -2036,7 +2036,7 @@ static t_stat DoBasicInstruction (void)
         
         case 0735:  ///< als
             {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
             
                 word36 tmpSign = CPU -> rA & SIGN36;
                 CLRF(CPU -> cu.IR, I_CARRY);
@@ -2062,11 +2062,11 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0771:  ///< arl
-            /// Shift C(A) right the number of positions given in C(TPR.CA)11,17; filling
+            /// Shift C(A) right the number of positions given in C(CPU -> TPR.CA)11,17; filling
             /// vacated positions with zeros.
             {
                 CPU -> rA &= DMASK; // Make sure the shifted in bits are 0
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
 
                 CPU -> rA >>= tmp36;
                 CPU -> rA &= DMASK;    // keep to 36-bits
@@ -2089,7 +2089,7 @@ static t_stat DoBasicInstruction (void)
 	  // C(TPR.CA)11,17; filling vacated positions with initial C(A)0.
             
             CPU -> rA &= DMASK; // Make sure the shifted in bits are 0
-            word18 tmp18 = TPR.CA & 0177;   // CY bits 11-17
+            word18 tmp18 = CPU -> TPR.CA & 0177;   // CY bits 11-17
 
             bool a0 = CPU -> rA & SIGN36;    // A0
             for (uint i = 0 ; i < tmp18 ; i ++)
@@ -2118,7 +2118,7 @@ static t_stat DoBasicInstruction (void)
             /// entering each bit leaving AQ0 into AQ71.
 
             {
-                word36 tmp36 = TPR.CA & 0177;      // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;      // CY bits 11-17
                 for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a0 = CPU -> rA & SIGN36;    ///< A0
@@ -2156,7 +2156,7 @@ static t_stat DoBasicInstruction (void)
 
             CLRF (CPU -> cu . IR, I_CARRY);
  
-            word36 tmp36 = TPR . CA & 0177;   // CY bits 11-17
+            word36 tmp36 = CPU -> TPR . CA & 0177;   // CY bits 11-17
             word36 tmpSign = CPU -> rA & SIGN36;
             for(uint i = 0 ; i < tmp36 ; i ++)
               {
@@ -2193,7 +2193,7 @@ static t_stat DoBasicInstruction (void)
             {
                 CPU -> rA &= DMASK; // Make sure the shifted in bits are 0
                 CPU -> rQ &= DMASK; // Make sure the shifted in bits are 0
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
                 for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a35 = CPU -> rA & 1;      ///< A35
@@ -2223,7 +2223,7 @@ static t_stat DoBasicInstruction (void)
 	  // Shift C(AQ) right the number of positions given in
 	  // C(TPR.CA)11,17; filling vacated positions with initial C(AQ)0.
 
-            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
             CPU -> rA &= DMASK; // Make sure the shifted in bits are 0
             CPU -> rQ &= DMASK; // Make sure the shifted in bits are 0
             bool a0 = CPU -> rA & SIGN36;    ///< A0
@@ -2259,7 +2259,7 @@ static t_stat DoBasicInstruction (void)
             /// Shift C(Q) left the number of positions given in C(TPR.CA)11,17; entering
             /// each bit leaving Q0 into Q35.
             {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
                 for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool q0 = CPU -> rQ & SIGN36;    ///< Q0
@@ -2284,7 +2284,7 @@ static t_stat DoBasicInstruction (void)
         case 0736:  ///< qls
             // Shift C(Q) left the number of positions given in C(TPR.CA)11,17; fill vacated positions with zeros.
             {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
                 word36 tmpSign = CPU -> rQ & SIGN36;
                 CLRF(CPU -> cu.IR, I_CARRY);
 
@@ -2312,7 +2312,7 @@ static t_stat DoBasicInstruction (void)
             /// Shift C(Q) right the number of positions specified by Y11,17; fill vacated
             /// positions with zeros.
             {
-                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
             
                 CPU -> rQ &= DMASK;    // Make sure the shifted in bits are 0
                 CPU -> rQ >>= tmp36;
@@ -2337,7 +2337,7 @@ static t_stat DoBasicInstruction (void)
 	  // C(TPR.CA)11,17; filling vacated positions with initial C(Q)0.
 
             CPU -> rQ &= DMASK; // Make sure the shifted in bits are 0
-            word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            word36 tmp36 = CPU -> TPR.CA & 0177;   // CY bits 11-17
             bool q0 = CPU -> rQ & SIGN36;    // Q0
             for(uint i = 0 ; i < tmp36 ; i++)
               {
@@ -3526,7 +3526,7 @@ static t_stat DoBasicInstruction (void)
             else
                 CLRF(CPU -> cu.IR, I_NEG);
             
-            //Write(i, TPR.CA, CY, DataWrite, rTAG);
+            //Write(i, CPU -> TPR.CA, CY, DataWrite, rTAG);
 
             break;
 
@@ -3546,7 +3546,7 @@ static t_stat DoBasicInstruction (void)
             else
                 CLRF(CPU -> cu.IR, I_NEG);
             
-            //Write(i, TPR.CA, CY, DataWrite, rTAG);
+            //Write(i, CPU -> TPR.CA, CY, DataWrite, rTAG);
 
             break;
 
@@ -3902,7 +3902,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0537:  ///< dufs
             // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, CPU -> TPR.CA, Ypair, OperandRead, rTAG);
 
             dufs ();
             break;
@@ -4075,29 +4075,29 @@ static t_stat DoBasicInstruction (void)
         /// TRANSFER INSTRUCTIONS
         case 0713:  ///< call6
             
-            if (TPR.TRR > PPR.PRR)
+            if (CPU -> TPR.TRR > CPU -> PPR.PRR)
             {
                 sim_debug (DBG_APPENDING, & cpu_dev,
                            "call6 access violation fault (outward call)");
                 doFault (FAULT_ACV, OCALL,
                          "call6 access violation fault (outward call)");
             }
-            if (TPR.TRR < PPR.PRR)
-                PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & MASK15; // keep to 15-bits
-            if (TPR.TRR == PPR.PRR)
-                PR[7].SNR = PR[6].SNR;
-            PR[7].RNR = TPR.TRR;
-            if (TPR.TRR == 0)
-                PPR.P = SDW->P;
+            if (CPU -> TPR.TRR < CPU -> PPR.PRR)
+                CPU -> PR[7].SNR = ((CPU -> DSBR.STACK << 3) | CPU -> TPR.TRR) & MASK15; // keep to 15-bits
+            if (CPU -> TPR.TRR == CPU -> PPR.PRR)
+                CPU -> PR[7].SNR = CPU -> PR[6].SNR;
+            CPU -> PR[7].RNR = CPU -> TPR.TRR;
+            if (CPU -> TPR.TRR == 0)
+                CPU -> PPR.P = SDW->P;
             else
-                PPR.P = 0;
-            PR[7].WORDNO = 0;
-            PR[7].BITNO = 0;
-            PPR.PRR = TPR.TRR;
-            PPR.PSR = TPR.TSR;
-            PPR.IC = TPR.CA;
+                CPU -> PPR.P = 0;
+            CPU -> PR[7].WORDNO = 0;
+            CPU -> PR[7].BITNO = 0;
+            CPU -> PPR.PRR = CPU -> TPR.TRR;
+            CPU -> PPR.PSR = CPU -> TPR.TSR;
+            CPU -> PPR.IC = CPU -> TPR.CA;
             sim_debug (DBG_TRACE, & cpu_dev,
-                       "call6 PPR.PRR %o\n", PPR . PRR);
+                       "call6 PPR.PRR %o\n", CPU -> PPR . PRR);
             return CONT_TRA;
             
             
@@ -4144,7 +4144,7 @@ static t_stat DoBasicInstruction (void)
             //           "RET ABS  was %d now %d\n", 
             //           TSTF (CPU -> cu . IR, I_ABS) ? 1 : 0, 
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
-            PPR.IC = GETHI(CY);
+            CPU -> PPR.IC = GETHI(CY);
             CPU -> cu.IR = tempIR;
             
             return CONT_TRA;
@@ -4182,41 +4182,41 @@ static t_stat DoBasicInstruction (void)
                        "RTCD even %012llo odd %012llo\n", Ypair [0], Ypair [1]);
 
             /// C(Y-pair)3,17 -> C(PPR.PSR)
-            PPR.PSR = GETHI(Ypair[0]) & 077777LL;
+            CPU -> PPR.PSR = GETHI(Ypair[0]) & 077777LL;
             
             // XXX ticket #16
             /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-            //PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, SDW->R1);
-            PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, CPU -> RSDWH_R1);
+            //PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), CPU -> TPR.TRR, SDW->R1);
+            CPU -> PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), CPU -> TPR.TRR, CPU -> RSDWH_R1);
             
             /// C(Y-pair)36,53 -> C(PPR.IC)
-            PPR.IC = GETHI(Ypair[1]);
+            CPU -> PPR.IC = GETHI(Ypair[1]);
             
             sim_debug (DBG_TRACE, & cpu_dev,
-                       "RTCD %05o:%06o\n", PPR . PSR, PPR . IC);
+                       "RTCD %05o:%06o\n", CPU -> PPR . PSR, CPU -> PPR . IC);
 
             /// If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
             /// otherwise 0 -> C(PPR.P)
-            if (PPR.PRR == 0)
-                PPR.P = SDW->P;
+            if (CPU -> PPR.PRR == 0)
+                CPU -> PPR.P = SDW->P;
             else
-                PPR.P = 0;
+                CPU -> PPR.P = 0;
             
             sim_debug (DBG_TRACE, & cpu_dev,
-                       "RTCD PPR.PRR %o PPR.P %o\n", PPR . PRR, PPR . P);
+                       "RTCD PPR.PRR %o PPR.P %o\n", CPU -> PPR . PRR, CPU -> PPR . P);
 
             /// C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
             //for(int n = 0 ; n < 8 ; n += 1)
             //  PR[n].RNR = PPR.PRR;
 
-            PR[0].RNR =
-            PR[1].RNR =
-            PR[2].RNR =
-            PR[3].RNR =
-            PR[4].RNR =
-            PR[5].RNR =
-            PR[6].RNR =
-            PR[7].RNR = PPR.PRR;
+            CPU -> PR[0].RNR =
+            CPU -> PR[1].RNR =
+            CPU -> PR[2].RNR =
+            CPU -> PR[3].RNR =
+            CPU -> PR[4].RNR =
+            CPU -> PR[5].RNR =
+            CPU -> PR[6].RNR =
+            CPU -> PR[7].RNR = CPU -> PPR.PRR;
             
 //if (CPU -> rRALR && PPR.PRR >= CPU -> rRALR) sim_printf ("RTCD expects a ring alarm\n");
             return CONT_TRA;
@@ -4229,8 +4229,8 @@ static t_stat DoBasicInstruction (void)
             /// otherwise, no change to C(PPR)
             if (CPU -> cu.IR & I_EOFL)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 CLRF(CPU -> cu.IR, I_EOFL);
                 
 #ifdef RALR_FIX_0
@@ -4247,8 +4247,8 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & I_EUFL)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
                 CLRF(CPU -> cu.IR, I_EUFL);
                 
@@ -4267,8 +4267,8 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & I_NEG)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4284,8 +4284,8 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PPR.PSR)
             if (!(CPU -> cu.IR & I_CARRY))
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4301,8 +4301,8 @@ static t_stat DoBasicInstruction (void)
             ///     C(TPR.TSR) -> C(PPR.PSR)
             if (!(CPU -> cu.IR & I_ZERO))
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4318,8 +4318,8 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & I_OFLOW)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
                 CLRF(CPU -> cu.IR, I_OFLOW);
                 
@@ -4337,8 +4337,8 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PPR.PSR)
             if (!(CPU -> cu.IR & I_NEG)) 
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4352,8 +4352,8 @@ static t_stat DoBasicInstruction (void)
             /// C(TPR.CA) -> C(PPR.IC)
             /// C(TPR.TSR) -> C(PPR.PSR)
             
-            PPR.IC = TPR.CA;
-            PPR.PSR = TPR.TSR;
+            CPU -> PPR.IC = CPU -> TPR.CA;
+            CPU -> PPR.PSR = CPU -> TPR.TSR;
             
             return CONT_TRA;
 
@@ -4363,8 +4363,8 @@ static t_stat DoBasicInstruction (void)
             ///    C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & I_CARRY)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4398,25 +4398,25 @@ static t_stat DoBasicInstruction (void)
                     n = (opcode & 3) + 4;
 
             // XXX According to figure 8.1, all of this is done by the append unit.
-                PR[n].RNR = PPR.PRR;
-                PR[n].SNR = PPR.PSR;
-                PR[n].WORDNO = (PPR.IC + 1) & MASK18;
-                PR[n].BITNO = 0;
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PR[n].RNR = CPU -> PPR.PRR;
+                CPU -> PR[n].SNR = CPU -> PPR.PSR;
+                CPU -> PR[n].WORDNO = (CPU -> PPR.IC + 1) & MASK18;
+                CPU -> PR[n].BITNO = 0;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
             }
             return CONT_TRA;
 
         case 0715:  ///< tss
-            if (TPR.CA >= ((word18) BAR.BOUND) << 9)
+            if (CPU -> TPR.CA >= ((word18) CPU -> BAR.BOUND) << 9)
             {
                 doFault (FAULT_ACV, ACV15, "TSS boundary violation");
                 //break;
             }
             /// C(TPR.CA) + (BAR base) -> C(PPR.IC)
             /// C(TPR.TSR) -> C(PPR.PSR)
-            PPR.IC = TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
-            PPR.PSR = TPR.TSR;
+            CPU -> PPR.IC = CPU -> TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
+            CPU -> PPR.PSR = CPU -> TPR.TSR;
 
 #if 0
             set_addr_mode (BAR_mode);
@@ -4439,9 +4439,9 @@ static t_stat DoBasicInstruction (void)
             /// C(TPR.TSR) -> C(PPR.PSR)
             {
                 uint32 n = opcode & 07;  // get n
-                CPU -> rX[n] = (PPR.IC + 1) & MASK18;
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> rX[n] = (CPU -> PPR.IC + 1) & MASK18;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
             }
             return CONT_TRA;
         
@@ -4452,8 +4452,8 @@ static t_stat DoBasicInstruction (void)
             /// otherwise, no change to C(PPR)
             if ((CPU -> cu.IR & I_TALLY) == 0)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4470,8 +4470,8 @@ static t_stat DoBasicInstruction (void)
             /// otherwise, no change to C(PPR)
             if (CPU -> cu.IR & I_ZERO)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -4483,48 +4483,48 @@ static t_stat DoBasicInstruction (void)
 
         case 0311:  ///< easp0
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[0].SNR = TPR.CA & MASK15;
+            CPU -> PR[0].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0313:  ///< easp2
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[2].SNR = TPR.CA & MASK15;
+            CPU -> PR[2].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0331:  ///< easp4
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[4].SNR = TPR.CA & MASK15;
+            CPU -> PR[4].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0333:  ///< easp6
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[6].SNR = TPR.CA & MASK15;
+            CPU -> PR[6].SNR = CPU -> TPR.CA & MASK15;
             break;
         
         case 0310:  ///< eawp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[0].WORDNO = TPR.CA;
-            PR[0].BITNO = TPR.TBR;
+            CPU -> PR[0].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[0].BITNO = CPU -> TPR.TBR;
             break;
         case 0312:  ///< eawp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[2].WORDNO = TPR.CA;
-            PR[2].BITNO = TPR.TBR;
+            CPU -> PR[2].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[2].BITNO = CPU -> TPR.TBR;
             break;
         case 0330:  ///< eawp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[4].WORDNO = TPR.CA;
-            PR[4].BITNO = TPR.TBR;
+            CPU -> PR[4].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[4].BITNO = CPU -> TPR.TBR;
             break;
         case 0332:  ///< eawp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[6].WORDNO = TPR.CA;
-            PR[6].BITNO = TPR.TBR;
+            CPU -> PR[6].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[6].BITNO = CPU -> TPR.TBR;
             break;
         
             
@@ -4534,10 +4534,10 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[1].RNR = TPR.TRR;
-            PR[1].SNR = TPR.TSR;
-            PR[1].WORDNO = 0;
-            PR[1].BITNO = 0;
+            CPU -> PR[1].RNR = CPU -> TPR.TRR;
+            CPU -> PR[1].SNR = CPU -> TPR.TSR;
+            CPU -> PR[1].WORDNO = 0;
+            CPU -> PR[1].BITNO = 0;
             break;
         case 0353:  ///< epbp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4545,10 +4545,10 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[3].RNR = TPR.TRR;
-            PR[3].SNR = TPR.TSR;
-            PR[3].WORDNO = 0;
-            PR[3].BITNO = 0;
+            CPU -> PR[3].RNR = CPU -> TPR.TRR;
+            CPU -> PR[3].SNR = CPU -> TPR.TSR;
+            CPU -> PR[3].WORDNO = 0;
+            CPU -> PR[3].BITNO = 0;
             break;
         case 0371:  ///< epbp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4556,10 +4556,10 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[5].RNR = TPR.TRR;
-            PR[5].SNR = TPR.TSR;
-            PR[5].WORDNO = 0;
-            PR[5].BITNO = 0;
+            CPU -> PR[5].RNR = CPU -> TPR.TRR;
+            CPU -> PR[5].SNR = CPU -> TPR.TSR;
+            CPU -> PR[5].WORDNO = 0;
+            CPU -> PR[5].BITNO = 0;
             break;
             
         case 0373:  ///< epbp7
@@ -4568,10 +4568,10 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[7].RNR = TPR.TRR;
-            PR[7].SNR = TPR.TSR;
-            PR[7].WORDNO = 0;
-            PR[7].BITNO = 0;
+            CPU -> PR[7].RNR = CPU -> TPR.TRR;
+            CPU -> PR[7].SNR = CPU -> TPR.TSR;
+            CPU -> PR[7].WORDNO = 0;
+            CPU -> PR[7].BITNO = 0;
             break;
         
         case 0350:  ///< epp0
@@ -4580,10 +4580,10 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[0].RNR = TPR.TRR;
-            PR[0].SNR = TPR.TSR;
-            PR[0].WORDNO = TPR.CA;
-            PR[0].BITNO = TPR.TBR;
+            CPU -> PR[0].RNR = CPU -> TPR.TRR;
+            CPU -> PR[0].SNR = CPU -> TPR.TSR;
+            CPU -> PR[0].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[0].BITNO = CPU -> TPR.TBR;
             break;
         case 0352:  ///< epp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4591,10 +4591,10 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[2].RNR = TPR.TRR;
-            PR[2].SNR = TPR.TSR;
-            PR[2].WORDNO = TPR.CA;
-            PR[2].BITNO = TPR.TBR;
+            CPU -> PR[2].RNR = CPU -> TPR.TRR;
+            CPU -> PR[2].SNR = CPU -> TPR.TSR;
+            CPU -> PR[2].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[2].BITNO = CPU -> TPR.TBR;
             break;
         case 0370:  ///< epp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4602,10 +4602,10 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[4].RNR = TPR.TRR;
-            PR[4].SNR = TPR.TSR;
-            PR[4].WORDNO = TPR.CA;
-            PR[4].BITNO = TPR.TBR;
+            CPU -> PR[4].RNR = CPU -> TPR.TRR;
+            CPU -> PR[4].SNR = CPU -> TPR.TSR;
+            CPU -> PR[4].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[4].BITNO = CPU -> TPR.TBR;
             break;
         case 0372:  ///< epp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4613,10 +4613,10 @@ static t_stat DoBasicInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[6].RNR = TPR.TRR;
-            PR[6].SNR = TPR.TSR;
-            PR[6].WORDNO = TPR.CA;
-            PR[6].BITNO = TPR.TBR;
+            CPU -> PR[6].RNR = CPU -> TPR.TRR;
+            CPU -> PR[6].SNR = CPU -> TPR.TSR;
+            CPU -> PR[6].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[6].BITNO = CPU -> TPR.TBR;
             break;
 
         case 0173:  ///< lpri
@@ -4636,12 +4636,12 @@ static t_stat DoBasicInstruction (void)
                 word3 Crr = (GETLO(Ypair[0]) >> 15) & 07;       ///< RNR from ITS pair
                 //if (get_addr_mode () == APPEND_mode || get_addr_mode () == APPEND_BAR_mode)
                 if (get_addr_mode () == APPEND_mode)
-                  PR[n].RNR = max3(Crr, SDW->R1, TPR.TRR) ;
+                  CPU -> PR[n].RNR = max3(Crr, SDW->R1, CPU -> TPR.TRR) ;
                 else
-                  PR[n].RNR = Crr;
-                PR[n].SNR = (Ypair[0] >> 18) & MASK15;
-                PR[n].WORDNO = GETHI(Ypair[1]);
-                PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
+                  CPU -> PR[n].RNR = Crr;
+                CPU -> PR[n].SNR = (Ypair[0] >> 18) & MASK15;
+                CPU -> PR[n].WORDNO = GETHI(Ypair[1]);
+                CPU -> PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
             }
             
             break;
@@ -4667,14 +4667,14 @@ static t_stat DoBasicInstruction (void)
             /// C(Y)18,35 -> C(PRn.WORDNO)
             {
                 uint32 n = opcode & 07;  // get n
-                PR[n].RNR = TPR.TRR;
+                CPU -> PR[n].RNR = CPU -> TPR.TRR;
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
                 if (((CY >> 34) & 3) != 3)
-                    PR[n].BITNO = (CY >> 30) & 077;
+                    CPU -> PR[n].BITNO = (CY >> 30) & 077;
                 else
                   {
 // fim.alm
@@ -4696,18 +4696,18 @@ static t_stat DoBasicInstruction (void)
                   }
                 //If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
-                    PR[n].SNR |= 070000; // XXX check to see if this is correct
+                    CPU -> PR[n].SNR |= 070000; // XXX check to see if this is correct
                 else // otherwise, 000 -> C(PRn.SNR)0,2
-                    PR[n].SNR &= 007777;
+                    CPU -> PR[n].SNR &= 007777;
                 // XXX completed, but needs testing
                 //C(Y)6,17 -> C(PRn.SNR)3,14
-                //PR[n].SNR &= 3; -- huh? Never code when tired
-                PR[n].SNR &=             070000; // [CAC] added this
-                PR[n].SNR |= GETHI(CY) & 007777;
+                //CPU -> PR[n].SNR &= 3; -- huh? Never code when tired
+                CPU -> PR[n].SNR &=             070000; // [CAC] added this
+                CPU -> PR[n].SNR |= GETHI(CY) & 007777;
                 //C(Y)18,35 -> C(PRn.WORDNO)
-                PR[n].WORDNO = GETLO(CY);
+                CPU -> PR[n].WORDNO = GETLO(CY);
 
-                sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
+                sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, CPU -> PR[n].RNR, CPU -> PR[n].BITNO, CPU -> PR[n].SNR, CPU -> PR[n].WORDNO);
             }
             break;
          
@@ -4720,8 +4720,8 @@ static t_stat DoBasicInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[1].SNR) << 18;
-            Ypair[0] |= ((word36) PR[1].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[1].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[1].RNR) << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4737,8 +4737,8 @@ static t_stat DoBasicInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[3].SNR) << 18;
-            Ypair[0] |= ((word36) PR[3].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[3].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[3].RNR) << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4754,8 +4754,8 @@ static t_stat DoBasicInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[5].SNR) << 18;
-            Ypair[0] |= ((word36) PR[5].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[5].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[5].RNR) << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4771,8 +4771,8 @@ static t_stat DoBasicInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[7].SNR) << 18;
-            Ypair[0] |= ((word36) PR[7].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[7].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[7].RNR) << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4797,11 +4797,11 @@ static t_stat DoBasicInstruction (void)
             for(uint32 n = 0 ; n < 8 ; n++)
             {
                 Yblock16[2 * n] = 043;
-                Yblock16[2 * n] |= ((word36) PR[n].SNR) << 18;
-                Yblock16[2 * n] |= ((word36) PR[n].RNR) << 15;
+                Yblock16[2 * n] |= ((word36) CPU -> PR[n].SNR) << 18;
+                Yblock16[2 * n] |= ((word36) CPU -> PR[n].RNR) << 15;
                 
-                Yblock16[2 * n + 1] = (word36) PR[n].WORDNO << 18;
-                Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
+                Yblock16[2 * n + 1] = (word36) CPU -> PR[n].WORDNO << 18;
+                Yblock16[2 * n + 1] |= (word36) CPU -> PR[n].BITNO << 9;
             }
             
             //WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
@@ -4819,11 +4819,11 @@ static t_stat DoBasicInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[0].SNR) << 18;
-            Ypair[0] |= ((word36) PR[0].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[0].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[0].RNR) << 15;
             
-            Ypair[1] = (word36) PR[0].WORDNO << 18;
-            Ypair[1]|= (word36) PR[0].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[0].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[0].BITNO << 9;
             
             break;
             
@@ -4839,11 +4839,11 @@ static t_stat DoBasicInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[2].SNR) << 18;
-            Ypair[0] |= ((word36) PR[2].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[2].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[2].RNR) << 15;
             
-            Ypair[1] = (word36) PR[2].WORDNO << 18;
-            Ypair[1]|= (word36) PR[2].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[2].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[2].BITNO << 9;
             
             break;
   
@@ -4859,11 +4859,11 @@ static t_stat DoBasicInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PAR[4].SNR) << 18;
-            Ypair[0] |= ((word36) PAR[4].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PAR[4].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PAR[4].RNR) << 15;
             
-            Ypair[1] = (word36) PAR[4].WORDNO << 18;
-            Ypair[1]|= (word36) PAR[4].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PAR[4].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PAR[4].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4881,11 +4881,11 @@ static t_stat DoBasicInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[6].SNR) << 18;
-            Ypair[0] |= ((word36) PR[6].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[6].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[6].RNR) << 15;
             
-            Ypair[1] = (word36) PR[6].WORDNO << 18;
-            Ypair[1]|= (word36) PR[6].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[6].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[6].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4908,21 +4908,21 @@ static t_stat DoBasicInstruction (void)
             
                 //If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, then a store fault (illegal pointer) will occur and C(Y) will not be changed.
             
-                // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
-                if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != MASK15)
+                // sim_printf ("sprp%d SNR %05o\n", n, CPU -> PR[n].SNR);
+                if ((CPU -> PR[n].SNR & 070000) != 0 && CPU -> PR[n].SNR != MASK15)
                   doFault(FAULT_STR, ill_ptr, "Store Pointer Register Packed (sprpn)");
             
                 if (CPU -> switches . lprp_highonly)
                   {
-                    CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
-                    CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
-                    CY |=  PR[n].WORDNO & PAMASK;
+                    CY  =  ((word36) (CPU -> PR[n].BITNO & 077)) << 30;
+                    CY |=  ((word36) (CPU -> PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
+                    CY |=  CPU -> PR[n].WORDNO & PAMASK;
                   }
                 else
                   {
-                    CY  =  ((word36) PR[n].BITNO) << 30;
-                    CY |=  ((word36) (PR[n].SNR) & 07777) << 18; // lower 12- of 15-bits
-                    CY |=  PR[n].WORDNO;
+                    CY  =  ((word36) CPU -> PR[n].BITNO) << 30;
+                    CY |=  ((word36) (CPU -> PR[n].SNR) & 07777) << 18; // lower 12- of 15-bits
+                    CY |=  CPU -> PR[n].WORDNO;
                   }
             
                 CY &= DMASK;    // keep to 36-bits
@@ -4938,9 +4938,9 @@ static t_stat DoBasicInstruction (void)
             ///   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = opcode & 03;  // get n
-                PR[n].WORDNO += GETHI(CY);
-                PR[n].WORDNO &= MASK18;
-                PR[n].BITNO = 0;
+                CPU -> PR[n].WORDNO += GETHI(CY);
+                CPU -> PR[n].WORDNO &= MASK18;
+                CPU -> PR[n].BITNO = 0;
             }
             break;
             
@@ -4953,9 +4953,9 @@ static t_stat DoBasicInstruction (void)
             ///   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = (opcode & MASK3) + 4U;  // get n
-                PR[n].WORDNO += GETHI(CY);
-                PR[n].WORDNO &= MASK18;
-                PR[n].BITNO = 0;
+                CPU -> PR[n].WORDNO += GETHI(CY);
+                CPU -> PR[n].WORDNO &= MASK18;
+                CPU -> PR[n].BITNO = 0;
             }
             break;
         
@@ -4969,11 +4969,11 @@ static t_stat DoBasicInstruction (void)
             /// 00...0 -> C(AQ)54,65
             /// C(TPR.TBR) -> C(AQ)66,71
             
-            CPU -> rA = TPR.TRR & MASK3;
-            CPU -> rA |= (word36) (TPR.TSR & MASK15) << 18;
+            CPU -> rA = CPU -> TPR.TRR & MASK3;
+            CPU -> rA |= (word36) (CPU -> TPR.TSR & MASK15) << 18;
             
-            CPU -> rQ = TPR.TBR & MASK6;
-            CPU -> rQ |= (word36) (TPR.CA & MASK18) << 18;
+            CPU -> rQ = CPU -> TPR.TBR & MASK6;
+            CPU -> rQ |= (word36) (CPU -> TPR.CA & MASK18) << 18;
             
             break;
         
@@ -4986,7 +4986,7 @@ static t_stat DoBasicInstruction (void)
               // field of the instruction are used to specify which SCU.
               // 2 bits for the DPS8M.
               //int cpu_port_num = getbits36 (TPR.CA, 0, 2);
-              uint cpu_port_num = (TPR.CA >> 15) & 03;
+              uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
               int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
               if (scu_unit_num < 0)
                 scu_unit_num = 0; // XXX print message
@@ -5149,7 +5149,7 @@ static t_stat DoBasicInstruction (void)
             
         case 0550:  ///< sbar
             /// C(BAR) -> C(Y) 0,17
-            SETHI(CY, (BAR.BASE << 9) | BAR.BOUND);
+            SETHI(CY, (CPU -> BAR.BASE << 9) | CPU -> BAR.BOUND);
             
             break;
             
@@ -5212,8 +5212,8 @@ static t_stat DoBasicInstruction (void)
         /// REGISTER LOAD
         case 0230:  ///< lbar
             /// C(Y)0,17 -> C(BAR)
-            BAR.BASE = (GETHI(CY) >> 9) & 0777; /// BAR.BASE is upper 9-bits (0-8)
-            BAR.BOUND = GETHI(CY) & 0777;       /// BAR.BOUND is next lower 9-bits (9-17)
+            CPU -> BAR.BASE = (GETHI(CY) >> 9) & 0777; /// BAR.BASE is upper 9-bits (0-8)
+            CPU -> BAR.BOUND = GETHI(CY) & 0777;       /// BAR.BOUND is next lower 9-bits (9-17)
             break;
            
         // Privileged Instructions
@@ -5424,7 +5424,7 @@ static t_stat DoBasicInstruction (void)
 
 #ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
-            uint level = (TPR . CA >> 4) & 02u;
+            uint level = (CPU -> TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -5440,7 +5440,7 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0532:  ///< cams
-            do_cams (TPR.CA);
+            do_cams (CPU -> TPR.CA);
             break;
             
         // Privileged - Configuration and Status
@@ -5450,7 +5450,7 @@ static t_stat DoBasicInstruction (void)
                 // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
                 // specify which processor port (i.e., which system 
                 // controller) is used.
-                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 if (scu_unit_num < 0)
                   scu_unit_num = 0; // XXX print message
@@ -5552,10 +5552,10 @@ static t_stat DoBasicInstruction (void)
                   "140730  "      // 26-33 Ship date (YYMMDD)
                   ;
 #endif
-                CPU -> rA = PROM [TPR . CA & 1023];
+                CPU -> rA = PROM [CPU -> TPR . CA & 1023];
                 break;
               }
-            uint select = TPR.CA & 0x7;
+            uint select = CPU -> TPR.CA & 0x7;
             switch (select)
               {
                 case 0: // data switches
@@ -5742,7 +5742,7 @@ static t_stat DoBasicInstruction (void)
                 // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
                 // specify which processor port (i.e., which system 
                 // controller) is used.
-                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 if (scu_unit_num < 0)
                   {
@@ -5767,12 +5767,12 @@ static t_stat DoBasicInstruction (void)
             // For the smic instruction, the first 2 or 3 bits of the addr
             // field of the instruction are used to specify which SCU.
             // 2 bits for the DPS8M.
-            //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+            //int scu_unit_num = getbits36 (CPU -> TPR.CA, 0, 2);
 
             // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
             // specify which processor port (i.e., which system 
             // controller) is used.
-            uint cpu_port_num = (TPR.CA >> 15) & 03;
+            uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
             int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
 
             if (scu_unit_num < 0)
@@ -5799,7 +5799,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0057:  // sscr
           {
-            uint cpu_port_num = (TPR.CA >> 15) & 03;
+            uint cpu_port_num = (CPU -> TPR.CA >> 15) & 03;
             int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
 
             if (scu_unit_num < 0)
@@ -5845,7 +5845,7 @@ static t_stat DoBasicInstruction (void)
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
-                sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", CPU -> PPR.IC);
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_DIS;
@@ -5853,7 +5853,7 @@ static t_stat DoBasicInstruction (void)
               }
 
 // Multics/BCE halt
-            if (PPR . PSR == 0430 && PPR . IC == 012)
+            if (CPU -> PPR . PSR == 0430 && CPU -> PPR . IC == 012)
                 {
                   sim_printf ("BCE DIS causes CPU halt\n");
                   sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
@@ -5931,8 +5931,8 @@ static t_stat DoEISInstruction (void)
             /// C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & (I_NEG | I_ZERO))
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -5948,8 +5948,8 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PPR.PSR)
             if (!(CPU -> cu.IR & I_NEG) && !(CPU -> cu.IR & I_ZERO))
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -5965,8 +5965,8 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PPR.PSR)
             if (!(CPU -> cu.IR & I_TRUNC))
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -5982,8 +5982,8 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PPR.PSR)
             if (CPU -> cu.IR & I_TRUNC)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
                 CLRF(CPU -> cu.IR, I_TRUNC);
                 
@@ -6002,8 +6002,8 @@ static t_stat DoEISInstruction (void)
             /// otherwise, no change to C(PPR)
             if (CPU -> cu.IR & I_TALLY)
             {
-                PPR.IC = TPR.CA;
-                PPR.PSR = TPR.TSR;
+                CPU -> PPR.IC = CPU -> TPR.CA;
+                CPU -> PPR.PSR = CPU -> TPR.TSR;
                 
 #ifdef RALR_FIX_0
                 readOperands ();
@@ -6015,48 +6015,48 @@ static t_stat DoEISInstruction (void)
 
         case 0310:  ///< easp1
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[1].SNR = TPR.CA & MASK15;
+            CPU -> PR[1].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0312:  ///< easp3
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[3].SNR = TPR.CA & MASK15;
+            CPU -> PR[3].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0330:  ///< easp5
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[5].SNR = TPR.CA & MASK15;
+            CPU -> PR[5].SNR = CPU -> TPR.CA & MASK15;
             break;
         case 0332:  ///< easp7
             /// C(TPR.CA) -> C(PRn.SNR)
-            PR[7].SNR = TPR.CA & MASK15;
+            CPU -> PR[7].SNR = CPU -> TPR.CA & MASK15;
             break;
 
         case 0311:  ///< eawp1
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[1].WORDNO = TPR.CA;
-            PR[1].BITNO = TPR.TBR;
+            CPU -> PR[1].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[1].BITNO = CPU -> TPR.TBR;
             break;
         case 0313:  ///< eawp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[3].WORDNO = TPR.CA;
-            PR[3].BITNO = TPR.TBR;
+            CPU -> PR[3].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[3].BITNO = CPU -> TPR.TBR;
             break;
         case 0331:  ///< eawp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[5].WORDNO = TPR.CA;
-            PR[5].BITNO = TPR.TBR;
+            CPU -> PR[5].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[5].BITNO = CPU -> TPR.TBR;
             break;
         case 0333:  ///< eawp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
-            PR[7].WORDNO = TPR.CA;
-            PR[7].BITNO = TPR.TBR;
+            CPU -> PR[7].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[7].BITNO = CPU -> TPR.TBR;
             break;        
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6064,10 +6064,10 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[0].RNR = TPR.TRR;
-            PR[0].SNR = TPR.TSR;
-            PR[0].WORDNO = 0;
-            PR[0].BITNO = 0;
+            CPU -> PR[0].RNR = CPU -> TPR.TRR;
+            CPU -> PR[0].SNR = CPU -> TPR.TSR;
+            CPU -> PR[0].WORDNO = 0;
+            CPU -> PR[0].BITNO = 0;
             break;
         case 0352:  ///< epbp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6075,10 +6075,10 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[2].RNR = TPR.TRR;
-            PR[2].SNR = TPR.TSR;
-            PR[2].WORDNO = 0;
-            PR[2].BITNO = 0;
+            CPU -> PR[2].RNR = CPU -> TPR.TRR;
+            CPU -> PR[2].SNR = CPU -> TPR.TSR;
+            CPU -> PR[2].WORDNO = 0;
+            CPU -> PR[2].BITNO = 0;
             break;
         case 0370:  ///< epbp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6086,10 +6086,10 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[4].RNR = TPR.TRR;
-            PR[4].SNR = TPR.TSR;
-            PR[4].WORDNO = 0;
-            PR[4].BITNO = 0;
+            CPU -> PR[4].RNR = CPU -> TPR.TRR;
+            CPU -> PR[4].SNR = CPU -> TPR.TSR;
+            CPU -> PR[4].WORDNO = 0;
+            CPU -> PR[4].BITNO = 0;
             break;
         case 0372:  ///< epbp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6097,10 +6097,10 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.TSR) -> C(PRn.SNR)
             ///  00...0 -> C(PRn.WORDNO)
             ///  0000 -> C(PRn.BITNO)
-            PR[6].RNR = TPR.TRR;
-            PR[6].SNR = TPR.TSR;
-            PR[6].WORDNO = 0;
-            PR[6].BITNO = 0;
+            CPU -> PR[6].RNR = CPU -> TPR.TRR;
+            CPU -> PR[6].SNR = CPU -> TPR.TSR;
+            CPU -> PR[6].WORDNO = 0;
+            CPU -> PR[6].BITNO = 0;
             break;
          
         
@@ -6110,10 +6110,10 @@ static t_stat DoEISInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[1].RNR = TPR.TRR;
-            PR[1].SNR = TPR.TSR;
-            PR[1].WORDNO = TPR.CA;
-            PR[1].BITNO = TPR.TBR;
+            CPU -> PR[1].RNR = CPU -> TPR.TRR;
+            CPU -> PR[1].SNR = CPU -> TPR.TSR;
+            CPU -> PR[1].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[1].BITNO = CPU -> TPR.TBR;
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6121,10 +6121,10 @@ static t_stat DoEISInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[3].RNR = TPR.TRR;
-            PR[3].SNR = TPR.TSR;
-            PR[3].WORDNO = TPR.CA;
-            PR[3].BITNO = TPR.TBR;
+            CPU -> PR[3].RNR = CPU -> TPR.TRR;
+            CPU -> PR[3].SNR = CPU -> TPR.TSR;
+            CPU -> PR[3].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[3].BITNO = CPU -> TPR.TBR;
             break;
         case 0371:  ///< epp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6132,10 +6132,10 @@ static t_stat DoEISInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[5].RNR = TPR.TRR;
-            PR[5].SNR = TPR.TSR;
-            PR[5].WORDNO = TPR.CA;
-            PR[5].BITNO = TPR.TBR;
+            CPU -> PR[5].RNR = CPU -> TPR.TRR;
+            CPU -> PR[5].SNR = CPU -> TPR.TSR;
+            CPU -> PR[5].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[5].BITNO = CPU -> TPR.TBR;
             break;
         case 0373:  ///< epp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6143,10 +6143,10 @@ static t_stat DoEISInstruction (void)
             ///   C(TPR.TSR) -> C(PRn.SNR)
             ///   C(TPR.CA) -> C(PRn.WORDNO)
             ///   C(TPR.TBR) -> C(PRn.BITNO)
-            PR[7].RNR = TPR.TRR;
-            PR[7].SNR = TPR.TSR;
-            PR[7].WORDNO = TPR.CA;
-            PR[7].BITNO = TPR.TBR;
+            CPU -> PR[7].RNR = CPU -> TPR.TRR;
+            CPU -> PR[7].SNR = CPU -> TPR.TSR;
+            CPU -> PR[7].WORDNO = CPU -> TPR.CA;
+            CPU -> PR[7].BITNO = CPU -> TPR.TBR;
             break;
         
         case 0250:  ///< spbp0
@@ -6158,8 +6158,8 @@ static t_stat DoEISInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[0].SNR) << 18;
-            Ypair[0] |= ((word36) PR[0].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[0].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[0].RNR) << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -6175,11 +6175,11 @@ static t_stat DoEISInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[2].SNR) << 18;
-            Ypair[0] |= ((word36) PR[2].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[2].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[2].RNR) << 15;
             Ypair[1] = 0;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
             
             break;
             
@@ -6192,11 +6192,11 @@ static t_stat DoEISInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[4].SNR) << 18;
-            Ypair[0] |= ((word36) PR[4].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[4].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[4].RNR) << 15;
             Ypair[1] = 0;
         
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
             
             break;
   
@@ -6209,11 +6209,11 @@ static t_stat DoEISInstruction (void)
             ///  (43)8 -> C(Y-pair)30,35
             ///  00...0 -> C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[6].SNR) << 18;
-            Ypair[0] |= ((word36) PR[6].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[6].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[6].RNR) << 15;
             Ypair[1] = 0;
             
-            //fWrite2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //fWrite2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -6229,13 +6229,13 @@ static t_stat DoEISInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[1].SNR) << 18;
-            Ypair[0] |= ((word36) PR[1].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[1].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[1].RNR) << 15;
             
-            Ypair[1] = (word36) PR[1].WORDNO << 18;
-            Ypair[1]|= (word36) PR[1].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[1].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[1].BITNO << 9;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
     
@@ -6251,13 +6251,13 @@ static t_stat DoEISInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[3].SNR) << 18;
-            Ypair[0] |= ((word36) PR[3].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[3].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[3].RNR) << 15;
             
-            Ypair[1] = (word36) PR[3].WORDNO << 18;
-            Ypair[1]|= (word36) PR[3].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[3].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[3].BITNO << 9;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -6273,13 +6273,13 @@ static t_stat DoEISInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[5].SNR) << 18;
-            Ypair[0] |= ((word36) PR[5].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[5].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[5].RNR) << 15;
             
-            Ypair[1] = (word36) PR[5].WORDNO << 18;
-            Ypair[1]|= (word36) PR[5].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[5].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[5].BITNO << 9;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -6295,13 +6295,13 @@ static t_stat DoEISInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PR[7].SNR) << 18;
-            Ypair[0] |= ((word36) PR[7].RNR) << 15;
+            Ypair[0] |= ((word36) CPU -> PR[7].SNR) << 18;
+            Ypair[0] |= ((word36) CPU -> PR[7].RNR) << 15;
             
-            Ypair[1] = (word36) PR[7].WORDNO << 18;
-            Ypair[1]|= (word36) PR[7].BITNO << 9;
+            Ypair[1] = (word36) CPU -> PR[7].WORDNO << 18;
+            Ypair[1]|= (word36) CPU -> PR[7].BITNO << 9;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, CPU -> TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -6309,7 +6309,7 @@ static t_stat DoEISInstruction (void)
             /// 00...0 -> C(Y)0,32
             /// C(RALR) -> C(Y)33,35
             
-            //Write(i, TPR.CA, (word36)CPU -> rRALR, OperandWrite, rTAG);
+            //Write(i, CPU -> TPR.CA, (word36)CPU -> rRALR, OperandWrite, rTAG);
             CY = (word36)CPU -> rRALR;
             
             break;
@@ -6331,7 +6331,7 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get
 
                 // C(Y)0,17 -> C(ARn.WORDNO)
-                AR[n].WORDNO = GETHI(CY);
+                CPU -> AR[n].WORDNO = GETHI(CY);
 
                 int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21-22
                 int CN = (int)bitfieldExtract36(CY, 15, 3); // C(Y) 18-20
@@ -6379,7 +6379,7 @@ static t_stat DoEISInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code C(Y)0,23 -> C(ARn)
             {
                 uint32 n = opcode & 07;  // get n
-                AR[n].WORDNO = GETHI(CY);
+                CPU -> AR[n].WORDNO = GETHI(CY);
                 //AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
                 //AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
                 SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4), (word2)bitfieldExtract36(CY, 16, 2));
@@ -6389,15 +6389,15 @@ static t_stat DoEISInstruction (void)
         case 0463:  ///< lareg - Load Address Registers
             
             // XXX This will eventually be done automagically
-            //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
+            //ReadN(i, 8, CPU -> TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
             
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 tmp36 = Yblock8[n];
 
-                AR[n].WORDNO = GETHI(tmp36);
-                // AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
-                // AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
+                CPU -> AR[n].WORDNO = GETHI(tmp36);
+                // CPU -> AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
+                // CPU -> AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
                 SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4), (word2)bitfieldExtract36(tmp36, 16, 2));
             }
             break;
@@ -6420,7 +6420,7 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get
                 
                 // C(Y)0,17 -> C(ARn.WORDNO)
-                AR[n].WORDNO = GETHI(CY);
+                CPU -> AR[n].WORDNO = GETHI(CY);
                 
                 int TN = (int)bitfieldExtract36(CY, 13, 1); // C(Y) 21
                 int CN = (int)bitfieldExtract36(CY, 15, 3); // C(Y) 18-20
@@ -6466,7 +6466,7 @@ static t_stat DoEISInstruction (void)
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, CPU -> AR[n].WORDNO, 18, 18);
                 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR) and C(ARn.BITNO) are translated to an equivalent character position that goes to C(Y)18,20.
 
@@ -6520,7 +6520,7 @@ static t_stat DoEISInstruction (void)
                 
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, CPU -> AR[n].WORDNO, 18, 18);
                 
                 int CN = 0;
                 switch(TN)
@@ -6560,7 +6560,7 @@ static t_stat DoEISInstruction (void)
             //  C(Y)24,35 -> unchanged
             {
                 uint32 n = opcode & 07;  // get n
-                CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, CPU -> AR[n].WORDNO, 18, 18);
                 CY = bitfieldInsert36(CY, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
                 CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
             }
@@ -6571,7 +6571,7 @@ static t_stat DoEISInstruction (void)
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
-                arx = bitfieldInsert36(arx, AR[n].WORDNO, 18, 18);
+                arx = bitfieldInsert36(arx, CPU -> AR[n].WORDNO, 18, 18);
                 arx = bitfieldInsert36(arx, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
                 arx = bitfieldInsert36(arx, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
                 
@@ -6787,7 +6787,7 @@ static t_stat DoEISInstruction (void)
 
 #ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
-            uint level = (TPR . CA >> 4) & 02u;
+            uint level = (CPU -> TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -6809,7 +6809,7 @@ static t_stat DoEISInstruction (void)
 
 #ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
-            uint level = (TPR . CA >> 4) & 02u;
+            uint level = (CPU -> TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -6829,7 +6829,7 @@ static t_stat DoEISInstruction (void)
 
 #ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
-            uint level = (TPR . CA >> 4) & 02u;
+            uint level = (CPU -> TPR . CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -6859,7 +6859,7 @@ static t_stat DoEISInstruction (void)
 
         // Privileged - Clear Associative Memory
         case 0532:  ///< camp
-            do_camp (TPR.CA);
+            do_camp (CPU -> TPR.CA);
             break;
             
         default:
@@ -6955,7 +6955,7 @@ static int emCall (void)
             for(int n = 0 ; n < 8 ; n++)
             {
                 sim_printf("PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+                          n, PRalias[n], CPU -> PR[n].SNR, CPU -> PR[n].RNR, CPU -> PR[n].WORDNO, CPU -> PR[n].BITNO);
             }
             break;
         case 27:    // dump registers A & Q
@@ -7076,18 +7076,18 @@ static int doABSA (word36 * result)
   {
     DCDstruct * i = & CPU -> currentInstruction;
     word36 res;
-    sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", TPR.CA);
+    sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", CPU -> TPR.CA);
 
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
         //doFault (FAULT_IPR, ill_proc, "ABSA in absolute mode.");
-        * result = (TPR . CA & MASK18) << 12; // 24:12 format
+        * result = (CPU -> TPR . CA & MASK18) << 12; // 24:12 format
         return SCPE_OK;
       }
 
-    if (DSBR.U == 1) // Unpaged
+    if (CPU -> DSBR.U == 1) // Unpaged
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is unpaged\n");
         // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
@@ -7096,10 +7096,10 @@ static int doABSA (word36 * result)
         sim_debug (DBG_APPENDING, & cpu_dev, 
           "absa Boundary check: TSR: %05o f(TSR): %06o "
           "BND: %05o f(BND): %06o\n", 
-          TPR . TSR, 2 * (uint) TPR . TSR, 
-          DSBR . BND, 16 * ((uint) DSBR . BND + 1));
+          CPU -> TPR . TSR, 2 * (uint) CPU -> TPR . TSR, 
+          CPU -> DSBR . BND, 16 * ((uint) CPU -> DSBR . BND + 1));
 
-        if (2 * (uint) TPR . TSR >= 16 * ((uint) DSBR . BND + 1))
+        if (2 * (uint) CPU -> TPR . TSR >= 16 * ((uint) CPU -> DSBR . BND + 1))
           {
             doFault (FAULT_ACV, ACV15, "ABSA in DSBR boundary violation.");
           }
@@ -7108,16 +7108,16 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa DSBR.ADDR %08o TSR %o SDWe offset %o SWDe %08o\n",
-          DSBR . ADDR, TPR . TSR, 2 * TPR . TSR, 
-          DSBR . ADDR + 2 * TPR . TSR);
+          CPU -> DSBR . ADDR, CPU -> TPR . TSR, 2 * CPU -> TPR . TSR, 
+          CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR);
 
         word36 SDWe, SDWo;
-        core_read ((DSBR . ADDR + 2 * TPR . TSR) & PAMASK, & SDWe, __func__);
-        core_read ((DSBR . ADDR + 2 * TPR . TSR  + 1) & PAMASK, & SDWo, __func__);
+        core_read ((CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR) & PAMASK, & SDWe, __func__);
+        core_read ((CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR  + 1) & PAMASK, & SDWo, __func__);
 
 //sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
-//sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n", DSBR . ADDR, TPR . TSR);
-//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o SDW: %012llo %012llo\n", DSBR . ADDR + 2 * TPR . TSR, SDWe, SDWo);
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o CPU -> TPR.TSR %08o\n", CPU -> DSBR . ADDR, CPU -> TPR . TSR);
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o SDW: %012llo %012llo\n", CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR, SDWe, SDWo);
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
         // missing segment fault or, simply, a segment fault.
@@ -7128,7 +7128,7 @@ static int doABSA (word36 * result)
         // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
         word14 BOUND = (SDWo >> (35u - 14u)) & 037777u;
-        if (TPR . CA >= 16u * (BOUND + 1u))
+        if (CPU -> TPR . CA >= 16u * (BOUND + 1u))
           {
             doFault (FAULT_ACV, ACV15, "ABSA in SDW boundary violation.");
           }
@@ -7142,7 +7142,7 @@ static int doABSA (word36 * result)
         // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
 
         word24 ADDR = (SDWe >> 12) & 077777760;
-        res = (word36) ADDR + (word36) TPR.CA;
+        res = (word36) ADDR + (word36) CPU -> TPR.CA;
         res &= PAMASK; //24 bit math
         res <<= 12; // 24:12 format
 
@@ -7151,8 +7151,8 @@ static int doABSA (word36 * result)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is paged\n");
         // paged
-        word15 segno = TPR . TSR;
-        word18 offset = TPR . CA;
+        word15 segno = CPU -> TPR . TSR;
+        word18 offset = CPU -> TPR . CA;
 
         // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access 
         // violation, out of segment bounds, fault.
@@ -7161,9 +7161,9 @@ static int doABSA (word36 * result)
           "absa Segment boundary check: segno: %05o f(segno): %06o "
           "BND: %05o f(BND): %06o\n", 
           segno, 2 * (uint) segno, 
-          DSBR . BND, 16 * ((uint) DSBR . BND + 1));
+          CPU -> DSBR . BND, 16 * ((uint) CPU -> DSBR . BND + 1));
 
-        if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
+        if (2 * (uint) segno >= 16 * ((uint) CPU -> DSBR . BND + 1))
           {
             doFault (FAULT_ACV, ACV15, "ABSA in DSBR boundary violation.");
           }
@@ -7182,10 +7182,10 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev, 
           "absa read PTW1@%08o+%08o %08o\n",
-          DSBR . ADDR, x1, (DSBR . ADDR + x1) & PAMASK);
+          CPU -> DSBR . ADDR, x1, (CPU -> DSBR . ADDR + x1) & PAMASK);
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+        core_read ((CPU -> DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
         struct _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);

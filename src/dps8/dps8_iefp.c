@@ -69,7 +69,7 @@ B29:;
                 iefpFinalAddress = doAppendCycle(address, cyctyp);
                 core_read(iefpFinalAddress, result, __func__);
                 // XXX Don't trace Multics idle loop
-                if (PPR.PSR != 061 && PPR.IC != 0307)
+                if (CPU -> PPR.PSR != 061 && CPU -> PPR.IC != 0307)
                   {
                     sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", iefpFinalAddress, *result);
                   }

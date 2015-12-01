@@ -206,13 +206,13 @@ void init_opcodes (void)
 
 static t_stat dpsCmd_InitUnpagedSegmentTable ()
   {
-    if (DSBR . U == 0)
+    if (CPU -> DSBR . U == 0)
       {
         sim_printf  ("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
         return SCPE_OK;    // need a better return value
       }
     
-    if (DSBR . ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
+    if (CPU -> DSBR . ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
       {
         if (! get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
           {
@@ -221,10 +221,10 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
       }
     
     word15 segno = 0;
-    while (2 * segno < (16 * (DSBR.BND + 1)))
+    while (2 * segno < (16 * (CPU -> DSBR.BND + 1)))
       {
         //generate target segment SDW for DSBR.ADDR + 2 * segno.
-        word24 a = DSBR.ADDR + 2 * segno;
+        word24 a = CPU -> DSBR.ADDR + 2 * segno;
         
         // just fill with 0's for now .....
         core_write ((a + 0) & PAMASK, 0, __func__);
@@ -255,7 +255,7 @@ _sdw0 *fetchSDW (word15 segno)
   {
     word36 SDWeven, SDWodd;
     
-    core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
+    core_read2 ((CPU -> DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
     
     // even word
     static _sdw0 _s;
@@ -287,7 +287,7 @@ _sdw0 *fetchSDW (word15 segno)
 static char * strDSBR (void)
   {
     static char buff [256];
-    sprintf (buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
+    sprintf (buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", CPU -> DSBR.ADDR, CPU -> DSBR.BND, CPU -> DSBR.U, CPU -> DSBR.STACK);
     return buff;
   }
 
@@ -321,9 +321,9 @@ t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
-    if (DSBR.U) {
+    if (CPU -> DSBR.U) {
         sim_printf("*** Descriptor Segment Table ***\n");
-        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
+        for(word15 segno = 0; 2 * segno < 16 * (CPU -> DSBR.BND + 1); segno += 1)
         {
             sim_printf("Seg %d - ", segno);
             _sdw0 *s = fetchSDW(segno);
@@ -334,12 +334,12 @@ t_stat dpsCmd_DumpSegmentTable()
     } else {
         sim_printf("*** Descriptor Segment Table (Paged) ***\n");
         sim_printf("Descriptor segment pages\n");
-        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 512)
+        for(word15 segno = 0; 2 * segno < 16 * (CPU -> DSBR.BND + 1); segno += 512)
         {
             word24 y1 = (2 * segno) % 1024;
             word24 x1 = (2 * segno - y1) / 1024;
             word36 PTWx1;
-            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+            core_read ((CPU -> DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
             struct _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
@@ -816,10 +816,10 @@ static t_stat cpu_reset (DEVICE *dptr)
         CPU -> rA = 0;
         CPU -> rQ = 0;
     
-        PPR.IC = 0;
-        PPR.PRR = 0;
-        PPR.PSR = 0;
-        PPR.P = 1;
+        CPU -> PPR.IC = 0;
+        CPU -> PPR.PRR = 0;
+        CPU -> PPR.PSR = 0;
+        CPU -> PPR.P = 1;
         CPU -> RSDWH_R1 = 0;
 
 #ifdef REAL_TR
@@ -848,7 +848,7 @@ static t_stat cpu_reset (DEVICE *dptr)
         CPU -> faultRegister [0] = 0;
         CPU -> faultRegister [1] = 0;
 
-        memset (& PPR, 0, sizeof(struct _ppr));
+        memset (& CPU -> PPR, 0, sizeof(struct _ppr));
       }
 
 #ifdef MULTI_CPU
@@ -929,13 +929,6 @@ enum _processor_cycle_type processorCycle;                  ///< to keep tract o
 
 word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 
-struct _tpr TPR;    ///< Temporary Pointer Register
-struct _ppr PPR;    ///< Procedure Pointer Register
-struct _par PAR[8]; ///< pointer/address resisters
-struct _bar BAR;    ///< Base Address Register
-struct _dsbr DSBR;  ///< Descriptor Segment Base Register
-
-
 // XXX given this is not real hardware we can eventually remove the SDWAM -- I think. But for now just leave it in.
 // For the DPS 8M processor, the SDW associative memory will hold the 64 MRU SDWs and have a 4-way set associative organization with LRU replacement.
 
@@ -970,7 +963,7 @@ static BITFIELD dps8_IR_bits[] = {
     BITFNAM(TRUNC, 1, z1),    /*!< truncation */ ///< 0000100
     BITFNAM(NBAR,  1, z1),   /*!< not BAR mode */ ///< 0000200
     BITFNAM(PMASK, 1, z1),   /*!< parity mask */ ///< 0000400
-    BITFNAM(PAR,   1, z1),    /*!< parity error */ ///< 0001000
+    BITFNAM(CPU -> PAR,   1, z1),    /*!< parity error */ ///< 0001000
     BITFNAM(TALLY, 1, z1),   /*!< tally runout */ ///< 0002000
     BITFNAM(OMASK, 1, z1),    /*!< overflow mask */ ///< 0004000
     BITFNAM(EUFL,  1, z1),   /*!< exponent underflow */ ///< 0010000
@@ -983,7 +976,7 @@ static BITFIELD dps8_IR_bits[] = {
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    { ORDATA (IC, CPU -> PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IR, CPU -> cu.IR, 18), 0, 0 },
     { ORDATADF (IR, CPU -> cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
@@ -1016,76 +1009,76 @@ static REG cpu_reg[] = {
     { ORDATA (X6, CPU -> rX[6], 18), 0, 0 },
     { ORDATA (X7, CPU -> rX[7], 18), 0, 0 },
     
-    { ORDATA (PPR.IC,  PPR.IC,  18), 0, 0 },
-    { ORDATA (PPR.PRR, PPR.PRR,  3), 0, 0 },
-    { ORDATA (PPR.PSR, PPR.PSR, 15), 0, 0 },
-    { ORDATA (PPR.P,   PPR.P,    1), 0, 0 },
+    { ORDATA (CPU -> PPR.IC,  CPU -> PPR.IC,  18), 0, 0 },
+    { ORDATA (CPU -> PPR.PRR, CPU -> PPR.PRR,  3), 0, 0 },
+    { ORDATA (CPU -> PPR.PSR, CPU -> PPR.PSR, 15), 0, 0 },
+    { ORDATA (CPU -> PPR.P,   CPU -> PPR.P,    1), 0, 0 },
     
     { ORDATA (RALR,    CPU -> rRALR,    3), 0, 0 },
     
-    { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24), 0, 0 },
-    { ORDATA (DSBR.BND,   DSBR.BND,   14), 0, 0 },
-    { ORDATA (DSBR.U,     DSBR.U,      1), 0, 0 },
-    { ORDATA (DSBR.STACK, DSBR.STACK, 12), 0, 0 },
+    { ORDATA (CPU -> DSBR.ADDR,  CPU -> DSBR.ADDR,  24), 0, 0 },
+    { ORDATA (CPU -> DSBR.BND,   CPU -> DSBR.BND,   14), 0, 0 },
+    { ORDATA (CPU -> DSBR.U,     CPU -> DSBR.U,      1), 0, 0 },
+    { ORDATA (CPU -> DSBR.STACK, CPU -> DSBR.STACK, 12), 0, 0 },
     
-    { ORDATA (BAR.BASE,  BAR.BASE,  9), 0, 0 },
-    { ORDATA (BAR.BOUND, BAR.BOUND, 9), 0, 0 },
+    { ORDATA (CPU -> BAR.BASE,  CPU -> BAR.BASE,  9), 0, 0 },
+    { ORDATA (CPU -> BAR.BOUND, CPU -> BAR.BOUND, 9), 0, 0 },
     
     //{ ORDATA (FAULTBASE, rFAULTBASE, 12), 0, 0 }, ///< only top 7-msb are used
     
-    { ORDATA (PR0.SNR, PR[0].SNR, 18), 0, 0 },
-    { ORDATA (PR1.SNR, PR[1].SNR, 18), 0, 0 },
-    { ORDATA (PR2.SNR, PR[2].SNR, 18), 0, 0 },
-    { ORDATA (PR3.SNR, PR[3].SNR, 18), 0, 0 },
-    { ORDATA (PR4.SNR, PR[4].SNR, 18), 0, 0 },
-    { ORDATA (PR5.SNR, PR[5].SNR, 18), 0, 0 },
-    { ORDATA (PR6.SNR, PR[6].SNR, 18), 0, 0 },
-    { ORDATA (PR7.SNR, PR[7].SNR, 18), 0, 0 },
+    { ORDATA (PR0.SNR, CPU -> PR[0].SNR, 18), 0, 0 },
+    { ORDATA (PR1.SNR, CPU -> PR[1].SNR, 18), 0, 0 },
+    { ORDATA (PR2.SNR, CPU -> PR[2].SNR, 18), 0, 0 },
+    { ORDATA (PR3.SNR, CPU -> PR[3].SNR, 18), 0, 0 },
+    { ORDATA (PR4.SNR, CPU -> PR[4].SNR, 18), 0, 0 },
+    { ORDATA (PR4.SNR, CPU -> PR[4].SNR, 18), 0, 0 },
+    { ORDATA (PR6.SNR, CPU -> PR[6].SNR, 18), 0, 0 },
+    { ORDATA (PR7.SNR, CPU -> PR[7].SNR, 18), 0, 0 },
     
-    { ORDATA (PR0.RNR, PR[0].RNR, 18), 0, 0 },
-    { ORDATA (PR1.RNR, PR[1].RNR, 18), 0, 0 },
-    { ORDATA (PR2.RNR, PR[2].RNR, 18), 0, 0 },
-    { ORDATA (PR3.RNR, PR[3].RNR, 18), 0, 0 },
-    { ORDATA (PR4.RNR, PR[4].RNR, 18), 0, 0 },
-    { ORDATA (PR5.RNR, PR[5].RNR, 18), 0, 0 },
-    { ORDATA (PR6.RNR, PR[6].RNR, 18), 0, 0 },
-    { ORDATA (PR7.RNR, PR[7].RNR, 18), 0, 0 },
+    { ORDATA (PR0.RNR, CPU -> PR[0].RNR, 18), 0, 0 },
+    { ORDATA (PR1.RNR, CPU -> PR[1].RNR, 18), 0, 0 },
+    { ORDATA (PR2.RNR, CPU -> PR[2].RNR, 18), 0, 0 },
+    { ORDATA (PR3.RNR, CPU -> PR[3].RNR, 18), 0, 0 },
+    { ORDATA (PR4.RNR, CPU -> PR[4].RNR, 18), 0, 0 },
+    { ORDATA (PR5.RNR, CPU -> PR[5].RNR, 18), 0, 0 },
+    { ORDATA (PR6.RNR, CPU -> PR[6].RNR, 18), 0, 0 },
+    { ORDATA (PR7.RNR, CPU -> PR[7].RNR, 18), 0, 0 },
     
-    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR0.BITNO, CPU -> PR[0].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR1.BITNO, CPU -> PR[1].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR2.BITNO, CPU -> PR[2].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR3.BITNO, CPU -> PR[3].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR4.BITNO, CPU -> PR[4].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR5.BITNO, CPU -> PR[5].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR6.BITNO, CPU -> PR[6].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR7.BITNO, CPU -> PR[7].PBITNO, 18), 0, 0 },
     
-    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR0.BITNO, CPU -> PR[0].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR1.BITNO, CPU -> PR[1].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR2.BITNO, CPU -> PR[2].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR3.BITNO, CPU -> PR[3].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR4.BITNO, CPU -> PR[4].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR5.BITNO, CPU -> PR[5].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR6.BITNO, CPU -> PR[6].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR7.BITNO, CPU -> PR[7].ABITNO, 18), 0, 0 },
     
-    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18), 0, 0 },
-    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18), 0, 0 },
-    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18), 0, 0 },
-    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18), 0, 0 },
-    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18), 0, 0 },
-    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18), 0, 0 },
-    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18), 0, 0 },
-    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18), 0, 0 },
+    { ORDATA (PR0.WORDNO, CPU -> PR[0].WORDNO, 18), 0, 0 },
+    { ORDATA (PR1.WORDNO, CPU -> PR[1].WORDNO, 18), 0, 0 },
+    { ORDATA (PR2.WORDNO, CPU -> PR[2].WORDNO, 18), 0, 0 },
+    { ORDATA (PR3.WORDNO, CPU -> PR[3].WORDNO, 18), 0, 0 },
+    { ORDATA (PR4.WORDNO, CPU -> PR[4].WORDNO, 18), 0, 0 },
+    { ORDATA (PR5.WORDNO, CPU -> PR[5].WORDNO, 18), 0, 0 },
+    { ORDATA (PR6.WORDNO, CPU -> PR[6].WORDNO, 18), 0, 0 },
+    { ORDATA (PR7.WORDNO, CPU -> PR[7].WORDNO, 18), 0, 0 },
     
-    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR0.CHAR, CPU -> PR[0].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR1.CHAR, CPU -> PR[1].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR2.CHAR, CPU -> PR[2].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR3.CHAR, CPU -> PR[3].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR4.CHAR, CPU -> PR[4].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR5.CHAR, CPU -> PR[5].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR6.CHAR, CPU -> PR[6].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR7.CHAR, CPU -> PR[7].CHAR, 18), 0, 0 },
     
     /*
      { ORDATA (EBR, ebr, EBR_N_EBR), 0, 0 },
@@ -1286,8 +1279,8 @@ t_stat simh_hooks (void)
     // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
     // PPR.PSR into the high 12
     if (sim_brk_summ &&
-        sim_brk_test ((PPR.IC & 0777777) |
-                      ((((t_addr) PPR.PSR) & 037777) << 18),
+        sim_brk_test ((CPU -> PPR.IC & 0777777) |
+                      ((((t_addr) CPU -> PPR.PSR) & 037777) << 18),
                       SWMASK ('E')))  /* breakpoint? */
       return STOP_BKPT; /* stop simulation */
     if (sim_deb_break && sim_timell () >= sim_deb_break)
@@ -1454,7 +1447,7 @@ last = M[01007040];
 
 #if 0
         // XXX Don't trace Multics idle loop
-        if (PPR.PSR != 061 && PPR.IC != 0307)
+        if (CPU -> PPR.PSR != 061 && CPU -> PPR.IC != 0307)
 
           if_sim_debug (DBG_TRACE, & cpu_dev)
             sim_printf ("\n");
@@ -1510,7 +1503,7 @@ last = M[01007040];
             for (int i = 0; i < 8; i ++)
               {
                 multipassStatsPtr -> X [i] = CPU -> rX [i];
-                multipassStatsPtr -> PAR [i] = PAR [i];
+                multipassStatsPtr -> CPU -> PAR [i] = CPU -> PAR [i];
               }
             multipassStatsPtr -> IR = CPU -> cu . IR;
 #ifdef REAL_TR
@@ -1574,7 +1567,7 @@ last = M[01007040];
                 // program-invisible holding registers in preparation 
                 // for a Store Control Unit (scu) instruction, enters 
                 // temporary absolute mode, and forces the current 
-                // ring of execution C(PPR.PRR) to
+                // ring of execution C(CPU -> PPR.PRR) to
                 // 0. It then issues an XEC system controller command 
                 // to the system controller on the highest priority 
                 // port for which there is a bit set in the interrupt 
@@ -1588,8 +1581,8 @@ last = M[01007040];
                 set_TEMPORARY_ABSOLUTE_mode ();
 
                 // Set to ring 0
-                PPR . PRR = 0;
-                TPR . TRR = 0;
+                CPU -> PPR . PRR = 0;
+                CPU -> TPR . TRR = 0;
 
                 // Check that an interrupt is actually pending
                 if (cpu . interrupt_flag)
@@ -1723,7 +1716,7 @@ last = M[01007040];
 // not sampled.
 
                 if ((! cpu . wasInhibited) &&
-                    (PPR . IC % 2) == 0 &&
+                    (CPU -> PPR . IC % 2) == 0 &&
                     (! cpu . wasXfer) &&
                     (! (CPU -> cu . xde | CPU -> cu . xdo | CPU -> cu . rpt | CPU -> cu . rd)))
                   {
@@ -1735,7 +1728,7 @@ last = M[01007040];
                 // odd intruction. If the IC is even, reset it for
                 // the next pair.
 
-                if ((PPR . IC % 2) == 0)
+                if ((CPU -> PPR . IC % 2) == 0)
                   cpu . wasInhibited = false;
 
                 if (cpu . interrupt_flag)
@@ -1762,7 +1755,7 @@ last = M[01007040];
 
 #if 0
                 if (cpu . interrupt_flag && 
-                    ((PPR . IC % 2) == 0) &&
+                    ((CPU -> PPR . IC % 2) == 0) &&
                     (! (CPU -> cu . xde | CPU -> cu . xdo | CPU -> cu . rpt | CPU -> cu . rd)))
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
@@ -1802,20 +1795,20 @@ last = M[01007040];
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
-                    fetchInstruction (PPR . IC);
+                    fetchInstruction (CPU -> PPR . IC);
                   }
 
 
 #ifdef MULTIPASS
                 if (multipassStatsPtr)
                   {
-                    multipassStatsPtr -> PPR = PPR;
+                    multipassStatsPtr -> CPU -> PPR = CPU -> PPR;
                   }
 #endif
 #if 0
                 // XXX The conditions are more rigorous: see AL39, pg 327
            // ci is not set up yet; check the inhibit bit in the IWB!
-                //if (PPR.IC % 2 == 0 && // Even address
+                //if (CPU -> PPR.IC % 2 == 0 && // Even address
                     //ci -> i == 0) // Not inhibited
                 //if (GET_I (CPU -> cu . IWB) == 0) // Not inhibited
 // If the instruction pair virtual address being formed is the result of a 
@@ -1823,7 +1816,7 @@ last = M[01007040];
 // Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
 // or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
 // not sampled.
-                if (PPR.IC % 2 == 0 && // Even address
+                if (CPU -> PPR.IC % 2 == 0 && // Even address
                     GET_I (CPU -> cu . IWB) == 0 &&  // Not inhibited
                     (! (CPU -> cu . xde | CPU -> cu . xdo | CPU -> cu . rpt | CPU -> cu . rd)))
                   {
@@ -1858,7 +1851,7 @@ last = M[01007040];
                     CPU -> cu . xde = CPU -> cu . xdo = 0;
                     cpu . wasXfer = true;
                     setCpuCycle (FETCH_cycle);
-                    break;   // don't bump PPR.IC, instruction already did it
+                    break;   // don't bump CPU -> PPR.IC, instruction already did it
                   }
                 cpu . wasXfer = false;
 
@@ -1868,10 +1861,10 @@ last = M[01007040];
                     break;
                   }
 
-                if ((! CPU -> cu . repeat_first) && (CPU -> cu . rpt || (CPU -> cu . rd & (PPR.IC & 1))))
+                if ((! CPU -> cu . repeat_first) && (CPU -> cu . rpt || (CPU -> cu . rd & (CPU -> PPR.IC & 1))))
                   {
                     if (! CPU -> cu . rpt)
-                      -- PPR.IC;
+                      -- CPU -> PPR.IC;
                     cpu . wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
@@ -1897,9 +1890,9 @@ last = M[01007040];
                   }
 
                 CPU -> cu . xde = CPU -> cu . xdo = 0;
-                PPR.IC ++;
+                CPU -> PPR.IC ++;
                 if (ci->info->ndes > 0)
-                  PPR.IC += ci->info->ndes;
+                  CPU -> PPR.IC += ci->info->ndes;
 
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
@@ -1908,7 +1901,7 @@ last = M[01007040];
 
             case SYNC_FAULT_RTN_cycle:
               {
-                PPR.IC ++;
+                CPU -> PPR.IC ++;
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
@@ -1948,8 +1941,8 @@ last = M[01007040];
                     clearFaultCycle ();
                     cpu . wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
-                    PPR.IC += ci->info->ndes;
-                    PPR.IC ++;
+                    CPU -> PPR.IC += ci->info->ndes;
+                    CPU -> PPR.IC ++;
                     break;
                   }
 
@@ -1959,8 +1952,8 @@ last = M[01007040];
                 set_TEMPORARY_ABSOLUTE_mode ();
 
                 // Set to ring 0
-                PPR . PRR = 0;
-                TPR . TRR = 0;
+                CPU -> PPR . PRR = 0;
+                CPU -> TPR . TRR = 0;
 
                 // (12-bits of which the top-most 7-bits are used)
                 int fltAddress = (CPU -> switches.FLT_BASE << 5) & 07740;
@@ -2053,8 +2046,8 @@ last = M[01007040];
                 // decodeInstruction() restores ci->info->ndes
                 decodeInstruction (CPU -> cu . IWB, & CPU -> currentInstruction);
 
-                PPR.IC += ci->info->ndes;
-                PPR.IC ++;
+                CPU -> PPR.IC += ci->info->ndes;
+                CPU -> PPR.IC ++;
                 break;
               }
 
@@ -2275,7 +2268,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     nem_check (addr,  "core_read nem");
     if (M[addr] & MEM_UNINITIALIZED)
       {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, PPR.PSR, PPR.IC, ctx);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, CPU -> PPR.PSR, CPU -> PPR.IC, ctx);
       }
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2319,7 +2312,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     nem_check (addr,  "core_read2 nem");
     if (M[addr] & MEM_UNINITIALIZED)
     {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, CPU -> PPR.PSR, CPU -> PPR.IC, ctx);
     }
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2336,7 +2329,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     nem_check (addr,  "core_read2 nem");
     if (M[addr] & MEM_UNINITIALIZED)
     {
-        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, PPR.PSR, PPR.IC, ctx);
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, CPU -> PPR.PSR, CPU -> PPR.IC, ctx);
     }
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2532,13 +2525,13 @@ int is_priv_mode(void)
     // TODO: fix this when time permits
     
     // something has already set .P
-    if (PPR.P)
+    if (CPU -> PPR.P)
         return 1;
     
     switch (get_addr_mode())
     {
         case ABSOLUTE_mode:
-            PPR.P = 1;
+            CPU -> PPR.P = 1;
             return 1;
         
         case APPEND_mode:
@@ -2660,7 +2653,7 @@ void set_addr_mode(addr_modes_t mode)
 #if 0
         SETF(CPU -> cu.IR, I_NBAR);
 #endif
-        PPR.P = 1;
+        CPU -> PPR.P = 1;
         
     } else if (mode == APPEND_mode) {
         if (! TSTF (CPU -> cu.IR, I_ABS) && TSTF (CPU -> cu.IR, I_NBAR))
@@ -3342,8 +3335,8 @@ static int dumpStack (uint stkBase, uint stkNo)
 
 int dumpStacks (void)
   {
-    sim_printf ("DSBR.STACK %04u\n", DSBR . STACK);
-    uint stkBase = DSBR.STACK << 3;
+    sim_printf ("DSBR.STACK %04u\n", CPU -> DSBR . STACK);
+    uint stkBase = CPU -> DSBR.STACK << 3;
     for (uint stkNo = 0; stkNo <= 5; stkNo ++)
       {
         dumpStack (stkBase + stkNo, stkNo);
@@ -3370,23 +3363,23 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
     // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
 {
 
-    if (PAR [6].SNR == 077777 || (PAR [6].SNR == 0 && PAR [6].WORDNO == 0)) {
+    if (CPU -> PAR [6].SNR == 077777 || (CPU -> PAR [6].SNR == 0 && CPU -> PAR [6].WORDNO == 0)) {
         sim_printf ("%s: Null PR[6]\n", __func__);
         return 1;
     }
 
     // PR6 should point to the current stack frame.  That stack frame
     // should be within the stack segment.
-    int seg = PAR [6].SNR;
+    int seg = CPU -> PAR [6].SNR;
 
     uint curr_frame;
     char * msg;
-    //t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
-    int rc = dbgLookupAddress (seg, PAR [6].WORDNO, & curr_frame, & msg);
+    //t_stat rc = computeAbsAddrN (& curr_frame, seg, CPU -> PAR [6].WORDNO);
+    int rc = dbgLookupAddress (seg, CPU -> PAR [6].WORDNO, & curr_frame, & msg);
     if (rc)
       {
         sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
-            __func__, PAR [6].SNR, PAR [6].WORDNO, msg);
+            __func__, CPU -> PAR [6].SNR, CPU -> PAR [6].WORDNO, msg);
         return 1;
       }
 
@@ -3508,7 +3501,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
             break;
 #if 0
             need_hist_msg = 1;
-            if (framep != PAR [6].WORDNO)
+            if (framep != CPU -> PAR [6].WORDNO)
                 out_msg("Stack Trace: Stack may be garbled...\n");
             // BUG: Infinite loop if enabled and garbled stack with "Unknowable entry {0,0}", "Unknown entry 15|0  (stack frame at 062|000000)", etc
 #endif

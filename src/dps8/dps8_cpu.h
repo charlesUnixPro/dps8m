@@ -71,7 +71,7 @@ typedef struct
 
 extern word8 tTB;
 
-extern struct _tpr
+struct _tpr
   {
     word3   TRR; // The current effective ring number
     word15  TSR; // The current effective segment number
@@ -79,9 +79,9 @@ extern struct _tpr
                  // pointer pairs.
     word18  CA;  // The current computed address relative to the origin of the 
                  // segment whose segment number is in TPR . TSR
-  } TPR;
+  };
 
-extern struct _ppr
+struct _ppr
   {
     word3   PRR; // The number of the ring in which the process is executing. 
                  // It is set to the effective ring number of the procedure 
@@ -94,7 +94,7 @@ extern struct _ppr
                  // 1; otherwise, its value is 0.
     word18  IC;  // The word offset from the origin of the procedure segment
                  //  to the current instruction. (same as PPR . IC)
-  } PPR;
+  };
 
 /////
 
@@ -153,7 +153,7 @@ extern struct _ppr
 //                    first bit of the next data item element.
 //
 
-extern struct _par
+struct _par
   {
     word15  SNR;    // The segment number of the segment containing the data 
                     //item described by the pointer register.
@@ -179,7 +179,7 @@ extern struct _par
                     //  items may have any value in the range [1,35].
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
-  } PAR [8];
+  };
 
 // N.B. remember there are subtle differences between AR/PR . BITNO
 
@@ -188,13 +188,13 @@ extern struct _par
 
 // Support code to access ARn . BITNO and CHAR
 
-#define GET_AR_BITNO(n) (PAR [n] . BITNO % 9)
-#define GET_AR_CHAR(n) (PAR [n] . BITNO / 9)
-#define SET_AR_BITNO(n, b) PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
-#define SET_AR_CHAR(n, c) PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
-#define SET_AR_CHAR_BIT(n, c, b) PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
+#define GET_AR_BITNO(n) (CPU -> PAR [n] . BITNO % 9)
+#define GET_AR_CHAR(n) (CPU -> PAR [n] . BITNO / 9)
+#define SET_AR_BITNO(n, b) CPU -> PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
+#define SET_AR_CHAR(n, c) CPU -> PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
+#define SET_AR_CHAR_BIT(n, c, b) CPU -> PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
 
-extern struct _bar
+struct _bar
   {
     word9 BASE;     // Contains the 9 high-order bits of an 18-bit address 
                     // relocation constant. The low-order bits are generated 
@@ -204,9 +204,9 @@ extern struct _bar
                     // zeros. An attempt to access main memory beyond this 
                     // limit causes a store fault, out of bounds. A value of 
                     // 0 is truly 0, indicating a null memory range.
-  } BAR;
+  };
 
-extern struct _dsbr
+struct _dsbr
   {
     word24  ADDR;   // If DSBR . U = 1, the 24-bit absolute main memory address
                     //  of the origin of the current descriptor segment;
@@ -222,7 +222,7 @@ extern struct _dsbr
                     // number. It is used only during the execution of the 
                     // call6 instruction. (See Section 8 for a discussion
                     //  of generation of the stack segment number.)
-  } DSBR;
+  };
 
 // The segment descriptor word (SDW) pair contains information that controls
 // the access to a segment. The SDW for segment n is located at offset 2n in
@@ -1064,6 +1064,12 @@ typedef struct
     word8    tCF;    // character position field [3b]
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
     word3    RSDWH_R1; // Track the ring number of the last SDW
+    struct _tpr TPR; // Temporary Pointer Register
+    struct _ppr PPR; // Procedure Pointer Register
+    struct _par PAR [8]; // pointer/address resisters
+    struct _bar BAR;
+    struct _dsbr DSBR;
+
 
   } cpu_state_t;
 

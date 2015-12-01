@@ -43,7 +43,7 @@
 word18 getBARaddress(word18 addr)
 {
     // sim_printf ("BAR.BOUND %03o (%06o) addr %06o\n", BAR.BOUND, BAR.BOUND << 9, addr);
-    if (BAR.BOUND == 0)
+    if (CPU -> BAR.BOUND == 0)
         // store fault, out of bounds.
         doFault (FAULT_STR, oob, "BAR store fault; out of bounds");
 
@@ -57,12 +57,12 @@ word18 getBARaddress(word18 addr)
     // CA >= BAR.BOUND
     //
     //if ((addr & 0777000) >= (((word18) BAR.BOUND) << 9))
-    if (addr >= (((word18) BAR.BOUND) << 9))
+    if (addr >= (((word18) CPU -> BAR.BOUND) << 9))
         // store fault, out of bounds.
         doFault (FAULT_STR, oob, "BAR store fault; out of bounds");
     
-    word18 barAddr = (addr + (((word18) BAR.BASE) << 9)) & 0777777;
+    word18 barAddr = (addr + (((word18) CPU -> BAR.BASE) << 9)) & 0777777;
     //finalAddress = barAddr;
     return barAddr;
-    //return (addr + (BAR.BASE << 9)) & 0777777;
+    //return (addr + (CPU -> BAR.BASE << 9)) & 0777777;
 }

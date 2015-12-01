@@ -491,8 +491,8 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 #endif
 
     // some debugging support stuff
-    fault_psr = PPR.PSR;
-    fault_ic = PPR.IC;
+    fault_psr = CPU -> PPR.PSR;
+    fault_ic = CPU -> PPR.IC;
     strcpy (fault_msg, faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
@@ -670,7 +670,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
-                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", CPU -> PPR.IC);
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
