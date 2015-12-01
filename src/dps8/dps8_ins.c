@@ -4088,7 +4088,7 @@ static t_stat DoBasicInstruction (void)
                 CPU -> PR[7].SNR = CPU -> PR[6].SNR;
             CPU -> PR[7].RNR = CPU -> TPR.TRR;
             if (CPU -> TPR.TRR == 0)
-                CPU -> PPR.P = SDW->P;
+                CPU -> PPR.P = CPU -> SDW->P;
             else
                 CPU -> PPR.P = 0;
             CPU -> PR[7].WORDNO = 0;
@@ -4198,7 +4198,7 @@ static t_stat DoBasicInstruction (void)
             /// If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
             /// otherwise 0 -> C(PPR.P)
             if (CPU -> PPR.PRR == 0)
-                CPU -> PPR.P = SDW->P;
+                CPU -> PPR.P = CPU -> SDW->P;
             else
                 CPU -> PPR.P = 0;
             
@@ -4636,7 +4636,7 @@ static t_stat DoBasicInstruction (void)
                 word3 Crr = (GETLO(Ypair[0]) >> 15) & 07;       ///< RNR from ITS pair
                 //if (get_addr_mode () == APPEND_mode || get_addr_mode () == APPEND_BAR_mode)
                 if (get_addr_mode () == APPEND_mode)
-                  CPU -> PR[n].RNR = max3(Crr, SDW->R1, CPU -> TPR.TRR) ;
+                  CPU -> PR[n].RNR = max3(Crr, CPU -> SDW->R1, CPU -> TPR.TRR) ;
                 else
                   CPU -> PR[n].RNR = Crr;
                 CPU -> PR[n].SNR = (Ypair[0] >> 18) & MASK15;
@@ -5431,9 +5431,9 @@ static t_stat DoBasicInstruction (void)
               {
                 Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i], 0, 15, SDWAM [toffset + i] . POINTER);
-                putbits36 (& Yblock16 [i], 27, 1, SDWAM [toffset + i] . F);
-                putbits36 (& Yblock16 [i], 30, 6, SDWAM [toffset + i] . USE);
+                putbits36 (& Yblock16 [i], 0, 15, CPU -> SDWAM [toffset + i] . POINTER);
+                putbits36 (& Yblock16 [i], 27, 1, CPU -> SDWAM [toffset + i] . F);
+                putbits36 (& Yblock16 [i], 30, 6, CPU -> SDWAM [toffset + i] . USE);
 #endif
               }
           }
@@ -6794,10 +6794,10 @@ static t_stat DoEISInstruction (void)
               {
                 Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i], 0, 15, PTWAM [toffset + i] . POINTER);
-                putbits36 (& Yblock16 [i], 15, 12, PTWAM [toffset + i] . PAGENO);
-                putbits36 (& Yblock16 [i], 27, 1, PTWAM [toffset + i] . F);
-                putbits36 (& Yblock16 [i], 30, 6, PTWAM [toffset + i] . USE);
+                putbits36 (& Yblock16 [i], 0, 15, CPU -> PTWAM [toffset + i] . POINTER);
+                putbits36 (& Yblock16 [i], 15, 12, CPU -> PTWAM [toffset + i] . PAGENO);
+                putbits36 (& Yblock16 [i], 27, 1, CPU -> PTWAM [toffset + i] . F);
+                putbits36 (& Yblock16 [i], 30, 6, CPU -> PTWAM [toffset + i] . USE);
 #endif
               }
           }
@@ -6816,8 +6816,8 @@ static t_stat DoEISInstruction (void)
               {
                 Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
-                putbits36 (& Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
+                putbits36 (& Yblock16 [i], 0, 13, CPU -> PTWAM [toffset + i] . ADDR);
+                putbits36 (& Yblock16 [i], 29, 1, CPU -> PTWAM [toffset + i] . M);
 #endif
               }
           }
@@ -6836,22 +6836,22 @@ static t_stat DoEISInstruction (void)
               {
                 Yblock32 [i * 2] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock32 [i * 2], 0, 23, SDWAM [toffset + i] . ADDR);
-                putbits36 (& Yblock32 [i * 2], 24, 3, SDWAM [toffset + i] . R1);
-                putbits36 (& Yblock32 [i * 2], 27, 3, SDWAM [toffset + i] . R2);
-                putbits36 (& Yblock32 [i * 2], 30, 3, SDWAM [toffset + i] . R3);
+                putbits36 (& Yblock32 [i * 2], 0, 23, CPU -> SDWAM [toffset + i] . ADDR);
+                putbits36 (& Yblock32 [i * 2], 24, 3, CPU -> SDWAM [toffset + i] . R1);
+                putbits36 (& Yblock32 [i * 2], 27, 3, CPU -> SDWAM [toffset + i] . R2);
+                putbits36 (& Yblock32 [i * 2], 30, 3, CPU -> SDWAM [toffset + i] . R3);
 #endif
                 Yblock32 [i * 2 + 1] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock32 [i * 2 + 1], 37 - 36, 14, SDWAM [toffset + i] . BOUND);
-                putbits36 (& Yblock32 [i * 2 + 1], 51 - 36, 1, SDWAM [toffset + i] . R);
-                putbits36 (& Yblock32 [i * 2 + 1], 52 - 36, 1, SDWAM [toffset + i] . E);
-                putbits36 (& Yblock32 [i * 2 + 1], 53 - 36, 1, SDWAM [toffset + i] . W);
-                putbits36 (& Yblock32 [i * 2 + 1], 54 - 36, 1, SDWAM [toffset + i] . P);
-                putbits36 (& Yblock32 [i * 2 + 1], 55 - 36, 1, SDWAM [toffset + i] . U);
-                putbits36 (& Yblock32 [i * 2 + 1], 56 - 36, 1, SDWAM [toffset + i] . G);
-                putbits36 (& Yblock32 [i * 2 + 1], 57 - 36, 1, SDWAM [toffset + i] . C);
-                putbits36 (& Yblock32 [i * 2 + 1], 58 - 36, 14, SDWAM [toffset + i] . CL);
+                putbits36 (& Yblock32 [i * 2 + 1], 37 - 36, 14, CPU -> SDWAM [toffset + i] . BOUND);
+                putbits36 (& Yblock32 [i * 2 + 1], 51 - 36, 1, CPU -> SDWAM [toffset + i] . R);
+                putbits36 (& Yblock32 [i * 2 + 1], 52 - 36, 1, CPU -> SDWAM [toffset + i] . E);
+                putbits36 (& Yblock32 [i * 2 + 1], 53 - 36, 1, CPU -> SDWAM [toffset + i] . W);
+                putbits36 (& Yblock32 [i * 2 + 1], 54 - 36, 1, CPU -> SDWAM [toffset + i] . P);
+                putbits36 (& Yblock32 [i * 2 + 1], 55 - 36, 1, CPU -> SDWAM [toffset + i] . U);
+                putbits36 (& Yblock32 [i * 2 + 1], 56 - 36, 1, CPU -> SDWAM [toffset + i] . G);
+                putbits36 (& Yblock32 [i * 2 + 1], 57 - 36, 1, CPU -> SDWAM [toffset + i] . C);
+                putbits36 (& Yblock32 [i * 2 + 1], 58 - 36, 14, CPU -> SDWAM [toffset + i] . CL);
 #endif
               }
           }
@@ -7117,7 +7117,7 @@ static int doABSA (word36 * result)
 
 //sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
 //sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o CPU -> TPR.TSR %08o\n", CPU -> DSBR . ADDR, CPU -> TPR . TSR);
-//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o SDW: %012llo %012llo\n", CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR, SDWe, SDWo);
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o CPU -> SDW: %012llo %012llo\n", CPU -> DSBR . ADDR + 2 * CPU -> TPR . TSR, SDWe, SDWo);
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
         // missing segment fault or, simply, a segment fault.

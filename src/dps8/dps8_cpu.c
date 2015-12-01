@@ -241,7 +241,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 #ifndef SPEED
 static t_stat dpsCmd_InitSDWAM ()
   {
-    memset (SDWAM, 0, sizeof (SDWAM));
+    memset (CPU -> SDWAM, 0, sizeof (CPU -> SDWAM));
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
@@ -932,21 +932,6 @@ word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 // XXX given this is not real hardware we can eventually remove the SDWAM -- I think. But for now just leave it in.
 // For the DPS 8M processor, the SDW associative memory will hold the 64 MRU SDWs and have a 4-way set associative organization with LRU replacement.
 
-#ifdef SPEED
-struct _sdw SDWAM0;
-struct _sdw  * SDW = & SDWAM0; // Segment Descriptor Word Associative Memory & working SDW
-struct _sdw0 SDW0;  // a SDW not in SDWAM
-
-struct _ptw PTWAM0;
-struct _ptw * PTW = & PTWAM0;  // PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
-struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
-#else
-struct _sdw  SDWAM[64], *SDW = &SDWAM[0];    ///< Segment Descriptor Word Associative Memory & working SDW
-struct _sdw0 SDW0;  ///< a SDW not in SDWAM
-
-struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
-struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
-#endif
 
 _cache_mode_register CMR;
 _mode_register MR;

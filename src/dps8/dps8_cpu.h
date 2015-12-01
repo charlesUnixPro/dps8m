@@ -229,7 +229,7 @@ struct _dsbr
 // the descriptor segment whose description is currently loaded into the
 // descriptor segment base register (DSBR).
 
-extern struct _sdw
+struct _sdw
   {
     word24  ADDR;    // The 24-bit absolute main memory address of the page
                      //  table for the target segment if SDWAM . U = 0;
@@ -281,18 +281,13 @@ extern struct _sdw
                      //  and the queue is reordered. SDWs newly fetched from
                      //  main memory replace the SDW with USE value 0 (oldest)
                      //  and the queue is reordered.
-  }
-#ifdef SPEED
-     SDWAM0, * SDW;
-#else
-     SDWAM [64], * SDW;
-#endif
+  };
 
 typedef struct _sdw _sdw;
 
 // in-core SDW (i.e. not cached, or in SDWAM)
 
-extern struct _sdw0
+struct _sdw0
   {
     // even word
     word24  ADDR;    // The 24-bit absolute main memory address of the page
@@ -338,14 +333,14 @@ extern struct _sdw0
                      //  cache memory.
     word14  EB;      // Entry bound. Any call into this segment must be to
                      //  an offset less than EB if G=0
-} SDW0;
+};
 
 typedef struct _sdw0 _sdw0;
 
 
 // PTW as used by APU
 
-extern struct _ptw
+struct _ptw
  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
@@ -372,18 +367,13 @@ extern struct _ptw
                      //  PTW with USE value 0 (oldest) and the queue is
                      //  reordered.
     
-  }
-#ifdef SPEED
-     PTWAM0, * PTW;
-#else
-     PTWAM [64], * PTW;
-#endif
+  };
 
 typedef struct _ptw _ptw;
 
 // in-core PTW
 
-extern struct _ptw0
+struct _ptw0
   {
     word18  ADDR;   // The 18 high-order bits of the 24-bit absolute main
                     //  memory address of the page.
@@ -394,7 +384,7 @@ extern struct _ptw0
                     // * 1 = page is in main memory
     word2   FC;     // Directed fault number for page fault.
     
-  } PTW0;
+  };
 
 typedef struct _ptw0 _ptw0;
 
@@ -1069,6 +1059,21 @@ typedef struct
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;
     struct _dsbr DSBR;
+#ifdef SPEED
+    struct _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+#else
+    struct _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+#endif
+    struct _sdw * SDW; // working SDW
+    struct _sdw0 SDW0; // a SDW not in SDWAM
+    struct _sdw0 _s;
+#ifdef SPEED
+    struct _ptw PTWAM0;
+#else
+    struct _ptw PTWAM [64];
+#endif
+    struct _ptw * PTW;
+    struct _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
 
 
   } cpu_state_t;
