@@ -5861,6 +5861,11 @@ static t_stat DoBasicInstruction (void)
             // external interrupt signal.
             // AND, according to pxss.alm, TRO
 
+#if 1
+            if (GET_I (CPU -> cu . IWB))
+              return CONT_IDIS;
+            return CONT_DIS;
+#else
 // Bless NovaScale...
 //  DIS
 // 
@@ -5881,14 +5886,14 @@ static t_stat DoBasicInstruction (void)
 
             if (sample_interrupts ())
               {
-                cpu . interrupt_flag = true;
+                CPU -> interrupt_flag = true;
                 break;
               }
             // Currently, the only G7 fault we recognize is TRO, so
             // this code suffices for "all other G7 faults."
             if (GET_I (CPU -> cu . IWB) ? bG7PendingNoTRO () : bG7Pending ())
               {
-                cpu . g7_flag = true;
+                CPU -> g7_flag = true;
                 break;
               }
             else
@@ -5896,7 +5901,8 @@ static t_stat DoBasicInstruction (void)
                 sys_stats . total_cycles ++;
                 longjmp (jmpMain, JMP_REFETCH);
               }
-            
+#endif
+
         default:
             if (CPU -> switches . halt_on_unimp)
                 return STOP_ILLOP;

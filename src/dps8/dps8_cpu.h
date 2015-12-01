@@ -1,8 +1,4 @@
 
-// simh only explicitly supports a single cpu
-
-#define N_CPU_UNITS 1
-#define CPU_UNIT_NUM 0
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
@@ -29,10 +25,6 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
-#if 0
-    BAR_mode,
-    APPEND_BAR_mode,
-#endif
   } addr_modes_t;
 
 
@@ -53,6 +45,8 @@ typedef enum
     FETCH_cycle = INSTRUCTION_FETCH,
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
+    DIS_cycle,
+    IDIS_cycle
   } cycles_t;
 
 #ifndef QUIET_UNUSED

@@ -45,13 +45,7 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
 static void setCpuCycle (cycles_t cycle);
 
-// CPU data structures
-
-#define N_CPU_UNITS 1
-
-// The DPS8M had only 4 ports
-
-static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
+static UNIT cpu_unit [N_CPU_UNITS_MAX] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
@@ -834,7 +828,7 @@ static t_stat cpu_reset (DEVICE *dptr)
         CPU -> cu.SD_ON = 1;
         CPU -> cu.PT_ON = 1;
 
-        setCpuCycle (FETCH_cycle);
+        setCpuCycle (IDIS_cycle);
 
         CPU -> wasXfer = false;
         CPU -> wasInhibited = false;
@@ -1109,7 +1103,7 @@ DEVICE cpu_dev = {
     cpu_unit,       /*!< units */
     cpu_reg,        /*!< registers */
     cpu_mod,        /*!< modifiers */
-    N_CPU_UNITS,    /*!< #units */
+    N_CPU_UNITS_MAX,    /*!< #units */
     8,              /*!< address radix */
     PASIZE,         /*!< address width */
     1,              /*!< addr increment */
@@ -1290,6 +1284,10 @@ static char * cycleStr (cycles_t cycle)
           return "FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
           return "SYNC_FAULT_RTN_cycle";
+        case DIS_cycle:
+          return "DIS_cycle";
+        case IDIS_cycle:
+          return "IDIS_cycle";
 #if 0
         default:
           sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
@@ -1827,6 +1825,18 @@ last = M[01007040];
                   }
                 cpu . wasXfer = false;
 
+                if (ret == CONT_DIS)
+                  {
+                    setCpuCycle (DIS_cycle);
+                    break;
+                  }
+
+                if (ret == CONT_IDIS)
+                  {
+                    setCpuCycle (IDIS_cycle);
+                    break;
+                  }
+
                 if (ret < 0)
                   {
                     sim_printf ("execute instruction returned %d?\n", ret);
@@ -2020,6 +2030,38 @@ last = M[01007040];
 
                 CPU -> PPR.IC += ci->info->ndes;
                 CPU -> PPR.IC ++;
+                break;
+              }
+// Bless NovaScale...
+//  DIS
+// 
+//    NOTES:
+// 
+//      1. The inhibit bit in the DIS instruction only affects the recognition 
+//         of a Timer Runout (TROF) fault.
+//
+//         Inhibit ON delays the recognition of a TROF until the processor 
+//         enters Slave mode.
+//
+//         Inhibit OFF allows the TROF to interrupt the DIS state.
+// 
+//      2. For all other faults and interrupts, the inhibit bit is ignored.
+// 
+
+            case DIS_cycle:
+            case IDIS_cycle:
+              {
+                CPU -> interrupt_flag = sample_interrupts ();
+                CPU -> g7_flag = CPU -> cycle == DIS_cycle ? bG7Pending () : bG7PendingNoTRO ();
+                if (CPU -> interrupt_flag || CPU -> g7_flag)
+                  {
+#ifdef MULTI_CPU
+{static bool f0 = true; if (f0 && currentRunningCPUnum == 0) { f0 = false; sim_printf ("cpu 0 starts\n");}}
+{static bool f1 = true; if (f1 && currentRunningCPUnum == 1) { f1 = false; sim_printf ("cpu 1 starts\n");}}
+#endif
+                    CPU -> PPR.IC ++;
+                    setCpuCycle (INTERRUPT_cycle);
+                  }
                 break;
               }
 
@@ -2703,9 +2745,7 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
 
 static void cpu_init_array (void)
   {
-    for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
-      for (int p = 0; p < N_CPU_UNITS; p ++)
-        cables -> cablesFromScuToCpu [i] . ports [p] . inuse = false;
+    memset (cables -> cablesFromScuToCpu, 0, sizeof (cables -> cablesFromScuToCpu));
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
