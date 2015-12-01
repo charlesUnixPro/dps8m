@@ -5879,7 +5879,8 @@ static t_stat DoBasicInstruction (void)
             // external interrupt signal.
             // AND, according to pxss.alm, TRO
 
-#if 1
+// Causes F1 fault while initialize dska_01b
+#if 0
             if (GET_I (CPU -> cu . IWB))
               return CONT_IDIS;
             return CONT_DIS;
