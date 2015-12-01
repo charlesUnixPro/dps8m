@@ -368,14 +368,11 @@ static int fault_check_group(int group)
  * fault handler(s).
  */
 
-static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 #ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 #endif
-static uint g7Faults = 0;
-static _fault_subtype  g7SubFaults [N_FAULTS];
 
 // We stash a few things for debugging; they are accessed by emCall.
 static word18 fault_ic; 
@@ -394,7 +391,7 @@ void emCallReportFault (void)
 
 void clearFaultCycle (void)
   {
-    bTroubleFaultCycle = false;
+    CPU -> bTroubleFaultCycle = false;
   }
 
 /*
@@ -483,7 +480,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
-               bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+               CPU -> bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
@@ -664,7 +661,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         CPU -> cu . FI_ADDR = FAULT_TRB;
         cpu . subFault = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
-        if (bTroubleFaultCycle)
+        if (CPU -> bTroubleFaultCycle)
           {
             if ((! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
@@ -680,12 +677,12 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         else
           {
 //--            f = &_faults[FAULT_TRB];
-            bTroubleFaultCycle = true;
+            CPU -> bTroubleFaultCycle = true;
           }
       }
     else
       {
-        bTroubleFaultCycle = false;
+        CPU -> bTroubleFaultCycle = false;
       }
     
     // If doInstruction faults, the instruction cycle counter doesn't get 
@@ -707,58 +704,58 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
  
 bool bG7Pending (void)
   {
-    return g7Faults != 0;
+    return CPU -> g7Faults != 0;
   }
 
 bool bG7PendingNoTRO (void)
   {
-    return (g7Faults & (~ (1u << FAULT_TRO))) != 0;
+    return (CPU -> g7Faults & (~ (1u << FAULT_TRO))) != 0;
   }
 
 void setG7fault (_fault faultNo, _fault_subtype subFault)
   {
     // sim_printf ("setG7fault %d %d [%lld]\n", faultNo, subFault, sim_timell ());
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
-    g7Faults |= (1u << faultNo);
-    g7SubFaults [faultNo] = subFault;
+    CPU -> g7Faults |= (1u << faultNo);
+    CPU -> g7SubFaults [faultNo] = subFault;
   }
 
 void clearTROFault (void)
   {
-    g7Faults &= ~(1u << FAULT_TRO);
+    CPU -> g7Faults &= ~(1u << FAULT_TRO);
   }
 
 void doG7Fault (void)
   {
-    // sim_printf ("doG7fault %08o [%lld]\n", g7Faults, sim_timell ());
-    // if (g7Faults)
+    // sim_printf ("doG7fault %08o [%lld]\n", CPU -> g7Faults, sim_timell ());
+    // if (CPU -> g7Faults)
       // {
-        // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", g7Faults);
+        // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", CPU -> g7Faults);
       // }
-     if (g7Faults & (1u << FAULT_TRO))
+     if (CPU -> g7Faults & (1u << FAULT_TRO))
        {
-         g7Faults &= ~(1u << FAULT_TRO);
+         CPU -> g7Faults &= ~(1u << FAULT_TRO);
 
          doFault (FAULT_TRO, 0, "Timer runout"); 
        }
 
-     if (g7Faults & (1u << FAULT_CON))
+     if (CPU -> g7Faults & (1u << FAULT_CON))
        {
-         g7Faults &= ~(1u << FAULT_CON);
+         CPU -> g7Faults &= ~(1u << FAULT_CON);
 
-         CPU -> cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
-         doFault (FAULT_CON, g7SubFaults [FAULT_CON], "Connect"); 
+         CPU -> cu . CNCHN = CPU -> g7SubFaults [FAULT_CON] & MASK3;
+         doFault (FAULT_CON, CPU -> g7SubFaults [FAULT_CON], "Connect"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
      // we are allowing the current instruction to complete, simplifying
      // implementation
-     if (g7Faults & (1u << FAULT_EXF))
+     if (CPU -> g7Faults & (1u << FAULT_EXF))
        {
-         g7Faults &= ~(1u << FAULT_EXF);
+         CPU -> g7Faults &= ~(1u << FAULT_EXF);
 
          doFault (FAULT_EXF, 0, "Execute fault");
        }
 
-     doFault (FAULT_TRB, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
+     doFault (FAULT_TRB, (_fault_subtype) CPU -> g7Faults, "Dazed and confused in doG7Fault");
   }

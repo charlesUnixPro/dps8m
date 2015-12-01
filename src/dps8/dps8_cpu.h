@@ -1074,6 +1074,9 @@ typedef struct
     int characterOperandSize;
     int characterOperandOffset;
     word36 directOperand;
+    bool bTroubleFaultCycle;       // when true then in TROUBLE FAULT CYCLE
+    uint g7Faults;
+    _fault_subtype g7SubFaults [N_FAULTS];
 
 
   } cpu_state_t;
