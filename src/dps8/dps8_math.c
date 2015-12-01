@@ -343,7 +343,7 @@ void ufa (void)
     //! * C(E) is increased by one.
 
     float72 m1 = ((word72)CPU -> rA << 36) | (word72)CPU -> rQ;
-    float72 op2 = CY;
+    float72 op2 = CPU -> CY;
             
     int8   e1 = (int8)CPU -> rE; 
     
@@ -467,7 +467,7 @@ void ufs (void)
     //! They're probably a few gotcha's here but we'll see.
     //! Yup ... when mantissa 1 000 000 .... 000 we can't do 2'c comp.
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) & FLOAT36MASK; ///< 28-bit mantissa (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) & FLOAT36MASK; ///< 28-bit mantissa (incl sign)
     
     // -1  001000000000 = 2^0 * -1 = -1
     // S          S    
@@ -493,7 +493,7 @@ void ufs (void)
     if (ov && m2 != 0)
     {
         //sim_printf ("OV\n");
-        int8   e = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+        int8   e = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
 
         m2c >>= 1;
         m2c &= FLOAT36MASK;
@@ -503,14 +503,14 @@ void ufs (void)
         else // XXX my interpretation
             e += 1;
         
-        CY = bitfieldInsert36(CY, (word36)e, 28, 8) & DMASK;
+        CPU -> CY = bitfieldInsert36(CPU -> CY, (word36)e, 28, 8) & DMASK;
         
     }
 
     if (m2c == 0)
-        CY = 0400000000000LL;
+        CPU -> CY = 0400000000000LL;
     else
-        CY = bitfieldInsert36(CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
+        CPU -> CY = bitfieldInsert36(CPU -> CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
    
     ufa();
 
@@ -812,8 +812,8 @@ void ufm (void)
     uint64 m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; 
     int8   e1 = (int8)CPU -> rE;
 
-    uint64 m2 = bitfieldExtract36(CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+    uint64 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     
     if (m1 == 0 || m2 == 0)
     {
@@ -909,14 +909,14 @@ static void fdvX(bool bInvert)
         m1 = CPU -> rA;    // & 0777777777400LL;
         e1 = (int8)CPU -> rE;
     
-        m2 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
+        e2 = (int8)(bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
         m2 = CPU -> rA;    //& 0777777777400LL ;
         e2 = (int8)CPU -> rE;
     
-        m1 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e1 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        m1 = bitfieldExtract36(CPU -> CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
+        e1 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
 
     // make everything positive, but save sign info for later....
@@ -1210,8 +1210,8 @@ void fcmp(void)
     word36 m1 = CPU -> rA & 0777777777400LL;
     int8   e1 = (int8)CPU -> rE;
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int e3 = -1;
        
@@ -1276,8 +1276,8 @@ void fcmg ()
     word36 m1 = CPU -> rA & 0777777777400LL;
     int8   e1 = (int8)CPU -> rE;
     
-    word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    word36 m2 = bitfieldExtract36(CPU -> CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CPU -> CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int e3 = -1;
     
@@ -1379,7 +1379,7 @@ void dufa (void)
     float72 m2 = 0;
     int8 e2 = -128;
     
-    YPairToExpMant(Ypair, &m2, &e2);
+    YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     int e3 = -1;
     word72 m3 = 0;
@@ -1489,7 +1489,7 @@ void dufs (void)
     float72 m2 = 0;
     int8 e2 = -128;
     
-    YPairToExpMant(Ypair, &m2, &e2);
+    YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     word72 m2c = ~m2 + 1;     ///< & 01777777777LL;     ///< take 2-comp of mantissa
     m2c &= MASK72;
@@ -1513,16 +1513,16 @@ void dufs (void)
     
     if (m2c == 0)
     {
-//      Ypair[0] = 0400000000000LL;
-//      Ypair[1] = 0;
-        ExpMantToYpair(0, -128, Ypair);
+//      CPU -> Ypair[0] = 0400000000000LL;
+//      CPU -> Ypair[1] = 0;
+        ExpMantToYpair(0, -128, CPU -> Ypair);
     }
     else
     {
-//        Ypair[0]  = ((word36)e2 & 0377) << 28;
-//        Ypair[0] |= (m2c >> 44) & 01777777777LL;
-//        Ypair[1]  = (m2c >> 8) &  0777777777400LL;
-        ExpMantToYpair(m2c, e2, Ypair);
+//        CPU -> Ypair[0]  = ((word36)e2 & 0377) << 28;
+//        CPU -> Ypair[0] |= (m2c >> 44) & 01777777777LL;
+//        CPU -> Ypair[1]  = (m2c >> 8) &  0777777777400LL;
+        ExpMantToYpair(m2c, e2, CPU -> Ypair);
     }
     
     dufa ();
@@ -1551,16 +1551,16 @@ void dufm (void)
     uint64 m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; ///< only keep the 1st 64-bits :(
     int8   e1 = (int8)CPU -> rE;
     
-    uint64 m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-           m2 |= Ypair[1];
+    uint64 m2  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+           m2 |= CPU -> Ypair[1];
     
-    int8   e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     
     //float72 m2 = 0;
     //int8 e2 = -128;
     
-    //YPairToExpMant(Ypair, &m2, &e2);
+    //YPairToExpMant(CPU -> Ypair, &m2, &e2);
     
     if (m1 == 0 || m2 == 0)
     {
@@ -1654,18 +1654,18 @@ static void dfdvX (bool bInvert)
         m1 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ;  // only keep the 1st 64-bits :(
         e1 = (int8)CPU -> rE;
         
-        m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m2 |= Ypair[1];
+        m2  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
+        m2 |= CPU -> Ypair[1];
         
-        e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        e2 = (int8)(bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
         m2 = (CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
         e2 = (int8)CPU -> rE;
         
-        m1  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m1 |= Ypair[1];
+        m1  = bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
+        m1 |= CPU -> Ypair[1];
         
-        e1 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+        e1 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
     
     if (m1 == 0)
@@ -1815,7 +1815,7 @@ void dvf (void)
     // m2 divisor
 
     word72 m1 = SIGNEXT36_72((CPU -> rA << 36) | (CPU -> rQ & 0777777777776LLU));
-    word72 m2 = SIGNEXT36_72(CY);
+    word72 m2 = SIGNEXT36_72(CPU -> CY);
 
 //sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
 //sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
@@ -1886,9 +1886,9 @@ void dvf (void)
 sim_printf ("dvf [%lld]\n", sim_timell ());
 sim_printf ("rA %llu\n", CPU -> rA);
 sim_printf ("rQ %llu\n", CPU -> rQ);
-sim_printf ("CY %llu\n", CY);
+sim_printf ("CY %llu\n", CPU -> CY);
 
-    if (CY == 0)
+    if (CPU -> CY == 0)
       {
         // XXX check flags
         SETF (CPU -> cu . IR, I_ZERO);
@@ -1909,7 +1909,7 @@ sim_printf ("CY %llu\n", CY);
 
     int sign = 1;
     bool dividendNegative = (getbits36 (CPU -> rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CPU -> CY, 0, 1) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.
@@ -1931,7 +1931,7 @@ sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
     
 #if 1
     // divisor goes in the high half
-    uint128 dFrac = (CY & MASK35) << 35;
+    uint128 dFrac = (CPU -> CY & MASK35) << 35;
     if (divisorNegative)
       {
         dFrac = ~dFrac + 1;
@@ -1982,10 +1982,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 //sim_debug (DBG_CAC, & cpu_dev, "dvf [%lld]\n", sim_timell ());
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", CPU -> rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", CPU -> rQ);
-//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CY);
+//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", CPU -> CY);
 
 #if 0
-    if (CY == 0)
+    if (CPU -> CY == 0)
       {
         // XXX check flags
         SETF (CPU -> cu . IR, I_ZERO);
@@ -2006,7 +2006,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 
     int sign = 1;
     bool dividendNegative = (getbits36 (CPU -> rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (CY, 0, 1) != 0);
+    bool divisorNegative = (getbits36 (CPU -> CY, 0, 1) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.
@@ -2030,7 +2030,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
     
     // divisor goes in the low half
-    uint128 dFrac = CY & MASK35;
+    uint128 dFrac = CPU -> CY & MASK35;
     if (divisorNegative)
       {
         dFrac = ~dFrac + 1;
@@ -2282,10 +2282,10 @@ void dfcmp (void)
     int64 m1 = (int64) ((CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
     int8  e1 = (int8)CPU -> rE;
     
-    int64 m2  = (int64) (bitfieldExtract36(Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
-          m2 |= Ypair[1];
+    int64 m2  = (int64) (bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
+          m2 |= CPU -> Ypair[1];
     
-    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     //which exponent is smaller???
     
@@ -2330,10 +2330,10 @@ void dfcmg (void)
     int64 m1 = (int64) ((CPU -> rA << 28) | ((CPU -> rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
     int8  e1 = (int8)CPU -> rE;
     
-    int64 m2  = (int64) bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-    m2 |= Ypair[1];
+    int64 m2  = (int64) bitfieldExtract36(CPU -> Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+    m2 |= CPU -> Ypair[1];
     
-    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(CPU -> Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //which exponent is smaller???
     

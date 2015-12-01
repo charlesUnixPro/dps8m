@@ -2122,36 +2122,36 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
         addr &= 0777776;   // make even
-        Read (addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
-        Read (addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 0, CPU -> Ypair + 0, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 1, CPU -> Ypair + 1, RTCD_OPERAND_FETCH, b29);
         return SCPE_OK;
     }
 
     switch (OPSIZE ())
     {
         case 1:
-            Read (addr, &CY, cyctyp, b29);
+            Read (addr, &CPU -> CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read (addr + 0, Ypair + 0, cyctyp, b29);
-            Read (addr + 1, Ypair + 1, cyctyp, b29);
+            Read (addr + 0, CPU -> Ypair + 0, cyctyp, b29);
+            Read (addr + 1, CPU -> Ypair + 1, cyctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read (addr + j, Yblock8 + j, cyctyp, b29);
+                Read (addr + j, CPU -> Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read (addr + j, Yblock16 + j, cyctyp, b29);
+                Read (addr + j, CPU -> Yblock16 + j, cyctyp, b29);
             
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
             for (int j = 0 ; j < 32 ; j += 1)
-                Read (addr + j, Yblock16 + j, cyctyp, b29);
+                Read (addr + j, CPU -> Yblock16 + j, cyctyp, b29);
             
             break;
     }
@@ -2173,27 +2173,27 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
     switch (OPSIZE ())
     {
         case 1:
-            Write (addr, CY, OPERAND_STORE, b29);
+            Write (addr, CPU -> CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write (addr + 0, Ypair[0], OPERAND_STORE, b29);
-            Write (addr + 1, Ypair[1], OPERAND_STORE, b29);
+            Write (addr + 0, CPU -> Ypair[0], OPERAND_STORE, b29);
+            Write (addr + 1, CPU -> Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write (addr + j, Yblock8[j], OPERAND_STORE, b29);
+                Write (addr + j, CPU -> Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write (addr + j, Yblock16[j], OPERAND_STORE, b29);
+                Write (addr + j, CPU -> Yblock16[j], OPERAND_STORE, b29);
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
             for (int j = 0 ; j < 32 ; j += 1)
-                Write (addr + j, Yblock32[j], OPERAND_STORE, b29);
+                Write (addr + j, CPU -> Yblock32[j], OPERAND_STORE, b29);
             break;
     }
     //TPR.CA = addr;  // restore address

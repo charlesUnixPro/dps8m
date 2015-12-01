@@ -1077,6 +1077,13 @@ typedef struct
     bool bTroubleFaultCycle;       // when true then in TROUBLE FAULT CYCLE
     uint g7Faults;
     _fault_subtype g7SubFaults [N_FAULTS];
+    word24 iefpFinalAddress;
+    word36 CY;
+    word36 Ypair[2];
+    word36 Yblock8[8];
+    word36 Yblock16[16];
+    word36 Yblock32[32];
+    word36 scu_data[8];    // For SCU instruction
 
 
   } cpu_state_t;
