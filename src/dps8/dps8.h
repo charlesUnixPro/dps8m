@@ -51,7 +51,9 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-#define SPEED
+//#define SPEED
+
+//#define MULTI_CPU
 
 #include "sim_defs.h"                                   /* simulator defns */
 

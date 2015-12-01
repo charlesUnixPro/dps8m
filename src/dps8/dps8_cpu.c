@@ -1182,13 +1182,17 @@ static t_stat reason;
 
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
-DCDstruct currentInstruction;
-EISstruct currentEISinstruction;
+#ifdef MULTI_CPU
+uint currentRunningCPUnum;
+cpu_state_t * restrict CPU;
+cpu_state_t cpu [N_CPU_UNITS_MAX];
+#else
+cpu_state_t cpu;
+#endif
 
 events_t events;
 switches_t switches;
 // the following two should probably be combined
-cpu_state_t cpu;
 ctl_unit_data_t cu;
 du_unit_data_t du;
 
@@ -1417,7 +1421,7 @@ t_stat sim_instr (void)
       
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
-    static DCDstruct * ci = & currentInstruction;
+    static DCDstruct * ci = & CPU -> currentInstruction;
     
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
@@ -1691,8 +1695,8 @@ last = M[01007040];
 // out of BAR node) by the execution of any transfer instruction
 // other than tss during a fault or interrupt trap.
 
-                    if (! (currentInstruction . opcode == 0715 &&
-                           currentInstruction . opcodeX == 0))
+                    if (! (CPU -> currentInstruction . opcode == 0715 &&
+                           CPU -> currentInstruction . opcodeX == 0))
                       {
                         SETF (cu . IR, I_NBAR);
                       }
@@ -2032,8 +2036,8 @@ last = M[01007040];
 // out of BAR node) by the execution of any transfer instruction
 // other than tss during a fault or interrupt trap.
 
-                    if (! (currentInstruction . opcode == 0715 &&
-                           currentInstruction . opcodeX == 0))
+                    if (! (CPU -> currentInstruction . opcode == 0715 &&
+                           CPU -> currentInstruction . opcodeX == 0))
                       {
                         SETF (cu . IR, I_NBAR);
                       }
@@ -2069,7 +2073,7 @@ last = M[01007040];
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (cu . IWB, & currentInstruction);
+                decodeInstruction (cu . IWB, & CPU -> currentInstruction);
 
                 PPR.IC += ci->info->ndes;
                 PPR.IC ++;
@@ -2136,7 +2140,7 @@ t_stat ReadNnoalign (int n, word24 addr, word36 *Yblock, enum eMemoryAccessType 
 
 int OPSIZE (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     if (i->info->flags & (READ_OPERAND | STORE_OPERAND))
         return 1;
     else if (i->info->flags & (READ_YPAIR | STORE_YPAIR))
@@ -2153,7 +2157,7 @@ int OPSIZE (void)
 // read instruction operands
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
             return STOP_BKPT;
@@ -2520,7 +2524,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
         p->tag = 0;
         if (p->info->ndes > 1)
         {
-            memset (& currentEISinstruction, 0, sizeof (currentEISinstruction)); 
+            memset (& CPU -> currentEISinstruction, 0, sizeof (CPU -> currentEISinstruction)); 
         }
     }
 #ifdef MULTIPASS

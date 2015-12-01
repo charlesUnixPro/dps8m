@@ -652,9 +652,6 @@ struct DCDstruct
     word18 stiTally;      // for sti instruction
   };
 
-extern DCDstruct currentInstruction;
-extern EISstruct currentEISinstruction;
-
 // Emulator-only interrupt and fault info
 
 typedef struct
@@ -752,9 +749,19 @@ typedef struct
 
     bool wasInhibited; // One or both of the previous instruction 
                        // pair was interrupr inhibited.
+    DCDstruct currentInstruction;
+    EISstruct currentEISinstruction;
   } cpu_state_t;
 
+#ifdef MULTI_CPU
+extern cpu_state_t cpu [N_CPU_UNITS_MAX];
+extern uint currentRunningCPUnum;
+extern cpu_state_t * restrict CPU;
+#else
 extern cpu_state_t cpu;
+#define CPU (& cpu)
+#define currentRunningCPUnum 0
+#endif
 
 // Control unit data (288 bits) 
 

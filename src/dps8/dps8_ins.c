@@ -50,7 +50,7 @@ static int emCall (void);
 // CANFAULT 
 static void writeOperands (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "writeOperands(%s):mne=%s flags=%x\n",
@@ -108,7 +108,7 @@ static void writeOperands (void)
 // CANFAULT 
 static void readOperands (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
 
     sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
 sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
@@ -705,7 +705,7 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
 // CANFAULT
 void fetchInstruction (word18 addr)
 {
-    DCDstruct * p = & currentInstruction;
+    DCDstruct * p = & CPU -> currentInstruction;
     
     memset (p, 0, sizeof (struct DCDstruct));
 
@@ -736,7 +736,7 @@ void fetchInstruction (word18 addr)
 // CANFAULT 
 void fetchOperands (void)
 {
-    DCDstruct * p = & currentInstruction;
+    DCDstruct * p = & CPU -> currentInstruction;
     
     if (i->info->ndes > 0)
         for(int n = 0 ; n < i->info->ndes; n += 1)
@@ -754,7 +754,7 @@ void fetchOperands (void)
  */
 static t_stat setupForOperandRead (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     if (!i->a)   // if A bit set set-up TPR stuff ...
     {
         TPR.TRR = PPR.PRR;
@@ -805,22 +805,22 @@ force:;
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
           }
         else if (get_addr_mode() == APPEND_mode)
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), CPU -> currentInstruction . address, CPU -> currentInstruction . opcode, CPU -> currentInstruction . opcodeX, CPU -> currentInstruction . a, CPU -> currentInstruction . i, GET_TM(CPU -> currentInstruction . tag) >> 4, GET_TD(CPU -> currentInstruction . tag) & 017);
               }
           }
       }
@@ -850,7 +850,7 @@ t_stat executeInstruction (void)
 /// executeInstruction: Decode the instruction
 ///
 
-    DCDstruct * ci = & currentInstruction;
+    DCDstruct * ci = & CPU -> currentInstruction;
     decodeInstruction(cu . IWB, ci);
 
     const opCode *info = ci->info;       // opCode *
@@ -1137,7 +1137,7 @@ restart_1:
 // to the condition we know it should be in.
             TPR.TRR = PPR.PRR;
             TPR.TSR = PPR.PSR;
-            Read (PPR . IC + 1 + n, & currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
+            Read (PPR . IC + 1 + n, & CPU -> currentEISinstruction . op [n], EIS_OPERAND_READ, 0); // I think.
           }
         setupEISoperands ();
       }
@@ -1496,7 +1496,7 @@ static t_stat DoEISInstruction (void);
 // CANFAULT 
 static t_stat doInstruction (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     CLRF(cu.IR, I_MIIF);
     
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
@@ -1505,7 +1505,7 @@ static t_stat doInstruction (void)
 // CANFAULT 
 static t_stat DoBasicInstruction (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     uint opcode  = i->opcode;  // get opcode
     
     switch (opcode)
@@ -5916,7 +5916,7 @@ static t_stat DoBasicInstruction (void)
 // CANFAULT 
 static t_stat DoEISInstruction (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     // XXX not complete .....
     
     int32 opcode = i->opcode;
@@ -6882,7 +6882,7 @@ static t_stat DoEISInstruction (void)
  */
 static int emCall (void)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     switch (i->address) /// address field
     {
         case 1:     ///< putc9 - put 9-bit char in AL to stdout
@@ -7074,7 +7074,7 @@ static int emCall (void)
 // CANFAULT 
 static int doABSA (word36 * result)
   {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     word36 res;
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", TPR.CA);
 

@@ -92,7 +92,7 @@ static word18 getCr (word4 Tdes)
 static char * opDescSTR (void)
   {
     static char temp [256];
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
 
     strcpy (temp, "");
 
@@ -174,7 +174,7 @@ static char * opDescSTR (void)
 #ifndef QUIET_UNUSED
 static char * operandSTR (void)
   {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     if (i -> info -> ndes > 0)
       return "operandSTR(): MWEIS not handled yet";
 
@@ -285,7 +285,7 @@ static void doITS(void)
 // CANFAULT
 static void doITSITP (word18 address, word36 indword, word6 Tag)
   {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
     word6 indTag = GET_TAG  (indword);
 
     sim_debug  (DBG_APPENDING, &  cpu_dev,
@@ -353,7 +353,7 @@ static void updateIWB (word18 addr, word6 tag)
                cu . IWB, GET_ADDR (cu . IWB),
                extMods [GET_TAG (cu . IWB)] . mod);
 
-    decodeInstruction (cu . IWB, & currentInstruction);
+    decodeInstruction (cu . IWB, & CPU -> currentInstruction);
   }
 
 //
@@ -378,7 +378,7 @@ t_stat doComputedAddressFormation (void)
                "%s(Entry): operType:%s TPR.CA=%06o\n",
                 __func__, opDescSTR (), TPR . CA);
 
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & CPU -> currentInstruction;
 
 // This must happen before the restart entry
 #if 0

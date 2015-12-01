@@ -526,7 +526,7 @@ static void EISReadN (EISaddr * p, uint N, word36 *dst)
 
 static uint EISget469 (int k, uint i)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     
     int nPos = 4; // CTA9
     switch (e -> TA [k - 1])
@@ -571,7 +571,7 @@ static uint EISget469 (int k, uint i)
 
 static void EISput469 (int k, uint i, word9 c469)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     int nPos = 4; // CTA9
     switch (e -> TA [k - 1])
@@ -679,7 +679,7 @@ static bool EISgetBitRWN (EISaddr * p)
 
 static void setupOperandDescriptorCache (int k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     e -> addr [k - 1] .  cacheValid = false;
   }
 
@@ -740,7 +740,7 @@ static void setupOperandDescriptorCache (int k)
 
 static void setupOperandDescriptor (int k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     switch (k)
       {
         case 1:
@@ -830,7 +830,7 @@ void setupEISoperands (void)
 #ifdef EIS_SETUP
     for (int i = 0; i < 3; i ++)
       {
-        if (i < currentInstruction . info -> ndes)
+        if (i < CPU -> currentInstruction . info -> ndes)
           setupOperandDescriptor (i + 1);
         else
           setupOperandDescriptorCache (i + 1);
@@ -840,7 +840,7 @@ void setupEISoperands (void)
 
 static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
     
     word36 opDesc = e -> op [k - 1];
@@ -1003,7 +1003,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
 
 static void parseArgOperandDescriptor (uint k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     word36 opDesc = e -> op [k - 1];
     word18 y = GETHI (opDesc);
     word1 yA = GET_A (opDesc);
@@ -1043,7 +1043,7 @@ static void parseArgOperandDescriptor (uint k)
 
 static void parseNumericOperandDescriptor (int k)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     word18 MFk = e->MF[k-1];
 
     word36 opDesc = e->op[k-1];
@@ -1157,7 +1157,7 @@ static void parseNumericOperandDescriptor (int k)
 
 static void parseBitstringOperandDescriptor (int k)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     word18 MFk = e->MF[k-1];
     
     word36 opDesc = e->op[k-1];
@@ -1239,7 +1239,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
 
 static void cleanupOperandDescriptor (int k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e -> addr [k - 1] . cacheValid && e -> addr [k - 1] . cacheDirty)
       {
         EISWriteCache(& e -> addr [k - 1]);
@@ -1353,7 +1353,7 @@ void sxbd (uint sz)
 
 void cmpc (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    C(Y-charn1)i-1 :: C(Y-charn2)i-1
@@ -1453,7 +1453,7 @@ void cmpc (void)
 
 void scd ()
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)i-1,i :: C(Y-charn2)0,1
@@ -1568,7 +1568,7 @@ void scd ()
 
 void scdr (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)N1-i-1,N1-i :: C(Y-charn2)0,1
@@ -1686,7 +1686,7 @@ void scdr (void)
 
 void scm (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -1808,7 +1808,7 @@ void scm (void)
 
 void scmr (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -1950,7 +1950,7 @@ static word9 xlate (word36 * xlatTbl, uint dstTA, uint c)
 
 void tct (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)i-1
@@ -2085,7 +2085,7 @@ void tct (void)
 
 void tctr (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)N1-i
@@ -2257,7 +2257,7 @@ static bool isOvp (uint c, uint * on)
 
 void mlr (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -2500,7 +2500,7 @@ void mlr (void)
 
 void mrl (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -2773,7 +2773,7 @@ void mrl (void)
 
 static void EISloadInputBufferNumeric (int k)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
     memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
@@ -2921,7 +2921,7 @@ static void EISloadInputBufferNumeric (int k)
 
 static void EISloadInputBufferAlphnumeric (int k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // p points to position in inBuffer where 4-bit chars are stored
     word9 * p = e -> inBuffer;
     memset (e -> inBuffer, 0, sizeof (e -> inBuffer));// initialize to all 0's
@@ -2939,7 +2939,7 @@ static void EISloadInputBufferAlphnumeric (int k)
 
 static void EISwriteOutputBufferToMemory (int k)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // 4. If an edit insertion table entry or MOP insertion character is to be
     // stored, ANDed, or ORed into a receiving string of 4- or 6-bit
@@ -2959,7 +2959,7 @@ static void EISwriteOutputBufferToMemory (int k)
 
 static void writeToOutputBuffer (word9 **dstAddr, int szSrc, int szDst, int c49)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
     //5. If the receiving string is 9-bit characters, high-order fill the (4-bit) digits from the input buffer with bits 0-4 of character 8 of the edit insertion table. If the receiving string is 6-bit characters, high-order fill the digits with "00"b.
 
@@ -3051,7 +3051,7 @@ static char* defaultEditInsertionTable = " *+-$,.0";
 
 static int mopCHT (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     memset(&e->editInsertionTable, 0, sizeof(e->editInsertionTable)); // XXX do we really need this?
     for(int i = 0 ; i < 8 ; i += 1)
     {
@@ -3092,7 +3092,7 @@ static int mopCHT (void)
 
 static int mopENF (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // For IF(0) = 0 (end floating-sign operation),
     if (!(e->mopIF & 010))
     {
@@ -3138,7 +3138,7 @@ static int mopENF (void)
 
 static int mopIGN (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
 
@@ -3164,7 +3164,7 @@ static int mopIGN (void)
 
 static int mopINSA (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3225,7 +3225,7 @@ static int mopINSA (void)
 
 static int mopINSB (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3279,7 +3279,7 @@ static int mopINSB (void)
 
 static int mopINSM (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
         writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
@@ -3306,7 +3306,7 @@ static int mopINSM (void)
 
 static int mopINSN (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3358,7 +3358,7 @@ static int mopINSN (void)
 
 static int mopINSP (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
@@ -3399,7 +3399,7 @@ static int mopINSP (void)
 
 static int mopLTE (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
     {
         e->_faults |= FAULT_IPR;
@@ -3453,7 +3453,7 @@ static int mopLTE (void)
 
 static int mopMFLC (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
 
@@ -3566,7 +3566,7 @@ static int mopMFLC (void)
 
 static int mopMFLS (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3672,7 +3672,7 @@ static int mopMFLS (void)
 
 static int mopMORS (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3707,7 +3707,7 @@ static int mopMORS (void)
 
 static int mopMVC (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3756,7 +3756,7 @@ static int mopMVC (void)
 
 static int mopMSES (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mvne == true)
         return mopMVC ();   // XXX I think!
         
@@ -3853,7 +3853,7 @@ static int mopMSES (void)
 
 static int mopMVZA (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3921,7 +3921,7 @@ static int mopMVZA (void)
 
 static int mopMVZB (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF == 0)
         e->mopIF = 16;
     
@@ -3983,7 +3983,7 @@ static int mopMVZB (void)
 
 static int mopSES (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     if (e->mopIF & 010)
         e->mopES = true;
     else
@@ -4056,7 +4056,7 @@ static MOPstruct mopTab[040] = {
 
 static MOPstruct* EISgetMop (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     //static word18 lastAddress;  // try to keep memory access' down
     //static word36 data;
     
@@ -4104,7 +4104,7 @@ static MOPstruct* EISgetMop (void)
 
 static void mopExecutor (int kMop)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     e->mopAddress = &e->addr[kMop-1];
     e->mopTally = e->N[kMop-1];        // number of micro-ops
     e->mopPos   = e->CN[kMop-1];        // starting at char pos CN
@@ -4152,7 +4152,7 @@ static void mopExecutor (int kMop)
 
 void mve (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -4220,7 +4220,7 @@ void mve (void)
 
 void mvne (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor (1);
@@ -4318,7 +4318,7 @@ void mvne (void)
 
 void mvt (void)
   {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-charn1)i-1
@@ -4537,7 +4537,7 @@ void mvt (void)
 
 void cmpn (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // C(Y-charn1) :: C(Y-charn2) as numeric values
     
@@ -4784,7 +4784,7 @@ void mvn (void)
      * the decimal number that starts in location YC1 remain unchanged.
      */
 
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -5014,7 +5014,7 @@ void mvn (void)
 
 void csl (bool isSZTL)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
@@ -5286,7 +5286,7 @@ sim_err ("oops\n");
 
 void csr (bool isSZTR)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)N1-i || C(Y-bit2)N2-i (a 2-bit number)
@@ -5530,7 +5530,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 
 void cmpb (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     
     // For i = 1, 2, ..., minimum (N1,N2)
@@ -5738,7 +5738,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
 
 static void EISwriteToOutputStringReverse (int k, int charToWrite)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
     static int N = 0;           // length of output buffer in native chars (4, 6 or 9-bit chunks)
@@ -5871,7 +5871,7 @@ static word72 signExt9(word72 n128, int N)
 
 static void load9x(int n, EISaddr *addr, int pos)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     int128 x = 0;
     
     word36 data = EISRead(addr);
@@ -5903,7 +5903,7 @@ static void load9x(int n, EISaddr *addr, int pos)
 
 static int getSign (word72s n128)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     // 4- or 9-bit?
     if (e->TN2 == CTN4) // 4-bit
     {
@@ -5944,7 +5944,7 @@ static int getSign (word72s n128)
 
 static void _btd (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     word72s n128 = e->x;    // signExt9(e->x, e->N1);          // adjust for +/-
     int sgn = (n128 < 0) ? -1 : 1;  // sgn(x)
@@ -6005,7 +6005,7 @@ static void _btd (void)
 
 void btd (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
     
     //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
@@ -6085,7 +6085,7 @@ void btd (void)
 
 static void loadDec (EISaddr *p, int pos)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     int128 x = 0;
     
     
@@ -6224,7 +6224,7 @@ static void loadDec (EISaddr *p, int pos)
 
 static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
     int N = e->N[k-1];            // length of output buffer in native chars (4, 6 or 9-bit chunks)
@@ -6265,7 +6265,7 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 
 void dtb (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -6317,7 +6317,7 @@ void dtb (void)
 
 void ad2d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
@@ -6594,7 +6594,7 @@ static int calcSF(int sf1, int sf2, int sf3)
 
 void ad3d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -6852,7 +6852,7 @@ void ad3d (void)
 
 void sb2d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -7083,7 +7083,7 @@ void sb2d (void)
 
 void sb3d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -7331,7 +7331,7 @@ void sb3d (void)
 
 void mp2d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -7562,7 +7562,7 @@ void mp2d (void)
 
 void mp3d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -8567,7 +8567,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 
 void dv2d (void)
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -8804,7 +8804,7 @@ void dv2d (void)
 void dv3d (void)
 
 {
-    EISstruct * e = & currentEISinstruction;
+    EISstruct * e = & CPU -> currentEISinstruction;
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);

@@ -2,6 +2,12 @@
 #define DPS8_HW_CONSTS_H
 
 //
+// CPU
+//
+
+enum { N_CPU_UNITS_MAX = 8 };
+
+//
 // SCU/Memory
 //
 
