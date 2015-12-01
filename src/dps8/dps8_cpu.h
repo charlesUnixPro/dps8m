@@ -67,10 +67,6 @@ typedef struct
   } eis_mf_t;
 #endif
 
-// [map] designates mapping into 36-bit word from DPS-8 proc manual
-
-extern word8 tTB;
-
 struct _tpr
   {
     word3   TRR; // The current effective ring number
@@ -415,7 +411,6 @@ struct _cache_mode_register
   };
 
 typedef struct _cache_mode_register _cache_mode_register;
-extern _cache_mode_register CMR;
 
 typedef struct mode_registr
   {
@@ -433,8 +428,6 @@ typedef struct mode_registr
     word1 hexfp;
     word1 emr;
   } _mode_register;
-
-extern _mode_register MR;
 
 extern DEVICE cpu_dev;
 extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
@@ -1074,6 +1067,13 @@ typedef struct
 #endif
     struct _ptw * PTW;
     struct _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
+    _cache_mode_register CMR;
+    _mode_register MR;
+    bool directOperandFlag;
+    bool characterOperandFlag;
+    int characterOperandSize;
+    int characterOperandOffset;
+    word36 directOperand;
 
 
   } cpu_state_t;

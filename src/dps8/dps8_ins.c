@@ -137,7 +137,7 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, CPU
               break;
 
             default:
-              sim_printf ("readOperands: IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+              sim_printf ("readOperands: IT_MOD(IT_SC): unknown tTB:%o\n", CPU -> characterOperandSize);
               break;
           }
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -5228,19 +5228,19 @@ static t_stat DoBasicInstruction (void)
 #define GETBITS(from,mask,where) \
  (((from) >> (35 - (where))) & (word36) (mask))
                 case 02: // cache mode register
-                  //CMR = CY;
-                  // CMR . cache_dir_address = <ignored for lcpr>
-                  // CMR . par_bit = <ignored for lcpr>
-                  // CMR . lev_ful = <ignored for lcpr>
-                     CMR . csh1_on = GETBITS (CY, 1, 72 - 54);
-                     CMR . csh2_on = GETBITS (CY, 1, 72 - 55);
-                  // CMR . opnd_on = ; // DPS8, not DPS8M
-                     CMR . inst_on = GETBITS (CY, 1, 72 - 57);
-                     CMR . csh_reg = GETBITS (CY, 1, 72 - 59);
-                  // CMR . str_asd = <ignored for lcpr>
-                  // CMR . col_ful = <ignored for lcpr>
-                  // CMR . rro_AB = GETBITS (CY, 1, 18);
-                     CMR . luf = GETBITS (CY, 3, 72 - 71);
+                  //CPU -> CMR = CY;
+                  // CPU -> CMR . cache_dir_address = <ignored for lcpr>
+                  // CPU -> CMR . par_bit = <ignored for lcpr>
+                  // CPU -> CMR . lev_ful = <ignored for lcpr>
+                     CPU -> CMR . csh1_on = GETBITS (CY, 1, 72 - 54);
+                     CPU -> CMR . csh2_on = GETBITS (CY, 1, 72 - 55);
+                  // CPU -> CMR . opnd_on = ; // DPS8, not DPS8M
+                     CPU -> CMR . inst_on = GETBITS (CY, 1, 72 - 57);
+                     CPU -> CMR . csh_reg = GETBITS (CY, 1, 72 - 59);
+                  // CPU -> CMR . str_asd = <ignored for lcpr>
+                  // CPU -> CMR . col_ful = <ignored for lcpr>
+                  // CPU -> CMR . rro_AB = GETBITS (CY, 1, 18);
+                     CPU -> CMR . luf = GETBITS (CY, 3, 72 - 71);
                   // You need bypass_cache_bit to actually manage the cache,
                   // but it is not stored
 #ifndef QUIET_UNUSED
@@ -5249,19 +5249,19 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 case 04: // mode register
-                  MR . cuolin = GETBITS (CY, 1, 18);
-                  MR . solin = GETBITS (CY, 1, 19);
-                  MR . sdpap = GETBITS (CY, 1, 20);
-                  MR . separ = GETBITS (CY, 1, 21);
-                  MR . tm = GETBITS (CY, 3, 23);
-                  MR . vm = GETBITS (CY, 3, 26);
-                  MR . hrhlt = GETBITS (CY, 1, 28);
-                  MR . hrxfr = GETBITS (CY, 1, 29);
-                  MR . ihr = GETBITS (CY, 1, 30);
-                  MR . ihrrs = GETBITS (CY, 1, 31);
-                  MR . mrgctl = GETBITS (CY, 1, 32);
-                  MR . hexfp = GETBITS (CY, 1, 33);
-                  MR . emr = GETBITS (CY, 1, 35);
+                  CPU -> MR . cuolin = GETBITS (CY, 1, 18);
+                  CPU -> MR . solin = GETBITS (CY, 1, 19);
+                  CPU -> MR . sdpap = GETBITS (CY, 1, 20);
+                  CPU -> MR . separ = GETBITS (CY, 1, 21);
+                  CPU -> MR . tm = GETBITS (CY, 3, 23);
+                  CPU -> MR . vm = GETBITS (CY, 3, 26);
+                  CPU -> MR . hrhlt = GETBITS (CY, 1, 28);
+                  CPU -> MR . hrxfr = GETBITS (CY, 1, 29);
+                  CPU -> MR . ihr = GETBITS (CY, 1, 30);
+                  CPU -> MR . ihrrs = GETBITS (CY, 1, 31);
+                  CPU -> MR . mrgctl = GETBITS (CY, 1, 32);
+                  CPU -> MR . hexfp = GETBITS (CY, 1, 33);
+                  CPU -> MR . emr = GETBITS (CY, 1, 35);
                   break;
 
                 case 03: // DPS 8m 0's -> history
@@ -5334,32 +5334,32 @@ static t_stat DoBasicInstruction (void)
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
                     Ypair [0] = 0;
-                    putbits36 (& Ypair [0], 18, 1, MR . cuolin);
-                    putbits36 (& Ypair [0], 19, 1, MR . solin);
-                    putbits36 (& Ypair [0], 20, 1, MR . sdpap);
-                    putbits36 (& Ypair [0], 21, 1, MR . separ);
-                    putbits36 (& Ypair [0], 22, 2, MR . tm);
-                    putbits36 (& Ypair [0], 24, 2, MR . vm);
-                    putbits36 (& Ypair [0], 28, 1, MR . hrhlt);
-                    putbits36 (& Ypair [0], 29, 1, MR . hrxfr);
-                    putbits36 (& Ypair [0], 30, 1, MR . ihr);
-                    putbits36 (& Ypair [0], 31, 1, MR . ihrrs);
-                    putbits36 (& Ypair [0], 32, 1, MR . mrgctl);
-                    putbits36 (& Ypair [0], 33, 1, MR . hexfp);
-                    putbits36 (& Ypair [0], 35, 1, MR . emr);
+                    putbits36 (& Ypair [0], 18, 1, CPU -> MR . cuolin);
+                    putbits36 (& Ypair [0], 19, 1, CPU -> MR . solin);
+                    putbits36 (& Ypair [0], 20, 1, CPU -> MR . sdpap);
+                    putbits36 (& Ypair [0], 21, 1, CPU -> MR . separ);
+                    putbits36 (& Ypair [0], 22, 2, CPU -> MR . tm);
+                    putbits36 (& Ypair [0], 24, 2, CPU -> MR . vm);
+                    putbits36 (& Ypair [0], 28, 1, CPU -> MR . hrhlt);
+                    putbits36 (& Ypair [0], 29, 1, CPU -> MR . hrxfr);
+                    putbits36 (& Ypair [0], 30, 1, CPU -> MR . ihr);
+                    putbits36 (& Ypair [0], 31, 1, CPU -> MR . ihrrs);
+                    putbits36 (& Ypair [0], 32, 1, CPU -> MR . mrgctl);
+                    putbits36 (& Ypair [0], 33, 1, CPU -> MR . hexfp);
+                    putbits36 (& Ypair [0], 35, 1, CPU -> MR . emr);
                     Ypair [1] = 0;
-                    putbits36 (& Ypair [1], 36 - 36, 15, CMR . cache_dir_address);
-                    putbits36 (& Ypair [1], 51 - 36, 1, CMR . par_bit);
-                    putbits36 (& Ypair [1], 52 - 36, 1, CMR . lev_ful);
-                    putbits36 (& Ypair [1], 54 - 36, 1, CMR . csh1_on);
-                    putbits36 (& Ypair [1], 55 - 36, 1, CMR . csh2_on);
-                    putbits36 (& Ypair [1], 57 - 36, 1, CMR . inst_on);
-                    putbits36 (& Ypair [1], 59 - 36, 1, CMR . csh_reg);
-                    putbits36 (& Ypair [1], 60 - 36, 1, CMR . str_asd);
-                    putbits36 (& Ypair [1], 61 - 36, 1, CMR . col_ful);
-                    putbits36 (& Ypair [1], 62 - 36, 2, CMR . rro_AB);
-                    putbits36 (& Ypair [1], 68 - 36, 1, CMR . bypass_cache);
-                    putbits36 (& Ypair [1], 70 - 36, 2, CMR . luf);
+                    putbits36 (& Ypair [1], 36 - 36, 15, CPU -> CMR . cache_dir_address);
+                    putbits36 (& Ypair [1], 51 - 36, 1, CPU -> CMR . par_bit);
+                    putbits36 (& Ypair [1], 52 - 36, 1, CPU -> CMR . lev_ful);
+                    putbits36 (& Ypair [1], 54 - 36, 1, CPU -> CMR . csh1_on);
+                    putbits36 (& Ypair [1], 55 - 36, 1, CPU -> CMR . csh2_on);
+                    putbits36 (& Ypair [1], 57 - 36, 1, CPU -> CMR . inst_on);
+                    putbits36 (& Ypair [1], 59 - 36, 1, CPU -> CMR . csh_reg);
+                    putbits36 (& Ypair [1], 60 - 36, 1, CPU -> CMR . str_asd);
+                    putbits36 (& Ypair [1], 61 - 36, 1, CPU -> CMR . col_ful);
+                    putbits36 (& Ypair [1], 62 - 36, 2, CPU -> CMR . rro_AB);
+                    putbits36 (& Ypair [1], 68 - 36, 1, CPU -> CMR . bypass_cache);
+                    putbits36 (& Ypair [1], 70 - 36, 2, CPU -> CMR . luf);
                   }
                   break;
 

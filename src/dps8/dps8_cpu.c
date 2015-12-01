@@ -832,7 +832,7 @@ static t_stat cpu_reset (DEVICE *dptr)
         set_addr_mode(ABSOLUTE_mode);
         SETF(CPU -> cu.IR, I_NBAR);
     
-        CMR.luf = 3;    // default of 16 mS
+        CPU -> CMR.luf = 3;    // default of 16 mS
 
         CPU -> cu.SD_ON = 1;
         CPU -> cu.PT_ON = 1;
@@ -927,14 +927,9 @@ enum _processor_cycle_type processorCycle;                  ///< to keep tract o
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
 
-word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
-
 // XXX given this is not real hardware we can eventually remove the SDWAM -- I think. But for now just leave it in.
 // For the DPS 8M processor, the SDW associative memory will hold the 64 MRU SDWs and have a 4-way set associative organization with LRU replacement.
 
-
-_cache_mode_register CMR;
-_mode_register MR;
 
 /*
  * register stuff ...
