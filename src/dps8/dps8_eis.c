@@ -250,7 +250,7 @@ static word36 getCrAR (word4 reg)
       return 0;
     
     if (reg & 010) /* Xn */
-      return rX [X (reg)];
+      return CPU -> rX [X (reg)];
     
     switch (reg)
       {
@@ -258,19 +258,19 @@ static word36 getCrAR (word4 reg)
           return 0;
 
         case TD_AU: // C(A)0,17
-          return GETHI (rA);
+          return GETHI (CPU -> rA);
 
         case TD_QU: //  C(Q)0,17
-          return GETHI (rQ);
+          return GETHI (CPU -> rQ);
 
         case TD_IC: // C(PPR.IC)
           return PPR . IC;
 
         case TD_AL: // C(A)18,35
-          return rA; // See AL36, Table 4-1
+          return CPU -> rA; // See AL36, Table 4-1
 
         case TD_QL: // C(Q)18,35
-          return rQ; // See AL36, Table 4-1
+          return CPU -> rQ; // See AL36, Table 4-1
       }
     return 0;
   }
@@ -303,10 +303,10 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
           return 0;
 
         case 1: // au
-          return GETHI (rA);
+          return GETHI (CPU -> rA);
 
         case 2: // qu
-          return GETHI (rQ);
+          return GETHI (CPU -> rQ);
 
         case 3: // du
           // du is a special case for SCD, SCDR, SCM, and SCMR
@@ -323,10 +323,10 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
           return PPR . IC;
 
         case 5: // al / a
-          return GETLO (rA);
+          return GETLO (CPU -> rA);
 
         case 6: // ql / a
-          return GETLO (rQ);
+          return GETLO (CPU -> rQ);
 
         case 7: // dl
           doFault (FAULT_IPR, ill_mod, "getMFReg18 dl");
@@ -339,7 +339,7 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
         case 13:
         case 14:
         case 15:
-          return rX [n - 8];
+          return CPU -> rX [n - 8];
       }
     sim_printf ("getMFReg18(): How'd we get here? n=%d\n", n);
     return 0;
@@ -353,10 +353,10 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
           return 0;
 
         case 1: // au
-          return GETHI (rA);
+          return GETHI (CPU -> rA);
 
         case 2: // qu
-          return GETHI (rQ);
+          return GETHI (CPU -> rQ);
 
         case 3: // du
           // du is a special case for SCD, SCDR, SCM, and SCMR
@@ -373,10 +373,10 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
           return PPR . IC;
 
         case 5: // al / a
-          return rA;
+          return CPU -> rA;
 
         case 6: // ql / a
-            return rQ;
+            return CPU -> rQ;
 
         case 7: // dl
              doFault (FAULT_IPR, ill_mod, "getMFReg36 dl");
@@ -389,7 +389,7 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
         case 13:
         case 14:
         case 15:
-            return rX [n - 8];
+            return CPU -> rX [n - 8];
       }
     sim_printf ("getMFReg36(): How'd we get here? n=%d\n", n);
     return 0;

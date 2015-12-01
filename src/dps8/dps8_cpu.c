@@ -813,19 +813,19 @@ static t_stat cpu_reset (DEVICE *dptr)
         currentRunningCPUnum = i;
         CPU = & cpu [currentRunningCPUNum];
 #endif
-        rA = 0;
-        rQ = 0;
+        CPU -> rA = 0;
+        CPU -> rQ = 0;
     
         PPR.IC = 0;
         PPR.PRR = 0;
         PPR.PSR = 0;
         PPR.P = 1;
-        RSDWH_R1 = 0;
+        CPU -> RSDWH_R1 = 0;
 
 #ifdef REAL_TR
         setTR (0);
 #else
-        rTR = 0;
+        CPU -> rTR = 0;
 #endif
  
         processorCycle = UNKNOWN_CYCLE;
@@ -927,30 +927,7 @@ enum _processor_cycle_type processorCycle;                  ///< to keep tract o
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
 
-/* GE-625/635 */
-
-word36 rA;      /*!< accumulator */
-word36 rQ;      /*!< quotient */
-word8  rE;      /*!< exponent [map: rE, 28 0's] */
-
-word18 rX[8];   /*!< index */
-
-
-#ifndef REAL_TR
-word27 rTR; /*!< timer [map: TR, 9 0's] */
-#endif
-word24 rY;     /*!< address operand */
-word8 rTAG; /*!< instruction tag */
-
 word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
-word8 tCF; /*!< character position field [3b] */
-
-
-///* H6180; L68; DPS-8M */
-//
-word3 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
-
-// end h6180 stuff
 
 struct _tpr TPR;    ///< Temporary Pointer Register
 struct _ppr PPR;    ///< Procedure Pointer Register
@@ -977,7 +954,6 @@ struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 #endif
-word3    RSDWH_R1; // Track the ring number of the last SDW
 
 _cache_mode_register CMR;
 _mode_register MR;
@@ -1027,25 +1003,25 @@ static REG cpu_reg[] = {
     //    { FLDATA (AbsMode, CPU -> cu.IR, F_V_N), 0, 0 },
     //    { FLDATA (HexMode, CPU -> cu.IR, F_V_O), 0, 0 },
     
-    { ORDATA (A, rA, 36), 0, 0 },
-    { ORDATA (Q, rQ, 36), 0, 0 },
-    { ORDATA (E, rE, 8), 0, 0 },
+    { ORDATA (A, CPU -> rA, 36), 0, 0 },
+    { ORDATA (Q, CPU -> rQ, 36), 0, 0 },
+    { ORDATA (E, CPU -> rE, 8), 0, 0 },
     
-    { ORDATA (X0, rX[0], 18), 0, 0 },
-    { ORDATA (X1, rX[1], 18), 0, 0 },
-    { ORDATA (X2, rX[2], 18), 0, 0 },
-    { ORDATA (X3, rX[3], 18), 0, 0 },
-    { ORDATA (X4, rX[4], 18), 0, 0 },
-    { ORDATA (X5, rX[5], 18), 0, 0 },
-    { ORDATA (X6, rX[6], 18), 0, 0 },
-    { ORDATA (X7, rX[7], 18), 0, 0 },
+    { ORDATA (X0, CPU -> rX[0], 18), 0, 0 },
+    { ORDATA (X1, CPU -> rX[1], 18), 0, 0 },
+    { ORDATA (X2, CPU -> rX[2], 18), 0, 0 },
+    { ORDATA (X3, CPU -> rX[3], 18), 0, 0 },
+    { ORDATA (X4, CPU -> rX[4], 18), 0, 0 },
+    { ORDATA (X5, CPU -> rX[5], 18), 0, 0 },
+    { ORDATA (X6, CPU -> rX[6], 18), 0, 0 },
+    { ORDATA (X7, CPU -> rX[7], 18), 0, 0 },
     
     { ORDATA (PPR.IC,  PPR.IC,  18), 0, 0 },
     { ORDATA (PPR.PRR, PPR.PRR,  3), 0, 0 },
     { ORDATA (PPR.PSR, PPR.PSR, 15), 0, 0 },
     { ORDATA (PPR.P,   PPR.P,    1), 0, 0 },
     
-    { ORDATA (RALR,    rRALR,    3), 0, 0 },
+    { ORDATA (RALR,    CPU -> rRALR,    3), 0, 0 },
     
     { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24), 0, 0 },
     { ORDATA (DSBR.BND,   DSBR.BND,   14), 0, 0 },
@@ -1528,21 +1504,21 @@ last = M[01007040];
 #ifdef MULTIPASS
         if (multipassStatsPtr) 
           {
-            multipassStatsPtr -> A = rA;
-            multipassStatsPtr -> Q = rQ;
-            multipassStatsPtr -> E = rE;
+            multipassStatsPtr -> A = CPU -> rA;
+            multipassStatsPtr -> Q = CPU -> rQ;
+            multipassStatsPtr -> E = CPU -> rE;
             for (int i = 0; i < 8; i ++)
               {
-                multipassStatsPtr -> X [i] = rX [i];
+                multipassStatsPtr -> X [i] = CPU -> rX [i];
                 multipassStatsPtr -> PAR [i] = PAR [i];
               }
             multipassStatsPtr -> IR = CPU -> cu . IR;
 #ifdef REAL_TR
             multipassStatsPtr -> TR = getTR (NULL);
 #else
-            multipassStatsPtr -> TR = rTR;
+            multipassStatsPtr -> TR = CPU -> rTR;
 #endif
-            multipassStatsPtr -> RALR = rRALR;
+            multipassStatsPtr -> RALR = CPU -> rRALR;
           }
 #endif
 
@@ -1558,10 +1534,10 @@ last = M[01007040];
           {
             trSubsample = 0;
             bool overrun;
-            UNUSED word27 rTR = getTR (& overrun);
+            UNUSED word27 CPU -> rTR = getTR (& overrun);
             if (overrun)
               {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", CPU -> rTR, MASK27);
                 ackTR ();
                 if (CPU -> switches . tro_enable)
                   setG7fault (FAULT_TRO, 0);
@@ -1576,11 +1552,11 @@ last = M[01007040];
         if (rTRlsb >= CPU -> switches . trlsb)
           {
             rTRlsb = 0;
-            rTR = (rTR - 1) & MASK27;
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
-            if (rTR == 0) // passing thorugh 0...
+            CPU -> rTR = (CPU -> rTR - 1) & MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", CPU -> rTR);
+            if (CPU -> rTR == 0) // passing thorugh 0...
               {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", CPU -> rTR, MASK27);
                 if (CPU -> switches . tro_enable)
                   setG7fault (FAULT_TRO, 0);
               }

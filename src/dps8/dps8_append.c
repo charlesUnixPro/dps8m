@@ -929,7 +929,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    RSDWH_R1 = 0;
+    CPU -> RSDWH_R1 = 0;
     
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
@@ -1073,7 +1073,7 @@ A:;
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(A) R1 %o R2 %o R3 %o\n", SDW -> R1, SDW -> R1, SDW -> R3);
     // Yes...
-    RSDWH_R1 = SDW->R1;
+    CPU -> RSDWH_R1 = SDW->R1;
 
 //
 // B: Check the ring
@@ -1161,13 +1161,13 @@ D:;
     if (instructionFetch)
       goto G;
 
-    if (rRALR == 0)
+    if (CPU -> rRALR == 0)
         goto G;
     
     // C(PPR.PRR) < RALR?
-    if (!(PPR.PRR < rRALR)) {
+    if (!(PPR.PRR < CPU -> rRALR)) {
         sim_debug (DBG_APPENDING, & cpu_dev,
-                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", PPR . PRR, rRALR);
+                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", PPR . PRR, CPU -> rRALR);
         acvFaults |= ACV13;
         acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
     }

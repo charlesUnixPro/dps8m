@@ -40,7 +40,7 @@ static word18 getCr (word4 Tdes)
       return 0;
 
     if (Tdes & 010) // Xn
-      return rX [X (Tdes)];
+      return CPU -> rX [X (Tdes)];
 
     switch (Tdes)
       {
@@ -48,19 +48,19 @@ static word18 getCr (word4 Tdes)
           return 0;
 
         case TD_AU: // rY + C(A)0,17
-          return GETHI (rA);
+          return GETHI (CPU -> rA);
 
         case TD_QU: // rY + C(Q)0,17
-          return GETHI (rQ);
+          return GETHI (CPU -> rQ);
 
         case TD_DU: // none; operand has the form y || (00...0)18
           directOperand = 0;
-          SETHI (directOperand, rY);
+          SETHI (directOperand, CPU -> rY);
           directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
                     "getCr(TD_DU): rY=%06o directOperand=%012llo\n",
-                    rY, directOperand);
+                    CPU -> rY, directOperand);
 
           return 0;
 
@@ -68,19 +68,19 @@ static word18 getCr (word4 Tdes)
             return PPR . IC;
 
         case TD_AL: // rY + C(A)18,35
-            return GETLO (rA);
+            return GETLO (CPU -> rA);
 
         case TD_QL: // rY + C(Q)18,35
-            return GETLO (rQ);
+            return GETLO (CPU -> rQ);
 
         case TD_DL: // none; operand has the form (00...0)18 || y
             directOperand = 0;
-            SETLO (directOperand, rY);
+            SETLO (directOperand, CPU -> rY);
             directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "getCr(TD_DL): rY=%06o directOperand=%012llo\n",
-                       rY, directOperand);
+                       CPU -> rY, directOperand);
 
             return 0;
       }
@@ -231,13 +231,13 @@ static void doITP (void)
     word3 n = GET_ITP_PRNUM (itxPair);
     TPR . TSR = PR [n] . SNR;
     //TPR . TRR = max3 (PR [n] . RNR, SDW -> R1, TPR . TRR);
-    TPR . TRR = max3 (PR [n] . RNR, RSDWH_R1, TPR . TRR);
+    TPR . TRR = max3 (PR [n] . RNR, CPU -> RSDWH_R1, TPR . TRR);
     TPR . TBR = GET_ITP_BITNO (itxPair);
     TPR . CA = PAR [n] . WORDNO + GET_ITP_WORDNO (itxPair);
     TPR . CA &= AMASK;
-    rY = TPR.CA;
+    CPU -> rY = TPR.CA;
 
-    rTAG = GET_ITP_MOD (itxPair);
+    CPU -> rTAG = GET_ITP_MOD (itxPair);
     return;
 }
 
@@ -265,18 +265,18 @@ static void doITS(void)
 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITS Pair Ring: RN %o RSDWH_R1 %o TRR %o max %o\n",
-               GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR,
-               max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR));
+               GET_ITS_RN (itxPair), CPU -> RSDWH_R1, TPR . TRR,
+               max3 (GET_ITS_RN (itxPair), CPU -> RSDWH_R1, TPR . TRR));
 
     //TPR . TRR = max3 (GET_ITS_RN (itxPair), SDW -> R1, TPR . TRR);
-    TPR . TRR = max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR);
+    TPR . TRR = max3 (GET_ITS_RN (itxPair), CPU -> RSDWH_R1, TPR . TRR);
     TPR . TBR = GET_ITS_BITNO (itxPair);
     TPR . CA = GET_ITS_WORDNO (itxPair);
     TPR . CA &= AMASK;
 
-    rY = TPR . CA;
+    CPU -> rY = TPR . CA;
 
-    rTAG = GET_ITS_MOD (itxPair);
+    CPU -> rTAG = GET_ITS_MOD (itxPair);
 
     return;
   }
@@ -420,9 +420,9 @@ t_stat doComputedAddressFormation (void)
     characterOperandFlag = false;
 
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
-      rTAG = 0;
+      CPU -> rTAG = 0;
     else
-      rTAG = GET_TAG (CPU -> cu . IWB);
+      CPU -> rTAG = GET_TAG (CPU -> cu . IWB);
 
     int lockupCnt = 0;
 #define lockupLimit 4096 // approx. 2 ms
@@ -435,12 +435,12 @@ startCA:;
                  "Lockup in addrmod");
       }
 
-    Td = GET_TD (rTAG);
-    Tm = GET_TM (rTAG);
+    Td = GET_TD (CPU -> rTAG);
+    Tm = GET_TM (CPU -> rTAG);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, rTAG, getModString (rTAG), Tm, Td);
+               __func__, CPU -> rTAG, getModString (CPU -> rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -457,7 +457,7 @@ startCA:;
       }
 
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
-                __func__, GET_TM (rTAG));
+                __func__, GET_TM (CPU -> rTAG));
     sim_err ("(startCA): unknown Tm\n");
 
 
@@ -487,7 +487,7 @@ startCA:;
           {
             word6 Td = GET_TD (i -> tag);
             uint Xn = X (Td);  // Get Xn of next instruction
-            TPR . CA = rX [Xn];
+            TPR . CA = CPU -> rX [Xn];
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
@@ -536,7 +536,7 @@ startCA:;
               {
                  word6 Td = GET_TD (i -> tag);
                  uint Xn = X (Td);  // Get Xn of next instruction
-                 tmpCA = rX [Xn];
+                 tmpCA = CPU -> rX [Xn];
               }
             else
               {
@@ -554,7 +554,7 @@ startCA:;
         updateIWB (TPR . CA, TM_RI | TD_N);
 
         // in case it turns out to be a ITS/ITP
-        iTAG = rTAG;
+        iTAG = CPU -> rTAG;
 
         word36 indword;
         Read (tmpCA, & indword, INDIRECT_WORD_FETCH, i -> a); //TM_RI);
@@ -595,18 +595,18 @@ startCA:;
         else
           {
             TPR . CA = GETHI (indword);
-            rTAG = GET_TAG (indword);
-            rY = TPR . CA;
+            CPU -> rTAG = GET_TAG (indword);
+            CPU -> rY = TPR . CA;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
-                   indword, TPR . CA, rTAG);
+                   indword, TPR . CA, CPU -> rTAG);
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (CPU -> cu . rpt || CPU -> cu . rd))
-          updateIWB (TPR . CA, rTAG);
+          updateIWB (TPR . CA, CPU -> rTAG);
         goto startCA;
       } // RI_MOD
 
@@ -624,7 +624,7 @@ startCA:;
                    "IR_MOD: fetching indirect word from %06o\n", TPR . CA);
 
         // in case it turns out to be a ITS/ITP
-        iTAG = rTAG;
+        iTAG = CPU -> rTAG;
 
         word36 indword;
         word18 saveCA = TPR . CA;
@@ -637,12 +637,12 @@ startCA:;
         else
           {
             TPR.CA = GETHI(indword);
-            rY = TPR.CA;
-            rTAG = GET_TAG (indword);
+            CPU -> rY = TPR.CA;
+            CPU -> rTAG = GET_TAG (indword);
           }
 
-        Td = GET_TD(rTAG);
-        Tm = GET_TM(rTAG);
+        Td = GET_TD(CPU -> rTAG);
+        Tm = GET_TM(CPU -> rTAG);
 
         // IR_MOD_2:;
 
@@ -762,19 +762,19 @@ startCA:;
                            "IR_MOD(TM_RI): TPR.CA(After)=%06o\n",
                            TPR . CA);
 
-                updateIWB (TPR . CA, rTAG); // XXX guessing here...
+                updateIWB (TPR . CA, CPU -> rTAG); // XXX guessing here...
                 goto IR_MOD_1;
               } // TM_RI
 
             case TM_IR:
               {
-                updateIWB (TPR . CA, rTAG); // XXX guessing here...
+                updateIWB (TPR . CA, CPU -> rTAG); // XXX guessing here...
                 goto IR_MOD;
               } // TM_IR
           } // Tm
 
         sim_printf ("%s(IR_MOD): unknown Tm??? %o\n", 
-                    __func__, GET_TM (rTAG));
+                    __func__, GET_TM (CPU -> rTAG));
         return SCPE_OK;
       } // IR_MOD
 
@@ -890,7 +890,7 @@ startCA:;
                                (characterOperandSize == TB9 ? 010 : 000) |
                                (characterOperandOffset & 007);
 
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (TPR . CA, CPU -> rTAG);
 #else
                 //updateIWB (identity)
 #endif
@@ -1004,7 +1004,7 @@ startCA:;
                                (characterOperandSize == TB9 ? 010 : 000) |
                                (characterOperandOffset & 007);
 
-                updateIWB (computedAddress, rTAG);
+                updateIWB (computedAddress, CPU -> rTAG);
 #else
                 updateIWB (computedAddress, 0); // XXX guessing here...
 #endif
@@ -1109,7 +1109,7 @@ startCA:;
                                (characterOperandSize == TB9 ? 010 : 000) |
                                (characterOperandOffset & 007);
 
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (TPR . CA, CPU -> rTAG);
 #else
                 updateIWB (TPR . CA, 0); // XXX guessing here...
 #endif
@@ -1418,14 +1418,14 @@ startCA:;
 
                 TPR.CA = YiSafe2;
 
-                rTAG = idwtag;
-                Tm = GET_TM(rTAG);
+                CPU -> rTAG = idwtag;
+                Tm = GET_TM(CPU -> rTAG);
 
                 if (Tm != TM_IT)
                   {
-                    rTAG = idwtag & 0x70; // force R to 0
+                    CPU -> rTAG = idwtag & 0x70; // force R to 0
                   }
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (TPR . CA, CPU -> rTAG);
                 goto startCA;
               } // IT_DIC
 
@@ -1488,14 +1488,14 @@ startCA:;
                 // force R to 0 (except for IT)
                 TPR.CA = YiSafe;
 
-                rTAG = idwtag;
-                Tm = GET_TM(rTAG);
+                CPU -> rTAG = idwtag;
+                Tm = GET_TM(CPU -> rTAG);
 
                 if (Tm != TM_IT)
                   {
-                    rTAG = idwtag & 0x70; // force R to 0
+                    CPU -> rTAG = idwtag & 0x70; // force R to 0
                   }
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (TPR . CA, CPU -> rTAG);
                 goto startCA;
               } // IT_IDC
           } // Td

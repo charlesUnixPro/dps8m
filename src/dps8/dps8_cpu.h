@@ -69,20 +69,7 @@ typedef struct
 
 // [map] designates mapping into 36-bit word from DPS-8 proc manual
 
-extern word36   rA;     // accumulator
-extern word36   rQ;     // quotient
-extern word8    rE;     // exponent [map: rE, 28 0's]
-
-extern word18   rX [8]; // index
-#ifndef REAL_TR
-extern word27   rTR;    // timer [map: TR, 9 0's]
-#endif
-extern word24   rY;     // address operand
-extern word8    rTAG;   // instruction tag
-extern word8    tTB;    // char size indicator (TB6=6-bit,TB9=9-bit) [3b]
-extern word8    tCF;    // character position field [3b]
-extern word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
-extern word3    RSDWH_R1; // Track the ring number of the last SDW
+extern word8 tTB;
 
 extern struct _tpr
   {
@@ -1064,6 +1051,20 @@ typedef struct
     ctl_unit_data_t cu;
     du_unit_data_t du;
     word36 faultRegister [2];
+
+    word36   rA;     // accumulator
+    word36   rQ;     // quotient
+    word8    rE;     // exponent [map: rE, 28 0's]
+    word18   rX [8]; // index
+#ifndef REAL_TR
+    word27   rTR;    // timer [map: TR, 9 0's]
+#endif
+    word24   rY;     // address operand
+    word8    rTAG;   // instruction tag
+    word8    tCF;    // character position field [3b]
+    word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
+    word3    RSDWH_R1; // Track the ring number of the last SDW
+
   } cpu_state_t;
 
 #ifdef MULTI_CPU

@@ -1127,8 +1127,8 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
         case 00005: 
           {
             // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
-            word16 b0_15 = (word16) getbits36 (rA, 20, 16);
-            word36 b16_51 = rQ;
+            word16 b0_15 = (word16) getbits36 (CPU -> rA, 20, 16);
+            word36 b16_51 = CPU -> rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
             userCorrection = newClk - getSCUclock ();
             //sim_printf ("sscr %o\n", function);
@@ -1395,8 +1395,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                   }
                 last = MulticsuSecs;
 
-                rA = (MulticsuSecs >> 36) & DMASK;
-                rQ = (MulticsuSecs >>  0) & DMASK;
+                CPU -> rA = (MulticsuSecs >> 36) & DMASK;
+                CPU -> rQ = (MulticsuSecs >>  0) & DMASK;
                 break;
               }
             /// The calendar clock consists of a 52-bit register which counts
@@ -1455,12 +1455,12 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             else
                 lastRccl = MulticsuSecs;
 
-            rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
-            rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
+            CPU -> rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
+            CPU -> rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
 #else
             uint64 clk = getSCUclock ();
-            rQ =  clk & 0777777777777;     // lower 36-bits of clock
-            rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
+            CPU -> rQ =  clk & 0777777777777;     // lower 36-bits of clock
+            CPU -> rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
 #endif
           }
         break;

@@ -1056,11 +1056,11 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
               {
                 // try rX[7] as the return address
                 sim_printf ("guessing X7 has a return address....\n");
-                where = lookupAddress (icSegno, rX [7] - 1,
+                where = lookupAddress (icSegno, CPU -> rX [7] - 1,
                                        & compname, & compoffset);
                 if (where)
                   {
-                    sim_printf ("%05o:%06o %s\n", icSegno, rX [7] - 1, where);
+                    sim_printf ("%05o:%06o %s\n", icSegno, CPU -> rX [7] - 1, where);
                     listSource (compname, compoffset, 0);
                   }
               }
@@ -1894,9 +1894,9 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", PR [2] . SNR, CPU -> rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (PR [2] . SNR, CPU -> rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -1949,9 +1949,9 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
 #if 0
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", PR [2] . SNR, CPU -> rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (PR [2] . SNR, CPU -> rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -2007,10 +2007,10 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-//sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+//sim_printf ("%05o:%06o\n", PR [2] . SNR, CPU -> rX [0]);
 //dbgStackTrace ();
 #if 0
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (PR [2] . SNR, CPU -> rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -2051,9 +2051,9 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", PR [2] . SNR, CPU -> rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (PR [2] . SNR, CPU -> rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
