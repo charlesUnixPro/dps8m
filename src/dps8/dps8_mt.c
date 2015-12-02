@@ -105,6 +105,9 @@ static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_tape_path (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat mt_set_capac (UNIT * uptr, int32 value, char * cptr, void * desc);
+//static t_stat mt_show_device_length (FILE *st, UNIT *uptr, int val, void *desc);
+//static t_stat mt_set_device_length (UNIT * uptr, int32 value, char * cptr, void * desc);
 
 #define N_MT_UNITS 1 // default
 
@@ -206,6 +209,26 @@ static MTAB mt_mod [] =
       "Set the path to the directory containing tape images", /* value descriptor */
       NULL          // help
     },
+    {
+      MTAB_XTD | MTAB_VUN, /* mask */
+      0,            /* match */
+      "CAPACITY",     /* print string */
+      "CAPACITY",         /* match string */
+      sim_tape_set_capac, /* validation routine */
+      sim_tape_show_capac, /* display routine */
+      "Set the device capacity", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "CAPACITY_ALL",     /* print string */
+      "CAPACITY_ALL",         /* match string */
+      mt_set_capac, /* validation routine */
+      NULL, /* display routine */
+      "Set the path to the directory containing tape images", /* value descriptor */
+      NULL          // help
+    },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -261,6 +284,7 @@ static struct tape_state
     char device_name [MAX_DEV_NAME_LEN];
     word16 cntlrAddress;
     word16 cntlrTally;
+    int tape_length;
   } tape_states [N_MT_UNITS_MAX];
 
 // XXX this assumes only one controller, needs to be indexed
@@ -550,8 +574,8 @@ ddcws:;
 
       }
     while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
-    if (sim_tape_wrp (unitp))
-      p -> stati |= 1;
+    //if (sim_tape_wrp (unitp))
+      //p -> stati |= 1;
     return 0;
   }
 
@@ -693,6 +717,7 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
 
     if (ret != 0)
       {
+        // Actually only returned on read
         if (ret == MTSE_EOM)
           {
             sim_debug (DBG_NOTIFY, & tape_dev,
@@ -719,8 +744,10 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
                   MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
     p -> stati = 04000;
-    //if (sim_tape_eom (unitp))
-      //p -> stati |= 0340;
+    if (sim_tape_wrp (unitp))
+      p -> stati |= 1;
+    if (sim_tape_eot (unitp))
+      p -> stati |= 04340;
 
     sim_debug (DBG_INFO, & tape_dev,
                "%s: Wrote %d bytes to simulated tape; status %04o\n",
@@ -729,8 +756,8 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     if (p -> DDCW_22_23_TYPE != 0)
       sim_warn ("curious... a tape write with more than one DDCW?\n");
 
-    if (sim_tape_wrp (unitp))
-      p -> stati |= 1;
+    //if (sim_tape_wrp (unitp))
+      //p -> stati |= 1;
     return 0;
   }
 
@@ -1614,8 +1641,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                           MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> stati = 04000; 
-            //if (sim_tape_eom (unitp))
-              //p -> stati |= 0340;
+            if (sim_tape_eot (unitp))
+              p -> stati = 04340;
 
             sim_debug (DBG_INFO, & tape_dev,
                        "%s: Wrote tape mark; status %04o\n",
@@ -1919,6 +1946,45 @@ static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value,
     tape_path [TAPE_PATH_LEN - 1] = 0;
     return SCPE_OK;
   }
+
+static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             char * cptr, UNUSED void * desc)
+  {
+    t_stat rc;
+    int i;
+    // skip the boot tape drive; Multics doesn't use it, and this
+    // allows setting capacity even though the boot tape is attached. 
+    for (i = 1; i < N_MT_UNITS_MAX; i ++)
+      {
+        rc = sim_tape_set_capac (mt_unit + i, value, cptr, desc);
+        if (rc != SCPE_OK)
+          return rc;
+      }
+    return SCPE_OK;
+  }
+
+#if 0
+static t_stat mt_show_device_length (UNUSED FILE *st, UNIT *uptr, UNUSED int val, UNUSED void *desc)
+  {
+    int n = MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Tape drive tape length is %d\n", tape_states [n] . tape_length);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_device_length (UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+  {
+    int n = MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      tape_states [n] . tape_length = atoi (cptr);
+    else
+      tape_states [n] . tape_length = 0;
+    return SCPE_OK;
+  }
+#endif
 
 t_stat attachTape (char * label, bool withring, char * drive)
   {
