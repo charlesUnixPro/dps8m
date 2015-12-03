@@ -1,4 +1,4 @@
-
+#if 0
 #include "dps8.h"
 #include "dps8_clk.h"
 #include "dps8_sys.h"
@@ -90,4 +90,4 @@ else
       }
     return SCPE_OK;
   }
-
+#endif

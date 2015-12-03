@@ -51,54 +51,18 @@
 // Select Timer Register model; only one at time!
 //
 
-// One tick per CPU state engine cycle. Poor relationship with reality.
-//#define NAIVE_TR
-
-// Generate TR values from wall clock time. Very high CPU overhead.
-//#define REAL_TR
-
-// Generate TR values from POSIX timers. Not portable.
-//#define POSIX_TR
-
 // Generate TR values form itimers. Slightly more portable.
 #define ITIMER_TR
 
 // Model TR values by memory access cycles.
 //#define EMUL_TR
 
-// Create a low-resoulution pseudo-timer (code unfinished)
-//#define PTIMER_TR
-//#define PTIMER_TR_HZ 1000
 
-// Some common code:
-
-//  POSIX_TR and ITIMER_TR both use code fragments marked TIMER_TR
-#ifdef POSIX_TR
-#define TIMER_TR
-#endif
-#ifdef ITIMER_TR
-#define TIMER_TR
-#endif
-
-//  NAIVE_TR and EMUL_TR both use code fragments marked NOTIMER_TR
-#ifdef NAIVE_TR
-#define NOTIMER_TR
-#endif
-#ifdef EMUL_TR
-#define NOTIMER_TR
-#endif
-
-
-
-
-// Enable sim_idle(); only works with NAIVE_TR and EMUL_TR
-//#define DO_SIM_IDLE
-
-// Make CIOC use sim_activate
-//#define CIOC_ACT
+// Improve sim_interval by counting memory accesses
+#define SIMINT_BY_ACCESS
 
 // Enable speed over debuggibility
-//#define SPEED
+#define SPEED
 
 #include "sim_defs.h"                                   /* simulator defns */
 

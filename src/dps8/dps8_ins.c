@@ -6,10 +6,7 @@
 */
 
 #include <stdio.h>
-#ifdef TIMER_TR
-#include <signal.h>
-#endif
-#ifdef PTIMER_TR
+#ifdef ITIMER_TR
 #include <signal.h>
 #endif
 
@@ -5894,30 +5891,7 @@ static t_stat DoBasicInstruction (void)
             else
               {
 
-#ifdef DO_SIM_IDLE
-                int32 i0 = sim_interval;
-#endif
-
-#ifdef TIMER_TR
-
-// Should we be saving the value of TRO across the polling borrow?
-
-                word27 ticksLeft = getTR ();
-                bool pollingCycle = false;
-
-                // ticks left is in 512KHz; 10240 ticks is 50Hz
-//sim_printf ("ticksLeft %u\n", ticksLeft);
-                if (ticksLeft > 10240)
-                  {
-                    ticksLeft -= 10240;
-                    setTR (10240); // Wake up in 1/20 of a second to do polling.
-                    pollingCycle = true;
-                   }
-
-#if 0
-                struct timespec t0;
-                clock_gettime (CLOCK_MONOTONIC, & t0);
-#endif
+#ifdef ITIMER_TR
 
 // From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
 
@@ -5925,13 +5899,18 @@ static t_stat DoBasicInstruction (void)
 
                 /* Set up the mask of signals to temporarily block. */
                 sigemptyset (& mask);
-                sigaddset (& mask, SIGUSR2);
+                //sigaddset (& mask, SIGALRM);
+                sigaddset (& mask, SIGVTALRM);
 
                 /* Wait for a signal to arrive. */
                 sigprocmask (SIG_BLOCK, & mask, & oldmask);
-                while (!timeout_state)
+                while (! getTimeoutState())
+{
+//printf ("sleep\n");
                   sigsuspend (& oldmask);
+}
                 sigprocmask (SIG_UNBLOCK, & mask, NULL);
+
 // This last piece of code is a little tricky. The key point to remember here
 // is that when sigsuspend returns, it resets the process’s signal mask to the
 // original value, the value from before the call to sigsuspend—in this case,
@@ -5947,158 +5926,8 @@ static t_stat DoBasicInstruction (void)
 // signal eventually arrives.
 
 
-#if 0
-                // How long did we sleep, in microseconds?
 
-                struct timespec tnow;
-                clock_gettime (CLOCK_MONOTONIC, & tnow);
-
-                uint64_t t0_us = (uint64_t) t0 . tv_sec * 1000000 + t0 . tv_nsec / 1000;
-                uint64_t tnow_us = (uint64_t) tnow . tv_sec * 1000000 + tnow . tv_nsec / 1000;
-                uint64_t delta_us = tnow_us - t0_us;
-#endif
-
-#if 1
-                // We slept for min (TR, 1/20th sec).
-                // If the timeout_flag is not set, we woke early and it
-                // isn't yet time to go polling, but we're not yet smart
-                // about that. A better check might be getTR >>> 0, ie.
-                // if the timer has reset to 4 min coundown.
-
-                //sim_interval = 0;
-
-                // We borrowed the timer to schedule the polling; put it back.
-                if (pollingCycle)
-                  {
-                    setTR (ticksLeft);
-                    clrTRO ();
-                    sim_interval = 0;
-                  }
-#else
-                // trlsb is the conversion factor to translate sim_interval into TR ticks.
-                //   TRticks = sim_interval / trlsb
-                // a TR tick is about 2 us, so we can use it to get a rough idea of how
-                // many sim_intervals we slept for.
-
-                uint64_t delta_si = (delta_us / 2) * switches . trlsb;
-                sim_interval -= delta_si;
-#endif
-#endif // TIMER_TR
-
-
-
-
-
-#ifdef PTIMER_TR
-
-// Should we be saving the value of TRO across the polling borrow?
-
-                word27 ticksLeft = getTR ();
-                bool pollingCycle = false;
-
-                // ticks left is in 512KHz; 10240 ticks is 50Hz
-//sim_printf ("ticksLeft %u\n", ticksLeft);
-                if (ticksLeft > 10240)
-                  {
-                    ticksLeft -= 10240;
-                    setTR (10240); // Wake up in 1/20 of a second to do polling.
-                    pollingCycle = true;
-                   }
-
-#if 0
-                struct timespec t0;
-                clock_gettime (CLOCK_MONOTONIC, & t0);
-#endif
-
-// From http://www.gnu.org/software/libc/manual/html_node/Sigsuspend.html#Sigsuspend
-
-                sigset_t mask, oldmask;
-
-                /* Set up the mask of signals to temporarily block. */
-                sigemptyset (& mask);
-                sigaddset (& mask, SIGUSR2);
-
-                /* Wait for a signal to arrive. */
-                sigprocmask (SIG_BLOCK, & mask, & oldmask);
-                //while (!usr_interrupt)
-                  sigsuspend (& oldmask);
-                sigprocmask (SIG_UNBLOCK, & mask, NULL);
-// This last piece of code is a little tricky. The key point to remember here
-// is that when sigsuspend returns, it resets the process’s signal mask to the
-// original value, the value from before the call to sigsuspend—in this case,
-// the SIGUSR1 signal is once again blocked. The second call to sigprocmask is
-// necessary to explicitly unblock this signal.
-//
-// One other point: you may be wondering why the while loop is necessary at
-// all, since the program is apparently only waiting for one SIGUSR1 signal.
-// The answer is that the mask passed to sigsuspend permits the process to be
-// woken up by the delivery of other kinds of signals, as well—for example, job
-// control signals. If the process is woken up by a signal that doesn’t set
-// usr_interrupt, it just suspends itself again until the “right” kind of
-// signal eventually arrives.
-
-
-#if 0
-                // How long did we sleep, in microseconds?
-
-                struct timespec tnow;
-                clock_gettime (CLOCK_MONOTONIC, & tnow);
-
-                uint64_t t0_us = (uint64_t) t0 . tv_sec * 1000000 + t0 . tv_nsec / 1000;
-                uint64_t tnow_us = (uint64_t) tnow . tv_sec * 1000000 + tnow . tv_nsec / 1000;
-                uint64_t delta_us = tnow_us - t0_us;
-#endif
-
-#if 1
-                // We slept for min (TR, 1/20th sec).
-                // If the timeout_flag is not set, we woke early and it
-                // isn't yet time to go polling, but we're not yet smart
-                // about that. A better check might be getTR >>> 0, ie.
-                // if the timer has reset to 4 min coundown.
-
-                sim_interval = 0;
-
-                // We borrowed the timer to schedule the polling; put it back.
-                if (pollingCycle)
-                  {
-                    setTR (ticksLeft);
-                    clrTRO ();
-                  }
-#else
-                // trlsb is the conversion factor to translate sim_interval into TR ticks.
-                //   TRticks = sim_interval / trlsb
-                // a TR tick is about 2 us, so we can use it to get a rough idea of how
-                // many sim_intervals we slept for.
-
-                uint64_t delta_si = (delta_us / 2) * switches . trlsb;
-                sim_interval -= delta_si;
-#endif
-#endif // PTIMER_TR
-
-
-#ifdef DO_SIM_IDLE
-                sim_idle (3, FALSE);
-                int32 idelta = i0 - sim_interval;
-                if (idelta < 0)
-                  {
-                    sim_printf ("The chronosynclastic infundibulum went backwards? %d\n", idelta);
-                  }
-                else
-                  {
-                    idelta /= switches . trlsb; // convert from sim_interval units to estimated TR units.
-                    word27 rTR = getTR ();
-                    if (idelta > (int32) rTR)
-                      {
-                        if (switches . tro_enable)
-                          {
-                            setG7fault (FAULT_TRO, 0);
-                          }
-                      }
-                    setTR ((rTR - idelta) & MASK27);
-                   }
-#endif // DO_SIM_IDLE
-
-
+#endif // ITIMER_TR
 
 
 //sim_printf ("leaving TRO %s\n", getTRO () ? "on" : "off");

@@ -1095,7 +1095,7 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     *data = M[addr] & DMASK;
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
 #endif
     return 0;
@@ -1103,7 +1103,7 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
     M[addr] = data & DMASK;
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
 #endif
     return 0;
@@ -1112,7 +1112,7 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
   {
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
     sim_interval --;
 #endif
@@ -1122,7 +1122,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
   {
     M[addr++] = even;
     M[addr] = odd;
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
     sim_interval --;
 #endif
@@ -1164,11 +1164,6 @@ int core_write2q (word24 addr, word36 even, word36 odd, const char * ctx);
 //int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
 
-#ifdef TIMER_TR
-#include <signal.h>
-extern volatile sig_atomic_t    timeout_state;
-#endif
-
 void setPollingFlag (void);
 void clrPollingFlag (void);
 bool tstPollingFlag (void);
@@ -1194,6 +1189,7 @@ int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
 void setTR (word27 val);
-bool getTRO (void);
+bool getTimeoutState (void);
+bool  getTRO (void);
 void clrTRO (void);
 word27 getTR (void);

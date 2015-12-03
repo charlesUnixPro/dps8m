@@ -2132,7 +2132,9 @@ DEVICE * sim_devices [] =
     & fnpDev,
     & disk_dev,
     & scu_dev,
+#if 0
     & idle_clk_dev,
+#endif
     // & mpc_dev,
     & opcon_dev,
     & sys_dev,

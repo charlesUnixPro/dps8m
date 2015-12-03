@@ -215,17 +215,6 @@
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
 
-#ifdef CIOC_ACT
-static t_stat iom_svc (UNIT * unitp);
-
-static UNIT iomUnit [N_IOM_UNITS_MAX] =
-  {
-    { UDATA (iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
-  };
-#else
 static UNIT iomUnit [N_IOM_UNITS_MAX] =
   {
     { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
@@ -233,7 +222,6 @@ static UNIT iomUnit [N_IOM_UNITS_MAX] =
     { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
     { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
-#endif
 static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, void * desc);
 static t_stat iomShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iomSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
@@ -2250,15 +2238,6 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
     send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
     return 0;
   }
-
-#ifdef CIOC_ACT
-static t_stat iom_svc (UNIT * up)
-  {
-     sim_debug (DBG_INFO, & iom_dev, "iom_svc: service started.\n");
-     iom_interrupt (IOM_UNIT_NUM (up));
-     return SCPE_OK;
-  }
-#endif
 
 void iom_interrupt (uint iomUnitIdx)
   {

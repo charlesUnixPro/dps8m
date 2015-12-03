@@ -36,22 +36,9 @@
 
 #include "sim_defs.h"
 
-#ifdef TIMER_TR
+#ifdef ITIMER_TR
 #include <time.h>
 #include <signal.h>
-#endif
-#ifdef POSIX_TR
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#endif
-
-#ifdef PTIMER_TR
-#include <time.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
 #endif
 
 // XXX Use this when we assume there is only a single cpu unit
@@ -61,6 +48,7 @@ static void cpu_init_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
 static void setCpuCycle (cycles_t cycle);
+static void setupPolling (void);
 
 // CPU data structures
 
@@ -89,9 +77,11 @@ static MTAB cpu_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL },
+#if 0
     { MTAB_XTD | MTAB_VDV,
       0, "IDLE", "IDLE",
       & sim_set_idle, & sim_show_idle, NULL, NULL },
+#endif
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -665,7 +655,9 @@ static void ic_history_init(void);
 static t_stat cpu_reset_mm (UNUSED DEVICE * dptr)
 {
     
+#if 0
     sim_set_idle (cpu_unit, 0, NULL, NULL);
+#endif
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
     
     ic_history_init();
@@ -801,11 +793,6 @@ static void getSerialNumber (void)
   }
 
 
-#ifdef PTIMER_TR
-static void timeout_set (void);
-#endif
-
-    
 // called once initialization
 
 void cpu_init (void)
@@ -829,9 +816,7 @@ void cpu_init (void)
 
     getSerialNumber ();
 
-#ifdef PTIMER_TR
-    timeout_set ();
-#endif
+    //setupPolling ();
   }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
@@ -1210,89 +1195,7 @@ cpu_state_t cpu;
 ctl_unit_data_t cu;
 du_unit_data_t du;
 
-#ifdef DO_SIM_IDLE
-static t_stat dis_svc (UNUSED UNIT * uptr)
-  {
-    if (switches . tro_enable)
-      setG7fault (FAULT_TRO, 0);
-    setTR (MASK27);
-    return SCPE_OK;
-  }
-
-static t_stat dis_reset (DEVICE * dptr)
-  {
-  sim_cancel (dptr->units);
-  return SCPE_OK;
-  }
-
-UNIT dis_unit = { UDATA (& dis_svc, UNIT_IDLE, 50), 0, 0, 0, 0, 0, NULL, NULL };
-
-static void dis_set (word27 val)
-  {
-    uint timerRegVal;
-
-    sim_cancel (& dis_unit);
-    val &= MASK27;
-    if (val)
-      {
-        timerRegVal = val & MASK27;
-      }
-    else
-      {
-        // Special case
-        timerRegVal = -1 & MASK27;
-      }
-    int32 t = (uint64_t) timerRegVal * 19073486 / 10000000;
-    sim_activate_after (& dis_unit, t);
-  }
-
-#if 0
-static word27 dis_get (void)
-  {
-    return ((word27) ((512 * 1000) * (sim_activate_time (& dis_unit) / sim_timer_inst_per_sec ()))) & MASK27;
-  }
-#endif
-
-static DEBTAB dis_dt [] =
-  {
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
-  };
-
-DEVICE dis_dev =
-  {
-    "DISDEV",
-    & dis_unit,
-    NULL, // registers
-    NULL, // modifiers
-    1, // # units
-    0, // address radix
-    8, // address width
-    4, // address increment
-    0, // data radix
-    32, // data width
-    NULL, // examine routine
-    NULL, // deposit routine
-    & dis_reset, // reset routine
-    NULL,        /* boot routine */
-    NULL,        /* attach routine */
-    NULL,        /* detach routine */
-    NULL,        /* context */
-    DEV_DEBUG,   /* flags */
-    0,           /* debug control flags */
-    dis_dt,      /* debug flag names */
-    NULL,        /* memory size change */
-    NULL,        /* logical name */
-    NULL,        // help
-    NULL,        // attach help
-    NULL,        // help context
-    NULL         // description
-  };
-
-#endif // DO_SIM_IDLE
-
-#ifdef TIMER_TR
+#ifdef ITIMER_TR
 //
 // TR code
 //
@@ -1301,6 +1204,9 @@ DEVICE dis_dev =
 // Written by: http://stackoverflow.com/users/1475978/nominal-animal
 // Thank you.
 
+// Number of uS in a second.
+#define US_S 1000000UL
+
 // The TR is a free-running 512KHz countdown timer.
 // It is 27 bits wide, giving it a period of approximately 4.37 minutes.
 // 512KHz is  1.953125 microseconds / decrement.
@@ -1308,46 +1214,31 @@ DEVICE dis_dev =
 // AL39 specifies the 512KHz and 1.95 uS numbers. Doing the math
 // would indicate that here K means 1000, not 1024.
 
-#ifdef POSIX_TR
-// What is the repeat rate in nSecs?
-//   1/512K * 2^27 * 1B
-#define INTERVAL 262144000000
 
-// What the countdown rate in nSecs?
-//   1.953125 us * 1000 -> 1953.125
-// In scaled math?
-#define RATE_SCALED 1953125
-#define RATE_SCALE  1000
-
-// Number of nS in a second.
-#define NS_S 1000000000UL
-#endif
-
-#ifdef ITIMER_TR
 // What is the repeat rate in uSecs?
-//   1/512K * 2^27 * 1B
-#define INTERVAL 262144000
+//   1/512K * 2^27 * 1M
+#define TR_INTERVAL 262144000
 
 // What the countdown rate in uSecs?
 //   1.953125 us 
 // In scaled math?
-#define RATE_SCALED 1953125
-#define RATE_SCALE  1000000
+#define TR_RATE_SCALED 1953125
+#define TR_RATE_SCALE  1000000
 
-// Number of uS in a second.
-#define US_S 1000000UL
-#endif
+// The polling clock is a 50Hz countdown timer
 
+// What is the repeat rate in uSecs?
+//   1/50 * 1M
+#define POLL_INTERVAL 14631
 
-volatile sig_atomic_t    timeout_state = 0;
-static volatile sig_atomic_t    timeout_armed = 2;
-#ifdef POSIX_TR
-static timer_t                  timeout_timer;
-static const int                timeout_signo = SIGUSR2;
-#endif
-#ifdef ITIMER_TR
-static const int                timeout_signo = SIGALRM;
-#endif
+static const int n_clks = 2;
+static const int tr_clk = 0;
+static const int poll_clk = 1;
+static const int clk_table [n_clks] = { ITIMER_REAL, ITIMER_VIRTUAL };
+static const int clk_signo [n_clks] = { SIGALRM, SIGVTALRM };
+
+static volatile sig_atomic_t    timeout_state [n_clks] = {0, 0};
+static volatile sig_atomic_t    timeout_armed [n_clks] = {2, 2};
 
 //#define TCHECK
 #ifdef TCHECK
@@ -1359,16 +1250,19 @@ static time_t when_set = 0, delta_caught = 0;
 static void timeout_handler (int signo, UNUSED siginfo_t * info, 
                              UNUSED void * context)
   {
-    if (timeout_armed == 1)
+//printf ("ping sig %d poll %d tr %d\n", signo, clk_signo [poll_clk], clk_signo [tr_clk]);
+    //if (signo == timeout_signo && info && info->si_code == SI_KERNEL)
+    if (timeout_armed [tr_clk] == 1 && signo == clk_signo [tr_clk])
       {
-        //if (signo == timeout_signo && info && info->si_code == SI_KERNEL)
-        if (signo == timeout_signo)
-          {
-            timeout_state = ~0;
+//printf ("tr timeout\n");
+        timeout_state [tr_clk] = ~0;
 #ifdef TCHECK
-            delta_caught = time (NULL) - when_set;
+        delta_caught = time (NULL) - when_set;
 #endif
-          }
+      }
+    else if (timeout_armed [poll_clk] == 1 && signo == clk_signo [poll_clk])
+      {
+        timeout_state [poll_clk] = ~0;
       }
   }
 
@@ -1376,28 +1270,13 @@ static void timeout_handler (int signo, UNUSED siginfo_t * info,
  * Cancels any pending timeouts.
 */
 
-static void timeout_set (uint ticks)
+static void timeout_set (int clk_no, uint64_t set_us, uint64_t rpt_us)
   {
-
-// Convert ticks to time in uSecs
-// time = ticks * 1953.125
-    
-    if (ticks > MASK27)
-      ticks = MASK27;
-
-#ifdef POSIX_TR
-    uint64_t set_ns = (((uint64_t) ticks) * RATE_SCALED) / RATE_SCALE;
-
-    struct itimerspec  t;
-#endif
-#ifdef ITIMER_TR
-    uint64_t set_us = (((uint64_t) ticks) * RATE_SCALED) / RATE_SCALE;
-
+//sim_printf ("set %d %lu\n", clk_no, set_us);
     struct itimerval  t;
-#endif
 
     /* Uninitialized yet? */
-    if (timeout_armed == 2)
+    if (timeout_armed [clk_no] == 2)
       {
         struct sigaction    act;
 
@@ -1406,112 +1285,83 @@ static void timeout_set (uint ticks)
         act . sa_sigaction = timeout_handler;
         act . sa_flags = SA_SIGINFO;
 
-        if (sigaction (timeout_signo, &act, NULL) == -1)
+        if (sigaction (clk_signo [clk_no], & act, NULL) == -1)
           {
-            sim_err ("Unable to register TR timeout handler %d\n", errno);
+            sim_err ("Unable to register timeout handler %d\n", errno);
           }
-
-#ifdef POSIX_TR
-        struct sigevent     evt;
-
-        /* Create a monotonic timer, delivering timeout_signo signal. */
-        evt . sigev_value . sival_ptr = NULL;
-        evt . sigev_signo = timeout_signo;
-        evt . sigev_notify = SIGEV_SIGNAL;
-
-        if (timer_create(CLOCK_MONOTONIC, & evt, & timeout_timer) == -1)
-          {
-            sim_err ("Unable to create TR timer %d\n", errno);
-          }
-#endif
-        /* Timeout is initialzied but unarmed. */
-        timeout_armed = 0;
+        /* Timeout is initialized but unarmed. */
+        timeout_armed [clk_no] = 0;
       }
 
     /* Disarm timer, if armed. */
-    if (timeout_armed == 1)
+    if (timeout_armed [clk_no] == 1)
       {
 
-#ifdef POSIX_TR
-        /* Set zero timeout, disarming the timer. */
-        t . it_value . tv_sec = 0;
-        t . it_value . tv_nsec = 0;
-        t . it_interval . tv_sec = 0;
-        t . it_interval . tv_nsec = 0;
-
-        if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
-          {
-            sim_err ("Unable to reset TR timer %d\n", errno);
-          }
-#endif
-#ifdef ITIMER_TR
         /* Set zero timeout, disarming the timer. */
         t . it_value . tv_sec = 0;
         t . it_value . tv_usec = 0;
         t . it_interval . tv_sec = 0;
         t . it_interval . tv_usec = 0;
 
-        if (setitimer (ITIMER_REAL, & t, NULL) == -1)
+        if (setitimer (clk_table [clk_no], & t, NULL) == -1)
           {
             sim_err ("Unable to reset TR timer %d\n", errno);
           }
-#endif
-        timeout_armed = 0;
+        timeout_armed [clk_no] = 0;
       }
 
     /* Clear timeout state. It should be safe (no pending signals). */
-    //timeout_state = 0;
+    //timeout_state [clk_no] = 0;
 
 //    /* Invalid timeout? */
 //    if (seconds <= 0.0)
 //        return errno = EINVAL;
 
-#ifdef POSIX_TR
-    /* Set new timeout. */
-    t . it_value . tv_sec =  set_ns / NS_S;
-    t . it_value . tv_nsec = set_ns % NS_S;
-
-    /* Set it to repeat */
-    t . it_interval . tv_sec =  INTERVAL / NS_S;
-    t . it_interval . tv_nsec = INTERVAL % NS_S;
-//sim_printf ("set %ld%06ld %d\n", t . it_value . tv_sec, t . it_value . tv_nsec, ticks);
-
-    if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
-      {
-        sim_err ("Unable to set TR timer %d\n", errno);
-      }
-#endif
-#ifdef ITIMER_TR
     /* Set new timeout. */
     t . it_value . tv_sec =  set_us / US_S;
     t . it_value . tv_usec = set_us % US_S;
-
+//sim_printf ("set %d %ld.%06ld\n", clk_no, t . it_value . tv_sec, t . it_value . tv_usec);
     /* Set it to repeat */
-    t . it_interval . tv_sec =  INTERVAL / US_S;
-    t . it_interval . tv_usec = INTERVAL % US_S;
-    if (setitimer (ITIMER_REAL, & t, NULL) == -1)
+    t . it_interval . tv_sec =  rpt_us / US_S;
+    t . it_interval . tv_usec = rpt_us % US_S;
+    if (setitimer (clk_table [clk_no], & t, NULL) == -1)
       {
         sim_err ("Unable to set TR timer %d\n", errno);
       }
-#endif
-    timeout_armed = 1;
+    timeout_armed [clk_no] = 1;
 #ifdef TCHECK
-    when_set = time (NULL);
+    if (clk_no == tr_clk) when_set = time (NULL);
 #endif
+  }
+
+bool getTimeoutState (void)
+  {
+    return (!! timeout_state [tr_clk]) || (!! timeout_state [poll_clk]);
   }
 
 void setTR (word27 val)
   {
+#if 0
 //sim_printf ("set %u\n", val);
     if (val)
       timeout_set (val);
     else
       timeout_set (MASK27);
+#else
+    if (! val)
+{
+printf ("zero?\n");
+      val = MASK27;
+}
+    uint64_t set_us = (((uint64_t) val) * TR_RATE_SCALED) / TR_RATE_SCALE;
+    timeout_set (tr_clk, set_us, TR_INTERVAL);
+#endif
   }
 
 bool getTRO (void)
   {
-    return timeout_state != 0;
+//if (timeout_state [tr_clk]) printf ("getTRO %d\n", timeout_state [tr_clk]);
+    return timeout_state [tr_clk] != 0;
   }
 
 // To avoid race condition here, only call clrTRO immediately
@@ -1522,21 +1372,11 @@ bool getTRO (void)
 void clrTRO (void)
   {
 //sim_printf ("ack\n");
-    timeout_state = 0;
+    timeout_state [tr_clk] = 0;
   }
 
 word27 getTR (void)
   {
-#ifdef POSIX_TR
-    struct itimerspec  t;
-    if (timer_gettime (timeout_timer, & t) == -1)
-      {
-        sim_err ("Unable to get TR timer %d\n", errno);
-      }
-    uint64_t timeleft_ns = t . it_value . tv_sec * NS_S +
-                           t . it_value . tv_nsec;
-#endif
-#ifdef ITIMER_TR
     struct itimerval  t;
     if (getitimer (ITIMER_REAL, & t) == -1)
       {
@@ -1544,17 +1384,11 @@ word27 getTR (void)
       }
     uint64_t timeleft_us = t . it_value . tv_sec * US_S +
                            t . it_value . tv_usec;
-#endif
 
 // Convert time in uSecs to ticks
 // ticks = time / 1.953125
 
-#ifdef POSIX_TR
-    uint64_t timeleft_ticks = (timeleft_ns * RATE_SCALE) / RATE_SCALED;
-#endif
-#ifdef ITIMER_TR
-    uint64_t timeleft_ticks = (timeleft_us * RATE_SCALE) / RATE_SCALED;
-#endif
+    uint64_t timeleft_ticks = (timeleft_us * TR_RATE_SCALE) / TR_RATE_SCALED;
 
     if (timeleft_ticks > MASK27)
       timeleft_ticks = MASK27;
@@ -1563,272 +1397,10 @@ word27 getTR (void)
     return (word27) timeleft_ticks;
   }
 
-#endif // TIMER_TR
+#endif // ITIMER_TR
 
 
-
-#ifdef PTIMER_TR
-//
-// TR code
-//
-
-// Code from: http://stackoverflow.com/questions/13904955/how-do-you-make-a-precise-countdown-timer-using-clock-gettime
-// Written by: http://stackoverflow.com/users/1475978/nominal-animal
-// Thank you.
-
-// The TR is a free-running 512KHz countdown timer.
-// It is 27 bits wide, giving it a period of approximately 4.37 minutes.
-// 512KHz is  1.953125 microseconds / decrement.
-
-// AL39 specifies the 512KHz and 1.95 uS numbers. Doing the math
-// would indicate that here K means 1000, not 1024.
-
-// Number of nS in a second.
-#define NS_S 1000000000UL
-
-// The pseudo-timer runs at PTIMER_TR_HZ
-
-//#ifdef POSIX_TR
-// What is the tick rate in nSecs?
-//   1/PTIMER_TR_HZ * 1B
-//   1B/PTIMER_TR_HZ
-#define INTERVAL (NS_S / PTIMER_TR_HZ)
-
-// What the countdown rate in nSecs?
-//   1.953125 us * 1000 -> 1953.125
-// In scaled math?
-#define RATE_SCALED 1953125
-#define RATE_SCALE  1000
-//#endif
-
-//#ifdef ITIMER_TR
-//// What is the repeat rate in uSecs?
-////   1/512K * 2^27 * 1B
-//#define INTERVAL 262144000
-//
-//// What the countdown rate in uSecs?
-////   1.953125 us 
-//// In scaled math?
-//#define RATE_SCALED 1953125
-//#define RATE_SCALE  1000000
-//
-//// Number of uS in a second.
-//#define US_S 1000000UL
-//#endif
-
-
-static volatile sig_atomic_t    timeout_state = 0;
-static volatile sig_atomic_t    timeout_armed = 2;
-static timer_t                  timeout_timer;
-static const int                timeout_signo = SIGUSR2;
-static volatile sig_atomic_t    pTR = 0;
-
-// Timeout signal handler.
-
-static void timeout_handler (int signo, siginfo_t * info, 
-                             UNUSED void * context)
-  {
-    if (timeout_armed == 1)
-      {
-        if (signo == timeout_signo && info && info->si_code == SI_TIMER)
-          {
-// Strictly speaking, this violates the the atomic handling; it is possible
-// to set the pTR between the two operations, but we don't care since the
-// second operation does not cause data loss.
-            int now = -- pTR;
-            pTR &= MASK27;
-            if (now < 0)
-              {
-                timeout_state = ~0;
-sim_printf ("click\n");
-              }
-          }
-      }
-  }
-
-// setup periodic timer
-
-static void timeout_set (void)
-  {
-
-//#ifdef POSIX_TR
-    uint64_t set_ns = NS_S / PTIMER_TR_HZ;
-
-    struct itimerspec  t;
-//#endif
-//#ifdef ITIMER_TR
- //   uint64_t set_us = (((uint64_t) ticks) * RATE_SCALED) / RATE_SCALE;
-//
-//    struct itimerval  t;
-//#endif
-
-    /* Uninitialized yet? */
-    if (timeout_armed == 2)
-      {
-        struct sigaction    act;
-
-        /* Use timeout_handler() for timeout_signo signal. */
-        sigemptyset (& act . sa_mask);
-        act . sa_sigaction = timeout_handler;
-        act . sa_flags = SA_SIGINFO;
-
-        if (sigaction (timeout_signo, &act, NULL) == -1)
-          {
-            sim_err ("Unable to register TR timeout handler %d\n", errno);
-          }
-
-//#ifdef POSIX_TR
-        struct sigevent     evt;
-
-        /* Create a monotonic timer, delivering timeout_signo signal. */
-        evt . sigev_value . sival_ptr = NULL;
-        evt . sigev_signo = timeout_signo;
-        evt . sigev_notify = SIGEV_SIGNAL;
-
-        if (timer_create(CLOCK_MONOTONIC, & evt, & timeout_timer) == -1)
-          {
-            sim_err ("Unable to create TR timer %d\n", errno);
-          }
-//#endif
-        /* Timeout is initialzied but unarmed. */
-        timeout_armed = 0;
-      }
-
-    /* Disarm timer, if armed. */
-    if (timeout_armed == 1)
-      {
-
-//#ifdef POSIX_TR
-        /* Set zero timeout, disarming the timer. */
-        t . it_value . tv_sec = 0;
-        t . it_value . tv_nsec = 0;
-        t . it_interval . tv_sec = 0;
-        t . it_interval . tv_nsec = 0;
-
-        if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
-          {
-            sim_err ("Unable to reset TR timer %d\n", errno);
-          }
-//#endif
-//#ifdef ITIMER_TR
-//        /* Set zero timeout, disarming the timer. */
-//        t . it_value . tv_sec = 0;
-//        t . it_value . tv_usec = 0;
-//        t . it_interval . tv_sec = 0;
-//        t . it_interval . tv_usec = 0;
-//
-//        if (setitimer (ITIMER_REAL, & t, NULL) == -1)
-//          {
-//            sim_err ("Unable to reset TR timer %d\n", errno);
-//          }
-//#endif
-        timeout_armed = 0;
-      }
-
-    /* Clear timeout state. It should be safe (no pending signals). */
-    //timeout_state = 0;
-
-//    /* Invalid timeout? */
-//    if (seconds <= 0.0)
-//        return errno = EINVAL;
-
-//#ifdef POSIX_TR
-    /* Set new timeout. */
-    t . it_value . tv_sec =  set_ns / NS_S;
-    t . it_value . tv_nsec = set_ns % NS_S;
-
-    /* Set it to repeat */
-    t . it_interval . tv_sec =  INTERVAL / NS_S;
-    t . it_interval . tv_nsec = INTERVAL % NS_S;
-//sim_printf ("set %ld%06ld %d\n", t . it_value . tv_sec, t . it_value . tv_nsec, ticks);
-
-    if (timer_settime (timeout_timer, 0, & t, NULL) == -1)
-      {
-        sim_err ("Unable to set TR timer %d\n", errno);
-      }
-//#endif
-//#ifdef ITIMER_TR
-//    /* Set new timeout. */
-//    t . it_value . tv_sec =  set_us / US_S;
-//    t . it_value . tv_usec = set_us % US_S;
-//
-//    /* Set it to repeat */
-//    t . it_interval . tv_sec =  INTERVAL / US_S;
-//    t . it_interval . tv_usec = INTERVAL % US_S;
-//    if (setitimer (ITIMER_REAL, & t, NULL) == -1)
-//      {
-//        sim_err ("Unable to set TR timer %d\n", errno);
-//      }
-//#endif
-    timeout_armed = 1;
-  }
-
-void setTR (word27 val)
-  {
-    pTR = val & MASK27;
-sim_printf ("set %u\n", val);
-  }
-
-bool getTRO (void)
-  {
-    return timeout_state != 0;
-  }
-
-// To avoid race condition here, only call clrTRO immediately
-// after calling getTRO, and it's returning true.
-// As long as a setTR is not called between the get and the clear,
-// then you have 4.37 minutes to process the setting of timeout_state.
-
-void clrTRO (void)
-  {
-//sim_printf ("ack\n");
-    timeout_state = 0;
-  }
-
-word27 getTR (void)
-  {
-#ifdef POSIX_TR
-    struct itimerspec  t;
-    if (timer_gettime (timeout_timer, & t) == -1)
-      {
-        sim_err ("Unable to get TR timer %d\n", errno);
-      }
-    uint64_t timeleft_ns = t . it_value . tv_sec * NS_S +
-                           t . it_value . tv_nsec;
-// Convert time in uSecs to ticks
-// ticks = time / 1.953125
-
-    uint64_t timeleft_ticks = (timeleft_ns * RATE_SCALE) / RATE_SCALED;
-#endif
-#ifdef ITIMER_TR
-    struct itimerval  t;
-    if (getitimer (ITIMER_REAL, & t) == -1)
-      {
-        sim_err ("Unable to get TR timer %d\n", errno);
-      }
-    uint64_t timeleft_us = t . it_value . tv_sec * US_S +
-                           t . it_value . tv_usec;
-// Convert time in uSecs to ticks
-// ticks = time / 1.953125
-
-    uint64_t timeleft_ticks = (timeleft_us * RATE_SCALE) / RATE_SCALED;
-#endif
-
-// pTR in seconds is (pTR * PTIMER_TR_HZ)
-//     in us is (pTR * PTIMER_TR_HZ) * 1B
-//     in ticks (pTR * PTIMER_TR_HZ) * 1B / RATE
-    uint64_t timeleft_ticks = (pTR * PTIMER_TR_HZ * NS_S * RATE_SCALE) / RATE_SCALED;
-    if (timeleft_ticks > MASK27)
-      timeleft_ticks = MASK27;
-//sim_printf ("get %ld%06ld %u %lu\n", t . it_value . tv_sec, t . it_value . tv_nsec, rTR, timeleft_ticks);
-    rTR_shadow = (word27) timeleft_ticks;
-    return (word27) timeleft_ticks;
-  }
-
-#endif // PTIMER_TR
-
-
-#ifdef NOTIMER_TR
+#ifdef EMUL_TR
 static word27 emulTR;
 
 void setTR (word27 val)
@@ -1843,9 +1415,6 @@ void setTR (word27 val)
         // Special case
         emulTR = -1 & MASK27;
       }
-#ifdef DO_SIM_IDLE
-    dis_set (emulTR);
-#endif
   }
 
 word27 getTR (void)
@@ -1858,94 +1427,8 @@ void ackTR (void)
   {
     setTR (0);
   }
-#endif // NOTIMER_TR
+#endif // EMUL_TR
 
-#ifdef REAL_TR
-static uint timerRegVal;
-static struct timeval timerRegT0;
-//static bool overrunAck;
-
-void setTR (word27 val)
-  {
-    val &= MASK27;
-    if (val)
-      {
-        timerRegVal = val & MASK27;
-      }
-    else
-      {
-        // Special case
-        timerRegVal = -1 & MASK27;
-      }
-    gettimeofday (& timerRegT0, NULL);
-    //overrunAck = false;
-
-//sim_printf ("tr set %10u %09o %10lu%06lu\n", val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
-  }
-
-word27 getTR (bool * runout)
-  {
-#if 0
-    struct timeval tnow, tdelta;
-    gettimeofday (& tnow, NULL);
-    timersub (& tnow, & timerRegT0, & tdelta);
-    // 1000000 can be represented in 20 bits; so in a 64 bit word, we have room for
-    // 44 bits of seconds, way more then enough.
-    // Do 64 bit math; much faster.
-    //
-    //delta = (tnowus - t0us) / 1.953125
-    uint64 delta;
-    delta = ((uint64) tdelta . tv_sec) * 1000000 + ((uint64) tdelta . tv_usec);
-    // 1M * 1M ~= 40 bits; still leaves 24bits of seconds.
-    delta = (delta * 1000000) / 1953125;
-#else
-    uint128 t0us, tnowus, delta;
-    struct timeval tnow;
-    gettimeofday (& tnow, NULL);
-    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
-    tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
-    //delta = (tnowus - t0us) / 1.953125
-    delta = ((tnowus - t0us) * 1000000) / 1953125;
-#endif
-    if (runout)
-     //* runout = (! overrunAck) && delta > timerRegVal;
-     * runout = delta > timerRegVal;
-    word27 val = (timerRegVal - delta) & MASK27;
-//if (val % 100000 == 0) sim_printf ("tr get %10u %09o %8llu %s\n", val, val, (unsigned long long) delta, runout ? * runout ? "runout" : "" : "");
-    rTR_shadow = val;
-    return val;
-  }
-
-void ackTR (void)
-  {
-    //overrunAck = true;
-    setTR (0);
-  }
-#endif
-
-#if 0
-int stop_reason; // sim_instr return value for JMP_STOP
-
-/*
- *  cancel_run()
- *
- *  Cancel_run can be called by any portion of the code to let
- *  sim_instr() know that it should stop looping and drop back
- *  to the SIMH command prompt.
- */
-
-static int cancel;
-
-void cancel_run(t_stat reason)
-{
-    // Maybe we should generate an OOB fault?
-    
-    (void) sim_cancel_step();
-    if (cancel == 0 || reason < cancel)
-        cancel = reason;
-    //sim_debug (DBG_DEBUG, & cpu_dev, "CU: Cancel requested: %d\n", reason);
-}
-#endif
 
 static uint get_highest_intr (void)
   {
@@ -2011,35 +1494,19 @@ bool sample_interrupts (void)
     return false;
   }
 
-#if 0
-static uint pollingInterval = 0;
-
-void resetPollingIntervals (void)
-  {
-    uint pollingInterval = 0;
-  }
-
-void doPolling (void)
-  {
-
-  }
-#endif
-
-static bool pollingFlag = false;
-
-void setPollingFlag (void)
-  {
-    pollingFlag = true;
-  }
-
 void clrPollingFlag (void)
   {
-    pollingFlag = false;
+    timeout_state [poll_clk] = 0;
   }
 
 bool tstPollingFlag (void)
   {
-    return pollingFlag;
+    return !! timeout_state [poll_clk];
+  }
+
+static void setupPolling (void)
+  {
+    timeout_set (poll_clk, POLL_INTERVAL, POLL_INTERVAL);
   }
 
 t_stat simh_hooks (void)
@@ -2059,7 +1526,7 @@ t_stat simh_hooks (void)
           return reason;
       }
         
-#ifndef EMUL_TR
+#ifndef SIMINT_BY_ACCESS
     // Guarantee the sim_interval will be decremented at least once.
     sim_interval --;
 #endif
@@ -2171,6 +1638,7 @@ static word36 instr_buf [2];
 t_stat sim_instr (void)
   {
     mux(SLS, 0, 0);
+    setupPolling ();
 
     UNIT *u = &mux_unit;
     if (u->filename == NULL || strlen(u->filename) == 0)
@@ -2242,7 +1710,8 @@ t_stat sim_instr (void)
        if (tstPollingFlag ())
          {
             clrPollingFlag ();
-
+//static int cnt = 0;
+//if (cnt ++ % 50 == 0) printf ("tock\n");
             static uint slowQueueSubsample = 0;
             if (slowQueueSubsample ++ > 50) // ~ 1Hz
               {
@@ -2283,23 +1752,7 @@ t_stat sim_instr (void)
              // Acutally have FETCH jump to EXECUTE
              // instead of breaking.
 
-#ifdef REAL_TR
-        static uint trSubsample = 0;
-        if (trSubsample ++ > 1024)
-          {
-            trSubsample = 0;
-            bool overrun;
-            UNUSED word27 rTR = getTR (& overrun);
-            if (overrun)
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-                ackTR ();
-                if (switches . tro_enable)
-                  setG7fault (FAULT_TRO, 0);
-              }
-          }
-#endif
-#ifdef TIMER_TR
+#ifdef ITIMER_TR
         if (getTRO ())
           {
 #ifdef TCHECK
@@ -2314,19 +1767,8 @@ if (delta_caught > 4) sim_printf ("delta_caught %lu\n", delta_caught);
               }
           }
 #endif
-#ifdef PTIMER_TR
-        if (getTRO ())
-          {
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-            clrTRO ();
-            if (switches . tro_enable)
-              {
-//sim_printf ("FAULT_TRO\n");
-                setG7fault (FAULT_TRO, 0);
-              }
-          }
-#endif
-#ifdef NOTIMER_TR
+
+#ifdef EMUL_TR
         // Sync. the TR with the emulator clock.
         static uint rTRlsb = 0;
         rTRlsb ++;
@@ -3075,7 +2517,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012llo (%s)\n",
                 addr, * data, ctx);
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
 #endif
     return 0;
@@ -3096,7 +2538,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012llo (%s)\n",
                 addr, data, ctx);
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
 #endif
     return 0;
@@ -3143,7 +2585,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr, * odd, ctx);
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
     sim_interval --;
 #endif
@@ -3308,7 +2750,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
-#ifdef EMUL_TR
+#ifdef SIMINT_BY_ACCESS
     sim_interval --;
     sim_interval --;
 #endif
