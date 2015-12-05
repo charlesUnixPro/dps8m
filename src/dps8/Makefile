@@ -234,6 +234,7 @@ C_SRCS += ./dps8_crdpun.c
 C_SRCS += ./dps8_cable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_urp.c
+C_SRCS += ./dps8_absi.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -271,6 +272,7 @@ H_SRCS += dps8_crdpun.h
 H_SRCS += dps8_cable.h
 H_SRCS += dps8_prt.h
 H_SRCS += dps8_urp.h
+H_SRCS += ./dps8_absi.h
 
 H_SRCS += shm.h
 

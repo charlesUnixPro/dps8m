@@ -34,6 +34,7 @@
 #include "dps8_prt.h"
 #include "dps8_urp.h"
 #include "dps8_cable.h"
+#include "dps8_absi.h"
 #include "utlist.h"
 
 #ifdef MULTIPASS
@@ -2146,6 +2147,7 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+    & absi_dev,
     NULL
   };
 
