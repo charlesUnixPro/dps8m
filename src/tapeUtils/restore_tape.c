@@ -101,11 +101,15 @@ static int read_mst_blk (int fd)
         if (rc == -1) // eof; so no next block
           {
             // not a repeat; put the file position back
+printf ("read_mst_blk eof backup\n");
             where = lseek (fd, where, SEEK_SET);
             break;
           }
         if (rc == 1) // tape mark; keep looking
-          continue;
+          {
+printf ("read_mst_blk eof backup\n");
+            continue;
+          }
 
         word36 w6 = extr36 (nxt, 5);     // flags
         //printf ("flags %036lo\n", w6);
@@ -131,7 +135,9 @@ static int read_mst_blk (int fd)
           * pa ++ = w9 & 0xff;
         }
     }
-
+{printf ("read_mst_blk ldr <"); for (int i = 0; i < 16; i ++) {
+if (isprint (blk_ascii [i])) printf ("%c", blk_ascii [i]); else
+printf ("\\%03o", blk_ascii [i]); } printf ("\n");}
     blk_num ++;
 
     word36 w1 = extr36 (blk, 0);     // c1
@@ -472,6 +478,7 @@ int main (int argc, char * argv [])
             //printf ("searching for header block\n");
             for (;;) // do while (! eof)
               {
+            printf ("searching for header block\n");
                 int rc = get_mst_record (& fd);
                 if (rc < 0)
                   goto eof;

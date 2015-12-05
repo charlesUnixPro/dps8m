@@ -37,7 +37,7 @@ enum { N_FNP_UNITS_MAX = 16 };
 // Disk
 //
 
-enum { N_DISK_UNITS_MAX = 17 };
+enum { N_DISK_UNITS_MAX = 16 };
 
 //
 // SCU

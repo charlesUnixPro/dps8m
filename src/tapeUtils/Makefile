@@ -23,12 +23,13 @@ P72S_OBJS = p72archive_to_segment.o bit36.o
 DD_OBJS = diskDump.o bit36.o
 ABA_OBJS = p72archive_bind_to_ascii.o bit36.o
 
-EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36
+EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36 reload
 
 OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS)
 
 all : $(EXES)
 
+reload: reload.o
 extract_tape_files : $(ETF_OBJS)
 mfile : $(MF_OBJS)
 dumpTape : $(DT_OBJS)
