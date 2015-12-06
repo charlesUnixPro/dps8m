@@ -324,6 +324,9 @@ locallibs_then_dps8 :
 
 # Other Targets
 
+udplib : udplib.c udplib.h
+	clang udplib.c -o udplib -DTEST=1
+
 .PHONY: zeromq czmq zyre 
 
 zmq: zeromq czmq zyre

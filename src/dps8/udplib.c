@@ -391,7 +391,7 @@ static int udp_receive_packet (int link, UDP_PACKET * ppkt, size_t pktsiz)
           return 0;
         return -1;
       }
-printf ("udp_receive_packet returns %ld", n);
+//printf ("udp_receive_packet returns %ld\n", n);
     return n;
   }
 
@@ -501,7 +501,171 @@ printf ("link %d - packet received (sequence=%d, length=%d)\n", link, pktseq, pk
 //#define TEST
 #ifdef TEST
 
+#define CBUFSIZE        256
+#define SCPE_ARG -1
+#define SCPE_OK -1
+
+/* sim_parse_addr       host:port
+
+   Presumption is that the input, if it doesn't contain a ':' character is a port specifier.
+   If the host field contains one or more colon characters (i.e. it is an IPv6 address), 
+   the IPv6 address MUST be enclosed in square bracket characters (i.e. Domain Literal format)
+
+   Inputs:
+        cptr    =       pointer to input string
+        default_host
+                =       optional pointer to default host if none specified
+        host_len =      length of host buffer
+        default_port
+                =       optional pointer to default port if none specified
+        port_len =      length of port buffer
+        validate_addr = optional name/addr which is checked to be equivalent
+                        to the host result of parsing the other input.  This
+                        address would usually be returned by sim_accept_conn.
+   Outputs:
+        host    =       pointer to buffer for IP address (may be NULL), 0 = none
+        port    =       pointer to buffer for IP port (may be NULL), 0 = none
+        result  =       status (SCPE_OK on complete success or SCPE_ARG if 
+                        parsing can't happen due to bad syntax, a value is 
+                        out of range, a result can't fit into a result buffer, 
+                        a service name doesn't exist, or a validation name 
+                        doesn't match the parsed host)
+*/
+
+int sim_parse_addr (const char *cptr, char *host, size_t host_len, const char *default_host, char *port, size_t port_len, const char *default_port, const char *validate_addr)
+{
+char gbuf[CBUFSIZE];
+char *hostp, *portp;
+char *endc;
+unsigned long portval;
+
+if ((cptr == NULL) || (*cptr == 0))
+    return SCPE_ARG;
+if ((host != NULL) && (host_len != 0))
+    memset (host, 0, host_len);
+if ((port != NULL) && (port_len != 0))
+    memset (port, 0, port_len);
+gbuf[sizeof(gbuf)-1] = '\0';
+strncpy (gbuf, cptr, sizeof(gbuf)-1);
+hostp = gbuf;                                           /* default addr */
+portp = NULL;
+if ((portp = strrchr (gbuf, ':')) &&                    /* x:y? split */
+    (NULL == strchr (portp, ']'))) {
+    *portp++ = 0;
+    if (*portp == '\0')
+        portp = (char *)default_port;
+    }
+else {                                                  /* No colon in input */
+    portp = gbuf;                                       /* Input is the port specifier */
+    hostp = (char *)default_host;                       /* host is defaulted if provided */
+    }
+if (portp != NULL) {
+    portval = strtoul(portp, &endc, 10);
+    if ((*endc == '\0') && ((portval == 0) || (portval > 65535)))
+        return SCPE_ARG;                                /* numeric value too big */
+    if (*endc != '\0') {
+        struct servent *se = getservbyname(portp, "tcp");
+
+        if (se == NULL)
+            return SCPE_ARG;                            /* invalid service name */
+        }
+    }
+if (port)                                               /* port wanted? */
+    if (portp != NULL) {
+        if (strlen(portp) >= port_len)
+            return SCPE_ARG;                            /* no room */
+        else
+            strcpy (port, portp);
+        }
+if (hostp != NULL) {
+    if (']' == hostp[strlen(hostp)-1]) {
+        if ('[' != hostp[0])
+            return SCPE_ARG;                            /* invalid domain literal */
+        /* host may be the const default_host so move to temp buffer before modifying */
+        strncpy(gbuf, hostp+1, sizeof(gbuf)-1);         /* remove brackets from domain literal host */
+        hostp = gbuf;
+        hostp[strlen(hostp)-1] = '\0';
+        }
+    }
+if (host)                                               /* host wanted? */
+    if (hostp != NULL) {
+        if (strlen(hostp) >= host_len)
+            return SCPE_ARG;                            /* no room */
+        else
+            strcpy (host, hostp);
+        }
+if (validate_addr) {
+    struct addrinfo *ai_host, *ai_validate, *ai;
+    int status;
+
+    if (hostp == NULL)
+        return SCPE_ARG;
+    if (getaddrinfo(hostp, NULL, NULL, &ai_host))
+        return SCPE_ARG;
+    if (getaddrinfo(validate_addr, NULL, NULL, &ai_validate)) {
+        freeaddrinfo (ai_host);
+        return SCPE_ARG;
+        }
+    status = SCPE_ARG;
+    for (ai = ai_host; ai != NULL; ai = ai->ai_next) {
+        if ((ai->ai_addrlen == ai_validate->ai_addrlen) &&
+            (ai->ai_family == ai_validate->ai_family) &&
+            (0 == memcmp (ai->ai_addr, ai_validate->ai_addr, ai->ai_addrlen))) {
+            status = SCPE_OK;
+            break;
+            }
+        }
+    if (status != SCPE_OK) {
+        /* be generous and allow successful validations against variations of localhost addresses */
+        if (((0 == strcmp("127.0.0.1", hostp)) &&
+             (0 == strcmp("::1", validate_addr))) ||
+            ((0 == strcmp("127.0.0.1", validate_addr)) &&
+             (0 == strcmp("::1", hostp))))
+            status = SCPE_OK;
+        }
+    freeaddrinfo (ai_host);
+    freeaddrinfo (ai_validate);
+    return status;
+    }
+return SCPE_OK;
+}
+
 int main (int argc, char * argv [])
   {
+    int rc;
+    int linkno;
+    rc = udp_create ("4500::4426", & linkno);
+    if (rc < 0)
+      {
+        printf ("udp_create failed\n");
+        exit (1);
+      }
+
+    while (1)
+      {
+#define psz 17000
+        uint16_t pkt [psz];
+        rc = udp_receive (linkno, pkt, psz);
+        if (rc < 0)
+          {
+            printf ("udp_receive failed\n");
+            exit (1);
+          }
+        else if (rc == 0)
+          {
+            printf ("udp_receive 0\n");
+            sleep (1);
+          }
+        else
+          {
+            for (int i = 0; i < rc; i ++)
+              {
+                printf ("  %06o  %04x  ", pkt [i], pkt [i]);
+                for (int b = 0; b < 16; b ++)
+                  printf ("%c", pkt [i] & (1 << b) ? '1' : '0');
+                printf ("\n");
+              }
+          }
+      }
   }
 #endif

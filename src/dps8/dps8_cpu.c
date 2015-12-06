@@ -25,6 +25,7 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
+#include "dps8_absi.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -1502,6 +1503,7 @@ last = M[01007040];
             consoleProcess ();
             AIO_CHECK_EVENT;
             dequeue_fnp_command ();
+            absiProcessEvent ();
           }
 #if 0
         if (sim_gtime () % 1024 == 0)

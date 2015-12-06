@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -13,6 +14,8 @@
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
+
+#include "udplib.h"
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -33,6 +36,8 @@
 static t_stat absi_reset (DEVICE * dptr);
 static t_stat absi_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat absi_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat absiAttach (UNIT *uptr, char *cptr);
+static t_stat absiDetach (UNIT *uptr);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
@@ -90,8 +95,8 @@ DEVICE absi_dev = {
     NULL,         /* deposit */ 
     absi_reset,   /* reset */
     NULL,         /* boot */
-    NULL,         /* attach */
-    NULL,         /* detach */
+    absiAttach,         /* attach */
+    absiDetach,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
@@ -106,6 +111,7 @@ DEVICE absi_dev = {
 
 static struct absi_state
   {
+    int link;
   } absi_state [N_ABSI_UNITS_MAX];
 
 /*
@@ -120,12 +126,16 @@ void absi_init (void)
     memset (absi_state, 0, sizeof (absi_state));
   }
 
-static t_stat absi_reset (DEVICE * dptr)
+static t_stat absi_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        sim_cancel (& absi_unit [i]);
-      }
+    //absiResetRX (0);
+    //absiResetTX (0);
+
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //sim_cancel (& absi_unit [i]);
+      //}
+    // if ((uptr->flags & UNIT_ATT) != 0) sim_activate(uptr, uptr->wait);
     return SCPE_OK;
   }
 
@@ -585,6 +595,32 @@ int absi_iom_cmd (uint iomUnitIdx, uint chan)
     return -1;
   }
 
+void absiProcessEvent (void)
+  {
+#define psz 17000
+    uint16_t pkt [psz];
+    int rc = udp_receive (0, pkt, psz);
+    if (rc < 0)
+      {
+        printf ("udp_receive failed\n");
+        exit (1);
+      }
+    else if (rc == 0)
+      {
+        //printf ("udp_receive 0\n");
+      }
+    else
+      {
+        for (int i = 0; i < rc; i ++)
+          {
+            printf ("  %06o  %04x  ", pkt [i], pkt [i]);
+            for (int b = 0; b < 16; b ++)
+              printf ("%c", pkt [i] & (1 << b) ? '1' : '0');
+            printf ("\n");
+          }
+      }
+  }
+
 static t_stat absi_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
   {
     sim_printf("Number of ABSIunits in system is %d\n", absi_dev . numunits);
@@ -599,6 +635,59 @@ static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cp
     absi_dev . numunits = n;
     return SCPE_OK;
   }
+
+t_stat absiAttach (UNIT * uptr, char * cptr)
+  {
+    int unitno = uptr - absi_unit;
+
+    //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
+
+    t_stat ret;
+    char * pfn;
+    //uint16 imp = 0; // we only support a single attachment to a single IMP
+
+    // If we're already attached, then detach ...
+    if ((uptr -> flags & UNIT_ATT) != 0)
+      detach_unit (uptr);
+
+    //   Make a copy of the "file name" argument.  udp_create() actually modifies
+    // the string buffer we give it, so we make a copy now so we'll have something
+    // to display in the "SHOW HIn ..." command.
+    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
+    if (pfn == NULL)
+      return SCPE_MEM;
+    strncpy (pfn, cptr, CBUFSIZE);
+
+    // Create the UDP connection.
+    ret = udp_create (cptr, & absi_state [unitno] . link);
+    if (ret != SCPE_OK)
+      {
+        free (pfn);
+        return ret;
+      }
+
+    uptr -> flags |= UNIT_ATT;
+    uptr -> filename = pfn;
+    return SCPE_OK;
+  }
+
+// Detach (connect) ...
+t_stat absiDetach (UNIT * uptr)
+  {
+    int unitno = uptr - absi_unit;
+    t_stat ret;
+    if ((uptr -> flags & UNIT_ATT) == 0)
+      return SCPE_OK;
+    ret = udp_release (absi_state [unitno] . link);
+    if (ret != SCPE_OK)
+      return ret;
+    absi_state [unitno] . link = NOLINK;
+    uptr -> flags &= ~UNIT_ATT;
+    free (uptr -> filename);
+    uptr -> filename = NULL;
+    return SCPE_OK;
+  }
+
 
 
 
