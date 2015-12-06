@@ -270,7 +270,7 @@ static void writeLabel (void)
 
 static void usage (void)
   {
-    printf ("mdump root tapename\n");
+    printf ("cdump root tapename\n");
     exit (1);
   }
 
