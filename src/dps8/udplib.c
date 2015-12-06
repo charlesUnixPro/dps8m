@@ -59,6 +59,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <netdb.h>
+#include <errno.h>
 
 
 #include "udplib.h"
@@ -89,7 +90,6 @@ struct _UDP_LINK
     int sock;
     uint32_t  rxsequence;           // next message sequence number for receive
     uint32_t  txsequence;           // next message sequence number for transmit
-    //struct udpdev  * dptr;                // Device associated with link
   };
 
 typedef struct _UDP_LINK UDP_LINK;
@@ -109,6 +109,7 @@ struct _UDP_PACKET {
   uint32_t  magic;                // UDP "magic number" (see above)
   uint32_t  sequence;             // UDP packet sequence number
   uint16_t  count;                // number of H316 words to follow
+  uint16_t  flags;                // number of H316 words to follow
   uint16_t  data[MAXDATA];        // and the actual H316 data words/IMP packet
 };
 typedef struct _UDP_PACKET UDP_PACKET;
@@ -118,7 +119,7 @@ static UDP_LINK udp_links [MAXLINKS];
 
 int sim_parse_addr (const char * cptr, char * host, size_t hostlen, const char * default_host, char * port, size_t port_len, const char * default_port, const char * validate_addr);
 
-static int udp_parse_remote (int32_t link, char * premote)
+static int udp_parse_remote (int link, char * premote)
   {
     // This routine will parse a remote address string in any of these forms -
     //
@@ -204,7 +205,7 @@ static int udp_find_free_link (void)
 // 0: ok
 // -1: out of links
 
-int udp_create (struct udpdev * dptr, char * premote, int32_t * pln)
+int udp_create (char * premote, int * pln)
   {
     int rc;
     //   Create a logical UDP link to the specified remote system.  The "remote"
@@ -220,7 +221,7 @@ int udp_create (struct udpdev * dptr, char * premote, int32_t * pln)
     // which is a handle used to identify this connection to all future udp_xyz()
     //  calls.
 
-    int32_t link = udp_find_free_link ();
+    int link = udp_find_free_link ();
     if (link < 0)
       return -1; // out of links
 
@@ -285,7 +286,7 @@ printf ("link %d - listening on port %s and sending to %s:%s\n", link, udp_links
     return 0;
   }
 
-int udp_release (struct udpdev * dptr, int32_t link)
+int udp_release (int link)
   {
     //   Close a link that was created by udp_create() and release any resources
     // allocated to it.  We always return SCPE_OK unless the link specified is
@@ -306,7 +307,7 @@ printf("link %d - closed\n", link);
     return 0;
   }
 
-int udp_send (struct udpdev * dptr, int32_t link, uint16_t * pdata, uint16_t count)
+int udp_send (int link, uint16_t * pdata, uint16_t count, uint16_t flags)
   {
     //   This routine does all the work of sending an IMP data packet.  pdata
     // is a pointer (usually into H316 simulated memory) to the IMP packet data,
@@ -334,6 +335,7 @@ int udp_send (struct udpdev * dptr, int32_t link, uint16_t * pdata, uint16_t cou
     pkt . magic = htonl (MAGIC);
     pkt . sequence = htonl (udp_links [link] . txsequence ++);
     pkt . count = htons (count);
+    pkt . flags = htons (flags);
     for (i = 0; i < count; i ++)
       pkt . data [i] = htons (* pdata ++);
     pktlen = UDP_HEADER_LEN + count * sizeof (uint16_t);
@@ -353,7 +355,47 @@ printf ("link %d - packet sent (sequence=%d, length=%d)\n", link, ntohl (pkt . s
     return 0;
   }
 
-int32_t udp_receive (struct udpdev * dptr, int32_t link, uint16_t * pdata, uint16_t maxbuf)
+static int udp_receive_packet (int link, UDP_PACKET * ppkt, size_t pktsiz)
+  {
+    //   This routine will do the hard part of receiving a UDP packet.  If it's
+    // successful the packet length, in bytes, is returned.  The receiver socket
+    // is non-blocking, so if no packet is available then zero will be returned
+    // instead.  Lastly, if a fatal socket I/O error occurs, -1 is returned.
+    //
+    //   Note that this routine only receives the packet - it doesn't handle any
+    // of the checking for valid packets, unexpected packets, duplicate or out of
+    // sequence packets.  That's strictly the caller's problem!
+
+#if 0
+    ssize_t pktsiz;
+    const uint8 * pbuf;
+    int ret;
+  
+    udp_lines [link] . rcve = true;          // Enable receiver
+    tmxr_poll_rx (&udp_tmxr);
+    ret = tmxr_get_packet_ln (&udp_lines[link], &pbuf, &pktsiz);
+    udp_lines[link].rcve = FALSE;          // Disable receiver
+    if (ret != SCPE_OK) {
+      udp_error(link, "tmxr_get_packet_ln()");
+      return NOLINK;
+    }
+    if (pbuf == NULL) return 0;
+    // Got a packet, so copy it to the packet buffer
+    memcpy (ppkt, pbuf, pktsiz);
+#endif
+
+    ssize_t n = read (udp_links [link] . sock, ppkt, pktsiz);
+    if (n < 0)
+      {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+          return 0;
+        return -1;
+      }
+printf ("udp_receive_packet returns %ld", n);
+    return n;
+  }
+
+int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
   {
     //   Receive an IMP packet from the virtual modem. pdata is a pointer usually
     // directly into H316 simulated memory) to where the IMP packet data should
@@ -380,7 +422,7 @@ int32_t udp_receive (struct udpdev * dptr, int32_t link, uint16_t * pdata, uint1
     //if (dptr != udp_links [link] . dptr)
       //return SCPE_IERR;
   
-    while ((pktlen = udp_receive_packet (link, & pkt)) > 0)
+    while ((pktlen = udp_receive_packet (link, & pkt, sizeof (pkt))) > 0)
       {
         // First do some header checks for a valid UDP packet ...
         if (((size_t) pktlen) < UDP_HEADER_LEN)
@@ -456,3 +498,10 @@ printf ("link %d - packet received (sequence=%d, length=%d)\n", link, pktseq, pk
     return pktlen;
   }
 
+//#define TEST
+#ifdef TEST
+
+int main (int argc, char * argv [])
+  {
+  }
+#endif
