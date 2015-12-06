@@ -1,0 +1,223 @@
+cload:
+  procedure;
+
+/*
+    dcl ios_$attach  entry (char (*) aligned, char (*), char (*), char (*), bit (72) aligned);
+    dcl com_err_ entry options (variable);
+
+
+    dcl card_device  char (32) init ("rdrb");
+    dcl card_dim char (32) init ("crz");
+    dcl status bit (72) aligned;
+
+    dcl 1 stat                 aligned based (addr (status)),
+          2 word1              fixed bin (35),
+          2 iocode             fixed bin (35);
+*/
+    dcl iox_$attach_ioname entry (char (*), ptr, char (*), fixed bin (35));
+    dcl iox_$open entry (ptr, fixed bin, bit (1) aligned, fixed bin (35));
+    dcl iox_$read_record entry (ptr, ptr, fixed bin (21), fixed bin (21), 
+             fixed bin (35));
+    dcl iox_$close entry (ptr, fixed bin (35));
+    dcl iox_$detach_iocb entry (ptr, fixed bin (35));
+    dcl iox_$get_chars entry (ptr, ptr, fixed bin(21), fixed bin(21),
+             fixed bin(35));
+
+    dcl hcs_$append_branch entry (char(*), char(*), fixed bin(5),
+            fixed bin(35));
+    dcl hcs_$append_branchx entry (char(*), char(*), fixed bin(5),
+            (3) fixed bin(6), char(*), fixed bin(1), fixed bin(1),
+            fixed bin(24), fixed bin(35));
+    dcl hcs_$make_seg entry (char(*), char(*), char(*), fixed bin(5),
+            ptr, fixed bin(35));
+    dcl hcs_$set_bc_seg entry (ptr, fixed bin(24), fixed bin(35));
+    dcl hcs_$terminate_noname entry (ptr, fixed bin(35));
+
+    dcl get_group_id_$tag_star returns (char (32) aligned);
+
+    dcl get_wdir_ entry returns (character (168));
+
+    dcl ioa_ entry options (variable);
+    dcl com_err_ entry options (variable);
+    
+    dcl error_table_$end_of_info fixed binary (35) external;
+
+    dcl iocbp ptr;
+    dcl code fixed (35);
+    dcl buffer char (4096);
+    dcl p ptr;
+    dcl segp ptr;
+    dcl char_count fixed bin (21);
+    dcl bc fixed bin (24);
+    dcl this_read_bits fixed bin;
+    dcl this_read_chars fixed bin (21);
+    dcl path character (168);
+    dcl bn fixed bin;
+
+    dcl 1 h based aligned,
+          2 type fixed binary,        /* 0 */
+          2 bitcnt fixed binary,      /* 1 */
+          2 dlen fixed binary,        /* 2 */
+          2 dname character (168),    /* 3 */
+          2 elen fixed binary,        /* 45 */
+          2 ename character (32);     /* 46 */
+                                      /* 54 */
+
+    dcl 1 s based aligned,
+          2 block (1:255) char (4096);
+
+    dcl  rings (3) fixed binary (6);
+
+
+    rings (1) = 4;
+    rings (2) = 4;
+    rings (3) = 4;
+
+    
+    call iox_$attach_ioname  ("tape_switch", iocbp, "tape_nstd_ Test", code);
+    if code ^= 0 then do;
+      call com_err_ (code, "cload", "attach_ioname");
+      goto done;
+    end;
+
+    call iox_$open (iocbp, Sequential_input, "0"b, code);
+    if code ^= 0 then do;
+      call com_err_ (code, "cload", "open");
+      goto done1;
+    end;
+
+    p = addr (buffer);
+
+    /* skip the label and first mark */
+    call iox_$read_record (iocbp, p, 4096, char_count, code);
+    /*call ioa_ ("read label char_count ^d code ^d ^w", char_count, code, p -> h.type); */
+    if code ^= 0 then
+      call com_err_ (code, "cload", "read label");
+
+    call iox_$read_record (iocbp, p, 4096, char_count, code);
+    /*call ioa_ ("read label mark char_count ^d code ^d ^w", char_count, code, p -> h.type);*/
+    if code ^= error_table_$end_of_info | char_count ^= 0 then
+      call com_err_ (code, "cload", "read label mark");
+
+/* Loop over segments */
+
+loop:
+
+    /* Read the header */
+    call iox_$read_record (iocbp, p, 4096, char_count, code);
+    /* call ioa_ ("read code ^d char_count ^d type ^w bitcnt ^w", code, char_count, p -> h.type, p -> h.bitcnt); */
+    if code ^= 0 then do;
+      call com_err_ (code, "cload", "read header");
+      goto done2;
+    end;
+
+
+    if p -> h.type = 0 then do; /* dir */
+       call ioa_ ("DIR: ^a>^a", p -> h.dname, p -> h.ename);
+       if p -> h.dlen ^= 0 then
+           path = rtrim (get_wdir_ ()) || ">" || substr (p -> h.dname, 1, p -> h.dlen);
+       else
+           path = rtrim (get_wdir_ ());
+       /* call ioa_ ("^a", path); */
+       call hcs_$append_branchx (path,
+              substr (p -> h.ename, 1, p -> h.elen),
+              1011b, /* sma */
+              rings,
+              (get_group_id_$tag_star ()), /* user_id */
+              1b, /* dirsw */
+              0b, /* copy_sw */
+              0, /* bit_count */
+              code);
+      if code ^= 0 then do;
+        call com_err_ (code, "cload", "append_branchx");
+        goto done2;
+      end;
+
+    end;
+
+
+    else if p -> h.type = 1 then do; /* seg */
+       call ioa_ ("SEG: ^a>^a", p -> h.dname, p -> h.ename);
+
+       call hcs_$make_seg (rtrim (get_wdir_ ()) || ">" || substr (p -> h.dname, 1, p -> h.dlen),
+              substr (p -> h.ename, 1, p -> h.elen),
+              "", /* ref_name */
+              1110b, /* rew */
+              segp,
+              code);
+       if code ^= 0 then do;
+         call com_err_ (code, "cload", "make_seg");
+         goto done2;
+       end;
+
+       bc = p -> h.bitcnt;
+       call hcs_$set_bc_seg (segp, bc, code);
+       if code ^= 0 then do;
+         call com_err_ (code, "cload", "set_bc_seg");
+         goto done2;
+       end;
+
+       bn = 0;
+dloop:
+       if (bc > 0) then do;
+           /* Calculate the number of bits in the next block */
+           this_read_bits = bc;
+           if (this_read_bits > 4096 * 9) then
+               this_read_bits = 4096 * 9;
+           this_read_chars = this_read_bits / 9;
+
+           bn = bn + 1;
+           p = addr (segp -> s.block (bn));
+
+           /* Read a block of data */
+           call iox_$read_record (iocbp, p, this_read_chars, char_count, code);
+           if code ^= 0 then do;
+             call com_err_ (code, "cload", "read data");
+             goto done2;
+           end;
+           bc = bc - this_read_bits;
+           goto dloop;
+       end;
+
+       call hcs_$terminate_noname (segp, code);
+       if code ^= 0 then do;
+           call com_err_ (code, "cload", "terminate data");
+           goto done2;
+       end;
+
+    end;
+
+
+
+    else if p -> h.type = 2 then do; /* end */
+       call ioa_ ("END: ^a>^a", p -> h.dname, p -> h.ename);
+       goto done2;
+    end;
+
+
+    else do;
+       call ioa_ ("Bad value in h.type: ^d", p -> h.type);
+       goto done2;
+    end;
+
+    /* read eod mark */
+    p = addr (buffer);
+    call iox_$read_record (iocbp, p, 4096, char_count, code);
+    /* call ioa_ ("read eod mark char_count ^d code ^d ^w", char_count, code, p -> h.type); */
+    if code ^= error_table_$end_of_info | char_count ^= 0 then do;
+      call com_err_ (code, "cload", "read eod mark");
+       goto done2;
+    end;
+
+    goto loop;
+
+done2:
+    call iox_$close (iocbp, code);
+done1:
+    call iox_$detach_iocb (iocbp, code);
+done:
+    return;
+
+%include iox_modes;
+
+  end;
