@@ -599,25 +599,32 @@ void absiProcessEvent (void)
   {
 #define psz 17000
     uint16_t pkt [psz];
-    int rc = udp_receive (0, pkt, psz);
-    if (rc < 0)
+    int sz = udp_receive (0, pkt, psz);
+    if (sz < 0)
       {
         printf ("udp_receive failed\n");
-        exit (1);
       }
-    else if (rc == 0)
+    else if (sz == 0)
       {
         //printf ("udp_receive 0\n");
       }
     else
       {
-        for (int i = 0; i < rc; i ++)
+        for (int i = 0; i < sz; i ++)
           {
             printf ("  %06o  %04x  ", pkt [i], pkt [i]);
             for (int b = 0; b < 16; b ++)
-              printf ("%c", pkt [i] & (1 << b) ? '1' : '0');
+              printf ("%c", pkt [i] & (1 << (16 - b)) ? '1' : '0');
             printf ("\n");
           }
+// Send a NOP reply
+    //int16_t reply [2] = 0x0040
+    int rc = udp_send (0, pkt, sz, PFLG_FINAL);
+    if (rc < 0)
+      {
+        printf ("udp_send failed\n");
+      }
+
       }
   }
 

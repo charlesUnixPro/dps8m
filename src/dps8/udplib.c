@@ -348,8 +348,9 @@ int udp_send (int link, uint16_t * pdata, uint16_t count, uint16_t flags)
 
     int rc = send (udp_links [link] . sock, & pkt, pktlen, 0);
     if (rc == -1)
-      return -2;
-
+      {
+        return -2;
+      }
     //sim_debug(IMP_DBG_UDP, dptr, "link %d - packet sent (sequence=%d, length=%d)\n", link, ntohl(pkt.sequence), ntohs(pkt.count));
 printf ("link %d - packet sent (sequence=%d, length=%d)\n", link, ntohl (pkt . sequence), ntohs (pkt . count));
     return 0;
