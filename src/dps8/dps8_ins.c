@@ -5601,29 +5601,29 @@ static t_stat DoBasicInstruction (void)
 //     111 4096K   2^22
 
                   rA  = 0;
-                  rA |= (switches . assignment  [0] & 07L)  << (35 -  (2 +  0));
-                  rA |= (switches . enable      [0] & 01L)  << (35 -  (3 +  0));
-                  rA |= (switches . init_enable [0] & 01L)  << (35 -  (4 +  0));
-                  rA |= (switches . interlace   [0] ? 1:0)  << (35 -  (5 +  0));
-                  rA |= (switches . store_size  [0] & 07L)  << (35 -  (8 +  0));
+                  rA |= (switches . assignment  [0] & 07LL)  << (35 -  (2 +  0));
+                  rA |= (switches . enable      [0] & 01LL)  << (35 -  (3 +  0));
+                  rA |= (switches . init_enable [0] & 01LL)  << (35 -  (4 +  0));
+                  rA |= (switches . interlace   [0] ? 1LL:0LL)  << (35 -  (5 +  0));
+                  rA |= (switches . store_size  [0] & 07LL)  << (35 -  (8 +  0));
 
-                  rA |= (switches . assignment  [1] & 07L)  << (35 -  (2 +  9));
-                  rA |= (switches . enable      [1] & 01L)  << (35 -  (3 +  9));
-                  rA |= (switches . init_enable [1] & 01L)  << (35 -  (4 +  9));
-                  rA |= (switches . interlace   [1] ? 1:0)  << (35 -  (5 +  9));
-                  rA |= (switches . store_size  [1] & 07L)  << (35 -  (8 +  9));
+                  rA |= (switches . assignment  [1] & 07LL)  << (35 -  (2 +  9));
+                  rA |= (switches . enable      [1] & 01LL)  << (35 -  (3 +  9));
+                  rA |= (switches . init_enable [1] & 01LL)  << (35 -  (4 +  9));
+                  rA |= (switches . interlace   [1] ? 1LL:0LL)  << (35 -  (5 +  9));
+                  rA |= (switches . store_size  [1] & 07LL)  << (35 -  (8 +  9));
 
-                  rA |= (switches . assignment  [2] & 07L)  << (35 -  (2 + 18));
-                  rA |= (switches . enable      [2] & 01L)  << (35 -  (3 + 18));
-                  rA |= (switches . init_enable [2] & 01L)  << (35 -  (4 + 18));
-                  rA |= (switches . interlace   [2] ? 1:0)  << (35 -  (5 + 18));
-                  rA |= (switches . store_size  [2] & 07L)  << (35 -  (8 + 18));
+                  rA |= (switches . assignment  [2] & 07LL)  << (35 -  (2 + 18));
+                  rA |= (switches . enable      [2] & 01LL)  << (35 -  (3 + 18));
+                  rA |= (switches . init_enable [2] & 01LL)  << (35 -  (4 + 18));
+                  rA |= (switches . interlace   [2] ? 1LL:0LL)  << (35 -  (5 + 18));
+                  rA |= (switches . store_size  [2] & 07LL)  << (35 -  (8 + 18));
 
-                  rA |= (switches . assignment  [3] & 07L)  << (35 -  (2 + 27));
-                  rA |= (switches . enable      [3] & 01L)  << (35 -  (3 + 27));
-                  rA |= (switches . init_enable [3] & 01L)  << (35 -  (4 + 27));
-                  rA |= (switches . interlace   [3] ? 1:0)  << (35 -  (5 + 27));
-                  rA |= (switches . store_size  [3] & 07L)  << (35 -  (8 + 27));
+                  rA |= (switches . assignment  [3] & 07LL)  << (35 -  (2 + 27));
+                  rA |= (switches . enable      [3] & 01LL)  << (35 -  (3 + 27));
+                  rA |= (switches . init_enable [3] & 01LL)  << (35 -  (4 + 27));
+                  rA |= (switches . interlace   [3] ? 1LL:0LL)  << (35 -  (5 + 27));
+                  rA |= (switches . store_size  [3] & 07LL)  << (35 -  (8 + 27));
                   break;
 
                 case 2: // fault base and processor number  switches
