@@ -1431,26 +1431,25 @@ static void setupPolling (void)
 
 
 #ifdef EMUL_TR
-static word27 emulTR;
+static word27 shadowTR;
 
 void setTR (word27 val)
   {
     val &= MASK27;
     if (val)
       {
-        emulTR = val & MASK27;
+        shadowTR = val & MASK27;
       }
     else
       {
         // Special case
-        emulTR = -1 & MASK27;
+        shadowTR = -1 & MASK27;
       }
   }
 
 word27 getTR (void)
   {
-    shadowTR = emulTR;
-    return emulTR;
+    return shadowTR;
   }
 
 void ackTR (void)
@@ -1719,20 +1718,28 @@ t_stat sim_instr (void)
             //sim_printf ("reason: %d\n", reason);
             break;
           }
-
+#ifdef ITIMER_TR
        // We expect this to be set at POLLING_HZ 
        if (tstPollingFlag ())
+#endif
+#ifdef EMUL_TR
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+#endif
          {
 #ifdef ITIMER_TR
 //static int xx = 0;
 //if (xx ++ % POLLING_HZ == 0) printf ("ping %ld\n", time(NULL));
+            clrPollingFlag ();
             updateTR ();
 #endif
-            clrPollingFlag ();
+#ifdef EMUL_TR
+            queueSubsample = 0;
+#endif
 //static int cnt = 0;
 //if (cnt ++ % 50 == 0) printf ("tock\n");
             static uint slowQueueSubsample = 0;
-            if (slowQueueSubsample ++ > 50) // ~ 1Hz
+            if (slowQueueSubsample ++ > POLLING_HZ) // ~ 1Hz
               {
 //sim_printf ("click\n");
                 slowQueueSubsample = 0;
