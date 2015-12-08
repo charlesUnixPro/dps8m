@@ -54,9 +54,17 @@
 // Generate TR values form itimers. Slightly more portable.
 #define ITIMER_TR
 
+
 // Model TR values by memory access cycles.
 //#define EMUL_TR
 
+
+
+
+
+
+// device polling in Hz
+#define POLLING_HZ 100U
 
 // Improve sim_interval by counting memory accesses
 #define SIMINT_BY_ACCESS
