@@ -13,6 +13,9 @@ endif
 #CFLAGS  = -g -O0
 CFLAGS  = -g -O3
 
+CFLAGS += -ccc-host-triple armv7l-unknown-eabihf -mfpu=vfp -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfloat-abi=hard
+#LDFLAGS += /usr/lib/arm-linux-gnueabihf/libm.a
+
 #CFLAGS = -m32
 #CFLAGS = -m64
 
@@ -27,7 +30,7 @@ CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
 CFLAGS += -DUSE_INT64
 #CFLAGS += -DMULTIPASS
 
-LDFLAGS = -g
+LDFLAGS += -g
 #CFLAGS += -pg
 #LDFLAGS += -pg
 

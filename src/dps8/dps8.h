@@ -30,6 +30,8 @@
 #define USE_INT64
 #endif
 
+// 32 bit int128 code
+#include "dps8_int128_32.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED

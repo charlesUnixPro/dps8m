@@ -38,6 +38,9 @@ long double exp2l (long double e) {
  */
 long double EAQToIEEElongdouble(void)
 {
+#if 1
+return 0.0;
+#else
     // mantissa
     word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);
 
@@ -67,6 +70,7 @@ long double EAQToIEEElongdouble(void)
         return (S ? -1 : 1) * exp2l(e);
     
     return (S ? -1 : 1) * ldexpl(m, e);
+#endif
 }
 
 #ifndef QUIET_UNUSED

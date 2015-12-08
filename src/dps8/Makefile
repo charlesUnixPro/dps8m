@@ -180,6 +180,7 @@ zzzCFLAGS += \
 
 # Enable M[] as shared memory segment
 #LDFLAGS += -lrt
+LDFLAGS += -lrt -lm
 
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
@@ -234,6 +235,7 @@ C_SRCS += ./dps8_crdpun.c
 C_SRCS += ./dps8_cable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_urp.c
+C_SRCS += ./dps8_int128_32.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -271,6 +273,7 @@ H_SRCS += dps8_crdpun.h
 H_SRCS += dps8_cable.h
 H_SRCS += dps8_prt.h
 H_SRCS += dps8_urp.h
+H_SRCS += dps8_int128_32.h
 
 H_SRCS += shm.h
 
