@@ -1316,20 +1316,33 @@ void axbd (uint sz)
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    word36 r = getCrAR (reg);
+    uint64_t r = getCrAR (reg);
+
+    if (sz == 1)
+      r = SIGNEXT24_64 (r);
+    else if (sz == 4)
+      r = SIGNEXT22_64 (r);
+    else if (sz == 6)
+      r = SIGNEXT21_64 (r);
+    else if (sz == 9)
+      r = SIGNEXT21_64 (r);
+    else // if (sz == 36)
+      r = SIGNEXT18_64 (r);
+
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd sz %d ARn 0%o address 0%o reg 0%o r 0%lo\n", sz, ARn, address, reg, r);
 
   
-    uint augend = 0;
+    uint64_t augend = 0;
     if (GET_A (cu . IWB))
-       augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
-    uint addend = address * 36 + r * sz;
-    uint sum = augend + addend;
+       augend = AR [ARn] . WORDNO * 36lu + AR [ARn] . BITNO;
+    uint64_t addend = address * 36lu + r * sz;
+    uint64_t sum = augend + addend;
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%lo addend 0%lo sum 0%lo\n", augend, addend, sum);
 
-    AR [ARn] . WORDNO = sum / 36;
-    AR [ARn] . BITNO = sum % 36;
+    AR [ARn] . WORDNO = sum / 36u;
+    AR [ARn] . BITNO = sum % 36u;
     AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
-
 
 void sxbd (uint sz)
   {
@@ -1338,16 +1351,32 @@ void sxbd (uint sz)
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    word36 r = getCrAR (reg);
+    uint64_t r = getCrAR (reg);
 
-    uint minuend = 0;
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d r 0%lo\n", sz, r);
+    if (sz == 1)
+      r = SIGNEXT24_64 (r);
+    else if (sz == 4)
+      r = SIGNEXT22_64 (r);
+    else if (sz == 6)
+      r = SIGNEXT21_64 (r);
+    else if (sz == 9)
+      r = SIGNEXT21_64 (r);
+    else // if (sz == 36)
+      r = SIGNEXT18_64 (r);
+
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%lo\n", sz, ARn, address, reg, r);
+
+    uint64_t minuend = 0;
     if (GET_A (cu . IWB))
-       minuend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
-    uint subtractend = address * 36 + r * sz;
-    uint difference = minuend - subtractend;
+       minuend = AR [ARn] . WORDNO * 36lu + AR [ARn] . BITNO;
+    uint64_t subtractend = address * 36lu + r * sz;
+    uint64_t difference = minuend - subtractend;
 
-    AR [ARn] . WORDNO = difference / 36;
-    AR [ARn] . BITNO = difference % 36;
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd minuend 0%lo subtractend 0%lo difference 0%lo\n", minuend, subtractend, difference);
+
+    AR [ARn] . WORDNO = difference / 36u;
+    AR [ARn] . BITNO = difference % 36u;
     AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 

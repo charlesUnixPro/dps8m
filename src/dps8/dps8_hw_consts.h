@@ -67,6 +67,7 @@ enum { N_DEV_CODES = 64 };
 #define MASKHI18        0777777000000LLU
 #define MASK20          03777777U                // 20-bit data mask
 #define MASK24          077777777U               // 24-bit data mask
+#define SIGN24          040000000U
 #define SIGN36          0400000000000LLU         // sign bit of a 36-bit word
 #define BIT37          01000000000000LLU         // carry out bit from 36 bit arithmetic
 #define BIT38          02000000000000LLU         // carry out bit from 37 bit arithmetic
@@ -126,16 +127,19 @@ enum { N_DEV_CODES = 64 };
 
 #define GET24(a)        ((word24) ((a) & MASK24))
 #define MASK21          07777777llu
+#define SIGN21          04000000llu
+#define MASK22          017777777llu
+#define SIGN22          010000000llu
 #define MASK27          0777777777llu
 
 
-// Sign extent DPS8 words into host words
+// Sign extend DPS8 words into host words
 
 static inline int SIGNEXT6_int (word6 w)
   {
     if (w & SIGN6)
       {
-        return w | (((uint) -1) << 6);
+        return ((int) w) | (((uint) -1) << 6);
       }
     return w & MASK6;
   }
@@ -144,7 +148,7 @@ static inline int32 SIGNEXT18_32 (word18 w)
   {
     if (w & SIGN18)
       {
-        return (w | ((uint32) -1) << 18);
+        return ((int32) w) | (((uint32) -1) << 18);
       }
     return w & MASK18;
   }
@@ -153,23 +157,59 @@ static inline t_int64 SIGNEXT36_64 (word36 w)
   {
     if (w & SIGN36)
       {
-        return w | ((t_uint64) -1l) << 36;
+        return ((t_int64) w) | ((t_uint64) -1ll) << 36;
       }
     return w & MASK36;
+  }
+
+static inline t_int64 SIGNEXT18_64 (word36 w)
+  {
+    if (w & SIGN18)
+      {
+        return ((t_int64) w) | ((t_uint64) -1ll) << 18;
+      }
+    return w & MASK18;
+  }
+
+static inline t_int64 SIGNEXT21_64 (word36 w)
+  {
+    if (w & SIGN21)
+      {
+        return ((t_int64) w) | ((t_uint64) -1ll) << 21;
+      }
+    return w & MASK21;
+  }
+
+static inline t_int64 SIGNEXT22_64 (word36 w)
+  {
+    if (w & SIGN22)
+      {
+        return ((t_int64) w) | ((t_uint64) -1ll) << 22;
+      }
+    return w & MASK22;
+  }
+
+static inline t_int64 SIGNEXT24_64 (word36 w)
+  {
+    if (w & SIGN24)
+      {
+        return ((t_int64) w) | ((t_uint64) -1ll) << 24;
+      }
+    return w & MASK24;
   }
 
 static inline int128 SIGNEXT72_128 (word72 w)
   {
     if (w & SIGN72)
       {
-        return w | (((uint128) -1ll) << 72);
+        return ((int128) w) | (((uint128) -1ll) << 72);
       }
     return w & MASK72;
   }
 
 // Sign extend DPS8 words into DPS8 words
 // NB: The high order bits in the host container will
-// set to 0; you cannnot do host math with
+// set to 0; you cannot do host math with
 // there results.
 
 static inline word18 SIGNEXT15_18 (word15 w)
