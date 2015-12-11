@@ -1254,8 +1254,8 @@ void a4bd (void)
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    word36 r = getCrAR (reg);
-
+    uint64_t r = getCrAR (reg);
+    r = SIGNEXT22_64 (r);
   
     uint augend = 0;
     if (GET_A (cu . IWB))
@@ -1286,7 +1286,8 @@ void s4bd (void)
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    word36 r = getCrAR (reg);
+    uint64_t r = getCrAR (reg);
+    r = SIGNEXT22_64 (r);
 
     uint minuend = 0;
     if (GET_A (cu . IWB))
