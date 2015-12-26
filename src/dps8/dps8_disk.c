@@ -603,6 +603,7 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
+    UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
     sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
@@ -672,6 +673,8 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 #endif
     p -> charPos = 0;
     p -> stati = 04000;
+    if (! unitp -> fileref)
+      p -> stati = 04240; // device offline
     p -> initiate = false;
     return 0;
   }
@@ -682,6 +685,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
+    UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
     disk_statep -> io_mode = no_mode;
@@ -692,6 +696,9 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
+            if (! unitp -> fileref)
+              p -> stati = 04240; // device offline
+
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Request status %d\n", devUnitIdx);
           }
@@ -707,6 +714,12 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 025: // CMD 25 READ
           {
+            // XXX is it correct to not process the DDCWs?
+            if (! unitp -> fileref)
+              {
+                p -> stati = 04240; // device offline
+                break;
+              }
             int rc = diskRead (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -715,6 +728,12 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 030: // CMD 30 SEEK_512
           {
+            // XXX is it correct to not process the DDCWs?
+            if (! unitp -> fileref)
+              {
+                p -> stati = 04240; // device offline
+                break;
+              }
             int rc = diskSeek512 (iomUnitIdx, chan);
             if (rc)
               return -1;
@@ -723,6 +742,12 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 031: // CMD 31 WRITE
           {
+            // XXX is it correct to not process the DDCWs?
+            if (! unitp -> fileref)
+              {
+                p -> stati = 04240; // device offline
+                break;
+              }
             p -> isRead = false;
             int rc = diskWrite (iomUnitIdx, chan);
             if (rc)
@@ -749,6 +774,8 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            if (! unitp -> fileref)
+              p -> stati = 04240; // device offline
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", devUnitIdx);
           }
@@ -758,6 +785,8 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           {
             sim_debug (DBG_NOTIFY, & disk_dev, "Restore %d\n", devUnitIdx);
             p -> stati = 04000;
+            if (! unitp -> fileref)
+              p -> stati = 04240; // device offline
           }
           break;
 
