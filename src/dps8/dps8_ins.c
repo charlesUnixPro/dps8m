@@ -1152,7 +1152,16 @@ restart_1:
         if (! (cu . IR & I_MIIF))
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
-              doPtrReg ();
+              {
+                doPtrReg ();
+
+// Putting the a29 clear here makes sense, but breaks the emulator for unclear
+// reasons (possibly ABSA?). Do it in updateIWB instead
+//                ci -> a = false;
+//                // Don't clear a; it is needed to detect change to appending mode 
+//                //a = false;
+//                putbits36 (& cu . IWB, 29,  1, 0);
+              }
             else
               {
                 TPR . TBR = 0;
@@ -7464,7 +7473,8 @@ void doRCU (void)
     if (cu . FI_ADDR == FAULT_MME ||
         cu . FI_ADDR == FAULT_MME2 ||
         cu . FI_ADDR == FAULT_MME3 ||
-        cu . FI_ADDR == FAULT_MME4)
+        cu . FI_ADDR == FAULT_MME4 ||
+        cu . FI_ADDR == FAULT_DRL)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
     // LUF can happen during fetch or CAF. If fetch, handled above
@@ -7482,7 +7492,7 @@ void doRCU (void)
         cu . FI_ADDR == FAULT_F1 || 
         cu . FI_ADDR == FAULT_F2 || 
         cu . FI_ADDR == FAULT_F3 ||
-        cu . FI_ADDR == FAULT_DRL ||
+        //cu . FI_ADDR == FAULT_DRL ||
         cu . FI_ADDR == FAULT_CMD ||
         cu . FI_ADDR == FAULT_EXF ||
         cu . FI_ADDR == FAULT_OFL)
