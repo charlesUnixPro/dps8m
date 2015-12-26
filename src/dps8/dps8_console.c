@@ -162,7 +162,6 @@ static con_state_t console_state;
 //-- #define N_LINES 4
 
 static int attn_hack = 0;
-static int mount_hack = 0;
 
 static t_stat opcon_reset (UNUSED DEVICE * dptr)
   {
@@ -294,17 +293,8 @@ t_stat console_attn (UNUSED UNIT * uptr)
     return SCPE_OK;
   }
 
-static t_stat mount_request (UNIT * uptr)
-  {
-    loadTape (uptr -> u3, uptr -> up7, uptr -> u4 != 0);
-    return SCPE_OK;
-  }
-
 static UNIT attn_unit = 
   { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
-
-static UNIT mount_unit = 
-  { UDATA (& mount_request, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
 static struct termios ttyTermios;
 static bool ttyTermiosOk = false;
@@ -689,209 +679,7 @@ sim_printf ("uncomfortable with this\n");
                       }
                   }
 
-
-                // 1642.9  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_00 for Initialize
-                // tally 21
-                //    0 061066064062  1642
-                //    1 056071040040  .9  
-                //    2 122103120072  RCP:
-                //    3 040115157165   Mou
-                //    4 156164040122  nt R
-                //    5 145145154040  eel 
-                //    6 061062056063  12.3
-                //    7 105130105103  EXEC
-                //    8 137103106060  _CF0
-                //    9 060061071137  019_
-                //   10 061040167151  1 wi
-                //   11 164150157165  thou
-                //   12 164040162151  t ri
-                //   13 156147040157  ng o
-                //   14 156040164141  n ta
-                //   15 160141137060  pa_0
-                //   16 060040146157  0 fo
-                //   17 162040111156  r In
-                //   18 151164151141  itia
-                //   19 154151172145  lize
-                //   20 015012177177  ....
-    
-                if (mount_hack &&
-                    tally > 6 &&
-                    M [daddr + 2] == 0122103120072llu && // RCP
-                    M [daddr + 3] == 0040115157165llu && //  Mou
-                    M [daddr + 4] == 0156164040122llu && // nt R
-                    M [daddr + 5] == 0145145154040llu)   // eel
-                  {
-                    switch (mount_hack)
-                      {
-                        case 1:
-                          {
-                            sim_printf ("loading 12.3EXEC_CF0019_1\n");
-                            mount_unit . u3 = 1;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88534.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 2:
-                          {
-                            sim_printf ("loading 12.3EXEC_DF0019_2.tap\n");
-                            mount_unit . u3 = 2;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88631.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 3:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_1\n");
-                            mount_unit . u3 = 1;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88632.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 4:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_2\n");
-                            mount_unit . u3 = 2;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88633.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 5:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_3\n");
-                            mount_unit . u3 = 3;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88634.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 6:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_4\n");
-                            mount_unit . u3 = 4;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88635.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 7:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_5\n");
-                            mount_unit . u3 = 5;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "88636.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 8:
-                          {
-                            sim_printf ("loading 12.3LDD_STANDARD_CF0019_6\n");
-                            mount_unit . u3 = 6;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "99020.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 9:
-                          {
-                            sim_printf ("loading 12.3UNBUNDLED_DF0019_1\n");
-                            mount_unit . u3 = 7;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "98570.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 10:
-                          {
-                            sim_printf ("loading 12.3UNBUNDLED_CF0019_2\n");
-                            mount_unit . u3 = 8;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "99019.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 11:
-                          {
-                            sim_printf ("loading 12.3MISC_CF0019\n");
-                            mount_unit . u3 = 9;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "93085.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 12:
-                          {
-                            sim_printf ("loading 12.5EXEC_CF0019_1\n");
-                            mount_unit . u3 = 1;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "20185.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 13:
-                          {
-                            sim_printf ("loading 12.5LDD_STANDARD_CF0019_1\n");
-                            mount_unit . u3 = 2;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "20186.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 14:
-                          {
-                            sim_printf ("loading 12.5UNBUNDLED_CF0019_1\n");
-                            mount_unit . u3 = 3;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "20188.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 15:
-                          {
-                            sim_printf ("loading 12.5MISC_CF0015\n");
-                            mount_unit . u3 = 4;
-                            mount_unit . u4 = 1;
-                            mount_unit . up7 = "20187.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        case 20:
-                          {
-                            sim_printf ("loading cac\n");
-                            mount_unit . u3 = 1;
-                            mount_unit . u4 = 0;
-                            mount_unit . up7 = "cac.tap";
-                            sim_activate (& mount_unit, 8000000); // 8M ~= 2 sec
-                          }
-                          break;
-    
-                        default:
-                          {
-                            sim_printf ("out of mount hacks\n");
-                          }
-                          break;
-                      }
-                    mount_hack ++;
-                  }
-    
+//sim_printf ("%012llo %012llo\n", M [daddr + 0], M [daddr + 1]);
                 // Tally is in words, not chars.
     
                 char text [tally * 4 + 1];
@@ -1237,7 +1025,6 @@ static config_value_list_t cfg_on_off [] =
 static config_list_t con_config_list [] =
   {
     /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
-    /* 1 */ { "mount_hack", 0, 100, cfg_on_off },
    { NULL, 0, 0, NULL }
   };
 
@@ -1264,10 +1051,6 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
               attn_hack = v;
               break;
     
-            case  1: // mount_hack
-              mount_hack = v;
-              break;
-
             default:
               sim_printf ("error: con_set_config: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
@@ -1284,7 +1067,6 @@ static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED void * desc)
   {
     sim_printf ("Attn hack:  %d\n", attn_hack);
-    sim_printf ("Mount hack: %d\n", mount_hack);
     return SCPE_OK;
   }
 
