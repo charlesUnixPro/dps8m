@@ -144,6 +144,15 @@ static inline int SIGNEXT6_int (word6 w)
     return w & MASK6;
   }
 
+static inline int32 SIGNEXT15_32 (word18 w)
+  {
+    if (w & SIGN15)
+      {
+        return ((int32) w) | (((uint32) -1) << 15);
+      }
+    return w & MASK15;
+  }
+
 static inline int32 SIGNEXT18_32 (word18 w)
   {
     if (w & SIGN18)
@@ -151,6 +160,33 @@ static inline int32 SIGNEXT18_32 (word18 w)
         return ((int32) w) | (((uint32) -1) << 18);
       }
     return w & MASK18;
+  }
+
+static inline int32 SIGNEXT21_32 (word18 w)
+  {
+    if (w & SIGN21)
+      {
+        return ((int32) w) | (((uint32) -1) << 21);
+      }
+    return w & MASK21;
+  }
+
+static inline int32 SIGNEXT22_32 (word18 w)
+  {
+    if (w & SIGN22)
+      {
+        return ((int32) w) | (((uint32) -1) << 22);
+      }
+    return w & MASK22;
+  }
+
+static inline int32 SIGNEXT24_32 (word18 w)
+  {
+    if (w & SIGN24)
+      {
+        return ((int32) w) | (((uint32) -1) << 24);
+      }
+    return w & MASK24;
   }
 
 static inline t_int64 SIGNEXT36_64 (word36 w)
