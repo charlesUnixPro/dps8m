@@ -1247,23 +1247,39 @@ static void cleanupOperandDescriptor (int k)
     e -> addr [k - 1] . cacheDirty = false;
   }
 
+// For a4bd/s4bd, the world is made of 32 bit words, so the address space
+// is 2^18 * 32 bits
+#define n4bits (1 << 23)
+// For axbd/sxbd, the world is made of 36 bits words, so the address space
+// is 2^18 * 36 bits
+#define nxbits ((1 << 18) * 36)
+
 void a4bd (void)
   {
     uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
+    int32_t address = SIGNEXT15_32 (GET_OFFSET (cu . IWB));
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    uint64_t r = getCrAR (reg);
-    r = SIGNEXT22_64 (r);
+    int32_t r = getCrAR (reg);
+    r = SIGNEXT22_32 (r);
   
     uint augend = 0;
     if (GET_A (cu . IWB))
-       augend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
-    uint addend = address * 32 + r * 4;
-    uint sum = augend + addend;
+       {
+         augend = AR [ARn] . WORDNO * 32u + AR [ARn] . BITNO;
+         // force to 4 bit character boundary
+         augend = augend & ~3;
+       }
+    int32_t addend = address * 32 + r * 4;
+    int32_t sum = augend + addend;
 
-    AR [ARn] . WORDNO = sum / 32;
+    // Handle over/under flow
+    while (sum < 0)
+      sum += n4bits;
+    sum = sum % n4bits;
+
+    AR [ARn] . WORDNO = (sum / 32) & AMASK;
 
     // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
     //             111111 11112222 22222233
@@ -1275,27 +1291,35 @@ void a4bd (void)
 
     uint bitno = sum % 32;
     AR [ARn] . BITNO = tab [bitno];
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 
 void s4bd (void)
   {
     uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
+    int32_t address = SIGNEXT15_32 (GET_OFFSET (cu . IWB));
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    uint64_t r = getCrAR (reg);
-    r = SIGNEXT22_64 (r);
+    int32_t r = getCrAR (reg);
+    r = SIGNEXT22_32 (r);
 
     uint minuend = 0;
     if (GET_A (cu . IWB))
-       minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
-    uint subtractend = address * 32 + r * 4;
-    uint difference = minuend - subtractend;
+       {
+         minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
+         // force to 4 bit character boundary
+         minuend = minuend & ~3;
+       }
+    int32_t subtractend = address * 32 + r * 4;
+    int32_t difference = minuend - subtractend;
 
-    AR [ARn] . WORDNO = difference / 32;
+    // Handle over/under flow
+    //while (difference < 0)
+      //difference += n4bits;
+    //difference = difference % n4bits;
+
+    AR [ARn] . WORDNO = (difference / 32) & AMASK;
 
     // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
     //             111111 11112222 22222233
@@ -1305,80 +1329,99 @@ void s4bd (void)
                        19, 20, 21, 22, 23, 24, 25, 26,
                        28, 29, 30, 31, 32, 33, 34, 35};
 
+    // XXX what if difference is negative? Does that effect the % oddly?
     uint bitno = difference % 32;
     AR [ARn] . BITNO = tab [bitno];
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
   }
 
 void axbd (uint sz)
   {
     uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
+    int32_t address = SIGNEXT15_32 (GET_OFFSET (cu . IWB));
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    uint64_t r = getCrAR (reg);
+    int32_t r = getCrAR (reg);
 
     if (sz == 1)
-      r = SIGNEXT24_64 (r);
+      r = SIGNEXT24_32 (r);
     else if (sz == 4)
-      r = SIGNEXT22_64 (r);
+      r = SIGNEXT22_32 (r);
     else if (sz == 6)
-      r = SIGNEXT21_64 (r);
+      r = SIGNEXT21_32 (r);
     else if (sz == 9)
-      r = SIGNEXT21_64 (r);
+      r = SIGNEXT21_32 (r);
     else // if (sz == 36)
-      r = SIGNEXT18_64 (r);
+      r = SIGNEXT18_32 (r);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd sz %d ARn 0%o address 0%o reg 0%o r 0%lo\n", sz, ARn, address, reg, r);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
   
-    uint64_t augend = 0;
+    uint augend = 0;
     if (GET_A (cu . IWB))
-       augend = AR [ARn] . WORDNO * 36lu + AR [ARn] . BITNO;
-    uint64_t addend = address * 36lu + r * sz;
-    uint64_t sum = augend + addend;
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%lo addend 0%lo sum 0%lo\n", augend, addend, sum);
+       augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+    // force to character boundary
+    if (sz == 9 || sz == 36|| GET_A (cu . IWB))
+      {
+        augend = (augend / sz) * sz;
+      }
+    int32_t addend = address * 36 + r * sz;
+    int32_t sum = augend + addend;
 
-    AR [ARn] . WORDNO = sum / 36u;
-    AR [ARn] . BITNO = sum % 36u;
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    // Handle over/under flow
+    while (sum < 0)
+      sum += nxbits;
+    sum = sum % nxbits;
+
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+
+    AR [ARn] . WORDNO = (sum / 36) & AMASK;
+    AR [ARn] . BITNO = sum % 36;
   }
 
 void sxbd (uint sz)
   {
     uint ARn = GET_ARN (cu . IWB);
-    word18 address = SIGNEXT15_18 (GET_OFFSET (cu . IWB));
+    int32_t address = SIGNEXT15_32 (GET_OFFSET (cu . IWB));
     uint reg = GET_TD (cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
     // r is the count of characters
-    uint64_t r = getCrAR (reg);
+    int32_t r = getCrAR (reg);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d r 0%lo\n", sz, r);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d r 0%o\n", sz, r);
     if (sz == 1)
-      r = SIGNEXT24_64 (r);
+      r = SIGNEXT24_32 (r);
     else if (sz == 4)
-      r = SIGNEXT22_64 (r);
+      r = SIGNEXT22_32 (r);
     else if (sz == 6)
-      r = SIGNEXT21_64 (r);
+      r = SIGNEXT21_32 (r);
     else if (sz == 9)
-      r = SIGNEXT21_64 (r);
+      r = SIGNEXT21_32 (r);
     else // if (sz == 36)
-      r = SIGNEXT18_64 (r);
+      r = SIGNEXT18_32 (r);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%lo\n", sz, ARn, address, reg, r);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
-    uint64_t minuend = 0;
+    uint minuend = 0;
     if (GET_A (cu . IWB))
-       minuend = AR [ARn] . WORDNO * 36lu + AR [ARn] . BITNO;
-    uint64_t subtractend = address * 36lu + r * sz;
-    uint64_t difference = minuend - subtractend;
+       minuend = AR [ARn] . WORDNO * 36u + AR [ARn] . BITNO;
+    // force to character boundary
+    if (sz == 9 || sz == 36 || GET_A (cu . IWB))
+      {
+        minuend = (minuend / sz) * sz;
+      }
+    int32_t subtractend = address * 36 + r * sz;
+    int32_t difference = minuend - subtractend;
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd minuend 0%lo subtractend 0%lo difference 0%lo\n", minuend, subtractend, difference);
+    // Handle over/under flow
+    while (difference < 0)
+      difference += nxbits;
+    difference = difference % nxbits;
 
-    AR [ARn] . WORDNO = difference / 36u;
-    AR [ARn] . BITNO = difference % 36u;
-    AR [ARn] . WORDNO &= AMASK;    // keep to 18-bits
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
+
+    AR [ARn] . WORDNO = (difference / 36) & AMASK;
+    AR [ARn] . BITNO = difference % 36;
   }
 
 void cmpc (void)
