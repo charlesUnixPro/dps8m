@@ -14,7 +14,9 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
-
+#ifdef HDBG
+#include "hdbg.h"
+#endif
 #ifndef QUIET_UNUSED
 static uint64 FR;
 #endif
@@ -484,7 +486,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
                bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-
+#ifdef HDBG
+    hdbgFault (faultNumber, subFault, faultMsg);
+#endif
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);

@@ -44,11 +44,17 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
         
                 core_read(iefpFinalAddress, result, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address, *result);
+#ifdef HDBG
+                hdbgMRead (iefpFinalAddress, * result);
+#endif
                 return SCPE_OK;
             } else {
                 setAPUStatus (apuStatus_FABS);
                 core_read(address, result, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Read (Actual) Read:       abs address=%08o  readData=%012llo\n", address, *result);
+#ifdef HDBG
+                hdbgMRead (address, * result);
+#endif
                 return SCPE_OK;
             }
         }
@@ -61,6 +67,9 @@ B29:;
                 word18 barAddress = getBARaddress (address);
                 iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
                 core_read(iefpFinalAddress, result, __func__);
+#ifdef HDBG
+                hdbgMRead (iefpFinalAddress, * result);
+#endif
 
                 return SCPE_OK;
             } else {
@@ -72,6 +81,9 @@ B29:;
                 if (PPR.PSR != 061 && PPR.IC != 0307)
                   {
                     sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", iefpFinalAddress, *result);
+#ifdef HDBG
+                    hdbgMRead (iefpFinalAddress, * result);
+#endif
                   }
             }
             return SCPE_OK;
@@ -103,11 +115,17 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 core_write(iefpFinalAddress, data, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Write(Actual) Write:      bar address=%08o writeData=%012llo\n", address, data);
+#ifdef HDBG
+                hdbgMWrite (iefpFinalAddress, data);
+#endif
                 return SCPE_OK;
             } else {
                 setAPUStatus (apuStatus_FABS);
                 core_write(address, data, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Write(Actual) Write:      abs address=%08o writeData=%012llo\n", address, data);
+#ifdef HDBG
+                hdbgMWrite (address, data);
+#endif
                 return SCPE_OK;
             }
         }
@@ -122,6 +140,9 @@ B29:
                 core_write(iefpFinalAddress, data, __func__);
         
                 sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
+#ifdef HDBG
+                hdbgMWrite (iefpFinalAddress, data);
+#endif
         
                 return SCPE_OK;
             } else {
@@ -131,6 +152,9 @@ B29:
                 core_write(iefpFinalAddress, data, __func__);
         
                 sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
+#ifdef HDBG
+                hdbgMWrite (iefpFinalAddress, data);
+#endif
         
                 return SCPE_OK;
             }

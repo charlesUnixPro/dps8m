@@ -23,6 +23,9 @@
 #include "dps8_faults.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#ifdef HDBG
+#include "hdbg.h"
+#endif
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
@@ -997,8 +1000,12 @@ restart_1:
     // XXX Don't trace Multics idle loop
     if (PPR.PSR != 061 && PPR.IC != 0307)
 
-      traceInstruction (DBG_TRACE);
-
+      {
+        traceInstruction (DBG_TRACE);
+#ifdef HDBG
+        hdbgTrace ();
+#endif
+      }
 
 ///
 /// executeInstruction: Initialize TPR

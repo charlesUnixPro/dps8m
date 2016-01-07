@@ -31,6 +31,9 @@
 #ifdef M_SHARED
 #include "shm.h"
 #endif
+#ifdef HDBG
+#include "hdbg.h"
+#endif
 
 #include "fnp_defs.h"
 #include "fnp_cmds.h"
@@ -2087,6 +2090,9 @@ last = M[01007040];
 
 leave:
 
+#ifdef HDBG
+    hdbgPrint ();
+#endif
     sim_printf("\nsimCycles = %lld\n", sim_timell ());
     sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)

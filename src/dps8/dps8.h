@@ -53,6 +53,9 @@
 // Enable speed over debuggibility
 #define SPEED
 
+// Enable history debugger
+#define HDBG
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
