@@ -1,4 +1,8 @@
 // history debugging
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "dps8.h"
 
@@ -199,6 +203,14 @@ void hdbgPrint (void)
           }
       }
     fclose (hdbgOut);
+    int fd = open ("M.dump", O_WRONLY | O_CREAT);
+    if (fd == -1)
+      {
+        sim_printf ("can't open M.dump\n");
+        return;
+      }
+    /* ssize_t n = */ write (fd, M, MEMSIZE * sizeof (word36));
+    close (fd);
   }
 
 // set buffer size 
