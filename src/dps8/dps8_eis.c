@@ -6166,7 +6166,7 @@ void btd (void)
  * load a decimal number into e->x ...
  */
 
-static void loadDec (EISaddr *p, int pos)
+static int loadDec (EISaddr *p, int pos)
 {
     EISstruct * e = & currentEISinstruction;
     int128 x = 0;
@@ -6203,6 +6203,12 @@ static void loadDec (EISaddr *p, int pos)
         sim_debug (DBG_TRACEEXT, & cpu_dev,
           "loadDec: n %d c %d(%o)\n", n, c, c);
         
+        // per CAC suggestion
+        if (n == 0 && c == 0)           // treat as +0
+        {
+            return -1;
+        }
+        
         if (n == 0 && e->TN1 == CTN4 && e->S1 == CSLS)
         {
             sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -6221,7 +6227,8 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:1\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
-                   doFault(FAULT_IPR, ill_proc, "loadDec:1");
+                   
+                    return 1;
             }
             pos += 1;           // onto next posotion
             continue;
@@ -6244,7 +6251,8 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:2\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
-                   doFault(FAULT_IPR, ill_proc, "loadDec:2");
+                   
+                    return 2;
             }
             pos += 1;           // onto next posotion
             continue;
@@ -6268,7 +6276,8 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:3\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
-                    doFault(FAULT_IPR, ill_proc, "loadDec:3");
+                    
+                    return 3;
             }
             break;
         }
@@ -6290,7 +6299,8 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:4\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
-                   doFault(FAULT_IPR, ill_proc, "loadDec:4");
+                  
+                    return 4;
             }
             break;
         }
@@ -6306,6 +6316,8 @@ static void loadDec (EISaddr *p, int pos)
     e->x = sgn * x;
     sim_debug (DBG_TRACEEXT, & cpu_dev,
       "loadDec:  final x %lld\n", (int64) x);
+    
+    return 0;
 }
 
 static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
@@ -6365,7 +6377,8 @@ void dtb (void)
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
-        ; // XXX generate ill proc fault
+        // XXX generate ill proc fault
+        doFault(FAULT_IPR, ill_proc, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
     e->_flags = cu.IR;
@@ -6373,18 +6386,36 @@ void dtb (void)
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
     CLRF(e->_flags, I_NEG);
     
-    loadDec(&e->ADDR1, e->CN1);
-    
-    // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
-    SCF(e->x == 0, e->_flags, I_ZERO);
-    
-    EISwriteToBinaryStringReverse(&e->ADDR2, 2);
-    
-    cu.IR = e->_flags;
+    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set bits and flags, return }' approach.
 
-    if (TSTF(cu.IR, I_OFLOW))
+    int result = loadDec(&e->ADDR1, e->CN1);
+    switch (result)
     {
-        ;   // XXX generate overflow fault
+        case -1:
+            e->x = 0;
+            CLRF(e->_flags, I_NEG);     // reset negative indicator
+            SETF(e->_flags, I_ZERO);    // set zero indicator
+            // fall through
+        case 0:
+            // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
+            SCF(e->x == 0, e->_flags, I_ZERO);
+            
+            EISwriteToBinaryStringReverse(&e->ADDR2, 2);
+            
+            cu.IR = e->_flags;
+            
+            if (TSTF(cu.IR, I_OFLOW))
+            {
+                // XXX generate overflow fault
+                doFault(FAULT_IPR, ill_proc, "dtb():  overflow fault (finish implementing)");
+            }
+            break;
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+            doFault(FAULT_IPR, ill_proc, "dtb(): loadDec() return value == {1,2,3,4}");
+            break;
     }
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
