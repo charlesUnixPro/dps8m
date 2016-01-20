@@ -1929,6 +1929,12 @@ last = M[01007040];
 
             case SYNC_FAULT_RTN_cycle:
               {
+                // cu_safe_restore should have restored CU.IWB, so
+                // we can determine the instruction length.
+                // decodeInstruction() restores ci->info->ndes
+                decodeInstruction (cu . IWB, & currentInstruction);
+
+                PPR.IC += ci->info->ndes;
                 PPR.IC ++;
                 cpu . wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
