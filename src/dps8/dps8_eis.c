@@ -6221,6 +6221,7 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:1\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
+                   doFault(FAULT_IPR, ill_proc, "loadDec:1");
             }
             pos += 1;           // onto next posotion
             continue;
@@ -6243,7 +6244,7 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:2\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
-
+                   doFault(FAULT_IPR, ill_proc, "loadDec:2");
             }
             pos += 1;           // onto next posotion
             continue;
@@ -6267,6 +6268,7 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:3\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
+                    doFault(FAULT_IPR, ill_proc, "loadDec:3");
             }
             break;
         }
@@ -6288,6 +6290,7 @@ static void loadDec (EISaddr *p, int pos)
                     sim_printf ("loadDec:4\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
+                   doFault(FAULT_IPR, ill_proc, "loadDec:4");
             }
             break;
         }
