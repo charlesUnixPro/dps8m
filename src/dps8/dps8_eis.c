@@ -8764,6 +8764,15 @@ void dv2d (void)
     PRINTDEC("op1", op1);
     PRINTDEC("op3", op3);
 
+    // let's check division results to see for anomalous conditions
+    if (
+        (set.status & DEC_Division_undefined) ||    // 0/0 will become NaN
+        (set.status & DEC_Invalid_operation) ||
+        (set.status & DEC_Division_by_zero)
+        ) doFault(FAULT_DIV, 0, "dv2d anomalous results");
+
+    
+    
     // In a floating-point divide operation, the required number of quotient digits is determined as follows. With the divisor greater than the dividend, the algorithm generates a leading zero in the quotient. This characteristic of the algorithm is taken into account along with rounding requirements when determining the required number of digits for the quotient, so that the resulting quotient contains as many significant digits as specified by the quotient operand descriptor.
     
     
@@ -9026,6 +9035,13 @@ void dv3d (void)
     PRINTDEC("op1", op1);
     PRINTDEC("op3", op3);
     
+    // let's check division results to see for anomalous conditions
+    if (
+        (set.status & DEC_Division_undefined) ||    // 0/0 will become NaN
+        (set.status & DEC_Invalid_operation) ||
+        (set.status & DEC_Division_by_zero)
+        ) doFault(FAULT_DIV, 0, "dv3d anomalous results");
+
     bool Ovr = false, Trunc = false;
      
     char *res = formatDecimalDIV(&set, op3, dstTN, e->N3, e->S3, e->SF3, R, op2, op1, &Ovr, &Trunc);
