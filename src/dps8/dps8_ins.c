@@ -7481,7 +7481,10 @@ void doRCU (void)
         cu . FI_ADDR == FAULT_MME2 ||
         cu . FI_ADDR == FAULT_MME3 ||
         cu . FI_ADDR == FAULT_MME4 ||
-        cu . FI_ADDR == FAULT_DRL)
+        cu . FI_ADDR == FAULT_DRL ||
+        cu . FI_ADDR == FAULT_DIV ||
+        cu . FI_ADDR == FAULT_OFL ||
+        cu . FI_ADDR == FAULT_IPR)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
     // LUF can happen during fetch or CAF. If fetch, handled above
@@ -7501,8 +7504,8 @@ void doRCU (void)
         cu . FI_ADDR == FAULT_F3 ||
         //cu . FI_ADDR == FAULT_DRL ||
         cu . FI_ADDR == FAULT_CMD ||
-        cu . FI_ADDR == FAULT_EXF ||
-        cu . FI_ADDR == FAULT_OFL)
+        cu . FI_ADDR == FAULT_EXF)
+        //cu . FI_ADDR == FAULT_OFL)
       {
         // If the fault occurred during fetch, handled above.
         cu . IR |= I_MIIF;
