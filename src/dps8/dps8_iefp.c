@@ -12,6 +12,7 @@
 #include "dps8_append.h"
 #include "dps8_iefp.h"
 #include "dps8_utils.h"
+#include "hdbg.h"
 
 word24 iefpFinalAddress;
 
