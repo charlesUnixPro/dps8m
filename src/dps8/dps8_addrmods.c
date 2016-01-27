@@ -283,7 +283,7 @@ static void doITS(void)
 
 
 // CANFAULT
-static void doITSITP (word18 address, word36 indword, word6 Tag)
+static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
   {
     DCDstruct * i = & currentInstruction;
     word6 indTag = GET_TAG  (indword);
@@ -333,6 +333,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag)
     else
         doITP ();
 
+    * newtag = GET_TAG (itxPair [1]);
     //didITSITP = true;
     set_went_appending ();
   }
@@ -378,42 +379,14 @@ t_stat doComputedAddressFormation (void)
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
                 __func__, opDescSTR (), TPR . CA);
+    sim_debug (DBG_ADDRMOD, & cpu_dev,
+               "%s(Entry): CT_HOLD %o\n",
+                __func__, cu . CT_HOLD);
 
     DCDstruct * i = & currentInstruction;
 
-// This must happen before the restart entry
-#if 0
-    // NB: The currentInstrucion . a bit has been qualified with the IGN_B9 bit
-    if (i -> a)
-      {
-        word3 n = GET_PRN (cu . IWB);  // get PRn
-        word15 offset = GET_OFFSET (cu . IWB);
-
-        TPR . TSR = PAR [n] . SNR;
-        TPR . TRR = max3 (PAR [n] . RNR, TPR . TRR, PPR . PRR);
-
-        TPR . CA = (PAR [n] . WORDNO + SIGNEXT15_18 (offset)) & 0777777;
-        TPR . TBR = PAR [n] . BITNO;
-
-        // Clear the A bit
-        //updateIWB (TPR . CA, i -> tag);
-      }
-#endif
     word6 Tm = 0;
     word6 Td = 0;
-    //didITSITP = false;
-
-#if 0 // Unused
-    eCAFoper operType;
-    if (RMWOP (i))
-      operType = rmwCY;           // r/m/w cycle
-    else if (READOP (i))
-      operType = readCY;          // read cycle
-    else if (WRITEOP (i))
-      operType = writeCY;         // write cycle
-    else
-      operType = prepareCA;
-#endif
 
     int iTAG;   // tag of word preceeding an indirect fetch
 
@@ -439,6 +412,16 @@ startCA:;
     Td = GET_TD (rTAG);
     Tm = GET_TM (rTAG);
 
+    if (cu . CT_HOLD)
+      {
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "%s(startCA): IR mode restart; CT_HOLD %02o\n",
+                   __func__, cu . CT_HOLD);
+        rTAG = cu . CT_HOLD;
+        Td = GET_TD (rTAG);
+        Tm = GET_TM (rTAG);
+        goto IR_MOD_1;
+      }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
                __func__, rTAG, getModString (rTAG), Tm, Td);
@@ -591,7 +574,7 @@ startCA:;
 
         if (ISITP (indword) || ISITS (indword))
           {
-            doITSITP (tmpCA, indword, iTAG);
+            doITSITP (tmpCA, indword, iTAG, & rTAG);
           }
         else
           {
@@ -614,12 +597,18 @@ startCA:;
         //! Figure 6-5. Indirect Then Register Modification Flowchart
     IR_MOD:;
       {
-        cu . CT_HOLD = Td;
+        cu . CT_HOLD = rTAG;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD: CT_HOLD=%o %o\n", cu . CT_HOLD, Td);
 
         IR_MOD_1:
+
+        if (++ lockupCnt > lockupLimit)
+          {
+            doFault (FAULT_LUF, 0,
+                     "Lockup in addrmod IR mode");
+          }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD: fetching indirect word from %06o\n", TPR . CA);
@@ -633,7 +622,7 @@ startCA:;
 
         if (ISITP (indword) || ISITS (indword))
           {
-            doITSITP (TPR . CA, indword, iTAG);
+            doITSITP (TPR . CA, indword, iTAG, & rTAG);
           }
         else
           {
@@ -677,10 +666,10 @@ startCA:;
 
             case TM_R:
               {
-                word18 Cr = getCr (cu . CT_HOLD);
+                word18 Cr = getCr (GET_TD (cu . CT_HOLD));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IR_MOD(TM_R): Cr=%06o\n", Cr);
+                           "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cu . CT_HOLD), Cr);
 
 #if 0
                 if (directOperandFlag)
@@ -704,7 +693,6 @@ startCA:;
 
                 updateIWB (TPR . CA, cu . CT_HOLD);
 #else
-#define ABUSE_CT_HOLD
 #ifdef ABUSE_CT_HOLD
                 if (directOperandFlag)
                   {
@@ -715,7 +703,7 @@ startCA:;
                                "IR_MOD(TM_R): DO TPR.CA=%06o\n", TPR . CA);
 
                     updateIWB (TPR . CA, TM_R | TD_DL);
-                    cu . CT_HOLD = 0;
+                    cu . coFlag = 0;
                   }
                 else
                   {
@@ -726,7 +714,7 @@ startCA:;
                                "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
 
                     updateIWB (TPR . CA, 0);
-                    cu . CT_HOLD = 0;
+                    cu . coFlag = 0;
                   }
 #else
                 if (directOperandFlag)
@@ -745,6 +733,7 @@ startCA:;
                 updateIWB (TPR . CA, 0);
 #endif
 #endif
+                cu . CT_HOLD = 0;
                 return SCPE_OK;
               } // TM_R
 
@@ -833,11 +822,11 @@ startCA:;
               {
 #ifdef ABUSE_CT_HOLD
                 // Check for instruction restart
-                if (cu . CT_HOLD)
+                if (cu . coFlag)
                   {
                     characterOperandFlag = true;
-                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
-                    characterOperandOffset = cu . CT_HOLD & 007;
+                    characterOperandSize = cu . coSize ? TB9 : TB6;
+                    characterOperandOffset = cu . coOffset;
 //sim_printf ("XXX CI\n");
                     return SCPE_OK;
                   }
@@ -887,10 +876,9 @@ startCA:;
                            "co size == TB9 && offset > 3");
 
 #ifdef ABUSE_CT_HOLD
-                cu . CT_HOLD = 020 | // flag = true
-                               (characterOperandSize == TB9 ? 010 : 000) |
-                               (characterOperandOffset & 007);
-
+                cu . coFlag = true;
+                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
+                cu . coOffset = characterOperandOffset & 07;
                 updateIWB (TPR . CA, rTAG);
 #else
                 //updateIWB (identity)
@@ -902,11 +890,11 @@ startCA:;
               {
 #ifdef ABUSE_CT_HOLD
                 // Check for instruction restart
-                if (cu . CT_HOLD)
+                if (cu . coFlag)
                   {
                     characterOperandFlag = true;
-                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
-                    characterOperandOffset = cu . CT_HOLD & 007;
+                    characterOperandSize = cu . coSize ? TB9 : TB6;
+                    characterOperandOffset = cu . coOffset;
                     return SCPE_OK;
                   }
 #endif
@@ -1001,10 +989,9 @@ startCA:;
 
                 TPR . CA = computedAddress;
 #ifdef ABUSE_CT_HOLD
-                cu . CT_HOLD = 020 | // flag = true
-                               (characterOperandSize == TB9 ? 010 : 000) |
-                               (characterOperandOffset & 007);
-
+                cu . coFlag = true;
+                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
+                cu . coOffset = characterOperandOffset & 07;
                 updateIWB (computedAddress, rTAG);
 #else
                 updateIWB (computedAddress, 0); // XXX guessing here...
@@ -1016,11 +1003,11 @@ startCA:;
               {
 #ifdef ABUSE_CT_HOLD
                 // Check for instruction restart
-                if (cu . CT_HOLD)
+                if (cu . coFlag)
                   {
                     characterOperandFlag = true;
-                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
-                    characterOperandOffset = cu . CT_HOLD & 007;
+                    characterOperandSize = cu . coSize ? TB9 : TB6;
+                    characterOperandOffset = cu . coOffset;
                     return SCPE_OK;
                   }
 #endif
@@ -1106,10 +1093,9 @@ startCA:;
                 TPR.CA = Yi;
 
 #ifdef ABUSE_CT_HOLD
-                cu . CT_HOLD = 020 | // flag = true
-                               (characterOperandSize == TB9 ? 010 : 000) |
-                               (characterOperandOffset & 007);
-
+                cu . coFlag = true;
+                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
+                cu . coOffset = characterOperandOffset & 07;
                 updateIWB (TPR . CA, rTAG);
 #else
                 updateIWB (TPR . CA, 0); // XXX guessing here...

@@ -38,7 +38,6 @@
 // way to remember what the even instruction register number was so that
 // it can be updated. Stash it in cu.CT_HOLD; this is safe, as the repeated 
 // instructions are not allowed to use addressing modes that would disturb it.
-#define ABUSE_CT_HOLD2
 
 word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
@@ -231,6 +230,15 @@ static void scu2words(word36 *words)
     // words [3]
 
     //  0, 18 0
+#ifdef ABUSE_CT_HOLD2
+    putbits36 (& words [3], 0, 2, cu . rpdHack);   // 0-2
+#endif
+#ifdef ABUSE_CT_HOLD
+    putbits36 (& words [3], 3, 1, cu . coFlag);    // 3
+    putbits36 (& words [3], 4, 1, cu . coSize);    // 4
+    putbits36 (& words [3], 5, 3, cu . coOffset);  // 5-7
+#endif
+
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
     // 22, 4 TSNB pointer register number for EIS operand #2
     // 26, 4 TSNC pointer register number for EIS operand #3
@@ -354,6 +362,15 @@ static void words2scu (word36 * words)
     cu.delta        = getbits36(words[2], 30, 6);
     
     // words[3]
+
+#ifdef ABUSE_CT_HOLD2
+    cu . rpdHack    = getbits36 (words [3], 0, 2);   // 0-2
+#endif
+#ifdef ABUSE_CT_HOLD
+    cu . coFlag     = getbits36 (words [3], 3, 1);    // 3
+    cu . coSize     = getbits36 (words [3], 4, 1);    // 4
+    cu . coOffset   = getbits36 (words [3], 5, 3);  // 5-7
+#endif
 
     TPR.TBR         = getbits36(words[3], 30, 6);
     
@@ -1181,15 +1198,11 @@ restart_1:
                   }
                 clr_went_appending ();
               }
-            // Setup for ABUSE_CT_HOLD, ABUSE_CT_HOLD2 code
             // This must not happen on instruction restart
-#ifdef ABUSE_CT_HOLD2
-            if (! cu . rd)
-              cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits (ABUSE_CT_HOLD),
-                                // clear hidden xEven bits (ABUSE_CT_HOLD2)
-#else
-            cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits (ABUSE_CT_HOLD),
+#ifdef ABUSE_CT_HOLD
+            cu . coFlag = false;
 #endif
+            cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
 
 
@@ -1344,7 +1357,7 @@ restart_1:
 // We can use CT_HOLD here, because the repeated instructions are constrained
 // to be R or RI, and addrmod does not use CT_HOLD for those cases.
 #ifdef ABUSE_CT_HOLD2
-            cu . CT_HOLD = xN; // remember xN for later
+            cu . rpdHack = xN; // remember xN for later
 //sim_printf ("remembering %o\n", xN);
 #endif
           }
@@ -1352,7 +1365,7 @@ restart_1:
         if (cu . rd && icOdd && rptA) // rpda, odd instruction
           {
 #ifdef ABUSE_CT_HOLD2
-            uint xN = cu . CT_HOLD; // recall xN 
+            uint xN = cu . rpdHack; // recall xN 
 //sim_printf ("recalling %o\n", xN);
 #endif
             rX[xN] = (rX[xN] + cu . delta) & AMASK;

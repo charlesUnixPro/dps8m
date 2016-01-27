@@ -56,6 +56,10 @@
 // Enable history debugger
 #define HDBG
 
+// Enable hacks
+#define ABUSE_CT_HOLD
+#define ABUSE_CT_HOLD2
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"

@@ -867,6 +867,14 @@ typedef struct
     
     /* word 3 */
                    //  0-17          0
+#ifdef ABUSE_CT_HOLD2
+    word3 rpdHack;   // 0-2
+#endif
+#ifdef ABUSE_CT_HOLD
+    word1 coFlag;    // 3
+    word1 coSize;    // 4
+    word3 coOffset;  // 5-7
+#endif
                    // 18-21 TSNA     Pointer register number for non-EIS operands or
                    //                EIS Operand #1
                    //                  18-20 PRNO Pointer register number
