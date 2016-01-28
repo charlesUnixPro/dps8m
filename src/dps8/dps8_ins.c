@@ -4430,7 +4430,7 @@ static t_stat DoBasicInstruction (void)
                 PR[n].RNR = PPR.PRR;
                 PR[n].SNR = PPR.PSR;
                 PR[n].WORDNO = (PPR.IC + 1) & MASK18;
-                SET_PR_BITNO (7, 0);
+                SET_PR_BITNO (n, 0);
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
             }
