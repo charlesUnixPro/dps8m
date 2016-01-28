@@ -1484,11 +1484,11 @@ restart_1:
         for(int n = 0 ; n < 8 ; n++)
         {
             sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, GET_PR_BITNO (n));
         }
         for(int n = 0 ; n < 8 ; n++)
             sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                  n, AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
+                  n, AR[n].WORDNO, AR[n].CHAR, AR[n].BITNO);
         sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
         sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     }
@@ -4121,7 +4121,7 @@ static t_stat DoBasicInstruction (void)
             else
                 PPR.P = 0;
             PR[7].WORDNO = 0;
-            PR[7].BITNO = 0;
+            SET_PR_BITNO (7, 0);
             PPR.PRR = TPR.TRR;
             PPR.PSR = TPR.TSR;
             PPR.IC = TPR.CA;
@@ -4430,7 +4430,7 @@ static t_stat DoBasicInstruction (void)
                 PR[n].RNR = PPR.PRR;
                 PR[n].SNR = PPR.PSR;
                 PR[n].WORDNO = (PPR.IC + 1) & MASK18;
-                PR[n].BITNO = 0;
+                SET_PR_BITNO (7, 0);
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
             }
@@ -4532,28 +4532,28 @@ static t_stat DoBasicInstruction (void)
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[0].WORDNO = TPR.CA;
-            PR[0].BITNO = TPR.TBR;
+            SET_PR_BITNO (0, TPR.TBR);
             break;
         case 0312:  ///< eawp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[2].WORDNO = TPR.CA;
-            PR[2].BITNO = TPR.TBR;
+            SET_PR_BITNO (2, TPR.TBR);
             break;
         case 0330:  ///< eawp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[4].WORDNO = TPR.CA;
-            PR[4].BITNO = TPR.TBR;
+            SET_PR_BITNO (4, TPR.TBR);
             break;
         case 0332:  ///< eawp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[6].WORDNO = TPR.CA;
-            PR[6].BITNO = TPR.TBR;
+            SET_PR_BITNO (6, TPR.TBR);
             break;
         
             
@@ -4566,7 +4566,7 @@ static t_stat DoBasicInstruction (void)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = 0;
-            PR[1].BITNO = 0;
+            SET_PR_BITNO (1, 0);
             break;
         case 0353:  ///< epbp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4577,7 +4577,7 @@ static t_stat DoBasicInstruction (void)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = 0;
-            PR[3].BITNO = 0;
+            SET_PR_BITNO (3, 0);
             break;
         case 0371:  ///< epbp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4588,7 +4588,7 @@ static t_stat DoBasicInstruction (void)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = 0;
-            PR[5].BITNO = 0;
+            SET_PR_BITNO (5, 0);
             break;
             
         case 0373:  ///< epbp7
@@ -4600,7 +4600,7 @@ static t_stat DoBasicInstruction (void)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = 0;
-            PR[7].BITNO = 0;
+            SET_PR_BITNO (7, 0);
             break;
         
         case 0350:  ///< epp0
@@ -4612,7 +4612,7 @@ static t_stat DoBasicInstruction (void)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = TPR.CA;
-            PR[0].BITNO = TPR.TBR;
+            SET_PR_BITNO (0, TPR.TBR);
             break;
         case 0352:  ///< epp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4623,7 +4623,7 @@ static t_stat DoBasicInstruction (void)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = TPR.CA;
-            PR[2].BITNO = TPR.TBR;
+            SET_PR_BITNO (2, TPR.TBR);
             break;
         case 0370:  ///< epp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4634,7 +4634,7 @@ static t_stat DoBasicInstruction (void)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = TPR.CA;
-            PR[4].BITNO = TPR.TBR;
+            SET_PR_BITNO (4, TPR.TBR);
             break;
         case 0372:  ///< epp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4645,7 +4645,7 @@ static t_stat DoBasicInstruction (void)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = TPR.CA;
-            PR[6].BITNO = TPR.TBR;
+            SET_PR_BITNO (6, TPR.TBR);
             break;
 
         case 0173:  ///< lpri
@@ -4670,7 +4670,7 @@ static t_stat DoBasicInstruction (void)
                   PR[n].RNR = Crr;
                 PR[n].SNR = (Ypair[0] >> 18) & MASK15;
                 PR[n].WORDNO = GETHI(Ypair[1]);
-                PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
+                SET_PR_BITNO (n, (GETLO(Ypair[1]) >> 9) & 077);
             }
             
             break;
@@ -4703,7 +4703,9 @@ static t_stat DoBasicInstruction (void)
 // I interpret this has meaning that only the high bits should be set here
 
                 if (((CY >> 34) & 3) != 3)
-                    PR[n].BITNO = (CY >> 30) & 077;
+                  {
+                    SET_PR_BITNO (n, (CY >> 30) & 077);
+                  }
                 else
                   {
 // fim.alm
@@ -4736,7 +4738,7 @@ static t_stat DoBasicInstruction (void)
                 //C(Y)18,35 -> C(PRn.WORDNO)
                 PR[n].WORDNO = GETLO(CY);
 
-                sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
+                sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, GET_PR_BITNO (n), PR[n].SNR, PR[n].WORDNO);
             }
             break;
          
@@ -4830,7 +4832,7 @@ static t_stat DoBasicInstruction (void)
                 Yblock16[2 * n] |= ((word36) PR[n].RNR) << 15;
                 
                 Yblock16[2 * n + 1] = (word36) PR[n].WORDNO << 18;
-                Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
+                Yblock16[2 * n + 1] |= (word36) GET_PR_BITNO (n) << 9;
             }
             
             //WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
@@ -4852,7 +4854,7 @@ static t_stat DoBasicInstruction (void)
             Ypair[0] |= ((word36) PR[0].RNR) << 15;
             
             Ypair[1] = (word36) PR[0].WORDNO << 18;
-            Ypair[1]|= (word36) PR[0].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (0) << 9;
             
             break;
             
@@ -4872,7 +4874,7 @@ static t_stat DoBasicInstruction (void)
             Ypair[0] |= ((word36) PR[2].RNR) << 15;
             
             Ypair[1] = (word36) PR[2].WORDNO << 18;
-            Ypair[1]|= (word36) PR[2].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (2) << 9;
             
             break;
   
@@ -4888,11 +4890,11 @@ static t_stat DoBasicInstruction (void)
             ///  C(PRn.BITNO) -> C(Y-pair)57,62
             ///  00...0 -> C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= ((word36) PAR[4].SNR) << 18;
-            Ypair[0] |= ((word36) PAR[4].RNR) << 15;
+            Ypair[0] |= ((word36) PR[4].SNR) << 18;
+            Ypair[0] |= ((word36) PR[4].RNR) << 15;
             
-            Ypair[1] = (word36) PAR[4].WORDNO << 18;
-            Ypair[1]|= (word36) PAR[4].BITNO << 9;
+            Ypair[1] = (word36) PR[4].WORDNO << 18;
+            Ypair[1]|= (word36) GET_PR_BITNO (4) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4914,7 +4916,7 @@ static t_stat DoBasicInstruction (void)
             Ypair[0] |= ((word36) PR[6].RNR) << 15;
             
             Ypair[1] = (word36) PR[6].WORDNO << 18;
-            Ypair[1]|= (word36) PR[6].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (6) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4943,13 +4945,13 @@ static t_stat DoBasicInstruction (void)
             
                 if (switches . lprp_highonly)
                   {
-                    CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
+                    CY  =  ((word36) (GET_PR_BITNO (n) & 077)) << 30;
                     CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
                     CY |=  PR[n].WORDNO & PAMASK;
                   }
                 else
                   {
-                    CY  =  ((word36) PR[n].BITNO) << 30;
+                    CY  =  ((word36) GET_PR_BITNO (n)) << 30;
                     CY |=  ((word36) (PR[n].SNR) & 07777) << 18; // lower 12- of 15-bits
                     CY |=  PR[n].WORDNO;
                   }
@@ -4969,7 +4971,7 @@ static t_stat DoBasicInstruction (void)
                 uint32 n = opcode & 03;  // get n
                 PR[n].WORDNO += GETHI(CY);
                 PR[n].WORDNO &= MASK18;
-                PR[n].BITNO = 0;
+                SET_PR_BITNO (n, 0);
             }
             break;
             
@@ -4984,7 +4986,7 @@ static t_stat DoBasicInstruction (void)
                 uint32 n = (opcode & MASK3) + 4U;  // get n
                 PR[n].WORDNO += GETHI(CY);
                 PR[n].WORDNO &= MASK18;
-                PR[n].BITNO = 0;
+                SET_PR_BITNO (n, 0);
             }
             break;
         
@@ -6064,28 +6066,28 @@ static t_stat DoEISInstruction (void)
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[1].WORDNO = TPR.CA;
-            PR[1].BITNO = TPR.TBR;
+            SET_PR_BITNO (1, TPR.TBR);
             break;
         case 0313:  ///< eawp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[3].WORDNO = TPR.CA;
-            PR[3].BITNO = TPR.TBR;
+            SET_PR_BITNO (3, TPR.TBR);
             break;
         case 0331:  ///< eawp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[5].WORDNO = TPR.CA;
-            PR[5].BITNO = TPR.TBR;
+            SET_PR_BITNO (5, TPR.TBR);
             break;
         case 0333:  ///< eawp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) -> C(PRn.WORDNO)
             ///  C(TPR.TBR) -> C(PRn.BITNO)
             PR[7].WORDNO = TPR.CA;
-            PR[7].BITNO = TPR.TBR;
+            SET_PR_BITNO (7, TPR.TBR);
             break;        
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6096,7 +6098,7 @@ static t_stat DoEISInstruction (void)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = 0;
-            PR[0].BITNO = 0;
+            SET_PR_BITNO (0, 0);
             break;
         case 0352:  ///< epbp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6107,7 +6109,7 @@ static t_stat DoEISInstruction (void)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = 0;
-            PR[2].BITNO = 0;
+            SET_PR_BITNO (2, 0);
             break;
         case 0370:  ///< epbp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6118,7 +6120,7 @@ static t_stat DoEISInstruction (void)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = 0;
-            PR[4].BITNO = 0;
+            SET_PR_BITNO (4, 0);
             break;
         case 0372:  ///< epbp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6129,7 +6131,7 @@ static t_stat DoEISInstruction (void)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = 0;
-            PR[6].BITNO = 0;
+            SET_PR_BITNO (6, 0);
             break;
          
         
@@ -6143,6 +6145,7 @@ static t_stat DoEISInstruction (void)
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = TPR.CA;
             PR[1].BITNO = TPR.TBR;
+            SET_PR_BITNO (1, 0);
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6153,7 +6156,7 @@ static t_stat DoEISInstruction (void)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = TPR.CA;
-            PR[3].BITNO = TPR.TBR;
+            SET_PR_BITNO (3, TPR.TBR);
             break;
         case 0371:  ///< epp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6164,7 +6167,7 @@ static t_stat DoEISInstruction (void)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = TPR.CA;
-            PR[5].BITNO = TPR.TBR;
+            SET_PR_BITNO (5, TPR.TBR);
             break;
         case 0373:  ///< epp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -6175,7 +6178,7 @@ static t_stat DoEISInstruction (void)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = TPR.CA;
-            PR[7].BITNO = TPR.TBR;
+            SET_PR_BITNO (7, TPR.TBR);
             break;
         
         case 0250:  ///< spbp0
@@ -6262,7 +6265,7 @@ static t_stat DoEISInstruction (void)
             Ypair[0] |= ((word36) PR[1].RNR) << 15;
             
             Ypair[1] = (word36) PR[1].WORDNO << 18;
-            Ypair[1]|= (word36) PR[1].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (1) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -6284,7 +6287,7 @@ static t_stat DoEISInstruction (void)
             Ypair[0] |= ((word36) PR[3].RNR) << 15;
             
             Ypair[1] = (word36) PR[3].WORDNO << 18;
-            Ypair[1]|= (word36) PR[3].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (3) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -6306,7 +6309,7 @@ static t_stat DoEISInstruction (void)
             Ypair[0] |= ((word36) PR[5].RNR) << 15;
             
             Ypair[1] = (word36) PR[5].WORDNO << 18;
-            Ypair[1]|= (word36) PR[5].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (5) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -6328,7 +6331,7 @@ static t_stat DoEISInstruction (void)
             Ypair[0] |= ((word36) PR[7].RNR) << 15;
             
             Ypair[1] = (word36) PR[7].WORDNO << 18;
-            Ypair[1]|= (word36) PR[7].BITNO << 9;
+            Ypair[1]|= (word36) GET_PR_BITNO (7) << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -6371,27 +6374,24 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         //   C(Y)18,20 / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
-                        // AR[n].CHAR = CN / 2;
-                        // AR[n].ABITNO = 4 * (CN % 2) + 1;
-                        SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
+                        AR[n].CHAR = CN / 2;
+                        AR[n].BITNO = 4 * (CN % 2) + 1;
                         break;
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (6 * C(Y)18,20) / 9 -> C(ARn.CHAR)
                         //   (6 * C(Y)18,20)mod9 -> C(ARn.BITNO)
-                        // AR[n].CHAR = (6 * CN) / 9;
-                        // AR[n].ABITNO = (6 * CN) % 9;
-                        SET_AR_CHAR_BIT (n, (6 * CN) / 9, (6 * CN) % 9);
+                        AR[n].CHAR = (6 * CN) / 9;
+                        AR[n].BITNO = (6 * CN) % 9;
                         break;
                         
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
                         //   C(Y)18,19 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
-                        // AR[n].CHAR = (CN >> 1); // remember, 9-bit CN's are funky
-                        // AR[n].ABITNO = 0;
-                        SET_AR_CHAR_BIT (n, (CN >> 1), 0); // remember, 9-bit CN's are funky
+                        AR[n].CHAR = (CN >> 1); // remember, 9-bit CN's are funky
+                        AR[n].BITNO = 0;
                         break;
                 }
             }
@@ -6409,9 +6409,8 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 AR[n].WORDNO = GETHI(CY);
-                //AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
-                //AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4), (word2)bitfieldExtract36(CY, 16, 2));
+                AR[n].BITNO = (word6)bitfieldExtract36(CY, 12, 4);
+                AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
             }
             break;
             
@@ -6425,9 +6424,8 @@ static t_stat DoEISInstruction (void)
                 word36 tmp36 = Yblock8[n];
 
                 AR[n].WORDNO = GETHI(tmp36);
-                // AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
-                // AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4), (word2)bitfieldExtract36(tmp36, 16, 2));
+                AR[n].BITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
+                AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
             }
             break;
             
@@ -6460,18 +6458,16 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21 = 1 (TN code = 1), then
                         //   (C(Y)18,20) / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
-                        // AR[n].CHAR = CN / 2;
-                        // AR[n].ABITNO = 4 * (CN % 2) + 1;
-                        SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
+                        AR[n].CHAR = CN / 2;
+                        AR[n].BITNO = 4 * (CN % 2) + 1;
                         break;
                         
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
-                        // AR[n].CHAR = CN;
-                        // AR[n].ABITNO = 0;
-                        SET_AR_CHAR_BIT (n, CN, 0); 
+                        AR[n].CHAR = CN;
+                        AR[n].BITNO = 0;
                         break;
                 }
             }
@@ -6506,14 +6502,14 @@ static t_stat DoEISInstruction (void)
                     case CTA4:  // 2
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 -> C(Y)18,20
-                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
+                        CN = (9 * AR[n].CHAR + AR[n].BITNO - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
-                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */) / 6;
+                        CN = (9 * AR[n].CHAR + AR[n].BITNO) / 6;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
@@ -6522,7 +6518,7 @@ static t_stat DoEISInstruction (void)
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
+                        CY = bitfieldInsert36(CY, AR[n].CHAR, 16, 2);
                         break;
                 }
 
@@ -6557,7 +6553,7 @@ static t_stat DoEISInstruction (void)
                     case CTN4:  // 1
                         // If C(Y)21 = 1 (TN code = 1) then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 -> C(Y)18,20
-                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
+                        CN = (9 * AR[n].CHAR + AR[n].BITNO - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
@@ -6566,7 +6562,7 @@ static t_stat DoEISInstruction (void)
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
+                        CY = bitfieldInsert36(CY, AR[n].CHAR, 16, 2);
                         break;
                 }
                 
@@ -6590,8 +6586,8 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
-                CY = bitfieldInsert36(CY, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
-                CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
+                CY = bitfieldInsert36(CY, AR[n].BITNO,  12,  4);
+                CY = bitfieldInsert36(CY, AR[n].CHAR,   16,  2);
             }
             break;
             
@@ -6601,8 +6597,8 @@ static t_stat DoEISInstruction (void)
             {
                 word36 arx = 0;
                 arx = bitfieldInsert36(arx, AR[n].WORDNO, 18, 18);
-                arx = bitfieldInsert36(arx, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
-                arx = bitfieldInsert36(arx, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
+                arx = bitfieldInsert36(arx, AR[n].BITNO,  12,  4);
+                arx = bitfieldInsert36(arx, AR[n].CHAR,   16,  2);
                 
                 Yblock8[n] = arx;
             }
@@ -6984,7 +6980,7 @@ static int emCall (void)
             for(int n = 0 ; n < 8 ; n++)
             {
                 sim_printf("PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, GET_PR_BITNO (n));
             }
             break;
         case 27:    // dump registers A & Q

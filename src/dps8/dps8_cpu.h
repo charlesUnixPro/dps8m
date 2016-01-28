@@ -186,12 +186,14 @@ extern struct _par
     //
     // We use this to deduce the BITNO <-> CHAR/BITNO mapping.
 
-    word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
-                    // first bit of the data item. Data items aligned on word 
-                    // boundaries always have the value 0. Unaligned data
-                    //  items may have any value in the range [1,35].
+//    word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
+//                    // first bit of the data item. Data items aligned on word 
+//                    // boundaries always have the value 0. Unaligned data
+//                    //  items may have any value in the range [1,35].
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
+    word2   CHAR;
+    word4   BITNO;
   } PAR [8];
 
 // N.B. remember there are subtle differences between AR/PR . BITNO
@@ -201,11 +203,13 @@ extern struct _par
 
 // Support code to access ARn . BITNO and CHAR
 
-#define GET_AR_BITNO(n) (PAR [n] . BITNO % 9)
-#define GET_AR_CHAR(n) (PAR [n] . BITNO / 9)
-#define SET_AR_BITNO(n, b) PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
-#define SET_AR_CHAR(n, c) PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
-#define SET_AR_CHAR_BIT(n, c, b) PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
+//#define GET_AR_BITNO(n) (PAR [n] . BITNO % 9)
+//#define GET_AR_CHAR(n) (PAR [n] . BITNO / 9)
+//#define SET_AR_BITNO(n, b) PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
+//#define SET_AR_CHAR(n, c) PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
+//#define SET_AR_CHAR_BIT(n, c, b) PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
+#define SET_PR_BITNO(n, b) { PAR [n] . BITNO = (b) % 9; PAR [n] . CHAR = ((b) / 9) & 03; }
+#define GET_PR_BITNO(n) (PAR [n] . CHAR * 9 + PAR [n] . BITNO)
 
 extern struct _bar
   {

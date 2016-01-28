@@ -864,8 +864,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
         word18 offset = SIGNEXT15_18 (address);  // 15-bit signed number
         address = (AR [n] . WORDNO + offset) & AMASK;
         
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        ARn_CHAR = AR[n].CHAR;
+        ARn_BITNO = AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
           {
@@ -1024,8 +1024,8 @@ static void parseArgOperandDescriptor (uint k)
         word15 offset = y & MASK15;  // 15-bit signed number
         y = (AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
         
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        ARn_CHAR = AR[n].CHAR;
+        ARn_BITNO = AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
           {
@@ -1061,8 +1061,8 @@ static void parseNumericOperandDescriptor (int k)
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        ARn_CHAR = AR[n].CHAR;
+        ARn_BITNO = AR[n].BITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
@@ -1176,8 +1176,8 @@ static void parseBitstringOperandDescriptor (int k)
         address = (AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         
-        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
-        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+        ARn_CHAR = AR[n].CHAR;
+        ARn_BITNO = AR[n].BITNO;
         
 #if 0
         if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
@@ -1267,7 +1267,7 @@ void a4bd (void)
     uint augend = 0;
     if (GET_A (cu . IWB))
        {
-         augend = AR [ARn] . WORDNO * 32u + AR [ARn] . BITNO;
+         augend = AR [ARn] . WORDNO * 32u + GET_PR_BITNO (ARn);
          // force to 4 bit character boundary
          augend = augend & ~3;
        }
@@ -1290,7 +1290,7 @@ void a4bd (void)
                            28, 29, 30, 31, 32, 33, 34, 35};
 
     uint bitno = sum % 32;
-    AR [ARn] . BITNO = tab [bitno];
+    SET_PR_BITNO (ARn, tab [bitno]);
   }
 
 
@@ -1307,7 +1307,7 @@ void s4bd (void)
     uint minuend = 0;
     if (GET_A (cu . IWB))
        {
-         minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
+         minuend = AR [ARn] . WORDNO * 32 + GET_PR_BITNO (ARn);
          // force to 4 bit character boundary
          minuend = minuend & ~3;
        }
@@ -1331,7 +1331,7 @@ void s4bd (void)
 
     // XXX what if difference is negative? Does that effect the % oddly?
     uint bitno = difference % 32;
-    AR [ARn] . BITNO = tab [bitno];
+    SET_PR_BITNO (ARn, tab [bitno]);
   }
 
 void axbd (uint sz)
@@ -1359,7 +1359,7 @@ void axbd (uint sz)
   
     uint augend = 0;
     if (GET_A (cu . IWB))
-       augend = AR [ARn] . WORDNO * 36 + AR [ARn] . BITNO;
+       augend = AR [ARn] . WORDNO * 36 + GET_PR_BITNO (ARn);
     // force to character boundary
     if (sz == 9 || sz == 36|| GET_A (cu . IWB))
       {
@@ -1376,7 +1376,7 @@ void axbd (uint sz)
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     AR [ARn] . WORDNO = (sum / 36) & AMASK;
-    AR [ARn] . BITNO = sum % 36;
+    SET_PR_BITNO (ARn, sum % 36);
   }
 
 void sxbd (uint sz)
@@ -1404,7 +1404,7 @@ void sxbd (uint sz)
 
     uint minuend = 0;
     if (GET_A (cu . IWB))
-       minuend = AR [ARn] . WORDNO * 36u + AR [ARn] . BITNO;
+       minuend = AR [ARn] . WORDNO * 36u + GET_PR_BITNO (ARn);
     // force to character boundary
     if (sz == 9 || sz == 36 || GET_A (cu . IWB))
       {
@@ -1421,7 +1421,7 @@ void sxbd (uint sz)
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
 
     AR [ARn] . WORDNO = (difference / 36) & AMASK;
-    AR [ARn] . BITNO = difference % 36;
+    SET_PR_BITNO (ARn, difference % 36);
   }
 
 void cmpc (void)

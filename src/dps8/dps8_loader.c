@@ -602,16 +602,16 @@ int loadDeferredSegments(bool bVerbose)
         if (strcmp(sg->name, LOT) == 0)
         {
             PR[4].BITNO = 0;
-            // PR[4].CHAR = 0; // Covered by the BITNO above
+            PR[4].CHAR = 0;
             PR[4].SNR = segno;
             PR[4].WORDNO = 0;
             
             PR[5] = PR[4];
             
             int n = 4;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, GET_PR_BITNO (n));
             n = 5;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, GET_PR_BITNO (n));
 
         }
         
