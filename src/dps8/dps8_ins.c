@@ -6144,8 +6144,7 @@ static t_stat DoEISInstruction (void)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = TPR.CA;
-            PR[1].BITNO = TPR.TBR;
-            SET_PR_BITNO (1, 0);
+            SET_PR_BITNO (1, TPR.TBR);
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
