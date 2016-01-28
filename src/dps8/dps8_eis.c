@@ -1254,6 +1254,16 @@ static void cleanupOperandDescriptor (int k)
 // is 2^18 * 36 bits
 #define nxbits ((1 << 18) * 36)
 
+// 2 * (s->BITNO / 9) + (s->BITNO % 9) / 4;
+static int cntFromBit[36] = {
+    0, 0, 0, 0, 0, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 5, 5, 5, 5,
+    6, 6, 6, 6, 6, 7, 7, 7, 7
+};
+
+static int bitFromCnt[8] = {1, 5, 10, 14, 19, 23, 28, 32};
+
 void a4bd (void)
   {
     uint ARn = GET_ARN (cu . IWB);
@@ -1267,7 +1277,7 @@ void a4bd (void)
     uint augend = 0;
     if (GET_A (cu . IWB))
        {
-         augend = AR [ARn] . WORDNO * 32u + AR [ARn] . BITNO;
+         augend = AR [ARn] . WORDNO * 32u + cntFromBit [AR [ARn] . BITNO];
          // force to 4 bit character boundary
          augend = augend & ~3;
        }
@@ -1281,16 +1291,17 @@ void a4bd (void)
 
     AR [ARn] . WORDNO = (sum / 32) & AMASK;
 
-    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
-    //             111111 11112222 22222233
-    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
-    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
-                           10, 11, 12, 13, 14, 15, 16, 17,
-                           19, 20, 21, 22, 23, 24, 25, 26,
-                           28, 29, 30, 31, 32, 33, 34, 35};
-
+//    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
+//    //             111111 11112222 22222233
+//    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
+//    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
+//                           10, 11, 12, 13, 14, 15, 16, 17,
+//                           19, 20, 21, 22, 23, 24, 25, 26,
+//                           28, 29, 30, 31, 32, 33, 34, 35};
+//
     uint bitno = sum % 32;
-    AR [ARn] . BITNO = tab [bitno];
+//    AR [ARn] . BITNO = tab [bitno];
+    AR [ARn] . BITNO = bitFromCnt[bitno % 8];
   }
 
 
@@ -1307,7 +1318,7 @@ void s4bd (void)
     uint minuend = 0;
     if (GET_A (cu . IWB))
        {
-         minuend = AR [ARn] . WORDNO * 32 + AR [ARn] . BITNO;
+         minuend = AR [ARn] . WORDNO * 32 + cntFromBit [AR [ARn] . BITNO];
          // force to 4 bit character boundary
          minuend = minuend & ~3;
        }
@@ -1321,17 +1332,18 @@ void s4bd (void)
 
     AR [ARn] . WORDNO = (difference / 32) & AMASK;
 
-    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
-    //             111111 11112222 22222233
-    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
-    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
-                       10, 11, 12, 13, 14, 15, 16, 17,
-                       19, 20, 21, 22, 23, 24, 25, 26,
-                       28, 29, 30, 31, 32, 33, 34, 35};
-
-    // XXX what if difference is negative? Does that effect the % oddly?
+//    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
+//    //             111111 11112222 22222233
+//    //  01234567 89012345 67890123 45678901   // 4 bit notation offset
+//    static int tab [32] = { 1,  2,  3,  4,  5,  6,  7,  8,
+//                       10, 11, 12, 13, 14, 15, 16, 17,
+//                       19, 20, 21, 22, 23, 24, 25, 26,
+//                       28, 29, 30, 31, 32, 33, 34, 35};
+//
+//    // XXX what if difference is negative? Does that effect the % oddly?
     uint bitno = difference % 32;
-    AR [ARn] . BITNO = tab [bitno];
+//    AR [ARn] . BITNO = tab [bitno];
+    AR [ARn] . BITNO = bitFromCnt[bitno % 8];
   }
 
 void axbd (uint sz)
