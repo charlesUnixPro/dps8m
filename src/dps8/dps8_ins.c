@@ -1925,8 +1925,9 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0750:  ///< stc2
-            // XXX AL-39 doesn't specify if the low half is set to zero,
+            // AL-39 doesn't specify if the low half is set to zero,
             // set to IR, or left unchanged
+            // RJ78 specifies unchanged
             SETHI(CY, (PPR.IC + 2) & MASK18);
 
             break;
@@ -2897,7 +2898,6 @@ static t_stat DoBasicInstruction (void)
                 // no division takes place
                 SCF(CY == 0, cu.IR, I_ZERO);
                 SCF(rQ & SIGN36, cu.IR, I_NEG);
-                // XXX divide check fault
                 doFault(FAULT_DIV, 0, "div divide check");
             }
             else
@@ -2976,7 +2976,6 @@ static t_stat DoBasicInstruction (void)
             ///  remainder sign is equal to the dividend sign unless the remainder is zero.
             /// If | dividend | >= | divisor | or if the divisor = 0, division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude in absolute, and the negative indicator reflects the dividend sign.
             
-            // XXX Untested, needs further testing.
             dvf ();
             
             break;
@@ -3930,9 +3929,6 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0537:  ///< dufs
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
-
             dufs ();
             break;
             
@@ -4723,6 +4719,7 @@ static t_stat DoBasicInstruction (void)
                     // instruction to deduce that it is a lprpn fault.
                     doFault(FAULT_CMD, lprpn_bits, "Load Pointer Register Packed (lprpn)");
                   }
+#if 0
                 //If C(Y)6,17 = 11...1, then 111 -> C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
                     PR[n].SNR |= 070000; // XXX check to see if this is correct
@@ -4733,6 +4730,20 @@ static t_stat DoBasicInstruction (void)
                 //PR[n].SNR &= 3; -- huh? Never code when tired
                 PR[n].SNR &=             070000; // [CAC] added this
                 PR[n].SNR |= GETHI(CY) & 007777;
+#else
+// The SPRPn instruction stores only the low 12 bits of the 15 bit SNR.
+// A special case is made for an SNR of all ones; it is stored as 12 1's.
+// The pcode in AL39 handles this awkwardly; I believe this is
+// the same, but in a more straightforward manner
+
+               // Get the 12 bit operand SNR
+               word12 oSNR = getbits36 (CY, 6, 12);
+               // Test for special case
+               if (oSNR == 07777)
+                 PR[n] . SNR = 077777;
+               else
+                 PR[n] . SNR = oSNR; // usigned word will 0-extend.
+#endif
                 //C(Y)18,35 -> C(PRn.WORDNO)
                 PR[n].WORDNO = GETLO(CY);
 
@@ -5018,7 +5029,10 @@ static t_stat DoBasicInstruction (void)
               uint cpu_port_num = (TPR.CA >> 15) & 03;
               int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
               if (scu_unit_num < 0)
-                scu_unit_num = 0; // XXX print message
+                {
+                  sim_warn ("RCCL can't find the right SCU; using #0\n");
+                  scu_unit_num = 0;
+                }
               t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & rA, & rQ);
               if (rc > 0)
                 return rc;
@@ -5191,7 +5205,6 @@ static t_stat DoBasicInstruction (void)
             /// 4-bit quotient -> C(Q)32,35
             /// remainder -> C(A)
             
-            /// XXX Tested. Seems to work OK
             {
                 word36 tmp1 = rA & SIGN36; // A0
             
@@ -5482,7 +5495,10 @@ static t_stat DoBasicInstruction (void)
                 uint cpu_port_num = (TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 if (scu_unit_num < 0)
-                  scu_unit_num = 0; // XXX print message
+                  {
+                    sim_warn ("RMCM can't find the right SCU; using #0\n");
+                    scu_unit_num = 0;
+                  }
                 t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & rA, & rQ);
                 if (rc)
                     return rc;
@@ -5946,11 +5962,7 @@ static t_stat DoBasicInstruction (void)
 static t_stat DoEISInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
-    // XXX not complete .....
-    
     int32 opcode = i->opcode;
-    //if (i->e)
-        //i->e.ins = i;
 
     switch (opcode)
     {
@@ -6416,10 +6428,6 @@ static t_stat DoEISInstruction (void)
             break;
             
         case 0463:  ///< lareg - Load Address Registers
-            
-            // XXX This will eventually be done automagically
-            //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
-            
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 tmp36 = Yblock8[n];
@@ -6491,6 +6499,13 @@ static t_stat DoEISInstruction (void)
                 
                 int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21,22
                 
+                // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit), 
+                // an illegal procedure fault occurs.
+                if (TA == 03)
+                  doFault (FAULT_IPR, ill_proc, "ARAn tag == 3");
+                if (getbits36 (CY, 23, 1) != 0)
+                  doFault (FAULT_IPR, ill_proc, "ARAn b23 == 1");
+
                 uint32 n = opcode & 07;  // get
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
@@ -6525,13 +6540,9 @@ static t_stat DoEISInstruction (void)
                         CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
                         break;
                 }
-
-            // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit), an illegal procedure fault occurs.
-   
-            // XXX wire in fault detection
-                
             }
             break;
+
         case 0640:  ///< arnn -  Address Register n to Numeric Descriptor
         case 0641:
         case 0642:

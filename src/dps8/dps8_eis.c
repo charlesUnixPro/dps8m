@@ -345,7 +345,7 @@ static word18 getMFReg18 (uint n, bool UNUSED allowDUL)
     return 0;
   }
 
-static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
+static word36 getMFReg36 (uint n, bool UNUSED allowDU)
   {
     switch (n)
       {
@@ -360,10 +360,8 @@ static word36 getMFReg36 (uint n, bool UNUSED allowDUL)
 
         case 3: // du
           // du is a special case for SCD, SCDR, SCM, and SCMR
-// XXX needs attention; doesn't work with old code; triggered by
-// XXX parseOperandDescriptor;
-         // if (! allowDUL)
-           //doFault (FAULT_IPR, ill_proc, "getMFReg36 du");
+          if (! allowDU)
+           doFault (FAULT_IPR, ill_proc, "getMFReg36 du");
           return 0;
 
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
@@ -838,7 +836,7 @@ void setupEISoperands (void)
 #endif
   }
 
-static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
+static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU)
   {
     EISstruct * e = & currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
@@ -905,7 +903,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA)
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36 (MFk & 017, false);
+    word36 r = getMFReg36 (MFk & 017, allowDU);
     
     // AL-39 implies, and RJ-76 say that RL and reg == IC is illegal;
     // but it the emulator ignores RL if reg == IC, then that PL/I
@@ -1469,8 +1467,8 @@ void cmpc (void)
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
 #endif
-    parseAlphanumericOperandDescriptor (1, 1);
-    parseAlphanumericOperandDescriptor (2, 1);
+    parseAlphanumericOperandDescriptor (1, 1, false);
+    parseAlphanumericOperandDescriptor (2, 1, false);
     
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
@@ -1562,8 +1560,8 @@ void scd ()
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1);
-    parseAlphanumericOperandDescriptor (2, 1); // use TA1
+    parseAlphanumericOperandDescriptor (1, 1, false);
+    parseAlphanumericOperandDescriptor (2, 1, true); // use TA1
     parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
@@ -1682,8 +1680,8 @@ void scdr (void)
     setupOperandDescriptorCache(3);
 #endif
 
-    parseAlphanumericOperandDescriptor(1, 1);
-    parseAlphanumericOperandDescriptor(2, 1); // Use TA1
+    parseAlphanumericOperandDescriptor(1, 1, false);
+    parseAlphanumericOperandDescriptor(2, 1, true); // Use TA1
     parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
@@ -1821,8 +1819,8 @@ void scm (void)
     setupOperandDescriptorCache (3);
 #endif
 
-    parseAlphanumericOperandDescriptor (1, 1);
-    parseAlphanumericOperandDescriptor (2, 1);
+    parseAlphanumericOperandDescriptor (1, 1, false);
+    parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
@@ -1943,8 +1941,8 @@ void scmr (void)
     setupOperandDescriptorCache (3);
 #endif
 
-    parseAlphanumericOperandDescriptor (1, 1);
-    parseAlphanumericOperandDescriptor (2, 1);
+    parseAlphanumericOperandDescriptor (1, 1, false);
+    parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
     // Both the string and the test character pair are treated as the data type
@@ -2075,7 +2073,7 @@ void tct (void)
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (1, 1, false);
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
@@ -2213,7 +2211,7 @@ void tctr (void)
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1);
+    parseAlphanumericOperandDescriptor (1, 1, false);
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
@@ -2366,8 +2364,8 @@ void mlr (void)
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1);
-    parseAlphanumericOperandDescriptor(2, 2);
+    parseAlphanumericOperandDescriptor(1, 1, false);
+    parseAlphanumericOperandDescriptor(2, 2, false);
     
     int srcSZ, dstSZ;
 
@@ -2609,8 +2607,8 @@ void mrl (void)
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1);
-    parseAlphanumericOperandDescriptor(2, 2);
+    parseAlphanumericOperandDescriptor(1, 1, false);
+    parseAlphanumericOperandDescriptor(2, 2, false);
     
     int srcSZ, dstSZ;
 
@@ -4255,9 +4253,9 @@ void mve (void)
     setupOperandDescriptor(3);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1);
-    parseAlphanumericOperandDescriptor(2, 2);
-    parseAlphanumericOperandDescriptor(3, 3);
+    parseAlphanumericOperandDescriptor(1, 1, false);
+    parseAlphanumericOperandDescriptor(2, 2, false);
+    parseAlphanumericOperandDescriptor(3, 3, false);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4324,8 +4322,8 @@ void mvne (void)
 #endif
     
     parseNumericOperandDescriptor (1);
-    parseAlphanumericOperandDescriptor (2, 2);
-    parseAlphanumericOperandDescriptor (3, 3);
+    parseAlphanumericOperandDescriptor (2, 2, false);
+    parseAlphanumericOperandDescriptor (3, 3, false);
     
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4430,8 +4428,8 @@ void mvt (void)
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1);
-    parseAlphanumericOperandDescriptor (2, 2);
+    parseAlphanumericOperandDescriptor (1, 1, false);
+    parseAlphanumericOperandDescriptor (2, 2, false);
     parseArgOperandDescriptor (3);
     
     e->srcTA = e->TA1;
