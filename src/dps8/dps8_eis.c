@@ -965,7 +965,9 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           break;
 
         case CTA9:
-          CN = (CN >> 1) & 07;  // XXX Do error checking
+          if (CN & 01)
+            doFault(FAULT_IPR, ill_proc, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
+          CN = (CN >> 1);
             
           effBITNO = 0;
           effCHAR = (CN + ARn_CHAR + r) % 4;
@@ -1072,7 +1074,6 @@ static void parseNumericOperandDescriptor (int k)
     }
 
     word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
-    // XXX need to do some error checking here with CN
 
     e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
     e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
@@ -1126,7 +1127,9 @@ static void parseNumericOperandDescriptor (int k)
 
             break;
         case CTN9:
-            CN = (CN >> 1) & 07;  // XXX Do error checking
+            if (CN & 1)
+              doFault(FAULT_IPR, ill_proc, "parseNumericOperandDescriptor CTA9 & CN odd");
+            CN = (CN >> 1) & 03;
 
             effBITNO = 0;
             effCHAR = (CN + ARn_CHAR + r) % 4;
@@ -1324,9 +1327,9 @@ void s4bd (void)
     int32_t difference = minuend - subtractend;
 
     // Handle over/under flow
-    //while (difference < 0)
-      //difference += n4bits;
-    //difference = difference % n4bits;
+    while (difference < 0)
+      difference += n4bits;
+    difference = difference % n4bits;
 
     AR [ARn] . WORDNO = (difference / 32) & AMASK;
 
@@ -1338,7 +1341,7 @@ void s4bd (void)
 //                       19, 20, 21, 22, 23, 24, 25, 26,
 //                       28, 29, 30, 31, 32, 33, 34, 35};
 //
-//    // XXX what if difference is negative? Does that effect the % oddly?
+
     uint bitno = difference % 32;
 //    AR [ARn] . BITNO = tab [bitno];
     AR [ARn] . BITNO = bitFromCnt[bitno % 8];
@@ -2964,7 +2967,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(4): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -2975,7 +2978,7 @@ static void EISloadInputBufferNumeric (int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
+                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(5): illegal char in input");
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -2983,7 +2986,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(6): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -6234,9 +6237,8 @@ static int loadDec (EISaddr *p, int pos)
                 case 014:   // default   4-bit + sign
                     break;
                 default:
-                    sim_printf ("loadDec:1\n");
                     // not a leading sign
-                    // XXX generate Ill Proc fault
+                    doFault(FAULT_IPR, ill_proc, "loadDec(): no leading sign (1)");
                    
                     return 1;
             }
@@ -6258,9 +6260,8 @@ static int loadDec (EISaddr *p, int pos)
                 case '+':
                     break;
                 default:
-                    sim_printf ("loadDec:2\n");
                     // not a leading sign
-                    // XXX generate Ill Proc fault
+                    doFault(FAULT_IPR, ill_proc, "loadDec(): no leading sign (2)");
                    
                     return 2;
             }
@@ -6283,9 +6284,8 @@ static int loadDec (EISaddr *p, int pos)
                 case 014:   // default   4-bit + sign
                     break;
                 default:
-                    sim_printf ("loadDec:3\n");
                     // not a trailing sign
-                    // XXX generate Ill Proc fault
+                    doFault(FAULT_IPR, ill_proc, "loadDec(): no leading sign (3)");
                     
                     return 3;
             }
@@ -6306,10 +6306,8 @@ static int loadDec (EISaddr *p, int pos)
                 case '+':
                     break;
                 default:
-                    sim_printf ("loadDec:4\n");
                     // not a trailing sign
-                    // XXX generate Ill Proc fault
-                  
+                    doFault(FAULT_IPR, ill_proc, "loadDec(): no leading sign (4)");
                     return 4;
             }
             break;
@@ -6387,7 +6385,6 @@ void dtb (void)
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
-        // XXX generate ill proc fault
         doFault(FAULT_IPR, ill_proc, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
@@ -6416,7 +6413,6 @@ void dtb (void)
             
             if (TSTF(cu.IR, I_OFLOW))
             {
-                // XXX generate overflow fault
                 doFault(FAULT_IPR, ill_proc, "dtb():  overflow fault (finish implementing)");
             }
             break;
@@ -8690,7 +8686,6 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 /*
  * dv2d - Divide Using Two Decimal Operands
  */
-// XXX need to put in divide checks, etc ...
 
 void dv2d (void)
 {
@@ -8717,7 +8712,6 @@ void dv2d (void)
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
     decContextDefaultDPS8(&set);
 
     if (R)
@@ -8941,7 +8935,6 @@ void dv2d (void)
 /*
  * dv3d - Divide Using Three Decimal Operands
  */
-// XXX need to put in divide checks, etc ...
 
 void dv3d (void)
 
