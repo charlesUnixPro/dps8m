@@ -821,7 +821,7 @@ static uint64 getSCUclock (void)
     static uint64 lastUnixuSecs = 0;
     if (UnixuSecs < lastUnixuSecs)
       {
-        sim_warn ("gettimeofday() went backwards %ld uS\n", lastUnixuSecs - lastUnixuSecs);
+        sim_warn ("gettimeofday() went backwards %ld uS\n", lastUnixuSecs - UnixuSecs);
       }
     lastUnixuSecs = UnixuSecs;
 
