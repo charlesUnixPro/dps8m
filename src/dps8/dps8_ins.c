@@ -7499,10 +7499,19 @@ void doRCU (void)
         longjmp (jmpMain, JMP_REFETCH);
       }
 
+// It seems obvious that MMEx should do a JMP_SYNC_FAULT_RETURN, but doing
+// a JMP_RESTART makes 'debug' work. (The same change to DRL does not make
+// 'gtss' work, tho.
+
+    if (cu . FI_ADDR == FAULT_MME2)
+      {
+        longjmp (jmpMain, JMP_RESTART);
+      }
+
     // MME faults resume with the next instruction
 
     if (cu . FI_ADDR == FAULT_MME ||
-        cu . FI_ADDR == FAULT_MME2 ||
+        /* cu . FI_ADDR == FAULT_MME2 || */
         cu . FI_ADDR == FAULT_MME3 ||
         cu . FI_ADDR == FAULT_MME4 ||
         cu . FI_ADDR == FAULT_DRL ||
