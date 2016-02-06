@@ -543,6 +543,11 @@
 #include "dps8_faults.h"
 #include "dps8_cable.h"
 
+#ifdef __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
+
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, 
                               void * desc);
@@ -784,7 +789,17 @@ static uint64 getSCUclock (void)
     //  uSeconds
  
     struct timeval now;
+#ifdef __MACH__
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    now.tv_sec = mts.tv_sec;
+    now.tv_usec = mts.tv_nsec/1000;
+#else
     gettimeofday(& now, NULL);
+#endif
                 
     if (switches . y2k) // subtract 20 years....
       {
