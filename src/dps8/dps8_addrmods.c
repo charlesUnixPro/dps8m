@@ -450,7 +450,7 @@ startCA:;
       {
         if (Td == 0) // TPR.CA = address from opcode
           {
-            //updateIWB (identity)
+            //updateIWB (identity) // known that Td is 0.
             return SCPE_OK;
           }
 
@@ -463,7 +463,7 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012llo\n", directOperand);
 
-            //updateIWB (identity)
+            //updateIWB (identity) // known that rTag is DL or DU
             return SCPE_OK;
           }
 
@@ -490,7 +490,7 @@ startCA:;
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (cu . rpt || cu . rd))
-          updateIWB (TPR . CA, 0);
+          updateIWB (TPR . CA, 0); // Known to be 0 or ,n
         return SCPE_OK;
       } // R_MOD
 
@@ -671,28 +671,6 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cu . CT_HOLD), Cr);
 
-#if 0
-                if (directOperandFlag)
-                  {
-                    sim_debug (DBG_ADDRMOD, & cpu_dev,
-                      "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n",
-                      directOperand);
-
-                    TPR . CA = directOperand;
-
-                    updateIWB (TPR . CA, cu . CT_HOLD);
-
-                    return SCPE_OK;
-                }
-
-                TPR . CA += Cr;
-                TPR . CA &= MASK18;   // keep to 18-bits
-
-                sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
-
-                updateIWB (TPR . CA, cu . CT_HOLD);
-#else
 #ifdef ABUSE_CT_HOLD
                 if (directOperandFlag)
                   {
@@ -702,7 +680,8 @@ startCA:;
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_R): DO TPR.CA=%06o\n", TPR . CA);
 
-                    updateIWB (TPR . CA, TM_R | TD_DL);
+                    updateIWB (TPR . CA, cu . CT_HOLD); // Known to be DL or DU
+                    //updateIWB (TPR . CA, TM_R | TD_DL);
                     cu . coFlag = 0;
                   }
                 else
@@ -716,22 +695,6 @@ startCA:;
                     updateIWB (TPR . CA, 0);
                     cu . coFlag = 0;
                   }
-#else
-                if (directOperandFlag)
-                  {
-                    TPR . CA += directOperand;
-                  }
-                else
-                  {
-                    TPR . CA += Cr;
-                  }
-                TPR . CA &= MASK18;   // keep to 18-bits
-
-                sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
-
-                updateIWB (TPR . CA, 0);
-#endif
 #endif
                 cu . CT_HOLD = 0;
                 return SCPE_OK;
@@ -879,9 +842,7 @@ startCA:;
                 cu . coFlag = true;
                 cu . coSize = characterOperandSize == TB9 ? 1 : 0;
                 cu . coOffset = characterOperandOffset & 07;
-                updateIWB (TPR . CA, rTAG);
-#else
-                //updateIWB (identity)
+                updateIWB (TPR . CA, rTAG); // Known to be CI
 #endif
                 return SCPE_OK;
                } // IT_CI
@@ -992,9 +953,7 @@ startCA:;
                 cu . coFlag = true;
                 cu . coSize = characterOperandSize == TB9 ? 1 : 0;
                 cu . coOffset = characterOperandOffset & 07;
-                updateIWB (computedAddress, rTAG);
-#else
-                updateIWB (computedAddress, 0); // XXX guessing here...
+                updateIWB (computedAddress, rTAG); // Known to be SC
 #endif
                 return SCPE_OK;
               } // IT_SC
@@ -1096,9 +1055,7 @@ startCA:;
                 cu . coFlag = true;
                 cu . coSize = characterOperandSize == TB9 ? 1 : 0;
                 cu . coOffset = characterOperandOffset & 07;
-                updateIWB (TPR . CA, rTAG);
-#else
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                updateIWB (TPR . CA, rTAG); // Known to be SCR
 #endif
                 return SCPE_OK;
               } // IT_SCR

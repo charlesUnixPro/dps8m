@@ -113,9 +113,21 @@ static void readOperands (void)
     DCDstruct * i = & currentInstruction;
 
     sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
-sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
+
+// test consistency
+word6 rTAG = 0;
+if (! (i -> info -> flags & NO_TAG))
+  rTAG = GET_TAG (cu . IWB);
+word6 Td = GET_TD (rTAG);
+word6 Tm = GET_TM (rTAG);
+
     if (directOperandFlag)
       {
+// test consistency
+if (Tm != TM_R || (Td != TD_DU && Td != TD_DL))
+sim_printf ("read directOperand, but Tm != TM_R || (Td != TD_DU && Td != TD_DL); %02o [%lld]\n", rTAG, sim_timell ());
+
         CY = directOperand;
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands direct CY=%012llo\n", CY);
@@ -124,6 +136,9 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
 
     if (characterOperandFlag)
       {
+// test consistency
+if (Tm != TM_IT || (Td != IT_CI && Td != IT_SC && Td != IT_SCR))
+sim_printf ("read characterOperand, but Tm != TM_IT || (Td != IT_CI && Td != IT_SC && Td != IT_SCR); %02o [%lld]\n", rTAG, sim_timell ());
         word36 data;
         Read (TPR . CA, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -148,6 +163,10 @@ sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR
 
         return;
       }
+// test consistency
+if (! (cu . rpt || cu . rd))
+if (rTAG != 0)
+sim_printf ("read operand, but rTAG != 0; %02o [%lld]\n", rTAG, sim_timell ());
 
     ReadOP (TPR.CA, OPERAND_READ, i -> a);
     return;
@@ -1215,35 +1234,6 @@ restart_1:
           {
             doComputedAddressFormation ();
             iefpFinalAddress = TPR . CA;
-#if 0 // test code
-// Test to verify that recalling CAF is stable.
-        {
-          sim_debug (DBG_ADDRMOD, & cpu_dev, "2nd call\n");
-          word18 save = TPR.CA;
-          bool savef = characterOperandFlag;
-          int saves = characterOperandSize;
-          int saveo = characterOperandOffset;
-          bool savedof = directOperandFlag;
-          word36 savedo = directOperand;
-
-          doComputedAddressFormation ();
-
-          if (save != TPR.CA)
-            sim_printf ("XXX save %06o %06o %lld\n", save, TPR . CA, sim_timell ());
-          if (savef != characterOperandFlag)
-            sim_printf ("XXX savef %o %o %lld\n", savef, characterOperandOffset, sim_timell ());
-          if (saves != characterOperandSize)
-            sim_printf ("XXX saves %o %o %lld\n", saves, characterOperandSize, sim_timell ());
-          if (saveo != characterOperandOffset)
-            sim_printf ("XXX saveo %o %o %lld\n", saveo, characterOperandOffset, sim_timell ());
-          if (savedof != directOperandFlag)
-            sim_printf ("XXX savedof %o %o %lld\n", savedof, directOperandFlag, sim_timell ());
-          if (savedo != directOperand)
-            sim_printf ("XXX savedo %012llo %012llo %lld\n", savedo, directOperand, sim_timell ());
-
-          sim_debug (DBG_ADDRMOD, & cpu_dev, "back from 2nd call\n");
-        }
-#endif
             readOperands ();
           }
       }
