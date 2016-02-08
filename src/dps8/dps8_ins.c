@@ -58,22 +58,76 @@ static void writeOperands (void)
                "writeOperands(%s):mne=%s flags=%x\n",
                disAssemble (cu . IWB), i -> info -> mne, i -> info -> flags);
 
-    if (characterOperandFlag)
+    word6 rTAG = 0;
+    if (! (i -> info -> flags & NO_TAG))
+      rTAG = GET_TAG (cu . IWB);
+    word6 Td = GET_TD (rTAG);
+    word6 Tm = GET_TM (rTAG);
+
+    //if (characterOperandFlag)
+    if (Tm == TM_IT && Td == IT_CI)
       {
+sim_printf ("writeOperands CI\n");
+        // Bit 30 of the TAG field of the indirect word is interpreted
+        // as a character size flag, tb, with the value 0 indicating
+        // 6-bit characters and the value 1 indicating 9-bit bytes.
+        // Bits 33-35 of the TAG field are interpreted as a 3-bit
+        // character/byte position value, cf. Bits 31-32 of the TAG
+        // field must be zero.  If the character position value is
+        // greater than 5 for 6-bit characters or greater than 3 for 9-
+        // bit bytes, an illegal procedure, illegal modifier, fault
+        // will occur. The TALLY field is ignored. The computed address
+        // is the value of the ADDRESS field of the indirect word. The
+        // effective character/byte number is the value of the
+        // character position count, cf, field of the indirect word.
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "writeOperands (IT_CI): reading indirect word from %06o\n",
+                            TPR . CA);
+sim_printf ("writeOperands CI TPR.CA %06o\n", TPR . CA);
+
+        word36 indword;
+        Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+
+sim_printf ("writeOperands CI indword %012llo\n", indword);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "writeOperands (IT_CI): indword=%012llo\n", indword);
+
+        TPR.CA = GET_ADDR (indword);
+        word6 characterOperandSize = GET_TB (GET_TAG (indword));
+        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+
+sim_printf ("writeOperands CI size %d os %d CA %06o\n", characterOperandSize, characterOperandOffset, TPR . CA);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "writeOperands (IT_CI): size=%o offset=%o TPR.CA=%06o\n",
+                   characterOperandSize, characterOperandOffset,
+                   TPR . CA);
+
+        if (characterOperandSize == TB6 && characterOperandOffset > 5)
+          // generate an illegal procedure, illegal modifier fault
+          doFault (FAULT_IPR, ill_mod,
+                   "co size == TB6 && offset > 5");
+
+sim_printf ("writeOperands CI ok 1\n");
+        if (characterOperandSize == TB9 && characterOperandOffset > 3)
+          // generate an illegal procedure, illegal modifier fault
+          doFault (FAULT_IPR, ill_mod,
+                   "co size == TB9 && offset > 3");
+sim_printf ("writeOperands CI ok 2\n");
+
         word36 data;
 
+//ci sim_printf ("write CI size %d os %d tag %02o CA %06o\n", characterOperandSize, characterOperandOffset, rTAG, TPR . CA);
         // read data where chars/bytes now live (if it hasn't already been 
         // read in)
 
-        if (i->info->flags & READ_OPERAND)
-          data = CY;
-        else
-          Read (TPR . CA, & data, OPERAND_READ, i -> a);
+        Read (TPR . CA, & data, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n",
+                   "writeOperands (IT_CI/SC/SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n",
                    data, TPR . CA, 
                    characterOperandSize, characterOperandOffset);
+sim_printf ("writeOperands CI addr %06o data %012llo\n", TPR.CA, data);
 
         // set byte/char
         switch (characterOperandSize)
@@ -94,7 +148,10 @@ static void writeOperands (void)
         Write (TPR . CA, data, OPERAND_STORE, i -> a);   //TM_IT);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
+                   "writeOperands (IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
+                   data, TPR . CA, 
+                   characterOperandSize, characterOperandOffset);
+sim_printf ("writeOperands (IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
                    data, TPR . CA, 
                    characterOperandSize, characterOperandOffset);
 
@@ -112,37 +169,92 @@ static void readOperands (void)
 {
     DCDstruct * i = & currentInstruction;
 
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
     sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands a %d address %08o\n", i -> a, TPR.CA);
 
-// test consistency
-word6 rTAG = 0;
-if (! (i -> info -> flags & NO_TAG))
-  rTAG = GET_TAG (cu . IWB);
-word6 Td = GET_TD (rTAG);
-word6 Tm = GET_TM (rTAG);
+    word6 rTAG = 0;
+    if (! (i -> info -> flags & NO_TAG))
+      rTAG = GET_TAG (cu . IWB);
+    word6 Td = GET_TD (rTAG);
+    word6 Tm = GET_TM (rTAG);
 
-    if (directOperandFlag)
+    //if (directOperandFlag)
+    if (Tm == TM_R && Td == TD_DU)
       {
-// test consistency
-if (Tm != TM_R || (Td != TD_DU && Td != TD_DL))
-sim_printf ("read directOperand, but Tm != TM_R || (Td != TD_DU && Td != TD_DL); %02o [%lld]\n", rTAG, sim_timell ());
-
-        CY = directOperand;
+        CY = 0;
+        SETHI (CY, TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands direct CY=%012llo\n", CY);
+                   "readOperands DU CY=%012llo\n", CY);
         return;
       }
 
-    if (characterOperandFlag)
+    if (Tm == TM_R && Td == TD_DL)
       {
-// test consistency
-if (Tm != TM_IT || (Td != IT_CI && Td != IT_SC && Td != IT_SCR))
-sim_printf ("read characterOperand, but Tm != TM_IT || (Td != IT_CI && Td != IT_SC && Td != IT_SCR); %02o [%lld]\n", rTAG, sim_timell ());
+        CY = 0;
+        SETLO (CY, TPR.CA);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands DL CY=%012llo\n", CY);
+        return;
+      }
+
+    //if (characterOperandFlag)
+    if (Tm == TM_IT && Td == IT_CI)
+      {
+sim_printf ("readOperands CI\n");
+        // Bit 30 of the TAG field of the indirect word is interpreted
+        // as a character size flag, tb, with the value 0 indicating
+        // 6-bit characters and the value 1 indicating 9-bit bytes.
+        // Bits 33-35 of the TAG field are interpreted as a 3-bit
+        // character/byte position value, cf. Bits 31-32 of the TAG
+        // field must be zero.  If the character position value is
+        // greater than 5 for 6-bit characters or greater than 3 for 9-
+        // bit bytes, an illegal procedure, illegal modifier, fault
+        // will occur. The TALLY field is ignored. The computed address
+        // is the value of the ADDRESS field of the indirect word. The
+        // effective character/byte number is the value of the
+        // character position count, cf, field of the indirect word.
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands (IT_CI): reading indirect word from %06o\n",
+                            TPR . CA);
+
+sim_printf ("readOperands CI TPR.CA %06o\n", TPR . CA);
+
+        word36 indword;
+        Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+
+sim_printf ("readOperands CI indword %012llo\n", indword);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "writeOperands (IT_CI): indword=%012llo\n", indword);
+
+        TPR.CA = GET_ADDR (indword);
+        word6 characterOperandSize = GET_TB (GET_TAG (indword));
+        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+
+sim_printf ("readOperands CI size %d os %d CA %06o\n", characterOperandSize, characterOperandOffset, TPR . CA);
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands (IT_CI): size=%o offset=%o TPR.CA=%06o\n",
+                   characterOperandSize, characterOperandOffset,
+                   TPR . CA);
+
+        if (characterOperandSize == TB6 && characterOperandOffset > 5)
+          // generate an illegal procedure, illegal modifier fault
+          doFault (FAULT_IPR, ill_mod,
+                   "co size == TB6 && offset > 5");
+sim_printf ("readOperands CI ok 1\n");
+        if (characterOperandSize == TB9 && characterOperandOffset > 3)
+          // generate an illegal procedure, illegal modifier fault
+          doFault (FAULT_IPR, ill_mod,
+                   "co size == TB9 && offset > 3");
+
+sim_printf ("readOperands CI ok 2\n");
         word36 data;
         Read (TPR . CA, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands: IT_MOD(IT_SC): indword=%012llo\n", data);
+                   "readOperands: (IT_CI): indword=%012llo\n", data);
+sim_printf ("readOperands CI addr %06o data %012llo\n", TPR.CA, data);
+
         switch (characterOperandSize)
           {
             case TB6:
@@ -164,9 +276,9 @@ sim_printf ("read characterOperand, but Tm != TM_IT || (Td != IT_CI && Td != IT_
         return;
       }
 // test consistency
-if (! (cu . rpt || cu . rd))
-if (rTAG != 0)
-sim_printf ("read operand, but rTAG != 0; %02o [%lld]\n", rTAG, sim_timell ());
+//if (! (cu . rpt || cu . rd))
+//if (rTAG != 0)
+//sim_printf ("read operand, but rTAG != 0; %02o [%lld]\n", rTAG, sim_timell ());
 
     ReadOP (TPR.CA, OPERAND_READ, i -> a);
     return;
@@ -251,11 +363,6 @@ static void scu2words(word36 *words)
     //  0, 18 0
 #ifdef ABUSE_CT_HOLD2
     putbits36 (& words [3], 0, 2, cu . rpdHack);   // 0-2
-#endif
-#ifdef ABUSE_CT_HOLD
-    putbits36 (& words [3], 3, 1, cu . coFlag);    // 3
-    putbits36 (& words [3], 4, 1, cu . coSize);    // 4
-    putbits36 (& words [3], 5, 3, cu . coOffset);  // 5-7
 #endif
 
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
@@ -384,11 +491,6 @@ static void words2scu (word36 * words)
 
 #ifdef ABUSE_CT_HOLD2
     cu . rpdHack    = getbits36 (words [3], 0, 2);   // 0-2
-#endif
-#ifdef ABUSE_CT_HOLD
-    cu . coFlag     = getbits36 (words [3], 3, 1);    // 3
-    cu . coSize     = getbits36 (words [3], 4, 1);    // 4
-    cu . coOffset   = getbits36 (words [3], 5, 3);  // 5-7
 #endif
 
     TPR.TBR         = getbits36(words[3], 30, 6);
@@ -1218,9 +1320,6 @@ restart_1:
                 clr_went_appending ();
               }
             // This must not happen on instruction restart
-#ifdef ABUSE_CT_HOLD
-            cu . coFlag = false;
-#endif
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
 

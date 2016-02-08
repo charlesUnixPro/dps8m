@@ -21,12 +21,12 @@
 
 // Computed Address Formation Flowcharts
 
-bool directOperandFlag;
-word36 directOperand;
+static bool directOperandFlag;
+static word36 directOperand;
 
-bool characterOperandFlag;
-int characterOperandSize;
-int characterOperandOffset;
+static bool characterOperandFlag;
+static int characterOperandSize;
+static int characterOperandOffset;
 
 //
 // return contents of register indicated by Td
@@ -671,7 +671,6 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cu . CT_HOLD), Cr);
 
-#ifdef ABUSE_CT_HOLD
                 if (directOperandFlag)
                   {
                     TPR . CA += directOperand;
@@ -681,8 +680,6 @@ startCA:;
                                "IR_MOD(TM_R): DO TPR.CA=%06o\n", TPR . CA);
 
                     updateIWB (TPR . CA, cu . CT_HOLD); // Known to be DL or DU
-                    //updateIWB (TPR . CA, TM_R | TD_DL);
-                    cu . coFlag = 0;
                   }
                 else
                   {
@@ -693,9 +690,7 @@ startCA:;
                                "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
 
                     updateIWB (TPR . CA, 0);
-                    cu . coFlag = 0;
                   }
-#endif
                 cu . CT_HOLD = 0;
                 return SCPE_OK;
               } // TM_R
@@ -783,17 +778,6 @@ startCA:;
 
             case IT_CI: ///< Character indirect (Td = 10)
               {
-#ifdef ABUSE_CT_HOLD
-                // Check for instruction restart
-                if (cu . coFlag)
-                  {
-                    characterOperandFlag = true;
-                    characterOperandSize = cu . coSize ? TB9 : TB6;
-                    characterOperandOffset = cu . coOffset;
-//sim_printf ("XXX CI\n");
-                    return SCPE_OK;
-                  }
-#endif
 
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
@@ -813,12 +797,12 @@ startCA:;
                             TPR . CA);
 
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);  //TM_IT);
+                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_CI): indword=%012llo\n", indword);
 
-                TPR.CA = GET_ADDR (indword);
+                word18 indaddr = GET_ADDR (indword);
                 characterOperandFlag = true;
                 characterOperandSize = GET_TB (GET_TAG (indword));
                 characterOperandOffset = GET_CF (GET_TAG (indword));
@@ -826,7 +810,7 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_CI): size=%o offset=%o TPR.CA=%06o\n",
                            characterOperandSize, characterOperandOffset,
-                           TPR . CA);
+                           indaddr);
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
@@ -838,27 +822,14 @@ startCA:;
                   doFault (FAULT_IPR, ill_mod,
                            "co size == TB9 && offset > 3");
 
-#ifdef ABUSE_CT_HOLD
-                cu . coFlag = true;
-                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
-                cu . coOffset = characterOperandOffset & 07;
-                updateIWB (TPR . CA, rTAG); // Known to be CI
-#endif
+//                updateIWB (TPR . CA, GET_TAG (indword)); // Known to be CI
+//ci sim_printf ("CI size %d os %02o tag %02o indaddr %06o\n", characterOperandSize, characterOperandOffset, GET_TAG (cu . IWB), indaddr);
+
                 return SCPE_OK;
                } // IT_CI
 
             case IT_SC: ///< Sequence character (Td = 12)
               {
-#ifdef ABUSE_CT_HOLD
-                // Check for instruction restart
-                if (cu . coFlag)
-                  {
-                    characterOperandFlag = true;
-                    characterOperandSize = cu . coSize ? TB9 : TB6;
-                    characterOperandOffset = cu . coOffset;
-                    return SCPE_OK;
-                  }
-#endif
 
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
@@ -870,13 +841,14 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SC): reading indirect word from %06o\n",
                            TPR . CA);
-
-                word18 saveCA = TPR . CA;
+sim_printf ("IT_MOD(IT_SC): reading indirect word from %06o\n", TPR . CA);
+                //word18 saveCA = TPR . CA;
                 word36 indword;
                 Read (TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SC): indword=%012llo\n", indword);
+sim_printf ("IT_MOD(IT_SC): indirect word %012llo\n", indword);
 
                 tally = GET_TALLY (indword);    // 12-bits
                 idwtag = GET_TAG (indword);
@@ -884,6 +856,7 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n",
                            tally, idwtag);
+sim_printf ("IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
 
                 // The computed address is the unmodified value of the ADDRESS
                 // field. The effective character/byte number is the unmodified
@@ -898,10 +871,11 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                           "IT_MOD(IT_SC): co size=%o offset=%o Yi=%06o\n",
                           characterOperandSize, characterOperandOffset, Yi);
+sim_printf ("IT_MOD(IT_SC): co size=%o offset=%o Yi=%06o\n", characterOperandSize, characterOperandOffset, Yi);
 
-                TPR . CA = Yi;
+                //TPR . CA = Yi;
 
-                word18 computedAddress = TPR . CA;
+                //word18 computedAddress = TPR . CA;
 
                 // For each reference to the indirect word, the character
                 // counter, cf, is increased by 1 and the TALLY field is
@@ -942,34 +916,24 @@ startCA:;
                                     (((word36) tally & 07777) << 6) |
                                     characterOperandSize |
                                     cos);
-                Write (saveCA, indword, OPERAND_STORE, i -> a);
+                Write (TPR . CA, indword, OPERAND_STORE, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n",
-                           indword, saveCA);
+                           indword, TPR . CA);
+sim_printf ("IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, TPR . CA);
 
-                TPR . CA = computedAddress;
-#ifdef ABUSE_CT_HOLD
-                cu . coFlag = true;
-                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
-                cu . coOffset = characterOperandOffset & 07;
-                updateIWB (computedAddress, rTAG); // Known to be SC
-#endif
+                //TPR . CA = computedAddress;
+
+                // We set the tag field to CI so that in the event of operand 
+                // page fault, the tally and offset won't be reupdated
+                updateIWB (TPR . CA, TM_IT | IT_CI); 
+                  
                 return SCPE_OK;
               } // IT_SC
 
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-#ifdef ABUSE_CT_HOLD
-                // Check for instruction restart
-                if (cu . coFlag)
-                  {
-                    characterOperandFlag = true;
-                    characterOperandSize = cu . coSize ? TB9 : TB6;
-                    characterOperandOffset = cu . coOffset;
-                    return SCPE_OK;
-                  }
-#endif
 
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
@@ -982,7 +946,7 @@ startCA:;
                            "IT_MOD(IT_SCR): reading indirect word from %06o\n",
                            TPR.CA);
 
-                word18 saveCA = TPR . CA;
+                //word18 saveCA = TPR . CA;
                 word36 indword;
                 Read (TPR . CA, & indword, OPERAND_READ, i -> a);
 
@@ -1043,20 +1007,19 @@ startCA:;
                                     (((word36) tally & 07777) << 6) |
                                     characterOperandSize |
                                     characterOperandOffset);
-                Write (saveCA, indword, OPERAND_STORE, i -> a);
+                Write (TPR . CA, indword, OPERAND_STORE, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n",
-                           indword, saveCA);
+                           indword, TPR . CA);
 
-                TPR.CA = Yi;
+                //TPR.CA = Yi;
 
-#ifdef ABUSE_CT_HOLD
-                cu . coFlag = true;
-                cu . coSize = characterOperandSize == TB9 ? 1 : 0;
-                cu . coOffset = characterOperandOffset & 07;
-                updateIWB (TPR . CA, rTAG); // Known to be SCR
-#endif
+                // We set the tag field to CI so that in the event of operand 
+                // page fault, the tally and offset won't be reupdated
+                //updateIWB (TPR . CA, TM_IT | IT_CI); 
+                updateIWB (TPR . CA, TM_IT | IT_CI); 
+
                 return SCPE_OK;
               } // IT_SCR
 
