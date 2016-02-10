@@ -734,10 +734,15 @@ void fetchInstruction (word18 addr)
         RSDWH_R1 = 0;
       }
 
-    //if (cu . rd && cu . repeat_first && ((PPR . IC & 1) != 0))
     if (cu . rd && ((PPR . IC & 1) != 0))
       {
-        Read(addr, & cu . IRODD, INSTRUCTION_FETCH, 0);
+        if (cu . repeat_first)
+          Read(addr, & cu . IRODD, INSTRUCTION_FETCH, 0);
+      }
+    else if (cu . rpt || cu . rd)
+      {
+        if (cu . repeat_first)
+          Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
       }
     else
       {
@@ -1152,7 +1157,7 @@ restart_1:
                            Xn, rX [Xn]);
               }
           }
-      } // cu . rpt || cu . rpd
+      } // cu . rpt || cu . rd
 
 ///
 /// executeInstruction: EIS operand processing

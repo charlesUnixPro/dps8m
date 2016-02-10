@@ -117,8 +117,8 @@ static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNO
 
 void doPtrReg(void)
 {
-    word3 n = GET_PRN(cu.IWB);  // get PRn
-    word15 offset = GET_OFFSET(cu.IWB);
+    word3 n = GET_PRN(IWB_IRODD);  // get PRn
+    word15 offset = GET_OFFSET(IWB_IRODD);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, PAR[n].SNR, PAR[n].RNR, PAR[n].WORDNO, PAR[n].BITNO);
     TPR.TSR = PAR[n].SNR;
