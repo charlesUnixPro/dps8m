@@ -58,7 +58,6 @@
 
 // Enable hacks
 #define ABUSE_CT_HOLD
-#define ABUSE_CT_HOLD2
 
 #include "sim_defs.h"                                   /* simulator defns */
 

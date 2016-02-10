@@ -867,9 +867,6 @@ typedef struct
     
     /* word 3 */
                    //  0-17          0
-#ifdef ABUSE_CT_HOLD2
-    word3 rpdHack;   // 0-2
-#endif
 #ifdef ABUSE_CT_HOLD
     word1 coFlag;    // 3
     word1 coSize;    // 4
@@ -939,6 +936,8 @@ typedef struct
     word36 IRODD; /* Instr holding register; odd word of last pair fetched */
     
  } ctl_unit_data_t;
+
+#define IWB_IRODD ((cu . rd && ((PPR.IC & 1) != 0)) ? cu . IRODD : cu . IWB)
 
 extern ctl_unit_data_t cu;
 

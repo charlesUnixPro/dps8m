@@ -1864,6 +1864,9 @@ last = M[01007040];
 
             case EXEC_cycle:
               {
+                // The only time we are going to execute out of IRODD is
+                // during RPD, at which time interrupts are automatically
+                // inhibited; so the following can igore RPD harmelessly
                 if (GET_I (cu . IWB))
                   cpu . wasInhibited = true;
 
