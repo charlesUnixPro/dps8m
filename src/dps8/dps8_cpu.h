@@ -935,6 +935,8 @@ typedef struct
     
  } ctl_unit_data_t;
 
+#define IWB_IRODD ((cu . rd && ((PPR.IC & 1) != 0)) ? cu . IRODD : cu . IWB)
+
 extern ctl_unit_data_t cu;
 
 // Control unit data (288 bits) 

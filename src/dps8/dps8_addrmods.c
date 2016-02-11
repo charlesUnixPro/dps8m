@@ -396,7 +396,7 @@ t_stat doComputedAddressFormation (void)
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
       rTAG = 0;
     else
-      rTAG = GET_TAG (cu . IWB);
+        rTAG = GET_TAG (IWB_IRODD);
 
     int lockupCnt = 0;
 #define lockupLimit 4096 // approx. 2 ms
@@ -467,16 +467,19 @@ startCA:;
             return SCPE_OK;
           }
 
+        // For the case of RPT/RPD, the instruction decoder has
+        // verified that Tm is R or RI, and Td is X1..X7.
         if (cu . rpt || cu . rd)
           {
-            word6 Td = GET_TD (i -> tag);
-            uint Xn = X (Td);  // Get Xn of next instruction
-            TPR . CA = rX [Xn];
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
-                TPR . CA += PR [PRn] . WORDNO;
+                TPR . CA = (Cr & MASK15) + PR [PRn] . WORDNO;
                 TPR . CA &= AMASK;
+              }
+            else
+              {
+                TPR . CA = Cr;
               }
           }
         else
@@ -589,8 +592,10 @@ startCA:;
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (! (cu . rpt || cu . rd))
-          updateIWB (TPR . CA, rTAG);
+        if (cu . rpt || cu . rd)
+          return SCPE_OK;
+
+        updateIWB (TPR . CA, rTAG);
         goto startCA;
       } // RI_MOD
 

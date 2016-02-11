@@ -56,7 +56,7 @@ static void writeOperands (void)
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "writeOperands(%s):mne=%s flags=%x\n",
-               disAssemble (cu . IWB), i -> info -> mne, i -> info -> flags);
+               disAssemble (IWB_IRODD), i -> info -> mne, i -> info -> flags);
 
     word6 rTAG = 0;
     if (! (i -> info -> flags & NO_TAG))
@@ -941,8 +941,21 @@ void fetchInstruction (word18 addr)
         RSDWH_R1 = 0;
       }
 
-    Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
-    
+    if (cu . rd && ((PPR . IC & 1) != 0))
+      {
+        if (cu . repeat_first)
+          Read(addr, & cu . IRODD, INSTRUCTION_FETCH, 0);
+      }
+    else if (cu . rpt || cu . rd)
+      {
+        if (cu . repeat_first)
+          Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
+      }
+    else
+      {
+        Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
+      }
+
     // TODO: Need to add no DL restrictions?
 }
 
@@ -1026,22 +1039,22 @@ force:;
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", BAR.BASE, PPR.IC, IWB_IRODD, disAssemble(IWB_IRODD), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.IC, IWB_IRODD, disAssemble (IWB_IRODD), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
               }
           }
         else if (get_addr_mode() == APPEND_mode)
           {
             if (isBAR)
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, BAR.BASE, PPR.IC, PPR.PRR, IWB_IRODD, disAssemble(IWB_IRODD), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
               }
             else
               {
-                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+                sim_debug(flag, &cpu_dev, "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, PPR.IC, PPR.PRR, IWB_IRODD, disAssemble(IWB_IRODD), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
               }
           }
       }
@@ -1053,9 +1066,10 @@ static bool tstOVFfault (void)
     // Masked?
     if (TSTF (cu . IR, I_OMASK))
       return false;
-    // Doing a RPx?
+    // Doing a RPT/RPD?
     if (cu . rpt || cu . rd) 
       {
+        // a:AL39/rpd2
         // Did the repeat instruction inhibit overflow faults?
         if ((rX [0] & 00001) == 0)
           return false;
@@ -1072,7 +1086,14 @@ t_stat executeInstruction (void)
 ///
 
     DCDstruct * ci = & currentInstruction;
-    decodeInstruction(cu . IWB, ci);
+    if (cu . rd && ((PPR . IC & 1) != 0))
+      {
+        decodeInstruction(cu . IRODD, ci);
+      }
+    else
+      {
+        decodeInstruction(cu . IWB, ci);
+      }
 
     const opCode *info = ci->info;       // opCode *
     const uint32  opcode = ci->opcode;   // opcode
@@ -1141,7 +1162,7 @@ t_stat executeInstruction (void)
     }
 
     // RPT/RPD illegal modifiers
-
+    // a:AL39/rpd3
     if (cu . rpt || cu .rd)
       {
         // check for illegal modifiers:
@@ -1300,26 +1321,34 @@ restart_1:
 
         if (cu . repeat_first)
           {
-            if (cu . rpt || (cu . rd && (PPR.IC & 1)))
+            // The semantics of these are that even is the first instruction of
+            // and RPD, and odd the second.
+
+            bool icOdd = !! (PPR . IC & 1);
+            bool icEven = ! icOdd;
+
+//if (cu.rd && (rX [0] & 01000) && (rX [0] & 0400) && (cu . delta != 0)) sim_printf ("rd %d %012llo\n", PPR.IC & 1, cu .IWB);
+            // If RPT or (RPD and the odd instruction)
+            if (cu . rpt || (cu . rd && icOdd))
               cu . repeat_first = false;
 
+            // a:RJ78/rpd6
             // For the first execution of the repeated instruction: 
             // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-            if (cu . rpt ||                         // rpt
-                (cu . rd && ((PPR.IC & 1) == 0)) || // rpd & even & A 
-                (cu . rd && ((PPR.IC & 1) != 0)))   // rpd & odd & B 
+            if (cu . rpt ||              // rpt
+                (cu . rd && icEven) ||   // rpd & even
+                (cu . rd && icOdd))      // rpd & odd
               {
                 word18 offset;
                 if (ci -> a)
                   {
+                    // a:RJ78/rpd4
                     offset = SIGNEXT15_18 (ci -> address & MASK15);
-                    //word3 PRn = (ci -> address >> 15) & MASK3;
-                    //offset += PR [PRn] . WORDNO;
-                    //offset &= AMASK;
                   }
                 else
                   offset = ci -> address;
                 offset &= AMASK;
+
                 sim_debug (DBG_TRACE, & cpu_dev, 
                            "rpt/rd repeat first; offset is %06o\n", offset);
 
@@ -1328,13 +1357,14 @@ restart_1:
                 sim_debug (DBG_TRACE, & cpu_dev, 
                            "rpt/rd repeat first; X%d was %06o\n", 
                            Xn, rX [Xn]);
+                // a:RJ78/rpd5
                 rX [Xn] = (rX [Xn] + offset) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev, 
                            "rpt/rd repeat first; X%d now %06o\n", 
                            Xn, rX [Xn]);
               }
           }
-      } // cu . rpt || cu . rpd
+      } // cu . rpt || cu . rd
 
 ///
 /// executeInstruction: EIS operand processing
@@ -1601,84 +1631,60 @@ sim_printf ("tally %d\n", tally);
     if ((! rf) && (cu . rpt || cu . rd))
       {
         // If we get here, the instruction just executed was a
-        //  RPT or RPD target instruction.
+        // RPT or RPD target instruction, and not the RPT or RPD
+        // instruction itself
 
         // Add delta to index register.
 
         bool rptA = !! (rX [0] & 01000);
         bool rptB = !! (rX [0] & 00400);
 
-        // Get these out of the IWB, because sometimes we need to
-        // know X-even after executing  odd instruction
-
-        //uint xEven = getbits36 (cu . IWB, 36 - 3, 3);
-        //uint xOdd = getbits36 (cu . IRODD, 36 - 3, 3);
-
-        uint xN = getbits36 (cu . IWB, 36 - 3, 3);
-
         sim_debug (DBG_TRACE, & cpu_dev,
             "RPT/RPD delta first %d rf %d rpt %d rd %d "
-            "e/o %d X0 %06o a %d b %d xN %o\n", 
+            "e/o %d X0 %06o a %d b %d\n", 
             cu . repeat_first, rf, cu . rpt, cu . rd, icOdd,
-            rX [0], rptA, rptB, xN);
-
-        // In a RPD, X-even and X-odd are not updated until after
-        // both instructions are executed. This is relevant
-        // for RPDA when X-even == X-odd; when the odd instruction
-        // is executed, X-even should be unchanged until after
-        // the odd instruction
-        //   rpta
-        //   lda  ...,2
-        //   cmpa .,.,2
+            rX [0], rptA, rptB);
 
         if (cu . rpt) // rpt
           {
-            word6 Td = GET_TD(ci -> tag);
-            uint Xn = X(Td);  // Get Xn of instruction
+            uint Xn = getbits36 (cu . IWB, 36 - 3, 3);
             rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
           }
 
-        // XXX the odd case of rpdab, where xEven == xOdd is not handled
-        // here specically: if it is correct that the x register should
-        // only be update once, then that case needs to be addressed here
-        // with additional logic
-        if (cu . rd && icEven && rptA) // rpda, even instruction
+
+        // a:RJ78/rpd6
+        // We know that the X register is not to be incremented until
+        // after both instructions have executed, so the following
+        // if uses icOdd instead of the more sensical icEven.
+        if (cu . rd && icOdd && rptA) // rpd, even instruction
           {
-// We can use CT_HOLD here, because the repeated instructions are constrained
-// to be R or RI, and addrmod does not use CT_HOLD for those cases.
-#ifdef ABUSE_CT_HOLD2
-            cu . rpdHack = xN; // remember xN for later
-//sim_printf ("remembering %o\n", xN);
-#endif
+            // a:RJ78/rpd7
+            uint Xn = getbits36 (cu . IWB, 36 - 3, 3);
+            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
+            sim_debug (DBG_TRACE, & cpu_dev,
+                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
           }
 
-        if (cu . rd && icOdd && rptA) // rpda, odd instruction
-          {
-#ifdef ABUSE_CT_HOLD2
-            uint xN = cu . rpdHack; // recall xN 
-//sim_printf ("recalling %o\n", xN);
-#endif
-            rX[xN] = (rX[xN] + cu . delta) & AMASK;
-            sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
-          }
         if (cu . rd && icOdd && rptB) // rpdb, odd instruction
           {
-            rX[xN] = (rX[xN] + cu . delta) & AMASK;
+            // a:RJ78/rpd8
+            uint Xn = getbits36 (cu . IRODD, 36 - 3, 3);
+            rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
-                       "RPT/RPD delta; X%d now %06o\n", xN, rX [xN]);
+                       "RPT/RPD delta; X%d now %06o\n", Xn, rX [Xn]);
           }
+
         // Check for termination conditions.
 
-        if (cu . rpt || (cu . rd & (PPR.IC & 1)))
+        if (cu . rpt || (cu . rd && icOdd))
           {
             bool exit = false;
             // The repetition cycle consists of the following steps:
             //  a. Execute the repeated instruction
             //  b. C(X0)0,7 - 1 -> C(X0)0,7
-            uint x = bitfieldExtract (rX[ 0], 10, 8);
+            uint x = bitfieldExtract (rX [0], 10, 8);
             x -= 1;
             rX [0] = bitfieldInsert (rX [0], x, 10, 8);
 
@@ -5456,13 +5462,14 @@ static t_stat DoBasicInstruction (void)
          
         case 0560:  // rpd
             {
-              word1 c = (i->address >> 7) & 1;
               cu . delta = i->tag;
+              // a:AL39/rpd1
+              word1 c = (i->address >> 7) & 1;
               if (c)
                 rX[0] = i->address;    // Entire 18 bits
               cu . rd = 1;
               cu . repeat_first = 1;
-//sim_printf ("[%lld] rpd delta %02o c %d X0:%06o\n",sim_timell (),  cu.delta, c, rX[0]);
+//sim_printf ("[%lld] rpd delta %02o c %d X0:%06o %012llo\n",sim_timell (),  cu.delta, c, rX[0], cu . IWB);
             }
             break;
 
