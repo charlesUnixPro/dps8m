@@ -64,10 +64,13 @@ static void writeOperands (void)
     word6 Td = GET_TD (rTAG);
     word6 Tm = GET_TM (rTAG);
 
-    //if (characterOperandFlag)
-    if (Tm == TM_IT && Td == IT_CI)
+//
+// IT CI/SC/SCR
+//
+
+    if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-sim_printf ("writeOperands CI\n");
+
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
         // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -82,82 +85,113 @@ sim_printf ("writeOperands CI\n");
         // character position count, cf, field of the indirect word.
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_CI): reading indirect word from %06o\n",
+                   "writeOperands IT reading indirect word from %06o\n",
                             TPR . CA);
-sim_printf ("writeOperands CI TPR.CA %06o\n", TPR . CA);
+
+        //
+        // Get the indirect word
+        //
 
         word36 indword;
         Read (TPR . CA, & indword, OPERAND_READ, i -> a);
 
-sim_printf ("writeOperands CI indword %012llo\n", indword);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_CI): indword=%012llo\n", indword);
+                   "writeOperands IT indword=%012llo\n", indword);
 
-        TPR.CA = GET_ADDR (indword);
+        //
+        // Parse and validate the indirect word
+        //
+
+        word18 Yi = GET_ADDR (indword);
         word6 characterOperandSize = GET_TB (GET_TAG (indword));
         word6 characterOperandOffset = GET_CF (GET_TAG (indword));
 
-sim_printf ("writeOperands CI size %d os %d CA %06o\n", characterOperandSize, characterOperandOffset, TPR . CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_CI): size=%o offset=%o TPR.CA=%06o\n",
+                   "writeOperands IT size=%o offset=%o Yi=%06o\n",
                    characterOperandSize, characterOperandOffset,
-                   TPR . CA);
+                   Yi);
 
         if (characterOperandSize == TB6 && characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR, ill_mod,
                    "co size == TB6 && offset > 5");
 
-sim_printf ("writeOperands CI ok 1\n");
         if (characterOperandSize == TB9 && characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR, ill_mod,
                    "co size == TB9 && offset > 3");
-sim_printf ("writeOperands CI ok 2\n");
+
+        if (Td == IT_SCR)
+          {
+            // For each reference to the indirect word, the character
+            // counter, cf, is reduced by 1 and the TALLY field is
+            // increased by 1 before the computed address is formed.
+            // Character count arithmetic is modulo 6 for 6-bit characters
+            // and modulo 4 for 9-bit bytes. If the character count, cf,
+            // underflows to -1, it is reset to 5 for 6-bit characters or
+            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
+            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
+            // If the TALLY field overflows to 0, the tally runout
+            // indicator is set ON, otherwise it is set OFF. The computed
+            // address is the (possibly) decremented value of the ADDRESS
+            // field of the indirect word. The effective character/byte
+            // number is the decremented value of the character position
+            // count, cf, field of the indirect word.
+
+            if (characterOperandOffset == 0)
+              {
+                if (characterOperandSize == TB6)
+                    characterOperandOffset = 5;
+                else
+                    characterOperandOffset = 3;
+                Yi -= 1;
+                Yi &= MASK18;
+              }
+                else
+              {
+                characterOperandOffset -= 1;
+              }
+          }
+
+        //
+        // Get the data word
+        //
 
         word36 data;
-
-//ci sim_printf ("write CI size %d os %d tag %02o CA %06o\n", characterOperandSize, characterOperandOffset, rTAG, TPR . CA);
-        // read data where chars/bytes now live (if it hasn't already been 
-        // read in)
-
-        Read (TPR . CA, & data, OPERAND_READ, i -> a);
-
+        Read (Yi, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_CI/SC/SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA, 
-                   characterOperandSize, characterOperandOffset);
-sim_printf ("writeOperands CI addr %06o data %012llo\n", TPR.CA, data);
+                   "writeOperands IT indword=%012llo\n", data);
 
-        // set byte/char
+        //
+        // Put the character into the data word
+        //
+
         switch (characterOperandSize)
           {
             case TB6:
               putChar (& data, CY & 077, characterOperandOffset);
               break;
+
             case TB9:
               putByte (& data, CY & 0777, characterOperandOffset);
               break;
-            default:
-              sim_printf ("WriteOperands IT_MOD(IT_SC): unknown tTB:%o\n",
-                          characterOperandSize);
-              break;
           }
 
-        // write it
-        Write (TPR . CA, data, OPERAND_STORE, i -> a);   //TM_IT);
+        //
+        // Write it
+        //
+
+        Write (Yi, data, OPERAND_STORE, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA, 
+                   "writeOperands IT wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
+                   data, TPR . CA,
                    characterOperandSize, characterOperandOffset);
-sim_printf ("writeOperands (IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA, 
-                   characterOperandSize, characterOperandOffset);
-
 
         return;
-      }
+      } // IT
+
+
 
     WriteOP (TPR . CA, OPERAND_STORE, i -> a);
 
@@ -178,7 +212,10 @@ static void readOperands (void)
     word6 Td = GET_TD (rTAG);
     word6 Tm = GET_TM (rTAG);
 
-    //if (directOperandFlag)
+//
+// DU
+//
+
     if (Tm == TM_R && Td == TD_DU)
       {
         CY = 0;
@@ -187,6 +224,10 @@ static void readOperands (void)
                    "readOperands DU CY=%012llo\n", CY);
         return;
       }
+
+//
+// DL
+//
 
     if (Tm == TM_R && Td == TD_DL)
       {
@@ -197,10 +238,13 @@ static void readOperands (void)
         return;
       }
 
-    //if (characterOperandFlag)
-    if (Tm == TM_IT && Td == IT_CI)
+//
+// IT CI/SC/SCR
+//
+
+    if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-sim_printf ("readOperands CI\n");
+
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
         // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -215,74 +259,110 @@ sim_printf ("readOperands CI\n");
         // character position count, cf, field of the indirect word.
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands (IT_CI): reading indirect word from %06o\n",
+                   "readOperands IT reading indirect word from %06o\n",
                             TPR . CA);
 
-sim_printf ("readOperands CI TPR.CA %06o\n", TPR . CA);
+        //
+        // Get the indirect word
+        //
 
         word36 indword;
         Read (TPR . CA, & indword, OPERAND_READ, i -> a);
 
-sim_printf ("readOperands CI indword %012llo\n", indword);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands (IT_CI): indword=%012llo\n", indword);
+                   "writeOperands IT indword=%012llo\n", indword);
 
-        TPR.CA = GET_ADDR (indword);
+        //
+        // Parse and validate the indirect word
+        //
+
+        word18 Yi = GET_ADDR (indword);
         word6 characterOperandSize = GET_TB (GET_TAG (indword));
         word6 characterOperandOffset = GET_CF (GET_TAG (indword));
 
-sim_printf ("readOperands CI size %d os %d CA %06o\n", characterOperandSize, characterOperandOffset, TPR . CA);
-
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands (IT_CI): size=%o offset=%o TPR.CA=%06o\n",
+                   "readOperands IT size=%o offset=%o Yi=%06o\n",
                    characterOperandSize, characterOperandOffset,
-                   TPR . CA);
+                   Yi);
 
         if (characterOperandSize == TB6 && characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR, ill_mod,
                    "co size == TB6 && offset > 5");
-sim_printf ("readOperands CI ok 1\n");
+
         if (characterOperandSize == TB9 && characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR, ill_mod,
                    "co size == TB9 && offset > 3");
 
-sim_printf ("readOperands CI ok 2\n");
+        if (Td == IT_SCR)
+          {
+            // For each reference to the indirect word, the character
+            // counter, cf, is reduced by 1 and the TALLY field is
+            // increased by 1 before the computed address is formed.
+            // Character count arithmetic is modulo 6 for 6-bit characters
+            // and modulo 4 for 9-bit bytes. If the character count, cf,
+            // underflows to -1, it is reset to 5 for 6-bit characters or
+            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
+            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
+            // If the TALLY field overflows to 0, the tally runout
+            // indicator is set ON, otherwise it is set OFF. The computed
+            // address is the (possibly) decremented value of the ADDRESS
+            // field of the indirect word. The effective character/byte
+            // number is the decremented value of the character position
+            // count, cf, field of the indirect word.
+
+            if (characterOperandOffset == 0)
+              {
+                if (characterOperandSize == TB6)
+                    characterOperandOffset = 5;
+                else
+                    characterOperandOffset = 3;
+                Yi -= 1;
+                Yi &= MASK18;
+              }
+                else
+              {
+                characterOperandOffset -= 1;
+              }
+          }
+
+        //
+        // Get the data word
+        //
+
         word36 data;
-        Read (TPR . CA, & data, OPERAND_READ, i -> a);
+        Read (Yi, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands: (IT_CI): indword=%012llo\n", data);
-sim_printf ("readOperands CI addr %06o data %012llo\n", TPR.CA, data);
+                   "readOperands IT indword=%012llo\n", data);
+
+        //
+        // Get the character from the data word
+        //
 
         switch (characterOperandSize)
           {
             case TB6:
-              CY = GETCHAR (data, characterOperandOffset % 6); // XXX magic number
+              CY = GETCHAR (data, characterOperandOffset);
               break;
 
             case TB9:
-              CY = GETBYTE (data, characterOperandOffset % 4); // XXX magic number
-              break;
-
-            default:
-              sim_printf ("readOperands: IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+              CY = GETBYTE (data, characterOperandOffset);
               break;
           }
+
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands: IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
-                   data, TPR . CA, CY);
+                   "readOperands IT read operand %012llo from %06o char/byte=%llo\n",
+                   data, Yi, CY);
 
         return;
-      }
-// test consistency
-//if (! (cu . rpt || cu . rd))
-//if (rTAG != 0)
-//sim_printf ("read operand, but rTAG != 0; %02o [%lld]\n", rTAG, sim_timell ());
+      } // IT
+
 
     ReadOP (TPR.CA, OPERAND_READ, i -> a);
+
     return;
-}
+  }
 
 static word36 scu_data[8];    // For SCU instruction
 
@@ -1374,6 +1454,129 @@ restart_1:
         writeOperands ();
       }
     
+///
+/// executeInstruction: Update IT tally
+///
+
+// XXX XXX XXX XXX XXX 
+// This is still slightly incorrect. If this faults, the entire instruction
+// wiil be restarted despite the fact the the result has been stored. 
+// Consider AOS: the operand would be incremented twice.
+// I think that enforcing the CU Prepare Operand Tally/Prepare Operand No Tally
+// can be used to fix this.
+// XXX XXX XXX XXX XXX 
+
+    word6 rTAG;
+    if (ci -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
+      rTAG = 0;
+    else
+      rTAG = GET_TAG (cu . IWB);
+
+    word6 Tm = GET_TM (rTAG);
+    word6 Td = GET_TD (rTAG);
+
+    if (Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
+      {
+        //
+        // Get the indirect word
+        //
+
+        word36 indword;
+        Read (TPR . CA, & indword, OPERAND_READ, ci -> a);
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "update IT indword=%012llo\n", indword);
+
+        //
+        // Parse and validate the indirect word
+        //
+
+        word18 Yi = GET_ADDR (indword);
+        word6 characterOperandSize = GET_TB (GET_TAG (indword));
+        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "update IT size=%o offset=%o Yi=%06o\n",
+                   characterOperandSize, characterOperandOffset,
+                   Yi);
+
+        if (Td == IT_SCR)
+          {
+            // For each reference to the indirect word, the character
+            // counter, cf, is reduced by 1 and the TALLY field is
+            // increased by 1 before the computed address is formed.
+            // Character count arithmetic is modulo 6 for 6-bit characters
+            // and modulo 4 for 9-bit bytes. If the character count, cf,
+            // underflows to -1, it is reset to 5 for 6-bit characters or
+            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
+            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
+            // If the TALLY field overflows to 0, the tally runout
+            // indicator is set ON, otherwise it is set OFF. The computed
+            // address is the (possibly) decremented value of the ADDRESS
+            // field of the indirect word. The effective character/byte
+            // number is the decremented value of the character position
+            // count, cf, field of the indirect word.
+
+            if (characterOperandOffset == 0)
+              {
+                if (characterOperandSize == TB6)
+                    characterOperandOffset = 5;
+                else
+                    characterOperandOffset = 3;
+                Yi -= 1;
+                Yi &= MASK18;
+              }
+                else
+              {
+                characterOperandOffset -= 1;
+              }
+          }
+        else // SC
+          {
+            // For each reference to the indirect word, the character
+            // counter, cf, is increased by 1 and the TALLY field is
+            // reduced by 1 after the computed address is formed. Character
+            // count arithmetic is modulo 6 for 6-bit characters and modulo
+            // 4 for 9-bit bytes. If the character count, cf, overflows to
+            // 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset
+            // to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is
+            // modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY
+            // field is reduced to 0, the tally runout indicator is set ON,
+            // otherwise it is set OFF.
+
+            characterOperandOffset ++;
+
+            if (((characterOperandSize == TB6) && (characterOperandOffset > 5)) ||
+                ((characterOperandSize == TB9) && (characterOperandOffset > 3)))
+              {
+                characterOperandOffset = 0;
+                Yi += 1;
+                Yi &= MASK18;
+              }
+
+          }
+
+        word12 tally = GET_TALLY (indword);    // 12-bits
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                       "update IT tally now %o\n", tally);
+
+        SCF (tally == 0, cu . IR, I_TALLY);
+sim_printf ("tally %d\n", tally);
+        indword = (word36) (((word36) Yi << 18) |
+                            (((word36) tally & 07777) << 6) |
+                            characterOperandSize |
+                            characterOperandOffset);
+
+        Write (TPR . CA, indword, OPERAND_STORE, ci -> a);
+
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "update IT wrote tally word %012llo to %06o\n",
+                   indword, TPR . CA);
+      } // SC/SCR
+
 ///
 /// executeInstruction: RPT/RPD processing
 ///
