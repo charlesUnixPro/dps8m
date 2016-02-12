@@ -70,6 +70,7 @@ static void writeOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
+//sim_printf ("writeOperands IT %02o\n", rTAG);
 
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
@@ -93,7 +94,8 @@ static void writeOperands (void)
         //
 
         word36 indword;
-        Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+        word36 indwordAddress = TPR . CA;
+        Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT indword=%012llo\n", indword);
@@ -160,7 +162,7 @@ static void writeOperands (void)
         word36 data;
         Read (Yi, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012llo\n", data);
+                   "writeOperands IT data=%012llo\n", data);
 
         //
         // Put the character into the data word
@@ -185,8 +187,11 @@ static void writeOperands (void)
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012llo to %06o tTB=%o tCF=%o\n",
-                   data, TPR . CA,
+                   data, Yi,
                    characterOperandSize, characterOperandOffset);
+
+        // Restore the CA; Read/Write() updates it.
+        TPR . CA = indwordAddress;
 
         return;
       } // IT
@@ -244,7 +249,7 @@ static void readOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-
+//sim_printf ("readOperands IT %02o\n", rTAG);
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
         // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -267,10 +272,11 @@ static void readOperands (void)
         //
 
         word36 indword;
-        Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+        word36 indwordAddress = TPR . CA;
+        Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012llo\n", indword);
+                   "readOperands IT indword=%012llo\n", indword);
 
         //
         // Parse and validate the indirect word
@@ -334,7 +340,7 @@ static void readOperands (void)
         word36 data;
         Read (Yi, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT indword=%012llo\n", data);
+                   "readOperands IT data=%012llo\n", data);
 
         //
         // Get the character from the data word
@@ -351,9 +357,13 @@ static void readOperands (void)
               break;
           }
 
+//sim_printf ("readOperands IT read operand %012llo from %06o char/byte=%llo\n", data, Yi, CY);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT read operand %012llo from %06o char/byte=%llo\n",
                    data, Yi, CY);
+
+        // Restore the CA; Read/Write() updates it.
+        TPR . CA = indwordAddress;
 
         return;
       } // IT
@@ -441,10 +451,6 @@ static void scu2words(word36 *words)
     // words [3]
 
     //  0, 18 0
-#ifdef ABUSE_CT_HOLD2
-    putbits36 (& words [3], 0, 2, cu . rpdHack);   // 0-2
-#endif
-
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
     // 22, 4 TSNB pointer register number for EIS operand #2
     // 26, 4 TSNC pointer register number for EIS operand #3
@@ -568,10 +574,6 @@ static void words2scu (word36 * words)
     cu.delta        = getbits36(words[2], 30, 6);
     
     // words[3]
-
-#ifdef ABUSE_CT_HOLD2
-    cu . rpdHack    = getbits36 (words [3], 0, 2);   // 0-2
-#endif
 
     TPR.TBR         = getbits36(words[3], 30, 6);
     
@@ -1505,7 +1507,9 @@ restart_1:
     word6 Tm = GET_TM (rTAG);
     word6 Td = GET_TD (rTAG);
 
-    if (Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
+    if (info->ndes == 0 /* non-EIS */ &&
+        (! (ci -> info -> flags & NO_TAG)) && 
+        Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
       {
         //
         // Get the indirect word
@@ -1594,7 +1598,9 @@ restart_1:
                        "update IT tally now %o\n", tally);
 
         SCF (tally == 0, cu . IR, I_TALLY);
-sim_printf ("tally %d\n", tally);
+//sim_printf ("tally %d %02o\n", tally, rTAG);
+//sim_printf ("IT update [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+
         indword = (word36) (((word36) Yi << 18) |
                             (((word36) tally & 07777) << 6) |
                             characterOperandSize |
@@ -1602,6 +1608,7 @@ sim_printf ("tally %d\n", tally);
 
         Write (TPR . CA, indword, OPERAND_STORE, ci -> a);
 
+//sim_printf ("update IT wrote tally word %012llo to %06o\n", indword, TPR . CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012llo to %06o\n",
                    indword, TPR . CA);

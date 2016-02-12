@@ -24,9 +24,6 @@
 static bool directOperandFlag;
 static word36 directOperand;
 
-static bool characterOperandFlag;
-static int characterOperandSize;
-static int characterOperandOffset;
 
 //
 // return contents of register indicated by Td
@@ -391,7 +388,6 @@ t_stat doComputedAddressFormation (void)
     int iTAG;   // tag of word preceeding an indirect fetch
 
     directOperandFlag = false;
-    characterOperandFlag = false;
 
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
       rTAG = 0;
@@ -708,8 +704,23 @@ startCA:;
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",
                            Td, Cr, TPR . CA);
 
-                TPR . CA += Cr;
-                TPR . CA &= MASK18;   // keep to 18-bits
+                if (directOperandFlag)
+                  {
+                    TPR . CA += directOperand;
+                    TPR . CA &= MASK18;   // keep to 18-bits
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "IR_MOD(TM_RI): DO TPR.CA=%06o\n", TPR . CA);
+                  }
+                else
+                  {
+                    TPR . CA += Cr;
+                    TPR . CA &= MASK18;   // keep to 18-bits
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "IR_MOD(TM_RI): TPR.CA=%06o\n", TPR . CA);
+
+                  }
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): TPR.CA(After)=%06o\n",
@@ -783,19 +794,19 @@ startCA:;
 
             case IT_CI: ///< Character indirect (Td = 10)
               {
-sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
                 return SCPE_OK;
                } // IT_CI
 
             case IT_SC: ///< Sequence character (Td = 12)
               {
-sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
                 return SCPE_OK;
               } // IT_SC
 
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
                 return SCPE_OK;
               } // IT_SCR
 
