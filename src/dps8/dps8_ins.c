@@ -333,6 +333,13 @@ static void readOperands (void)
               }
           }
 
+// XXX The page fault problem is here.
+// XXX The Read() sets the CA; it has to as that is how the page fault
+// XXX handler determines where the faulting page is. If it does
+// XXX page fault, on restart, to CA will point to the data word
+// XXX instead of the indirect word, and there is no mechanism to
+// XXX recover the indirect word address for tally update.
+
         //
         // Get the data word
         //
@@ -468,7 +475,7 @@ static void scu2words(word36 *words)
     putbits36 (& words [5], 19,  1, cu . rpt);
     putbits36 (& words [5], 20,  1, cu . rd);
     // 21, 1 RL repeat link
-    // 22, 1 POT Prepare operand tally
+    putbits36 (& words [5], 22,  1, cu . pot);
     // 23, 1 PON Prepare operand no tally
     putbits36 (& words [5], 24,  1, cu . xde);
     putbits36 (& words [5], 25,  1, cu . xdo);
@@ -509,6 +516,7 @@ void tidy_cu (void)
     cu . repeat_first = false;
     cu . rpt = false;
     cu . rd = false;
+    cu . pot = false;
     cu . xde = false;
     cu . xdo = false;
     cu . IR &= ~ I_MIIF; 
@@ -523,7 +531,10 @@ static void words2scu (word36 * words)
     PPR.PRR         = getbits36(words[0], 0, 3);
     PPR.PSR         = getbits36(words[0], 3, 15);
     PPR.P           = getbits36(words[0], 18, 1);
+    // 19 XSF
+    // 20 SDWAMM
     cu.SD_ON        = getbits36(words[0], 21, 1);
+    // 22 PTWAMM
     cu.PT_ON        = getbits36(words[0], 23, 1);
 #if 0
     cu.PI_AP        = getbits36(words[0], 24, 1);
@@ -571,10 +582,18 @@ static void words2scu (word36 * words)
     
     TPR.TRR         = getbits36(words[2], 0, 3);
     TPR.TSR         = getbits36(words[2], 3, 15);
+    // 18-21 PTW
+    // 22-25 SDW
+    // 26 0
+    // 27-29 CPU number
     cu.delta        = getbits36(words[2], 30, 6);
     
     // words[3]
 
+    // 0-17 0
+    // 18-21 TSNA
+    // 22-26 TSNB
+    // 26-29 TSNC
     TPR.TBR         = getbits36(words[3], 30, 6);
     
     // words [4]
@@ -588,9 +607,14 @@ static void words2scu (word36 * words)
     cu.repeat_first = getbits36(words[5], 18, 1);
     cu.rpt          = getbits36(words[5], 19, 1);
     cu.rd           = getbits36(words[5], 20, 1);
+    // 21 RL
+    cu.pot          = getbits36(words[5], 22, 1);
+    // 23 PON
     cu.xde          = getbits36(words[5], 24, 1);
     cu.xdo          = getbits36(words[5], 25, 1);
+    // 26 ITP
     cu.rfi          = getbits36(words[5], 27, 1);
+    // 28 ITS
     cu.FIF          = getbits36(words[5], 29, 1);
     cu.CT_HOLD      = getbits36(words[5], 30, 6);
     
@@ -1088,14 +1112,7 @@ t_stat executeInstruction (void)
 ///
 
     DCDstruct * ci = & currentInstruction;
-    if (cu . rd && ((PPR . IC & 1) != 0))
-      {
-        decodeInstruction(cu . IRODD, ci);
-      }
-    else
-      {
-        decodeInstruction(cu . IWB, ci);
-      }
+    decodeInstruction(IWB_IRODD, ci);
 
     const opCode *info = ci->info;       // opCode *
     const uint32  opcode = ci->opcode;   // opcode
@@ -1406,7 +1423,7 @@ restart_1:
 
       {
         // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
+        //if (! (cu . IR & I_MIIF))
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
@@ -1431,7 +1448,11 @@ restart_1:
                   }
                 clr_went_appending ();
               }
-            // This must not happen on instruction restart
+          }
+
+        // This must not happen on instruction restart
+        if (! (cu . IR & I_MIIF))
+          {
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
 
@@ -1494,8 +1515,7 @@ restart_1:
 // This is still slightly incorrect. If this faults, the entire instruction
 // wiil be restarted despite the fact the the result has been stored. 
 // Consider AOS: the operand would be incremented twice.
-// I think that enforcing the CU Prepare Operand Tally/Prepare Operand No Tally
-// can be used to fix this.
+// I think that the CU Prepare Operand Tally can be used to fix this.
 // XXX XXX XXX XXX XXX 
 
     word6 rTAG;
@@ -1606,7 +1626,7 @@ restart_1:
                             characterOperandSize |
                             characterOperandOffset);
 
-        Write (TPR . CA, indword, OPERAND_STORE, ci -> a);
+        Write (TPR . CA, indword, INDIRECT_WORD_FETCH, ci -> a);
 
 //sim_printf ("update IT wrote tally word %012llo to %06o\n", indword, TPR . CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,

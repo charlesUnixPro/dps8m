@@ -792,6 +792,7 @@ startCA:;
                 doFault(FAULT_F3, 0, "IT_MOD: IT_F3");
               }
 
+#if 0
             case IT_CI: ///< Character indirect (Td = 10)
               {
 //sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
@@ -809,7 +810,112 @@ startCA:;
 //sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
                 return SCPE_OK;
               } // IT_SCR
+#endif
 
+            case IT_CI:  // Character indirect (Td = 10)
+            case IT_SC:  // Sequence character (Td = 12)
+            case IT_SCR: // Sequence character reverse (Td = 5)
+              {
+                // There is difficulty with managing page faults and tracking the indirect
+                // word address and the operand address.
+                // To alleviate this, we force those pages in during PREPARE_CA, so that they won't fault
+                // during operand read/write.
+
+//                // If there was a page fault during the data word fetch, CA has the data word address, not
+//                // the indirect word address
+
+//                TPR . CA = GET_ADDR (IWB_IRODD);
+
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD CI/SC/SCR reading indirect word from %06o\n",
+                           TPR . CA);
+
+                //
+                // Get the indirect word
+                //
+
+                word36 indword;
+                word36 indwordAddress = TPR . CA;
+                Read (indwordAddress, & indword, OPERAND_READ, i -> a);
+
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD CI/SC/SCR indword=%012llo\n", indword);
+
+                //
+                // Parse and validate the indirect word
+                //
+
+                word18 Yi = GET_ADDR (indword);
+                word6 characterOperandSize = GET_TB (GET_TAG (indword));
+                word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
+                           characterOperandSize, characterOperandOffset,
+                           Yi);
+
+                if (characterOperandSize == TB6 && characterOperandOffset > 5)
+                  // generate an illegal procedure, illegal modifier fault
+                  doFault (FAULT_IPR, ill_mod,
+                           "co size == TB6 && offset > 5");
+
+                if (characterOperandSize == TB9 && characterOperandOffset > 3)
+                  // generate an illegal procedure, illegal modifier fault
+                  doFault (FAULT_IPR, ill_mod,
+                           "co size == TB9 && offset > 3");
+
+                // CI uses the address, and SC uses the pre-increment address;
+                // but SCR use the post-decrement address
+                if (Td == IT_SCR)
+                  {
+                    // For each reference to the indirect word, the character
+                    // counter, cf, is reduced by 1 and the TALLY field is
+                    // increased by 1 before the computed address is formed.
+                    // Character count arithmetic is modulo 6 for 6-bit characters
+                    // and modulo 4 for 9-bit bytes. If the character count, cf,
+                    // underflows to -1, it is reset to 5 for 6-bit characters or
+                    // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
+                    // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
+                    // If the TALLY field overflows to 0, the tally runout
+                    // indicator is set ON, otherwise it is set OFF. The computed
+                    // address is the (possibly) decremented value of the ADDRESS
+                    // field of the indirect word. The effective character/byte
+                    // number is the decremented value of the character position
+                    // count, cf, field of the indirect word.
+
+                    if (characterOperandOffset == 0)
+                      {
+                        if (characterOperandSize == TB6)
+                            characterOperandOffset = 5;
+                        else
+                            characterOperandOffset = 3;
+                        Yi -= 1;
+                        Yi &= MASK18;
+                      }
+                        else
+                      {
+                        characterOperandOffset -= 1;
+                      }
+                  }
+
+                //
+                // Get the data word
+                //
+
+                word36 data;
+                Read (Yi, & data, OPERAND_READ, i -> a);
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "IT_MOD CI/SC/SCR data=%012llo\n", data);
+
+                //
+                // Restore the CA to point to the indirect word
+                //
+
+                TPR . CA =  indwordAddress;
+
+                return SCPE_OK;
+              } // IT_CI, IT_SC, IT_SCR
+   
             case IT_I: // Indirect (Td = 11)
               {
                 sim_debug (DBG_ADDRMOD, & cpu_dev,

@@ -907,7 +907,7 @@ typedef struct
     word1 rpt;     // 19    RPT Execute an Repeat (rpt) instruction
     word1 rd;      // 20    RD  Execute an Repeat Double (rpd) instruction
                    // 21    RL  Execute a Repeat Link (rpl) instruction
-                   // 22    POT Prepare operand tally
+    word1 pot;     // 22    POT Prepare operand tally
                    // 23    PON Prepare operand no tally
     //xde xdo
     // 0   0   no execute           -> 0 0
