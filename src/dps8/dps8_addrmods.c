@@ -902,10 +902,14 @@ startCA:;
                 // Get the data word
                 //
 
+                cu . pot = 1;
+
                 word36 data;
                 Read (Yi, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012llo\n", data);
+
+                cu . pot = 0;
 
                 //
                 // Restore the CA to point to the indirect word

@@ -159,10 +159,14 @@ static void writeOperands (void)
         // Get the data word
         //
 
+        cu . pot = 1;
+
         word36 data;
         Read (Yi, & data, OPERAND_READ, i -> a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT data=%012llo\n", data);
+
+        cu . pot = 0;
 
         //
         // Put the character into the data word
@@ -1423,7 +1427,7 @@ restart_1:
 
       {
         // This must not happen on instruction restart
-        //if (! (cu . IR & I_MIIF))
+        if (! (cu . IR & I_MIIF))
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
@@ -1455,6 +1459,21 @@ restart_1:
           {
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
+
+
+        //
+        // If POT is set, a page fault occured during the fetch of the data word
+        // pointed to by an indirect addressing word, and the saved CA points
+        // to the data word instead of the indirect word; reset the CA correctly
+        //
+
+        if ((cu . IR & I_MIIF) && cu . pot)
+          {
+            TPR . CA = GET_ADDR (IWB_IRODD);
+            if (getbits36 (cu . IWB, 29, 1) != 0)
+              TPR . CA &= MASK15;
+          }
+
 
 
         if (ci->info->flags & PREPARE_CA)
