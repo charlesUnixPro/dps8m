@@ -817,7 +817,7 @@ typedef struct
     word1 IRO_ISN; //  0    IRO       AVF Illegal Ring Order
                    //       ISN       SF  Illegal segment number
     word1 OEB_IOC; //  1    ORB       AVF Out of execute bracket [sic] should be OEB?
-                   //       ICC       IPF Illegal op code
+                   //       IOC       IPF Illegal op code
     word1 EOFF_IAIM;
                    //  2    E-OFF     AVF Execute bit is off
                    //       IA+IM     IPF Illegal address of modifier
