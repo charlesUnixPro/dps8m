@@ -1654,6 +1654,22 @@ restart_1:
       } // SC/SCR
 
 ///
+/// executeInstruction: XEC/XED processing
+///
+
+// Delay updating IWB/IRODD until after operand processing.
+
+    if (cu . xde && cu . xdo)
+      {
+        cu . IWB = Ypair [0];
+        cu . IRODD = Ypair [1];
+      }
+    else if (cu . xde)
+      {
+        cu . IWB = CY;
+      }
+
+///
 /// executeInstruction: RPT/RPD processing
 ///
 
@@ -5421,7 +5437,7 @@ static t_stat DoBasicInstruction (void)
          
         case 0716:  ///< xec
             {
-                cu . IWB = CY;
+                //cu . IWB = CY;
                 cu . xde = 1;
                 cu . xdo = 0;
             }
@@ -5464,8 +5480,8 @@ static t_stat DoBasicInstruction (void)
 	  //  Attempted repetition with the rpt, rpd, or rpl instructions
 	  //  causes an illegal procedure fault.
             
-                cu . IWB = Ypair [0];
-                cu . IRODD = Ypair [1];
+                //cu . IWB = Ypair [0];
+                //cu . IRODD = Ypair [1];
                 cu . xde = 1;
                 cu . xdo = 1;
             }

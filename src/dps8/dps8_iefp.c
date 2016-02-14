@@ -68,6 +68,7 @@ B29:;
                 word18 barAddress = getBARaddress (address);
                 iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
                 core_read(iefpFinalAddress, result, __func__);
+                sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", iefpFinalAddress, *result);
 #ifdef HDBG
                 hdbgMRead (iefpFinalAddress, * result);
 #endif
@@ -140,7 +141,7 @@ B29:
                 iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
                 core_write(iefpFinalAddress, data, __func__);
         
-                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
+                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
 #ifdef HDBG
                 hdbgMWrite (iefpFinalAddress, data);
 #endif
