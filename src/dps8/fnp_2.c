@@ -535,6 +535,20 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         return;
     }
     
+    if ((MState . line [hsla_line_num] . frame_begin != 0 &&
+         MState . line [hsla_line_num] . frame_begin == kar) ||
+        (MState . line [hsla_line_num] . frame_end != 0 &&
+         MState . line [hsla_line_num] . frame_end == kar))
+      {
+        if (tty -> nPos != 0)
+          {
+            sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+          }
+        tty->nPos = 0;
+        tty->buffer[tty->nPos] = 0;
+        return;
+      }
+
     switch (kar)
     {
 //            case '\b':  // backspace
@@ -596,9 +610,9 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
             break;
     }
     
-    // if half duplex, echo back to MUX line
-    if (!(MState . line [hsla_line_num] .fullDuplex))
-        MuxWrite(line, kar);
+    //// if half duplex, echo back to MUX line
+    //if (!(MState . line [hsla_line_num] .fullDuplex))
+        //MuxWrite(line, kar);
     
     tty->buffer[tty->nPos++] = kar;
     tty->buffer[tty->nPos] = 0;

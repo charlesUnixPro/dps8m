@@ -827,8 +827,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp set delay table\n");
                         word36 command_data0 = smbxp -> command_data [0];
-                        uint d1 = getbits36 (command_data0, 0, 8);
-                        uint d2 = getbits36 (command_data0, 8, 8);
+                        uint d1 = getbits36 (command_data0, 0, 9);
+                        uint d2 = getbits36 (command_data0, 9, 9);
 
                         char cmd [256];
                         sprintf (cmd, "set_framing_chars %d %d %d", slot_no, d1, d2);
@@ -1035,7 +1035,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             case 18: // Chngstring
                               {
                                 //sim_printf ("fnp Change control string\n");
-                                uint idx =  getbits36 (smbxp -> command_data [0], 8, 18);
+                                uint idx =  getbits36 (smbxp -> command_data [0], 9, 9);
                                 char cmd [256];
                                 sprintf (cmd, "change_control_string %d %d", slot_no, idx);
                                 tellFNP (devUnitIdx, cmd);          
