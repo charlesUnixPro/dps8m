@@ -842,7 +842,7 @@ typedef struct
     word1 PARL;    // 17    PARL      Parity fault - processor parity lower
     word1 ONC1;    // 18    ONC1      Operation not complete fault error #1
     word1 ONC2;    // 19    ONC2      Operation not complete fault error #2
-    word4 IA;      // 20-23 IA        System controll illegal action lines
+    word4 IA;      // 20-23 IA        System control illegal action lines
     word3 IACHN;   // 24-26 IACHN     Illegal action processor port
     word3 CNCHN;   // 27-29 CNCHN     Connect fault - connect processor port
     word5 FI_ADDR; // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
