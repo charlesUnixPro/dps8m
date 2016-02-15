@@ -1769,12 +1769,14 @@ restart_1:
             // The repetition cycle consists of the following steps:
             //  a. Execute the repeated instruction
             //  b. C(X0)0,7 - 1 -> C(X0)0,7
+            // a:AL39/rpd9
             uint x = bitfieldExtract (rX [0], 10, 8);
             x -= 1;
             rX [0] = bitfieldInsert (rX [0], x, 10, 8);
 
             //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 
+            // a:AL39/rpd10
             //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON
             //     and terminate
 
