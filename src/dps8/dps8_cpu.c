@@ -2538,6 +2538,10 @@ void decodeInstruction (word36 inst, DCDstruct * p)
             memset (& currentEISinstruction, 0, sizeof (currentEISinstruction)); 
         }
     }
+
+    // Save the MIIF
+    p -> MIIF = TSTF (cu . IR, I_MIIF) != 0;
+
 #ifdef MULTIPASS
     if (multipassStatsPtr)
       multipassStatsPtr -> inst = inst;

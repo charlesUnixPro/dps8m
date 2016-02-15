@@ -589,7 +589,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     // to assume that the h/w also sets it to 0, and the s/w has to explicitly set it on.
     cu . rfi = 0;
 
-#ifdef MIIF_rework
+#ifdef xMIIF_rework
     if (cpu . cycle == EXEC_cycle ||
         cpu . cycle == FAULT_EXEC_cycle ||
         cpu . cycle == FAULT_EXEC2_cycle ||

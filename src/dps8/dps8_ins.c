@@ -511,7 +511,7 @@ void tidy_cu (void)
     cu . pot = false;
     cu . xde = false;
     cu . xdo = false;
-    cu . IR &= ~ I_MIIF;
+    CLRF (cu . IR, I_MIIF);
   }
 
 static void words2scu (word36 * words)
@@ -1169,13 +1169,21 @@ t_stat executeInstruction (void)
                                          //  XXX replace withrTAG
 
 
+#ifdef MIIF_rework
+    // decodeInstruction saved MIIF in ci; set it.
+    SETF (cu . IR, I_MIIF);
+#else
+    // decodeInstruction saved MIIF in ci; clear it.
+    CLRF (cu . IR, I_MIIF);
+#endif
+
     addToTheMatrix (opcode, opcodeX, a, tag);
 
 ///
 /// executeInstruction: Non-restart processing
 ///
 
-    if (cu . IR & I_MIIF)
+    if (ci -> MIIF)
       goto restart_1;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
@@ -1312,7 +1320,7 @@ restart_1:
 ///
 
     // This must not happen on instruction restart
-    if (! (cu . IR & I_MIIF))
+    if (! ci -> MIIF)
       {
         if (! ci -> a)
           {
@@ -1433,7 +1441,7 @@ restart_1:
     if (info -> ndes > 0)
       {
         // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
+        if (! ci -> MIIF)
           {
             du . CHTALLY = 0;
             du . Z = 1;
@@ -1463,7 +1471,7 @@ restart_1:
 
       {
         // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
+        if (! ci -> MIIF)
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
@@ -1491,7 +1499,7 @@ restart_1:
           }
 
         // This must not happen on instruction restart
-        if (! (cu . IR & I_MIIF))
+        if (! ci -> MIIF)
           {
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
@@ -1503,7 +1511,7 @@ restart_1:
         // to the data word instead of the indirect word; reset the CA correctly
         //
 
-        if ((cu . IR & I_MIIF) && cu . pot)
+        if (ci -> MIIF && cu . pot)
           {
             TPR . CA = GET_ADDR (IWB_IRODD);
             if (getbits36 (cu . IWB, 29, 1) != 0)
@@ -8078,7 +8086,7 @@ void doRCU (void)
     if (cu . FI_ADDR == FAULT_LUF)
       {
 #ifndef MIIF_rework
-        cu . IR |= I_MIIF;
+        SETF (cu . IR, I_MIIF);
 #endif
         longjmp (jmpMain, JMP_RESTART);
       }
@@ -8096,7 +8104,7 @@ void doRCU (void)
       {
         // If the fault occurred during fetch, handled above.
 #ifndef MIIF_rework
-        cu . IR |= I_MIIF;
+        SETF (cu . IR, I_MIIF);
 #endif
         longjmp (jmpMain, JMP_RESTART);
       }
