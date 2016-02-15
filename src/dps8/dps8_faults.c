@@ -589,16 +589,15 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     // to assume that the h/w also sets it to 0, and the s/w has to explicitly set it on.
     cu . rfi = 0;
 
-#ifdef xMIF_rework
-    if (cpu . cycle == EXEC_cycle ||
-        cpu . cycle == FAULT_EXEC_cycle ||
-        cpu . cycle == FAULT_EXEC2_cycle ||
-        cpu . cycle == INTERRUPT_EXEC_cycle ||
-        cpu . cycle == INTERRUPT_EXEC2_cycle)
+// Try to decide if this a MIF fault (fault during EIS instruction)
+// EIS instructions are not used in fault/interrupt pairs, so the
+// only time an EIS instruction could be executing is during EXEC_cycle.
+// I am also assuming that only multi-word EIS instructions are of interest.
+    if (cpu . cycle == EXEC_cycle &&
+        currentInstruction . info -> ndes > 0)
       SETF (cu . IR, I_MIF);
     else
       CLRF (cu . IR, I_MIF);
-#endif
 
     if (faultNumber == FAULT_ACV)
       {

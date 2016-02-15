@@ -2539,8 +2539,13 @@ void decodeInstruction (word36 inst, DCDstruct * p)
         }
     }
 
-    // Save the MIF
-    p -> MIF = TSTF (cu . IR, I_MIF) != 0;
+    // Save the RFI
+    p -> restart = cu . rfi != 0;
+    cu . rfi = 0;
+    if (p -> restart)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
+      }
 
 #ifdef MULTIPASS
     if (multipassStatsPtr)

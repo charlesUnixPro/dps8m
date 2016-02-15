@@ -1169,21 +1169,13 @@ t_stat executeInstruction (void)
                                          //  XXX replace withrTAG
 
 
-#ifdef MIF_rework
-    // decodeInstruction saved MIF in ci; set it.
-    SETF (cu . IR, I_MIF);
-#else
-    // decodeInstruction saved MIF in ci; clear it.
-    CLRF (cu . IR, I_MIF);
-#endif
-
     addToTheMatrix (opcode, opcodeX, a, tag);
 
 ///
 /// executeInstruction: Non-restart processing
 ///
 
-    if (ci -> MIF)
+    if (ci -> restart)
       goto restart_1;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
@@ -1320,7 +1312,7 @@ restart_1:
 ///
 
     // This must not happen on instruction restart
-    if (! ci -> MIF)
+    if (! ci -> restart)
       {
         if (! ci -> a)
           {
@@ -1441,7 +1433,7 @@ restart_1:
     if (info -> ndes > 0)
       {
         // This must not happen on instruction restart
-        if (! ci -> MIF)
+        if (! ci -> restart)
           {
             du . CHTALLY = 0;
             du . Z = 1;
@@ -1471,7 +1463,7 @@ restart_1:
 
       {
         // This must not happen on instruction restart
-        if (! ci -> MIF)
+        if (! ci -> restart)
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
@@ -1499,7 +1491,7 @@ restart_1:
           }
 
         // This must not happen on instruction restart
-        if (! ci -> MIF)
+        if (! ci -> restart)
           {
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
@@ -1511,7 +1503,7 @@ restart_1:
         // to the data word instead of the indirect word; reset the CA correctly
         //
 
-        if (ci -> MIF && cu . pot)
+        if (ci -> restart && cu . pot)
           {
             TPR . CA = GET_ADDR (IWB_IRODD);
             if (getbits36 (cu . IWB, 29, 1) != 0)
@@ -8067,6 +8059,7 @@ void doRCU (void)
 
     if (cu . FI_ADDR == FAULT_MME2)
       {
+        cu . rfi = 1;
         longjmp (jmpMain, JMP_RESTART);
       }
 
@@ -8085,9 +8078,7 @@ void doRCU (void)
     // LUF can happen during fetch or CAF. If fetch, handled above
     if (cu . FI_ADDR == FAULT_LUF)
       {
-#ifndef MIF_rework
-        SETF (cu . IR, I_MIF);
-#endif
+        cu . rfi = 1;
         longjmp (jmpMain, JMP_RESTART);
       }
 
@@ -8103,9 +8094,7 @@ void doRCU (void)
         cu . FI_ADDR == FAULT_EXF)
       {
         // If the fault occurred during fetch, handled above.
-#ifndef MIF_rework
-        SETF (cu . IR, I_MIF);
-#endif
+        cu . rfi = 1;
         longjmp (jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cu . FI_ADDR);
