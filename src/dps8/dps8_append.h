@@ -30,6 +30,8 @@
 enum _appendingUnit_cycle_type {
     apuCycle_APPUNKNOWN = 0,    // unknown
     
+    apuCycle_FIAP,       // Fetch instruction
+
     apuCycle_FANP,       // Final address nonpaged.
                 // Generates the 24-bit absolute main memory address and 
                 // initiates a main memory access to an unpaged segment for 

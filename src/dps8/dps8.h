@@ -360,9 +360,10 @@ typedef enum eCAFoper eCAFoper;
 // AL39 Table 4-3. Alphanumeric Data Type (TA) Codes
 typedef enum _CTA
 {
-    CTA9 = 0U,       ///< 9-bit bytes
-    CTA6 = 1U,       ///< 6-bit characters
-    CTA4 = 2U        ///< 4-bit decimal
+    CTA9 = 0U,       // 9-bit bytes
+    CTA6 = 1U,       // 6-bit characters
+    CTA4 = 2U,       // 4-bit decimal
+    CTAILL = 3U      // Illegal
 } _CTA;
 
 //#define CTA9   0

@@ -583,10 +583,22 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
     cu . FI_ADDR = faultNumber;
 
+    // XXX Under what conditions should this be set?
     // Assume no
     // Reading Multics source, it seems like Multics is setting this bit; I'm going
     // to assume that the h/w also sets it to 0, and the s/w has to explicitly set it on.
     cu . rfi = 0;
+
+#ifdef MIIF_rework
+    if (cpu . cycle == EXEC_cycle ||
+        cpu . cycle == FAULT_EXEC_cycle ||
+        cpu . cycle == FAULT_EXEC2_cycle ||
+        cpu . cycle == INTERRUPT_EXEC_cycle ||
+        cpu . cycle == INTERRUPT_EXEC2_cycle)
+      SETF (cu . IR, I_MIIF);
+    else
+      CLRF (cu . IR, I_MIIF);
+#endif
 
     if (faultNumber == FAULT_ACV)
       {

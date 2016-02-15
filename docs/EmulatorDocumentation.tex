@@ -59,6 +59,7 @@
 %   \section{Faults}
 %     \subsection{doFault()}
 %     \subsection{RCU}
+%   \section{CU implementation}
 
 % \part{"As-built"}
 %   \section{Variations between the hardware and the emulator}
@@ -696,7 +697,254 @@ function return value is used to signal that a transfer is to occur.
 
 \section{RPT/RPD}
 
-TODO
+The emulated RPT and RPD instruction execution is complex.
+
+When the RPT or RPD instruction is executed:
+
+1. The low six bits of the instruction are copied to CU DELTA register.
+
+2. The C flag is extracted from the instruction (bit 10); if set,
+the high eighteen bits (tally, A, B, C and
+termination condition flags) of the instruction are copied to the X0 register.
+
+3. The CU RF flag (repeat first) is set.
+
+4. RPT sets the CU RPT flag; RPD the CU RD flag.
+
+The `doInstruction()' routine (which executed the RPD/RPT instruction returns to
+`executeInstruction();' as part of it post-execution processing, it examines the CU RF 
+(repeat first) flag.
+
+If CU RF is set, then the CU RD (repeat double) and the even/odd bit of PPR.IC is examined.
+If RD is not set or, if it is and this is not the even (first) instruction of the repeat pair,
+then a local flag (rf) is set.
+
+\begin{verbatim}
+bool rf = cu . repeat_first;
+    if (rf && cu . rd && icEven)
+      rf = false;
+\end{verbatim}
+
+The idea is that `rf' will be set if we have just executed the repeated instruction, or the 
+second instruction of the repeat double instruction for the first time.
+
+Next, if `rf' is not set, the index register(s) must be updated and termination
+conditions are checked:
+
+a. If the CU RPT flag is on, then the index register referenced by the just executed instruction 
+is incremented by CU DELTA.
+
+b. If the CU RPD flag is on the index registers are not incremented until both of the 
+repeated instructions have been executed; this is determined by the IC being odd.
+
+c. If the CU RPD flag is on and the IC is odd and the B flag is set in X0, the index
+register referenced by the second instruction is incremented by CU DELTA 
+
+d. If the CU RPT flag is on or if the CU RPD flag is on and the IC is odd, then the 
+termination flags in X0 are examined and indicated tests are made (tally runout, not
+tally runout, zero, not zero, negative, not negative, carry out, not carry out and
+overflow). If any of the termination conditions are met, the CU RPT and CU RD flags
+are cleared.
+
+`fetchInstruction()' checks the CU RPT, CU RD, CU RF and IC odd bit flags:
+
+If CU RF is set and CU RD is set and the IC is odd, the instruction is fetched into
+CU IRODD register.
+
+a. If CU RF is set and CU RPT is set, the instruction is fetched into the IWB.
+
+b. If CU RF is not set, and either CU RPT is set or CU RD is set and IC is odd, no instruction is fetched.
+
+When the repeated instructions are by `executeInstruction()', it checks the CU RPT, CU RD and IC odd flags and executes either the instruction in IWB or in IRODD, as indicated.
+
+`executeInstruction()' also checks the repeated instruction's tag field to enforce illegal
+modifier faults.
+
+Next, `executeInstruction()' must handle the 'repeat first' setup. If CU RPT or CU RD are set, and
+CU RF is set:
+
+a. If CU RPT is set, clear CU RF.
+
+b. If CU RD is set and the IC is odd, clear CU RF.
+
+c. If CU RPT is set or CU RD is set, offset in the instruction is added to the referenced X register
+
+Lastly, the EXEC\_cycle code checks the CU flags and if the instruction is to be repeated,
+adjusts the IC as needed and starts a fetch cycle.
+
+The overall flow is:
+
+\begin{verbatim}
+RPT:
+
+   RPT is executed
+     Set CU DELTA
+     Set X0
+     Set CU RF
+     Set RPT
+
+   Post instruction execution
+     CU RF is set
+
+   EXEC_cycle post-execution
+     CU RF is set
+
+   Fetch next instruction
+     CU RPT and CU RF is set; fetch the instruction into IWB
+
+   Execute instruction
+     CU RPT set; execute instruction in IWB
+     Check repeated instruction tag field
+     CU RF is set
+       Clear CU RF
+       Add instruction offset field to referenced X register
+     The instruction to be repeated is executed
+
+A:
+   Post instruction execution
+     CU RF is not set and CU RPT is set
+       Increment the referenced X register by CU delta
+       Check termination flags and conditions
+         If the repeat is be terminated, clear CU RPT
+
+   EXEC_cycle post-execution
+     CU RF is not set and CU RPT is
+       Switch to FETCH_cycle to repeat the instruction
+
+   Fetch next instruction
+     CU RPT is set and CU RF is not set; the instruction is
+     already in IWB.
+
+   Execute instruction
+     CU RPT set; execute instruction in IWB
+     Check repeated instruction tag field
+     CU RF is not set
+     The instruction to be repeated is executed
+
+   Go to A:
+
+
+RPD:
+
+   RPD is executed
+     Set CU DELTA
+     Set X0
+     Set CU RF
+     Set RPD
+
+; repeat first is set
+
+   Post instruction execution
+     CU RF is set
+
+   EXEC_cycle post-execution
+     CU RF is set
+
+; first repeated instruction, first time
+
+   Fetch next (first) instruction
+     CU RPD and CU RF is set
+       IC is even
+         fetch the instruction into IWB
+
+   Execute (first) instruction
+     CU RPD is set and the IC is even; execute instruction in IWB
+     Check repeated instruction tag field
+     CU RF is set, but IC is even; don't clear CU RF
+     CU RF is set
+       Add instruction offset field to referenced X register
+     The first instruction to be repeated is executed
+
+   Post instruction execution
+     CU RF is set, CU RPD is set, and the IC is even
+
+   EXEC_cycle post-execution
+     CU RF is set
+
+; second repeated instruction, first time
+
+   Fetch next (second) instruction
+     CU RPD is set and CU RF is set and IC is odd
+       Fetch second instuction into CU IRODD
+
+   Execute (second) instruction
+     CU RPD is set and the IC is odd; execute instruction in IRODD
+     Check repeated instruction tag field
+     CU RF is set, IC is odd
+       clear CU RF
+       Add instruction offset field to referenced X register
+     The second instruction to be repeated is executed
+
+; repeat first is not set
+
+B:
+   Post (second) instruction execution
+     CU RF is not set, CU RPD is set, and the IC is odd
+       Increment the referenced X register by CU delta
+       Check termination flags and conditions
+         If the repeat is be terminated, clear CU RPT
+
+   EXEC_cycle post-execution
+     CU RF is not set and CU RD is set
+       The IC is odd; back it up to the first instruction
+       Switch to FETCH_cycle to execute the first instruction
+
+; first repeated instruction, not first time
+
+   Fetch next (first) instruction
+     CU RPD is set and CU RF is not set; instruction is in IRODD
+
+   Execute (first) instruction
+     CU RPD is set and the IC is even; execute instruction in IWB
+     Check repeated instruction tag field
+     CU RF is not set
+     The first instruction to be repeated is executed
+
+   Post instruction execution
+     CU RF is not set, CU RPD is set, and the IC is even
+
+   EXEC_cycle post-execution
+     CU RF is net set, CU RPD is set, IC is even.
+       Advance the IC to the second instruction
+       Switch to FETCH_cycle to execute the second instruction
+      
+; second  repeated instruction, not first time
+
+   Fetch next (second) instruction
+     CU RPD is set and CU RF is set and IC is odd
+       Fetch second instuction into CU IRODD
+
+   Execute (second) instruction
+     CU RPD is set and the IC is odd; execute instruction in IRODD
+     Check repeated instruction tag field
+     CU RF is set, IC is odd
+       clear CU RF
+       Add instruction offset field to referenced X register
+     The second instruction to be repeated is executed
+
+   Post (second) instruction execution
+     CU RF is not set, CU RPD is set, and the IC is odd
+       Increment the referenced X register by CU delta
+       Check termination flags and conditions
+         If the repeat is be terminated, clear CU RPT
+
+   EXEC_cycle post-execution
+     CU RF is not set
+       The IC is odd; back it up to the first instruction
+       Switch to EXEC_cycle to execute the first instruction
+
+   Fetch next (first) instruction
+     CU RPD is set and CU is not set; instruction already fetched
+
+   Execute (first) instruction
+     CU RPD is set and the IC is even; execute instruction in IWB
+     Check repeated instruction tag field
+     CU RF is not set
+     The first instruction to be repeated is executed
+
+   Go to B:
+\end{verbatim}
+
 
 \section{XEC/XED}
 
@@ -886,6 +1134,108 @@ TODO
 
 TODO
 
+\section{CU implementation}
+
+\begin{tabular}{lrlll}
+
+Word & Bits  & Name      & Description & Implementation \\
+0    & 0-2   & PPR       & PPR.PRR                             & Canonical \\
+     & 3-17  & PSR       & PPR.PSR                             & Canonical \\
+     & 18    & P         & PPR.P                               & Canonical \\
+     & 19    & XSF       & External segment flag               & Set to 0 \\
+     & 20    & SDWAMM    & Match on SDWAM                      & Set to 0 (a) \\
+     & 21    & SD-ON     & SDWAM enabled                       & Canonical (a) \\
+     & 22    & PTWAMM    & Match on PTWAM                      & Set to 0 (a) \\
+     & 23    & PT-ON     & PTWAM enabled                       & Canonical (a) \\
+     & 24    & PI-AP     & Instruction fetch append cycle      & Unused \\
+     & 25    & DSPTW     & Fetch descriptor segment PTW        & Canonical \\
+     & 26    & SDWNP     & Fetch SDW - nonpaged                & Canonical \\
+     & 27    & SDWP      & Fetch SDW - paged                   & Canonical \\
+     & 28    & PTW       & Fetch PTW                           & Canonical \\
+     & 29    & PTW2      & Fetch prepage PTW                   & Canonical \\
+     & 20    & FAP       & Fetch final address - paged         & Canonical \\
+     & 31    & FANP      & Fetch final address - nonpaged      & Canonical \\
+     & 32    & FABS      & Fetch final address - absolute      & Canonical \\
+     & 33-35 & FCT       & Fault counter - counts retries      & Unused \\
+1    & 0     & IRO       & ACV illegal ring order              & Canonical \\
+     &       & ISN       & SF illegal segment number           & Canonical \\
+     & 1     & OEB       & ACV out of execute bracket          & Canonical \\
+     &       & IOC       & IPR illegal op code                 & Canonical \\
+     & 2     & E-OFF     & ACV execute bit is OFF              & Canonical \\
+     &       & IA+IM     & IPR illegal address or modifier     & Canonical \\
+     & 3     & ORB       & ACV out of read bracket             & Canonical \\
+     &       & ISP       & IPR illegal slave procedure         & Canonical \\
+     & 4     & R-OFF     & ACV read bit is OFF                 & Canonical \\
+     &       & IPR       & IPR illegal EIS digit               & Canonical \\
+     & 5     & OWB       & ACV out of write bracket            & Canonical \\
+     &       & NEA       & SF nonexistent address              & Canonical \\
+     & 6     & W-OFF     & ACV write bit is OFF                & Canonical \\
+     &       & OOB       & SF BAR out of bounds                & Canonical \\
+     & 7     & NO GA     & ACV not a gate                      & Canonical \\
+     & 8     & OCB       & ACV out of call bracket             & Canonical \\
+     & 9     & OCALL     & ACV outward call                    & Canonical \\
+     & 10    & BOC       & ACV bad outward call                & Canonical \\
+     & 11    & PTWAM\_ER & ACV PTWAM error                     & Set to 0 (a) \\
+     & 12    & CRT       & ACV cross ring transfer             & Canonical \\
+     & 13    & RALR      & ACV ring alarm                      & Canonical \\
+     & 14    & SDWAM\_ER & ACV SDWAM error                     & Set to 0 (a) \\
+     & 15    & OOSB      & ACV out of segment bounds           & Canonical \\
+     & 16    & PARU      & Parity error upper                  & Set to 0 (b) \\
+     & 17    & PARL      & Parity error lower                  & Set to 0 (b) \\
+     & 18    & ONC1      & Operation not complete 1            & Set to 0 (c) \\
+     & 19    & ONC2      & Operation not complete 2            & Set to 0 (c) \\
+     & 20-23 & IA        & SC illegal action lines             & Canonical (d) \\
+     & 24-26 & IACHN     & Illegal action processor port       & Set to 0. \\
+     & 27-29 & CNCHN     & Connect fault processor port        & Canonical \\
+     & 30-34 & F/I ADDR  & F/I vector address                  & Canonical \\
+     & 35    & F/I       & F/I flag                            & Canonical \\
+2    & 0-2   & TRR       & TPR.TRR                             & Canonical \\
+     & 3-17  & TSR       & TPR.TSR                             & Canonical \\
+     & 18-21 & PTW       & PTW enabled/match bits              & Set to 0 (a) \\
+     & 22-25 & SDW       & SDW enabled/match bits              & Set to 0 (a) \\
+     & 26    & 0         & 0                                   & Canonical \\
+     & 27-29 & CPU       & CPU number                          & Canonical \\
+     & 30-35 & DELTA     & RPT/RPD address increment           & Canonical \\
+3    & 0-17  & 0         & 0                                   & Canonical \\
+     & 18-21 & TSNA      & Operand 1 PR number/valid           & Set to 0 (e) \\
+     & 22-25 & TSNB      & Operand 2 PR number/valid           & Set to 0 (e) \\
+     & 26-29 & TSNC      & Operand 3 PR number/valid           & Set to 0 (e) \\
+     & 30-35 & TEMP BIT  & TPR.TBR                             & Canonical \\
+4    & 0-17  & IC        & PPR.IC                              & Canonical \\
+     & 18-35 & IR        & IR (low 4 bits 0)                   & Canonical \\
+5    & 0-17  & CA        & TPR.CA                              & Canonical \\
+     & 18    & RF        & Repeat first cycle                  & Canonical \\
+     & 19    & RPT       & Execute RPT                         & Canonical \\
+     & 20    & RD        & Execute RPT                         & Canonical \\
+     & 21    & RPL       & Execute RPL                         & Canonical \\
+     & 22    & POT       & Prepare operand tally               & Canonical (f) \\
+     & 23    & PON       & Prepare operand no tally            & Set to 0 \\
+     & 24    & XDE       & XEC/XED Execute even                & Canonical \\
+     & 25    & XDE       & XEC/XED Execute odd                 & Canonical \\
+     & 26    & ITP       & ITP indirect cycle                  & Set to 0 \\
+     & 27    & RFI       & Restart instruction                 & Canonical \\
+     & 28    & ITS       & ITS indirect cycle                  & Set to 0 \\
+     & 29    & FIF       & Fault during instr. fetch           & Canonical \\
+     & 30-35 & CT HOLD   & Address tag hold                    & Canonical \\
+6    & 0-35  & IWB       & Instruction working buffer          & Canonical \\
+7    & 0-35  & IRODD     & Odd instruction                     & Canonical \\
+\end{tabular}
+
+(a) The Page Table and Segment Table associative memorys are not
+implemented. They will always report disabled and no match.
+
+(b) No parity detection is implemented, so parity error flags are never set.
+
+(c) Operation not complete detection is not implemented, so ONC error flags are never set.
+
+(d) Only 0 (LPRPn fault) and 8 (not control) values are returned.
+
+(e) The TSNx values are not used by the emulator.
+
+(f) The POT bit is used by the IC, SC and SCR address modifcation routines to mark when the
+data word addressed by the indirect word is being accessed.
+
+
 \part{"As-built"}
 
 \section{Variations between the hardware and the emulator}
@@ -895,7 +1245,5 @@ DPS8 memory is managed by the CPU code, not the SCU code.
 The history registers are not implemented.
 
 The RPL instruction is not implemented.
-
-The MPCs have been abstracted into the device code.
 
 \end{document}
