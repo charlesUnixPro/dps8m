@@ -650,7 +650,7 @@ struct DCDstruct
     word6  tag;           // instruction tag
     
     word18 stiTally;      // for sti instruction
-    bool MIIF;            // MIIF bit at instruction start
+    bool MIF;             // MIF bit at instruction start
   };
 
 extern DCDstruct currentInstruction;

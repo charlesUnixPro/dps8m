@@ -440,7 +440,7 @@ enum {
 
 #define I_HEX   F_O     // base-16 exponent                 0000010
 #define I_ABS   F_N     // absolute mode                    0000020
-#define I_MIIF  F_M     // mid-instruction interrupt fault  0000040
+#define I_MIF   F_M     // mid-instruction interrupt fault  0000040
 #define I_TRUNC F_L     // truncation                       0000100
 #define I_NBAR  F_K     // not BAR mode                     0000200
 #define I_PMASK F_J     // parity mask                      0000400

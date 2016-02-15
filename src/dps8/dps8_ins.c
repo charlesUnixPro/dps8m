@@ -511,7 +511,7 @@ void tidy_cu (void)
     cu . pot = false;
     cu . xde = false;
     cu . xdo = false;
-    CLRF (cu . IR, I_MIIF);
+    CLRF (cu . IR, I_MIF);
   }
 
 static void words2scu (word36 * words)
@@ -1169,12 +1169,12 @@ t_stat executeInstruction (void)
                                          //  XXX replace withrTAG
 
 
-#ifdef MIIF_rework
-    // decodeInstruction saved MIIF in ci; set it.
-    SETF (cu . IR, I_MIIF);
+#ifdef MIF_rework
+    // decodeInstruction saved MIF in ci; set it.
+    SETF (cu . IR, I_MIF);
 #else
-    // decodeInstruction saved MIIF in ci; clear it.
-    CLRF (cu . IR, I_MIIF);
+    // decodeInstruction saved MIF in ci; clear it.
+    CLRF (cu . IR, I_MIF);
 #endif
 
     addToTheMatrix (opcode, opcodeX, a, tag);
@@ -1183,7 +1183,7 @@ t_stat executeInstruction (void)
 /// executeInstruction: Non-restart processing
 ///
 
-    if (ci -> MIIF)
+    if (ci -> MIF)
       goto restart_1;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
@@ -1320,7 +1320,7 @@ restart_1:
 ///
 
     // This must not happen on instruction restart
-    if (! ci -> MIIF)
+    if (! ci -> MIF)
       {
         if (! ci -> a)
           {
@@ -1441,7 +1441,7 @@ restart_1:
     if (info -> ndes > 0)
       {
         // This must not happen on instruction restart
-        if (! ci -> MIIF)
+        if (! ci -> MIF)
           {
             du . CHTALLY = 0;
             du . Z = 1;
@@ -1471,7 +1471,7 @@ restart_1:
 
       {
         // This must not happen on instruction restart
-        if (! ci -> MIIF)
+        if (! ci -> MIF)
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
@@ -1499,7 +1499,7 @@ restart_1:
           }
 
         // This must not happen on instruction restart
-        if (! ci -> MIIF)
+        if (! ci -> MIF)
           {
             cu . CT_HOLD = 0; // Clear interrupted IR mode flag
           }
@@ -1511,7 +1511,7 @@ restart_1:
         // to the data word instead of the indirect word; reset the CA correctly
         //
 
-        if (ci -> MIIF && cu . pot)
+        if (ci -> MIF && cu . pot)
           {
             TPR . CA = GET_ADDR (IWB_IRODD);
             if (getbits36 (cu . IWB, 29, 1) != 0)
@@ -1857,12 +1857,12 @@ restart_1:
           } // if (cu . rpt || cu . rd & (PPR.IC & 1))
       } // (! rf) && (cu . rpt || cu . rd)
 
-#ifdef MIIF_rework
+#ifdef MIF_rework
 ///
 /// executeInstruction: Done; clean up.
 ///
 
-     CLRF (cu . IR, I_MIIF);
+     CLRF (cu . IR, I_MIF);
 #endif
 
 ///
@@ -1939,8 +1939,8 @@ static t_stat DoEISInstruction (void);
 static t_stat doInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
-#ifndef MIIF_rework
-    CLRF(cu.IR, I_MIIF);
+#ifndef MIF_rework
+    CLRF(cu.IR, I_MIF);
 #endif
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
@@ -2139,7 +2139,7 @@ static t_stat DoBasicInstruction (void)
             //      This indicator is not affected in the normal or BAR modes.
             //  Not BAR mode:
             //      Cannot be changed by the ldi instruction
-            //  MIIF:
+            //  MIF:
             //      If C(Y)30 = 1, and the processor is in absolute or
             //      instruction privileged mode, then ON; otherwise OFF.
             //      This indicator is not affected in normal or BAR modes.
@@ -2167,7 +2167,7 @@ static t_stat DoBasicInstruction (void)
               SCF(tmp18 & I_PMASK, cu.IR, I_PMASK);
             SCF(tmp18 & I_TRUNC, cu.IR, I_TRUNC);
             if (bAbsPriv)
-              SCF(tmp18 & I_MIIF, cu.IR, I_MIIF);
+              SCF(tmp18 & I_MIF, cu.IR, I_MIF);
 
             }
 
@@ -8085,8 +8085,8 @@ void doRCU (void)
     // LUF can happen during fetch or CAF. If fetch, handled above
     if (cu . FI_ADDR == FAULT_LUF)
       {
-#ifndef MIIF_rework
-        SETF (cu . IR, I_MIIF);
+#ifndef MIF_rework
+        SETF (cu . IR, I_MIF);
 #endif
         longjmp (jmpMain, JMP_RESTART);
       }
@@ -8103,8 +8103,8 @@ void doRCU (void)
         cu . FI_ADDR == FAULT_EXF)
       {
         // If the fault occurred during fetch, handled above.
-#ifndef MIIF_rework
-        SETF (cu . IR, I_MIIF);
+#ifndef MIF_rework
+        SETF (cu . IR, I_MIF);
 #endif
         longjmp (jmpMain, JMP_RESTART);
       }

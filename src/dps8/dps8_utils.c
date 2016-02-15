@@ -20,7 +20,7 @@
  * misc utility routines used by simulator
  */
 
-//I_HEX I_ABS I_MIIF I_TRUNC  I_NBAR    I_PMASK I_PAR    I_TALLY I_OMASK  I_EUFL         I_EOFL I_OFLOW I_CARRY     I_NEG        I_ZERO
+//I_HEX I_ABS I_MIF I_TRUNC  I_NBAR    I_PMASK I_PAR    I_TALLY I_OMASK  I_EUFL         I_EOFL I_OFLOW I_CARRY     I_NEG        I_ZERO
 char * dumpFlags(word18 flags)
 {
     static char buffer[256] = "";
@@ -28,17 +28,17 @@ char * dumpFlags(word18 flags)
     sprintf(buffer, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
             flags & I_HEX   ? "Hex "   : "",
             flags & I_ABS   ? "Abs "   : "",
-            flags & I_MIIF  ? "Miif "  : "",
+            flags & I_MIF   ? "MIF "  : "",
             flags & I_TRUNC ? "Trunc " : "",
-            flags & I_NBAR      ? "~BAR "  : "",
+            flags & I_NBAR  ? "~BAR "  : "",
             flags & I_PMASK ? "PMask " : "",
             flags & I_PERR  ? "PErr"   : "",
             flags & I_TALLY ? "Tally " : "",
             flags & I_OMASK ? "OMASK " : "",
             flags & I_EUFL  ? "EUFL "  : "",
             flags & I_EOFL  ? "EOFL "  : "",
-            flags & I_OFLOW     ? "Ovr "   : "",
-            flags & I_CARRY     ? "Carry " : "",
+            flags & I_OFLOW ? "Ovr "   : "",
+            flags & I_CARRY ? "Carry " : "",
             flags & I_NEG   ? "Neg "   : "",
             flags & I_ZERO  ? "Zero "  : ""
             );

@@ -984,7 +984,7 @@ static BITFIELD dps8_IR_bits[] = {
     BITNCF(3),
     BITFNAM(HEX,   1, z1),    /*!< base-16 exponent */ ///< 0000010
     BITFNAM(ABS,   1, z1),    /*!< absolute mode */ ///< 0000020
-    BITFNAM(MIIF,  1, z1),   /*!< mid-instruction interrupt fault */ ///< 0000040
+    BITFNAM(MIF,   1, z1),   /*!< mid-instruction interrupt fault */ ///< 0000040
     BITFNAM(TRUNC, 1, z1),    /*!< truncation */ ///< 0000100
     BITFNAM(NBAR,  1, z1),   /*!< not BAR mode */ ///< 0000200
     BITFNAM(PMASK, 1, z1),   /*!< parity mask */ ///< 0000400
@@ -2539,8 +2539,8 @@ void decodeInstruction (word36 inst, DCDstruct * p)
         }
     }
 
-    // Save the MIIF
-    p -> MIIF = TSTF (cu . IR, I_MIIF) != 0;
+    // Save the MIF
+    p -> MIF = TSTF (cu . IR, I_MIF) != 0;
 
 #ifdef MULTIPASS
     if (multipassStatsPtr)
