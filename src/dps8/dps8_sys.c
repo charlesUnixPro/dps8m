@@ -782,19 +782,19 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         return SCPE_ARG;
       }
 
-    if (DSBR.U == 1) // Unpaged
+    if (cpu . DSBR.U == 1) // Unpaged
       {
-        if (2 * (uint) /*TPR . TSR*/ segno >= 16 * ((uint) DSBR . BND + 1))
+        if (2 * (uint) /*TPR . TSR*/ segno >= 16 * ((uint) cpu . DSBR . BND + 1))
           {
             sim_printf ("DSBR boundary violation.\n");
             return SCPE_ARG;
           }
 
-        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+        // 2. Fetch the target segment SDW from cpu . DSBR.ADDR + 2 * segno.
 
         word36 SDWe, SDWo;
-        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno) & PAMASK, & SDWe, __func__);
-        core_read ((DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1) & PAMASK, & SDWo, __func__);
+        core_read ((cpu . DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno) & PAMASK, & SDWe, __func__);
+        core_read ((cpu . DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1) & PAMASK, & SDWo, __func__);
 
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
@@ -829,10 +829,10 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         //word15 segno = TPR . TSR;
         //word18 offset = TPR . CA;
 
-        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access 
+        // 1. If 2 * segno >= 16 * (cpu . DSBR.BND + 1), then generate an access 
         // violation, out of segment bounds, fault.
 
-        if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
+        if (2 * (uint) segno >= 16 * ((uint) cpu . DSBR . BND + 1))
           {
             sim_printf ("DSBR boundary violation.\n");
             return SCPE_ARG;
@@ -848,7 +848,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+        core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
         struct _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);
@@ -1007,8 +1007,8 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
   {
     char * msg;
 
-    word15 icSegno = PPR . PSR;
-    word18 icOffset = PPR . IC;
+    word15 icSegno = cpu . PPR . PSR;
+    word18 icOffset = cpu . PPR . IC;
     
     sim_printf ("Entry ptr   %05o:%06o\n", icSegno, icOffset);
     
@@ -1030,8 +1030,8 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
     //  pr4/lp linkage section for the executing procedure
     //  pr7/sb stack base
 
-    word15 fpSegno = PR [6] . SNR;
-    word15 fpOffset = PR [6] . WORDNO;
+    word15 fpSegno = cpu . PR [6] . SNR;
+    word15 fpOffset = cpu . PR [6] . WORDNO;
 
     for (uint frameNo = 1; ; frameNo ++)
       {
@@ -1062,11 +1062,11 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
               {
                 // try rX[7] as the return address
                 sim_printf ("guessing X7 has a return address....\n");
-                where = lookupAddress (icSegno, rX [7] - 1,
+                where = lookupAddress (icSegno, cpu . rX [7] - 1,
                                        & compname, & compoffset);
                 if (where)
                   {
-                    sim_printf ("%05o:%06o %s\n", icSegno, rX [7] - 1, where);
+                    sim_printf ("%05o:%06o %s\n", icSegno, cpu . rX [7] - 1, where);
                     listSource (compname, compoffset, 0);
                   }
               }
@@ -1199,20 +1199,20 @@ static t_stat virtAddr (UNUSED int32 arg, char * buf)
 
 t_stat virtAddrN (uint address)
   {
-    if (DSBR.U) {
-        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
+    if (cpu . DSBR.U) {
+        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 1)
         {
             _sdw0 *s = fetchSDW(segno);
             if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16)
               sim_printf ("  %06o:%06o\n", segno, address - s -> ADDR);
         }
     } else {
-        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 512)
+        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 512)
         {
             word24 y1 = (2 * segno) % 1024;
             word24 x1 = (2 * segno - y1) / 1024;
             word36 PTWx1;
-            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+            core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
             struct _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
@@ -1602,8 +1602,8 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, char *cptr, char **optr)
             {
                 if (strcasecmp(seg, prt->alias) == 0)
                 {
-                    segno = PR[prt->n].SNR;
-                    PRoffset = PR[prt->n].WORDNO;
+                    segno = cpu . PR[prt->n].SNR;
+                    PRoffset = cpu . PR[prt->n].WORDNO;
                     break;
                 }
                 
@@ -1661,8 +1661,8 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, char *cptr, char **optr)
         {
             if (strncasecmp(cptr, prt->alias, strlen(prt->alias)) == 0)
             {
-                segno = PR[prt->n].SNR;
-                offset = PR[prt->n].WORDNO;
+                segno = cpu . PR[prt->n].SNR;
+                offset = cpu . PR[prt->n].WORDNO;
                 break;
             }
             
@@ -1892,7 +1892,7 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
     char * msg;
-    if (dbgLookupAddress (PR [6] . SNR, 046, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
       {
         sim_printf ("text segment number lookup failed because %s\n", msg);
       }
@@ -1900,9 +1900,9 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -1910,7 +1910,7 @@ sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
       {
         sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
       }
-    if (dbgLookupAddress (PR [2] . SNR, PR [2] . WORDNO, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
         sim_printf ("divisor address lookup failed because %s\n", msg);
       }
@@ -1946,7 +1946,7 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
     char * msg;
-    if (dbgLookupAddress (PR [6] . SNR, 046, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
       {
         sim_printf ("text segment number lookup failed because %s\n", msg);
       }
@@ -1955,9 +1955,9 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
 #if 0
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -1980,7 +1980,7 @@ sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
           }
       }
 #endif
-    if (dbgLookupAddress (PR [2] . SNR, PR [2] . WORDNO, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
         sim_printf ("divisor address lookup failed because %s\n", msg);
       }
@@ -2005,7 +2005,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
     char * msg;
-    if (dbgLookupAddress (PR [6] . SNR, 046, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
       {
         sim_printf ("text segment number lookup failed because %s\n", msg);
       }
@@ -2013,10 +2013,10 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-//sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+//sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
 #if 0
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -2025,7 +2025,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
         sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
       }
 #endif
-    if (dbgLookupAddress (PR [2] . SNR, PR [2] . WORDNO, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
         sim_printf ("divisor address lookup failed because %s\n", msg);
       }
@@ -2049,7 +2049,7 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
     char * msg;
-    if (dbgLookupAddress (PR [6] . SNR, 046, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
       {
         sim_printf ("text segment number lookup failed because %s\n", msg);
       }
@@ -2057,9 +2057,9 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
       {
         sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
       }
-sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
+sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
-    if (dbgLookupAddress (PR [2] . SNR, rX [0], & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
       {
         sim_printf ("return address lookup failed because %s\n", msg);
       }
@@ -2067,7 +2067,7 @@ sim_printf ("%05o:%06o\n", PR [2] . SNR, rX [0]);
       {
         sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
       }
-    if (dbgLookupAddress (PR [2] . SNR, PR [2] . WORDNO, & pa, & msg))
+    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
         sim_printf ("divisor address lookup failed because %s\n", msg);
       }

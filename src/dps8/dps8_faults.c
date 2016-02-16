@@ -495,8 +495,8 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 #endif
 
     // some debugging support stuff
-    fault_psr = PPR.PSR;
-    fault_ic = PPR.IC;
+    fault_psr = cpu . PPR.PSR;
+    fault_ic = cpu . PPR.IC;
     strcpy (fault_msg, faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
@@ -516,37 +516,37 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     if (faultNumber == FAULT_IPR)
       {
         if (subFault == ill_op)
-          faultRegister [0] |= FR_ILL_OP;
+          cpu . faultRegister [0] |= FR_ILL_OP;
         else if (subFault == ill_mod)
-          faultRegister [0] |= FR_ILL_MOD;
+          cpu . faultRegister [0] |= FR_ILL_MOD;
         else if (subFault == ill_dig)
-          faultRegister [0] |= FR_ILL_DIG;
+          cpu . faultRegister [0] |= FR_ILL_DIG;
         else /* if (subFault == ill_proc) */ // and all others
-          faultRegister [0] |= FR_ILL_PROC;
+          cpu . faultRegister [0] |= FR_ILL_PROC;
       }
     else if (faultNumber == FAULT_ONC && subFault == nem)
       {
-        faultRegister [0] |= FR_NEM;
+        cpu . faultRegister [0] |= FR_NEM;
       }
     else if (faultNumber == FAULT_STR && subFault == oob)
       {
-        faultRegister [0] |= FR_OOB;
+        cpu . faultRegister [0] |= FR_OOB;
       }
     else if (faultNumber == FAULT_CON)
       {
         switch (subFault)
           {
             case 0:
-              faultRegister [0] |= FR_CON_A;
+              cpu . faultRegister [0] |= FR_CON_A;
               break;
             case 1:
-              faultRegister [0] |= FR_CON_B;
+              cpu . faultRegister [0] |= FR_CON_B;
               break;
             case 2:
-              faultRegister [0] |= FR_CON_C;
+              cpu . faultRegister [0] |= FR_CON_C;
               break;
             case 3:
-              faultRegister [0] |= FR_CON_D;
+              cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
               break;
@@ -555,119 +555,119 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     // Set cu word1 fault bits
 
-    cu . IRO_ISN = 0;
-    cu . OEB_IOC = 0;
-    cu . EOFF_IAIM = 0;
-    cu . ORB_ISP = 0;
-    cu . ROFF_IPR = 0;
-    cu . OWB_NEA = 0;
-    cu . WOFF_OOB = 0;
-    cu . NO_GA = 0;
-    cu . OCB = 0;
-    cu . OCALL = 0;
-    cu . BOC = 0;
-    cu . PTWAM_ER = 0;
-    cu . CRT = 0;
-    cu . RALR = 0;
-    cu . SWWAM_ER = 0;
-    cu . OOSB = 0;
-    cu . PARU = 0;
-    cu . PARL = 0;
-    cu . ONC1 = 0;
-    cu . ONC2 = 0;
-    cu . IA = 0;
-    cu . IACHN = 0;
-    cu . CNCHN = 0;
+    cpu . cu . IRO_ISN = 0;
+    cpu . cu . OEB_IOC = 0;
+    cpu . cu . EOFF_IAIM = 0;
+    cpu . cu . ORB_ISP = 0;
+    cpu . cu . ROFF_IPR = 0;
+    cpu . cu . OWB_NEA = 0;
+    cpu . cu . WOFF_OOB = 0;
+    cpu . cu . NO_GA = 0;
+    cpu . cu . OCB = 0;
+    cpu . cu . OCALL = 0;
+    cpu . cu . BOC = 0;
+    cpu . cu . PTWAM_ER = 0;
+    cpu . cu . CRT = 0;
+    cpu . cu . RALR = 0;
+    cpu . cu . SWWAM_ER = 0;
+    cpu . cu . OOSB = 0;
+    cpu . cu . PARU = 0;
+    cpu . cu . PARL = 0;
+    cpu . cu . ONC1 = 0;
+    cpu . cu . ONC2 = 0;
+    cpu . cu . IA = 0;
+    cpu . cu . IACHN = 0;
+    cpu . cu . CNCHN = 0;
 
     // Set control unit 'fault occured during instruction fetch' flag
-    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
-    cu . FI_ADDR = faultNumber;
+    cpu . cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
+    cpu . cu . FI_ADDR = faultNumber;
 
     // XXX Under what conditions should this be set?
     // Assume no
     // Reading Multics source, it seems like Multics is setting this bit; I'm going
     // to assume that the h/w also sets it to 0, and the s/w has to explicitly set it on.
-    cu . rfi = 0;
+    cpu . cu . rfi = 0;
 
 // Try to decide if this a MIF fault (fault during EIS instruction)
 // EIS instructions are not used in fault/interrupt pairs, so the
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
     if (cpu . cycle == EXEC_cycle &&
-        currentInstruction . info -> ndes > 0)
-      SETF (cu . IR, I_MIF);
+        cpu . currentInstruction . info -> ndes > 0)
+      SETF (cpu . cu . IR, I_MIF);
     else
-      CLRF (cu . IR, I_MIF);
+      CLRF (cpu . cu . IR, I_MIF);
 
     if (faultNumber == FAULT_ACV)
       {
         // This is annoyingly inefficent since the subFault value 
         // is bitwise the same as the upper half of CU word1;
         // if the upperhalf were not broken out, then this would be
-        // cu . word1_upper_half = subFault.
+        // cpu . cu . word1_upper_half = subFault.
 
         if (subFault & ACV0)
-          cu . IRO_ISN = 1;
+          cpu . cu . IRO_ISN = 1;
         if (subFault & ACV1)
-          cu . OEB_IOC = 1;
+          cpu . cu . OEB_IOC = 1;
         if (subFault & ACV2)
-          cu . EOFF_IAIM = 1;
+          cpu . cu . EOFF_IAIM = 1;
         if (subFault & ACV3)
-          cu . ORB_ISP = 1;
+          cpu . cu . ORB_ISP = 1;
         if (subFault & ACV4)
-          cu . ROFF_IPR = 1;
+          cpu . cu . ROFF_IPR = 1;
         if (subFault & ACV5)
-          cu . OWB_NEA = 1;
+          cpu . cu . OWB_NEA = 1;
         if (subFault & ACV6)
-          cu . WOFF_OOB = 1;
+          cpu . cu . WOFF_OOB = 1;
         if (subFault & ACV7)
-          cu . NO_GA = 1;
+          cpu . cu . NO_GA = 1;
         if (subFault & ACV8)
-          cu . OCB = 1;
+          cpu . cu . OCB = 1;
         if (subFault & ACV9)
-          cu . OCALL = 1;
+          cpu . cu . OCALL = 1;
         if (subFault & ACV10)
-          cu . BOC = 1;
+          cpu . cu . BOC = 1;
         if (subFault & ACV11)
-          cu . PTWAM_ER = 1;
+          cpu . cu . PTWAM_ER = 1;
         if (subFault & ACV12)
-          cu . CRT = 1;
+          cpu . cu . CRT = 1;
         if (subFault & ACV13)
-          cu . RALR = 1;
+          cpu . cu . RALR = 1;
         if (subFault & ACV14)
-          cu . SWWAM_ER = 1;
+          cpu . cu . SWWAM_ER = 1;
         if (subFault & ACV15)
-          cu . OOSB = 1;
+          cpu . cu . OOSB = 1;
       }
     else if (faultNumber == FAULT_STR)
       {
         if (subFault == oob)
-          cu . WOFF_OOB = 1;
+          cpu . cu . WOFF_OOB = 1;
         else if (subFault == ill_ptr)
-          cu . WOFF_OOB = 1;
+          cpu . cu . WOFF_OOB = 1;
         // Not used by SCU 4MW
         // else if (subFault == not_control)
-          // cu . WOFF_OOB;
+          // cpu . cu . WOFF_OOB;
       }
     else if (faultNumber == FAULT_IPR)
       {
         if (subFault == ill_op)
-          cu . OEB_IOC = 1;
+          cpu . cu . OEB_IOC = 1;
         else if (subFault == ill_mod)
-          cu . EOFF_IAIM = 1;
+          cpu . cu . EOFF_IAIM = 1;
         else if (subFault == ill_slv)
-          cu . ORB_ISP = 1;
+          cpu . cu . ORB_ISP = 1;
         else if (subFault == ill_dig)
-          cu . ROFF_IPR = 1;
+          cpu . cu . ROFF_IPR = 1;
         // else if (subFault == ill_proc)
-          // cu . ? = 1;
+          // cpu . cu . ? = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
         if (subFault == lprpn_bits)
-          cu . IA = 0;
+          cpu . cu . IA = 0;
         else if (subFault == not_control)
-          cu . IA = 010;
+          cpu . cu . IA = 010;
       }
 
     // If already in a FAULT CYCLE then signal trouble fault
@@ -676,7 +676,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         cpu . cycle == FAULT_EXEC2_cycle)
       {
         cpu . faultNumber = FAULT_TRB;
-        cu . FI_ADDR = FAULT_TRB;
+        cpu . cu . FI_ADDR = FAULT_TRB;
         cpu . subFault = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
         if (bTroubleFaultCycle)
@@ -685,7 +685,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
-                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu . PPR.IC);
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
@@ -761,7 +761,7 @@ void doG7Fault (void)
        {
          g7Faults &= ~(1u << FAULT_CON);
 
-         cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
+         cpu . cu . CNCHN = g7SubFaults [FAULT_CON] & MASK3;
          doFault (FAULT_CON, g7SubFaults [FAULT_CON], "Connect"); 
        }
 
