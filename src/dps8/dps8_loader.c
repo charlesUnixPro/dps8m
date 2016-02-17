@@ -536,7 +536,7 @@ static int loadDeferredSegment(segment *sg, int addr24)
     
     memcpy(M + addr24, sg->M, sg->size * sizeof(word36));
     
-    DSBR.BND = 037777;  // temporary max bound ...
+    cpu . DSBR.BND = 037777;  // temporary max bound ...
     
     if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
     {
@@ -571,13 +571,13 @@ static int loadDeferredSegment(segment *sg, int addr24)
 int loadDeferredSegments(bool bVerbose)
 {
     // First, check to see if DSBR is set up .....
-    if (DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
+    if (cpu . DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
         if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
             return -1;
 
     if (bVerbose) sim_printf("Loading deferred segments ...\n");
     
-    int ldaddr = DSBR.ADDR + 65536;     // load segments *after* SDW table
+    int ldaddr = cpu . DSBR.ADDR + 65536;     // load segments *after* SDW table
     if (ldaddr % 16)
         ldaddr += 16 - (ldaddr % 16);   // adjust to 16-word boundary
     
@@ -601,17 +601,17 @@ int loadDeferredSegments(bool bVerbose)
         // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
-            PR[4].BITNO = 0;
+            cpu . PR[4].BITNO = 0;
             // PR[4].CHAR = 0; // Covered by the BITNO above
-            PR[4].SNR = segno;
-            PR[4].WORDNO = 0;
+            cpu . PR[4].SNR = segno;
+            cpu . PR[4].WORDNO = 0;
             
-            PR[5] = PR[4];
+            cpu . PR[5] = cpu . PR[4];
             
             int n = 4;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
             n = 5;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => cpu . PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
 
         }
         
@@ -627,7 +627,7 @@ int loadDeferredSegments(bool bVerbose)
     }
 
     // adjust DSBR.BND to reflect highest segment address
-    DSBR.BND = (2 * maxSegno) / 16;
+    cpu . DSBR.BND = (2 * maxSegno) / 16;
 
     return 0;
 }
@@ -797,11 +797,11 @@ t_stat createStack(int n, bool bVerbose)
     if ((stk->segno % 8) != n)
         stk->segno += 8 - (stk->segno % 8) + n;
     
-    DSBR.STACK = stk->segno >> 3;
+    cpu . DSBR.STACK = stk->segno >> 3;
     
     DL_APPEND(segments, stk);
     
-    if (bVerbose) sim_printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
+    if (bVerbose) sim_printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, cpu . DSBR.STACK);
     
     return SCPE_OK;
 }
@@ -853,9 +853,9 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred,
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
-            PPR.IC = addr & AMASK;
+            cpu . PPR.IC = addr & AMASK;
             
-            if (PPR.IC)
+            if (cpu . PPR.IC)
                 sim_printf("!GO address: %06lo\n", addr);
         }
         
@@ -1309,15 +1309,15 @@ static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
  */
 static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
 {
-    if (2 * segno >= 16 * (DSBR.BND + 1))    // segment out of range
+    if (2 * segno >= 16 * (cpu . DSBR.BND + 1))    // segment out of range
     {
         char msg[256];
-        sprintf(msg, "Segment %d is not within DSBR.BND (%d) Adjust [Y]?", segno, DSBR.BND);
+        sprintf(msg, "Segment %d is not within DSBR.BND (%d) Adjust [Y]?", segno, cpu . DSBR.BND);
         if (get_yn (msg, TRUE) == 0)    // No, don't adjust
             return SCPE_MEM;
         
-        DSBR.BND = (2 * (segno)) >> 4;
-        //sim_printf ("DSBR.BND set to %o\n", DSBR.BND);
+        cpu . DSBR.BND = (2 * (segno)) >> 4;
+        //sim_printf ("DSBR.BND set to %o\n", cpu . DSBR.BND);
     }
     
     const word3 R1 = 0;     ///< ring brackets
@@ -1343,7 +1343,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     word36 yPair[2];
     writeSDW0toYPair(s, yPair);
     
-    word24 sdwaddress = DSBR.ADDR + (2 * segno);
+    word24 sdwaddress = cpu . DSBR.ADDR + (2 * segno);
     if (!sim_quiet) sim_printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1], __func__);

@@ -46,51 +46,51 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    cu . APUCycleBits = status & 07770;
+    cpu . cu . APUCycleBits = status & 07770;
 #else
-    cu . PI_AP = 0;
-    cu . DSPTW = 0;
-    cu . SDWNP = 0;
-    cu . SDWP  = 0;
-    cu . PTW   = 0;
-    cu . PTW2  = 0;
-    cu . FAP   = 0;
-    cu . FANP  = 0;
-    cu . FABS  = 0;
+    cpu . cu . PI_AP = 0;
+    cpu . cu . DSPTW = 0;
+    cpu . cu . SDWNP = 0;
+    cpu . cu . SDWP  = 0;
+    cpu . cu . PTW   = 0;
+    cpu . cu . PTW2  = 0;
+    cpu . cu . FAP   = 0;
+    cpu . cu . FANP  = 0;
+    cpu . cu . FABS  = 0;
     switch (status)
       {
         case apuStatus_PI_AP:
-          cu . PI_AP = 1;
+          cpu . cu . PI_AP = 1;
           break;
         case apuStatus_DSPTW:
         case apuStatus_MDSPTW: // XXX this doesn't seem like the right solution.
                                // XXX there is a MDSPTW bit in the APU history
                                // register, but not in the CU.
-          cu . DSPTW = 1;
+          cpu . cu . DSPTW = 1;
           break;
         case apuStatus_SDWNP:
-          cu . SDWNP = 1;
+          cpu . cu . SDWNP = 1;
           break;
         case apuStatus_SDWP:
-          cu . SDWP  = 1;
+          cpu . cu . SDWP  = 1;
           break;
         case apuStatus_PTW:
         case apuStatus_MPTW: // XXX this doesn't seem like the right solution.
                              // XXX there is a MPTW bit in the APU history
                              // XXX register, but not in the CU.
-          cu . PTW   = 1;
+          cpu . cu . PTW   = 1;
           break;
         case apuStatus_PTW2:
-          cu . PTW2  = 1;
+          cpu . cu . PTW2  = 1;
           break;
         case apuStatus_FAP:
-          cu . FAP   = 1;
+          cpu . cu . FAP   = 1;
           break;
         case apuStatus_FANP:
-          cu . FANP  = 1;
+          cpu . cu . FANP  = 1;
           break;
         case apuStatus_FABS:
-          cu . FABS  = 1;
+          cpu . cu . FABS  = 1;
           break;
       }
 #endif
@@ -120,15 +120,15 @@ void doPtrReg(void)
     word3 n = GET_PRN(IWB_IRODD);  // get PRn
     word15 offset = GET_OFFSET(IWB_IRODD);
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, PAR[n].SNR, PAR[n].RNR, PAR[n].WORDNO, PAR[n].BITNO);
-    TPR.TSR = PAR[n].SNR;
-    TPR.TRR = max3(PAR[n].RNR, TPR.TRR, PPR.PRR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, cpu . PAR[n].BITNO);
+    cpu . TPR.TSR = cpu . PAR[n].SNR;
+    cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
     
-    TPR.CA = (PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
-    TPR.TBR = PAR[n].BITNO;
+    cpu . TPR.CA = (cpu . PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
+    cpu . TPR.TBR = cpu . PAR[n].BITNO;
     
     set_went_appending ();
-    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, cpu . TPR.CA, cpu . TPR.TBR, cpu . TPR.TSR, cpu . TPR.TRR);
 }
 
 // Define this to do error detection on the PTWAM table.
@@ -196,19 +196,19 @@ void do_ldbr (word36 * Ypair)
     // XXX no cache
 
     // C(Y-pair) 0,23 → C(DSBR.ADDR)
-    DSBR . ADDR = (Ypair [0] >> (35 - 23)) & PAMASK;
+    cpu . DSBR . ADDR = (Ypair [0] >> (35 - 23)) & PAMASK;
 
     // C(Y-pair) 37,50 → C(DSBR.BOUND)
-    DSBR . BND = (Ypair [1] >> (71 - 50)) & 037777;
+    cpu . DSBR . BND = (Ypair [1] >> (71 - 50)) & 037777;
 
     // C(Y-pair) 55 → C(DSBR.U)
-    DSBR . U = (Ypair [1] >> (71 - 55)) & 01;
+    cpu . DSBR . U = (Ypair [1] >> (71 - 55)) & 01;
 
     // C(Y-pair) 60,71 → C(DSBR.STACK)
-    DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
-    sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+    cpu . DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
+    sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
     //sim_printf ("ldbr %012llo %012llo\n", Ypair [0], Ypair [1]);
-    //sim_printf ("ldbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+    //sim_printf ("ldbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
   }
 
 /**
@@ -219,17 +219,17 @@ void do_sdbr (word36 * Ypair)
   {
     // C(DSBR.ADDR) → C(Y-pair) 0,23
     // 00...0 → C(Y-pair) 24,36
-    Ypair [0] = ((word36) (DSBR . ADDR & PAMASK)) << (35 - 23); 
+    Ypair [0] = ((word36) (cpu . DSBR . ADDR & PAMASK)) << (35 - 23); 
 
     // C(DSBR.BOUND) → C(Y-pair) 37,50
     // 0000 → C(Y-pair) 51,54
     // C(DSBR.U) → C(Y-pair) 55
     // 000 → C(Y-pair) 56,59
     // C(DSBR.STACK) → C(Y-pair) 60,71
-    Ypair [1] = ((word36) (DSBR . BND & 037777)) << (71 - 50) |
-                ((word36) (DSBR . U & 1)) << (71 - 55) |
-                ((word36) (DSBR . STACK & 07777)) << (71 - 71);
-    //sim_printf ("sdbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+    Ypair [1] = ((word36) (cpu . DSBR . BND & 037777)) << (71 - 50) |
+                ((word36) (cpu . DSBR . U & 1)) << (71 - 55) |
+                ((word36) (cpu . DSBR . STACK & 07777)) << (71 - 71);
+    //sim_printf ("sdbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
     //sim_printf ("sdbr %012llo %012llo\n", Ypair [0], Ypair [1]);
   }
 
@@ -283,7 +283,7 @@ void do_cams (UNUSED word36 Y)
 static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
-    if (2 * segno >= 16 * (DSBR.BND + 1))
+    if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(FAULT_ACV, ACV15, "acvFault: fetchDSPTW out of segment bounds fault");
         
@@ -293,7 +293,7 @@ static void fetchDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
 
     word36 PTWx1;
-    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
+    core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
     
     PTW0.ADDR = GETHI(PTWx1);
     PTW0.U = TSTBIT(PTWx1, 9);
@@ -301,7 +301,7 @@ static void fetchDSPTW(word15 segno)
     PTW0.F = TSTBIT(PTWx1, 2);
     PTW0.FC = PTWx1 & 3;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, DSBR.ADDR, PTWx1, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
 }
 
 
@@ -311,7 +311,7 @@ static void fetchDSPTW(word15 segno)
 // CANFAULT
 static void modifyDSPTW(word15 segno)
 {
-    if (2 * segno >= 16 * (DSBR.BND + 1))
+    if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(FAULT_ACV, ACV15, "acvFault: modifyDSPTW out of segment bounds fault");
 
@@ -321,9 +321,9 @@ static void modifyDSPTW(word15 segno)
     word24 x1 = (2 * segno - y1) / 1024;
     
     word36 PTWx1;
-    core_read((DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
+    core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
     PTWx1 = SETBIT(PTWx1, 9);
-    core_write((DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
+    core_write((cpu . DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
     
     PTW0.U = 1;
 }
@@ -336,7 +336,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
     int nwam = 64;
-    if (switches . disable_wam)
+    if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
         nwam = 1;
@@ -405,7 +405,7 @@ static void fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    //cpu . PPR.P = (SDW0.P && cpu . PPR.PRR == 0);   // set priv bit (if OK)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, PTW0.ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
@@ -420,16 +420,16 @@ static void fetchNSDW(word15 segno)
 
     setAPUStatus (apuStatus_SDWNP);
 
-    if (2 * segno >= 16 * (DSBR.BND + 1))
+    if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, cpu . DSBR.BND);
         // generate access violation, out of segment bounds fault
         doFault(FAULT_ACV, ACV15, "acvFault fetchNSDW: out of segment bounds fault");
     }
-    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2 * segno);
     word36 SDWeven, SDWodd;
     
-    core_read2((DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2((cpu . DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -450,7 +450,7 @@ static void fetchNSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    //cpu . PPR.P = (SDW0.P && cpu . PPR.PRR == 0);   // set priv bit (if OK)
     
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
 }
@@ -531,7 +531,7 @@ static void loadSDWAM(word15 segno)
     SDW = & SDWAM0;
             
 #else
-    if (switches . disable_wam)
+    if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
         _sdw *p = &SDWAM[0];
@@ -617,7 +617,7 @@ static void loadSDWAM(word15 segno)
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
     int nwam = 64;
-    if (switches . disable_wam)
+    if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
         nwam = 1;
@@ -685,7 +685,7 @@ static void loadPTWAM(word15 segno, word18 offset)
             
     PTW = & PTWAM0;
 #else
-    if (switches . disable_wam)
+    if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
         _ptw *p = &PTWAM[0];
@@ -877,9 +877,9 @@ static char *strPCT(_processor_cycle_type t)
 _sdw0 * getSDW (word15 segno)
   {
      sim_debug (DBG_APPENDING, & cpu_dev, "getSDW for segment %05o\n", segno);
-     sim_debug (DBG_APPENDING, & cpu_dev, "getSDW DSBR.U=%o\n", DSBR . U);
+     sim_debug (DBG_APPENDING, & cpu_dev, "getSDW DSBR.U=%o\n", cpu . DSBR . U);
         
-    if (DSBR . U == 0)
+    if (cpu . DSBR . U == 0)
       {
         fetchDSPTW (segno);
             
@@ -920,16 +920,16 @@ _sdw0 * getSDW (word15 segno)
 // CANFAULT
 word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & cpu . currentInstruction;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) Address=%06o\n", address);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", cpu . PPR.PRR, cpu . PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", cpu . TPR.TRR, cpu . TPR.TSR);
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    RSDWH_R1 = 0;
+    cpu . RSDWH_R1 = 0;
     
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
@@ -943,7 +943,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 A:;
 #endif
 
-    TPR . CA = address;
+    cpu . TPR . CA = address;
 //
 // Phase 1:
 //
@@ -1013,20 +1013,20 @@ A:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
 #ifdef SPEED
-    if (DSBR.U == 0)
+    if (cpu . DSBR.U == 0)
     {
-        fetchDSPTW(TPR.TSR);
+        fetchDSPTW(cpu . TPR.TSR);
         
         if (!PTW0.F)
             doFault(FAULT_DF0 + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
         
         if (!PTW0.U)
-            modifyDSPTW(TPR.TSR);
+            modifyDSPTW(cpu . TPR.TSR);
         
-        fetchPSDW(TPR.TSR);
+        fetchPSDW(cpu . TPR.TSR);
     }
     else
-        fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
     
     if (SDW0.F == 0)
     {
@@ -1034,30 +1034,30 @@ A:;
         // initiate a directed fault ...
         doFault(FAULT_DF0 + SDW0.FC, 0, "SDW0.F == 0");
     }
-    loadSDWAM(TPR.TSR);
+    loadSDWAM(cpu . TPR.TSR);
 #else
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(cpu . TPR.TSR))
     {
         // No
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):SDW for segment %05o not in SDWAM\n", cpu . TPR.TSR);
         
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):DSBR.U=%o\n", DSBR.U);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):DSBR.U=%o\n", cpu . DSBR.U);
         
-        if (DSBR.U == 0)
+        if (cpu . DSBR.U == 0)
         {
-            fetchDSPTW(TPR.TSR);
+            fetchDSPTW(cpu . TPR.TSR);
             
             if (!PTW0.F)
                 doFault(FAULT_DF0 + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
             
             if (!PTW0.U)
-                modifyDSPTW(TPR.TSR);
+                modifyDSPTW(cpu . TPR.TSR);
             
-            fetchPSDW(TPR.TSR);
+            fetchPSDW(cpu . TPR.TSR);
         }
         else
-            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+            fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
         
         if (SDW0.F == 0)
         {
@@ -1067,13 +1067,13 @@ A:;
         }
         else
             // load SDWAM .....
-            loadSDWAM(TPR.TSR);
+            loadSDWAM(cpu . TPR.TSR);
     }
 #endif
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(A) R1 %o R2 %o R3 %o\n", SDW -> R1, SDW -> R1, SDW -> R3);
     // Yes...
-    RSDWH_R1 = SDW->R1;
+    cpu . RSDWH_R1 = SDW->R1;
 
 //
 // B: Check the ring
@@ -1118,7 +1118,7 @@ A:;
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):STR-OP\n");
         
         // C(TPR.TRR) > C(SDW .R2)?
-        if (TPR.TRR > SDW->R2)
+        if (cpu . TPR.TRR > SDW->R2)
             //Set fault ACV5 = OWB
             acvFault(ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
         
@@ -1131,7 +1131,7 @@ A:;
         
         // No
         // C(TPR.TRR) > C(SDW .R2)?
-        if (TPR.TRR > SDW->R2) {
+        if (cpu . TPR.TRR > SDW->R2) {
             //Set fault ACV3 = ORB
             acvFaults |= ACV3;
             acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
@@ -1140,7 +1140,7 @@ A:;
         if (SDW->R == 0)
         {
             //C(PPR.PSR) = C(TPR.TSR)?
-            if (PPR.PSR != TPR.TSR) {
+            if (cpu . PPR.PSR != cpu . TPR.TSR) {
                 //Set fault ACV4 = R-OFF
                 acvFaults |= ACV4;
                 acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
@@ -1161,13 +1161,13 @@ D:;
     if (instructionFetch)
       goto G;
 
-    if (rRALR == 0)
+    if (cpu . rRALR == 0)
         goto G;
     
     // C(PPR.PRR) < RALR?
-    if (!(PPR.PRR < rRALR)) {
+    if (!(cpu . PPR.PRR < cpu . rRALR)) {
         sim_debug (DBG_APPENDING, & cpu_dev,
-                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", PPR . PRR, rRALR);
+                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
         acvFaults |= ACV13;
         acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
     }
@@ -1194,12 +1194,12 @@ E:;
         goto E1;
     
     // C(PPR.PSR) = C(TPR.TSR)?
-    if (PPR.PSR == TPR.TSR)
+    if (cpu . PPR.PSR == cpu . TPR.TSR)
         goto E1;
     
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
-    //if ((TPR.CA & 0037777) >= SDW->CL)
+    //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
     if ((address & 0037777) >= SDW->CL) {
         // Set fault ACV7 = NO GA
         acvFaults |= ACV7;
@@ -1210,14 +1210,14 @@ E1:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 (cont'd)\n");
 
     // C(TPR.TRR) > SDW.R3?
-    if (TPR.TRR > SDW->R3) {
+    if (cpu . TPR.TRR > SDW->R3) {
         //Set fault ACV8 = OCB
         acvFaults |= ACV8;
         acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
     }
     
     // C(TPR.TRR) < SDW.R1?
-    if (TPR.TRR < SDW->R1) {
+    if (cpu . TPR.TRR < SDW->R1) {
         // Set fault ACV9 = OCALL
         acvFaults |= ACV9;
         acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";
@@ -1225,20 +1225,20 @@ E1:
     
     
     // C(TPR.TRR) > C(PPR.PRR)?
-    if (TPR.TRR > PPR.PRR)
+    if (cpu . TPR.TRR > cpu . PPR.PRR)
         // C(PPR.PRR) < SDW.R2?
-        if (PPR.PRR < SDW->R2) {
+        if (cpu . PPR.PRR < SDW->R2) {
             // Set fault ACV10 = BOC
             acvFaults |= ACV10;
             acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
         }
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", TPR . TRR, SDW -> R2);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", cpu . TPR . TRR, SDW -> R2);
     // C(TPR.TRR) > SDW.R2?
-    if (TPR.TRR > SDW->R2)
+    if (cpu . TPR.TRR > SDW->R2)
         // ￼SDW.R2 → C(TPR.TRR)
-        TPR.TRR = SDW->R2;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o\n", TPR . TRR);
+        cpu . TPR.TRR = SDW->R2;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o\n", cpu . TPR . TRR);
     
     goto G;
     
@@ -1247,17 +1247,17 @@ F:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
-    if (TPR.TRR < SDW->R1) {
+    if (cpu . TPR.TRR < SDW->R1) {
         sim_debug (DBG_APPENDING, & cpu_dev,
-                   "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", TPR . TRR, SDW -> R1);
+                   "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, SDW -> R1);
         acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
     }
     
     //C(TPR.TRR) > C(SDW .R2)?
-    if (TPR.TRR > SDW->R2) {
+    if (cpu . TPR.TRR > SDW->R2) {
         sim_debug (DBG_TRACE, & cpu_dev,
-                   "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", TPR . TRR, SDW -> R2);
+                   "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, SDW -> R2);
         acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
     }
@@ -1269,7 +1269,7 @@ F:;
     }
     
     //C(PPR.PRR) = C(TPR.TRR)?
-    if (PPR.PRR != TPR.TRR) {
+    if (cpu . PPR.PRR != cpu . TPR.TRR) {
         //Set fault ACV12 = CRT
         acvFaults |= ACV12;
         acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";
@@ -1305,7 +1305,7 @@ G:;
     fetchPTW(SDW, address);
     if (!PTW0.F)
     {
-        //TPR.CA = address;
+        //cpu . TPR.CA = address;
         // initiate a directed fault
         doFault(FAULT_DF0 + PTW0.FC, 0, "PTW0.F == 0");
     }
@@ -1315,16 +1315,16 @@ G:;
     if (!fetchPTWfromPTWAM(SDW->POINTER, address))  //TPR.CA))
     {
         appendingUnitCycleType = apuCycle_PTWfetch;
-        //fetchPTW(SDW, TPR.CA);
+        //fetchPTW(SDW, cpu . TPR.CA);
         fetchPTW(SDW, address);
         if (!PTW0.F)
         {
-            //TPR.CA = address;
+            //cpu . TPR.CA = address;
             // initiate a directed fault
             doFault(FAULT_DF0 + PTW0.FC, 0, "PTW0.F == 0");
         }
 
-        //loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
+        //loadPTWAM(SDW->POINTER, cpu . TPR.CA);    // load PTW0 to PTWAM
         loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
     }
 #endif
@@ -1356,7 +1356,7 @@ H:;
     finalAddress = SDW->ADDR + address;
     finalAddress &= 0xffffff;
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",TPR.TSR, address, finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     
     goto HI;
     
@@ -1389,7 +1389,7 @@ I:;
     finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     finalAddress &= 0xffffff;
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",TPR.TSR, address, finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     goto HI;
 
 HI:
@@ -1423,13 +1423,13 @@ KL:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
-    if (TPR.TRR == 0)
+    if (cpu . TPR.TRR == 0)
         // C(SDW.P) → C(PPR.P)
-        PPR.P = SDW->P;
+        cpu . PPR.P = SDW->P;
     else
         // 0 → C(PPR.P)
-        PPR.P = 0;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", TPR.TRR, SDW->P, PPR.P);
+        cpu . PPR.P = 0;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", cpu . TPR.TRR, SDW->P, cpu . PPR.P);
     
     goto Exit;    // this may not be setup or right
     
@@ -1440,7 +1440,7 @@ KL:;
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
-    TPR . CA = address;
+    cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???
 }
 
@@ -1455,14 +1455,14 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     struct _ptw0 PTW1;
     struct _sdw0 SDW1;
 
-   if (2u * segno >= 16u * (DSBR.BND + 1u))
+   if (2u * segno >= 16u * (cpu . DSBR.BND + 1u))
      {
        if (msg)
          * msg = "DSBR boundary violation.";
        return 1;
      }
 
-    if (DSBR . U == 0)
+    if (cpu . DSBR . U == 0)
       {
         // fetchDSPTW
 
@@ -1470,7 +1470,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         word24 x1 = (2 * segno - y1) / 1024;
 
         word36 PTWx1;
-        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
+        core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
         
         PTW1 . ADDR = GETHI (PTWx1);
         PTW1 . U = TSTBIT (PTWx1, 9);
@@ -1518,7 +1518,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
 
         word36 SDWeven, SDWodd;
         
-        core_read2 ((DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
+        core_read2 ((cpu . DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
         
         // even word
         SDW1 . ADDR = (SDWeven >> 12) & 077777777;

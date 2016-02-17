@@ -37,7 +37,7 @@ static word18 getCr (word4 Tdes)
       return 0;
 
     if (Tdes & 010) // Xn
-      return rX [X (Tdes)];
+      return cpu . rX [X (Tdes)];
 
     switch (Tdes)
       {
@@ -45,39 +45,39 @@ static word18 getCr (word4 Tdes)
           return 0;
 
         case TD_AU: // rY + C(A)0,17
-          return GETHI (rA);
+          return GETHI (cpu . rA);
 
         case TD_QU: // rY + C(Q)0,17
-          return GETHI (rQ);
+          return GETHI (cpu . rQ);
 
         case TD_DU: // none; operand has the form y || (00...0)18
           directOperand = 0;
-          SETHI (directOperand, rY);
+          SETHI (directOperand, cpu . rY);
           directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
                     "getCr(TD_DU): rY=%06o directOperand=%012llo\n",
-                    rY, directOperand);
+                    cpu . rY, directOperand);
 
           return 0;
 
         case TD_IC: // rY + C (PPR.IC)
-            return PPR . IC;
+            return cpu . PPR . IC;
 
         case TD_AL: // rY + C(A)18,35
-            return GETLO (rA);
+            return GETLO (cpu . rA);
 
         case TD_QL: // rY + C(Q)18,35
-            return GETLO (rQ);
+            return GETLO (cpu . rQ);
 
         case TD_DL: // none; operand has the form (00...0)18 || y
             directOperand = 0;
-            SETLO (directOperand, rY);
+            SETLO (directOperand, cpu . rY);
             directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "getCr(TD_DL): rY=%06o directOperand=%012llo\n",
-                       rY, directOperand);
+                       cpu . rY, directOperand);
 
             return 0;
       }
@@ -89,7 +89,7 @@ static word18 getCr (word4 Tdes)
 static char * opDescSTR (void)
   {
     static char temp [256];
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & cpu . currentInstruction;
 
     strcpy (temp, "");
 
@@ -171,7 +171,7 @@ static char * opDescSTR (void)
 #ifndef QUIET_UNUSED
 static char * operandSTR (void)
   {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & cpu . currentInstruction;
     if (i -> info -> ndes > 0)
       return "operandSTR(): MWEIS not handled yet";
 
@@ -226,15 +226,15 @@ static void doITP (void)
     //
 
     word3 n = GET_ITP_PRNUM (itxPair);
-    TPR . TSR = PR [n] . SNR;
-    //TPR . TRR = max3 (PR [n] . RNR, SDW -> R1, TPR . TRR);
-    TPR . TRR = max3 (PR [n] . RNR, RSDWH_R1, TPR . TRR);
-    TPR . TBR = GET_ITP_BITNO (itxPair);
-    TPR . CA = PAR [n] . WORDNO + GET_ITP_WORDNO (itxPair);
-    TPR . CA &= AMASK;
-    rY = TPR.CA;
+    cpu . TPR . TSR = cpu . PR [n] . SNR;
+    //cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, SDW -> R1, cpu . TPR . TRR);
+    cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, cpu . RSDWH_R1, cpu . TPR . TRR);
+    cpu . TPR . TBR = GET_ITP_BITNO (itxPair);
+    cpu . TPR . CA = cpu . PAR [n] . WORDNO + GET_ITP_WORDNO (itxPair);
+    cpu . TPR . CA &= AMASK;
+    cpu . rY = cpu . TPR.CA;
 
-    rTAG = GET_ITP_MOD (itxPair);
+    cpu . rTAG = GET_ITP_MOD (itxPair);
     return;
 }
 
@@ -258,22 +258,22 @@ static void doITS(void)
     // 3. SDW.R1 is the upper limit of the read/write ring bracket for the
     //    segment C(TPR.TSR) (see Section 8).
 
-    TPR . TSR = GET_ITS_SEGNO (itxPair);
+    cpu . TPR . TSR = GET_ITS_SEGNO (itxPair);
 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITS Pair Ring: RN %o RSDWH_R1 %o TRR %o max %o\n",
-               GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR,
-               max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR));
+               GET_ITS_RN (itxPair), cpu . RSDWH_R1, cpu . TPR . TRR,
+               max3 (GET_ITS_RN (itxPair), cpu . RSDWH_R1, cpu . TPR . TRR));
 
-    //TPR . TRR = max3 (GET_ITS_RN (itxPair), SDW -> R1, TPR . TRR);
-    TPR . TRR = max3 (GET_ITS_RN (itxPair), RSDWH_R1, TPR . TRR);
-    TPR . TBR = GET_ITS_BITNO (itxPair);
-    TPR . CA = GET_ITS_WORDNO (itxPair);
-    TPR . CA &= AMASK;
+    //cpu . TPR . TRR = max3 (GET_ITS_RN (itxPair), SDW -> R1, cpu . TPR . TRR);
+    cpu . TPR . TRR = max3 (GET_ITS_RN (itxPair), cpu . RSDWH_R1, cpu . TPR . TRR);
+    cpu . TPR . TBR = GET_ITS_BITNO (itxPair);
+    cpu . TPR . CA = GET_ITS_WORDNO (itxPair);
+    cpu . TPR . CA &= AMASK;
 
-    rY = TPR . CA;
+    cpu . rY = cpu . TPR . CA;
 
-    rTAG = GET_ITS_MOD (itxPair);
+    cpu . rTAG = GET_ITS_MOD (itxPair);
 
     return;
   }
@@ -282,7 +282,7 @@ static void doITS(void)
 // CANFAULT
 static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
   {
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & cpu . currentInstruction;
     word6 indTag = GET_TAG  (indword);
 
     sim_debug  (DBG_APPENDING, &  cpu_dev,
@@ -340,19 +340,19 @@ static void updateIWB (word18 addr, word6 tag)
   {
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB was %012llo %06o %s\n",
-               cu . IWB, GET_ADDR (cu . IWB),
-               extMods [GET_TAG (cu . IWB)] . mod);
+               cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
+               extMods [GET_TAG (cpu . cu  . IWB)] . mod);
 
-    putbits36 (& cu . IWB,  0, 18, addr);
-    putbits36 (& cu . IWB, 30,  6, tag);
-    putbits36 (& cu . IWB, 29,  1, 0);
+    putbits36 (& cpu . cu  . IWB,  0, 18, addr);
+    putbits36 (& cpu . cu  . IWB, 30,  6, tag);
+    putbits36 (& cpu . cu  . IWB, 29,  1, 0);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012llo %06o %s\n",
-               cu . IWB, GET_ADDR (cu . IWB),
-               extMods [GET_TAG (cu . IWB)] . mod);
+               cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
+               extMods [GET_TAG (cpu . cu  . IWB)] . mod);
 
-    decodeInstruction (cu . IWB, & currentInstruction);
+    decodeInstruction (cpu . cu  . IWB, & cpu . currentInstruction);
   }
 
 //
@@ -375,12 +375,12 @@ t_stat doComputedAddressFormation (void)
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
-                __func__, opDescSTR (), TPR . CA);
+                __func__, opDescSTR (), cpu . TPR . CA);
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): CT_HOLD %o\n",
-                __func__, cu . CT_HOLD);
+                __func__, cpu . cu  . CT_HOLD);
 
-    DCDstruct * i = & currentInstruction;
+    DCDstruct * i = & cpu . currentInstruction;
 
     word6 Tm = 0;
     word6 Td = 0;
@@ -390,9 +390,9 @@ t_stat doComputedAddressFormation (void)
     directOperandFlag = false;
 
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
-      rTAG = 0;
+      cpu . rTAG = 0;
     else
-        rTAG = GET_TAG (IWB_IRODD);
+        cpu . rTAG = GET_TAG (IWB_IRODD);
 
     int lockupCnt = 0;
 #define lockupLimit 4096 // approx. 2 ms
@@ -405,22 +405,22 @@ startCA:;
                  "Lockup in addrmod");
       }
 
-    Td = GET_TD (rTAG);
-    Tm = GET_TM (rTAG);
+    Td = GET_TD (cpu . rTAG);
+    Tm = GET_TM (cpu . rTAG);
 
-    if (cu . CT_HOLD)
+    if (cpu . cu  . CT_HOLD)
       {
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "%s(startCA): IR mode restart; CT_HOLD %02o\n",
-                   __func__, cu . CT_HOLD);
-        rTAG = cu . CT_HOLD;
-        Td = GET_TD (rTAG);
-        Tm = GET_TM (rTAG);
+                   __func__, cpu . cu  . CT_HOLD);
+        cpu . rTAG = cpu . cu  . CT_HOLD;
+        Td = GET_TD (cpu . rTAG);
+        Tm = GET_TM (cpu . rTAG);
         goto IR_MOD_1;
       }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, rTAG, getModString (rTAG), Tm, Td);
+               __func__, cpu . rTAG, getModString (cpu . rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -437,7 +437,7 @@ startCA:;
       }
 
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
-                __func__, GET_TM (rTAG));
+                __func__, GET_TM (cpu . rTAG));
     sim_err ("(startCA): unknown Tm\n");
 
 
@@ -465,31 +465,31 @@ startCA:;
 
         // For the case of RPT/RPD, the instruction decoder has
         // verified that Tm is R or RI, and Td is X1..X7.
-        if (cu . rpt || cu . rd)
+        if (cpu . cu  . rpt || cpu . cu  . rd)
           {
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
-                TPR . CA = (Cr & MASK15) + PR [PRn] . WORDNO;
-                TPR . CA &= AMASK;
+                cpu . TPR . CA = (Cr & MASK15) + cpu . PR [PRn] . WORDNO;
+                cpu . TPR . CA &= AMASK;
               }
             else
               {
-                TPR . CA = Cr;
+                cpu . TPR . CA = Cr;
               }
           }
         else
           {
-            TPR . CA  += Cr;
-            TPR . CA  &= MASK18;   // keep to 18-bits
+            cpu . TPR . CA  += Cr;
+            cpu . TPR . CA  &= MASK18;   // keep to 18-bits
           }
-        sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR . CA);
+        sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", cpu . TPR . CA);
 
         // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (! (cu . rpt || cu . rd))
-          updateIWB (TPR . CA, 0); // Known to be 0 or ,n
+        if (! (cpu . cu  . rpt || cpu . cu  . rd))
+          updateIWB (cpu . TPR . CA, 0); // Known to be 0 or ,n
         return SCPE_OK;
       } // R_MOD
 
@@ -503,7 +503,7 @@ startCA:;
           doFault (FAULT_IPR, ill_mod,
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
-        word18 tmpCA = TPR . CA;
+        word18 tmpCA = cpu . TPR . CA;
 
         if (Td != 0)
           {
@@ -515,11 +515,11 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
-            if (cu . rpt || cu . rd)
+            if (cpu . cu  . rpt || cpu . cu  . rd)
               {
                  word6 Td = GET_TD (i -> tag);
                  uint Xn = X (Td);  // Get Xn of next instruction
-                 tmpCA = rX [Xn];
+                 tmpCA = cpu . rX [Xn];
               }
             else
               {
@@ -534,10 +534,10 @@ startCA:;
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
-        updateIWB (TPR . CA, TM_RI | TD_N);
+        updateIWB (cpu . TPR . CA, TM_RI | TD_N);
 
         // in case it turns out to be a ITS/ITP
-        iTAG = rTAG;
+        iTAG = cpu . rTAG;
 
         word36 indword;
         Read (tmpCA, & indword, INDIRECT_WORD_FETCH, i -> a); //TM_RI);
@@ -547,7 +547,7 @@ startCA:;
         // interpreted.  The indirect word is treated as though it had R
         // modification with R = N."
 
-        if (cu . rpt || cu . rd)
+        if (cpu . cu  . rpt || cpu . cu  . rd)
           {
              indword &= ~ INST_M_TAG;
              indword |= TM_R | GET_TD (iTAG);
@@ -561,47 +561,47 @@ startCA:;
           {
             if (GET_TD (GET_TAG(indword)) == IT_F2)
               {
-                TPR . CA = tmpCA;
+                cpu . TPR . CA = tmpCA;
                 doFault (FAULT_F2, 0, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
-                TPR . CA = tmpCA;
+                cpu . TPR . CA = tmpCA;
                 doFault (FAULT_F3, 0, "RI_MOD: IT_F3");
               }
           }
 
         if (ISITP (indword) || ISITS (indword))
           {
-            doITSITP (tmpCA, indword, iTAG, & rTAG);
+            doITSITP (tmpCA, indword, iTAG, & cpu . rTAG);
           }
         else
           {
-            TPR . CA = GETHI (indword);
-            rTAG = GET_TAG (indword);
-            rY = TPR . CA;
+            cpu . TPR . CA = GETHI (indword);
+            cpu . rTAG = GET_TAG (indword);
+            cpu . rY = cpu . TPR . CA;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
-                   indword, TPR . CA, rTAG);
+                   indword, cpu . TPR . CA, cpu . rTAG);
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (cu . rpt || cu . rd)
+        if (cpu . cu  . rpt || cpu . cu  . rd)
           return SCPE_OK;
 
-        updateIWB (TPR . CA, rTAG);
+        updateIWB (cpu . TPR . CA, cpu . rTAG);
         goto startCA;
       } // RI_MOD
 
         //! Figure 6-5. Indirect Then Register Modification Flowchart
     IR_MOD:;
       {
-        cu . CT_HOLD = rTAG;
+        cpu . cu  . CT_HOLD = cpu . rTAG;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IR_MOD: CT_HOLD=%o %o\n", cu . CT_HOLD, Td);
+                   "IR_MOD: CT_HOLD=%o %o\n", cpu . cu  . CT_HOLD, Td);
 
         IR_MOD_1:
 
@@ -612,34 +612,34 @@ startCA:;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IR_MOD: fetching indirect word from %06o\n", TPR . CA);
+                   "IR_MOD: fetching indirect word from %06o\n", cpu . TPR . CA);
 
         // in case it turns out to be a ITS/ITP
-        iTAG = rTAG;
+        iTAG = cpu . rTAG;
 
         word36 indword;
-        word18 saveCA = TPR . CA;
-        Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a);
+        word18 saveCA = cpu . TPR . CA;
+        Read (cpu . TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a);
 
         if (ISITP (indword) || ISITS (indword))
           {
-            doITSITP (TPR . CA, indword, iTAG, & rTAG);
+            doITSITP (cpu . TPR . CA, indword, iTAG, & cpu . rTAG);
           }
         else
           {
-            TPR.CA = GETHI(indword);
-            rY = TPR.CA;
-            rTAG = GET_TAG (indword);
+            cpu . TPR.CA = GETHI(indword);
+            cpu . rY = cpu . TPR.CA;
+            cpu . rTAG = GET_TAG (indword);
           }
 
-        Td = GET_TD(rTAG);
-        Tm = GET_TM(rTAG);
+        Td = GET_TD(cpu . rTAG);
+        Tm = GET_TM(cpu . rTAG);
 
         // IR_MOD_2:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD1: indword=%012llo TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
-                   indword, TPR . CA, Tm, Td, getModString (GET_TAG (indword)));
+                   indword, cpu . TPR . CA, Tm, Td, getModString (GET_TAG (indword)));
 
         switch (Tm)
           {
@@ -647,18 +647,18 @@ startCA:;
               {
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_IT): Td=%02o => %02o\n",
-                           Td, cu . CT_HOLD);
+                           Td, cpu . cu  . CT_HOLD);
                 if (Td == IT_F2 || Td == IT_F3)
                 {
                     // Abort. FT2 or 3
                     switch (Td)
                     {
                         case IT_F2:
-                            TPR . CA = saveCA;
+                            cpu . TPR . CA = saveCA;
                             doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
-                            TPR . CA = saveCA;
+                            cpu . TPR . CA = saveCA;
                             doFault( FAULT_F3, 0, "TM_IT: IT_F3");
                     }
                 }
@@ -667,32 +667,32 @@ startCA:;
 
             case TM_R:
               {
-                word18 Cr = getCr (GET_TD (cu . CT_HOLD));
+                word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cu . CT_HOLD), Cr);
+                           "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cpu . cu  . CT_HOLD), Cr);
 
                 if (directOperandFlag)
                   {
-                    TPR . CA += directOperand;
-                    TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA += directOperand;
+                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): DO TPR.CA=%06o\n", TPR . CA);
+                               "IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu . TPR . CA);
 
-                    updateIWB (TPR . CA, cu . CT_HOLD); // Known to be DL or DU
+                    updateIWB (cpu . TPR . CA, cpu . cu  . CT_HOLD); // Known to be DL or DU
                   }
                 else
                   {
-                    TPR . CA += Cr;
-                    TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA += Cr;
+                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
+                               "IR_MOD(TM_R): TPR.CA=%06o\n", cpu . TPR . CA);
 
-                    updateIWB (TPR . CA, 0);
+                    updateIWB (cpu . TPR . CA, 0);
                   }
-                cu . CT_HOLD = 0;
+                cpu . cu  . CT_HOLD = 0;
                 return SCPE_OK;
               } // TM_R
 
@@ -702,43 +702,43 @@ startCA:;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",
-                           Td, Cr, TPR . CA);
+                           Td, Cr, cpu . TPR . CA);
 
                 if (directOperandFlag)
                   {
-                    TPR . CA += directOperand;
-                    TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA += directOperand;
+                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_RI): DO TPR.CA=%06o\n", TPR . CA);
+                               "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
                   }
                 else
                   {
-                    TPR . CA += Cr;
-                    TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA += Cr;
+                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_RI): TPR.CA=%06o\n", TPR . CA);
+                               "IR_MOD(TM_RI): TPR.CA=%06o\n", cpu . TPR . CA);
 
                   }
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): TPR.CA(After)=%06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
-                updateIWB (TPR . CA, rTAG); // XXX guessing here...
+                updateIWB (cpu . TPR . CA, cpu . rTAG); // XXX guessing here...
                 goto IR_MOD_1;
               } // TM_RI
 
             case TM_IR:
               {
-                updateIWB (TPR . CA, rTAG); // XXX guessing here...
+                updateIWB (cpu . TPR . CA, cpu . rTAG); // XXX guessing here...
                 goto IR_MOD;
               } // TM_IR
           } // Tm
 
         sim_printf ("%s(IR_MOD): unknown Tm??? %o\n", 
-                    __func__, GET_TM (rTAG));
+                    __func__, GET_TM (cpu . rTAG));
         return SCPE_OK;
       } // IR_MOD
 
@@ -795,19 +795,19 @@ startCA:;
 #if 0
             case IT_CI: ///< Character indirect (Td = 10)
               {
-//sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
                } // IT_CI
 
             case IT_SC: ///< Sequence character (Td = 12)
               {
-//sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
               } // IT_SC
 
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-//sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), PPR . PSR, PPR . IC, cu . IWB);
+//sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
               } // IT_SCR
 #endif
@@ -824,18 +824,18 @@ startCA:;
 //                // If there was a page fault during the data word fetch, CA has the data word address, not
 //                // the indirect word address
 
-//                TPR . CA = GET_ADDR (IWB_IRODD);
+//                cpu . TPR . CA = GET_ADDR (IWB_IRODD);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR reading indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
                 //
                 // Get the indirect word
                 //
 
                 word36 indword;
-                word36 indwordAddress = TPR . CA;
+                word36 indwordAddress = cpu . TPR . CA;
                 Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -902,20 +902,20 @@ startCA:;
                 // Get the data word
                 //
 
-                cu . pot = 1;
+                cpu . cu  . pot = 1;
 
                 word36 data;
                 Read (Yi, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012llo\n", data);
 
-                cu . pot = 0;
+                cpu . cu  . pot = 0;
 
                 //
                 // Restore the CA to point to the indirect word
                 //
 
-                TPR . CA =  indwordAddress;
+                cpu . TPR . CA =  indwordAddress;
 
                 return SCPE_OK;
               } // IT_CI, IT_SC, IT_SCR
@@ -924,18 +924,18 @@ startCA:;
               {
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
-                           TPR.CA);
+                           cpu . TPR.CA);
 
                 word36 indword;
-                Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, 0);
+                Read (cpu . TPR . CA, & indword, INDIRECT_WORD_FETCH, 0);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_I): indword=%012llo\n",
                            indword);
 
-                TPR . CA = GET_ADDR (indword);
+                cpu . TPR . CA = GET_ADDR (indword);
 
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_I
@@ -954,11 +954,11 @@ startCA:;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_AD): reading indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
@@ -971,15 +971,15 @@ startCA:;
                            "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n",
                            Yi, tally, delta);
 
-                TPR . CA = Yi;
-                word18 computedAddress = TPR . CA;
+                cpu . TPR . CA = Yi;
+                word18 computedAddress = cpu . TPR . CA;
 
                 Yi += delta;
                 Yi &= MASK18;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu . IR, I_TALLY);
+                SCF(tally == 0, cpu . cu  . IR, I_TALLY);
 
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
@@ -990,9 +990,9 @@ startCA:;
                            "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n",
                             indword, saveCA);
 
-                TPR . CA = computedAddress;
+                cpu . TPR . CA = computedAddress;
 
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_AD
@@ -1009,13 +1009,13 @@ startCA:;
                 // otherwise it is set OFF. The computed address is the value
                 // of the decremented ADDRESS field of the indirect word.
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
                 tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
                 Yi    = GETHI (indword);     // from where data live
@@ -1029,11 +1029,11 @@ startCA:;
 
                 Yi -= delta;
                 Yi &= MASK18;
-                TPR.CA = Yi;
+                cpu . TPR.CA = Yi;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu.IR, I_TALLY);
+                SCF(tally == 0, cpu . cu .IR, I_TALLY);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1046,8 +1046,8 @@ startCA:;
                            indword, saveCA);
 
 
-                TPR . CA = Yi;
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                cpu . TPR . CA = Yi;
+                updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_SD
@@ -1065,11 +1065,11 @@ startCA:;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DI): reading indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
@@ -1084,15 +1084,15 @@ startCA:;
 
                 Yi -= 1;
                 Yi &= MASK18;
-                TPR.CA = Yi;
+                cpu . TPR.CA = Yi;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu.IR, I_TALLY);
+                SCF(tally == 0, cpu . cu .IR, I_TALLY);
 
                 // write back out indword
 
-                indword = (word36) (((word36) TPR . CA << 18) |
+                indword = (word36) (((word36) cpu . TPR . CA << 18) |
                                     ((word36) tally << 6) |
                                     junk);
 
@@ -1103,8 +1103,8 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
-                TPR . CA = Yi;
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                cpu . TPR . CA = Yi;
+                updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_DI
@@ -1120,14 +1120,14 @@ startCA:;
                 // is ignored. The computed address is the value of the
                 // unmodified ADDRESS field.
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_ID): fetching indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
@@ -1137,15 +1137,15 @@ startCA:;
                            "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n",
                            indword, Yi, tally);
 
-                TPR . CA = Yi;
-                word18 computedAddress = TPR . CA;
+                cpu . TPR . CA = Yi;
+                word18 computedAddress = cpu . TPR . CA;
 
                 Yi += 1;
                 Yi &= MASK18;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu.IR, I_TALLY);
+                SCF(tally == 0, cpu . cu .IR, I_TALLY);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1159,8 +1159,8 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
 
-                TPR . CA = computedAddress;
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+                cpu . TPR . CA = computedAddress;
+                updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_ID
@@ -1179,11 +1179,11 @@ startCA:;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): fetching indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
@@ -1199,11 +1199,11 @@ startCA:;
 
                 word24 YiSafe2 = Yi; // save indirect address for later use
 
-                TPR.CA = Yi;
+                cpu . TPR.CA = Yi;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu.IR, I_TALLY);
+                SCF(tally == 0, cpu . cu .IR, I_TALLY);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1220,16 +1220,16 @@ startCA:;
                 // for the register is forced to "null" before the next
                 // computed address is formed.
 
-                TPR.CA = YiSafe2;
+                cpu . TPR.CA = YiSafe2;
 
-                rTAG = idwtag;
-                Tm = GET_TM(rTAG);
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
 
                 if (Tm != TM_IT)
                   {
-                    rTAG = idwtag & 0x70; // force R to 0
+                    cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
 
@@ -1247,11 +1247,11 @@ startCA:;
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_IDC): fetching indirect word from %06o\n",
-                           TPR . CA);
+                           cpu . TPR . CA);
 
-                word18 saveCA = TPR . CA;
+                word18 saveCA = cpu . TPR . CA;
                 word36 indword;
-                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
+                Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
                 tally = GET_TALLY (indword); // 12-bits
@@ -1269,7 +1269,7 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cu . IR, I_TALLY);
+                SCF(tally == 0, cpu . cu  . IR, I_TALLY);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1290,16 +1290,16 @@ startCA:;
                 // But for the dps88 you can use everything but ir/ri.
 
                 // force R to 0 (except for IT)
-                TPR.CA = YiSafe;
+                cpu . TPR.CA = YiSafe;
 
-                rTAG = idwtag;
-                Tm = GET_TM(rTAG);
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
 
                 if (Tm != TM_IT)
                   {
-                    rTAG = idwtag & 0x70; // force R to 0
+                    cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
-                updateIWB (TPR . CA, rTAG);
+                updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC
           } // Td

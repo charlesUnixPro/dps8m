@@ -75,10 +75,10 @@ void hdbgTrace (void)
     hevents [hevtPtr] . type = hevtTrace;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . trace . addrMode = get_addr_mode ();
-    hevents [hevtPtr] . trace . segno = PPR.PSR;
-    hevents [hevtPtr] . trace . ic = PPR.IC;
-    hevents [hevtPtr] . trace . ring = PPR.PRR;
-    hevents [hevtPtr] . trace . inst = cu.IWB;
+    hevents [hevtPtr] . trace . segno = cpu . PPR.PSR;
+    hevents [hevtPtr] . trace . ic = cpu . PPR.IC;
+    hevents [hevtPtr] . trace . ring = cpu . PPR.PRR;
+    hevents [hevtPtr] . trace . inst = cpu.cu.IWB;
     hevtPtr = (hevtPtr + 1) % hdbgSize;
   }
 
