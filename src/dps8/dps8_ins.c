@@ -41,7 +41,9 @@ word36 Yblock32[32];    // 32-words
 static int doABSA (word36 * result);
 
 static t_stat doInstruction (void);
+#if EMULATOR_ONLY
 static int emCall (void);
+#endif
 
 // CANFAULT
 static void writeOperands (void)
@@ -1988,24 +1990,30 @@ static t_stat DoBasicInstruction (void)
         case 0335:  // lca
           {
             bool ovf;
-            word36 tmp = compl36 (CY, & cu . IR, & ovf);
+            word18 ir = cu . IR;
+            word36 tmp = compl36 (CY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "lca overflow fault");
               }
             rA = tmp;
+            cu . IR = ir;
           }
           break;
 
         case 0336:  // lcq
           {
             bool ovf;
-            word36 tmp = compl36 (CY, & cu . IR, & ovf);
+            word18 ir = cu . IR;
+            word36 tmp = compl36 (CY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "lcq overflow fault");
               }
             rQ = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2024,12 +2032,15 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             uint32 n = opcode & 07;  // get n
-            word18 tmp = compl18 (GETHI (CY), & cu . IR, & ovf);
+            word18 ir = cu . IR;
+            word18 tmp = compl18 (GETHI (CY), & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "lcxn overflow fault");
               }
             rX [n] = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2821,13 +2832,16 @@ static t_stat DoBasicInstruction (void)
              */
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ada overflow fault");
               }
             rA = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2836,13 +2850,16 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) + C(Y-pair) -> C(AQ)
             bool ovf;
             word72 tmp72 = YPAIRTO72 (Ypair);
+            word18 ir = cu . IR;
             tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
-                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir,
                             & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "adaq overflow fault");
               }
+	  cu . IR = ir;
             convertToWord36 (tmp72, & rA, & rQ);
           }
           break;
@@ -2852,14 +2869,17 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) + C(Y) sign extended -> C(AQ)
             bool ovf;
             word72 tmp72 = SIGNEXT36_72 (CY); // sign extend Cy
+            word18 ir = cu . IR;
             tmp72 = Add72b (convertToWord72 (rA, rQ), tmp72, 0,
                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                            & cu . IR, & ovf);
+                            & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "adl overflow fault");
               }
             convertToWord36 (tmp72, & rA, & rQ);
+            cu . IR = ir;
           }
           break;
 
@@ -2922,13 +2942,16 @@ static t_stat DoBasicInstruction (void)
         case 0076:   // adq
           {
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "adq overflow fault");
               }
             rQ = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2943,14 +2966,17 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             uint32 n = opcode & 07;  // get n
+            word18 ir = cu . IR;
             word18 tmp = Add18b (rX [n], GETHI (CY), 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "adxn overflow fault");
               }
             rX [n] = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2959,13 +2985,16 @@ static t_stat DoBasicInstruction (void)
             // C(Y)+1->C(Y)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (CY, 1, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "aos overflow fault");
               }
             CY = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2974,13 +3003,16 @@ static t_stat DoBasicInstruction (void)
             // C(A) + C(Y) -> C(Y)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp  = Add36b (rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                  & cu . IR, & ovf);
+                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "asa overflow fault");
               }
             CY = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -2988,13 +3020,16 @@ static t_stat DoBasicInstruction (void)
           {
             // C(Q) + C(Y) -> C(Y)
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "asq overflow fault");
               }
             CY = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3011,14 +3046,17 @@ static t_stat DoBasicInstruction (void)
             //    C(Xn) + C(Y)0,17 -> C(Y)0,17
             bool ovf;
             uint32 n = opcode & 07;  // get n
+            word18 ir = cu . IR;
             word18 tmp18 = Add18b (rX [n], GETHI (CY), 0,
                                    I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                   & cu . IR, & ovf);
+                                   & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "asxn overflow fault");
               }
             SETHI (CY, tmp18);
+            cu . IR = ir;
           }
           break;
 
@@ -3028,13 +3066,16 @@ static t_stat DoBasicInstruction (void)
             // If carry indicator ON, then C(A) + C(Y) + 1 -> C(A)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
-                                 I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+                                 I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "awca overflow fault");
               }
             rA = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3044,13 +3085,16 @@ static t_stat DoBasicInstruction (void)
             // If carry indicator ON, then C(Q) + C(Y) + 1 -> C(Q)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Add36b (rQ, CY, TSTF (cu . IR, I_CARRY),
-                         I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR, & ovf);
+                         I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ada overflow fault");
               }
             rQ = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3061,13 +3105,16 @@ static t_stat DoBasicInstruction (void)
             // C(A) - C(Y) -> C(A)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "sba overflow fault");
               }
             rA = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3076,14 +3123,17 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) - C(Y-pair) -> C(AQ)
             bool ovf;
             word72 tmp72 = YPAIRTO72 (Ypair);
+            word18 ir = cu . IR;
             tmp72 = Sub72b (convertToWord72 (rA, rQ), tmp72, 1,
-                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & cu . IR,
+                            I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir,
                             & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "sbaq overflow fault");
               }
             convertToWord36 (tmp72, & rA, & rQ);
+            cu . IR = ir;
           }
           break;
 
@@ -3145,13 +3195,16 @@ static t_stat DoBasicInstruction (void)
             // C(Q) - C(Y) -> C(Q)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "sbq overflow fault");
               }
             rQ = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3169,14 +3222,17 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             uint32 n = opcode & 07;  // get n
+            word18 ir = cu . IR;
             word18 tmp = Sub18b (rX [n], GETHI (CY), 1,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "sbxn overflow fault");
               }
             rX [n] = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3185,13 +3241,16 @@ static t_stat DoBasicInstruction (void)
             // C(A) - C(Y) -> C(Y)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ssa overflow fault");
               }
             CY = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3200,13 +3259,16 @@ static t_stat DoBasicInstruction (void)
             // C(Q) - C(Y) -> C(Y)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ssq overflow fault");
               }
             CY = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3224,14 +3286,17 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             uint32 n = opcode & 07;  // get n
+            word18 ir = cu . IR;
             word18 tmp18 = Sub18b (rX [n], GETHI (CY), 1,
                                    I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                   & cu . IR, & ovf);
+                                   & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ada overflow fault");
               }
             SETHI (CY, tmp18);
+            cu . IR = ir;
           }
           break;
 
@@ -3242,14 +3307,17 @@ static t_stat DoBasicInstruction (void)
             // If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rA, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "swca overflow fault");
               }
             rA = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -3259,14 +3327,17 @@ static t_stat DoBasicInstruction (void)
             // If carry indicator OFF, then C(Q) - C(Y) - 1 -> C(Q)
 
             bool ovf;
+            word18 ir = cu . IR;
             word36 tmp = Sub36b (rQ, CY, TSTF (cu . IR, I_CARRY) ? 1 : 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
-                                 & cu . IR, & ovf);
+                                 & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
+                SETF(cu . IR, I_OFLOW);
                 doFault (FAULT_OFL, 0, "ada overflow fault");
               }
             rQ = tmp;
+            cu . IR = ir;
           }
           break;
 
@@ -7490,6 +7561,7 @@ static t_stat DoEISInstruction (void)
 
 #include <ctype.h>
 
+#if EMULATOR_ONLY
 /**
  * emulator call instruction. Do whatever address field sez' ....
  */
@@ -7688,6 +7760,7 @@ static int emCall (void)
     }
     return 0;
 }
+#endif
 
 // XXX This code may be redundant
 // CANFAULT
