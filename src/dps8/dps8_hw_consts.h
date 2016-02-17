@@ -144,6 +144,15 @@ static inline int SIGNEXT6_int (word6 w)
     return w & MASK6;
   }
 
+static inline int SIGNEXT8_int (word8 w)
+  {
+    if (w & SIGN8)
+      {
+        return ((int) w) | (((uint) -1) << 8);
+      }
+    return w & MASK8;
+  }
+
 static inline int32 SIGNEXT15_32 (word18 w)
   {
     if (w & SIGN15)
@@ -453,6 +462,50 @@ enum {
 #define I_CARRY F_C     // carry                            0100000
 #define I_NEG   F_B     // negative                         0200000
 #define I_ZERO  F_A     // zero                             0400000
+
+#define CLR_I_MIF   CLRF (cpu . cu . IR, I_MIF)
+#define CLR_I_TRUNC CLRF (cpu . cu . IR, I_TRUNC)
+#define CLR_I_NBAR  CLRF (cpu . cu . IR, I_NBAR)
+#define CLR_I_TALLY CLRF (cpu . cu . IR, I_TALLY)
+#define CLR_I_EOFL  CLRF (cpu . cu . IR, I_EOFL)
+#define CLR_I_EUFL  CLRF (cpu . cu . IR, I_EUFL)
+#define CLR_I_OFLOW CLRF (cpu . cu . IR, I_OFLOW)
+#define CLR_I_CARRY CLRF (cpu . cu . IR, I_CARRY)
+#define CLR_I_NEG   CLRF (cpu . cu . IR, I_NEG)
+#define CLR_I_ZERO  CLRF (cpu . cu . IR, I_ZERO)
+
+#define SET_I_ABS   SETF (cpu . cu . IR, I_ABS)
+#define SET_I_TALLY SETF (cpu . cu . IR, I_TALLY)
+#define SET_I_OFLOW SETF (cpu . cu . IR, I_OFLOW)
+#define SET_I_CARRY SETF (cpu . cu . IR, I_CARRY)
+#define SET_I_NEG   SETF (cpu . cu . IR, I_NEG)
+#define SET_I_ZERO  SETF (cpu . cu . IR, I_ZERO)
+
+#define TST_I_ABS   TSTF (cpu . cu . IR, I_ABS)
+#define TST_I_NBAR  TSTF (cpu . cu . IR, I_NBAR)
+#define TST_I_PMASK TSTF (cpu . cu . IR, I_PMASK)
+#define TST_I_TRUNC TSTF (cpu . cu . IR, I_TRUNC)
+#define TST_I_TALLY TSTF (cpu . cu . IR, I_TALLY)
+#define TST_I_OMASK TSTF (cpu . cu . IR, I_OMASK)
+#define TST_I_EUFL  TSTF (cpu . cu . IR, I_EUFL )
+#define TST_I_EOFL  TSTF (cpu . cu . IR, I_EOFL )
+#define TST_I_OFLOW TSTF (cpu . cu . IR, I_OFLOW)
+#define TST_I_CARRY TSTF (cpu . cu . IR, I_CARRY)
+#define TST_I_NEG   TSTF (cpu . cu . IR, I_NEG)
+#define TST_I_ZERO  TSTF (cpu . cu . IR, I_ZERO)
+
+#define SC_I_TALLY(v) SCF (v, cpu . cu . IR, I_TALLY)
+#define SC_I_NEG(v)   SCF (v, cpu . cu . IR, I_NEG)
+#define SC_I_ZERO(v)  SCF (v, cpu . cu . IR, I_ZERO)
+#define SC_I_CARRY(v) SCF (v, cpu . cu . IR, I_CARRY);
+#define SC_I_OFLOW(v) SCF (v, cpu . cu . IR, I_OFLOW);
+#define SC_I_EOFL(v)  SCF (v, cpu . cu . IR, I_EOFL);
+#define SC_I_EUFL(v)  SCF (v, cpu . cu . IR, I_EUFL);
+#define SC_I_OMASK(v) SCF (v, cpu . cu . IR, I_OMASK);
+#define SC_I_PERR(v)  SCF (v, cpu . cu . IR, I_PERR);
+#define SC_I_PMASK(v) SCF (v, cpu . cu . IR, I_PMASK);
+#define SC_I_TRUNC(v) SCF (v, cpu . cu . IR, I_TRUNC);
+#define SC_I_MIF(v)   SCF (v, cpu . cu . IR, I_MIF);
 
 //
 //  floating-point constants
