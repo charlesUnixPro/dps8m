@@ -1090,7 +1090,7 @@ typedef struct
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 extern uint currentRunningCPUnum;
 extern cpu_state_t * restrict cpup;
-#define cpu (& cpup)
+#define cpu (* cpup)
 #else
 extern cpu_state_t cpu;
 #define currentRunningCPUnum 0

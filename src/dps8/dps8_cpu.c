@@ -815,12 +815,13 @@ void cpu_init (void)
       }
 #endif
     memset (& watchBits, 0, sizeof (watchBits));
-    memset (& cpu, 0, sizeof (cpu));
 #ifdef ROUND_ROBIN
+    memset (& cpus, 0, sizeof (cpus));
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
     for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
       cpus [c].switches.trlsb = 12; // 6 MIP processor
 #else
+    memset (& cpu, 0, sizeof (cpu));
     cpu.switches.FLT_BASE = 2; // Some of the UnitTests assume this
     cpu.switches.trlsb = 12; // 6 MIP processor
 #endif
@@ -1150,8 +1151,8 @@ jmp_buf jmpMain;        ///< This is where we should return to from a fault or i
 
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
-cpu_state_t * restrict CPU;
-cpu_state_t cpu [N_CPU_UNITS_MAX];
+cpu_state_t * restrict cpup;
+cpu_state_t cpus [N_CPU_UNITS_MAX];
 #else
 cpu_state_t cpu;
 #endif
@@ -1310,8 +1311,9 @@ t_stat sim_instr (void)
         sim_printf("Warning: MUX not attached.\n");
       
 #ifdef ROUND_ROBIN
+currentRunningCPUnum = cpu_dev.numunits - 1;
 setCPU:;
-    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev.numunts;;
+    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev.numunits;
     cpup = & cpus [currentRunningCPUnum];
 #endif
 
@@ -1353,7 +1355,7 @@ setCPU:;
 
     // Main instruction fetch/decode loop 
 
-    static DCDstruct * ci = & cpu.currentInstruction;
+    DCDstruct * ci = & cpu.currentInstruction;
 
     do
       {
@@ -1966,6 +1968,11 @@ setCPU:;
           }  // switch (cpu.cycle)
 
       } while (reason == 0);
+
+#ifdef ROUND_ROBIN
+   if (reason == 0)
+     goto setCPU;
+#endif
 
 leave:
 
@@ -2842,6 +2849,12 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
         return SCPE_ARG;
       }
 
+#ifdef ROUND_ROBIN
+    uint save = currentRunningCPUnum;
+    currentRunningCPUnum = cpu_unit_num;
+    cpup = & cpus [currentRunningCPUnum];
+#endif
+
     static int port_num = 0;
 
     config_state_t cfg_state = { NULL, NULL };
@@ -2992,6 +3005,12 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
           break;
       } // process statements
     cfgparse_done (& cfg_state);
+
+#ifdef ROUND_ROBIN
+    currentRunningCPUnum = save;
+    cpup = & cpus [currentRunningCPUnum];
+#endif
+
     return SCPE_OK;
   }
 

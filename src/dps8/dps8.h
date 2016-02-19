@@ -56,6 +56,9 @@
 // Enable history debugger
 #define HDBG
 
+// Enable round-robin multi-CPU
+//#define ROUND_ROBIN
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
@@ -128,7 +131,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 /////
 
 
-extern enum _processor_cycle_type {
+enum _processor_cycle_type {
     UNKNOWN_CYCLE = 0,
     APPEND_CYCLE,
     CA_CYCLE,
@@ -147,7 +150,7 @@ extern enum _processor_cycle_type {
     EIS_OPERAND_STORE,
     EIS_OPERAND_READ
     
-} processorCycle;
+};
 typedef enum _processor_cycle_type _processor_cycle_type;
 
 //! some breakpoint stuff ...

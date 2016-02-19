@@ -1056,7 +1056,13 @@ force:;
             if (isBAR)
               {
                 sim_debug(flag, &cpu_dev,
+#ifdef ROUND_ROBIN
+                  "%d: "
+#endif
                   "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+#ifdef ROUND_ROBIN
+                  currentRunningCPUnum,
+#endif
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1072,7 +1078,13 @@ force:;
             else
               {
                 sim_debug(flag, &cpu_dev,
+#ifdef ROUND_ROBIN
+                  "%d: "
+#endif
                   "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+#ifdef ROUND_ROBIN
+                  currentRunningCPUnum,
+#endif
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (IWB_IRODD),
@@ -1090,7 +1102,13 @@ force:;
             if (isBAR)
               {
                 sim_debug(flag, &cpu_dev,
+#ifdef ROUND_ROBIN
+                  "%d: "
+#endif
                  "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+#ifdef ROUND_ROBIN
+                  currentRunningCPUnum,
+#endif
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1107,7 +1125,13 @@ force:;
             else
               {
                 sim_debug(flag, &cpu_dev,
+#ifdef ROUND_ROBIN
+                  "%d: "
+#endif
                   "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+#ifdef ROUND_ROBIN
+                  currentRunningCPUnum,
+#endif
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
