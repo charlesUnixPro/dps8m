@@ -7685,6 +7685,14 @@ static int doABSA (word36 * result)
 void doRCU (void)
   {
 
+    if_sim_debug (DBG_TRACE, & cpu_dev)
+      {
+        for (int i = 0; i < 8; i ++)
+          {
+            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012llo\n", i, Yblock8 [i]);
+          }
+      }
+
     words2scu (Yblock8);
 
 // Restore addressing mode
@@ -7696,6 +7704,7 @@ void doRCU (void)
 
     if (cpu . cu . FLT_INT == 0) // is interrupt, not fault
       {
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU interrupt return\n");
         longjmp (jmpMain, JMP_REFETCH);
       }
 
@@ -7763,6 +7772,15 @@ void doRCU (void)
     if (cpu . cu . rfi || // S/W asked for the instruction to be started
         cpu . cu . FIF) // fault occured during instruction fetch
       {
+
+        // I am misusing this bit; on restart I want a way to tell the
+        // CPU state machine to restart the instruction, which is not
+        // how Multics uses it. I need to pick a different way to
+        // communicate; for now, turn it off on refetch so the state
+        // machine doesn't become confused.
+
+        cpu . cu . rfi = 0;
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
         longjmp (jmpMain, JMP_REFETCH);
       }
 
@@ -7772,6 +7790,7 @@ void doRCU (void)
 
     if (cpu . cu . FI_ADDR == FAULT_MME2)
       {
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
         cpu . cu . rfi = 1;
         longjmp (jmpMain, JMP_RESTART);
       }
@@ -7786,13 +7805,18 @@ void doRCU (void)
         cpu . cu . FI_ADDR == FAULT_DIV ||
         cpu . cu . FI_ADDR == FAULT_OFL ||
         cpu . cu . FI_ADDR == FAULT_IPR)
-      longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx sync fault return\n");
+        cpu . cu . rfi = 0;
+        longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+      }
 
     // LUF can happen during fetch or CAF. If fetch, handled above
     if (cpu . cu . FI_ADDR == FAULT_LUF)
       {
         cpu . cu . rfi = 1;
         longjmp (jmpMain, JMP_RESTART);
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU LUF RESTART return\n");
       }
 
     if (cpu . cu . FI_ADDR == FAULT_DF0 ||
@@ -7808,6 +7832,7 @@ void doRCU (void)
       {
         // If the fault occurred during fetch, handled above.
         cpu . cu . rfi = 1;
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU ACV RESTART return\n");
         longjmp (jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu . cu . FI_ADDR);
