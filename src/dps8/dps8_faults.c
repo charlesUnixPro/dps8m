@@ -439,11 +439,8 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 // EIS instructions are not used in fault/interrupt pairs, so the
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
-    if (cpu . cycle == EXEC_cycle &&
-        cpu . currentInstruction . info -> ndes > 0)
-      SETF (cpu . cu . IR, I_MIF);
-    else
-      CLRF (cpu . cu . IR, I_MIF);
+    SC_I_MIF (cpu . cycle == EXEC_cycle &&
+        cpu . currentInstruction . info -> ndes > 0);
 
     if (faultNumber == FAULT_ACV)
       {

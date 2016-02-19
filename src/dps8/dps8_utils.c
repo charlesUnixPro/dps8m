@@ -20,7 +20,6 @@
  * misc utility routines used by simulator
  */
 
-//I_HEX I_ABS I_MIF I_TRUNC  I_NBAR    I_PMASK I_PAR    I_TALLY I_OMASK  I_EUFL         I_EOFL I_OFLOW I_CARRY     I_NEG        I_ZERO
 char * dumpFlags(word18 flags)
 {
     static char buffer[256] = "";

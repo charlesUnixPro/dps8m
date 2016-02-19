@@ -21,7 +21,7 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
     //word24 finalAddress;
     cpu . iefpFinalAddress = address;
 
-    //bool isBAR = TSTF (cpu . cu . IR, I_NBAR) ? false : true;
+    //bool isBAR = TST_I_NBAR ? false : true;
     bool isBAR = get_bar_mode();
 
     // XXX went appending in BAR mode?
@@ -97,7 +97,9 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
     //word24 finalAddress;
     cpu . iefpFinalAddress = address;
 
-    bool isBAR = TSTF (cpu . cu . IR, I_NBAR) ? false : true;
+    // We don't need get_bar_mode here as this code won't be
+    // used when reading fault pairs
+    bool isBAR = TST_I_NBAR ? false : true;
 
     if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>

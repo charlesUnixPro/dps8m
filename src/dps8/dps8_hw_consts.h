@@ -504,6 +504,7 @@ enum {
 #define TST_I_NEG   TSTF (cpu . cu . IR, I_NEG)
 #define TST_I_ZERO  TSTF (cpu . cu . IR, I_ZERO)
 
+#define SC_I_MIF(v)   SCF (v, cpu . cu . IR, I_MIF)
 #define SC_I_TALLY(v) SCF (v, cpu . cu . IR, I_TALLY)
 #define SC_I_NEG(v)   SCF (v, cpu . cu . IR, I_NEG)
 #define SC_I_ZERO(v)  SCF (v, cpu . cu . IR, I_ZERO)
@@ -515,7 +516,6 @@ enum {
 #define SC_I_PERR(v)  SCF (v, cpu . cu . IR, I_PERR);
 #define SC_I_PMASK(v) SCF (v, cpu . cu . IR, I_PMASK);
 #define SC_I_TRUNC(v) SCF (v, cpu . cu . IR, I_TRUNC);
-#define SC_I_MIF(v)   SCF (v, cpu . cu . IR, I_MIF);
 
 //
 //  floating-point constants

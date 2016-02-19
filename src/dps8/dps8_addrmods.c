@@ -977,7 +977,7 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu  . IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
@@ -1031,7 +1031,7 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu .IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1086,7 +1086,7 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu .IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 // write back out indword
 
@@ -1143,7 +1143,7 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu .IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1201,7 +1201,7 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu .IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1267,7 +1267,7 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, cpu . cu  . IR, I_TALLY);
+                SC_I_TALLY (tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
