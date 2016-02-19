@@ -465,6 +465,10 @@ enum {
 #define I_NEG   F_B     // negative                         0200000
 #define I_ZERO  F_A     // zero                             0400000
 
+#define I_ZNOC (I_ZERO | I_NEG | I_OFLOW | I_CARRY)
+#define I_ZNC (I_ZERO | I_NEG | I_CARRY)
+
+#define CLR_I_ABS   CLRF (cpu . cu . IR, I_ABS)
 #define CLR_I_MIF   CLRF (cpu . cu . IR, I_MIF)
 #define CLR_I_TRUNC CLRF (cpu . cu . IR, I_TRUNC)
 #define CLR_I_NBAR  CLRF (cpu . cu . IR, I_NBAR)
@@ -476,8 +480,9 @@ enum {
 #define CLR_I_NEG   CLRF (cpu . cu . IR, I_NEG)
 #define CLR_I_ZERO  CLRF (cpu . cu . IR, I_ZERO)
 
-#define SET_I_TRUNC SETF (cpu . cu . IR, I_TRUNC)
 #define SET_I_ABS   SETF (cpu . cu . IR, I_ABS)
+#define SET_I_NBAR  SETF (cpu . cu . IR, I_NBAR)
+#define SET_I_TRUNC SETF (cpu . cu . IR, I_TRUNC)
 #define SET_I_TALLY SETF (cpu . cu . IR, I_TALLY)
 #define SET_I_EOFL  SETF (cpu . cu . IR, I_EOFL)
 #define SET_I_EUFL  SETF (cpu . cu . IR, I_EUFL)

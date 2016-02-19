@@ -606,7 +606,7 @@ struct DCDstruct
     bool   i;             // interrupt inhinit bit.
     word6  tag;           // instruction tag
     
-    word18 stiTally;      // for sti instruction
+    bool stiTally;      // for sti instruction
     bool restart;         // instruction is to be restarted
   };
 
