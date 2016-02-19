@@ -2060,7 +2060,7 @@ last = M[01007040];
 {static bool f1 = true; if (f1 && currentRunningCPUnum == 1) { f1 = false; sim_printf ("cpu 1 starts\n");}}
 #endif
                     CPU -> PPR.IC ++;
-                    setCpuCycle (INTERRUPT_cycle);
+                    setCpuCycle (FETCH_cycle);
                   }
                 break;
               }
