@@ -665,7 +665,6 @@ static struct config_switches
 // System Controller
 
     
-static uint elapsed_days = 0;
 
 static t_stat scu_reset (UNUSED DEVICE * dptr)
   {
@@ -729,7 +728,7 @@ static uint64 getSCUclock (void)
 // allowing reproducible behavior. In real, the clock is
 // coupled to the actual time-of-day.
 
-    if (cpu . switches . steady_clock)
+    if (scu [0] . steady_clock)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
@@ -737,10 +736,10 @@ static uint64 getSCUclock (void)
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;
-        if (cpu . switches . bullet_time)
+        if (scu [0] . bullet_time)
           big *= 10000;
 
-        big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+        big += scu [0] . elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
         // Boot time
 
 // load_fnp is complaining that FNP core image is more than 5 years old; try 
@@ -786,7 +785,7 @@ static uint64 getSCUclock (void)
     struct timeval now;
     gettimeofday(& now, NULL);
                 
-    if (cpu . switches . y2k) // subtract 20 years....
+    if (scu [0] . y2k) // subtract 20 years....
       {
         // Back the clock up to just after the MR12.3 release (12/89
         // according to http://www.multicians.org/chrono.html
@@ -1359,7 +1358,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
         case 00005: 
           {
 #if 0
-            if (cpu . switches . steady_clock)
+            if (scu [0] . steady_clock)
               {
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
@@ -1367,10 +1366,10 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
                 // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
                 big *= 4u;
                 //big /= 100u;
-                if (cpu . switches . bullet_time)
+                if (scu [0] . bullet_time)
                   big *= 10000;
 
-                big += elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+                big += scu [0] . elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
                 // Boot time
 
 // load_fnp is complaining that FNP core image is more than 5 years old; try 
@@ -1421,7 +1420,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             struct timeval now;
             gettimeofday(& now, NULL);
                 
-            if (cpu . switches . y2k) // subtract 20 years....
+            if (scu [0] . y2k) // subtract 20 years....
               {
                 // Back the clock up to just after the MR12.3 release (12/89
                 // according to http://www.multicians.org/chrono.html
@@ -1790,6 +1789,9 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
         //sim_printf ("  port %u\n", ip -> mask_assign . port);
 
       }
+    sim_printf("Steady clock:             %01o(8)\n", scu [scu_unit_num] . steady_clock);
+    sim_printf("Bullet time:              %01o(8)\n", scu [scu_unit_num] . bullet_time);
+    sim_printf("Y2K enabled:              %01o(8)\n", scu [scu_unit_num] . y2k);
     return SCPE_OK;
   }
 
@@ -1910,6 +1912,15 @@ static config_value_list_t cfg_size_list [] =
     { NULL, 0 }
   };
 
+static config_value_list_t cfg_on_off [] =
+  {
+    { "off", 0 },
+    { "on", 1 },
+    { "disable", 0 },
+    { "enable", 1 },
+    { NULL, 0 }
+  };
+
 static config_list_t scu_config_list [] =
   {
     /*  0 */ { "mode", 1, 0, cfg_mode_list },
@@ -1930,6 +1941,9 @@ static config_list_t scu_config_list [] =
     // Hacks
 
     /* 14 */ { "elapsed_days", 0, 10000, NULL },
+    /* 15 */ { "steady_clock", 0, 1, cfg_on_off },
+    /* 16 */ { "bullet_time", 0, 1, cfg_on_off },
+    /* 17 */ { "y2k", 0, 1, cfg_on_off },
 
     { NULL, 0, 0, NULL }
   };
@@ -2010,7 +2024,19 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 14: // ELAPSED_DAYS
-              elapsed_days = (uint) v;
+              scu [scu_unit_num] . elapsed_days = (uint) v;
+              break;
+
+            case 15: // STEADY_CLOCK
+              scu [scu_unit_num] . steady_clock = v;
+              break;
+
+            case 16: // BULLET_TIME
+              scu [scu_unit_num] . bullet_time = v;
+              break;
+
+            case 17: // y2k
+              scu [scu_unit_num] . y2k = v;
               break;
 
             default:
@@ -2045,6 +2071,7 @@ void scu_init (void)
         //      0010  Level 66 SCU
         scu [u] . id = 0b0010;
         scu [u] . modeReg = 0; // used by T&D
+        scu [u] . elapsed_days = 0;
       }
 
   }

@@ -21,17 +21,13 @@
 
 // Computed Address Formation Flowcharts
 
-static bool directOperandFlag;
-static word36 directOperand;
-
-
 //
 // return contents of register indicated by Td
 //
 
-static word18 getCr (word4 Tdes)
+static word18 getCr (word4 Tdes, bool * directOperandFlag, word36 * directOperand)
   {
-    directOperandFlag = false;
+    * directOperandFlag = false;
 
     if (Tdes == 0)
       return 0;
@@ -51,13 +47,13 @@ static word18 getCr (word4 Tdes)
           return GETHI (cpu . rQ);
 
         case TD_DU: // none; operand has the form y || (00...0)18
-          directOperand = 0;
-          SETHI (directOperand, cpu . rY);
-          directOperandFlag = true;
+          * directOperand = 0;
+          SETHI (* directOperand, cpu . rY);
+          * directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
                     "getCr(TD_DU): rY=%06o directOperand=%012llo\n",
-                    cpu . rY, directOperand);
+                    cpu . rY, * directOperand);
 
           return 0;
 
@@ -71,13 +67,13 @@ static word18 getCr (word4 Tdes)
             return GETLO (cpu . rQ);
 
         case TD_DL: // none; operand has the form (00...0)18 || y
-            directOperand = 0;
-            SETLO (directOperand, cpu . rY);
-            directOperandFlag = true;
+            * directOperand = 0;
+            SETLO (* directOperand, cpu . rY);
+            * directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "getCr(TD_DL): rY=%06o directOperand=%012llo\n",
-                       cpu . rY, directOperand);
+                       cpu . rY, * directOperand);
 
             return 0;
       }
@@ -181,11 +177,11 @@ static char * operandSTR (void)
     switch (n)
       {
         case 1:
-          sprintf (temp, "CY=%012llo", CY);
+          sprintf (temp, "CY=%012llo", cpu.CY);
           break;
         case 2:
           sprintf (temp, "CYpair[0]=%012llo CYpair[1]=%012llo",
-                   Ypair [0], Ypair [1]);
+                   cpu.Ypair [0], cpu.Ypair [1]);
           break;
         case 8:
         case 16:
@@ -372,6 +368,8 @@ static void updateIWB (word18 addr, word6 tag)
 
 t_stat doComputedAddressFormation (void)
   {
+    bool directOperandFlag;
+    word36 directOperand;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
@@ -450,7 +448,7 @@ startCA:;
             return SCPE_OK;
           }
 
-        word18 Cr = getCr (Td);
+        word18 Cr = getCr (Td, & directOperandFlag, & directOperand);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: Cr=%06o\n", Cr);
 
@@ -507,7 +505,7 @@ startCA:;
 
         if (Td != 0)
           {
-            word18 Cr = getCr (Td);  // C(r)
+            word18 Cr = getCr (Td, & directOperandFlag, & directOperand);  // C(r)
 
             // We don''t need to worry about direct operand here, since du
             // and dl are disallowed above
@@ -667,7 +665,7 @@ startCA:;
 
             case TM_R:
               {
-                word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD));
+                word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD), & directOperandFlag, & directOperand);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cpu . cu  . CT_HOLD), Cr);
@@ -698,7 +696,7 @@ startCA:;
 
             case TM_RI:
               {
-                word18 Cr = getCr(Td);
+                word18 Cr = getCr(Td, & directOperandFlag, & directOperand);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",

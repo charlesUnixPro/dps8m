@@ -14,14 +14,12 @@
 #include "dps8_utils.h"
 #include "hdbg.h"
 
-word24 iefpFinalAddress;
-
 // new Read/Write stuff ...
 
 t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
     //word24 finalAddress;
-    iefpFinalAddress = address;
+    cpu . iefpFinalAddress = address;
 
     //bool isBAR = TSTF (cpu . cu . IR, I_NBAR) ? false : true;
     bool isBAR = get_bar_mode();
@@ -41,12 +39,12 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
             if (isBAR)
             {
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
-                iefpFinalAddress = getBARaddress(address);
+                cpu . iefpFinalAddress = getBARaddress(address);
         
-                core_read(iefpFinalAddress, result, __func__);
+                core_read(cpu . iefpFinalAddress, result, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address, *result);
 #ifdef HDBG
-                hdbgMRead (iefpFinalAddress, * result);
+                hdbgMRead (cpu . iefpFinalAddress, * result);
 #endif
                 return SCPE_OK;
             } else {
@@ -66,25 +64,25 @@ B29:;
             if (isBAR)
             {
                 word18 barAddress = getBARaddress (address);
-                iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
-                core_read(iefpFinalAddress, result, __func__);
-                sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", iefpFinalAddress, *result);
+                cpu . iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
+                core_read(cpu . iefpFinalAddress, result, __func__);
+                sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", cpu . iefpFinalAddress, *result);
 #ifdef HDBG
-                hdbgMRead (iefpFinalAddress, * result);
+                hdbgMRead (cpu . iefpFinalAddress, * result);
 #endif
 
                 return SCPE_OK;
             } else {
                 //    <generate address from procedure base registers>
                 //iefpFinalAddress = doAppendRead(i, accessType, address);
-                iefpFinalAddress = doAppendCycle(address, cyctyp);
-                core_read(iefpFinalAddress, result, __func__);
+                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp);
+                core_read(cpu . iefpFinalAddress, result, __func__);
                 // XXX Don't trace Multics idle loop
                 if (cpu . PPR.PSR != 061 && cpu . PPR.IC != 0307)
                   {
-                    sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", iefpFinalAddress, *result);
+                    sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", cpu . iefpFinalAddress, *result);
 #ifdef HDBG
-                    hdbgMRead (iefpFinalAddress, * result);
+                    hdbgMRead (cpu . iefpFinalAddress, * result);
 #endif
                   }
             }
@@ -97,7 +95,7 @@ B29:;
 t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
     //word24 finalAddress;
-    iefpFinalAddress = address;
+    cpu . iefpFinalAddress = address;
 
     bool isBAR = TSTF (cpu . cu . IR, I_NBAR) ? false : true;
 
@@ -113,12 +111,12 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
         {
             if (isBAR)
             {
-                iefpFinalAddress = getBARaddress(address);
+                cpu . iefpFinalAddress = getBARaddress(address);
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
-                core_write(iefpFinalAddress, data, __func__);
+                core_write(cpu . iefpFinalAddress, data, __func__);
                 sim_debug(DBG_FINAL, &cpu_dev, "Write(Actual) Write:      bar address=%08o writeData=%012llo\n", address, data);
 #ifdef HDBG
-                hdbgMWrite (iefpFinalAddress, data);
+                hdbgMWrite (cpu . iefpFinalAddress, data);
 #endif
                 return SCPE_OK;
             } else {
@@ -138,24 +136,24 @@ B29:
             if (isBAR)
             {
                 word18 barAddress = getBARaddress (address);
-                iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
-                core_write(iefpFinalAddress, data, __func__);
+                cpu . iefpFinalAddress = doAppendCycle(barAddress, cyctyp);
+                core_write(cpu . iefpFinalAddress, data, __func__);
         
-                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
+                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", cpu . iefpFinalAddress, data);
 #ifdef HDBG
-                hdbgMWrite (iefpFinalAddress, data);
+                hdbgMWrite (cpu . iefpFinalAddress, data);
 #endif
         
                 return SCPE_OK;
             } else {
                 //    <generate address from procedure base registers>
-                //iefpFinalAddress = doAppendDataWrite(i, address);
-                iefpFinalAddress = doAppendCycle(address, cyctyp);
-                core_write(iefpFinalAddress, data, __func__);
+                //cpu . iefpFinalAddress = doAppendDataWrite(i, address);
+                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp);
+                core_write(cpu . iefpFinalAddress, data, __func__);
         
-                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", iefpFinalAddress, data);
+                sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", cpu . iefpFinalAddress, data);
 #ifdef HDBG
-                hdbgMWrite (iefpFinalAddress, data);
+                hdbgMWrite (cpu . iefpFinalAddress, data);
 #endif
         
                 return SCPE_OK;

@@ -32,12 +32,6 @@
 // XXX Use this for places where is matters when we have multiple CPUs
 #define ASSUME_CPU0 0
 
-word36 CY = 0;          // C(Y) operand data from memory
-word36 Ypair[2];        // 2-words
-word36 Yblock8[8];      // 8-words
-word36 Yblock16[16];    // 16-words
-word36 Yblock32[32];    // 32-words
-
 static int doABSA (word36 * result);
 
 static t_stat doInstruction (void);
@@ -169,11 +163,11 @@ static void writeOperands (void)
         switch (characterOperandSize)
           {
             case TB6:
-              putChar (& data, CY & 077, characterOperandOffset);
+              putChar (& data, cpu.CY & 077, characterOperandOffset);
               break;
 
             case TB9:
-              putByte (& data, CY & 0777, characterOperandOffset);
+              putByte (& data, cpu.CY & 0777, characterOperandOffset);
               break;
           }
 
@@ -225,10 +219,10 @@ static void readOperands (void)
 
     if (Tm == TM_R && Td == TD_DU)
       {
-        CY = 0;
-        SETHI (CY, cpu . TPR.CA);
+        cpu.CY = 0;
+        SETHI (cpu.CY, cpu . TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DU CY=%012llo\n", CY);
+                   "readOperands DU CY=%012llo\n", cpu.CY);
         return;
       }
 
@@ -238,10 +232,10 @@ static void readOperands (void)
 
     if (Tm == TM_R && Td == TD_DL)
       {
-        CY = 0;
-        SETLO (CY, cpu . TPR.CA);
+        cpu.CY = 0;
+        SETLO (cpu.CY, cpu . TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DL CY=%012llo\n", CY);
+                   "readOperands DL CY=%012llo\n", cpu.CY);
         return;
       }
 
@@ -350,18 +344,18 @@ static void readOperands (void)
         switch (characterOperandSize)
           {
             case TB6:
-              CY = GETCHAR (data, characterOperandOffset);
+              cpu.CY = GETCHAR (data, characterOperandOffset);
               break;
 
             case TB9:
-              CY = GETBYTE (data, characterOperandOffset);
+              cpu.CY = GETBYTE (data, characterOperandOffset);
               break;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT read operand %012llo from"
                    " %06o char/byte=%llo\n",
-                   data, Yi, CY);
+                   data, Yi, cpu.CY);
 
         // Restore the CA; Read/Write() updates it.
         cpu . TPR . CA = indwordAddress;
@@ -374,8 +368,6 @@ static void readOperands (void)
 
     return;
   }
-
-static word36 scu_data[8];    // For SCU instruction
 
 static void scu2words(word36 *words)
   {
@@ -494,7 +486,7 @@ void cu_safe_store(void)
     // instruction running in FAULT mode can save the state as it existed at
     // the time of the fault rather than as it exists at the time the SCU
     //  instruction is executed.
-    scu2words(scu_data);
+    scu2words(cpu.scu_data);
 
     tidy_cu ();
 
@@ -623,7 +615,7 @@ static void words2scu (word36 * words)
 
 void cu_safe_restore (void)
   {
-    words2scu (scu_data);
+    words2scu (cpu.scu_data);
   }
 
 static void du2words (word36 * words)
@@ -1274,7 +1266,7 @@ t_stat executeInstruction (void)
     ///
 
     cpu . TPR.CA = address;
-    iefpFinalAddress = cpu . TPR . CA;
+    cpu . iefpFinalAddress = cpu . TPR . CA;
     cpu . rY = cpu . TPR.CA;
 
     if (!cpu . switches . append_after)
@@ -1517,12 +1509,12 @@ restart_1:
         if (ci->info->flags & PREPARE_CA)
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = cpu . TPR . CA;
+            cpu . iefpFinalAddress = cpu . TPR . CA;
           }
         else if (READOP (ci))
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = cpu . TPR . CA;
+            cpu . iefpFinalAddress = cpu . TPR . CA;
             readOperands ();
           }
       }
@@ -1554,7 +1546,7 @@ restart_1:
         if (! READOP (ci))
           {
             doComputedAddressFormation ();
-            iefpFinalAddress = cpu . TPR . CA;
+            cpu . iefpFinalAddress = cpu . TPR . CA;
           }
         writeOperands ();
       }
@@ -1686,12 +1678,12 @@ restart_1:
 
     if (cpu . cu . xde && cpu . cu . xdo)
       {
-        cpu . cu . IWB = Ypair [0];
-        cpu . cu . IRODD = Ypair [1];
+        cpu . cu . IWB = cpu.Ypair [0];
+        cpu . cu . IRODD = cpu.Ypair [1];
       }
     else if (cpu . cu . xde)
       {
-        cpu . cu . IWB = CY;
+        cpu . cu . IWB = cpu.CY;
       }
 
 ///
@@ -1992,7 +1984,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = compl36 (CY, & ir, & ovf);
+            word36 tmp = compl36 (cpu.CY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
@@ -2007,7 +1999,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = compl36 (CY, & ir, & ovf);
+            word36 tmp = compl36 (cpu.CY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
@@ -2034,7 +2026,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 ir = cpu . cu . IR;
-            word18 tmp = compl18 (GETHI (CY), & ir, & ovf);
+            word18 tmp = compl18 (GETHI (cpu.CY), & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
@@ -2053,13 +2045,13 @@ static t_stat DoBasicInstruction (void)
             // complement arithmetic, the value 0 is its own negative. An
             // overflow condition exists if C(Y-pair) = -2**71.
 
-            if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
+            if (cpu.Ypair[0] == 0400000000000LL && cpu.Ypair[1] == 0)
               {
                 SET_I_OFLOW;
                 if (tstOVFfault ())
                     doFault(FAULT_OFL, 0, "lcaq overflow fault");
               }
-            else if (Ypair[0] == 0 && Ypair[1] == 0)
+            else if (cpu.Ypair[0] == 0 && cpu.Ypair[1] == 0)
               {
                 cpu . rA = 0;
                 cpu . rQ = 0;
@@ -2071,8 +2063,8 @@ static t_stat DoBasicInstruction (void)
               {
                 word72 tmp72 = 0;
 
-                tmp72 = bitfieldInsert72(tmp72, Ypair[0] & MASK36, 36, 36);
-                tmp72 = bitfieldInsert72(tmp72, Ypair[1] & MASK36,  0, 36);
+                tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[0] & MASK36, 36, 36);
+                tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[1] & MASK36,  0, 36);
 
                 tmp72 = ~tmp72 + 1;
 
@@ -2086,21 +2078,21 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0235:  // lda
-            cpu . rA = CY;
+            cpu . rA = cpu.CY;
             SC_I_ZERO (cpu . rA == 0);
             SC_I_NEG (cpu . rA & SIGN36);
             break;
 
         case 0034: // ldac
-            cpu . rA = CY;
+            cpu . rA = cpu.CY;
             SC_I_ZERO (cpu . rA == 0);
             SC_I_NEG (cpu . rA & SIGN36);
-            CY = 0;
+            cpu.CY = 0;
             break;
 
         case 0237:  // ldaq
-            cpu . rA = Ypair[0];
-            cpu . rQ = Ypair[1];
+            cpu . rA = cpu.Ypair[0];
+            cpu . rQ = cpu.Ypair[1];
             SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0)
             SC_I_NEG (cpu . rA & SIGN36);
             break;
@@ -2126,7 +2118,7 @@ static t_stat DoBasicInstruction (void)
             //  otherwise, OFF
 
             // upper 14-bits of lower 18-bits
-            word18 tmp18 = GETLO (CY) & 0777760;
+            word18 tmp18 = GETLO (cpu.CY) & 0777760;
 
             bool bAbsPriv = (get_addr_mode () == ABSOLUTE_mode) ||
                             is_priv_mode ();
@@ -2151,16 +2143,16 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0236:  // ldq
-            cpu . rQ = CY;
+            cpu . rQ = cpu.CY;
             SC_I_ZERO (cpu . rQ == 0);
             SC_I_NEG (cpu . rQ & SIGN36);
             break;
 
         case 0032: // ldqc
-            cpu . rQ = CY;
+            cpu . rQ = cpu.CY;
             SC_I_ZERO (cpu . rQ == 0);
             SC_I_NEG (cpu . rQ & SIGN36);
-            CY = 0;
+            cpu.CY = 0;
             break;
 
         case 0220:  // ldx0
@@ -2173,7 +2165,7 @@ static t_stat DoBasicInstruction (void)
         case 0227:  // ldx7
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . rX[n] = GETHI(CY);
+                cpu . rX[n] = GETHI(cpu.CY);
                 SC_I_ZERO (cpu . rX[n] == 0);
                 SC_I_NEG (cpu . rX[n] & SIGN18);
             }
@@ -2181,17 +2173,17 @@ static t_stat DoBasicInstruction (void)
 
         case 0073:   // lreg
 
-            cpu . rX[0] = GETHI(Yblock8[0]);
-            cpu . rX[1] = GETLO(Yblock8[0]);
-            cpu . rX[2] = GETHI(Yblock8[1]);
-            cpu . rX[3] = GETLO(Yblock8[1]);
-            cpu . rX[4] = GETHI(Yblock8[2]);
-            cpu . rX[5] = GETLO(Yblock8[2]);
-            cpu . rX[6] = GETHI(Yblock8[3]);
-            cpu . rX[7] = GETLO(Yblock8[3]);
-            cpu . rA = Yblock8[4];
-            cpu . rQ = Yblock8[5];
-            cpu . rE = (GETHI(Yblock8[6]) >> 10) & 0377;   // need checking
+            cpu . rX[0] = GETHI(cpu.Yblock8[0]);
+            cpu . rX[1] = GETLO(cpu.Yblock8[0]);
+            cpu . rX[2] = GETHI(cpu.Yblock8[1]);
+            cpu . rX[3] = GETLO(cpu.Yblock8[1]);
+            cpu . rX[4] = GETHI(cpu.Yblock8[2]);
+            cpu . rX[5] = GETLO(cpu.Yblock8[2]);
+            cpu . rX[6] = GETHI(cpu.Yblock8[3]);
+            cpu . rX[7] = GETLO(cpu.Yblock8[3]);
+            cpu . rA = cpu.Yblock8[4];
+            cpu . rQ = cpu.Yblock8[5];
+            cpu . rE = (GETHI(cpu.Yblock8[6]) >> 10) & 0377;   // need checking
 
             break;
 
@@ -2205,7 +2197,7 @@ static t_stat DoBasicInstruction (void)
         case 0727:  // lxl7
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . rX[n] = GETLO(CY);
+                cpu . rX[n] = GETLO(cpu.CY);
                 SC_I_ZERO (cpu . rX[n] == 0);
                 SC_I_NEG (cpu . rX[n] & SIGN18);
             }
@@ -2215,43 +2207,43 @@ static t_stat DoBasicInstruction (void)
 
         case 0753:  // sreg
             // clear block (changed to memset() per DJ request)
-            memset(Yblock8, 0, sizeof(Yblock8));
+            memset(cpu.Yblock8, 0, sizeof(cpu.Yblock8));
 
-            SETHI(Yblock8[0], cpu . rX[0]);
-            SETLO(Yblock8[0], cpu . rX[1]);
-            SETHI(Yblock8[1], cpu . rX[2]);
-            SETLO(Yblock8[1], cpu . rX[3]);
-            SETHI(Yblock8[2], cpu . rX[4]);
-            SETLO(Yblock8[2], cpu . rX[5]);
-            SETHI(Yblock8[3], cpu . rX[6]);
-            SETLO(Yblock8[3], cpu . rX[7]);
-            Yblock8[4] = cpu . rA;
-            Yblock8[5] = cpu . rQ;
-            Yblock8[6] = SETHI(Yblock8[7], (word18)cpu . rE << 10);
+            SETHI(cpu.Yblock8[0], cpu . rX[0]);
+            SETLO(cpu.Yblock8[0], cpu . rX[1]);
+            SETHI(cpu.Yblock8[1], cpu . rX[2]);
+            SETLO(cpu.Yblock8[1], cpu . rX[3]);
+            SETHI(cpu.Yblock8[2], cpu . rX[4]);
+            SETLO(cpu.Yblock8[2], cpu . rX[5]);
+            SETHI(cpu.Yblock8[3], cpu . rX[6]);
+            SETLO(cpu.Yblock8[3], cpu . rX[7]);
+            cpu.Yblock8[4] = cpu . rA;
+            cpu.Yblock8[5] = cpu . rQ;
+            cpu.Yblock8[6] = SETHI(cpu.Yblock8[7], (word18)cpu . rE << 10);
 #ifdef REAL_TR
-            Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (cpu . rRALR & 07);
+            cpu.Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (cpu . rRALR & 07);
 #else
-            Yblock8[7] = ((cpu . rTR & MASK27) << 9) | (cpu . rRALR & 07);
+            cpu.Yblock8[7] = ((cpu . rTR & MASK27) << 9) | (cpu . rRALR & 07);
 #endif
             break;
 
         case 0755:  // sta
-            CY = cpu . rA;
+            cpu.CY = cpu . rA;
             break;
 
         case 0354:  // stac
-            if (CY == 0)
+            if (cpu.CY == 0)
             {
                 SET_I_ZERO;
-                CY = cpu . rA;
+                cpu.CY = cpu . rA;
             } else
                 CLR_I_ZERO;
             break;
 
         case 0654:  // stacq
-            if (CY == cpu . rQ)
+            if (cpu.CY == cpu . rQ)
             {
-                CY = cpu . rA;
+                cpu.CY = cpu . rA;
                 SET_I_ZERO;
 
             } else
@@ -2259,40 +2251,40 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0757:  // staq
-            Ypair[0] = cpu . rA;
-            Ypair[1] = cpu . rQ;
+            cpu.Ypair[0] = cpu . rA;
+            cpu.Ypair[1] = cpu . rQ;
 
             break;
 
         case 0551:  // stba
             // 9-bit bytes of C(A) -> corresponding bytes of C(Y), the byte
             // positions affected being specified in the TAG field.
-            copyBytes((i->tag >> 2) & 0xf, cpu . rA, &CY);
+            copyBytes((i->tag >> 2) & 0xf, cpu . rA, &cpu.CY);
             break;
 
         case 0552:  // stbq
             // 9-bit bytes of C(Q) -> corresponding bytes of C(Y), the byte
             // positions affected being specified in the TAG field.
-            copyBytes((i->tag >> 2) & 0xf, cpu . rQ, &CY);
+            copyBytes((i->tag >> 2) & 0xf, cpu . rQ, &cpu.CY);
 
             break;
 
         case 0554:  // stc1
             // "C(Y)25 reflects the state of the tally runout indicator
             // prior to modification.
-            SETHI(CY, (cpu . PPR.IC + 1) & MASK18);
-            SETLO(CY, cpu . cu.IR & 0777760);
+            SETHI(cpu.CY, (cpu . PPR.IC + 1) & MASK18);
+            SETLO(cpu.CY, cpu . cu.IR & 0777760);
             if (i -> stiTally)
-              SETF(CY, I_TALLY);
+              SETF(cpu.CY, I_TALLY);
             else
-              CLRF(CY, I_TALLY);
+              CLRF(cpu.CY, I_TALLY);
             break;
 
         case 0750:  // stc2
             // AL-39 doesn't specify if the low half is set to zero,
             // set to IR, or left unchanged
             // RJ78 specifies unchanged
-            SETHI(CY, (cpu . PPR.IC + 2) & MASK18);
+            SETHI(cpu.CY, (cpu . PPR.IC + 2) & MASK18);
 
             break;
 
@@ -2300,14 +2292,14 @@ static t_stat DoBasicInstruction (void)
             // Characters of C(A) -> corresponding characters of C(Y),
             // the character positions affected being specified in the TAG
             // field.
-            copyChars(i->tag, cpu . rA, &CY);
+            copyChars(i->tag, cpu . rA, &cpu.CY);
 
             break;
 
         case 0752: // stcq
             // Characters of C(Q) -> corresponding characters of C(Y), the
             // character positions affected being specified in the TAG field.
-            copyChars(i->tag, cpu . rQ, &CY);
+            copyChars(i->tag, cpu . rQ, &cpu.CY);
             break;
 
         case 0357: //< stcd
@@ -2322,17 +2314,17 @@ static t_stat DoBasicInstruction (void)
             //  C(PPR.IC)+2 -> C(Y-pair)36,53
             //  00...0 -> C(Y-pair)54,71
 
-            Ypair[0] = 0;
-            //Ypair[0] = bitfieldInsert36(Ypair[0], cpu . PPR.PSR, 18, 15);
-            //Ypair[0] = bitfieldInsert36(Ypair[0], cpu . PPR.PRR, 15,  3);
-            //Ypair[0] = bitfieldInsert36(Ypair[0],     043,  0,  6);
-            putbits36 (& Ypair [0],  3, 15, cpu . PPR.PSR);
-            putbits36 (& Ypair [0], 18,  3, cpu . PPR.PRR);
-            putbits36 (& Ypair [0], 30,  6,     043);
+            cpu.Ypair[0] = 0;
+            //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0], cpu . PPR.PSR, 18, 15);
+            //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0], cpu . PPR.PRR, 15,  3);
+            //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0],     043,  0,  6);
+            putbits36 (& cpu.Ypair [0],  3, 15, cpu . PPR.PSR);
+            putbits36 (& cpu.Ypair [0], 18,  3, cpu . PPR.PRR);
+            putbits36 (& cpu.Ypair [0], 30,  6,     043);
 
-            Ypair[1] = 0;
-            //Ypair[1] = bitfieldInsert36(Ypair[0], cpu . PPR.IC + 2, 18, 18);
-            putbits36(& Ypair [1],  0, 18, cpu . PPR.IC + 2);
+            cpu.Ypair[1] = 0;
+            //cpu.Ypair[1] = bitfieldInsert36(cpu.Ypair[0], cpu . PPR.IC + 2, 18, 18);
+            putbits36(& cpu.Ypair [1],  0, 18, cpu . PPR.IC + 2);
 
             break;
 
@@ -2348,24 +2340,24 @@ static t_stat DoBasicInstruction (void)
             // preparation. The relation between C(Y)18,31 and the indicators
             // is given in Table 4-5.
 
-            SETLO(CY, (cpu . cu.IR & 0000000777760LL));
+            SETLO(cpu.CY, (cpu . cu.IR & 0000000777760LL));
             if (i -> stiTally)
-              SETF(CY, I_TALLY);
+              SETF(cpu.CY, I_TALLY);
             else
-              CLRF(CY, I_TALLY);
+              CLRF(cpu.CY, I_TALLY);
             if (cpu . switches . invert_absolute)
-              CY ^= 020;
+              cpu.CY ^= 020;
             break;
 
         case 0756: // stq
-            CY = cpu . rQ;
+            cpu.CY = cpu . rQ;
             break;
 
         case 0454:  // stt
 #ifdef REAL_TR
-             CY = (getTR (NULL) & MASK27) << 9;
+             cpu.CY = (getTR (NULL) & MASK27) << 9;
 #else
-             CY = (cpu . rTR & MASK27) << 9;
+             cpu.CY = (cpu . rTR & MASK27) << 9;
 #endif
              break;
 
@@ -2380,12 +2372,12 @@ static t_stat DoBasicInstruction (void)
         case 0747:  // stx7
             {
                 uint32 n = opcode & 07;  // get n
-                SETHI(CY, cpu . rX[n]);
+                SETHI(cpu.CY, cpu . rX[n]);
             }
             break;
 
         case 0450: // stz
-            CY = 0;
+            cpu.CY = 0;
             break;
 
         case 0440:  // sxl0
@@ -2399,7 +2391,7 @@ static t_stat DoBasicInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
 
-                SETLO(CY, cpu . rX[n]);
+                SETLO(cpu.CY, cpu . rX[n]);
             }
             break;
 
@@ -2690,7 +2682,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (cpu . rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Add36b (cpu . rA, cpu.CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -2706,7 +2698,7 @@ static t_stat DoBasicInstruction (void)
           {
             // C(AQ) + C(Y-pair) -> C(AQ)
             bool ovf;
-            word72 tmp72 = YPAIRTO72 (Ypair);
+            word72 tmp72 = YPAIRTO72 (cpu.Ypair);
             word18 ir = cpu . cu . IR;
             tmp72 = Add72b (convertToWord72 (cpu . rA, cpu . rQ), tmp72, 0,
                             I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir,
@@ -2725,7 +2717,7 @@ static t_stat DoBasicInstruction (void)
           {
             // C(AQ) + C(Y) sign extended -> C(AQ)
             bool ovf;
-            word72 tmp72 = SIGNEXT36_72 (CY); // sign extend Cy
+            word72 tmp72 = SIGNEXT36_72 (cpu.CY); // sign extend Cy
             word18 ir = cpu . cu . IR;
             tmp72 = Add72b (convertToWord72 (cpu . rA, cpu . rQ), tmp72, 0,
                             I_ZERO | I_NEG | I_OFLOW | I_CARRY,
@@ -2748,7 +2740,7 @@ static t_stat DoBasicInstruction (void)
             // adlaq instruction, nor does an overflow fault occur. Operands
             // and results are treated as unsigned, positive binary integers.
             bool ovf;
-            word72 tmp72 = YPAIRTO72 (Ypair);
+            word72 tmp72 = YPAIRTO72 (cpu.Ypair);
 
             tmp72 = Add72b (convertToWord72 (cpu . rA, cpu . rQ), tmp72, 0,
                             I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
@@ -2764,7 +2756,7 @@ static t_stat DoBasicInstruction (void)
             // results are treated as unsigned, positive binary integers. */
 
             bool ovf;
-            cpu . rA = Add36b (cpu . rA, CY, 0, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
+            cpu . rA = Add36b (cpu . rA, cpu.CY, 0, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
           }
           break;
 
@@ -2776,7 +2768,7 @@ static t_stat DoBasicInstruction (void)
             // results are treated as unsigned, positive binary integers. */
 
             bool ovf;
-            cpu . rQ = Add36b (cpu . rQ, CY, 0, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
+            cpu . rQ = Add36b (cpu . rQ, cpu.CY, 0, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
           }
           break;
 
@@ -2791,7 +2783,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             uint32 n = opcode & 07;  // get n
-            cpu . rX [n] = Add18b (cpu . rX [n], GETHI (CY), 0, I_ZERO | I_NEG | I_CARRY,
+            cpu . rX [n] = Add18b (cpu . rX [n], GETHI (cpu.CY), 0, I_ZERO | I_NEG | I_CARRY,
                              & cpu . cu . IR, & ovf);
           }
           break;
@@ -2800,7 +2792,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (cpu . rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Add36b (cpu . rQ, cpu.CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -2824,7 +2816,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 ir = cpu . cu . IR;
-            word18 tmp = Add18b (cpu . rX [n], GETHI (CY), 0,
+            word18 tmp = Add18b (cpu . rX [n], GETHI (cpu.CY), 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -2843,14 +2835,14 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (CY, 1, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Add36b (cpu.CY, 1, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "aos overflow fault");
               }
-            CY = tmp;
+            cpu.CY = tmp;
             cpu . cu . IR = ir;
           }
           break;
@@ -2861,14 +2853,14 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp  = Add36b (cpu . rA, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp  = Add36b (cpu . rA, cpu.CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                   & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "asa overflow fault");
               }
-            CY = tmp;
+            cpu.CY = tmp;
             cpu . cu . IR = ir;
           }
           break;
@@ -2878,14 +2870,14 @@ static t_stat DoBasicInstruction (void)
             // C(Q) + C(Y) -> C(Y)
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (cpu . rQ, CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Add36b (cpu . rQ, cpu.CY, 0, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "asq overflow fault");
               }
-            CY = tmp;
+            cpu.CY = tmp;
             cpu . cu . IR = ir;
           }
           break;
@@ -2904,7 +2896,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 ir = cpu . cu . IR;
-            word18 tmp18 = Add18b (cpu . rX [n], GETHI (CY), 0,
+            word18 tmp18 = Add18b (cpu . rX [n], GETHI (cpu.CY), 0,
                                    I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                    & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -2912,7 +2904,7 @@ static t_stat DoBasicInstruction (void)
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "asxn overflow fault");
               }
-            SETHI (CY, tmp18);
+            SETHI (cpu.CY, tmp18);
             cpu . cu . IR = ir;
           }
           break;
@@ -2924,7 +2916,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (cpu . rA, CY, TST_I_CARRY ? 1 : 0,
+            word36 tmp = Add36b (cpu . rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -2943,7 +2935,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Add36b (cpu . rQ, CY, TST_I_CARRY,
+            word36 tmp = Add36b (cpu . rQ, cpu.CY, TST_I_CARRY,
                          I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -2963,7 +2955,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Sub36b (cpu . rA, cpu.CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -2979,7 +2971,7 @@ static t_stat DoBasicInstruction (void)
           {
             // C(AQ) - C(Y-pair) -> C(AQ)
             bool ovf;
-            word72 tmp72 = YPAIRTO72 (Ypair);
+            word72 tmp72 = YPAIRTO72 (cpu.Ypair);
             word18 ir = cpu . cu . IR;
             tmp72 = Sub72b (convertToWord72 (cpu . rA, cpu . rQ), tmp72, 1,
                             I_ZERO | I_NEG | I_OFLOW | I_CARRY, & ir,
@@ -2999,7 +2991,7 @@ static t_stat DoBasicInstruction (void)
             // C(A) - C(Y) -> C(A) logical
 
             bool ovf;
-            cpu . rA = Sub36b (cpu . rA, CY, 1, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
+            cpu . rA = Sub36b (cpu . rA, cpu.CY, 1, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
           }
           break;
 
@@ -3012,7 +3004,7 @@ static t_stat DoBasicInstruction (void)
             // C(AQ) - C(Y-pair) -> C(AQ)
 
             bool ovf;
-            word72 tmp72 = YPAIRTO72 (Ypair);
+            word72 tmp72 = YPAIRTO72 (cpu.Ypair);
 
             tmp72 = Sub72b (convertToWord72 (cpu . rA, cpu . rQ), 1, tmp72,
                             I_ZERO | I_NEG |  I_CARRY, & cpu . cu . IR, & ovf);
@@ -3024,7 +3016,7 @@ static t_stat DoBasicInstruction (void)
           {
             // C(Q) - C(Y) -> C(Q)
             bool ovf;
-            cpu . rQ = Sub36b (cpu . rQ, CY, 1, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
+            cpu . rQ = Sub36b (cpu . rQ, cpu.CY, 1, I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
           }
           break;
 
@@ -3042,7 +3034,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             uint32 n = opcode & 07;  // get n
-            cpu . rX [n] = Sub18b (cpu . rX [n], GETHI (CY), 1,
+            cpu . rX [n] = Sub18b (cpu . rX [n], GETHI (cpu.CY), 1,
                              I_ZERO | I_NEG | I_CARRY, & cpu . cu . IR, & ovf);
           }
           break;
@@ -3053,7 +3045,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Sub36b (cpu . rQ, cpu.CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -3080,7 +3072,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 ir = cpu . cu . IR;
-            word18 tmp = Sub18b (cpu . rX [n], GETHI (CY), 1,
+            word18 tmp = Sub18b (cpu . rX [n], GETHI (cpu.CY), 1,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -3099,14 +3091,14 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rA, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Sub36b (cpu . rA, cpu.CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "ssa overflow fault");
               }
-            CY = tmp;
+            cpu.CY = tmp;
             cpu . cu . IR = ir;
           }
           break;
@@ -3117,14 +3109,14 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rQ, CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
+            word36 tmp = Sub36b (cpu . rQ, cpu.CY, 1, I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "ssq overflow fault");
               }
-            CY = tmp;
+            cpu.CY = tmp;
             cpu . cu . IR = ir;
           }
           break;
@@ -3144,7 +3136,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 ir = cpu . cu . IR;
-            word18 tmp18 = Sub18b (cpu . rX [n], GETHI (CY), 1,
+            word18 tmp18 = Sub18b (cpu . rX [n], GETHI (cpu.CY), 1,
                                    I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                    & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -3152,7 +3144,7 @@ static t_stat DoBasicInstruction (void)
                 SET_I_OFLOW;
                 doFault (FAULT_OFL, 0, "ada overflow fault");
               }
-            SETHI (CY, tmp18);
+            SETHI (cpu.CY, tmp18);
             cpu . cu . IR = ir;
           }
           break;
@@ -3165,7 +3157,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rA, CY, TST_I_CARRY ? 1 : 0,
+            word36 tmp = Sub36b (cpu . rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -3185,7 +3177,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu . cu . IR;
-            word36 tmp = Sub36b (cpu . rQ, CY, TST_I_CARRY ? 1 : 0,
+            word36 tmp = Sub36b (cpu . rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZERO | I_NEG | I_OFLOW | I_CARRY,
                                  & ir, & ovf);
             if (ovf && tstOVFfault ())
@@ -3211,12 +3203,12 @@ static t_stat DoBasicInstruction (void)
                 * negative 1 and the result exceeding the range of the AQ
                 * register.
                 */
-                word72 tmp72 = (word72) cpu . rA * (word72) CY;
+                word72 tmp72 = (word72) cpu . rA * (word72) cpu.CY;
                 tmp72 &= MASK72;
                 tmp72 <<= 1;    // left adjust so AQ71 contains 0
                 // Overflow can occur only in the case of A and Y containing
                 // negative 1
-                if (cpu . rA == MAXNEG && CY == MAXNEG)
+                if (cpu . rA == MAXNEG && cpu.CY == MAXNEG)
                 {
                     SET_I_OFLOW;
                     if (tstOVFfault ())
@@ -3234,7 +3226,7 @@ static t_stat DoBasicInstruction (void)
 
             {
                 int64_t t0 = SIGNEXT36_64 (cpu . rQ & DMASK);
-                int64_t t1 = SIGNEXT36_64 (CY & DMASK);
+                int64_t t1 = SIGNEXT36_64 (cpu.CY & DMASK);
 
                 __int128_t prod = (__int128_t) t0 * (__int128_t) t1;
 
@@ -3264,24 +3256,24 @@ static t_stat DoBasicInstruction (void)
              * negative indicator reflects the dividend sign.
              */
 
-            if ((cpu . rQ == MAXNEG && CY == NEG136) || (CY == 0))
+            if ((cpu . rQ == MAXNEG && cpu.CY == NEG136) || (cpu.CY == 0))
             {
                 // no division takes place
-                SC_I_ZERO (CY == 0);
+                SC_I_ZERO (cpu.CY == 0);
                 SC_I_NEG (cpu . rQ & SIGN36);
                 doFault(FAULT_DIV, 0, "div divide check");
             }
             else
             {
                 t_int64 dividend = (t_int64) (SIGNEXT36_64(cpu . rQ));
-                t_int64 divisor = (t_int64) (SIGNEXT36_64(CY));
+                t_int64 divisor = (t_int64) (SIGNEXT36_64(cpu.CY));
 
 #ifdef DIV_TRACE
                 sim_debug (DBG_CAC, & cpu_dev, "\n");
                 sim_debug (DBG_CAC, & cpu_dev,
                            ">>> dividend cpu . rQ %lld (%012llo)\n", dividend, cpu . rQ);
                 sim_debug (DBG_CAC, & cpu_dev,
-                           ">>> divisor  CY %lld (%012llo)\n", divisor, CY);
+                           ">>> divisor  CY %lld (%012llo)\n", divisor, cpu.CY);
 #endif
 
                 t_int64 quotient = dividend / divisor;
@@ -3331,7 +3323,7 @@ static t_stat DoBasicInstruction (void)
                   {
                     sim_debug (DBG_ERR, & cpu_dev,
                                "Internal division error;"
-                               " rQ %012llo CY %012llo\n", cpu . rQ, CY);
+                               " rQ %012llo CY %012llo\n", cpu . rQ, cpu.CY);
                   }
 
                 cpu . rA = remainder & DMASK;
@@ -3423,13 +3415,13 @@ static t_stat DoBasicInstruction (void)
             {
                 // This is wrong for MAXNEG
                 //word36 a = cpu . rA & SIGN36 ? -cpu . rA : cpu . rA;
-                //word36 y = CY & SIGN36 ? -CY : CY;
+                //word36 y = cpu.CY & SIGN36 ? -cpu.CY : cpu.CY;
 
                 // If we do the 64 math, the MAXNEG case works
                 t_int64 a = SIGNEXT36_64 (cpu . rA);
                 if (a < 0)
                   a = -a;
-                t_int64 y = SIGNEXT36_64 (CY);
+                t_int64 y = SIGNEXT36_64 (cpu.CY);
                 if (y < 0)
                   y = -y;
 
@@ -3458,7 +3450,7 @@ static t_stat DoBasicInstruction (void)
              * otherwise, the negative indicator is set OFF.
              */
             {
-                word36 Z = ~cpu . rQ & (cpu . rA ^ CY);
+                word36 Z = ~cpu . rQ & (cpu . rA ^ cpu.CY);
                 Z &= DMASK;
 
 // Q  A  Y   ~Q   A^Y   Z
@@ -3480,12 +3472,12 @@ static t_stat DoBasicInstruction (void)
         case 0115:  // cmpa
             // C(A) :: C(Y)
 
-            cmp36(cpu . rA, CY, &cpu . cu.IR);
+            cmp36(cpu . rA, cpu.CY, &cpu . cu.IR);
             break;
 
         case 0116:  // cmpq
             // C(Q) :: C(Y)
-            cmp36(cpu . rQ, CY, &cpu . cu.IR);
+            cmp36(cpu . rQ, cpu.CY, &cpu . cu.IR);
             break;
 
         case 0100:  // cmpx0
@@ -3500,7 +3492,7 @@ static t_stat DoBasicInstruction (void)
             // C(Xn) :: C(Y)0,17
             {
                 uint32 n = opcode & 07;  // get n
-                cmp18(cpu . rX[n], GETHI(CY), &cpu . cu.IR);
+                cmp18(cpu . rX[n], GETHI(cpu.CY), &cpu . cu.IR);
             }
             break;
 
@@ -3513,13 +3505,13 @@ static t_stat DoBasicInstruction (void)
              * interval if C(Y) is not contained within the
              interval.
              */
-            cmp36wl(cpu . rA, CY, cpu . rQ, &cpu . cu.IR);
+            cmp36wl(cpu . rA, cpu.CY, cpu . rQ, &cpu . cu.IR);
             break;
 
         case 0117:  // cmpaq
             // C(AQ) :: C(Y-pair)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);
 
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ &= MASK72;
@@ -3532,18 +3524,18 @@ static t_stat DoBasicInstruction (void)
 
         case 0234:  // szn
             // Set indicators according to C(Y)
-            CY &= DMASK;
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            cpu.CY &= DMASK;
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
             break;
 
         case 0214:  // sznc
             // Set indicators according to C(Y)
-            CY &= DMASK;
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            cpu.CY &= DMASK;
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
             // ... and clear
-            CY = 0;
+            cpu.CY = 0;
             break;
 
         /// BOOLEAN OPERATION INSTRUCTIONS
@@ -3552,7 +3544,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0375:  // ana
             // C(A)i & C(Y)i -> C(A)i for i = (0, 1, ..., 35)
-            cpu . rA = cpu . rA & CY;
+            cpu . rA = cpu . rA & cpu.CY;
             cpu . rA &= DMASK;
             SC_I_ZERO (cpu . rA == 0);
             SC_I_NEG (cpu . rA & SIGN36);
@@ -3561,7 +3553,7 @@ static t_stat DoBasicInstruction (void)
         case 0377:  //< anaq
             // C(AQ)i & C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ = trAQ & tmp72;
                 trAQ &= MASK72;
@@ -3574,7 +3566,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0376:  // anq
             // C(Q)i & C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
-            cpu . rQ = cpu . rQ & CY;
+            cpu . rQ = cpu . rQ & cpu.CY;
             cpu . rQ &= DMASK;
 
             SC_I_ZERO (cpu . rQ == 0);
@@ -3584,22 +3576,22 @@ static t_stat DoBasicInstruction (void)
         case 0355:  // ansa
             // C(A)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             {
-                CY = cpu . rA & CY;
-                CY &= DMASK;
+                cpu.CY = cpu . rA & cpu.CY;
+                cpu.CY &= DMASK;
 
-                SC_I_ZERO (CY == 0);
-                SC_I_NEG (CY & SIGN36);
+                SC_I_ZERO (cpu.CY == 0);
+                SC_I_NEG (cpu.CY & SIGN36);
             }
             break;
 
         case 0356:  // ansq
             // C(Q)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
             {
-                CY = cpu . rQ & CY;
-                CY &= DMASK;
+                cpu.CY = cpu . rQ & cpu.CY;
+                cpu.CY &= DMASK;
 
-                SC_I_ZERO (CY == 0);
-                SC_I_NEG (CY & SIGN36);
+                SC_I_ZERO (cpu.CY == 0);
+                SC_I_NEG (cpu.CY & SIGN36);
             }
             break;
 
@@ -3615,13 +3607,13 @@ static t_stat DoBasicInstruction (void)
             // C(Xn)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = cpu . rX[n] & GETHI(CY);
+                word18 tmp18 = cpu . rX[n] & GETHI(cpu.CY);
                 tmp18 &= MASK18;
 
                 SC_I_ZERO (tmp18 == 0);
                 SC_I_NEG (tmp18 & SIGN18);
 
-                SETHI(CY, tmp18);
+                SETHI(cpu.CY, tmp18);
             }
 
             break;
@@ -3638,7 +3630,7 @@ static t_stat DoBasicInstruction (void)
             // C(Xn)i & C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . rX[n] &= GETHI(CY);
+                cpu . rX[n] &= GETHI(cpu.CY);
                 cpu . rX[n] &= MASK18;
 
                 SC_I_ZERO (cpu . rX[n] == 0);
@@ -3650,7 +3642,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0275:  // ora
             // C(A)i | C(Y)i -> C(A)i for i = (0, 1, ..., 35)
-            cpu . rA = cpu . rA | CY;
+            cpu . rA = cpu . rA | cpu.CY;
             cpu . rA &= DMASK;
 
             SC_I_ZERO (cpu . rA == 0);
@@ -3660,7 +3652,7 @@ static t_stat DoBasicInstruction (void)
         case 0277:  // oraq
             // C(AQ)i | C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ = trAQ | tmp72;
                 trAQ &= MASK72;
@@ -3673,7 +3665,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0276:  // orq
             // C(Q)i | C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
-            cpu . rQ = cpu . rQ | CY;
+            cpu . rQ = cpu . rQ | cpu.CY;
             cpu . rQ &= DMASK;
 
             SC_I_ZERO (cpu . rQ == 0);
@@ -3683,21 +3675,21 @@ static t_stat DoBasicInstruction (void)
 
         case 0255:  // orsa
             // C(A)i | C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
-            CY = cpu . rA | CY;
-            CY &= DMASK;
+            cpu.CY = cpu . rA | cpu.CY;
+            cpu.CY &= DMASK;
 
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
             break;
 
         case 0256:  // orsq
             // C(Q)i | C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
 
-            CY = cpu . rQ | CY;
-            CY &= DMASK;
+            cpu.CY = cpu . rQ | cpu.CY;
+            cpu.CY &= DMASK;
 
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
             break;
 
         case 0240:  // orsx0
@@ -3713,13 +3705,13 @@ static t_stat DoBasicInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
 
-                word18 tmp18 = cpu . rX[n] | GETHI(CY);
+                word18 tmp18 = cpu . rX[n] | GETHI(cpu.CY);
                 tmp18 &= MASK18;
 
                 SC_I_ZERO (tmp18 == 0);
                 SC_I_NEG (tmp18 & SIGN18);
 
-                SETHI(CY, tmp18);
+                SETHI(cpu.CY, tmp18);
             }
             break;
 
@@ -3735,7 +3727,7 @@ static t_stat DoBasicInstruction (void)
             // C(Xn)i | C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . rX[n] |= GETHI(CY);
+                cpu . rX[n] |= GETHI(cpu.CY);
                 cpu . rX[n] &= MASK18;
 
                 SC_I_ZERO (cpu . rX[n] == 0);
@@ -3747,7 +3739,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0675:  // era
             // C(A)i XOR C(Y)i -> C(A)i for i = (0, 1, ..., 35)
-            cpu . rA = cpu . rA ^ CY;
+            cpu . rA = cpu . rA ^ cpu.CY;
             cpu . rA &= DMASK;
 
             SC_I_ZERO (cpu . rA == 0);
@@ -3758,7 +3750,7 @@ static t_stat DoBasicInstruction (void)
         case 0677:  // eraq
             // C(AQ)i XOR C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ = trAQ ^ tmp72;
                 trAQ &= MASK72;
@@ -3772,7 +3764,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0676:  // erq
             // C(Q)i XOR C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
-            cpu . rQ = cpu . rQ ^ CY;
+            cpu . rQ = cpu . rQ ^ cpu.CY;
             cpu . rQ &= DMASK;
             SC_I_ZERO (cpu . rQ == 0);
             SC_I_NEG (cpu . rQ & SIGN36);
@@ -3781,21 +3773,21 @@ static t_stat DoBasicInstruction (void)
         case 0655:  // ersa
             // C(A)i XOR C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
 
-            CY = cpu . rA ^ CY;
-            CY &= DMASK;
+            cpu.CY = cpu . rA ^ cpu.CY;
+            cpu.CY &= DMASK;
 
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
             break;
 
         case 0656:  // ersq
             // C(Q)i XOR C(Y)i -> C(Y)i for i = (0, 1, ..., 35)
 
-            CY = cpu . rQ ^ CY;
-            CY &= DMASK;
+            cpu.CY = cpu . rQ ^ cpu.CY;
+            cpu.CY &= DMASK;
 
-            SC_I_ZERO (CY == 0);
-            SC_I_NEG (CY & SIGN36);
+            SC_I_ZERO (cpu.CY == 0);
+            SC_I_NEG (cpu.CY & SIGN36);
 
             break;
 
@@ -3812,13 +3804,13 @@ static t_stat DoBasicInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
 
-                word18 tmp18 = cpu . rX[n] ^ GETHI(CY);
+                word18 tmp18 = cpu . rX[n] ^ GETHI(cpu.CY);
                 tmp18 &= MASK18;
 
                 SC_I_ZERO (tmp18 == 0);
                 SC_I_NEG (tmp18 & SIGN18);
 
-                SETHI(CY, tmp18);
+                SETHI(cpu.CY, tmp18);
             }
             break;
 
@@ -3834,7 +3826,7 @@ static t_stat DoBasicInstruction (void)
             // C(Xn)i XOR C(Y)i -> C(Xn)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . rX[n] ^= GETHI(CY);
+                cpu . rX[n] ^= GETHI(cpu.CY);
                 cpu . rX[n] &= MASK18;
 
                 SC_I_ZERO (cpu . rX[n] == 0);
@@ -3847,7 +3839,7 @@ static t_stat DoBasicInstruction (void)
         case 0315:  // cana
             // C(Z)i = C(A)i & C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 trZ = cpu . rA & CY;
+                word36 trZ = cpu . rA & cpu.CY;
                 trZ &= MASK36;
 
                 SC_I_ZERO (trZ == 0);
@@ -3858,7 +3850,7 @@ static t_stat DoBasicInstruction (void)
         case 0317:  // canaq
             // C(Z)i = C(AQ)i & C(Y-pair)i for i = (0, 1, ..., 71)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ = trAQ & tmp72;
                 trAQ &= MASK72;
@@ -3871,7 +3863,7 @@ static t_stat DoBasicInstruction (void)
         case 0316:  // canq
             // C(Z)i = C(Q)i & C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 trZ = cpu . rQ & CY;
+                word36 trZ = cpu . rQ & cpu.CY;
                 trZ &= DMASK;
 
                 SC_I_ZERO (trZ == 0);
@@ -3891,11 +3883,11 @@ static t_stat DoBasicInstruction (void)
             // C(Z)i = C(Xn)i & C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = cpu . rX[n] & GETHI(CY);
+                word18 tmp18 = cpu . rX[n] & GETHI(cpu.CY);
                 tmp18 &= MASK18;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "n %o rX %06o HI %06o tmp %06o\n",
-                           n, cpu . rX [n], (word18) (GETHI(CY) & MASK18), tmp18);
+                           n, cpu . rX [n], (word18) (GETHI(cpu.CY) & MASK18), tmp18);
 
                 SC_I_ZERO (tmp18 == 0);
                 SC_I_NEG (tmp18 & SIGN18);
@@ -3907,7 +3899,7 @@ static t_stat DoBasicInstruction (void)
         case 0215:  // cnaa
             // C(Z)i = C(A)i & ~C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 trZ = cpu . rA & ~CY;
+                word36 trZ = cpu . rA & ~cpu.CY;
                 trZ &= DMASK;
 
                 SC_I_ZERO (trZ == 0);
@@ -3918,7 +3910,7 @@ static t_stat DoBasicInstruction (void)
         case 0217:  // cnaaq
             // C(Z)i = C (AQ)i & ~C(Y-pair)i for i = (0, 1, ..., 71)
             {
-                word72 tmp72 = YPAIRTO72(Ypair);   //
+                word72 tmp72 = YPAIRTO72(cpu.Ypair);   //
 
                 word72 trAQ = convertToWord72(cpu . rA, cpu . rQ);
                 trAQ = trAQ & ~tmp72;
@@ -3932,7 +3924,7 @@ static t_stat DoBasicInstruction (void)
         case 0216:  // cnaq
             // C(Z)i = C(Q)i & ~C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 trZ = cpu . rQ & ~CY;
+                word36 trZ = cpu . rQ & ~cpu.CY;
                 trZ &= DMASK;
                 SC_I_ZERO (trZ == 0);
                 SC_I_NEG (trZ & SIGN36);
@@ -3950,7 +3942,7 @@ static t_stat DoBasicInstruction (void)
             // C(Z)i = C(Xn)i & ~C(Y)i for i = (0, 1, ..., 17)
             {
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = cpu . rX[n] & ~GETHI(CY);
+                word18 tmp18 = cpu . rX[n] & ~GETHI(cpu.CY);
                 tmp18 &= MASK18;
 
                 SC_I_ZERO (tmp18 == 0);
@@ -3969,12 +3961,12 @@ static t_stat DoBasicInstruction (void)
             // Zero: If C(AQ) = 0, then ON; otherwise OFF
             // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
 
-            cpu . rE = (Ypair[0] >> 28) & MASK8;
+            cpu . rE = (cpu.Ypair[0] >> 28) & MASK8;
 
-            cpu . rA = (Ypair[0] & FLOAT36MASK) << 8;
-            cpu . rA |= (Ypair[1] >> 28) & MASK8;
+            cpu . rA = (cpu.Ypair[0] & FLOAT36MASK) << 8;
+            cpu . rA |= (cpu.Ypair[1] >> 28) & MASK8;
 
-            cpu . rQ = (Ypair[1] & FLOAT36MASK) << 8;
+            cpu . rQ = (cpu.Ypair[1] & FLOAT36MASK) << 8;
 
             SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
             SC_I_NEG (cpu . rA & SIGN36);
@@ -3987,9 +3979,9 @@ static t_stat DoBasicInstruction (void)
             // Zero: If C(AQ) = 0, then ON; otherwise OFF
             // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
 
-            CY &= DMASK;
-            cpu . rE = (CY >> 28) & 0377;
-            cpu . rA = (CY & FLOAT36MASK) << 8;
+            cpu.CY &= DMASK;
+            cpu . rE = (cpu.CY >> 28) & 0377;
+            cpu . rA = (cpu.CY & FLOAT36MASK) << 8;
             cpu . rQ = 0;
 
             SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
@@ -4002,14 +3994,14 @@ static t_stat DoBasicInstruction (void)
             // C(E) -> C(Y-pair)0,7
             // C(AQ)0,63 -> C(Y-pair)8,71
 
-            Ypair[0] = ((word36)cpu . rE << 28) | ((cpu . rA & 0777777777400LLU) >> 8);
-            Ypair[1] = ((cpu . rA & 0377) << 28) | ((cpu . rQ & 0777777777400LLU) >> 8);
+            cpu.Ypair[0] = ((word36)cpu . rE << 28) | ((cpu . rA & 0777777777400LLU) >> 8);
+            cpu.Ypair[1] = ((cpu . rA & 0377) << 28) | ((cpu . rQ & 0777777777400LLU) >> 8);
 
             break;
 
         case 0472:  // dfstr
 
-            dfstr (Ypair);
+            dfstr (cpu.Ypair);
             break;
 
         case 0455:  // fst
@@ -4017,7 +4009,7 @@ static t_stat DoBasicInstruction (void)
             // C(A)0,27 -> C(Y)8,35
             cpu . rE &= MASK18;
             cpu . rA &= DMASK;
-            CY = ((word36)cpu . rE << 28) | (((cpu . rA >> 8) & 01777777777LL));
+            cpu.CY = ((word36)cpu . rE << 28) | (((cpu . rA >> 8) & 01777777777LL));
             break;
 
         case 0470:  // fstr
@@ -4028,22 +4020,22 @@ static t_stat DoBasicInstruction (void)
 //
 //            // C(E) -> C(Y)0,7
 //            // C(A)0,27 -> C(Y)8,35
-//            CY = ((word36)cpu . rE << 28) | (((cpu . rA >> 8) & 01777777777LL));
+//            cpu.CY = ((word36)cpu . rE << 28) | (((cpu . rA >> 8) & 01777777777LL));
 //
 //            // Zero: If C(Y) = floating point 0, then ON; otherwise OFF
-//            //SCF((CY & 01777777777LL) == 0, cpu . cu.IR, I_ZERO);
+//            //SCF((cpu.CY & 01777777777LL) == 0, cpu . cu.IR, I_ZERO);
 //            bool isZero = cpu . rE == -128 && cpu . rA == 0;
 //            SCF(isZero, cpu . cu.IR, I_ZERO);
 //
 //            // Neg: If C(Y)8 = 1, then ON; otherwise OFF
-//            //SCF(CY & 01000000000LL, cpu . cu.IR, I_NEG);
+//            //SCF(cpu.CY & 01000000000LL, cpu . cu.IR, I_NEG);
 //            SCF(cpu . rA & SIGN36, cpu . cu.IR, I_NEG);
 //
 //            // Exp Ovr: If exponent is greater than +127, then ON
 //            // Exp Undr: If exponent is less than -128, then ON
 //            // XXX: not certain how these can occur here ....
 
-            fstr(&CY);
+            fstr(&cpu.CY);
 
             break;
 
@@ -4238,7 +4230,7 @@ static t_stat DoBasicInstruction (void)
         case 0415:  // ade
             // C(E) + C(Y)0,7 -> C(E)
             {
-                int y = SIGNEXT8_int ((CY >> 28) & 0377);
+                int y = SIGNEXT8_int ((cpu.CY >> 28) & 0377);
                 int e = SIGNEXT8_int (cpu . rE);
                 e = e + y;
 
@@ -4267,15 +4259,15 @@ static t_stat DoBasicInstruction (void)
             // Zero: If C(Y)8,35 = 0, then ON; otherwise OFF
             // Negative: If C(Y)8 = 1, then ON; otherwise OFF
 
-            SC_I_ZERO ((CY & 001777777777LL) == 0);
-            SC_I_NEG (CY & 001000000000LL);
+            SC_I_ZERO ((cpu.CY & 001777777777LL) == 0);
+            SC_I_NEG (cpu.CY & 001000000000LL);
 
             break;
 
         case 0411:  // lde
             // C(Y)0,7 -> C(E)
 
-            cpu . rE = (CY >> 28) & 0377;
+            cpu . rE = (cpu.CY >> 28) & 0377;
             CLR_I_ZERO;
             CLR_I_NEG;
 
@@ -4285,7 +4277,7 @@ static t_stat DoBasicInstruction (void)
             // C(E) -> C(Y)0,7
             // 00...0 -> C(Y)8,17
 
-            putbits36 (& CY, 0, 18, ((word36)(cpu . rE & 0377) << 10));
+            putbits36 (& cpu.CY, 0, 18, ((word36)(cpu . rE & 0377) << 10));
             break;
 
 
@@ -4306,7 +4298,7 @@ static t_stat DoBasicInstruction (void)
                 cpu . PR[7].SNR = cpu . PR[6].SNR;
             cpu . PR[7].RNR = cpu . TPR.TRR;
             if (cpu . TPR.TRR == 0)
-                cpu . PPR.P = SDW->P;
+                cpu . PPR.P = cpu . SDW->P;
             else
                 cpu . PPR.P = 0;
             cpu . PR[7].WORDNO = 0;
@@ -4332,7 +4324,7 @@ static t_stat DoBasicInstruction (void)
             // C(Y)0,17 -> C(PPR.IC)
             // C(Y)18,31 -> C(IR)
 
-            word18 tempIR = GETLO(CY) & 0777770;
+            word18 tempIR = GETLO(cpu.CY) & 0777770;
             // XXX Assuming 'mask privileged mode' is 'temporary absolute mode'
             if (get_addr_mode () != ABSOLUTE_mode) // abs. or temp. abs.
               {
@@ -4362,7 +4354,7 @@ static t_stat DoBasicInstruction (void)
             //           "RET ABS  was %d now %d\n",
             //           TST_I_ABS ? 1 : 0,
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
-            cpu . PPR.IC = GETHI(CY);
+            cpu . PPR.IC = GETHI(cpu.CY);
             cpu . cu.IR = tempIR;
 
             return CONT_TRA;
@@ -4397,18 +4389,18 @@ static t_stat DoBasicInstruction (void)
             //processorCycle = RTCD_OPERAND_FETCH;
 
             sim_debug (DBG_TRACE, & cpu_dev,
-                       "RTCD even %012llo odd %012llo\n", Ypair [0], Ypair [1]);
+                       "RTCD even %012llo odd %012llo\n", cpu.Ypair [0], cpu.Ypair [1]);
 
             // C(Y-pair)3,17 -> C(PPR.PSR)
-            cpu . PPR.PSR = GETHI(Ypair[0]) & 077777LL;
+            cpu . PPR.PSR = GETHI(cpu.Ypair[0]) & 077777LL;
 
             // XXX ticket #16
             // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-            //cpu . PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), cpu . TPR.TRR, SDW->R1);
-            cpu . PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), cpu . TPR.TRR, cpu . RSDWH_R1);
+            //cpu . PPR.PRR = max3(((GETLO(cpu.Ypair[0]) >> 15) & 7), cpu . TPR.TRR, SDW->R1);
+            cpu . PPR.PRR = max3(((GETLO(cpu.Ypair[0]) >> 15) & 7), cpu . TPR.TRR, cpu . RSDWH_R1);
 
             // C(Y-pair)36,53 -> C(PPR.IC)
-            cpu . PPR.IC = GETHI(Ypair[1]);
+            cpu . PPR.IC = GETHI(cpu.Ypair[1]);
 
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RTCD %05o:%06o\n", cpu . PPR . PSR, cpu . PPR . IC);
@@ -4416,7 +4408,7 @@ static t_stat DoBasicInstruction (void)
             // If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
             // otherwise 0 -> C(PPR.P)
             if (cpu . PPR.PRR == 0)
-                cpu . PPR.P = SDW->P;
+                cpu . PPR.P = cpu . SDW->P;
             else
                 cpu . PPR.P = 0;
 
@@ -4847,17 +4839,17 @@ static t_stat DoBasicInstruction (void)
 
             for(uint32 n = 0 ; n < 8 ; n ++)
             {
-                Ypair[0] = Yblock16[n * 2 + 0]; // Even word of ITS pointer pair
-                Ypair[1] = Yblock16[n * 2 + 1]; // Odd word of ITS pointer pair
+                cpu.Ypair[0] = cpu.Yblock16[n * 2 + 0]; // Even word of ITS pointer pair
+                cpu.Ypair[1] = cpu.Yblock16[n * 2 + 1]; // Odd word of ITS pointer pair
 
-                word3 Crr = (GETLO(Ypair[0]) >> 15) & 07; // RNR from ITS pair
+                word3 Crr = (GETLO(cpu.Ypair[0]) >> 15) & 07; // RNR from ITS pair
                 if (get_addr_mode () == APPEND_mode)
-                  cpu . PR[n].RNR = max3(Crr, SDW->R1, cpu . TPR.TRR) ;
+                  cpu . PR[n].RNR = max3(Crr, cpu . SDW->R1, cpu . TPR.TRR) ;
                 else
                   cpu . PR[n].RNR = Crr;
-                cpu . PR[n].SNR = (Ypair[0] >> 18) & MASK15;
-                cpu . PR[n].WORDNO = GETHI(Ypair[1]);
-                cpu . PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
+                cpu . PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
+                cpu . PR[n].WORDNO = GETHI(cpu.Ypair[1]);
+                cpu . PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
             }
 
             break;
@@ -4889,8 +4881,8 @@ static t_stat DoBasicInstruction (void)
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
-                if (((CY >> 34) & 3) != 3)
-                    cpu . PR[n].BITNO = (CY >> 30) & 077;
+                if (((cpu.CY >> 34) & 3) != 3)
+                    cpu . PR[n].BITNO = (cpu.CY >> 30) & 077;
                 else
                   {
 // fim.alm
@@ -4917,19 +4909,19 @@ static t_stat DoBasicInstruction (void)
 // the same, but in a more straightforward manner
 
                // Get the 12 bit operand SNR
-               word12 oSNR = getbits36 (CY, 6, 12);
+               word12 oSNR = getbits36 (cpu.CY, 6, 12);
                // Test for special case
                if (oSNR == 07777)
                  cpu . PR[n] . SNR = 077777;
                else
                  cpu . PR[n] . SNR = oSNR; // usigned word will 0-extend.
                 //C(Y)18,35 -> C(PRn.WORDNO)
-                cpu . PR[n].WORDNO = GETLO(CY);
+                cpu . PR[n].WORDNO = GETLO(cpu.CY);
 
                 sim_debug (DBG_APPENDING, & cpu_dev,
                            "lprp%d CY 0%012llo, PR[n].RNR 0%o, "
                            "PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n",
-                           n, CY, cpu . PR[n].RNR, cpu . PR[n].BITNO, cpu . PR[n].SNR,
+                           n, cpu.CY, cpu . PR[n].RNR, cpu . PR[n].BITNO, cpu . PR[n].SNR,
                            cpu . PR[n].WORDNO);
             }
             break;
@@ -4944,10 +4936,10 @@ static t_stat DoBasicInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[1].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[1].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[1].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[1].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0253:  // spbp3
@@ -4958,10 +4950,10 @@ static t_stat DoBasicInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[3].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[3].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[3].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[3].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0651:  // spbp5
@@ -4972,10 +4964,10 @@ static t_stat DoBasicInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[5].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[5].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[5].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[5].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0653:  // spbp7
@@ -4986,10 +4978,10 @@ static t_stat DoBasicInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[7].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[7].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[7].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[7].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0254:  // spri
@@ -5009,12 +5001,12 @@ static t_stat DoBasicInstruction (void)
 
             for(uint32 n = 0 ; n < 8 ; n++)
             {
-                Yblock16[2 * n] = 043;
-                Yblock16[2 * n] |= ((word36) cpu . PR[n].SNR) << 18;
-                Yblock16[2 * n] |= ((word36) cpu . PR[n].RNR) << 15;
+                cpu.Yblock16[2 * n] = 043;
+                cpu.Yblock16[2 * n] |= ((word36) cpu . PR[n].SNR) << 18;
+                cpu.Yblock16[2 * n] |= ((word36) cpu . PR[n].RNR) << 15;
 
-                Yblock16[2 * n + 1] = (word36) cpu . PR[n].WORDNO << 18;
-                Yblock16[2 * n + 1] |= (word36) cpu . PR[n].BITNO << 9;
+                cpu.Yblock16[2 * n + 1] = (word36) cpu . PR[n].WORDNO << 18;
+                cpu.Yblock16[2 * n + 1] |= (word36) cpu . PR[n].BITNO << 9;
             }
 
             break;
@@ -5030,12 +5022,12 @@ static t_stat DoBasicInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[0].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[0].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[0].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[0].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[0].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[0].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[0].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[0].BITNO << 9;
 
             break;
 
@@ -5050,12 +5042,12 @@ static t_stat DoBasicInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[2].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[2].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[2].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[2].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[2].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[2].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[2].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[2].BITNO << 9;
 
             break;
 
@@ -5070,12 +5062,12 @@ static t_stat DoBasicInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[4].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[4].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[4].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[4].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[4].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[4].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[4].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[4].BITNO << 9;
             break;
 
         case 0652:  // spri6
@@ -5089,12 +5081,12 @@ static t_stat DoBasicInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[6].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[6].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[6].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[6].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[6].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[6].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[6].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[6].BITNO << 9;
             break;
 
         case 0540:  // sprp0
@@ -5121,20 +5113,20 @@ static t_stat DoBasicInstruction (void)
 
                 if (cpu . switches . lprp_highonly)
                   {
-                    CY  =  ((word36) (cpu . PR[n].BITNO & 077)) << 30;
+                    cpu.CY  =  ((word36) (cpu . PR[n].BITNO & 077)) << 30;
                     // lower 12- of 15-bits
-                    CY |=  ((word36) (cpu . PR[n].SNR & 07777)) << 18;
-                    CY |=  cpu . PR[n].WORDNO & PAMASK;
+                    cpu.CY |=  ((word36) (cpu . PR[n].SNR & 07777)) << 18;
+                    cpu.CY |=  cpu . PR[n].WORDNO & PAMASK;
                   }
                 else
                   {
-                    CY  =  ((word36) cpu . PR[n].BITNO) << 30;
+                    cpu.CY  =  ((word36) cpu . PR[n].BITNO) << 30;
                     // lower 12- of 15-bits
-                    CY |=  ((word36) (cpu . PR[n].SNR) & 07777) << 18;
-                    CY |=  cpu . PR[n].WORDNO;
+                    cpu.CY |=  ((word36) (cpu . PR[n].SNR) & 07777) << 18;
+                    cpu.CY |=  cpu . PR[n].WORDNO;
                   }
 
-                CY &= DMASK;    // keep to 36-bits
+                cpu.CY &= DMASK;    // keep to 36-bits
             }
             break;
 
@@ -5149,7 +5141,7 @@ static t_stat DoBasicInstruction (void)
             //   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = opcode & 03;  // get n
-                cpu . PR[n].WORDNO += GETHI(CY);
+                cpu . PR[n].WORDNO += GETHI(cpu.CY);
                 cpu . PR[n].WORDNO &= MASK18;
                 cpu . PR[n].BITNO = 0;
             }
@@ -5164,7 +5156,7 @@ static t_stat DoBasicInstruction (void)
             //   00...0 -> C(PRn.BITNO)
             {
                 uint32 n = (opcode & MASK3) + 4U;  // get n
-                cpu . PR[n].WORDNO += GETHI(CY);
+                cpu . PR[n].WORDNO += GETHI(cpu.CY);
                 cpu . PR[n].WORDNO &= MASK18;
                 cpu . PR[n].BITNO = 0;
             }
@@ -5372,7 +5364,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0550:  // sbar
             // C(BAR) -> C(Y) 0,17
-            SETHI(CY, (cpu . BAR.BASE << 9) | cpu . BAR.BOUND);
+            SETHI(cpu.CY, (cpu . BAR.BASE << 9) | cpu . BAR.BOUND);
 
             break;
 
@@ -5393,9 +5385,9 @@ static t_stat DoBasicInstruction (void)
                 cpu . rA &= DMASK;    // keep to 36-bits
 
                 word36 tmp36 = cpu . rA & MASK36;;
-                word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) ->
+                word36 tmp36q = tmp36 / cpu.CY; // | C(A) | / C(Y) ->
                                             // 4-bit quotient plus remainder
-                word36 tmp36r = tmp36 % CY;
+                word36 tmp36r = tmp36 % cpu.CY;
 
                 cpu . rQ <<= 6;       // Shift C(Q) left six positions
                 cpu . rQ &= DMASK;
@@ -5439,9 +5431,9 @@ static t_stat DoBasicInstruction (void)
 
         case 0230:  // lbar
             // C(Y)0,17 -> C(BAR)
-            cpu . BAR.BASE = (GETHI(CY) >> 9) & 0777; // BAR.BASE is upper 9-bits
+            cpu . BAR.BASE = (GETHI(cpu.CY) >> 9) & 0777; // BAR.BASE is upper 9-bits
                                                 //  (0-8)
-            cpu . BAR.BOUND = GETHI(CY) & 0777;       // BAR.BOUND is next lower
+            cpu . BAR.BOUND = GETHI(cpu.CY) & 0777;       // BAR.BOUND is next lower
                                                 //  9-bits (9-17)
             break;
 
@@ -5460,37 +5452,37 @@ static t_stat DoBasicInstruction (void)
  (((from) >> (35 - (where))) & (word36) (mask))
 
                 case 02: // cache mode register
-                  //CMR = CY;
-                  // CMR . cache_dir_address = <ignored for lcpr>
-                  // CMR . par_bit = <ignored for lcpr>
-                  // CMR . lev_ful = <ignored for lcpr>
-                     CMR . csh1_on = GETBITS (CY, 1, 72 - 54);
-                     CMR . csh2_on = GETBITS (CY, 1, 72 - 55);
-                  // CMR . opnd_on = ; // DPS8, not DPS8M
-                     CMR . inst_on = GETBITS (CY, 1, 72 - 57);
-                     CMR . csh_reg = GETBITS (CY, 1, 72 - 59);
-                  // CMR . str_asd = <ignored for lcpr>
-                  // CMR . col_ful = <ignored for lcpr>
-                  // CMR . rro_AB = GETBITS (CY, 1, 18);
-                     CMR . luf = GETBITS (CY, 3, 72 - 71);
+                  //cpu . CMR = cpu.CY;
+                  // cpu . CMR . cache_dir_address = <ignored for lcpr>
+                  // cpu . CMR . par_bit = <ignored for lcpr>
+                  // cpu . CMR . lev_ful = <ignored for lcpr>
+                     cpu . CMR . csh1_on = GETBITS (cpu.CY, 1, 72 - 54);
+                     cpu . CMR . csh2_on = GETBITS (cpu.CY, 1, 72 - 55);
+                  // cpu . CMR . opnd_on = ; // DPS8, not DPS8M
+                     cpu . CMR . inst_on = GETBITS (cpu.CY, 1, 72 - 57);
+                     cpu . CMR . csh_reg = GETBITS (cpu.CY, 1, 72 - 59);
+                  // cpu . CMR . str_asd = <ignored for lcpr>
+                  // cpu . CMR . col_ful = <ignored for lcpr>
+                  // cpu . CMR . rro_AB = GETBITS (cpu.CY, 1, 18);
+                     cpu . CMR . luf = GETBITS (cpu.CY, 3, 72 - 71);
                   // You need bypass_cache_bit to actually manage the cache,
                   // but it is not stored
                   break;
 
                 case 04: // mode register
-                  MR . cuolin = GETBITS (CY, 1, 18);
-                  MR . solin = GETBITS (CY, 1, 19);
-                  MR . sdpap = GETBITS (CY, 1, 20);
-                  MR . separ = GETBITS (CY, 1, 21);
-                  MR . tm = GETBITS (CY, 3, 23);
-                  MR . vm = GETBITS (CY, 3, 26);
-                  MR . hrhlt = GETBITS (CY, 1, 28);
-                  MR . hrxfr = GETBITS (CY, 1, 29);
-                  MR . ihr = GETBITS (CY, 1, 30);
-                  MR . ihrrs = GETBITS (CY, 1, 31);
-                  MR . mrgctl = GETBITS (CY, 1, 32);
-                  MR . hexfp = GETBITS (CY, 1, 33);
-                  MR . emr = GETBITS (CY, 1, 35);
+                  cpu . MR . cuolin = GETBITS (cpu.CY, 1, 18);
+                  cpu . MR . solin = GETBITS (cpu.CY, 1, 19);
+                  cpu . MR . sdpap = GETBITS (cpu.CY, 1, 20);
+                  cpu . MR . separ = GETBITS (cpu.CY, 1, 21);
+                  cpu . MR . tm = GETBITS (cpu.CY, 3, 23);
+                  cpu . MR . vm = GETBITS (cpu.CY, 3, 26);
+                  cpu . MR . hrhlt = GETBITS (cpu.CY, 1, 28);
+                  cpu . MR . hrxfr = GETBITS (cpu.CY, 1, 29);
+                  cpu . MR . ihr = GETBITS (cpu.CY, 1, 30);
+                  cpu . MR . ihrrs = GETBITS (cpu.CY, 1, 31);
+                  cpu . MR . mrgctl = GETBITS (cpu.CY, 1, 32);
+                  cpu . MR . hexfp = GETBITS (cpu.CY, 1, 33);
+                  cpu . MR . emr = GETBITS (cpu.CY, 1, 35);
                   break;
 
                 case 03: // DPS 8m 0's -> history
@@ -5508,17 +5500,17 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0232:  // ldbr
-            do_ldbr (Ypair);
+            do_ldbr (cpu.Ypair);
             break;
 
         case 0637:  // ldt
             {
 #ifdef REAL_TR
-              word27 val = (CY >> 9) & MASK27;
+              word27 val = (cpu.CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n", val, val);
               setTR (val);
 #else
-              cpu . rTR = (CY >> 9) & MASK27;
+              cpu . rTR = (cpu.CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n", cpu . rTR, cpu . rTR);
 #endif
               // Undocumented feature. return to bce has been observed to
@@ -5547,16 +5539,16 @@ static t_stat DoBasicInstruction (void)
                 case 000: // C(APU history register#1) -> C(Y-pair)
                   {
                     // XXX punt
-                    Ypair [0] = 0;
-                    Ypair [1] = 0;
+                    cpu.Ypair [0] = 0;
+                    cpu.Ypair [1] = 0;
                   }
                   break;
 
                 case 001: // C(fault register) -> C(Y-pair)0,35
                           // 00...0 -> C(Y-pair)36,71
                   {
-                    Ypair [0] = cpu . faultRegister [0];
-                    Ypair [1] = cpu . faultRegister [1];
+                    cpu.Ypair [0] = cpu . faultRegister [0];
+                    cpu.Ypair [1] = cpu . faultRegister [1];
                     cpu . faultRegister [0] = 0;
                     cpu . faultRegister [1] = 0;
                   }
@@ -5565,58 +5557,58 @@ static t_stat DoBasicInstruction (void)
                 case 006: // C(mode register) -> C(Y-pair)0,35
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
-                    Ypair [0] = 0;
-                    putbits36 (& Ypair [0], 18, 1, MR . cuolin);
-                    putbits36 (& Ypair [0], 19, 1, MR . solin);
-                    putbits36 (& Ypair [0], 20, 1, MR . sdpap);
-                    putbits36 (& Ypair [0], 21, 1, MR . separ);
-                    putbits36 (& Ypair [0], 22, 2, MR . tm);
-                    putbits36 (& Ypair [0], 24, 2, MR . vm);
-                    putbits36 (& Ypair [0], 28, 1, MR . hrhlt);
-                    putbits36 (& Ypair [0], 29, 1, MR . hrxfr);
-                    putbits36 (& Ypair [0], 30, 1, MR . ihr);
-                    putbits36 (& Ypair [0], 31, 1, MR . ihrrs);
-                    putbits36 (& Ypair [0], 32, 1, MR . mrgctl);
-                    putbits36 (& Ypair [0], 33, 1, MR . hexfp);
-                    putbits36 (& Ypair [0], 35, 1, MR . emr);
-                    Ypair [1] = 0;
-                    putbits36 (& Ypair [1], 36 - 36, 15,
-                               CMR . cache_dir_address);
-                    putbits36 (& Ypair [1], 51 - 36, 1, CMR . par_bit);
-                    putbits36 (& Ypair [1], 52 - 36, 1, CMR . lev_ful);
-                    putbits36 (& Ypair [1], 54 - 36, 1, CMR . csh1_on);
-                    putbits36 (& Ypair [1], 55 - 36, 1, CMR . csh2_on);
-                    putbits36 (& Ypair [1], 57 - 36, 1, CMR . inst_on);
-                    putbits36 (& Ypair [1], 59 - 36, 1, CMR . csh_reg);
-                    putbits36 (& Ypair [1], 60 - 36, 1, CMR . str_asd);
-                    putbits36 (& Ypair [1], 61 - 36, 1, CMR . col_ful);
-                    putbits36 (& Ypair [1], 62 - 36, 2, CMR . rro_AB);
-                    putbits36 (& Ypair [1], 68 - 36, 1, CMR . bypass_cache);
-                    putbits36 (& Ypair [1], 70 - 36, 2, CMR . luf);
+                    cpu.Ypair [0] = 0;
+                    putbits36 (& cpu.Ypair [0], 18, 1, cpu . MR . cuolin);
+                    putbits36 (& cpu.Ypair [0], 19, 1, cpu . MR . solin);
+                    putbits36 (& cpu.Ypair [0], 20, 1, cpu . MR . sdpap);
+                    putbits36 (& cpu.Ypair [0], 21, 1, cpu . MR . separ);
+                    putbits36 (& cpu.Ypair [0], 22, 2, cpu . MR . tm);
+                    putbits36 (& cpu.Ypair [0], 24, 2, cpu . MR . vm);
+                    putbits36 (& cpu.Ypair [0], 28, 1, cpu . MR . hrhlt);
+                    putbits36 (& cpu.Ypair [0], 29, 1, cpu . MR . hrxfr);
+                    putbits36 (& cpu.Ypair [0], 30, 1, cpu . MR . ihr);
+                    putbits36 (& cpu.Ypair [0], 31, 1, cpu . MR . ihrrs);
+                    putbits36 (& cpu.Ypair [0], 32, 1, cpu . MR . mrgctl);
+                    putbits36 (& cpu.Ypair [0], 33, 1, cpu . MR . hexfp);
+                    putbits36 (& cpu.Ypair [0], 35, 1, cpu . MR . emr);
+                    cpu.Ypair [1] = 0;
+                    putbits36 (& cpu.Ypair [1], 36 - 36, 15,
+                               cpu . CMR . cache_dir_address);
+                    putbits36 (& cpu.Ypair [1], 51 - 36, 1, cpu . CMR . par_bit);
+                    putbits36 (& cpu.Ypair [1], 52 - 36, 1, cpu . CMR . lev_ful);
+                    putbits36 (& cpu.Ypair [1], 54 - 36, 1, cpu . CMR . csh1_on);
+                    putbits36 (& cpu.Ypair [1], 55 - 36, 1, cpu . CMR . csh2_on);
+                    putbits36 (& cpu.Ypair [1], 57 - 36, 1, cpu . CMR . inst_on);
+                    putbits36 (& cpu.Ypair [1], 59 - 36, 1, cpu . CMR . csh_reg);
+                    putbits36 (& cpu.Ypair [1], 60 - 36, 1, cpu . CMR . str_asd);
+                    putbits36 (& cpu.Ypair [1], 61 - 36, 1, cpu . CMR . col_ful);
+                    putbits36 (& cpu.Ypair [1], 62 - 36, 2, cpu . CMR . rro_AB);
+                    putbits36 (& cpu.Ypair [1], 68 - 36, 1, cpu . CMR . bypass_cache);
+                    putbits36 (& cpu.Ypair [1], 70 - 36, 2, cpu . CMR . luf);
                   }
                   break;
 
                 case 010: // C(APU history register#2) -> C(Y-pair)
                   {
                     // XXX punt
-                    Ypair [0] = 0;
-                    Ypair [1] = 0;
+                    cpu.Ypair [0] = 0;
+                    cpu.Ypair [1] = 0;
                   }
                   break;
 
                 case 020: // C(CU history register) -> C(Y-pair)
                   {
                     // XXX punt
-                    Ypair [0] = 0;
-                    Ypair [1] = 0;
+                    cpu.Ypair [0] = 0;
+                    cpu.Ypair [1] = 0;
                   }
                   break;
 
                 case 040: // C(OU/DU history register) -> C(Y-pair)
                   {
                     // XXX punt
-                    Ypair [0] = 0;
-                    Ypair [1] = 0;
+                    cpu.Ypair [0] = 0;
+                    cpu.Ypair [1] = 0;
                   }
                   break;
 
@@ -5638,18 +5630,18 @@ static t_stat DoBasicInstruction (void)
             if (cpu . cycle == EXEC_cycle)
               {
                 // T&D behavior
-                scu2words (Yblock8);
+                scu2words (cpu.Yblock8);
               }
             else
               {
                 // AL-39 behavior
                 for (int i = 0; i < 8; i ++)
-                  Yblock8 [i] = scu_data [i];
+                  cpu.Yblock8 [i] = cpu.scu_data [i];
               }
             break;
 
         case 0154:  // sdbr
-            do_sdbr (Ypair);
+            do_sdbr (cpu.Ypair);
             break;
 
         case 0557:  // ssdp
@@ -5664,14 +5656,14 @@ static t_stat DoBasicInstruction (void)
 #endif
             for (uint i = 0; i < 16; i ++)
               {
-                Yblock16 [i] = 0;
+                cpu.Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i], 0, 15,
-                           SDWAM [toffset + i] . POINTER);
-                putbits36 (& Yblock16 [i], 27, 1,
-                           SDWAM [toffset + i] . F);
-                putbits36 (& Yblock16 [i], 30, 6,
-                           SDWAM [toffset + i] . USE);
+                putbits36 (& cpu.Yblock16 [i], 0, 15,
+                           cpu . SDWAM [toffset + i] . POINTER);
+                putbits36 (& cpu.Yblock16 [i], 27, 1,
+                           cpu . SDWAM [toffset + i] . F);
+                putbits36 (& cpu.Yblock16 [i], 30, 6,
+                           cpu . SDWAM [toffset + i] . USE);
 #endif
               }
           }
@@ -5727,12 +5719,12 @@ static t_stat DoBasicInstruction (void)
 
               //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
               //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
-              int cpu_port_num = query_scbank_map (iefpFinalAddress);
+              int cpu_port_num = query_scbank_map (cpu . iefpFinalAddress);
               if (cpu_port_num < 0)
                 {
                   sim_debug (DBG_ERR, & cpu_dev, 
                              "RSCR: Unable to determine port for address %08o;"
-                             " defaulting to port A\n", iefpFinalAddress);
+                             " defaulting to port A\n", cpu . iefpFinalAddress);
                   cpu_port_num = 0;
                 }
               uint scu_unit_num = cables -> 
@@ -5740,7 +5732,7 @@ static t_stat DoBasicInstruction (void)
                   ports [cpu_port_num] . scu_unit_num;
 
               t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0,
-                                    iefpFinalAddress & MASK15, & cpu . rA, & cpu . rQ);
+                                    cpu . iefpFinalAddress & MASK15, & cpu . rA, & cpu . rQ);
               if (rc)
                 return rc;
             }
@@ -5985,7 +5977,7 @@ static t_stat DoBasicInstruction (void)
             // cioc The system controller addressed by Y (i.e., contains
             // the word at Y) sends a connect signal to the port specified
             // by C(Y) 33,35 .
-            int cpu_port_num = query_scbank_map (iefpFinalAddress);
+            int cpu_port_num = query_scbank_map (cpu . iefpFinalAddress);
 
             // This shouldn't happen; every existing address is contained in a
             // SCU, by defintion.
@@ -5999,7 +5991,7 @@ static t_stat DoBasicInstruction (void)
               {
                 doFault (FAULT_ONC, nem, "(cioc)");
               }
-            uint scu_port_num = CY & MASK3;
+            uint scu_port_num = cpu.CY & MASK3;
             scu_cioc ((uint) scu_unit_num, scu_port_num);
           }
           break;
@@ -6083,7 +6075,7 @@ static t_stat DoBasicInstruction (void)
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
             t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, 
-                                  iefpFinalAddress & MASK15, cpu . rA, cpu . rQ);
+                                  cpu . iefpFinalAddress & MASK15, cpu . rA, cpu . rQ);
             if (rc)
               return rc;
           }
@@ -6431,10 +6423,10 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[0].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[0].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[0].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[0].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0252:  // spbp2
@@ -6445,10 +6437,10 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[2].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[2].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[2].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[2].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0650:  // spbp4
@@ -6459,10 +6451,10 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[4].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[4].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[4].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[4].RNR) << 15;
+            cpu.Ypair[1] = 0;
             break;
 
         case 0652:  // spbp6
@@ -6473,12 +6465,12 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[6].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[6].RNR) << 15;
-            Ypair[1] = 0;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[6].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[6].RNR) << 15;
+            cpu.Ypair[1] = 0;
 
-            //fWrite2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //fWrite2(i, TPR.CA, cpu.Ypair[0], cpu.Ypair[1], OperandWrite, rTAG);
 
             break;
 
@@ -6493,12 +6485,12 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[1].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[1].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[1].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[1].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[1].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[1].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[1].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[1].BITNO << 9;
             break;
 
         case 0253:  // spri3
@@ -6512,12 +6504,12 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[3].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[3].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[3].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[3].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[3].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[3].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[3].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[3].BITNO << 9;
             break;
 
         case 0651:  // spri5
@@ -6531,12 +6523,12 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[5].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[5].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[5].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[5].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[5].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[5].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[5].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[5].BITNO << 9;
             break;
 
         case 0653:  // spri7
@@ -6550,12 +6542,12 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            Ypair[0] = 043;
-            Ypair[0] |= ((word36) cpu . PR[7].SNR) << 18;
-            Ypair[0] |= ((word36) cpu . PR[7].RNR) << 15;
+            cpu.Ypair[0] = 043;
+            cpu.Ypair[0] |= ((word36) cpu . PR[7].SNR) << 18;
+            cpu.Ypair[0] |= ((word36) cpu . PR[7].RNR) << 15;
 
-            Ypair[1] = (word36) cpu . PR[7].WORDNO << 18;
-            Ypair[1]|= (word36) cpu . PR[7].BITNO << 9;
+            cpu.Ypair[1] = (word36) cpu . PR[7].WORDNO << 18;
+            cpu.Ypair[1]|= (word36) cpu . PR[7].BITNO << 9;
             break;
 
         /// Ring Alarm Register
@@ -6564,7 +6556,7 @@ static t_stat DoEISInstruction (void)
             // 00...0 -> C(Y)0,32
             // C(RALR) -> C(Y)33,35
 
-            CY = (word36)cpu . rRALR;
+            cpu.CY = (word36)cpu . rRALR;
 
             break;
 
@@ -6583,7 +6575,7 @@ static t_stat DoEISInstruction (void)
             doFault(FAULT_IPR, ill_proc, "lptr is illproc on DPS8M");
 
         case 0774:  // lra
-            cpu . rRALR = CY & MASK3;
+            cpu . rRALR = cpu.CY & MASK3;
             sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", cpu . rRALR);
             break;
 
@@ -6604,16 +6596,16 @@ static t_stat DoEISInstruction (void)
 #endif
             for (uint i = 0; i < 16; i ++)
               {
-                Yblock16 [i] = 0;
+                cpu.Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i],  0, 15,
-                           PTWAM [toffset + i] . POINTER);
-                putbits36 (& Yblock16 [i], 15, 12,
-                           PTWAM [toffset + i] . PAGENO);
-                putbits36 (& Yblock16 [i], 27,  1,
-                           PTWAM [toffset + i] . F);
-                putbits36 (& Yblock16 [i], 30,  6,
-                           PTWAM [toffset + i] . USE);
+                putbits36 (& cpu.Yblock16 [i],  0, 15,
+                           cpu . PTWAM [toffset + i] . POINTER);
+                putbits36 (& cpu.Yblock16 [i], 15, 12,
+                           cpu . PTWAM [toffset + i] . PAGENO);
+                putbits36 (& cpu.Yblock16 [i], 27,  1,
+                           cpu . PTWAM [toffset + i] . F);
+                putbits36 (& cpu.Yblock16 [i], 30,  6,
+                           cpu . PTWAM [toffset + i] . USE);
 #endif
               }
           }
@@ -6631,10 +6623,10 @@ static t_stat DoEISInstruction (void)
 #endif
             for (uint i = 0; i < 16; i ++)
               {
-                Yblock16 [i] = 0;
+                cpu.Yblock16 [i] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
-                putbits36 (& Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
+                putbits36 (& cpu.Yblock16 [i], 0, 13, cpu . PTWAM [toffset + i] . ADDR);
+                putbits36 (& cpu.Yblock16 [i], 29, 1, cpu . PTWAM [toffset + i] . M);
 #endif
               }
           }
@@ -6652,37 +6644,37 @@ static t_stat DoEISInstruction (void)
 #endif
             for (uint i = 0; i < 16; i ++)
               {
-                Yblock32 [i * 2] = 0;
+                cpu.Yblock32 [i * 2] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock32 [i * 2],  0, 23,
-                           SDWAM [toffset + i] . ADDR);
-                putbits36 (& Yblock32 [i * 2], 24,  3,
-                           SDWAM [toffset + i] . R1);
-                putbits36 (& Yblock32 [i * 2], 27,  3,
-                           SDWAM [toffset + i] . R2);
-                putbits36 (& Yblock32 [i * 2], 30,  3,
-                           SDWAM [toffset + i] . R3);
+                putbits36 (& cpu.Yblock32 [i * 2],  0, 23,
+                           cpu . SDWAM [toffset + i] . ADDR);
+                putbits36 (& cpu.Yblock32 [i * 2], 24,  3,
+                           cpu . SDWAM [toffset + i] . R1);
+                putbits36 (& cpu.Yblock32 [i * 2], 27,  3,
+                           cpu . SDWAM [toffset + i] . R2);
+                putbits36 (& cpu.Yblock32 [i * 2], 30,  3,
+                           cpu . SDWAM [toffset + i] . R3);
 #endif
-                Yblock32 [i * 2 + 1] = 0;
+                cpu.Yblock32 [i * 2 + 1] = 0;
 #ifndef SPEED
-                putbits36 (& Yblock32 [i * 2 + 1], 37 - 36, 14,
-                           SDWAM [toffset + i] . BOUND);
-                putbits36 (& Yblock32 [i * 2 + 1], 51 - 36,  1,
-                           SDWAM [toffset + i] . R);
-                putbits36 (& Yblock32 [i * 2 + 1], 52 - 36,  1,
-                           SDWAM [toffset + i] . E);
-                putbits36 (& Yblock32 [i * 2 + 1], 53 - 36,  1,
-                           SDWAM [toffset + i] . W);
-                putbits36 (& Yblock32 [i * 2 + 1], 54 - 36,  1,
-                           SDWAM [toffset + i] . P);
-                putbits36 (& Yblock32 [i * 2 + 1], 55 - 36,  1,
-                           SDWAM [toffset + i] . U);
-                putbits36 (& Yblock32 [i * 2 + 1], 56 - 36,  1,
-                           SDWAM [toffset + i] . G);
-                putbits36 (& Yblock32 [i * 2 + 1], 57 - 36,  1,
-                           SDWAM [toffset + i] . C);
-                putbits36 (& Yblock32 [i * 2 + 1], 58 - 36, 14,
-                           SDWAM [toffset + i] . CL);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 37 - 36, 14,
+                           cpu . SDWAM [toffset + i] . BOUND);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 51 - 36,  1,
+                           cpu . SDWAM [toffset + i] . R);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 52 - 36,  1,
+                           cpu . SDWAM [toffset + i] . E);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 53 - 36,  1,
+                           cpu . SDWAM [toffset + i] . W);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 54 - 36,  1,
+                           cpu . SDWAM [toffset + i] . P);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 55 - 36,  1,
+                           cpu . SDWAM [toffset + i] . U);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 56 - 36,  1,
+                           cpu . SDWAM [toffset + i] . G);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 57 - 36,  1,
+                           cpu . SDWAM [toffset + i] . C);
+                putbits36 (& cpu.Yblock32 [i * 2 + 1], 58 - 36, 14,
+                           cpu . SDWAM [toffset + i] . CL);
 #endif
               }
           }
@@ -6707,18 +6699,18 @@ static t_stat DoEISInstruction (void)
             {
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
-                if (getbits36 (CY, 23, 1) != 0)
+                if (getbits36 (cpu.CY, 23, 1) != 0)
                   doFault (FAULT_IPR, ill_proc, "aarn C(Y)23 != 0");
 
                 uint32 n = opcode & 07;  // get
 
                 // C(Y)0,17 -> C(ARn.WORDNO)
-                cpu . AR[n].WORDNO = GETHI(CY);
+                cpu . AR[n].WORDNO = GETHI(cpu.CY);
 
-                //int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21-22
-                //int CN = (int)bitfieldExtract36(CY, 15, 3); // C(Y) 18-20
-                uint TA = getbits36 (CY, 21, 2);
-                uint CN = getbits36 (CY, 18, 3);
+                //int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21-22
+                //int CN = (int)bitfieldExtract36(cpu.CY, 15, 3); // C(Y) 18-20
+                uint TA = getbits36 (cpu.CY, 21, 2);
+                uint CN = getbits36 (cpu.CY, 18, 3);
 
                 switch(TA)
                 {
@@ -6769,16 +6761,16 @@ static t_stat DoEISInstruction (void)
             // -> C(ARn)
             {
                 uint32 n = opcode & 07;  // get n
-                cpu . AR[n].WORDNO = GETHI(CY);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4),
-                                 (word2)bitfieldExtract36(CY, 16, 2));
+                cpu . AR[n].WORDNO = GETHI(cpu.CY);
+                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
+                                 (word2)bitfieldExtract36(cpu.CY, 16, 2));
             }
             break;
 
         case 0463:  // lareg - Load Address Registers
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
-                word36 tmp36 = Yblock8[n];
+                word36 tmp36 = cpu.Yblock8[n];
 
                 cpu . AR[n].WORDNO = GETHI(tmp36);
                 SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
@@ -6787,7 +6779,7 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0467:  // lpl - Load Pointers and Lengths
-            words2du (Yblock8);
+            words2du (cpu.Yblock8);
             break;
 
         case 0660: // narn -  (G'Kar?) Numeric Descriptor to Address Register n
@@ -6804,12 +6796,12 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get
 
                 // C(Y)0,17 -> C(ARn.WORDNO)
-                cpu . AR[n].WORDNO = GETHI(CY);
+                cpu . AR[n].WORDNO = GETHI(cpu.CY);
 
-                //int TN = (int)bitfieldExtract36(CY, 13, 1); // C(Y) 21
-                //int CN = (int)bitfieldExtract36(CY, 15, 3); // C(Y) 18-20
-                uint TN = getbits36 (CY, 21, 1); // C(Y) 21
-                uint CN = getbits36 (CY, 18, 3); // C(Y) 18-20
+                //int TN = (int)bitfieldExtract36(cpu.CY, 13, 1); // C(Y) 21
+                //int CN = (int)bitfieldExtract36(cpu.CY, 15, 3); // C(Y) 18-20
+                uint TN = getbits36 (cpu.CY, 21, 1); // C(Y) 21
+                uint CN = getbits36 (cpu.CY, 18, 3); // C(Y) 18-20
 
                 switch(TN)
                 {
@@ -6848,20 +6840,20 @@ static t_stat DoEISInstruction (void)
                 // The alphanumeric descriptor is fetched from Y and C(Y)21,22
                 // (TA field) is examined to determine the data type described.
 
-                int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21,22
+                int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21,22
 
                 // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit),
                 // an illegal procedure fault occurs.
                 if (TA == 03)
                   doFault (FAULT_IPR, ill_proc, "ARAn tag == 3");
-                if (getbits36 (CY, 23, 1) != 0)
+                if (getbits36 (cpu.CY, 23, 1) != 0)
                   doFault (FAULT_IPR, ill_proc, "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
+                cpu.CY = bitfieldInsert36(cpu.CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR)
                 // and C(ARn.BITNO) are translated to an equivalent character
@@ -6875,22 +6867,22 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
+                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
-                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
+                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
-                        CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
+                        cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
                         break;
                 }
             }
@@ -6910,11 +6902,11 @@ static t_stat DoEISInstruction (void)
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA
                 // field) is examined to determine the data type described.
 
-                int TN = (int)bitfieldExtract36(CY, 14, 1); // C(Y) 21
+                int TN = (int)bitfieldExtract36(cpu.CY, 14, 1); // C(Y) 21
 
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
+                cpu.CY = bitfieldInsert36(cpu.CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
 
                 int CN = 0;
                 switch(TN)
@@ -6924,15 +6916,15 @@ static t_stat DoEISInstruction (void)
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 ->
                         //     C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
+                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
-                        CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
+                        cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
                         break;
                 }
             }
@@ -6951,14 +6943,14 @@ static t_stat DoEISInstruction (void)
             //  C(Y)24,35 -> unchanged
             {
                 uint32 n = opcode & 07;  // get n
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
-                CY = bitfieldInsert36(CY, GET_AR_BITNO (n) & MASK4,  12,  4);
-                CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2,   16,  2);
+                cpu.CY = bitfieldInsert36(cpu.CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
+                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
+                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
             }
             break;
 
         case 0443:  // sareg - Store Address Registers
-            memset(Yblock8, 0, sizeof(Yblock8));
+            memset(cpu.Yblock8, 0, sizeof(cpu.Yblock8));
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
@@ -6966,12 +6958,12 @@ static t_stat DoEISInstruction (void)
                 arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
                 arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
 
-                Yblock8[n] = arx;
+                cpu.Yblock8[n] = arx;
             }
             break;
 
         case 0447:  // spl - Store Pointers and Lengths
-            du2words (Yblock8);
+            du2words (cpu.Yblock8);
           break;
 
         /// EIS - Address Register Special Arithmetic
@@ -7689,11 +7681,11 @@ void doRCU (void)
       {
         for (int i = 0; i < 8; i ++)
           {
-            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012llo\n", i, Yblock8 [i]);
+            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012llo\n", i, cpu.Yblock8 [i]);
           }
       }
 
-    words2scu (Yblock8);
+    words2scu (cpu.Yblock8);
 
 // Restore addressing mode
 
@@ -7840,8 +7832,6 @@ void doRCU (void)
   }
 
 #ifdef REAL_TR
-static uint timerRegVal;
-static struct timeval timerRegT0;
 //static bool overrunAck;
 
 void setTR (word27 val)
@@ -7849,18 +7839,18 @@ void setTR (word27 val)
     val &= MASK27;
     if (val)
       {
-        timerRegVal = val & MASK27;
+        cpu.timerRegVal = val & MASK27;
       }
     else
       {
         // Special case
-        timerRegVal = -1 & MASK27;
+        cpu.timerRegVal = -1 & MASK27;
       }
-    gettimeofday (& timerRegT0, NULL);
+    gettimeofday (& cpu.timerRegT0, NULL);
     //overrunAck = false;
 
 //sim_printf ("tr set %10u %09o %10lu%06lu\n",
-//  val, timerRegVal, timerRegT0 . tv_sec, timerRegT0 . tv_usec);
+//  val, cpu.timerRegVal, cpu.timerRegT0 . tv_sec, cpu.timerRegT0 . tv_usec);
   }
 
 word27 getTR (bool * runout)
@@ -7868,7 +7858,7 @@ word27 getTR (bool * runout)
 #if 0
     struct timeval tnow, tdelta;
     gettimeofday (& tnow, NULL);
-    timersub (& tnow, & timerRegT0, & tdelta);
+    timersub (& tnow, & cpu.timerRegT0, & tdelta);
     // 1000000 can be represented in 20 bits; so in a 64 bit word, we have 
     // room for 44 bits of seconds, way more then enough.
     // Do 64 bit math; much faster.
@@ -7882,15 +7872,15 @@ word27 getTR (bool * runout)
     uint128 t0us, tnowus, delta;
     struct timeval tnow;
     gettimeofday (& tnow, NULL);
-    t0us = timerRegT0 . tv_sec * 1000000 + timerRegT0 . tv_usec;
+    t0us = cpu.timerRegT0 . tv_sec * 1000000 + cpu.timerRegT0 . tv_usec;
     tnowus = tnow . tv_sec * 1000000 + tnow . tv_usec;
     //delta = (tnowus - t0us) / 1.953125
     delta = ((tnowus - t0us) * 1000000) / 1953125;
 #endif
     if (runout)
-     //* runout = (! overrunAck) && delta > timerRegVal;
-     * runout = delta > timerRegVal;
-    word27 val = (timerRegVal - delta) & MASK27;
+     //* runout = (! overrunAck) && delta > cpu.timerRegVal;
+     * runout = delta > cpu.timerRegVal;
+    word27 val = (cpu.timerRegVal - delta) & MASK27;
 //if (val % 100000 == 0)
 // sim_printf ("tr get %10u %09o %8llu %s\n",
 // val, val, (unsigned long long) delta,

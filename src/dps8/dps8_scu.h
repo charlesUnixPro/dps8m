@@ -49,6 +49,11 @@ typedef struct
     word4 id;
     word18 modeReg;
 
+    uint elapsed_days;
+    uint steady_clock;    // If non-zero the clock is tied to the cycle counter
+    uint bullet_time;
+    uint y2k;
+
 } scu_t;
 
 extern scu_t scu [N_SCU_UNITS_MAX];

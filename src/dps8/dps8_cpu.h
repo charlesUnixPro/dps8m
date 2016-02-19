@@ -1,8 +1,7 @@
 
 // simh only explicitly supports a single cpu
 
-#define N_CPU_UNITS 1
-#define CPU_UNIT_NUM 0
+#define N_CPU_UNITS 1 // Default
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
@@ -54,18 +53,6 @@ typedef enum
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
-
-#ifndef QUIET_UNUSED
-// MF fields of EIS multi-word instructions -- 7 bits 
-
-typedef struct
-  {
-    bool ar;
-    bool rl;
-    bool id;
-    uint reg;  // 4 bits
-  } eis_mf_t;
-#endif
 
 struct _tpr
   {
@@ -225,7 +212,7 @@ struct _dsbr
 // the descriptor segment whose description is currently loaded into the
 // descriptor segment base register (DSBR).
 
-extern struct _sdw
+struct _sdw
   {
     word24  ADDR;    // The 24-bit absolute main memory address of the page
                      //  table for the target segment if SDWAM . U = 0;
@@ -277,18 +264,13 @@ extern struct _sdw
                      //  and the queue is reordered. SDWs newly fetched from
                      //  main memory replace the SDW with USE value 0 (oldest)
                      //  and the queue is reordered.
-  }
-#ifdef SPEED
-     SDWAM0, * SDW;
-#else
-     SDWAM [64], * SDW;
-#endif
+  };
 
 typedef struct _sdw _sdw;
 
 // in-core SDW (i.e. not cached, or in SDWAM)
 
-extern struct _sdw0
+struct _sdw0
   {
     // even word
     word24  ADDR;    // The 24-bit absolute main memory address of the page
@@ -334,14 +316,14 @@ extern struct _sdw0
                      //  cache memory.
     word14  EB;      // Entry bound. Any call into this segment must be to
                      //  an offset less than EB if G=0
-} SDW0;
+};
 
 typedef struct _sdw0 _sdw0;
 
 
 // PTW as used by APU
 
-extern struct _ptw
+struct _ptw
  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
@@ -368,18 +350,13 @@ extern struct _ptw
                      //  PTW with USE value 0 (oldest) and the queue is
                      //  reordered.
     
-  }
-#ifdef SPEED
-     PTWAM0, * PTW;
-#else
-     PTWAM [64], * PTW;
-#endif
+  };
 
 typedef struct _ptw _ptw;
 
 // in-core PTW
 
-extern struct _ptw0
+struct _ptw0
   {
     word18  ADDR;   // The 18 high-order bits of the 24-bit absolute main
                     //  memory address of the page.
@@ -390,7 +367,7 @@ extern struct _ptw0
                     // * 1 = page is in main memory
     word2   FC;     // Directed fault number for page fault.
     
-  } PTW0;
+  };
 
 typedef struct _ptw0 _ptw0;
 
@@ -421,7 +398,6 @@ struct _cache_mode_register
   };
 
 typedef struct _cache_mode_register _cache_mode_register;
-extern _cache_mode_register CMR;
 
 typedef struct mode_registr
   {
@@ -439,8 +415,6 @@ typedef struct mode_registr
     word1 hexfp;
     word1 emr;
   } _mode_register;
-
-extern _mode_register MR;
 
 extern DEVICE cpu_dev;
 extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
@@ -675,7 +649,6 @@ typedef struct
     uint dis_enable;      // If non-zero, DIS works
     uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
     uint lprp_highonly;   // If non-zero lprp only sets the high bits
-    uint steady_clock;    // If non-zero the clock is tied to the cycle counter
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after;
     uint super_user;
@@ -683,11 +656,9 @@ typedef struct
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
     uint disable_wam;     // If non-zero, disable PTWAM, STWAM
-    uint bullet_time;
     uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
-    uint y2k;
     uint drl_fatal;
     uint trlsb; // Timer Register least significent bits: the number of 
                 // instructions that make a timer quantum.
@@ -1014,7 +985,7 @@ typedef struct du_unit_data_t
 // is taken. It should probably be merged into here, and then this
 // should then be renamed.
 
-#define N_CPU_UNITS_MAX 1
+#define N_CPU_UNITS_MAX 8
 
 typedef struct
   {
@@ -1071,20 +1042,58 @@ typedef struct
     word3    RSDWH_R1; // Track the ring number of the last SDW
     struct _tpr TPR;   // Temporary Pointer Register
     struct _ppr PPR;   // Procedure Pointer Register
-    struct _par PAR [8]; // pointer/address resister
+    struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
-
+#ifdef SPEED
+    struct _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+#else
+    struct _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+#endif
+    struct _sdw * SDW; // working SDW
+    struct _sdw0 SDW0; // a SDW not in SDWAM
+    struct _sdw0 _s;
+#ifdef SPEED
+    struct _ptw PTWAM0;
+#else
+    struct _ptw PTWAM [64];
+#endif
+    struct _ptw * PTW;
+    struct _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
+    _cache_mode_register CMR;
+    _mode_register MR;
+    bool bTroubleFaultCycle;
+    uint g7Faults;
+    _fault_subtype  g7SubFaults [N_FAULTS];
+    word24 iefpFinalAddress;
+    word36 CY;              // C(Y) operand data from memory
+    word36 Ypair[2];        // 2-words
+    word36 Yblock8[8];      // 8-words
+    word36 Yblock16[16];    // 16-words
+    word36 Yblock32[32];    // 32-words
+    word36 scu_data[8];    // For SCU instruction
+#ifdef REAL_TR
+    uint timerRegVal;
+    struct timeval timerRegT0;
+    uint trSubsample;
+#else
+    uint rTRlsb;
+#endif
+    // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
+    word36 instr_buf [2];
+    uint64 lufCounter;
+    bool secret_addressing_mode;
+    bool went_appending; // we will go....
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN
-extern cpu_state_t cpu [N_CPU_UNITS_MAX];
-extern init currentRunningCPUnum;
-extern cpu_state_t * restrict CPU;
+extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+extern uint currentRunningCPUnum;
+extern cpu_state_t * restrict cpup;
+#define cpu (& cpup)
 #else
 extern cpu_state_t cpu;
-#define CPU (& cpu)
-#define currentRunnitCPUnum 0
+#define currentRunningCPUnum 0
 #endif
 
 //extern int stop_reason;     // sim_instr return value for JMP_STOP
@@ -1142,7 +1151,7 @@ t_stat dpsCmd_Dump (int32 arg, char *buf);
 t_stat dpsCmd_Init (int32 arg, char *buf);
 t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
-t_stat dumpKST (int32 arg, char * buf);
+//t_stat dumpKST (int32 arg, char * buf);
 t_stat memWatch (int32 arg, char * buf);
 _sdw0 *fetchSDW (word15 segno);
 char *strSDW0 (_sdw0 *SDW);
