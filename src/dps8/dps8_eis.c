@@ -15,6 +15,7 @@
 #include "dps8_faults.h"
 #include "dps8_iefp.h"
 #include "dps8_decimal.h"
+#include "dps8_ins.h"
 
 //  Restart status
 //
@@ -4963,7 +4964,7 @@ void mvn (void)
         PRINTDEC("mvn input (op1)", op1);
     }
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op1, dstTN, e->N2, e->S2, e->SF2, R, &Ovr, &Trunc);
     
@@ -5078,9 +5079,15 @@ void mvn (void)
     if (e->S2 == CSFL)
     {
         if (op1->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op1->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op1) && !decNumberIsZero(op1)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -5091,20 +5098,16 @@ void mvn (void)
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
-    }
-    
+    if (TST_I_TRUNC && T && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"mvn truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"mvn over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
+        if (tstOVFfault ())
           doFault(FAULT_OFL, 0,"mvn overflow fault");
     }
-
 }
 
 
@@ -5288,10 +5291,7 @@ void csl (bool isSZTL)
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
 
-    if (cpu . du . Z)
-      SETF (cpu . cu . IR, I_ZERO);
-    else
-      CLRF (cpu . cu . IR, I_ZERO);
+    SC_I_ZERO (cpu . du . Z);
     if (e->N1 > e->N2)
     {
         // NOTES: If N1 > N2, the low order (N1-N2) bits of C(Y-bit1) are not
@@ -5301,7 +5301,7 @@ void csl (bool isSZTL)
         // instruction, then a truncation (overflow) fault occurs.
         
         SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
+        if (T && ! tstOVFfault ())
         {
             doFault(FAULT_OFL, 0, "csl truncation fault");
         }
@@ -5572,7 +5572,7 @@ void csr (bool isSZTR)
         // instruction, then a truncation (overflow) fault occurs.
         
         SETF(cpu . cu.IR, I_TRUNC);
-        if (T)
+        if (T && tstOVFfault ())
         {
             doFault(FAULT_OFL, 0, "csr truncation fault");
         }
@@ -6553,7 +6553,7 @@ void ad2d (void)
     
     decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N2, e->S2, e->SF2, R, &Ovr, &Trunc);
 
@@ -6644,9 +6644,15 @@ void ad2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -6658,18 +6664,15 @@ void ad2d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"ad2d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"ad2d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"ad2d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"ad2d overflow fault");
     }
 }
 
@@ -6820,7 +6823,7 @@ void ad3d (void)
     
     decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     int jf = calcSF(e->SF1, e->SF2, e->SF3);    // justification factor
     
@@ -6940,9 +6943,15 @@ void ad3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -6954,18 +6963,15 @@ void ad3d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
-    }
-    
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"ad3d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"ad3d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"ad3d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"ad3d overflow fault");
     }
 }
 
@@ -7079,7 +7085,7 @@ void sb2d (void)
     
     decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N2, e->S2, e->SF2, R, &Ovr, &Trunc);
     
@@ -7171,9 +7177,15 @@ void sb2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -7185,18 +7197,15 @@ void sb2d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"sb2d truncation (overflow) fault");
-    }
-    
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"sb2d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"sb2d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"sb2d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"sb2d overflow fault");
     }
 }
 
@@ -7310,7 +7319,7 @@ void sb3d (void)
     
     decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N3, e->S3, e->SF3, R, &Ovr, &Trunc);
     
@@ -7419,9 +7428,15 @@ void sb3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -7433,18 +7448,15 @@ void sb3d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"sb3d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"sb3d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"sb3d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"sb3d overflow fault");
     }
 }
 
@@ -7559,7 +7571,7 @@ void mp2d (void)
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N2, e->S2, e->SF2, R, &Ovr, &Trunc);
     
@@ -7649,9 +7661,15 @@ void mp2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -7663,20 +7681,16 @@ void mp2d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"mp2d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"mp2d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"mp2d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"mp2d overflow fault");
     }
-    
 }
 
 /*
@@ -7788,7 +7802,7 @@ void mp3d (void)
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N3, e->S3, e->SF3, R, &Ovr, &Trunc);
     
@@ -7898,9 +7912,15 @@ void mp3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -7912,18 +7932,15 @@ void mp3d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"mp3d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"mp3d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"mp3d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"mp3d overflow fault");
     }
 }
 
@@ -8815,7 +8832,7 @@ void dv2d (void)
     
     
     
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimalDIV(&set, op3, dstTN, e->N2, e->S2, e->SF2, R, op2, op1, &Ovr, &Trunc);
     
@@ -8903,9 +8920,15 @@ void dv2d (void)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -8917,18 +8940,15 @@ void dv2d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"dv2d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"dv2d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"dv2d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"dv2d overflow fault");
     }
 }
 
@@ -9079,7 +9099,7 @@ void dv3d (void)
         (set.status & DEC_Division_by_zero)
         ) doFault(FAULT_DIV, 0, "dv3d anomalous results");
 
-    bool Ovr = false, Trunc = false;
+    bool Ovr = false, EOvr = false, Trunc = false;
      
     char *res = formatDecimalDIV(&set, op3, dstTN, e->N3, e->S3, e->SF3, R, op2, op1, &Ovr, &Trunc);
     
@@ -9188,9 +9208,15 @@ void dv3d (void)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
+        {
             SETF(cpu . cu.IR, I_EOFL);
+            EOvr = true;
+        }
         if (op3->exponent < -128)
-            SETF(cpu . cu.IR, I_EUFL);
+        {
+            SET_I_EUFL;
+            EOvr = true;
+        }
     }
     
     SCF((decNumberIsNegative(op3) && !decNumberIsZero(op3)), cpu . cu.IR, I_NEG);  // set negative indicator if op3 < 0
@@ -9202,17 +9228,14 @@ void dv3d (void)
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
     
-    if (Trunc)
-    {
-        SETF(cpu . cu.IR, I_TRUNC);
-        if (T && ! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
-    }
-
+    if (TST_I_TRUNC && T && tstOVFfault ())
+      doFault(FAULT_OFL, 0,"dv3d truncation(overflow) fault");
+    if (EOvr && tstOVFfault ())
+        doFault(FAULT_OFL, 0,"dv3d over/underflow fault");
     if (Ovr)
     {
         SETF(cpu . cu.IR, I_OFLOW);
-        if (! TSTF (cpu . cu.IR, I_OMASK))
-            doFault(FAULT_OFL, 0,"dv3d overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0,"dv3d overflow fault");
     }
 }

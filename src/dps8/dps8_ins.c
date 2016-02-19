@@ -1133,7 +1133,7 @@ force:;
 
   }
 
-static bool tstOVFfault (void)
+bool tstOVFfault (void)
   {
     // Masked?
     if (TST_I_OMASK)
@@ -1774,6 +1774,7 @@ restart_1:
             // a:AL39/rpd9
             uint x = bitfieldExtract (cpu . rX [0], 10, 8);
             x -= 1;
+            x &= MASK8;
             cpu . rX [0] = bitfieldInsert (cpu . rX [0], x, 10, 8);
 
             //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
@@ -2070,71 +2071,39 @@ static t_stat DoBasicInstruction (void)
               {
                 word72 tmp72 = 0;
 
-                tmp72 = bitfieldInsert72(tmp72, Ypair[0], 36, 36);
-                tmp72 = bitfieldInsert72(tmp72, Ypair[1],  0, 36);
+                tmp72 = bitfieldInsert72(tmp72, Ypair[0] & MASK36, 36, 36);
+                tmp72 = bitfieldInsert72(tmp72, Ypair[1] & MASK36,  0, 36);
 
                 tmp72 = ~tmp72 + 1;
 
                 cpu . rA = bitfieldExtract72(tmp72, 36, 36);
                 cpu . rQ = bitfieldExtract72(tmp72,  0, 36);
 
-                if (cpu . rA == 0 && cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
               }
           }
           break;
 
         case 0235:  // lda
             cpu . rA = CY;
-
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
             break;
 
         case 0034: // ldac
             cpu . rA = CY;
-
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
             CY = 0;
-
             break;
 
         case 0237:  // ldaq
             cpu . rA = Ypair[0];
             cpu . rQ = Ypair[1];
-
-            if (cpu . rA == 0 && cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0)
+            SC_I_NEG (cpu . rA & SIGN36);
             break;
-
 
         case 0634:  // ldi
             {
@@ -2183,32 +2152,15 @@ static t_stat DoBasicInstruction (void)
 
         case 0236:  // ldq
             cpu . rQ = CY;
-
-            if (cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-            if (cpu . rQ & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
             break;
 
         case 0032: // ldqc
             cpu . rQ = CY;
-
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
             CY = 0;
-
-            if (cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-            if (cpu . rQ & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
             break;
 
         case 0220:  // ldx0
@@ -2222,15 +2174,8 @@ static t_stat DoBasicInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 cpu . rX[n] = GETHI(CY);
-
-                if (cpu . rX[n] == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-                if (cpu . rX[n] & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rX[n] == 0);
+                SC_I_NEG (cpu . rX[n] & SIGN18);
             }
             break;
 
@@ -2261,14 +2206,8 @@ static t_stat DoBasicInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 cpu . rX[n] = GETLO(CY);
-                if (cpu . rX[n] == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-                if (cpu . rX[n] & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rX[n] == 0);
+                SC_I_NEG (cpu . rX[n] & SIGN18);
             }
             break;
 
@@ -2478,15 +2417,8 @@ static t_stat DoBasicInstruction (void)
                 }
                 cpu . rA &= DMASK;    // keep to 36-bits
 
-                if (cpu . rA == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
             }
             break;
 
@@ -2505,15 +2437,8 @@ static t_stat DoBasicInstruction (void)
                 }
                 cpu . rA &= DMASK;    // keep to 36-bits
 
-                if (cpu . rA == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
             }
             break;
 
@@ -2527,15 +2452,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rA >>= tmp36;
                 cpu . rA &= DMASK;    // keep to 36-bits
 
-                if (cpu . rA == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
             }
             break;
 
@@ -2556,15 +2474,8 @@ static t_stat DoBasicInstruction (void)
               }
             cpu . rA &= DMASK;    // keep to 36-bits
 
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
           }
           break;
 
@@ -2594,14 +2505,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rA &= DMASK;    // keep to 36-bits
                 cpu . rQ &= DMASK;
 
-                if (cpu . rA == 0 && cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
             }
             break;
 
@@ -2631,15 +2536,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rA &= DMASK;    // keep to 36-bits
             cpu . rQ &= DMASK;
 
-            if (cpu . rA == 0 && cpu . rQ == 0)
-              SET_I_ZERO;
-            else
-              CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-              SET_I_NEG;
-            else
-              CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
           }
           break;
 
@@ -2663,14 +2561,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rA &= DMASK;    // keep to 36-bits
                 cpu . rQ &= DMASK;
 
-                if (cpu . rA == 0 && cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+                SC_I_NEG (cpu . rA & SIGN36);
             }
             break;
 
@@ -2699,15 +2591,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
             cpu . rQ &= DMASK;
 
-            if (cpu . rA == 0 && cpu . rQ == 0)
-              SET_I_ZERO;
-            else
-              CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-              SET_I_NEG;
-            else
-              CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
           }
           break;
 
@@ -2725,15 +2610,8 @@ static t_stat DoBasicInstruction (void)
                 }
                 cpu . rQ &= DMASK;    // keep to 36-bits
 
-                if (cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rQ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rQ == 0);
+                SC_I_NEG (cpu . rQ & SIGN36);
             }
             break;
 
@@ -2753,15 +2631,8 @@ static t_stat DoBasicInstruction (void)
                 }
                 cpu . rQ &= DMASK;    // keep to 36-bits
 
-                if (cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rQ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rQ == 0);
+                SC_I_NEG (cpu . rQ & SIGN36);
             }
             break;
 
@@ -2775,15 +2646,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rQ >>= tmp36;
                 cpu . rQ &= DMASK;    // keep to 36-bits
 
-                if (cpu . rQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rQ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rQ == 0);
+                SC_I_NEG (cpu . rQ & SIGN36);
 
             }
             break;
@@ -2804,15 +2668,8 @@ static t_stat DoBasicInstruction (void)
               }
             cpu . rQ &= DMASK;    // keep to 36-bits
 
-            if (cpu . rQ == 0)
-              SET_I_ZERO;
-            else
-              CLR_I_ZERO;
-
-            if (cpu . rQ & SIGN36)
-              SET_I_NEG;
-            else
-              CLR_I_NEG;
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
           }
           break;
 
@@ -3529,15 +3386,8 @@ static t_stat DoBasicInstruction (void)
 
             cpu . rA &= DMASK;    // keep to 36-bits
 
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
 
             break;
 
@@ -3557,15 +3407,8 @@ static t_stat DoBasicInstruction (void)
                 word72 tmp72 = convertToWord72(cpu . rA, cpu . rQ);
                 tmp72 = -tmp72;
 
-                if (tmp72 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp72 & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp72 == 0);
+                SC_I_NEG (tmp72 & SIGN72);
 
                 convertToWord36(tmp72, &cpu . rA, &cpu . rQ);
             }
@@ -3690,31 +3533,15 @@ static t_stat DoBasicInstruction (void)
         case 0234:  // szn
             // Set indicators according to C(Y)
             CY &= DMASK;
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
             break;
 
         case 0214:  // sznc
             // Set indicators according to C(Y)
             CY &= DMASK;
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
             // ... and clear
             CY = 0;
             break;
@@ -3727,17 +3554,8 @@ static t_stat DoBasicInstruction (void)
             // C(A)i & C(Y)i -> C(A)i for i = (0, 1, ..., 35)
             cpu . rA = cpu . rA & CY;
             cpu . rA &= DMASK;
-
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
             break;
 
         case 0377:  //< anaq
@@ -3748,16 +3566,8 @@ static t_stat DoBasicInstruction (void)
                 trAQ = trAQ & tmp72;
                 trAQ &= MASK72;
 
-                if (trAQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trAQ & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
-
+                SC_I_ZERO (trAQ == 0);
+                SC_I_NEG (trAQ & SIGN72);
                 convertToWord36(trAQ, &cpu . rA, &cpu . rQ);
             }
             break;
@@ -3767,16 +3577,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rQ = cpu . rQ & CY;
             cpu . rQ &= DMASK;
 
-            if (cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rQ & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
             break;
 
         case 0355:  // ansa
@@ -3785,15 +3587,8 @@ static t_stat DoBasicInstruction (void)
                 CY = cpu . rA & CY;
                 CY &= DMASK;
 
-                if (CY == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (CY & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (CY == 0);
+                SC_I_NEG (CY & SIGN36);
             }
             break;
 
@@ -3803,15 +3598,8 @@ static t_stat DoBasicInstruction (void)
                 CY = cpu . rQ & CY;
                 CY &= DMASK;
 
-                if (CY == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (CY & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (CY == 0);
+                SC_I_NEG (CY & SIGN36);
             }
             break;
 
@@ -3830,15 +3618,8 @@ static t_stat DoBasicInstruction (void)
                 word18 tmp18 = cpu . rX[n] & GETHI(CY);
                 tmp18 &= MASK18;
 
-                if (tmp18 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp18 & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp18 == 0);
+                SC_I_NEG (tmp18 & SIGN18);
 
                 SETHI(CY, tmp18);
             }
@@ -3860,15 +3641,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rX[n] &= GETHI(CY);
                 cpu . rX[n] &= MASK18;
 
-                if (cpu . rX[n] == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rX[n] & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rX[n] == 0);
+                SC_I_NEG (cpu . rX[n] & SIGN18);
             }
             break;
 
@@ -3879,16 +3653,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rA = cpu . rA | CY;
             cpu . rA &= DMASK;
 
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
             break;
 
         case 0277:  // oraq
@@ -3899,16 +3665,8 @@ static t_stat DoBasicInstruction (void)
                 trAQ = trAQ | tmp72;
                 trAQ &= MASK72;
 
-                if (trAQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trAQ & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
-
+                SC_I_ZERO (trAQ == 0);
+                SC_I_NEG (trAQ & SIGN72);
                 convertToWord36(trAQ, &cpu . rA, &cpu . rQ);
             }
             break;
@@ -3918,15 +3676,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rQ = cpu . rQ | CY;
             cpu . rQ &= DMASK;
 
-            if (cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rQ & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
 
             break;
 
@@ -3935,16 +3686,8 @@ static t_stat DoBasicInstruction (void)
             CY = cpu . rA | CY;
             CY &= DMASK;
 
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
             break;
 
         case 0256:  // orsq
@@ -3953,16 +3696,8 @@ static t_stat DoBasicInstruction (void)
             CY = cpu . rQ | CY;
             CY &= DMASK;
 
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
             break;
 
         case 0240:  // orsx0
@@ -3981,15 +3716,8 @@ static t_stat DoBasicInstruction (void)
                 word18 tmp18 = cpu . rX[n] | GETHI(CY);
                 tmp18 &= MASK18;
 
-                if (tmp18 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp18 & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp18 == 0);
+                SC_I_NEG (tmp18 & SIGN18);
 
                 SETHI(CY, tmp18);
             }
@@ -4010,15 +3738,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rX[n] |= GETHI(CY);
                 cpu . rX[n] &= MASK18;
 
-                if (cpu . rX[n] == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rX[n] & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rX[n] == 0);
+                SC_I_NEG (cpu . rX[n] & SIGN18);
             }
             break;
 
@@ -4029,15 +3750,8 @@ static t_stat DoBasicInstruction (void)
             cpu . rA = cpu . rA ^ CY;
             cpu . rA &= DMASK;
 
-            if (cpu . rA == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rA & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (cpu . rA == 0);
+            SC_I_NEG (cpu . rA & SIGN36);
 
             break;
 
@@ -4049,15 +3763,8 @@ static t_stat DoBasicInstruction (void)
                 trAQ = trAQ ^ tmp72;
                 trAQ &= MASK72;
 
-                if (trAQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trAQ & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trAQ == 0);
+                SC_I_NEG (trAQ & SIGN72);
 
                 convertToWord36(trAQ, &cpu . rA, &cpu . rQ);
             }
@@ -4067,16 +3774,8 @@ static t_stat DoBasicInstruction (void)
             // C(Q)i XOR C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
             cpu . rQ = cpu . rQ ^ CY;
             cpu . rQ &= DMASK;
-            if (cpu . rQ == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (cpu . rQ & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
-
+            SC_I_ZERO (cpu . rQ == 0);
+            SC_I_NEG (cpu . rQ & SIGN36);
             break;
 
         case 0655:  // ersa
@@ -4085,15 +3784,8 @@ static t_stat DoBasicInstruction (void)
             CY = cpu . rA ^ CY;
             CY &= DMASK;
 
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
             break;
 
         case 0656:  // ersq
@@ -4102,15 +3794,8 @@ static t_stat DoBasicInstruction (void)
             CY = cpu . rQ ^ CY;
             CY &= DMASK;
 
-            if (CY == 0)
-                SET_I_ZERO;
-            else
-                CLR_I_ZERO;
-
-            if (CY & SIGN36)
-                SET_I_NEG;
-            else
-                CLR_I_NEG;
+            SC_I_ZERO (CY == 0);
+            SC_I_NEG (CY & SIGN36);
 
             break;
 
@@ -4130,15 +3815,8 @@ static t_stat DoBasicInstruction (void)
                 word18 tmp18 = cpu . rX[n] ^ GETHI(CY);
                 tmp18 &= MASK18;
 
-                if (tmp18 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp18 & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp18 == 0);
+                SC_I_NEG (tmp18 & SIGN18);
 
                 SETHI(CY, tmp18);
             }
@@ -4159,15 +3837,8 @@ static t_stat DoBasicInstruction (void)
                 cpu . rX[n] ^= GETHI(CY);
                 cpu . rX[n] &= MASK18;
 
-                if (cpu . rX[n] == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rX[n] & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (cpu . rX[n] == 0);
+                SC_I_NEG (cpu . rX[n] & SIGN18);
             }
             break;
 
@@ -4179,15 +3850,8 @@ static t_stat DoBasicInstruction (void)
                 word36 trZ = cpu . rA & CY;
                 trZ &= MASK36;
 
-                if (trZ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trZ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trZ == 0);
+                SC_I_NEG (trZ & SIGN36);
             }
             break;
 
@@ -4199,15 +3863,8 @@ static t_stat DoBasicInstruction (void)
                 trAQ = trAQ & tmp72;
                 trAQ &= MASK72;
 
-                if (trAQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trAQ & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trAQ == 0);
+                SC_I_NEG (trAQ & SIGN72);
             }
             break;
 
@@ -4217,15 +3874,8 @@ static t_stat DoBasicInstruction (void)
                 word36 trZ = cpu . rQ & CY;
                 trZ &= DMASK;
 
-                if (trZ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trZ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trZ == 0);
+                SC_I_NEG (trZ & SIGN36);
             }
             break;
 
@@ -4247,15 +3897,8 @@ static t_stat DoBasicInstruction (void)
                            "n %o rX %06o HI %06o tmp %06o\n",
                            n, cpu . rX [n], (word18) (GETHI(CY) & MASK18), tmp18);
 
-                if (tmp18 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp18 & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp18 == 0);
+                SC_I_NEG (tmp18 & SIGN18);
             }
             break;
 
@@ -4267,15 +3910,8 @@ static t_stat DoBasicInstruction (void)
                 word36 trZ = cpu . rA & ~CY;
                 trZ &= DMASK;
 
-                if (trZ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (cpu . rA & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trZ == 0);
+                SC_I_NEG (trZ & SIGN36);
             }
             break;
 
@@ -4288,15 +3924,8 @@ static t_stat DoBasicInstruction (void)
                 trAQ = trAQ & ~tmp72;
                 trAQ &= MASK72;
 
-                if (trAQ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trAQ & SIGN72)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trAQ == 0);
+                SC_I_NEG (trAQ & SIGN72);
             }
             break;
 
@@ -4305,15 +3934,8 @@ static t_stat DoBasicInstruction (void)
             {
                 word36 trZ = cpu . rQ & ~CY;
                 trZ &= DMASK;
-                if (trZ == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (trZ & SIGN36)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (trZ == 0);
+                SC_I_NEG (trZ & SIGN36);
             }
             break;
 
@@ -4331,15 +3953,8 @@ static t_stat DoBasicInstruction (void)
                 word18 tmp18 = cpu . rX[n] & ~GETHI(CY);
                 tmp18 &= MASK18;
 
-                if (tmp18 == 0)
-                    SET_I_ZERO;
-                else
-                    CLR_I_ZERO;
-
-                if (tmp18 & SIGN18)
-                    SET_I_NEG;
-                else
-                    CLR_I_NEG;
+                SC_I_ZERO (tmp18 == 0);
+                SC_I_NEG (tmp18 & SIGN18);
             }
             break;
 
@@ -4627,8 +4242,18 @@ static t_stat DoBasicInstruction (void)
                 int e = SIGNEXT8_int (cpu . rE);
                 e = e + y;
 
-                SC_I_EOFL (e > 127);
-                SC_I_EUFL (e < -128);
+                if (e > 127)
+                {
+                    SET_I_EOFL;
+                    if (tstOVFfault ())
+                        doFault (FAULT_OFL, 0, "ade exp overflow fault");
+                }
+                if (e < -128)
+                {
+                    SET_I_EUFL;
+                    if (tstOVFfault ())
+                        doFault (FAULT_OFL, 0, "ade exp underflow fault");
+                }
 
                 CLR_I_ZERO;
                 CLR_I_NEG;
@@ -7236,7 +6861,7 @@ static t_stat DoEISInstruction (void)
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR)
                 // and C(ARn.BITNO) are translated to an equivalent character
@@ -7250,14 +6875,14 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        CY = bitfieldInsert36(CY, CN, 15, 3);
+                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
-                        CY = bitfieldInsert36(CY, CN, 15, 3);
+                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTA9:  // 0
@@ -7265,7 +6890,7 @@ static t_stat DoEISInstruction (void)
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n), 16, 2);
+                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2, 16, 2);
                         break;
                 }
             }
@@ -7289,7 +6914,7 @@ static t_stat DoEISInstruction (void)
 
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
 
                 int CN = 0;
                 switch(TN)
@@ -7299,7 +6924,7 @@ static t_stat DoEISInstruction (void)
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 ->
                         //     C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        CY = bitfieldInsert36(CY, CN, 15, 3);
+                        CY = bitfieldInsert36(CY, CN & MASK3, 15, 3);
                         break;
 
                     case CTN9:  // 0
@@ -7307,7 +6932,7 @@ static t_stat DoEISInstruction (void)
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n), 16, 2);
+                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2, 16, 2);
                         break;
                 }
             }
@@ -7326,9 +6951,9 @@ static t_stat DoEISInstruction (void)
             //  C(Y)24,35 -> unchanged
             {
                 uint32 n = opcode & 07;  // get n
-                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO, 18, 18);
-                CY = bitfieldInsert36(CY, GET_AR_BITNO (n),  12,  4);
-                CY = bitfieldInsert36(CY, GET_AR_CHAR (n),   16,  2);
+                CY = bitfieldInsert36(CY, cpu . AR[n].WORDNO & MASK18, 18, 18);
+                CY = bitfieldInsert36(CY, GET_AR_BITNO (n) & MASK4,  12,  4);
+                CY = bitfieldInsert36(CY, GET_AR_CHAR (n) & MASK2,   16,  2);
             }
             break;
 
@@ -7337,9 +6962,9 @@ static t_stat DoEISInstruction (void)
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
-                arx = bitfieldInsert36(arx, cpu . AR[n].WORDNO, 18, 18);
-                arx = bitfieldInsert36(arx, GET_AR_BITNO (n),  12,  4);
-                arx = bitfieldInsert36(arx, GET_AR_CHAR (n),   16,  2);
+                arx = bitfieldInsert36(arx, cpu . AR[n].WORDNO & MASK18, 18, 18);
+                arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
+                arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
 
                 Yblock8[n] = arx;
             }

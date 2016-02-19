@@ -16,6 +16,7 @@ void fetchInstruction(word18 addr);
 t_stat executeInstruction (void);
 void doRCU (void) NO_RETURN;
 void traceInstruction (uint flag);
+bool tstOVFfault (void);
 
 #ifdef REAL_TR
 void setTR (word27 val);

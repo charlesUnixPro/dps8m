@@ -94,10 +94,12 @@ enum { N_DEV_CODES = 64 };
 
 #define SIGN64          ((uint64)1U << 63)
 
+#define MASK2           03U
 #define MASK3           07U
+#define MASK4           017U
 #define MASK6           077U
 
-#define SIGN8           0400U                    // sign mask 8-bit number
+#define SIGN8           0200U                    // sign mask 8-bit number
 #define MASK8           0377U                    // 8-bit mask
 #define MASK9           0777U                    // 9-bit mask
 
@@ -474,8 +476,11 @@ enum {
 #define CLR_I_NEG   CLRF (cpu . cu . IR, I_NEG)
 #define CLR_I_ZERO  CLRF (cpu . cu . IR, I_ZERO)
 
+#define SET_I_TRUNC SETF (cpu . cu . IR, I_TRUNC)
 #define SET_I_ABS   SETF (cpu . cu . IR, I_ABS)
 #define SET_I_TALLY SETF (cpu . cu . IR, I_TALLY)
+#define SET_I_EOFL  SETF (cpu . cu . IR, I_EOFL)
+#define SET_I_EUFL  SETF (cpu . cu . IR, I_EUFL)
 #define SET_I_OFLOW SETF (cpu . cu . IR, I_OFLOW)
 #define SET_I_CARRY SETF (cpu . cu . IR, I_CARRY)
 #define SET_I_NEG   SETF (cpu . cu . IR, I_NEG)
