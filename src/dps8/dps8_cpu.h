@@ -1084,6 +1084,9 @@ typedef struct
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....
+#ifdef ROUND_ROBIN
+    bool isRunning;
+#endif
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN

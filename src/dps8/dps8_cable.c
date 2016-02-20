@@ -375,7 +375,7 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return SCPE_ARG;
       }
 
-    if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
+    if (cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
         sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_num, scu_unit_num);
         return SCPE_ARG;
@@ -390,9 +390,9 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return rc;
       }
 
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num = 
       cpu_unit_num;
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num = 
       cpu_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
@@ -666,7 +666,7 @@ void sysCableInit (void)
       }
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
-        cables -> cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
+        cables -> cablesFromCpus [u] [p] . cpu_unit_num = -1; // not connected
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
       cables -> cablesFromIomToCon [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)

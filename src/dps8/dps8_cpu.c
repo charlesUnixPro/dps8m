@@ -1312,9 +1312,24 @@ t_stat sim_instr (void)
       
 #ifdef ROUND_ROBIN
 currentRunningCPUnum = cpu_dev.numunits - 1;
+cpus [0] . isRunning = true;
+
 setCPU:;
+    {
+      uint c;
+      for (c = 0; c < cpu_dev.numunits; c ++)
+        if (cpus [c] . isRunning)
+          break;
+      if (c == cpu_dev.numunits)
+        {
+          sim_printf ("All CPUs stopped\n");
+          goto leave;
+        }
+    }
     currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev.numunits;
     cpup = & cpus [currentRunningCPUnum];
+    if (! cpu . isRunning)
+      goto setCPU;
 #endif
 
     // This allows long jumping to the top of the state machine
@@ -1967,11 +1982,13 @@ setCPU:;
               }
           }  // switch (cpu.cycle)
 
-      } while (reason == 0);
-
+      } 
 #ifdef ROUND_ROBIN
+    while (0);
    if (reason == 0)
      goto setCPU;
+#else
+    while (reason == 0);
 #endif
 
 leave:

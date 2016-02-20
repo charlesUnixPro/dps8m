@@ -524,6 +524,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
+#ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
@@ -534,6 +535,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
+#endif
           }
         else
           {
