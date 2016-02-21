@@ -745,8 +745,6 @@ typedef struct {
 
 // ============================================================================
 
-static int64 userCorrection = 0;
-
 // The SCU clock is 52 bits long; fits in t_uint64
 static uint64 getSCUclock (uint scu_unit_num)
   {
@@ -883,6 +881,7 @@ static char * pcells (uint scu_unit_num)
 
 t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_port_num, word36 rega)
   {
+   
     if (getbits36 (rega, 35, 1))
       {
         for (int i = 0; i < 16; i ++)
@@ -1699,8 +1698,9 @@ static void deliverInterrupts (uint scu_unit_num)
                   }
                 else
                   {
-#ifdef MULTI_CPU
-                    cpu [cpu_unit_num] . events . XIP [scu_unit_num] = true;
+#ifdef ROUND_ROBIN
+                    cpus [cpu_unit_num] . events . XIP [scu_unit_num] = true;
+                    cpus [cpu_unit_num] . isRunning = true;
 #else
                     cpu . events . XIP [scu_unit_num] = true;
 #endif

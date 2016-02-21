@@ -27,11 +27,6 @@
 #include "hdbg.h"
 #endif
 
-// XXX This is used wherever a single unit only is assumed
-#define ASSUME0 0
-// XXX Use this for places where is matters when we have multiple CPUs
-#define ASSUME_CPU0 0
-
 // Forward declarations
 
 static int doABSA (word36 * result);
@@ -5182,16 +5177,18 @@ static t_stat DoBasicInstruction (void)
 // XXX see ticket #23
               // For the rccl instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
-              // 2 bits for the DPS8M.
-              //int cpu_port_num = getbits36 (TPR.CA, 0, 2);
+              // init_processor.alm systematically steps through the SCUs,
+              // using addresses 000000 100000 200000 300000.
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-              int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+              sim_debug (DBG_TRACE, & cpu_dev, "rccl CA %08o cpu port %o scu unit %d\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
               if (scu_unit_num < 0)
                 {
-                  sim_warn ("RCCL can't find the right SCU; using #0\n");
-                  scu_unit_num = 0;
+                  sim_warn ("rccl on CPU %u port %d has no SCU; faulting\n", currentRunningCPUnum, cpu_port_num);
+                  doFault (FAULT_ONC, nem, "(rccl)"); // XXX nem?
                 }
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & cpu.rA, & cpu.rQ);
+
+              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum, 040, & cpu.rA, & cpu.rQ);
               if (rc > 0)
                 return rc;
 #ifndef SPEED
@@ -5674,14 +5671,15 @@ static t_stat DoBasicInstruction (void)
                 // specify which processor port (i.e., which system
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, 
+                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, 
                                                        cpu_port_num);
                 if (scu_unit_num < 0)
                   {
-                    sim_warn ("RMCM can't find the right SCU; using #0\n");
-                    scu_unit_num = 0;
+                    sim_warn ("rmcm to non-existent controller on cpu %d port %d\n", currentRunningCPUnum, cpu_port_num);
+                    break;
                   }
-                t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & cpu.rA, & cpu.rQ);
+//sim_printf ("calling scu_rmcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", cpu.cu . IWB, cpu.TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
+                t_stat rc = scu_rmcm (scu_unit_num, currentRunningCPUnum, & cpu.rA, & cpu.rQ);
                 if (rc)
                     return rc;
                 SC_I_ZERO (cpu.rA == 0);
@@ -5708,21 +5706,24 @@ static t_stat DoBasicInstruction (void)
               // According to privileged_mode_ut,
               //   port*1024 + scr_input*8
 
-              //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
-              //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
-              int cpu_port_num = query_scbank_map (cpu.iefpFinalAddress);
-              if (cpu_port_num < 0)
-                {
-                  sim_debug (DBG_ERR, & cpu_dev, 
-                             "RSCR: Unable to determine port for address %08o;"
-                             " defaulting to port A\n", cpu.iefpFinalAddress);
-                  cpu_port_num = 0;
-                }
-              uint scu_unit_num = cables -> 
-                cablesFromScuToCpu [ASSUME_CPU0].
-                  ports [cpu_port_num].scu_unit_num;
+// Looking at privileged_mode_ut.alm, shift 10 bits...
+              uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
+              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
 
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0,
+              if (scu_unit_num < 0)
+                {
+                  if (cpu_port_num == 0)
+                    putbits36 (& cpu.faultRegister [0], 16, 4, 010);
+                  else if (cpu_port_num == 1)
+                    putbits36 (& cpu.faultRegister [0], 20, 4, 010);
+                  else if (cpu_port_num == 2)
+                    putbits36 (& cpu.faultRegister [0], 24, 4, 010);
+                  else
+                    putbits36 (& cpu.faultRegister [0], 28, 4, 010);
+                  doFault (FAULT_CMD, not_control, "(rscr)");
+                }
+
+              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum,
                                     cpu.iefpFinalAddress & MASK15, & cpu.rA, & cpu.rQ);
               if (rc)
                 return rc;
@@ -5977,7 +5978,7 @@ static t_stat DoBasicInstruction (void)
               {
                 doFault (FAULT_ONC, nem, "(cioc)");
               }
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
             if (scu_unit_num < 0)
               {
                 doFault (FAULT_ONC, nem, "(cioc)");
@@ -5993,8 +5994,9 @@ static t_stat DoBasicInstruction (void)
                 // specify which processor port (i.e., which system
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0,
+                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum,
                                                        cpu_port_num);
+#if 0 // not on 4MW
                 if (scu_unit_num < 0)
                   {
                     if (cpu_port_num == 0)
@@ -6007,7 +6009,14 @@ static t_stat DoBasicInstruction (void)
                       putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                     doFault (FAULT_CMD, not_control, "(smcm)");
                   }
-                t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, cpu.rA, cpu.rQ);
+#endif
+                if (scu_unit_num < 0)
+                  {
+                    sim_warn ("smcm to non-existent controller on cpu %d port %d\n", currentRunningCPUnum, cpu_port_num);
+                    break;
+                  }
+//sim_printf ("calling scu_smcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", cpu.cu . IWB, cpu.TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
+                t_stat rc = scu_smcm (scu_unit_num, currentRunningCPUnum, cpu.rA, cpu.rQ);
                 if (rc)
                     return rc;
             }
@@ -6024,7 +6033,7 @@ static t_stat DoBasicInstruction (void)
             // specify which processor port (i.e., which system
             // controller) is used.
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -6038,7 +6047,7 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
-            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, cpu_port_num, cpu.rA);
+            t_stat rc = scu_smic (scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.rA);
             // Not used bu 4MW
             // if (rc == CONT_FAULT)
               // doFault (FAULT_STR, not_control, "(smic)");
@@ -6050,9 +6059,11 @@ static t_stat DoBasicInstruction (void)
 
         case 0057:  // sscr
           {
-            uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
-
+            //uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
+            // Looking at privileged_mode_ut.alm, shift 10 bits...
+            uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+//sim_printf ("sscr CA %08o cpu port %o scu unit %o\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
             if (scu_unit_num < 0)
               {
                 if (cpu_port_num == 0)
@@ -6063,10 +6074,10 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& cpu.faultRegister [0], 24, 4, 010);
                 else
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
-                doFault (FAULT_CMD, not_control, "(smic)");
+                doFault (FAULT_CMD, not_control, "(sscr)");
               }
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, 
-                                  cpu.iefpFinalAddress & MASK15, cpu.rA, cpu.rQ);
+            t_stat rc = scu_sscr (scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.iefpFinalAddress & MASK15, cpu.rA, cpu.rQ);
+
             if (rc)
               return rc;
           }
