@@ -1094,6 +1094,7 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 extern uint currentRunningCPUnum;
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
+void setCPUnum (uint cpuNum);
 #else
 extern cpu_state_t cpu;
 #define currentRunningCPUnum 0

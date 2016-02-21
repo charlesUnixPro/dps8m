@@ -858,8 +858,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
 #ifdef ROUND_ROBIN
-        currentRunningCPUnum = i;
-        cpup = & cpus [currentRunningCPUnum];
+        setCPUnum (i);
 #endif
         cpu.rA = 0;
         cpu.rQ = 0;
@@ -897,8 +896,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
       }
 
 #ifdef ROUND_ROBIN
-    currentRunningCPUnum = 0;
-    cpup = & cpus [currentRunningCPUnum];
+    setCPUnum (0);
 #endif
 
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
@@ -1248,6 +1246,24 @@ static void setCpuCycle (cycles_t cycle)
                cycleStr (cycle));
     cpu.cycle = cycle;
   }
+
+
+#ifdef ROUND_ROBIN
+void setCPUnum (uint cpuNum)
+  {
+    //static char name [5] = "CPU0\0";
+    currentRunningCPUnum = cpuNum;
+    cpup = & cpus [currentRunningCPUnum];
+    //name[3] = '0' + currentRunningCPUnum;
+    //cpu_dev.name = name;
+  }
+#endif
+
+uint getCPUnum (void)
+  {
+    return currentRunningCPUnum;
+  }
+
 //
 // Okay, lets treat this as a state machine
 //
@@ -1311,8 +1327,8 @@ t_stat sim_instr (void)
         sim_printf("Warning: MUX not attached.\n");
       
 #ifdef ROUND_ROBIN
-currentRunningCPUnum = cpu_dev.numunits - 1;
-cpus [0] . isRunning = true;
+    setCPUnum (cpu_dev.numunits - 1);
+    cpus [0] . isRunning = true;
 
 setCPU:;
     {
@@ -1326,8 +1342,7 @@ setCPU:;
           goto leave;
         }
     }
-    currentRunningCPUnum = (currentRunningCPUnum + 1) % cpu_dev.numunits;
-    cpup = & cpus [currentRunningCPUnum];
+    setCPUnum ((currentRunningCPUnum + 1) % cpu_dev.numunits);
     if (! cpu . isRunning)
       goto setCPU;
 #endif
@@ -2868,8 +2883,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 
 #ifdef ROUND_ROBIN
     uint save = currentRunningCPUnum;
-    currentRunningCPUnum = cpu_unit_num;
-    cpup = & cpus [currentRunningCPUnum];
+    setCPUnum (cpu_unit_num);
 #endif
 
     static int port_num = 0;
@@ -3024,8 +3038,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
     cfgparse_done (& cfg_state);
 
 #ifdef ROUND_ROBIN
-    currentRunningCPUnum = save;
-    cpup = & cpus [currentRunningCPUnum];
+    setCPUnum (save);
 #endif
 
     return SCPE_OK;

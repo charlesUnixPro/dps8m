@@ -1045,19 +1045,12 @@ force:;
               }
             listSource (compname, compoffset, flag);
           }
-
         if (get_addr_mode() == ABSOLUTE_mode)
           {
             if (isBAR)
               {
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
-                  "%d: "
-#endif
                   "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
-                  currentRunningCPUnum,
-#endif
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1073,13 +1066,7 @@ force:;
             else
               {
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
-                  "%d: "
-#endif
                   "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
-                  currentRunningCPUnum,
-#endif
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (IWB_IRODD),
@@ -1097,13 +1084,7 @@ force:;
             if (isBAR)
               {
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
-                  "%d: "
-#endif
                  "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
-                  currentRunningCPUnum,
-#endif
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1120,13 +1101,7 @@ force:;
             else
               {
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
-                  "%d: "
-#endif
                   "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
-                  currentRunningCPUnum,
-#endif
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
@@ -1289,6 +1264,7 @@ t_stat executeInstruction (void)
     cpu.iefpFinalAddress = cpu.TPR.CA;
     cpu.rY = cpu.TPR.CA;
 
+#if 0
     if (!cpu.switches.append_after)
       {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
@@ -1296,6 +1272,7 @@ t_stat executeInstruction (void)
             set_addr_mode(APPEND_mode);
           }
       }
+#endif
 
 restart_1:
 
@@ -1312,7 +1289,7 @@ restart_1:
 ///
 
     // XXX Don't trace Multics idle loop
-    if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
+    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
 
       {
         traceInstruction (DBG_TRACE);
@@ -1549,6 +1526,7 @@ restart_1:
 /// executeInstruction: Transfer into append mode
 ///
 
+#if 0
     if (cpu.switches.append_after)
       {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
@@ -1556,6 +1534,15 @@ restart_1:
            set_addr_mode(APPEND_mode);
           }
       }
+#endif
+
+#if 0
+    if (TST_I_ABS && info->ndes == 0 && get_went_appending () && (info->flags & TRANSFER_INS))
+      {
+        //sim_printf ("want to set append mode %lld\n", sim_timell ());
+        set_addr_mode(APPEND_mode);
+      }
+#endif
 
 ///
 /// executeInstruction: Write operand
@@ -4549,6 +4536,11 @@ static t_stat DoBasicInstruction (void)
 
             cpu.PPR.IC = cpu.TPR.CA;
             cpu.PPR.PSR = cpu.TPR.TSR;
+            sim_debug (DBG_TRACE, & cpu_dev, "TRA %05o:%06o\n", cpu.PPR.PSR, cpu.PPR.IC);
+            if (TST_I_ABS && get_went_appending ())
+              {
+                set_addr_mode(APPEND_mode);
+              }
 
             return CONT_TRA;
 

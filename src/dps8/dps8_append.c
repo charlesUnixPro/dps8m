@@ -1429,7 +1429,8 @@ KL:;
     else
         // 0 → C(PPR.P)
         cpu . PPR.P = 0;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", cpu . TPR.TRR, cpu . SDW->P, cpu . PPR.P);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TSR %05o TPR.CA %06o\n", cpu.TPR.TSR, cpu.TPR.CA);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", cpu.TPR.TRR, cpu.SDW->P, cpu.PPR.P);
     
     goto Exit;    // this may not be setup or right
     
