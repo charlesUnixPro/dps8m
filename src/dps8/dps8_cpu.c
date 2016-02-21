@@ -76,7 +76,7 @@ static t_stat cpu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
 static MTAB cpu_mod[] = {
     {
 #ifdef ROUND_ROBIN
-      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
 #endif
