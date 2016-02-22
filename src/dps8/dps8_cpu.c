@@ -1476,7 +1476,7 @@ setCPU:;
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 ackTR ();
                 if (cpu.switches.tro_enable)
-                  setG7fault (FAULT_TRO, 0);
+                  setG7fault (currentRunningCPUnum, FAULT_TRO, 0);
               }
           }
 #else
@@ -1493,7 +1493,7 @@ setCPU:;
               {
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 if (cpu.switches.tro_enable)
-                  setG7fault (FAULT_TRO, 0);
+                  setG7fault (currentRunningCPUnum, FAULT_TRO, 0);
               }
           }
 #endif

@@ -1618,13 +1618,8 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
       }
     else if (portp -> type == ADEV_CPU)
       {
-        // XXX ASSUME0 assume CPU 0
-        // XXX properly, trace the cable from scu_port to the cpu to determine
-        // XXX the cpu number.
-        // XXX ticket #20
-        // XXX setG7fault expects the processor port number; this may be right.
-        //int cpuUnitNum = portp -> idnum;
-        setG7fault (FAULT_CON, cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (cables -> cablesFromCpus[scu_unit_num][scu_port_num].cpu_unit_num,
+                    FAULT_CON, 0);
         return 1;
       }
     else

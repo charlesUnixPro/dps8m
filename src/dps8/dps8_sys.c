@@ -187,7 +187,8 @@ static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
-    setG7fault (FAULT_EXF, 0);
+    // Assume the bootload CPU
+    setG7fault (0, FAULT_EXF, 0);
     return;
   }
 
@@ -993,7 +994,8 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (FAULT_EXF, 0);
+    // Assume bootload CPU
+    setG7fault (0, FAULT_EXF, 0);
     return SCPE_OK;
   }
 

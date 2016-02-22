@@ -575,12 +575,17 @@ bool bG7PendingNoTRO (void)
     return (cpu . g7Faults & (~ (1u << FAULT_TRO))) != 0;
   }
 
-void setG7fault (_fault faultNo, _fault_subtype subFault)
+void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
-    // sim_printf ("setG7fault %d %d [%lld]\n", faultNo, subFault, sim_timell ());
-    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
-    cpu . g7Faults |= (1u << faultNo);
-    cpu . g7SubFaults [faultNo] = subFault;
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %d %o\n", 
+               cpuNo, faultNo, faultNo, subFault, subFault);
+#ifdef ROUND_ROBIN
+    cpus[cpuNo].g7Faults |= (1u << faultNo);
+    cpus[cpuNo].g7SubFaults [faultNo] = subFault;
+#else
+    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7SubFaults [faultNo] = subFault;
+#endif
   }
 
 void clearTROFault (void)
