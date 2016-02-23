@@ -2916,7 +2916,7 @@ static void EISloadInputBufferNumeric (int k)
                     c &= 0xf;   // hack off all but lower 4 bits
 
                     if (c < 012 || c > 017)
-                        doFault(FAULT_IPR, ill_dig, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR, ill_dig, "loadInputBufferNumeric(1): illegal char in input"); // TODO: generate ill proc fault
 
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -2947,7 +2947,7 @@ static void EISloadInputBufferNumeric (int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumeric(2): illegal char in input"); // TODO: generate ill proc fault
 
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -2960,7 +2960,8 @@ static void EISloadInputBufferNumeric (int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR,ill_dig,"loadInputBufferNumeric(3): illegal char in input"); // TODO: generate ill proc fault
+
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -2968,7 +2969,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(4): illegal char in input");
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumeric(4): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -2979,7 +2980,7 @@ static void EISloadInputBufferNumeric (int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(5): illegal char in input");
+                         doFault(FAULT_IPR, ill_dig,"loadInputBufferNumeric(5): illegal char in input");
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -2987,7 +2988,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumric(6): illegal char in input");
+                        doFault(FAULT_IPR, ill_dig,"loadInputBufferNumeric(6): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -5829,7 +5830,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
 
-static void EISwriteToOutputStringReverse (int k, int charToWrite)
+static void EISwriteToOutputStringReverse (int k, int charToWrite, bool * ovf)
 {
     EISstruct * e = & cpu . currentEISinstruction;
     // first thing we need to do is to find out the last position is the buffer we want to start writing to.
@@ -5890,17 +5891,20 @@ static void EISwriteToOutputStringReverse (int k, int charToWrite)
         int lastChar = (CN + N - 1) % maxPos;   // last character number
         
         if (lastWordOffset > 0)           // more that the 1 word needed?
+        {
             //address += lastWordOffset;    // highest memory address
             e->addr[k-1].address += lastWordOffset;
+            e->addr[k-1].address &= MASK18;
+        }
         
         pos = lastChar;             // last character number
-        
         return;
     }
     
     // any room left in output string?
-    if (N == 0)
+    if (N <= 0)
     {
+        * ovf = true;
         return;
     }
     
@@ -5914,6 +5918,7 @@ static void EISwriteToOutputStringReverse (int k, int charToWrite)
             EISwrite9r(&e->addr[_k-1], &pos, charToWrite);
             break;
     }
+
     N -= 1;
 }
 
@@ -6035,63 +6040,74 @@ static int getSign (word72s n128)
 // characters directly into the output string taking into account the output
 // string length.....
 
-static void _btd (void)
+static void _btd (bool * ovfp)
 {
+    EISwriteToOutputStringReverse(2, 0, ovfp);    // initialize output writer .....
+    
     EISstruct * e = & cpu . currentEISinstruction;
+    * ovfp = false;
 
     word72s n128 = e->x;    // signExt9(e->x, e->N1);          // adjust for +/-
+
+    SC_I_ZERO (n128 == 0);
+    SC_I_NEG (n128 == 0);
+   
     int sgn = (n128 < 0) ? -1 : 1;  // sgn(x)
     if (n128 < 0)
         n128 = -n128;
     
-    //if (n128 == 0)  // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
-        //SETF(e->_flags, I_ZERO);
-    SCF(n128 == 0, e->_flags, I_ZERO);
-   
     int N = e->N2;  // number of chars to write ....
     
     // handle any trailing sign stuff ...
     if (e->S2 == CSTS)  // a trailing sign
     {
-        EISwriteToOutputStringReverse(0, getSign(sgn));
-        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
-            return;
-        N -= 1;
+        EISwriteToOutputStringReverse(0, getSign(sgn), ovfp);
+        if (! * ovfp)
+          N -= 1;
     }
-    do
+    if (! * ovfp)
     {
-        int n = n128 % 10;
+        do
+        {
+            int n = n128 % 10;
         
-        EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? n : (n + '0'));
+            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? n : (n + '0'), ovfp);
         
-        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
-            return;
+            if (* ovfp)   // Overflow! Too many chars, not enough room!
+                break;
         
-        N -= 1;
+            N -= 1;
         
-        n128 /= 10;
-    } while (n128);
+            n128 /= 10;
+        } while (n128);
+     }
     
     // at this point we've exhausted our digits, but may still have spaces left.
     
     // handle any leading sign stuff ...
-    if (e->S2 == CSLS)  // a leading sign
+    if (! * ovfp)
     {
-        while (N > 1)
+        if (e->S2 == CSLS)  // a leading sign
         {
-            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0');
-            N -= 1;
+            while (N > 1)
+            {
+                EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0', ovfp);
+                if (* ovfp)
+                    break;
+                N -= 1;
+            }
+            if (! * ovfp)
+              EISwriteToOutputStringReverse(0, getSign(sgn), ovfp);
         }
-        EISwriteToOutputStringReverse(0, getSign(sgn));
-        if (TSTF(e->_flags, I_OFLOW))   // Overflow! Too many chars, not enough room!
-            return;
-    }
-    else
-    {
-        while (N > 0)
+        else
         {
-            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0');
-            N -= 1;
+            while (N > 0)
+            {
+                EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? 0 : '0', ovfp);
+                if (* ovfp)
+                    break;
+                N -= 1;
+            }
         }
     }
 }
@@ -6101,24 +6117,58 @@ void btd (void)
     EISstruct * e = & cpu . currentEISinstruction;
 
     
-    //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
+    // C(Y-char91) converted to decimal → C(Y-charn2)
     /*!
-     * C(Y-char91) contains a twos complement binary integer aligned on 9-bit character boundaries with length 0 < N1 <= 8.
-     * If TN2 and S2 specify a 4-bit signed number and P = 1, then if C(Y-char91) is positive (bit 0 of C(Y-char91)0 = 0), then the 13(8) plus sign character is moved to C(Y-charn2) as appropriate.
+     * C(Y-char91) contains a twos complement binary integer aligned on 9-bit
+     * character boundaries with length 0 < N1 <= 8.
+     *
+     * If TN2 and S2 specify a 4-bit signed number and P = 1, then if
+     * C(Y-char91) is positive (bit 0 of C(Y-char91)0 = 0), then the 13(8) plus
+     * sign character is moved to C(Y-charn2) as appropriate.
+     *
      *   The scaling factor of C(Y-charn2), SF2, must be 0.
-     *   If N2 is not large enough to hold the digits generated by conversion of C(Y-char91) an overflow condition exists; the overflow indicator is set ON and an overflow fault occurs. This implies that an unsigned fixed-point receiving field has a minimum length of 1 character and a signed fixed- point field, 2 characters.
-     * If MFk.RL = 1, then Nk does not contain the operand length; instead; it contains a register code for a register holding the operand length.
-     * If MFk.ID = 1, then the kth word following the instruction word does not contain an operand descriptor; instead, it contains an indirect pointer to the operand descriptor.
+     *
+     *   If N2 is not large enough to hold the digits generated by conversion
+     *   of C(Y-char91) an overflow condition exists; the overflow indicator is
+     *   set ON and an overflow fault occurs. This implies that an unsigned
+     *   fixed-point receiving field has a minimum length of 1 character and a
+     *   signed fixed- point field, 2 characters.
+     *
+     * If MFk.RL = 1, then Nk does not contain the operand length; instead; it
+     * contains a register code for a register holding the operand length.
+     *
+     * If MFk.ID = 1, then the kth word following the instruction word does not
+     * contain an operand descriptor; instead, it contains an indirect pointer
+     * to the operand descriptor.
+     *
      * C(Y-char91) and C(Y-charn2) may be overlapping strings; no check is made.
-     * Attempted conversion to a floating-point number (S2 = 0) or attempted use of a scaling factor (SF2 ≠ 0) causes an illegal procedure fault.
+     *
+     * Attempted conversion to a floating-point number (S2 = 0) or attempted
+     * use of a scaling factor (SF2 ≠ 0) causes an illegal procedure fault.
+     *
      * If N1 = 0 or N1 > 8 an illegal procedure fault occurs.
+     *
      * Attempted execution with the xed instruction causes an illegal procedure fault.
+     *
      * Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
+     *
      */
     
-    //! C(string 1) -> C(string 2) (converted)
+    // C(string 1) -> C(string 2) (converted)
     
-    //! The two's complement binary integer starting at location YC1 is converted into a signed string of decimal characters of data type TN2, sign and decimal type S2 (S2 = 00 is illegal) and scale factor 0; and is stored, right-justified, as a string of length L2 starting at location YC2. If the string generated is longer than L2, the high-order excess is truncated and the overflow indicator is set. If strings 1 and 2 are not overlapped, the contents of string 1 remain unchanged. The length of string 1 (L1) is given as the number of 9-bit segments that make up the string. L1 is equal to or is less than 8. Thus, the binary string to be converted can be 9, 18, 27, 36, 45, 54, 63, or 72 bits long. CN1 designates a 9-bit character boundary. If P=1, positive signed 4-bit results are stored using octal 13 as the plus sign. If P=0, positive signed 4-bit results are stored with octal 14 as the plus sign.
+    // The two's complement binary integer starting at location YC1 is
+    // converted into a signed string of decimal characters of data type TN2,
+    // sign and decimal type S2 (S2 = 00 is illegal) and scale factor 0; and is
+    // stored, right-justified, as a string of length L2 starting at location
+    // YC2. If the string generated is longer than L2, the high-order excess is
+    // truncated and the overflow indicator is set. If strings 1 and 2 are not
+    // overlapped, the contents of string 1 remain unchanged. The length of
+    // string 1 (L1) is given as the number of 9-bit segments that make up the
+    // string. L1 is equal to or is less than 8. Thus, the binary string to be
+    // converted can be 9, 18, 27, 36, 45, 54, 63, or 72 bits long. CN1
+    // designates a 9-bit character boundary. If P=1, positive signed 4-bit
+    // results are stored using octal 13 as the plus sign. If P=0, positive
+    // signed 4-bit results are stored with octal 14 as the plus sign.
 
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
@@ -6131,45 +6181,27 @@ void btd (void)
     e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
     
 // XXX ticket #35
-                  // Technically, ill_proc should be "illegal eis modifier",
-                  // but the Fault Register has no such bit; the Fault
-                  // register description says ill_proc is anything not
-                  // handled by other bits.
+    // Technically, ill_proc should be "illegal eis modifier",
+    // but the Fault Register has no such bit; the Fault
+    // register description says ill_proc is anything not
+    // handled by other bits.
+
     if (e->N1 == 0 || e->N1 > 8)
         doFault(FAULT_IPR, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
     load9x(e->N1, &e->ADDR1, e->CN1);
     
-    EISwriteToOutputStringReverse(2, 0);    // initialize output writer .....
-    
-#if 0
-    e->_flags = cpu . cu.IR;
-    
-    CLRF(e->_flags, I_NEG);     // If a minus sign character is moved to C(Y-charn2), then ON; otherwise OFF
-    CLRF(e->_flags, I_ZERO);    // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
-#else
-    e -> _flags = 0;
-#endif
-
-    _btd ();
+    bool ovf;
+    _btd ( & ovf);
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     
-// XXX wrong; see ticket 76
-#if 0
-    cpu . cu.IR = e->_flags;
-    if (TST_I_OFLOW)
-        doFault(FAULT_OFL, 0, "btd() overflow!");   // XXX generate overflow fault
-#else
-    SCF (e -> _flags & I_ZERO, cpu . cu . IR, I_ZERO);
-    SCF (e -> _flags & I_NEG, cpu . cu . IR, I_NEG);
-    if (e -> _flags & I_OFLOW)
+    if (ovf)
       {
         SET_I_OFLOW;
         doFault(FAULT_OFL, 0, "btd overflow fault");
       }
-#endif
 }
 
 /*
