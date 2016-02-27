@@ -10,6 +10,7 @@
 
 #include "dps8_utils.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 
 enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault };
@@ -172,6 +173,10 @@ void hdbgPrint (void)
         sim_printf ("can't open hdbg.list\n");
         return;
       }
+    time_t curtime;
+    time (& curtime);
+    fprintf (hdbgOut, "%s\n", ctime (& curtime));
+
     for (unsigned long p = 0; p < hdbgSize; p ++)
       {
         unsigned long q = (hevtPtr + p) % hdbgSize;

@@ -1,3 +1,5 @@
+extern DEVICE scu_dev;
+
 #ifdef SPEED
 #define if_sim_debug(dbits, dptr) if ((0))
 
@@ -5,6 +7,7 @@
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
+currentRunningCPUnum != 0 && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \
@@ -65,7 +68,7 @@
 // XXX above is not entirely correct (anymore).
 
 
-#define STOP_UNK    0
+//#define SCPE_OK    0
 #define STOP_UNIMP  1
 #define STOP_DIS    2
 #define STOP_BKPT   3
@@ -77,9 +80,8 @@
 
 
 // not really STOP codes, but get returned from instruction loops
-#define CONT_TRA    -1  ///< encountered a transfer instruction dont bump PPR.IC
-#define CONT_FAULT  -2  ///< instruction encountered some kind of fault
-#define CONT_INTR   -3  ///< instruction saw interrupt go up
+#define CONT_TRA    -1  // encountered a transfer instruction; don't bump PPR.IC
+#define CONT_DIS    -2  // instruction was a DIS 
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;

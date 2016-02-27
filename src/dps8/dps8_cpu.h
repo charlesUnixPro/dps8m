@@ -663,6 +663,7 @@ typedef struct
     uint trlsb; // Timer Register least significent bits: the number of 
                 // instructions that make a timer quantum.
     uint serno;
+    bool useMap;
   } switches_t;
 
 // Control unit data (288 bits) 
@@ -1087,6 +1088,9 @@ typedef struct
 #ifdef ROUND_ROBIN
     bool isRunning;
 #endif
+    // Map memory to port
+    int scbank_map [N_SCBANKS];
+    int scbank_pg_os [N_SCBANKS];
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN
@@ -1111,22 +1115,62 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
     *data = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
     M[addr] = data & DMASK;
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
     M[addr++] = even;
     M[addr] = odd;
     return 0;

@@ -509,6 +509,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         ttys [line] . buffer [ttys [line] . nPos ++] = kar;
         ttys [line] . buffer [ttys [line] . nPos] = 0;
         int hsla_line_num = ttys [line] . fmti -> multics . hsla_line_num;
+        //sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, kar == '\r' || kar == '\n' || kar == '\f');
         sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
         ttys [line] . nPos = 0;
         

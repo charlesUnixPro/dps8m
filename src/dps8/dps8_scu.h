@@ -3,7 +3,6 @@ enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
 typedef struct
   {
-    uint mode; // program or manual
     uint port_enable [N_SCU_PORTS];  // enable/disable
 
     // Mask registers A and B, each with 32 interrupt bits.
@@ -75,4 +74,6 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 void scu_clear_interrupt (uint scu_unit_num, uint inum);
 uint scuGetHighestIntr (uint scuUnitNum);
 t_stat scu_reset (DEVICE *dptr);
+t_stat scu_reset_unit (UNIT * uptr, int32 value, char * cptr, 
+                       void * desc);
 

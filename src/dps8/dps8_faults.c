@@ -10,6 +10,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
@@ -208,18 +209,6 @@ static int fault2prio[32] = {
     18, 19,  0,  0,  0,  0,  0,  3
 };
 #endif
-#ifndef QUIET_UNUSED
-// Fault conditions as stored in the "FR" Fault Register
-// C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
-typedef enum {
-    // Values are bit masks
-    fr_ill_op = 1, // illegal opcode
-    fr_ill_mod = 1 << 1, // illegal address modifier
-    // fr_ill_slv = 1 << 2, // illegal BAR mode procedure
-    fr_ill_proc = 1 << 3 // illegal procedure other than the above three
-    // fr_ill_dig = 1 << 6 // illegal decimal digit
-} fault_cond_t;
-#endif
 
 /*
  * fault handler(s).
@@ -328,6 +317,10 @@ bit-28 tp inhibit interrupts
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
+if (currentRunningCPUnum)
+    sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
+               faultNumber, faultNumber, subFault, subFault, 
+               cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
@@ -361,22 +354,27 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     if (faultNumber == FAULT_IPR)
       {
-        if (subFault == ill_op)
+        if (subFault == flt_ipr_ill_op)
           cpu . faultRegister [0] |= FR_ILL_OP;
-        else if (subFault == ill_mod)
+        else if (subFault == flt_ipr_ill_mod)
           cpu . faultRegister [0] |= FR_ILL_MOD;
-        else if (subFault == ill_dig)
+        else if (subFault == flt_ipr_ill_dig)
           cpu . faultRegister [0] |= FR_ILL_DIG;
-        else /* if (subFault == ill_proc) */ // and all others
+        else /* if (subFault == flt_ipr_ill_proc) */ // and all others
           cpu . faultRegister [0] |= FR_ILL_PROC;
       }
-    else if (faultNumber == FAULT_ONC && subFault == nem)
+    else if (faultNumber == FAULT_ONC && subFault == flt_onc_nem)
       {
         cpu . faultRegister [0] |= FR_NEM;
       }
-    else if (faultNumber == FAULT_STR && subFault == oob)
+    else if (faultNumber == FAULT_STR)
       {
-        cpu . faultRegister [0] |= FR_OOB;
+        if (subFault == flt_str_oob)
+          cpu . faultRegister [0] |= FR_OOB;
+        //else if (subFault == flt_str_ill_ptr)
+          //cpu . faultRegister [0] |= ?;    // XXX
+        //else if (subFault == flt_str_nea)
+          //cpu . faultRegister [0] |= ?;    // XXX
       }
     else if (faultNumber == FAULT_CON)
       {
@@ -484,32 +482,31 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
       }
     else if (faultNumber == FAULT_STR)
       {
-        if (subFault == oob)
+        if (subFault == flt_str_oob)
           cpu . cu . WOFF_OOB = 1;
-        else if (subFault == ill_ptr)
-          cpu . cu . WOFF_OOB = 1;
-        // Not used by SCU 4MW
-        // else if (subFault == not_control)
-          // cpu . cu . WOFF_OOB;
+        //else if (subFault == flt_str_ill_ptr)
+          //cpu . cu . ??? = 1; // XXX
+        else if (subFault == flt_str_nea)
+          cpu . cu . OWB_NEA = 1;
       }
     else if (faultNumber == FAULT_IPR)
       {
-        if (subFault == ill_op)
+        if (subFault == flt_ipr_ill_op)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault == ill_mod)
+        else if (subFault == flt_ipr_ill_mod)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault == ill_slv)
+        else if (subFault == flt_ipr_ill_slv)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault == ill_dig)
+        else if (subFault == flt_ipr_ill_dig)
           cpu . cu . ROFF_IPR = 1;
-        // else if (subFault == ill_proc)
+        // else if (subFault == flt_ipr_ill_proc)
           // cpu . cu . ? = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
-        if (subFault == lprpn_bits)
+        if (subFault == flt_cmd_lprpn_bits)
           cpu . cu . IA = 0;
-        else if (subFault == not_control)
+        else if (subFault == flt_cmd_not_control)
           cpu . cu . IA = 010;
       }
 

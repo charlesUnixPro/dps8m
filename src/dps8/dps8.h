@@ -59,6 +59,11 @@
 // Enable round-robin multi-CPU
 #define ROUND_ROBIN
 
+// Enable ISOLTS support
+#define ISOLTS
+
+#define OSCAR
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"

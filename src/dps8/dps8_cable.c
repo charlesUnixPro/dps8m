@@ -4,6 +4,7 @@
 #include "dps8_mt.h"
 #include "dps8_scu.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
@@ -112,7 +113,7 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
     p -> scu_unit_num = scu_unit_num;
     p -> devp = & scu_dev;
 
-    setup_scbank_map ();
+    //setup_scbank_map ();
 
     return SCPE_OK;
   }

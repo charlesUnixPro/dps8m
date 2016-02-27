@@ -16,6 +16,7 @@
 #include "dps8_console.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_mt.h"  // attachTape
 #include "dps8_disk.h"  // attachDisk
@@ -426,6 +427,28 @@ sim_printf ("<%s>\n", labelDotDsk);
 #endif
   }
 
+#ifdef OSCAR
+static void oscar (char * text)
+  {
+    char prefix [] = "log oscar ";
+    if (strncmp (text, prefix, strlen (prefix)))
+      return;
+    //sim_printf ("<%s>\n", text);
+    //do_cmd (0, text + strlen (prefix));
+    char * cptr = text + strlen (prefix);
+    char gbuf [257];
+    cptr = get_glyph (cptr, gbuf, 0);                   /* get command glyph */
+    CTAB *cmdp;
+    if ((cmdp = find_cmd (gbuf)))                       /* lookup command */
+      {
+        t_stat stat = cmdp->action (cmdp->arg, cptr);          /* if found, exec */
+        sim_printf ("oscar thinks %d\n", stat);
+      }
+    else
+      sim_printf ("oscar says huh?\n");
+  }
+#endif
+
 static void sendConsole (uint stati)
   {
     uint tally = console_state . tally;
@@ -437,6 +460,21 @@ static void sendConsole (uint stati)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // XXX this should be iomIndirectDataService
     p -> charPos = tally % 4;
+
+#ifdef OSCAR
+    char text [257];
+    int ntext;
+    for (ntext = 0; ntext < 256; ntext ++)
+      {
+        if (console_state . readp + ntext >= console_state . tailp)
+          break;
+        text [ntext] = * (console_state . readp + ntext);
+      }
+    text [ntext] = 0;
+    //sim_printf ("<%s>\n", text);
+    oscar (text);
+#endif
+
     while (tally && console_state . readp < console_state . tailp)
       {
         int charno;
@@ -863,7 +901,10 @@ eol:
 // XXX replace attn key signal with escape char check here
 // XXX check for escape to scpe (^E?)
     if (stop_cpu)
-      return;
+      {
+        sim_printf ("Got <sim stop>\n");
+        return;
+      }
     if (c == SCPE_OK)
         return; // no input
     if (c == SCPE_STOP)

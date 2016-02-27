@@ -11,6 +11,7 @@
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
@@ -19,7 +20,6 @@
 #include "dps8_scu.h"
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
-#include "dps8_faults.h"
 #include "dps8_console.h"
 #include "dps8_fnp.h"
 #include "dps8_iom.h"
@@ -143,7 +143,7 @@ static DEBTAB cpu_dt[] = {
 
 // This is part of the simh interface
 const char *sim_stop_messages[] = {
-    "Unknown error",           // STOP_UNK
+    "Unknown error",           // SCPE_OK
     "Unimplemented Opcode",    // STOP_UNIMP
     "DIS instruction",         // STOP_DIS
     "Breakpoint",              // STOP_BKPT
@@ -687,50 +687,59 @@ static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
     return SCPE_ARG;
 }
 
-// Map memory to port
-static int scbank_map [N_SCBANKS];
-
 void setup_scbank_map (void)
   {
     sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
     // Initalize to unmapped
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
-      scbank_map [pg] = -1; 
+      {
+        // The port number that the page of memory can be accessed through
+        cpu.scbank_map [pg] = -1; 
+        // The offset in M of the page of memory on the other side of the
+        // port
+        cpu.scbank_pg_os [pg] = -1; 
+      }
 
     // For each port (which is connected to a SCU
     for (int port_num = 0; port_num < N_CPU_PORTS; port_num ++)
       {
         if (! cpu.switches.enable [port_num])
           continue;
+        // Simplifing assumption: simh SCU unit 0 is the SCU with the
+        // low 4MW of memory, etc...
+        uint scu_unit_num = cables ->
+          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
+
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
         //uint sz = 1 << (store_size + 16);
         uint sz = 1 << (store_size + 15);
 
-        // Calculate the base address of the memor in wordsy
+        // Calculate the base address of the memory in words
         uint assignment = cpu.switches.assignment [port_num];
         uint base = assignment * sz;
-        // sim_printf ("setup_scbank_map SCU %d base %08o sz %08o (%d)\n", port_num, base, sz, sz);
+        //sim_printf ("setup_scbank_map SCU %d base %08o sz %08o (%d)\n", port_num, base, sz, sz);
 
-        // Now convert to SCBANK
-        sz = sz / SCBANK;
+        // Now convert to SCBANK (number of pages, page number)
+        uint sz_pages = sz / SCBANK;
         base = base / SCBANK;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz_pages:%u ba:%u\n", port_num, store_size, assignment, sz_pages, base);
 
-        for (uint pg = 0; pg < sz; pg ++)
+        for (uint pg = 0; pg < sz_pages; pg ++)
           {
             uint scpg = base + pg;
             if (scpg < N_SCBANKS)
               {
-                if (scbank_map [scpg] != -1)
+                if (cpu.scbank_map [scpg] != -1)
                   {
-                    sim_printf ("scbank overlap scpg %d (%o) old port %d newport %d\n", scpg, scpg, scbank_map [scpg], port_num);
+                    sim_printf ("scbank overlap scpg %d (%o) old port %d newport %d\n", scpg, scpg, cpu.scbank_map [scpg], port_num);
                   }
                 else
                   {
-                    scbank_map [scpg] = port_num;
+                    cpu.scbank_map [scpg] = port_num;
+                    cpu.scbank_pg_os [scpg] = scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK;
                   }
               }
             else
@@ -740,14 +749,16 @@ void setup_scbank_map (void)
           }
       }
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
-      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, scbank_map [pg]);
+      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, cpu.scbank_map [pg]);
+    //for (uint pg = 0; pg < N_SCBANKS; pg ++)
+      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", currentRunningCPUnum + 'A', pg, cpu.scbank_pg_os [pg]);
   }
 
 int query_scbank_map (word24 addr)
   {
     uint scpg = addr / SCBANK;
     if (scpg < N_SCBANKS)
-      return scbank_map [scpg];
+      return cpu.scbank_map [scpg];
     return -1;
   }
 
@@ -893,6 +904,8 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         cpu.faultRegister [1] = 0;
 
         memset (& cpu.PPR, 0, sizeof (struct _ppr));
+
+        setup_scbank_map ();
       }
 
 #ifdef ROUND_ROBIN
@@ -920,8 +933,6 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     
     memset(&sys_stats, 0, sizeof(sys_stats));
     
-    setup_scbank_map ();
-
     initializeTheMatrix();
 
     tidy_cu ();
@@ -1625,6 +1636,11 @@ setCPU:;
                      break;
                   }
 
+                if (ret == CONT_DIS)
+                  {
+                    break;
+                  }
+
                 if (cpu.cycle == INTERRUPT_EXEC_cycle)
                   {
                     setCpuCycle (INTERRUPT_EXEC2_cycle);
@@ -1791,6 +1807,7 @@ setCPU:;
                      reason = ret;
                      break;
                   }
+
                 if (ret == CONT_TRA)
                   {
                     cpu.cu.xde = cpu.cu.xdo = 0;
@@ -1798,6 +1815,12 @@ setCPU:;
                     setCpuCycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
                   }
+
+                if (ret == CONT_DIS)
+                  {
+                    break;
+                  }
+
                 cpu.wasXfer = false;
 
                 if (ret < 0)
@@ -1965,6 +1988,12 @@ setCPU:;
                       }
                     break;
                   }
+
+                if (ret == CONT_DIS)
+                  {
+                    break;
+                  }
+
                 if (cpu.cycle == FAULT_EXEC_cycle)
                   {
                     setCpuCycle (FAULT_EXEC2_cycle);
@@ -2175,8 +2204,8 @@ static void nem_check (word24 addr, char * context)
   {
     if (query_scbank_map (addr) < 0)
       {
-        sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
-        doFault (FAULT_ONC, nem, context);
+        //sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
+        doFault (FAULT_STR, flt_str_nea,  context);
       }
   }
 #endif
@@ -2184,7 +2213,20 @@ static void nem_check (word24 addr, char * context)
 #ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
-    nem_check (addr,  "core_read nem");
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+//sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
+        if (os < 0)
+          { 
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+    else
+      nem_check (addr,  "core_read nem");
+
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2206,7 +2248,19 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 
 #ifndef SPEED
 int core_write(word24 addr, word36 data, const char * ctx) {
-    nem_check (addr,  "core_write nem");
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          { 
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+    else
+      nem_check (addr,  "core_write nem");
+
     M[addr] = data & DMASK;
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2228,7 +2282,20 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
     }
-    nem_check (addr,  "core_read2 nem");
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+//sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
+        if (os < 0)
+          { 
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+    else
+      nem_check (addr,  "core_read2 nem");
+
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2245,7 +2312,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                "core_read2 %08o %012llo (%s)\n",
                 addr - 1, * even, ctx);
 
-    nem_check (addr,  "core_read2 nem");
+    // if the even address is OK, the odd will be
+    //nem_check (addr,  "core_read2 nem");
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2282,7 +2350,19 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
-    nem_check (addr,  "core_write2 nem");
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          { 
+            doFault (FAULT_STR, flt_str_nea,  __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+    else
+      nem_check (addr,  "core_write2 nem");
+
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)
       {
@@ -2292,7 +2372,9 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
       }
     M[addr++] = even;
 
-    nem_check (addr,  "core_write2 nem");
+    // If the even address is OK, the odd will be
+    //nem_check (addr,  "core_write2 nem");
+
     if (watchBits [addr])
     //if (watchBits [addr] && odd==0)
       {
@@ -2304,39 +2386,6 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     return 0;
 }
 #endif
-////! for working with CY-pairs
-//int core_write72(word24 addr, word72 src) // needs testing
-//{
-//    word36 even = (word36)(src >> 36) & DMASK;
-//    word36 odd = ((word36)src) & DMASK;
-//    
-//    return core_write2(addr, even, odd);
-//}
-//
-//int core_readN(word24 addr, word36 *data, int n)
-//{
-//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-//    for(int i = 0 ; i < n ; i++)
-//        if(addr >= MEMSIZE) {
-//            *data = 0;
-//            return -1;
-//        } else {
-//            *data++ = M[addr++];
-//        }
-//    return 0;
-//}
-//
-//int core_writeN(a8 addr, d8 *data, int n)
-//{
-//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-//    for(int i = 0 ; i < n ; i++)
-//        if(addr >= MEMSIZE) {
-//            return -1;
-//        } else {
-//            M[addr++] = *data++;
-//        }
-//    return 0;
-//}
 
 //#define MM
 #if 1   //def MM
@@ -2682,6 +2731,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Y2K enabled:              %01o(8)\n", scu [0].y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
+    sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
     return SCPE_OK;
 }
 
@@ -2865,6 +2915,7 @@ static config_list_t cpu_config_list [] =
     /* 27 */ { "y2k", 0, 1, cfg_on_off },
     /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
     /* 29 */ { "trlsb", 0, 256, NULL },
+    /* 30 */ { "useMap", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
 
@@ -3024,6 +3075,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 
             case 29: // TRLSB
               cpu.switches.trlsb = v;
+              break;
+
+            case 30: // USEMAP
+              cpu.switches.useMap = v;
               break;
 
             default:

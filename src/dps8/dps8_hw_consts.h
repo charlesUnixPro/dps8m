@@ -577,75 +577,76 @@ enum _fault
 typedef enum _fault _fault;
 
 enum _fault_subtype {
-    no_fault_subtype = 0,
+    //no_fault_subtype = 0,
 
     // FAULT_IPR
 
-    ill_op,     // An illegal operation code has been detected.
-    ill_mod,    // An illegal address modifier has been detected.
-    ill_slv,    // An illegal BAR mode procedure has been encountered.
-    ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
-    ill_proc,   // An illegal procedure other than the four above has been encountered.
+    flt_ipr_ill_op,     // An illegal operation code has been detected.
+    flt_ipr_ill_mod,    // An illegal address modifier has been detected.
+    flt_ipr_ill_slv,    // An illegal BAR mode procedure has been encountered.
+    flt_ipr_ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
+    flt_ipr_ill_proc,   // An illegal procedure other than the four above has been encountered.
 
     // FAULT_ONC
 
-    nem,        // A nonexistent main memory address has been requested.
+    flt_onc_nem,        // A nonexistent main memory address has been requested.
 
     // FAULT_STR
 
-    oob,        // A BAR mode boundary violation has occurred.
-    ill_ptr,    // SPRPn illegal ptr.
+    flt_str_oob,        // A BAR mode boundary violation has occurred.
+    flt_str_ill_ptr,    // SPRPn illegal ptr.
+    flt_str_nea, // non-existent address
 
     // FAULT_CMD
 
-    lprpn_bits,  // illegal bits in lprpn instruction
-    not_control, // not control
+    flt_cmd_lprpn_bits,  // illegal bits in lprpn instruction
+    flt_cmd_not_control, // not control
 
     // FAULT_PAR
 
-    proc_paru,  // A parity error has been detected in the upper 36 bits of data. (Yeah, right)
-    proc_parl,  // A parity error has been detected in the lower 36 bits of data. (Yeah, right)
+    //proc_paru,  // A parity error has been detected in the upper 36 bits of data. (Yeah, right)
+    //proc_parl,  // A parity error has been detected in the lower 36 bits of data. (Yeah, right)
 
     // FAULT_CON
-    con_a,      // A $CONNECT signal has been received through port A.
-    con_b,      // A $CONNECT signal has been received through port B.
-    con_c,      // A $CONNECT signal has been received through port C.
-    con_d,      // A $CONNECT signal has been received through port D.
+    //con_a,      // A $CONNECT signal has been received through port A.
+    //con_b,      // A $CONNECT signal has been received through port B.
+    //con_c,      // A $CONNECT signal has been received through port C.
+    //con_d,      // A $CONNECT signal has been received through port D.
 
 
     // FAULT_ONC 
 
-    da_err,     // Operation not complete. Processor/system controller interface sequence error 1 has been detected. (Yeah, right)
-    da_err2,    // Operation not completed. Processor/system controller interface sequence error 2 has been detected.
+    //da_err,     // Operation not complete. Processor/system controller interface sequence error 1 has been detected. (Yeah, right)
+    //da_err2,    // Operation not completed. Processor/system controller interface sequence error 2 has been detected.
 
     // Misc
 
-    cpar_dir,   // A parity error has been detected in the cache memory directory. (Not likely)
-    cpar_str,   // PAR fault. A data parity error has been detected in the cache memory.
-    cpar_ia,    // PAR fault. An illegal action has been received from a system controller during a store operation with cache memory enabled.
-    cpar_blk,   // PAR fault. A cache memory parity error has occurred during a cache memory data block load.
+    //cpar_dir,   // A parity error has been detected in the cache memory directory. (Not likely)
+    //cpar_str,   // PAR fault. A data parity error has been detected in the cache memory.
+    //cpar_ia,    // PAR fault. An illegal action has been received from a system controller during a store operation with cache memory enabled.
+    //cpar_blk,   // PAR fault. A cache memory parity error has occurred during a cache memory data block load.
     
     // odd word
     //      Cache Duplicate Directory WNO Buffer Overflow
-    port_a,
-    port_b,
-    port_c,
-    port_d,
+    //port_a,
+    //port_b,
+    //port_c,
+    //port_d,
     
-    cpd,  // Cache Primary Directory WNO Buffer Overflow
+    //cpd,  // Cache Primary Directory WNO Buffer Overflow
     // Write Notify (WNO) Parity Error on Port A, B, C, or D.
     
     //      Cache Duplicate Directory Parity Error
-    level_0,
-    level_1,
-    level_2,
-    level_3,
+    //level_0,
+    ////level_1,
+    ////level_2,
+    ////level_3,
     
     // Cache Duplicate Directory Multiple Match
-    cdd,
+    //cdd,
     
-    par_sdwam,  // A parity error has been detected in the SDWAM.
-    par_ptwam,  // A parity error has been detected in the PTWAM.
+    //par_sdwam,  // A parity error has been detected in the SDWAM.
+    //par_ptwam,  // A parity error has been detected in the PTWAM.
     
     // Access violation fault subtypes
     ACV0  = (1U << 15),   ///< 15.Illegal ring order (ACV0=IRO)
@@ -664,28 +665,6 @@ enum _fault_subtype {
     ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
     ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
     ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
-    
-    // ACDF0  = ( 1U << 16), ///< directed fault 0
-    // ACDF1  = ( 1U << 17), ///< directed fault 1
-    // ACDF2  = ( 1U << 18), ///< directed fault 2
-    // ACDF3  = ( 1U << 19), ///< directed fault 3
-    
-    IRO = ACV0,
-    OEB = ACV1,
-    E_OFF = ACV2,
-    ORB = ACV3,
-    R_OFF = ACV4,
-    OWB = ACV5,
-    W_OFF = ACV6,
-    NO_GA = ACV7,
-    OCB = ACV8,
-    OCALL = ACV9,
-    BOC = ACV10,
-    INRET = ACV11,
-    CRT = ACV12,
-    RALR = ACV13,
-    AME = ACV14,
-    OOSB = ACV15
 };
 typedef enum _fault_subtype _fault_subtype;
 
