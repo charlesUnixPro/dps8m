@@ -51,7 +51,7 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-//#define SPEED
+#define SPEED
 
 // Enable history debugger
 #define HDBG
@@ -97,6 +97,7 @@ typedef uint32      word18;
 typedef uint32      word19;
 typedef int32       word18s;
 typedef uint32      word20;
+typedef uint32      word21;
 typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word32;

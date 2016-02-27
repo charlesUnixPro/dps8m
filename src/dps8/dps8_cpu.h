@@ -980,11 +980,44 @@ typedef struct du_unit_data_t
 
   } du_unit_data_t;
 
-// XXX when multiple cpus are supported, make the cpu  data structure
-// an array and merge the unit state info into here; coding convention
-// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
-// is taken. It should probably be merged into here, and then this
-// should then be renamed.
+// History registers
+
+#if 0
+typedef struct
+  {
+    word18 flags;
+    word18 opcode;
+    word24 address;
+    word5 proccmd;
+    word4 portsel;
+    word6 flags2;
+
+  } cu_hist_t;
+
+typedef struct
+  {
+    word36 flags;
+    word18 ICT;
+    word9 RS_REG;
+    word9 flags2;
+  } du_ou_hist_t;
+
+typedef struct
+  {
+    word15 ESN;
+    word21 flags;
+    word24 RMA;
+    word3 RTRR;
+    word9 flags2;
+  } apu_hist_t;
+
+typedef struct
+  {
+    word18 ZCA;
+    word18 opcode;
+    //word36 notused;
+  } eapu_hist_t;
+#endif
 
 #define N_CPU_UNITS_MAX 8
 
@@ -1091,6 +1124,22 @@ typedef struct
     // Map memory to port
     int scbank_map [N_SCBANKS];
     int scbank_pg_os [N_SCBANKS];
+
+    //cu_hist_t cu_hist [N_HIST_SIZE];
+    //uint cu_cyclic; // 0..63;
+
+    //du_ou_hist_t du_ou_hist [N_HIST_SIZE];
+    //uint du_ou_cyclic; // 0..63;
+
+    //apu_hist_t apu_hist [N_HIST_SIZE];
+    //uint apu_cyclic; // 0..63;
+
+    //eapu_hist_t eapu_hist [N_HIST_SIZE];
+    //uint eapu_cyclic; // 0..63;
+
+    uint history_cyclic [N_HIST_SETS]; // 0..63
+    word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];
+
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN
@@ -1206,3 +1255,8 @@ char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
+void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
+void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
+void addEAPUhist (word18 ZCA, word18 opcode);
+void addHist (uint hset, word36 w0, word36 w1);

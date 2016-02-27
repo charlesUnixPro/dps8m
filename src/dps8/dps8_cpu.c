@@ -3572,3 +3572,68 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
     return SCPE_OK;
   }
 
+void addHist (uint hset, word36 w0, word36 w1)
+  {
+    cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
+    cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;
+    cpu.history_cyclic[hset] = (cpu.history_cyclic[hset] + 1) % N_HIST_SIZE;
+  }
+
+void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2)
+  {
+    word36 w0 = 0, w1 = 0;
+    w0 |= flags & 0777777000000;
+    w0 |= opcode & MASK18;
+    w1 |= (address & MASK24) << 12;
+    w1 |= (proccmd & MASK5) << 7;
+    w1 |= flags2 & 0176;
+    addHist (CU_HIST_REG, w0, w1);
+    //cpu.cu_hist[cpu.cu_cyclic].flags = flags;
+    //cpu.cu_hist[cpu.cu_cyclic].opcode = opcode;
+    //cpu.cu_hist[cpu.cu_cyclic].address = address;
+    //cpu.cu_hist[cpu.cu_cyclic].proccmd = proccmd;
+    //cpu.cu_hist[cpu.cu_cyclic].portsel = portsel;
+    //cpu.cu_hist[cpu.cu_cyclic].flags2 = flags2;
+  }
+
+void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2)
+  {
+    word36 w0 = flags, w1 = 0;
+    w1 |= (ICT & MASK18) << 18;
+    w1 |= (RS_REG & MASK9) << 9;
+    w1 |= flags2 & MASK9;
+    addHist (DU_OU_HIST_REG, w0, w1);
+    //cpu.du_ou_hist[cpu.du_ou_cyclic].flags = flags;
+    //cpu.du_ou_hist[cpu.du_ou_cyclic].ICT = ICT;
+    //cpu.du_ou_hist[cpu.du_ou_cyclic].RS_REG = RS_REG;
+    //cpu.du_ou_hist[cpu.du_ou_cyclic].flags2 = flags2;
+  }
+
+void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2)
+  {
+    word36 w0 = 0, w1 = 0;
+    w0 |= (ESN & MASK15) << 21;
+    w0 |= flags & MASK21;
+    w1 |= (RMA & MASK24) << 12;
+    w1 |= (RTRR & MASK3) << 9;
+    w1 |= flags2 & MASK9;
+    addHist (APU_HIST_REG, w0, w1);
+    //cpu.apu_hist[cpu.apu_cyclic].ESN = ESN;
+    //cpu.apu_hist[cpu.apu_cyclic].flags = flags;
+    //cpu.apu_hist[cpu.apu_cyclic].RMA = RMA;
+    //cpu.apu_hist[cpu.apu_cyclic].RTRR = RTRR;
+    //cpu.apu_hist[cpu.apu_cyclic].flags2 = flags2;
+  }
+
+void addEAPUhist (word18 ZCA, word18 opcode)
+  {
+    word36 w0 = 0;
+    w0 |= (ZCA & MASK18) << 18;
+    w0 |= opcode & MASK18;
+    addHist (EAPU_HIST_REG, w0, 0);
+    //cpu.eapu_hist[cpu.eapu_cyclic].ZCA = ZCA;
+    //cpu.eapu_hist[cpu.eapu_cyclic].opcode = opcode;
+    //cpu.history_cyclic[EAPU_HIST_REG] = (cpu.history_cyclic[EAPU_HIST_REG] + 1) % N_HIST_SIZE;
+  }
+
+

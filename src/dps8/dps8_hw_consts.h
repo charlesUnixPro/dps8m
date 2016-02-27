@@ -98,7 +98,9 @@ enum { N_DEV_CODES = 64 };
 #define MASK2           03U
 #define MASK3           07U
 #define MASK4           017U
+#define MASK5           037U
 #define MASK6           077U
+#define MASK7           0177U
 
 #define SIGN8           0200U                    // sign mask 8-bit number
 #define MASK8           0377U                    // 8-bit mask
@@ -1310,5 +1312,125 @@ typedef enum {
         opcode1_lar7   = 0767U, // (503 decimal)
         opcode1_lra    = 0774U  // (508 decimal)
 } opcode1_t;
+
+// History registers
+
+enum { N_HIST_SETS = 4 };
+enum { N_HIST_SIZE = 64 };
+
+// Bit in CU history register word 0
+
+// cu_hist_t flags
+enum
+  {
+    CU_HIST_PIA =      0400000000000,  //  0   Prepare instruction address
+    CU_HIST_POA =      0200000000000,  //  1   Prepare operand address
+    CU_HIST_RIW =      0100000000000,  //  2   Request indirect word
+    CU_HIST_SIW =      0040000000000,  //  3   Restore indirect word
+    CU_HIST_POT =      0020000000000,  //  4   Prepare operand tally (indirect tally chain)
+    CU_HIST_PON =      0010000000000,  //  5   Prepare operand no tally (as for POT except no chain)
+    CU_HIST_RAW =      0004000000000,  //  6   Request read-alter-rewrite word
+    CU_HIST_SAW =      0002000000000,  //  7   Restore read-later-rewrite word
+    CU_HIST_TRGO =     0001000000000,  //  8   Transfer GO (conditions met)
+    CU_HIST_XDE =      0000400000000,  //  9   Execute XED even instruction
+    CU_HIST_XDO =      0000200000000,  // 10   Execute XED odd instruction
+    CU_HIST_IC =       0000100000000,  // 11   Execute odd instruction of the current pair
+    CU_HIST_RPTS =     0000040000000,  // 12   Execute a repeat instruction
+    CU_HIST_PORTF =    0000020000000,  // 13   Memory cycle to port on previous cycle
+    CU_HIST_INTERNAL = 0000010000000,  // 14   Memory cycle to cache or direct on previous cycle
+    CU_HIST_PAI =      0000004000000,  // 15   Prepare interrupt address
+    CU_HIST_PFA =      0000002000000,  // 16   Prepare fault address
+    CU_HIST_PRIV =     0000001000000   // 17   In privileged mode
+  };
+
+// cu_hist_t flags2
+enum
+  {
+    CU_HIST_XINT = 0100,  //  29   Execute instruction
+    CU_HIST_IFT =  0040,  //  30   Perform an instruction fetch
+    CU_HIST_CRD =  0020,  //  31   Cache read, this CU cycle
+    CU_HIST_MRD =  0010,  //  32   Memory read, this CU cycle
+    CU_HIST_MSTO = 0004,  //  33   Memory store, this CU cycle
+    CU_HIST_PIB =  0002,  //  34   Memory port interface busy
+   };
+
+enum
+  {
+    DU_FANLD1 =  0400000000000,  //   0  Alpha-num load desc l (complemented)
+    DU_FANLD2 =  0200000000000,  //   1  Alpha-num load desc 2 (complemented)
+    DU_FANSTR =  0100000000000,  //   2  Alpha-num store (complemented)
+    DU_FLDWRT1 = 0040000000000,  //   3  Load re-write reg l (complemented)
+    DU_FLDWRT2 = 0020000000000,  //   4  Load re-write reg 2 (complemented)
+    DU_FNLD1 =   0010000000000,  //   5  Numeric load desc l (complemented)
+    DU_FNLD2 =   0004000000000,  //   6  Numeric load desc 2 (complemented)
+    DU_NOSEQF =  0002000000000,  //   7  End sequence flag
+    DU_FDUD =    0001000000000,  //   8  Decimal unit idle (complemented)
+    DU_FGSTR =   0000400000000,  //   9  General store flag (complemented)
+    DU_NOSEQ =   0000200000000,  //  10  End of sequence (complemented)
+    DU_NINE =    0000100000000,  //  11  9-bit character operation
+    DU_SIX =     0000040000000,  //  12  6-bit character operation
+    DU_FOUR =    0000020000000,  //  13  4-bit character operation
+    DU_DUBIT =   0000010000000,  //  14  Bit operation
+    DU_UWORD =   0000004000000,  //  15  Word operation
+    DU_PTR1 =    0000002000000,  //  16  Select ptr l
+    DU_PTR2 =    0000001000000,  //  17  Select ptr 2
+    DU_PRT3 =    0000000400000,  //  18  Select ptr 3
+    DU_FPOP =    0000000200000,  //  19  Prepare operand pointer
+    DU_GEAM =    0000000100000,  //  20  Add timing gates (complemented)
+    DU_LPD12 =   0000000040000,  //  21  Load pointer l or 2 (complemented)
+    DU_GEMAE =   0000000020000,  //  22  Multiply gates A E (complemented)
+    DU_BTDS =    0000000010000,  //  23  Binary to decimal gates (complemented)
+    DU_SP15 =    0000000004000,  //  24  Align cycles (complemented)
+    DU_FSWEQ =   0000000002000,  //  25  Single word sequence flag (complemented)
+    DU_FGCH =    0000000001000,  //  26  Character cycle (complemented)
+    DU_DFRST =   0000000000400,  //  27  Processing descriptor for first time
+    DU_EXH =     0000000000200,  //  28  Exhaust
+    DU_FGADO =   0000000000100,  //  29  Add cycle (complemented)
+    DU_INTRPTD = 0000000000040,  //  30  Interrupted
+    DU_GLDP2 =   0000000000020,  //  31  Load DP2
+    DU_GEMC =    0000000000010,  //  32  Multiply gate C
+    DU_GBDA =    0000000000004,  //  33  Binary to decimal gate A
+    DU_GSP5 =    0000000000002   //  34  Final align cycle
+  };
+
+// apu_hist_t flags
+enum
+  {
+    APU_PIA_OVF = 04000000,  //  15   PIA Page overflow
+    APU_PIA_OOB = 02000000,  //  16   PIA out of segment bounds
+    APU_FDSPTW =  01000000,  //  17   Fetch descriptor segment PTW
+    APU_MDSPTW =  00400000,  //  18   Descriptor segment PTW is modified
+    APU_FSDW =    00200000,  //  19   Fetch SDW
+    APU_FPTW =    00100000,  //  20   Fetch PTW
+    APU_FPTW2 =   00040000,  //  21   Fetch pre-page PTW
+    APU_MPTW =    00020000,  //  22   PTW modified
+    APU_FANP =    00010000,  //  23   Final address nonpaged
+    APU_FAP =     00004000,  //  24   Final address paged
+    APU_MTCHSDW = 00002000,  //  25   SDW match found
+    APU_SDWMF =   00001000,  //  26   SDW match found and used
+    // BSY Data source for ESN
+    APU_BSY_IC =  00000000,  // 27-28  00 = from ppr.ic
+    APU_BSY_TSE = 00000200,  // 27-28  01 = from prn.tsr
+    APU_BSY_SWR = 00000400,  // 27-28  10 = from tpr.swr
+    APU_BSY_CA =  00000600,  // 27-28  11 = from tpr.ca
+    APU_MTCHPTW = 00000100,  //  29   PTW match found (AM)
+    //APU_PTWMF =   00000000,  // 30-31 PTW match found (AM) and used
+    //APU_PTWAM =   00000000   // 32-35 PTW AM direct address (ZCA bits 4-7)
+  };
+
+// apu_hist_t flags2
+enum
+  {
+    APU_SDWME =  0400, //   27   SDW match error
+    //APU_SDWLVL = 0000, // 28-29  SDW match level count (0 = Level A)
+    APU_CACHE =  0040, //   30   Cache used this cycle
+    APU_PTW =    0020, //   31   match error
+    //APU_PTWLVL = 0000, // 32-33  PTW match level count (0 = level A)
+    APU_FLTHLD = 0002, //   34   A directed fault or access violation fault is waiting
+    // bit 35 is marked 'w' but undocumented
+  };
+
+
+enum { CU_HIST_REG = 0, DU_OU_HIST_REG = 1, APU_HIST_REG = 2, EAPU_HIST_REG = 3 };
 
 #endif // DPS8_HW_CONSTS_H

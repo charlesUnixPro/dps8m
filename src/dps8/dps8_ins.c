@@ -5465,11 +5465,17 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 case 03: // DPS 8m 0's -> history
-                  // XXX punt
+                  {
+                    for (uint i = 0; i < N_HIST_SETS; i ++)
+                      addHist (i, 0, 0);
+                  }
                   break;
 
                 case 07: // DPS 8m 1's -> history
-                  // XXX punt
+                  {
+                    for (uint i = 0; i < N_HIST_SETS; i ++)
+                      addHist (i, MASK36, MASK36);
+                  }
                   break;
 
                 default:
@@ -5517,9 +5523,9 @@ static t_stat DoBasicInstruction (void)
               {
                 case 000: // C(APU history register#1) -> C(Y-pair)
                   {
-                    // XXX punt
-                    cpu.Ypair [0] = 0;
-                    cpu.Ypair [1] = 0;
+                    cpu.Ypair [0] = cpu.history [APU_HIST_REG] [cpu.history_cyclic[APU_HIST_REG]] [0];
+                    cpu.Ypair [1] = cpu.history [APU_HIST_REG] [cpu.history_cyclic[APU_HIST_REG]] [1];
+                    cpu.history_cyclic[APU_HIST_REG] = (cpu.history_cyclic[APU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
                   break;
 
@@ -5569,25 +5575,25 @@ static t_stat DoBasicInstruction (void)
 
                 case 010: // C(APU history register#2) -> C(Y-pair)
                   {
-                    // XXX punt
-                    cpu.Ypair [0] = 0;
-                    cpu.Ypair [1] = 0;
+                    cpu.Ypair [0] = cpu.history [EAPU_HIST_REG] [cpu.history_cyclic[EAPU_HIST_REG]] [0];
+                    cpu.Ypair [1] = cpu.history [EAPU_HIST_REG] [cpu.history_cyclic[EAPU_HIST_REG]] [1];
+                    cpu.history_cyclic[EAPU_HIST_REG] = (cpu.history_cyclic[EAPU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
                   break;
 
                 case 020: // C(CU history register) -> C(Y-pair)
                   {
-                    // XXX punt
-                    cpu.Ypair [0] = 0;
-                    cpu.Ypair [1] = 0;
+                    cpu.Ypair [0] = cpu.history [CU_HIST_REG] [cpu.history_cyclic[CU_HIST_REG]] [0];
+                    cpu.Ypair [1] = cpu.history [CU_HIST_REG] [cpu.history_cyclic[CU_HIST_REG]] [1];
+                    cpu.history_cyclic[CU_HIST_REG] = (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
                   break;
 
                 case 040: // C(OU/DU history register) -> C(Y-pair)
                   {
-                    // XXX punt
-                    cpu.Ypair [0] = 0;
-                    cpu.Ypair [1] = 0;
+                    cpu.Ypair [0] = cpu.history [DU_OU_HIST_REG] [cpu.history_cyclic[DU_OU_HIST_REG]] [0];
+                    cpu.Ypair [1] = cpu.history [DU_OU_HIST_REG] [cpu.history_cyclic[DU_OU_HIST_REG]] [1];
+                    cpu.history_cyclic[DU_OU_HIST_REG] = (cpu.history_cyclic[DU_OU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
                   break;
 
