@@ -5480,7 +5480,7 @@ static t_stat DoBasicInstruction (void)
                   // XXX punt
                   break;
 
-                case 05: // DPS 8m 1's -> history
+                case 07: // DPS 8m 1's -> history
                   // XXX punt
                   break;
 
