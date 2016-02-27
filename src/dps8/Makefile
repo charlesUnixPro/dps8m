@@ -188,8 +188,15 @@ LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
 ifeq ($(OS),Windows_NT)
     LIBS = $(LOCALLIBS) -lgcc -lm -ldl -lrt
 else
+  OSTYPE = $(shell uname -s)
+  ifeq ($(OSTYPE),FreeBSD)
+    LIBS = $(LOCALLIBS) -lm
+  endif
+  ifeq ($(OSTYPE),Linux)
     LIBS = $(LOCALLIBS)  -lm -ldl
+  endif
 endif
+LIBS ?= $(LOCALLIBS) -lm -ldl
 
 # efence is Electric Fence, a malloc debugger.
 #LIBS +- -lefence
