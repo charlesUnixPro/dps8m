@@ -51,7 +51,7 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-#define SPEED
+//#define SPEED
 
 // Enable history debugger
 #define HDBG
@@ -63,6 +63,8 @@
 #define ISOLTS
 
 #define OSCAR
+
+#define OVERFLOW_WRITE_THROUGH
 
 #include "sim_defs.h"                                   /* simulator defns */
 
@@ -126,7 +128,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETF(flags, x)         flags = ((flags) |  (x))
 #define CLRF(flags, x)         flags = ((flags) & ~(x))
-#define TSTF(flags, x)         ((flags) & (x))
+#define TSTF(flags, x)         (((flags) & (x)) ? 1 : 0)
 #define SCF(cond, flags, x)    { if ((cond)) SETF((flags), x); else CLRF((flags), x); }
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))

@@ -180,6 +180,7 @@ char *getModString(int32 tag)
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012llo op2 %012llo carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
 // In general, any two N-bit numbers may be added without overflow, by first
@@ -253,6 +254,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012llo flags %06o ovf %o\n", res, * flags, * ovf); 
     return res;
   }
 
@@ -571,6 +573,8 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+ (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -643,6 +647,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
     return res;
   }
 
