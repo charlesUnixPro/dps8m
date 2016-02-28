@@ -70,6 +70,8 @@ void doG7Fault(void) NO_RETURN;
 
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
+void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 
+                const char * faultMsg);
 bool bG7PendingNoTRO (void);
 bool bG7Pending (void);
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault);

@@ -1901,95 +1901,82 @@ void dvf (void)
     // reflects the dividend sign.
     
 // HWR code
-#ifdef DVF_HWR
-    // m1 divedend
-    // m2 divisor
-
-    word72 m1 = SIGNEXT36_72((cpu . rA << 36) | (cpu . rQ & 0777777777776LLU));
-    word72 m2 = SIGNEXT36_72(cpu.CY);
-
-//sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
-//sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
-//sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
-//sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
-
-    if (m2 == 0)
-    {
-        // XXX check flags
-        SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
-        
-        cpu . rA = 0;
-        cpu . rQ = 0;
-        
-        return;
-    }
-    
-    // make everything positive, but save sign info for later....
-    int sign = 1;
-    int dividendSign = 1;
-    if (m1 & SIGN72)
-    {
-        m1 = (~m1 + 1);
-        sign = -sign;
-        dividendSign = -1;
-    }
-    
-    if (m2 & SIGN72)
-    {
-        m2 = (~m2 + 1);
-        sign = -sign;
-    }
-    
-    if (m2 == 0)
-    {        
-        SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
-        
-        //cpu . rA = m1;
-        cpu . rA = (m1 >> 36) & MASK36;
-        cpu . rQ = m1 & 0777777777776LLU;
-        
-        doFault(FAULT_DIV, 0, "DVF: divide check fault");
-    }
-    
-    uint128 dividend = (uint128)m1 << 63;
-    uint128 divisor = (uint128)m2;
-    
-    //uint128 m3  = ((uint128)m1 << 63) / (uint128)m2;
-    //uint128 m3r = ((uint128)m1 << 63) % (uint128)m2;
-    int128 m3  = (int128)(dividend / divisor);
-    int128 m3r = (int128)(dividend % divisor);
-
-    if (sign == -1) 
-        m3 = -m3;   //(~m3 + 1);
-    
-    if (dividendSign == -1) // The remainder sign is equal to the dividend sign unless the remainder is zero.
-        m3r = -m3r; //(~m3r + 1);
-    
-    cpu . rA = (m3 >> 64) & MASK36;
-    cpu . rQ = m3r & MASK36;   //01777777777LL;
-#endif
+//HWR--#ifdef DVF_HWR
+//HWR--    // m1 divedend
+//HWR--    // m2 divisor
+//HWR--
+//HWR--    word72 m1 = SIGNEXT36_72((cpu . rA << 36) | (cpu . rQ & 0777777777776LLU));
+//HWR--    word72 m2 = SIGNEXT36_72(cpu.CY);
+//HWR--
+//HWR--//sim_debug (DBG_CAC, & cpu_dev, "[%lld]\n", sim_timell ());
+//HWR--//sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
+//HWR--//sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
+//HWR--//sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
+//HWR--
+//HWR--    if (m2 == 0)
+//HWR--    {
+//HWR--        // XXX check flags
+//HWR--        SET_I_ZERO;
+//HWR--        SC_I_NEG (cpu . rA & SIGN36);
+//HWR--        
+//HWR--        cpu . rA = 0;
+//HWR--        cpu . rQ = 0;
+//HWR--        
+//HWR--        return;
+//HWR--    }
+//HWR--    
+//HWR--    // make everything positive, but save sign info for later....
+//HWR--    int sign = 1;
+//HWR--    int dividendSign = 1;
+//HWR--    if (m1 & SIGN72)
+//HWR--    {
+//HWR--        m1 = (~m1 + 1);
+//HWR--        sign = -sign;
+//HWR--        dividendSign = -1;
+//HWR--    }
+//HWR--    
+//HWR--    if (m2 & SIGN72)
+//HWR--    {
+//HWR--        m2 = (~m2 + 1);
+//HWR--        sign = -sign;
+//HWR--    }
+//HWR--    
+//HWR--    if (m1 >= m2 || m2 == 0)
+//HWR--    {        
+//HWR--        //cpu . rA = m1;
+//HWR--        cpu . rA = (m1 >> 36) & MASK36;
+//HWR--        cpu . rQ = m1 & 0777777777776LLU;
+//HWR--        
+//HWR--        SET_I_ZERO;
+//HWR--        SC_I_NEG (cpu . rA & SIGN36);
+//HWR--        
+//HWR--        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+//HWR--    }
+//HWR--    
+//HWR--    uint128 dividend = (uint128)m1 << 63;
+//HWR--    uint128 divisor = (uint128)m2;
+//HWR--    
+//HWR--    //uint128 m3  = ((uint128)m1 << 63) / (uint128)m2;
+//HWR--    //uint128 m3r = ((uint128)m1 << 63) % (uint128)m2;
+//HWR--    int128 m3  = (int128)(dividend / divisor);
+//HWR--    int128 m3r = (int128)(dividend % divisor);
+//HWR--
+//HWR--    if (sign == -1) 
+//HWR--        m3 = -m3;   //(~m3 + 1);
+//HWR--    
+//HWR--    if (dividendSign == -1) // The remainder sign is equal to the dividend sign unless the remainder is zero.
+//HWR--        m3r = -m3r; //(~m3r + 1);
+//HWR--    
+//HWR--    cpu . rA = (m3 >> 64) & MASK36;
+//HWR--    cpu . rQ = m3r & MASK36;   //01777777777LL;
+//HWR--#endif
 
 // canonial code
 #ifdef DVF_FRACTIONAL
 
-sim_printf ("dvf [%lld]\n", sim_timell ());
-sim_printf ("rA %llu\n", cpu . rA);
-sim_printf ("rQ %llu\n", cpu . rQ);
-sim_printf ("CY %llu\n", cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("DVF A %012llo Q %012llo CY %012llu\n", cpu.rA, cpu.rQ, cpu.CY);
 
-    if (cpu.CY == 0)
-      {
-        // XXX check flags
-        SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
-        
-        cpu . rA = 0;
-        cpu . rQ = 0;
-        
-        return;
-    }
 // http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
 // slide 10: sequential algorithim
 
@@ -2007,14 +1994,14 @@ sim_printf ("CY %llu\n", cpu.CY);
 
     // dividend format:   . d(0) ...  d(69)
 
-    uint128 zFrac = ((cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
+    uint128 zFrac = ((uint128) (cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
     if (dividendNegative)
       {
         zFrac = ~zFrac + 1;
         sign = - sign;
       }
     zFrac &= MASK70;
-sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
+//sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
 
     // Get the 35 bits of the divisor (36 bits less the sign bit)
 
@@ -2039,7 +2026,27 @@ sim_printf ("zFrac "); print_int128 (zFrac); sim_printf ("\n");
       }
     dFrac &= MASK35;
 #endif
-sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
+//sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
+if (currentRunningCPUnum)
+sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
+
+    if (dFrac == 0)
+      {
+sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+// case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
+//         dFrac 000000000000 000000000000
+
+        //cpu . rA = (zFrac >> 35) & MASK35;
+        //cpu . rQ = (zFrac & MASK35) << 1;
+
+        //SC_I_ZERO (dFrac == 0);
+        //SC_I_NEG (cpu . rA & SIGN36);
+        SC_I_ZERO (cpu.CY == 0);
+        SC_I_NEG (cpu.rA & SIGN36);
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
 
     uint128 sn = zFrac;
     word36 quot = 0;
@@ -2062,6 +2069,29 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
+if (currentRunningCPUnum)
+sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+
+    // I am surmising that the "If | dividend | >= | divisor |" is an
+    // overflow prediction; implement it by checking that the calculated
+    // quotient will fit in 35 bits.
+
+    if (quot & ~MASK35)
+      {
+if (currentRunningCPUnum)
+sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+        //cpu . rA = (zFrac >> 35) & MASK35;
+        //cpu . rQ = (zFrac & MASK35) << 1;
+
+        //SC_I_ZERO (dFrac == 0);
+        //SC_I_NEG (cpu . rA & SIGN36);
+        SC_I_ZERO (cpu.rA == 0);
+        SC_I_NEG (cpu.rA & SIGN36);
+        
+        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+      }
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
  
@@ -2074,7 +2104,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);
-
+if (currentRunningCPUnum)
+sim_printf ("DVF A %012llo Q %012llo CY %012llu\n", cpu.rA, cpu.rQ, cpu.CY);
 #if 0
     if (cpu.CY == 0)
       {
@@ -2104,7 +2135,9 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 
     // dividend format:   . d(0) ...  d(69)
 
-    uint128 zFrac = ((cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
+    uint128 zFrac = ((uint128) (cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
+    //zFrac <<= 1; -- Makes Multics unbootable.
+
     if (dividendNegative)
       {
         zFrac = ~zFrac + 1;
@@ -2129,6 +2162,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
       }
     dFrac &= MASK35;
 
+if (currentRunningCPUnum)
+sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
@@ -2137,16 +2174,27 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     //if (dFrac == 0 || zFrac >= dFrac << 35)
     if (dFrac == 0)
       {
-        SC_I_ZERO (dFrac == 0);
-        SC_I_NEG (cpu . rA & SIGN36);
-        
-        cpu . rA = (zFrac >> 31) & MASK35;
-        cpu . rQ = (zFrac & MASK35) << 1;
+sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+// case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
+//         dFrac 000000000000 000000000000
+
+        //cpu . rA = (zFrac >> 35) & MASK35;
+        //cpu . rQ = (zFrac & MASK35) << 1;
+
+        //SC_I_ZERO (dFrac == 0);
+        //SC_I_NEG (cpu . rA & SIGN36);
+        SC_I_ZERO (cpu.CY == 0);
+        SC_I_NEG (cpu.rA & SIGN36);
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
 
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
+if (currentRunningCPUnum)
+sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+
 
 
     // I am surmising that the "If | dividend | >= | divisor |" is an
@@ -2155,11 +2203,50 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
 
     if (quot & ~MASK35)
       {
-        SC_I_ZERO (dFrac == 0);
-        SC_I_NEG (cpu . rA & SIGN36);
+if (currentRunningCPUnum)
+sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+//
+// this got:
+//            s/b 373737373737 373737373740 200200
+//            was 373737373740 373737373740 000200
+//                          ~~ 
+#if 1
+        bool Aneg = (cpu.rA & SIGN36) != 0; // blood type
+        bool AQzero = cpu.rA == 0 && cpu.rQ == 0;
+        if (cpu.rA & SIGN36)
+          {
+if (currentRunningCPUnum)
+sim_printf ("negating AQ\n");
+            cpu.rA = (~cpu.rA) & MASK36;
+            cpu.rQ = (~cpu.rQ) & MASK36;
+            cpu.rQ += 1;
+if (currentRunningCPUnum)
+sim_printf ("Q after incr: %012llo\n", cpu.rQ);
+            if (cpu.rQ & BIT37) // overflow?
+              {
+if (currentRunningCPUnum)
+sim_printf ("incr. A\n");
+                cpu.rQ &= MASK36;
+                cpu.rA = (cpu.rA + 1) & MASK36;
+              }
+          }
+#else
+        if (cpu.rA & SIGN36)
+          {
+            cpu.rA = (cpu.rA + 1) & MASK36;
+            cpu.rQ = (cpu.rQ + 1) & MASK36;
+          }
+#endif
+        //cpu . rA = (zFrac >> 35) & MASK35;
+        //cpu . rQ = (zFrac & MASK35) << 1;
+
+        //SC_I_ZERO (dFrac == 0);
+        //SC_I_NEG (cpu . rA & SIGN36);
+        SC_I_ZERO (AQzero);
+        SC_I_NEG (Aneg);
         
-        cpu . rA = (zFrac >> 31) & MASK35;
-        cpu . rQ = (zFrac & MASK35) << 1;
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
     //char buf3 [128] = "";
@@ -2172,6 +2259,10 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
+if (currentRunningCPUnum)
+sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
  

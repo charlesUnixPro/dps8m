@@ -555,6 +555,15 @@ if (currentRunningCPUnum)
     longjmp (jmpMain, JMP_REENTRY);
 }
 
+void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 
+                const char * faultMsg)
+  {
+    cpu.dlyFlt = true;
+    cpu.dlyFltNum = faultNumber;
+    cpu.dlySubFltNum = subFault;
+    cpu.dlyCtx = faultMsg;
+  }
+
 //
 // return true if group 7 faults are pending ...
 //

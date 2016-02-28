@@ -1140,6 +1140,15 @@ typedef struct
     uint history_cyclic [N_HIST_SETS]; // 0..63
     word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];
 
+    // If the instruction wants overflow thrown after operand write
+    bool dlyFlt;
+
+    // Arguments for delayed overflow fault
+
+    _fault dlyFltNum;
+    _fault_subtype dlySubFltNum;
+    const char * dlyCtx;
+
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN
@@ -1153,8 +1162,6 @@ extern cpu_state_t cpu;
 #define currentRunningCPUnum 0
 #endif
 
-//extern int stop_reason;     // sim_instr return value for JMP_STOP
-//void cancel_run (t_stat reason);
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);

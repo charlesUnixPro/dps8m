@@ -1139,6 +1139,53 @@ bool tstOVFfault (void)
 t_stat executeInstruction (void)
   {
 
+//
+// Decode the instruction
+//
+// If not restart
+//     check for priviledge
+//     chcck for illegal modifiers
+//     if rpt/rpd
+//         check for illegal rpt/rpd modifiers
+//     initialize CA
+//
+// Save tally
+// Debug trace instruction
+// If not restart
+//    Initialize TPR
+//
+// Initialize DU.JMP
+// If rpt/rpd
+//     If first repeat
+//         Initialize Xn
+//
+// If EIS instruction
+//     If not restart
+//         Initialize DU.CHTALLY, DU.Z
+//     Read operands
+//     Parse operands
+// Else not EIS instruction
+//     If not restart
+//         If B29
+//             Set TPR from pointer register
+//         Else
+//             Setup up TPR
+//         Initialize CU.CT_HOLD
+//     If restart and CU.POT
+//         Restore CA from IWB
+//     Do CAF if needed
+//     Read operand if needed
+//
+// Execute the instruction
+//
+// Write operand if needed
+// Update IT tally if needed
+// If XEC/XED, move instructions into IWB/IRODD
+// If instruction was repeated
+//     Update Xn
+//     Check for repeat termination
+// Post-instruction debug
+
 
 ///
 /// executeInstruction: Decode the instruction
@@ -1264,15 +1311,6 @@ t_stat executeInstruction (void)
     cpu.iefpFinalAddress = cpu.TPR.CA;
     cpu.rY = cpu.TPR.CA;
 
-#if 0
-    if (!cpu.switches.append_after)
-      {
-        if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
-          {
-            set_addr_mode(APPEND_mode);
-          }
-      }
-#endif
 
 restart_1:
 
@@ -1313,6 +1351,8 @@ restart_1:
       }
 
     cpu.du.JMP = info -> ndes;
+
+    cpu.dlyFlt = false;
 
 ///
 /// executeInstruction: RPT/RPD special processing for 'first time'
@@ -1523,28 +1563,6 @@ restart_1:
     t_stat ret = doInstruction ();
 
 ///
-/// executeInstruction: Transfer into append mode
-///
-
-#if 0
-    if (cpu.switches.append_after)
-      {
-        if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
-          {
-           set_addr_mode(APPEND_mode);
-          }
-      }
-#endif
-
-#if 0
-    if (TST_I_ABS && info->ndes == 0 && get_went_appending () && (info->flags & TRANSFER_INS))
-      {
-        //sim_printf ("want to set append mode %lld\n", sim_timell ());
-        set_addr_mode(APPEND_mode);
-      }
-#endif
-
-///
 /// executeInstruction: Write operand
 ///
 
@@ -1676,6 +1694,15 @@ restart_1:
                    "update IT wrote tally word %012llo to %06o\n",
                    indword, cpu.TPR.CA);
       } // SC/SCR
+
+///
+/// executeInstruction: Delayed overflow fault
+///
+
+    if (cpu.dlyFlt)
+      {
+        doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
+      }
 
 ///
 /// executeInstruction: XEC/XED processing
@@ -2926,7 +2953,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "aos overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "aos overflow fault");
               }
 #else
             bool ovf;
@@ -2955,7 +2982,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "asa overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "asa overflow fault");
               }
 #else
             bool ovf;
@@ -2982,7 +3009,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "asq overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "asq overflow fault");
               }
 #else
             bool ovf;
@@ -3289,7 +3316,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "ssa overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "ssa overflow fault");
               }
 #else
             bool ovf;
@@ -3316,7 +3343,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "ssq overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "ssq overflow fault");
               }
 #else
             bool ovf;
@@ -3354,7 +3381,7 @@ static t_stat DoBasicInstruction (void)
             if (ovf && tstOVFfault ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "ssxn overflow fault");
+                dlyDoFault (FAULT_OFL, 0, "ssxn overflow fault");
               }
 #else
             bool ovf;
@@ -3447,7 +3474,7 @@ static t_stat DoBasicInstruction (void)
                 * negative 1 and the result exceeding the range of the AQ
                 * register.
                 */
-                word72 tmp72 = (word72) cpu.rA * (word72) cpu.CY;
+                word72 tmp72 = SIGNEXT36_72 (cpu.rA) * SIGNEXT36_72 (cpu.CY);
                 tmp72 &= MASK72;
                 tmp72 <<= 1;    // left adjust so AQ71 contains 0
                 // Overflow can occur only in the case of A and Y containing
@@ -3465,7 +3492,7 @@ static t_stat DoBasicInstruction (void)
 
                 convertToWord36(tmp72, &cpu.rA, &cpu.rQ);
                 SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
-                SC_I_ZERO (cpu.rA & SIGN36);
+                SC_I_NEG (cpu.rA & SIGN36);
             }
             break;
 
@@ -3504,8 +3531,19 @@ static t_stat DoBasicInstruction (void)
              * negative indicator reflects the dividend sign.
              */
 
-            if ((cpu.rQ == MAXNEG && cpu.CY == NEG136) || (cpu.CY == 0))
+            // RJ78: If the dividend = -2**35 and the divisor = +/-1, or if the divisor is 0
+
+            if ((cpu.rQ == MAXNEG && (cpu.CY == 1 || cpu.CY == NEG136)) || (cpu.CY == 0))
             {
+sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY); 
+// case 1  400000000000 000000000000 --> 000000000000
+// case 2  000000000000 000000000000 --> 400000000000
+                //cpu.rA = 0;  // works for case 1
+                cpu.rA = (cpu.rQ & SIGN36) ? 0 : SIGN36; // works for case 1 & 2
+                //if (cpu.rQ & SIGN36 != cpu.CY & SIGN36)
+                  //cpu.rA = SIGN36;
+                //else
+
                 // no division takes place
                 SC_I_ZERO (cpu.CY == 0);
                 SC_I_NEG (cpu.rQ & SIGN36);
