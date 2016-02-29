@@ -6463,8 +6463,6 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 longjmp (jmpMain, JMP_STOP);
               }
 
-// This is now handled by a SBREAK command in the INI file.
-#if 0
 // Multics/BCE halt
             if (cpu.PPR.PSR == 0430 && cpu.PPR.IC == 012)
                 {
@@ -6472,7 +6470,6 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                   sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                   longjmp (jmpMain, JMP_STOP);
                 }
-#endif
 
             sim_debug (DBG_TRACEEXT, & cpu_dev, "entered DIS_cycle\n");
             //sim_printf ("entered DIS_cycle\n");
