@@ -5338,7 +5338,10 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0500:  // rpl
-            return STOP_UNIMP;
+            if (cpu.switches.halt_on_unimp)
+              return STOP_UNIMP;
+            // Technically not true. XXX
+            doFault (FAULT_IPR, ill_op, "Illegal instruction");
 
         case 0520:  // rpt
             {
@@ -7160,8 +7163,7 @@ static t_stat DoEISInstruction (void)
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
-            else
-                doFault(FAULT_IPR, ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, ill_op, "Illegal instruction");
     }
 
     return SCPE_OK;
