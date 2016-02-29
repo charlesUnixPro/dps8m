@@ -4334,7 +4334,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
         case 0455:  // fst
             // C(E) -> C(Y)0,7
             // C(A)0,27 -> C(Y)8,35
-            cpu.rE &= MASK18;
+            cpu.rE &= MASK8;
             cpu.rA &= DMASK;
             cpu.CY = ((word36)cpu.rE << 28) | (((cpu.rA >> 8) & 01777777777LL));
             break;
@@ -4561,23 +4561,23 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 int e = SIGNEXT8_int (cpu.rE);
                 e = e + y;
 
+                cpu.rE = e & 0377;
+                CLR_I_ZERO;
+                CLR_I_NEG;
+
                 if (e > 127)
                 {
                     SET_I_EOFL;
                     if (tstOVFfault ())
                         doFault (FAULT_OFL, 0, "ade exp overflow fault");
                 }
+
                 if (e < -128)
                 {
                     SET_I_EUFL;
                     if (tstOVFfault ())
                         doFault (FAULT_OFL, 0, "ade exp underflow fault");
                 }
-
-                CLR_I_ZERO;
-                CLR_I_NEG;
-
-                cpu.rE = e & 0377;
             }
             break;
 
@@ -5675,7 +5675,10 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             break;
 
         case 0500:  // rpl
-            return STOP_UNIMP;
+            if (cpu.switches.halt_on_unimp)
+                return STOP_UNIMP;
+            // Technically not true
+            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
 
         case 0520:  // rpt
             {
@@ -6526,8 +6529,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
-            else
-                doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
     }
     return SCPE_OK;
 }
