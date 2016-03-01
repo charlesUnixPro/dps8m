@@ -4372,12 +4372,12 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             // The dfad instruction may be thought of as a dufa instruction
             // followed by a fno instruction.
 
-            dufa ();
+            dufa (false);
             fno ();
             break;
 
         case 0437:  // dufa
-            dufa ();
+            dufa (false);
             break;
 
         case 0475:  // fad
@@ -4403,12 +4403,14 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             // the exception that the twos complement of the mantissa of the
             // operand from main memory is used.
 
-            dufs ();
+            //dufs ();
+            dufa (true);
             fno ();
             break;
 
         case 0537:  // dufs
-            dufs ();
+            //dufs ();
+            dufa (true);
             break;
 
         case 0575:  // fsb

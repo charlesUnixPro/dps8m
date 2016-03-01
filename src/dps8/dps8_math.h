@@ -20,8 +20,9 @@ void frd (void);
 void fcmp(void);
 void fcmg(void);
 
-void dufa (void);
-void dufs (void);
+//void dufa (void);
+//void dufs (void);
+void dufa (bool subtraact);
 void dufm (void);
 void dfdv (void);
 void dfdi (void);
