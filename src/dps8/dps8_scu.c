@@ -1572,6 +1572,7 @@ static void deliverInterrupts (uint scu_unit_num)
                   {
 #ifdef ROUND_ROBIN
                     cpus [cpu_unit_num] . events . XIP [scu_unit_num] = true;
+//if (cpu_unit_num && ! cpus [cpu_unit_num] . isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
                     cpus [cpu_unit_num] . isRunning = true;
 #else
                     cpu . events . XIP [scu_unit_num] = true;

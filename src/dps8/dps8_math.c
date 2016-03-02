@@ -999,16 +999,19 @@ void fneg (void)
  */
 void ufm (void)
 {
-    //! The ufm instruction is executed as follows:
-    //!      C(E) + C(Y)0,7 → C(E)
-    //!      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
-    //! A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos  complement approximation to the decimal value -1.0.
-    //! The definition of normalization is located under the description of the fno instruction.
+    // The ufm instruction is executed as follows:
+    //      C(E) + C(Y)0,7 → C(E)
+    //      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
+    // A normalization is performed only in the case of both factor mantissas
+    // being 100...0 which is the twos  complement approximation to the decimal
+    // value -1.0.
+    // The definition of normalization is located under the description of the
+    // fno instruction.
     
-    //! Zero: If C(AQ) = 0, then ON; otherwise OFF
-    //! Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    //! Exp Ovr: If exponent is greater than +127, then ON
-    //! Exp Undr: If exponent is less than -128, then ON
+    // Zero: If C(AQ) = 0, then ON; otherwise OFF
+    // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
+    // Exp Ovr: If exponent is greater than +127, then ON
+    // Exp Undr: If exponent is less than -128, then ON
     
     uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; 
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
@@ -1290,12 +1293,29 @@ sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.r
         return;
     }
     
+
+#if 1 // according to RJ78
+    // C(AQ) + (11...1)29,71 → C(AQ)
+    bool ovf;
+    word18 flags1 = 0;
+    word18 flags2 = 0;
+    word1 carry = 0;
+    // If C(AQ)0 = 0, then a carry is added at AQ71
+    if ((m & SIGN72) == 0)
+    {
+      carry = 1;
+    }
+    m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
+if (currentRunningCPUnum)
+sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+#endif
+
+#if 0 // according to AL39
     // C(AQ) + (11...1)29,71 → C(AQ)
     bool ovf;
     word18 flags1 = 0;
     word18 flags2 = 0;
     m = Add72b (m, 0177777777777777LL, 0, I_OFLOW, & flags1, & ovf);
-
 if (currentRunningCPUnum)
 sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 
@@ -1306,7 +1326,8 @@ sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word3
 if (currentRunningCPUnum)
 sim_printf ("FRD add carry E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags2);
     }
- 
+#endif
+
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
 
@@ -1324,12 +1345,24 @@ if (currentRunningCPUnum)
 sim_printf ("FRD overflow E %03o m %012llo %012llo\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
     }
 
-    // 0 → C(AQ)28,71  (per. RJ78)
-    cpu.rA = (m >> 36) & 0777777777400;
-    cpu.rQ = 0;
+    cpu.rA = (m >> 36) & MASK36;
+    cpu.rQ = m & MASK36;
 
 if (currentRunningCPUnum)
 sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+    // If overflow does not occur, C(EAQ) is normalized.
+    if (! ((flags1 | flags2) & I_OFLOW))
+    {
+        if (cpu.rA != 0 || cpu.rQ != 0)
+          fno ();
+if (currentRunningCPUnum)
+sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+    }
+
+    // 0 → C(AQ)28,71  (per. RJ78)
+    cpu.rA &= 0777777777400;
+    cpu.rQ = 0;
+
     if (cpu.rA == 0 && cpu.rQ == 0)
     {
       SET_I_ZERO;
@@ -1340,6 +1373,8 @@ sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
       CLR_I_ZERO;
     }
     SC_I_NEG (cpu.rA & SIGN36);
+if (currentRunningCPUnum)
+sim_printf ("FRD final E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 
 void fstr(word36 *Y)

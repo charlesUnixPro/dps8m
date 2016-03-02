@@ -672,13 +672,19 @@ startCA:;
 
                 if (directOperandFlag)
                   {
-                    cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
-
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu . TPR . CA);
+                               "IR_MOD(TM_R): CT_HOLD DO %012llo\n", directOperand);
+                    //cpu.TPR.CA += directOperand;
+                    //cpu.TPR.CA = directOperand;
+                    //cpu.TPR.CA &= MASK18;   // keep to 18-bits
 
-                    updateIWB (cpu . TPR . CA, cpu . cu  . CT_HOLD); // Known to be DL or DU
+                    //sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               //"IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu.TPR.CA);
+
+                    // CT_HOLD has *DU or *DL; convert to DU or DL
+                    word6 tag = TM_R | GET_TD (cpu.cu.CT_HOLD);
+         
+                    updateIWB (cpu . TPR . CA, tag); // Known to be DL or DU
                   }
                 else
                   {
@@ -704,7 +710,8 @@ startCA:;
 
                 if (directOperandFlag)
                   {
-                    cpu . TPR . CA += directOperand;
+                    //cpu . TPR . CA += directOperand;
+                    cpu . TPR . CA = directOperand;
                     cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -814,15 +821,11 @@ startCA:;
             case IT_SC:  // Sequence character (Td = 12)
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-                // There is difficulty with managing page faults and tracking the indirect
-                // word address and the operand address.
-                // To alleviate this, we force those pages in during PREPARE_CA, so that they won't fault
-                // during operand read/write.
-
-//                // If there was a page fault during the data word fetch, CA has the data word address, not
-//                // the indirect word address
-
-//                cpu . TPR . CA = GET_ADDR (IWB_IRODD);
+	      // There is complexity with managing page faults and tracking
+	      // the indirect word address and the operand address.
+                //
+	      // To address this, we force those pages in during PREPARE_CA,
+	      // so that they won't fault during operand read/write.
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR reading indirect word from %06o\n",
@@ -866,20 +869,24 @@ startCA:;
                 // but SCR use the post-decrement address
                 if (Td == IT_SCR)
                   {
-                    // For each reference to the indirect word, the character
-                    // counter, cf, is reduced by 1 and the TALLY field is
-                    // increased by 1 before the computed address is formed.
-                    // Character count arithmetic is modulo 6 for 6-bit characters
-                    // and modulo 4 for 9-bit bytes. If the character count, cf,
-                    // underflows to -1, it is reset to 5 for 6-bit characters or
-                    // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-                    // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-                    // If the TALLY field overflows to 0, the tally runout
-                    // indicator is set ON, otherwise it is set OFF. The computed
-                    // address is the (possibly) decremented value of the ADDRESS
-                    // field of the indirect word. The effective character/byte
-                    // number is the decremented value of the character position
-                    // count, cf, field of the indirect word.
+		// For each reference to the indirect word, the character
+		// counter, cf, is reduced by 1 and the TALLY field is
+		// increased by 1 before the computed address is formed.
+                    //
+		// Character count arithmetic is modulo 6 for 6-bit
+		// characters and modulo 4 for 9-bit bytes. If the
+		// character count, cf, underflows to -1, it is reset to 5
+		// for 6-bit characters or to 3 for 9-bit bytes and ADDRESS
+		// is reduced by 1. ADDRESS arithmetic is modulo 2^18.
+		// TALLY arithmetic is modulo 4096.
+                    //
+		// If the TALLY field overflows to 0, the tally runout
+		// indicator is set ON, otherwise it is set OFF. The
+		// computed address is the (possibly) decremented value of
+		// the ADDRESS field of the indirect word. The effective
+		// character/byte number is the decremented value of the
+		// character position count, cf, field of the indirect
+		// word.
 
                     if (characterOperandOffset == 0)
                       {

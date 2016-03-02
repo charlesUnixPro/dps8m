@@ -56,6 +56,7 @@ static void writeOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
+        // CI:
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
         // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -241,6 +242,7 @@ static void readOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
+        // CI
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
         // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -1616,6 +1618,8 @@ restart_1:
                    characterOperandSize, characterOperandOffset,
                    Yi);
 
+        word12 tally = GET_TALLY (indword);    // 12-bits
+
         if (Td == IT_SCR)
           {
             // For each reference to the indirect word, the character
@@ -1646,6 +1650,8 @@ restart_1:
               {
                 characterOperandOffset -= 1;
               }
+            tally ++;
+            tally &= 07777; // keep to 12-bits
           }
         else // SC
           {
@@ -1671,12 +1677,10 @@ restart_1:
                 Yi += 1;
                 Yi &= MASK18;
               }
-
+            tally --;
+            tally &= 07777; // keep to 12-bits
           }
 
-        word12 tally = GET_TALLY (indword);    // 12-bits
-        tally -= 1;
-        tally &= 07777; // keep to 12-bits
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "update IT tally now %o\n", tally);
@@ -6520,7 +6524,10 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 //longjmp (jmpMain, JMP_REFETCH);
 #ifdef ISOLTS
                 if (currentRunningCPUnum)
+                {
+//if (cpus [currentRunningCPUnum] . isRunning) sim_printf ("stopping CPU %c\n", currentRunningCPUnum + 'A');
                   cpus [currentRunningCPUnum] . isRunning = false;
+                }
 #endif
                 return CONT_DIS;
               }
