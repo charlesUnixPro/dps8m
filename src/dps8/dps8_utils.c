@@ -13,6 +13,7 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
+#include "dps8_ins.h"
 #include "dps8_utils.h"
 #include "dps8_opcodetable.h"
 
@@ -232,7 +233,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -310,7 +311,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -389,7 +390,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -466,7 +467,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -545,7 +546,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -625,7 +626,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -662,7 +663,7 @@ word36 compl36(word36 op1, word18 *flags, bool * ovf)
     
     * ovf = op1 == MAXNEG;
 
-    if (* ovf)
+    if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
 
     if (res & SIGN36)
@@ -688,7 +689,7 @@ word18 compl18(word18 op1, word18 *flags, bool * ovf)
     word18 res = -op1 & MASK18;
     
     * ovf = op1 == MAX18NEG;
-    if (* ovf)
+    if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
     if (res & SIGN18)
         SETF(*flags, I_NEG);

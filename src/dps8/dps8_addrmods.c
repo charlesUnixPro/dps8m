@@ -984,7 +984,9 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
@@ -1038,7 +1040,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1093,7 +1097,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
 
@@ -1150,6 +1156,10 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
+
+                // XXX Breaks boot?
+                //if (tally == 0)
+                  //SET_I_TALLY;
                 SC_I_TALLY (tally == 0);
 
                 // write back out indword
@@ -1182,6 +1192,17 @@ startCA:;
                 // register is forced to "null" before the next computed
                 // address is formed .
 
+                // a:RJ78/idc1
+	      // The address and tally fields are used as described under the
+	      // ID variation. The tag field uses the set of variations for
+	      // instruction address modification under the following
+	      // restrictions: no variation is permitted that requires an
+	      // indexing modification in the DIC cycle since the indexing
+	      // adder is being used by the tally phase of the operation.
+	      // Thus, permissible variations are any allowable form of IT or
+	      // IR, but if RI or R is used, R must equal N (RI and R forced
+	      // to N).
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): fetching indirect word from %06o\n",
                            cpu . TPR . CA);
@@ -1208,7 +1229,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1219,7 +1242,7 @@ startCA:;
                            "addr %06o\n", indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
-
+#if 0
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
@@ -1234,6 +1257,22 @@ startCA:;
                   {
                     cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
+#else
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
+                cpu . TPR.CA = YiSafe2;
+
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
+                if (Tm == TM_RI || Tm == TM_R)
+                  {
+                     if (GET_TD (cpu.rTAG) != 0)
+                       {
+                         doFault (FAULT_IPR, flt_ipr_ill_mod, "DIC Incorrect address modifier");
+                       }
+                  }
+#endif
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
@@ -1249,6 +1288,17 @@ startCA:;
                 // r, ri, or ir modification, the effective Td value for the
                 // register is forced to "null" before the next computed
                 // address is formed.
+
+                // a:RJ78/idc1
+	      // The address and tally fields are used as described under the
+	      // ID variation. The tag field uses the set of variations for
+	      // instruction address modification under the following
+	      // restrictions: no variation is permitted that requires an
+	      // indexing modification in the IDC cycle since the indexing
+	      // adder is being used by the tally phase of the operation.
+	      // Thus, permissible variations are any allowable form of IT or
+	      // IR, but if RI or R is used, R must equal N (RI and R forced
+	      // to N).
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_IDC): fetching indirect word from %06o\n",
@@ -1274,7 +1324,9 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1288,6 +1340,7 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
+#if 0
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
@@ -1304,6 +1357,22 @@ startCA:;
                   {
                     cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
+#else
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
+                cpu . TPR.CA = YiSafe;
+
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
+                if (Tm == TM_RI || Tm == TM_R)
+                  {
+                     if (GET_TD (cpu.rTAG) != 0)
+                       {
+                         doFault (FAULT_IPR, flt_ipr_ill_mod, "IDC Incorrect address modifier");
+                       }
+                  }
+#endif
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC

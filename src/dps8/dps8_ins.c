@@ -1,3 +1,5 @@
+#define ISOLTS_BITNO
+
 /**
  * \file dps8_ins.c
  * \project dps8
@@ -1122,6 +1124,18 @@ force:;
 
   }
 
+bool chkOVF (void)
+  {
+    if (cpu.cu.rpt || cpu.cu.rd)
+      {
+        // a:AL39/rpd2
+        // Did the repeat instruction inhibit overflow faults?
+        if ((cpu.rX [0] & 00001) == 0)
+          return false;
+      }
+    return true;
+  }
+    
 bool tstOVFfault (void)
   {
     // Masked?
@@ -2111,9 +2125,11 @@ static t_stat DoBasicInstruction (void)
                 SET_I_NEG;
                 CLR_I_ZERO;
 #endif
-                SET_I_OFLOW;
                 if (tstOVFfault ())
+                  {
+                    SET_I_OFLOW;
                     doFault(FAULT_OFL, 0, "lcaq overflow fault");
+                  }
               }
             else if (cpu.Ypair[0] == 0 && cpu.Ypair[1] == 0)
               {
@@ -3489,9 +3505,11 @@ static t_stat DoBasicInstruction (void)
                     SET_I_NEG;
                     CLR_I_ZERO;
 #endif
-                    SET_I_OFLOW;
                     if (tstOVFfault ())
+                      {
+                        SET_I_OFLOW;
                         doFault(FAULT_OFL, 0,"mpf overflow fault");
+                      }
                 }
 
                 convertToWord36(tmp72, &cpu.rA, &cpu.rQ);
@@ -3662,9 +3680,11 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             {
                 CLR_I_ZERO;
                 SET_I_NEG;
-                SET_I_OFLOW;
                 if (tstOVFfault ())
+                  {
+                    SET_I_OFLOW;
                     doFault(FAULT_OFL, 0,"neg overflow fault");
+                  }
             }
 
             cpu.rA = -cpu.rA;
@@ -3677,9 +3697,11 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             cpu.rA &= DMASK;
             if (cpu.rA == 0400000000000ULL)
             {
-                SET_I_OFLOW;
                 if (tstOVFfault ())
+                  {
+                    SET_I_OFLOW;
                     doFault(FAULT_OFL, 0,"neg overflow fault");
+                  }
             }
 
             cpu.rA = -cpu.rA;
@@ -3703,9 +3725,11 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 {
                     CLR_I_ZERO;
                     SET_I_NEG;
-                    SET_I_OFLOW;
                     if (tstOVFfault ())
+                      {
+                        SET_I_OFLOW;
                         doFault(FAULT_OFL, 0,"negl overflow fault");
+                      }
                 }
 
                 word72 tmp72 = convertToWord72(cpu.rA, cpu.rQ);
@@ -3721,9 +3745,11 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
 
                 if (cpu.rA == 0400000000000ULL & cpu.rQ == 0)
                 {
-                    SET_I_OFLOW;
                     if (tstOVFfault ())
+                      {
+                        SET_I_OFLOW;
                         doFault(FAULT_OFL, 0,"negl overflow fault");
+                      }
                 }
 
                 word72 tmp72 = convertToWord72(cpu.rA, cpu.rQ);
@@ -6326,9 +6352,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             // by C(Y) 33,35.
             int cpu_port_num = query_scbank_map (cpu.iefpFinalAddress);
 
-            // This shouldn't happen; every existing address is contained in a
-            // SCU, by defintion.
-            // Therefore, this should throw a NEm fault.
+            // If the there is no port to that memory location, fault
             if (cpu_port_num < 0)
               {
                 doFault (FAULT_ONC, flt_onc_nem, "(cioc)");
@@ -7121,24 +7145,40 @@ static t_stat DoEISInstruction (void)
         case 0765:
         case 0766:
         case 0767:
-            // For n = 0, 1, ..., or 7 as determined by operation code C(Y)0,23
-            // -> C(ARn)
+            // For n = 0, 1, ..., or 7 as determined by operation code
+            //    C(Y)0,23 -> C(ARn)
+
+	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
+	  // in BITNO format, not CHAR/BITNO.
             {
                 uint32 n = opcode & 07;  // get n
+#ifdef ISOLTS_BITNO
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
                 SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
                                  (word2)bitfieldExtract36(cpu.CY, 16, 2));
+#else
+                cpu.AR[n].WORDNO = getbits36 (cpu.CY, 0, 18);
+                cpu.AR[n].BITNO = getbits36 (cpu.CY, 18, 6);
+#endif
             }
             break;
 
         case 0463:  // lareg - Load Address Registers
+
+	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
+	  // in BITNO format, not CHAR/BITNO.
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 tmp36 = cpu.Yblock8[n];
 
+#ifdef ISOLTS_BITNO
                 cpu.AR[n].WORDNO = GETHI(tmp36);
                 SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
                                  (word2)bitfieldExtract36(tmp36, 16, 2));
+#else
+                cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
+                cpu.AR[n].BITNO = getbits36 (tmp36, 18, 6);
+#endif
             }
             break;
 
@@ -7155,6 +7195,7 @@ static t_stat DoEISInstruction (void)
         case 0666:  // beware!!!! :-)
         case 0667:
             {
+sim_printf ("NARn CY %012llo\n", cpu.CY);
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 uint32 n = opcode & 07;  // get
@@ -7167,12 +7208,14 @@ static t_stat DoEISInstruction (void)
                 uint TN = getbits36 (cpu.CY, 21, 1); // C(Y) 21
                 uint CN = getbits36 (cpu.CY, 18, 3); // C(Y) 18-20
 
+sim_printf ("NARn CY %012llo TN %o CN %o\n", cpu.CY, TN, CN);
                 switch(TN)
                 {
                     case CTN4:   // 1
                         // If C(Y)21 = 1 (TN code = 1), then
                         //   (C(Y)18,20) / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
+sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * (CN % 2) + 1);
                         SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
                         break;
 
@@ -7184,9 +7227,11 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
+sim_printf ("NARn9 CHAR %o %d. BIT %o %d.\n", CN, CN, 0, 0);
                         SET_AR_CHAR_BIT (n, CN, 0);
                         break;
                 }
+sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
             }
             break;
 
@@ -7305,23 +7350,37 @@ static t_stat DoEISInstruction (void)
             //For n = 0, 1, ..., or 7 as determined by operation code
             //  C(ARn) -> C(Y)0,23
             //  C(Y)24,35 -> unchanged
+
+	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
+	  // in BITNO format, not CHAR/BITNO.
             {
                 uint32 n = opcode & 07;  // get n
+#ifdef ISOLTS_BITNO
                 cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
                 cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
+#else
+                putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
+                putbits36 (& cpu.CY, 18,  6, cpu.PR[n].BITNO);
+#endif
             }
             break;
 
         case 0443:  // sareg - Store Address Registers
+	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
+	  // in BITNO format, not CHAR/BITNO.
             memset(cpu.Yblock8, 0, sizeof(cpu.Yblock8));
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
+#ifdef ISOLTS_BITNO
                 arx = bitfieldInsert36(arx, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
                 arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
-
+#else
+                putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
+                putbits36 (& arx, 18,  6, cpu.PR[n].BITNO);
+#endif
                 cpu.Yblock8[n] = arx;
             }
             break;
