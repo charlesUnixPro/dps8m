@@ -457,6 +457,7 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012llo\n", directOperand);
 
+            //cpu . TPR . CA = directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
             return SCPE_OK;
           }
@@ -672,13 +673,17 @@ startCA:;
 
                 if (directOperandFlag)
                   {
-                    cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
+                    //cpu . TPR . CA += directOperand;
+                    //cpu . TPR . CA = directOperand;
+                    //cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
-                    sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu . TPR . CA);
+                    //sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               //"IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu . TPR . CA);
 
-                    updateIWB (cpu . TPR . CA, cpu . cu  . CT_HOLD); // Known to be DL or DU
+                    //updateIWB (cpu . TPR . CA, cpu . cu  . CT_HOLD); // Known to be DL or DU
+                    // CT_HOLD has *DU or *DL; convert to DU or DL
+                    word6 tag = TM_R | GET_TD (cpu.cu.CT_HOLD);
+                    updateIWB (cpu . TPR . CA, tag);
                   }
                 else
                   {
@@ -704,7 +709,8 @@ startCA:;
 
                 if (directOperandFlag)
                   {
-                    cpu . TPR . CA += directOperand;
+                    //cpu . TPR . CA += directOperand;
+                    cpu . TPR . CA = directOperand;
                     cpu . TPR . CA &= MASK18;   // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
