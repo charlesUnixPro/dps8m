@@ -598,6 +598,29 @@ void fnpProcessEvent (void)
             putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
             send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
           }
+        else if (strncmp (msg, "ack_echnego_init", 16) == 0)
+          {
+            int chanNum;
+            int n = sscanf(msg, "%*s %d", & chanNum);
+            if (n != 1)
+              {
+                sim_debug (DBG_ERR, & fnpDev, "illformatted ack_echnego_init message; dropping\n");
+                goto drop;
+              }
+            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+            putbits36 (& smbxp -> word2, 18, 9, 70); // op_code ack_echnego_init
+            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+            fudp -> fnpMBXinUse [mbx] = true;
+            // Set the TIMW
+            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+          }
         else
           {
             sim_debug (DBG_ERR, & fnpDev, "unrecognized message; dropping\n");
@@ -836,7 +859,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       }
                       break;
 
-#if 0
+#if 1
                     case 24: // set_echnego_break_table
                       {
                         //sim_printf ("fnp set_echnego_break_table\n");
@@ -858,7 +881,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                           //sim_printf ("      %012llo\n", M [data_addr + i]);
                         // lookup the table start address.
                         uint dataAddrPhys = virtToPhys (p -> PCW_PAGE_TABLE_PTR, data_addr);
-                        sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
+                        //sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
                         word36 echoTable [echoTableLen];
                         for (uint i = 0; i < echoTableLen; i ++)
                           {
@@ -888,8 +911,40 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       }
                       break;
 
+                    case 25: // start_negotiated_echo
+                      {
+          // else if order = "start_negotiated_echo"
+          // then do;
+          //      mbx_data_len = 36;
+          //      mbx_data =
+          //           bit (fixed (data_ptr -> echo_start_data.ctr, 18), 18)
+          //           || bit (fixed (data_ptr -> echo_start_data.screenleft, 18), 18);
+          //      opcode = start_negotiated_echo;
+                        word18 ctr = getbits36 (smbxp -> command_data [0], 0, 18);
+                        word18 screenleft = getbits36 (smbxp -> command_data [0], 18, 18);
+
+//sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
+                        char cmd [256];
+                        sprintf (cmd, "start_negotiated_echo %d %d %d", slot_no, ctr, screenleft);
+                        tellFNP (devUnitIdx, cmd);
+                      }
+                    case 26: // stop_negotiated_echo
+                      {
+                        char cmd [256];
+                        sprintf (cmd, "stop_echo_negotiation %d", slot_no);
+                        tellFNP (devUnitIdx, cmd);
+                      }
+                      break;
+
                     case 27: // init_echo_negotiation
                       {
+          // else if order = "init_echo_negotiation"
+          // then do;
+          //      mbx_data_len = 0;
+          //      mbx_data = ""b;
+          //      opcode = init_echo_negotiation;
+          // end;
+
                         char cmd [256];
                         sprintf (cmd, "init_echo_negotiation %d", slot_no);
                         tellFNP (devUnitIdx, cmd);
@@ -1315,16 +1370,17 @@ word36 pad;
                     case 21: // fnp_break
                     case 22: // line_control
                     case 23: // sync_msg_size
-                    case 24: // set_echnego_break_table
-                    case 25: // start_negotiated_echo
-                    case 26: // stop_negotiated_echo
-                    case 27: // init_echo_negotiation
+                    //case 24: // set_echnego_break_table
+                    //case 25: // start_negotiated_echo
+                    //case 26: // stop_negotiated_echo
+                    //case 27: // init_echo_negotiation
                     //case 28: // ???
                     case 29: // break_acknowledged
                     //case 32: // ???
                     //case 33: // ???
                     case 35: // checksum_error
                       {
+                        sim_warn ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                         //sim_debug (DBG_ERR, & fnpDev, "fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                         //sim_printf ("fnp unimplemented opcode %d (%o)\n", op_code, op_code);
                         // doFNPfault (...) // XXX
@@ -1335,7 +1391,7 @@ word36 pad;
                     default:
                       {
                         sim_debug (DBG_ERR, & fnpDev, "fnp illegal opcode %d (%o)\n", op_code, op_code);
-                        sim_printf ("fnp illegal opcode %d (%o)\n", op_code, op_code);
+                        sim_warn ("fnp illegal opcode %d (%o)\n", op_code, op_code);
                         // doFNPfault (...) // XXX
                         return -1;
                       }
