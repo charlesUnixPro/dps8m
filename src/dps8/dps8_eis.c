@@ -5356,7 +5356,8 @@ sim_printf ("cPos %d bPos %d\n", p->cPos, p->bPos);
 sim_printf ("baseCharPosn %d baseBitPosn %d\n", baseCharPosn, baseBitPosn);
 sim_printf ("CHTALLY %d baseBitPosn %d\n", cpu . du . CHTALLY, baseBitPosn);
 sim_printf ("bitPosn %d woff %d\n", bitPosn, woff);
-sim_err ("oops\n");
+sim_warn ("EISgetBitRWNR oops\n");
+return false;
 }
 
     word18 saveAddr = p -> address;

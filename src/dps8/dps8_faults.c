@@ -350,12 +350,13 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     {
         sim_printf ("fault(out-of-range): %d %d '%s'\n", 
                     faultNumber, subFault, faultMsg ? faultMsg : "?");
-        sim_err ("fault out-of-range\n");
+        sim_warn ("fault out-of-range\n");
+        faultNumber = FAULT_TRB;
     }
 
-    cpu . faultNumber = faultNumber;
-    cpu . subFault = subFault;
-    sys_stats . total_faults [faultNumber] ++;
+    cpu.faultNumber = faultNumber;
+    cpu.subFault = subFault;
+    sys_stats.total_faults [faultNumber] ++;
 
     // Set fault register bits
 

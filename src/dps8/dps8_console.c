@@ -475,7 +475,10 @@ static int con_cmd (uint iomUnitIdx, uint chan)
     UNIT * unitp = & opcon_unit [devUnitIdx];
 
     if (p -> PCW_63_PTP)
-      sim_err ("PTP in console\n");
+      {
+        sim_warn ("PTP in console\n");
+        return -1;
+      }
 
     p -> dev_code = p -> IDCW_DEV_CODE;
     p -> stati = 0;

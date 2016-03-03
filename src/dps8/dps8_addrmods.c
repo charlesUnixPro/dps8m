@@ -436,7 +436,8 @@ startCA:;
 
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
                 __func__, GET_TM (cpu . rTAG));
-    sim_err ("(startCA): unknown Tm\n");
+    sim_warn ("(startCA): unknown Tmi; can't happen!\n");
+    return SCPE_OK;
 
 
         //! Register modification. Fig 6-3
