@@ -331,6 +331,7 @@ float36 IEEEdoubleTofloat36(double f0)
 /*!
  * unnormalized floating single-precision add
  */
+#if 0
 void ufa (void)
 {
     // C(EAQ) + C(Y) → C(EAQ)
@@ -350,8 +351,10 @@ void ufa (void)
     // * C(E) is increased by one.
 
 #if 1
-#define NO_RND
+//#define NO_RND
 //#define RND_INF
+//#define RND_FRND
+#define RND_FRND2
 if (currentRunningCPUnum)
 sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
@@ -377,6 +380,9 @@ sim_printf ("UFA e2 %d\n", e2);
 #ifdef RND_INF
     word1 r = 0;
 #endif
+#ifdef RND_FRND2
+    word1 last = 0;
+#endif
 
     if (e1 == e2)
     {
@@ -394,6 +400,9 @@ sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
 #ifdef RND_INF
             r |= m1 & 1;
 #endif
+#ifdef RND_FRND2
+            last = m1 & 1;
+#endif
             m1 >>= 1;
             if (s)
                 m1 |= SIGN72;
@@ -401,6 +410,10 @@ sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         
         m1 &= MASK72;
         e3 = e2;
+#ifdef RND_FRND2
+        if (s)
+          last = 1 - last;
+#endif
         //if (s)
           //r = 1 - r;
 if (currentRunningCPUnum)
@@ -418,12 +431,19 @@ sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
 #ifdef RND_INF
             r |= m2 & 1;
 #endif
+#ifdef RND_FRND2
+            last = m2 & 1;
+#endif
             m2 >>= 1;
             if (s)
                 m2 |= SIGN72;
         }
         m2 &= MASK72;
         e3 = e1;
+#ifdef RND_FRND2
+        if (s)
+          last = 1 - last;
+#endif
         //if (s)
           //r = 1 - r;
 if (currentRunningCPUnum)
@@ -442,6 +462,13 @@ sim_printf ("UFA e3 %d\n", e3);
 #endif
 #ifdef NO_RND
     word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+#endif
+#ifdef RND_FRND
+    word72 m3 = Add72b (m1, m2, last, I_CARRY, & cpu.cu.IR, & ovf);
+#endif
+#ifdef RND_FRND2
+    word1 carry = (m1 & SIGN72) ? 0 : 1;
+    word72 m3 = Add72b (m1, m2, carry, I_CARRY, & cpu.cu.IR, & ovf);
 #endif
 
     if (ovf)
@@ -637,6 +664,153 @@ sim_printf ("UFA e3 now %d\n", e3);
 if(currentRunningCPUnum)
 sim_printf ("UFA returning %03o %012llo %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
+#else
+void ufa (void)
+{
+    // C(EAQ) + C(Y) → C(EAQ)
+    // The ufa instruction is executed as follows:
+    //
+    // The mantissas are aligned by shifting the mantissa of the operand having
+    // the algebraically smaller exponent to the right the number of places
+    // equal to the absolute value of the difference in the two exponents. Bits
+    // shifted beyond the bit position equivalent to AQ71 are lost.
+    //
+    // The algebraically larger exponent replaces C(E). The sum of the
+    // mantissas replaces C(AQ).
+    //
+    // If an overflow occurs during addition, then;
+    // * C(AQ) are shifted one place to the right.
+    // * C(AQ)0 is inverted to restore the sign.
+    // * C(E) is increased by one.
+
+if (currentRunningCPUnum)
+sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+
+    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    // 28-bit mantissa (incl sign)
+    word72 m2 = (word72) bitfieldExtract36 (cpu.CY, 0, 28) << 44;
+
+    int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
+    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    
+if (currentRunningCPUnum)
+sim_printf ("UFA e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+
+    int e3 = -1;
+
+    // which exponent is smaller?
+    
+    int shift_count = -1;
+    word1 last = 0;
+    if (e1 == e2)
+    {
+        shift_count = 0;
+        e3 = e1;
+    }
+    else if (e1 < e2)
+    {
+        shift_count = abs(e2 - e1);
+if (currentRunningCPUnum)
+sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
+        bool s = m1 & SIGN72;   // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            last = m1 & 1;
+            m1 >>= 1;
+            if (s)
+                m1 |= SIGN72;
+        }
+        
+        if (last)
+          m1 ++;
+        m1 &= MASK72;
+        e3 = e2;
+if (currentRunningCPUnum)
+sim_printf ("UFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+    }
+    else
+    {
+        // e2 < e1;
+        shift_count = abs(e1 - e2);
+if (currentRunningCPUnum)
+sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
+        bool s = m2 & SIGN72;   // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            last = m2 & 1;
+            m2 >>= 1;
+            if (s)
+                m2 |= SIGN72;
+        }
+        if (last)
+          m2 ++;
+        m2 &= MASK72;
+        e3 = e1;
+if (currentRunningCPUnum)
+sim_printf ("UFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+    }
+    //sim_printf ("shift_count = %d\n", shift_count);
+    
+if (currentRunningCPUnum)
+sim_printf ("UFA last %d\n", last);
+if (currentRunningCPUnum)
+sim_printf ("UFA e3 %d\n", e3);
+
+    //m3 = m1 + m2;
+    bool ovf;
+    word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+
+    if (ovf)
+    {
+if (currentRunningCPUnum)
+sim_printf ("UFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+        word72 signbit = m3 & SIGN72;
+        m3 >>= 1;
+        m3 = (m3 & MASK71) | signbit;
+        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+        e3 += 1;
+if (currentRunningCPUnum)
+sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+    }
+
+    cpu . rA = (m3 >> 36) & MASK36;
+    cpu . rQ = m3 & MASK36;
+    cpu . rE = e3 & 0377;
+
+    SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
+                                // of ovf handling above
+    if (cpu.rA == 0 && cpu.rQ == 0)
+    {
+      SET_I_ZERO;
+      cpu . rE = 0200U; /*-128*/
+    }
+    else
+    {
+      CLR_I_ZERO;
+    }
+
+    // EOFL: If exponent is greater than +127, then ON
+    if (e3 > 127)
+    {
+        SET_I_EOFL;
+        if (tstOVFfault ())
+            doFault (FAULT_OFL, 0, "ufa exp overflow fault");
+    }
+    
+    // EUFL: If exponent is less than -128, then ON
+    if(e3 < -128)
+    {
+        SET_I_EUFL;
+        if (tstOVFfault ())
+            doFault (FAULT_OFL, 0, "ufa exp underflow fault");
+    }
+
+if(currentRunningCPUnum)
+sim_printf ("UFA returning E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+}
+#endif
 
 /*!
  * unnormalized floating single-precision subtract
