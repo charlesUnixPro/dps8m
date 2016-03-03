@@ -881,7 +881,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                           //sim_printf ("      %012llo\n", M [data_addr + i]);
                         // lookup the table start address.
                         uint dataAddrPhys = virtToPhys (p -> PCW_PAGE_TABLE_PTR, data_addr);
-                        sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
+                        //sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
                         word36 echoTable [echoTableLen];
                         for (uint i = 0; i < echoTableLen; i ++)
                           {
@@ -923,9 +923,9 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         word18 ctr = getbits36 (smbxp -> command_data [0], 0, 18);
                         word18 screenleft = getbits36 (smbxp -> command_data [0], 18, 18);
 
-sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
+//sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
                         char cmd [256];
-                        sprintf (cmd, "start_negotiated_echo %d", slot_no);
+                        sprintf (cmd, "start_negotiated_echo %d %d %d", slot_no, ctr, screenleft);
                         tellFNP (devUnitIdx, cmd);
                       }
                     case 26: // stop_negotiated_echo

@@ -804,16 +804,17 @@ t_stat dequeue_fnp_command (void)
           int bitoffset = 15 - bitno;
           MState . line [p1] . echnego [i] = !!(table [wordno] & (1 << bitoffset));
         }
-      sim_printf ("set:");
-      for (int i = 0; i < 256; i ++)
-        if (MState . line [p1] . echnego [i])
-          sim_printf (" %d", i);
-      sim_printf ("\n");
-sim_printf ("recvd %s\n", keyword);
+      //sim_printf ("set:");
+      //for (int i = 0; i < 256; i ++)
+        //if (MState . line [p1] . echnego [i])
+          //sim_printf (" %d", i);
+      //sim_printf ("\n");
+//sim_printf ("recvd %s\n", keyword);
 
 
-    //} else if (strcmp(keyword, "start_negotiated_echo") == 0) {
-    //} else if (strcmp(keyword, "stop_negotiated_echo") == 0) {
+    } else if (strcmp(keyword, "start_negotiated_echo") == 0) {
+
+    } else if (strcmp(keyword, "stop_echo_negotiation") == 0) {
 
 
     } else if (strcmp(keyword, "init_echo_negotiation") == 0) {
@@ -827,7 +828,7 @@ sim_printf ("recvd %s\n", keyword);
             sim_printf("err: init_echo_negotiation p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
           }
-sim_printf ("recvd %s\n", keyword);
+//sim_printf ("recvd %s\n", keyword);
 
         char msg [256];
         sprintf (msg, "ack_echnego_init %d", p1);
