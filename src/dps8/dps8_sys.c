@@ -11,6 +11,10 @@
 #include <signal.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
+
 #include "dps8.h"
 #include "dps8_console.h"
 #ifndef QUIET_UNUSED
