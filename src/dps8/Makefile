@@ -380,6 +380,7 @@ cleaner: clean
 	(cd ../decNumber; $(MAKE) clean)
 
 dps8_sys.o : dps8.sha1.txt
+dps8_sys.d : dps8.sha1.txt
 
 %.d: %.c
 	@set -e; rm -f $@; \
