@@ -481,6 +481,7 @@ enum {
 #define CLR_I_ZERO  CLRF (cpu . cu . IR, I_ZERO)
 
 #define SET_I_ABS   SETF (cpu . cu . IR, I_ABS)
+#define SET_I_MIF   SETF (cpu . cu . IR, I_MIF)
 #define SET_I_NBAR  SETF (cpu . cu . IR, I_NBAR)
 #define SET_I_TRUNC SETF (cpu . cu . IR, I_TRUNC)
 #define SET_I_TALLY SETF (cpu . cu . IR, I_TALLY)
