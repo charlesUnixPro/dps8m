@@ -9311,3 +9311,13 @@ void dv3d (void)
           doFault(FAULT_OFL, 0,"dv3d overflow fault");
     }
 }
+
+/*
+ * EIS test jig .....
+ */
+#ifdef EISTESTJIG
+t_stat eisTest (UNUSED int32 arg, char *buf)
+{
+    return SCPE_OK;
+}
+#endif

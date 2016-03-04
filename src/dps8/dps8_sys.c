@@ -173,6 +173,11 @@ static CTAB dps8_cmds[] =
 
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
 
+#ifdef EISTESTJIG
+    // invoke EIS test jig.......∫
+    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL}, 
+#endif
+    
     { NULL, NULL, 0, NULL, NULL}
 };
 
