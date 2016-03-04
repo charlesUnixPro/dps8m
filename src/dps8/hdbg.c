@@ -41,7 +41,7 @@ struct hevt
             _fault_subtype subFault;
             char faultMsg [64];
           } fault;
-      };
+      } u;
   };
 
 static struct hevt * hevents = NULL;
@@ -74,11 +74,11 @@ void hdbgTrace (void)
       return;
     hevents [hevtPtr] . type = hevtTrace;
     hevents [hevtPtr] . time = sim_timell ();
-    hevents [hevtPtr] . trace . addrMode = get_addr_mode ();
-    hevents [hevtPtr] . trace . segno = cpu . PPR.PSR;
-    hevents [hevtPtr] . trace . ic = cpu . PPR.IC;
-    hevents [hevtPtr] . trace . ring = cpu . PPR.PRR;
-    hevents [hevtPtr] . trace . inst = cpu.cu.IWB;
+    hevents [hevtPtr] . u . trace . addrMode = get_addr_mode ();
+    hevents [hevtPtr] . u . trace . segno = cpu . PPR.PSR;
+    hevents [hevtPtr] . u . trace . ic = cpu . PPR.IC;
+    hevents [hevtPtr] . u . trace . ring = cpu . PPR.PRR;
+    hevents [hevtPtr] . u . trace . inst = cpu.cu.IWB;
     hevtPtr = (hevtPtr + 1) % hdbgSize;
   }
 
@@ -88,8 +88,8 @@ void hdbgMRead (word24 addr, word36 data)
       return;
     hevents [hevtPtr] . type = hevtMRead;
     hevents [hevtPtr] . time = sim_timell ();
-    hevents [hevtPtr] . memref . addr = addr;
-    hevents [hevtPtr] . memref . data = data;
+    hevents [hevtPtr] . u . memref . addr = addr;
+    hevents [hevtPtr] . u . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
   }
 
@@ -99,8 +99,8 @@ void hdbgMWrite (word24 addr, word36 data)
       return;
     hevents [hevtPtr] . type = hevtMWrite;
     hevents [hevtPtr] . time = sim_timell ();
-    hevents [hevtPtr] . memref . addr = addr;
-    hevents [hevtPtr] . memref . data = data;
+    hevents [hevtPtr] . u . memref . addr = addr;
+    hevents [hevtPtr] . u . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
   }
 
@@ -112,10 +112,10 @@ void hdbgFault (_fault faultNumber, _fault_subtype subFault,
       return;
     hevents [hevtPtr] . type = hevtFault;
     hevents [hevtPtr] . time = sim_timell ();
-    hevents [hevtPtr] . fault . faultNumber = faultNumber;
-    hevents [hevtPtr] . fault . subFault = subFault;
-    strncpy (hevents [hevtPtr] . fault . faultMsg, faultMsg, 63);
-    hevents [hevtPtr] . fault . faultMsg [63] = 0;
+    hevents [hevtPtr] . u . fault . faultNumber = faultNumber;
+    hevents [hevtPtr] . u . fault . subFault = subFault;
+    strncpy (hevents [hevtPtr] . u . fault . faultMsg, faultMsg, 63);
+    hevents [hevtPtr] . u . fault . faultMsg [63] = 0;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
   }
 
@@ -125,31 +125,31 @@ static void printMRead (struct hevt * p)
   {
     fprintf (hdbgOut, "DBG(%lld)> CPU FINAL: Read %08o %012llo\n",
                 p -> time, 
-                p -> memref . addr, p -> memref . data);
+                p -> u . memref . addr, p -> u . memref . data);
   }
 
 static void printMWrite (struct hevt * p)
   {
     fprintf (hdbgOut, "DBG(%lld)> CPU FINAL: Write %08o %012llo\n",
                 p -> time, 
-                p -> memref . addr, p -> memref . data);
+                p -> u . memref . addr, p -> u . memref . data);
   }
 
 static void printTrace (struct hevt * p)
   {
-    if (p -> trace . addrMode == ABSOLUTE_mode)
+    if (p -> u . trace . addrMode == ABSOLUTE_mode)
       {
         fprintf (hdbgOut, "DBG(%lld)> CPU TRACE: %06o %o %012llo (%s)\n",
                     p -> time, 
-                    p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (p -> trace . inst));
+                    p -> u . trace . ic, p -> u . trace . ring,
+                    p -> u . trace . inst, disAssemble (p -> u . trace . inst));
       }
     else
       {
         fprintf (hdbgOut, "DBG(%lld)> CPU TRACE: %05o:%06o %o %012llo (%s)\n",
-                    p -> time, p -> trace . segno,
-                    p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (p -> trace . inst));
+                    p -> time, p -> u . trace . segno,
+                    p -> u . trace . ic, p -> u . trace . ring,
+                    p -> u . trace . inst, disAssemble (p -> u . trace . inst));
       }
   }
 
@@ -157,9 +157,9 @@ static void printFault (struct hevt * p)
   {
     fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %d(0%o), '%s'\n",
                 p -> time, 
-                p -> fault . faultNumber, p -> fault . faultNumber,
-                p -> fault . subFault, p -> fault . subFault,
-                p -> fault . faultMsg);
+                p -> u . fault . faultNumber, p -> u . fault . faultNumber,
+                p -> u . fault . subFault, p -> u . fault . subFault,
+                p -> u . fault . faultMsg);
   }
 
 void hdbgPrint (void)

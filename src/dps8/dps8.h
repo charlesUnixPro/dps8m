@@ -56,12 +56,6 @@
 // Enable history debugger
 #define HDBG
 
-// XXX FixMe
-// history debugger wont build under XCode just yet.
-#ifdef __APPLE__
-#undef HDBG
-#endif
-
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
 
