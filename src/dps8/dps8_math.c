@@ -683,6 +683,9 @@ void ufa (void)
     // * C(AQ)0 is inverted to restore the sign.
     // * C(E) is increased by one.
 
+static int testno = 1;
+if (currentRunningCPUnum)
+sim_printf ("UFA testno %d\n", testno ++);
 if (currentRunningCPUnum)
 sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 
@@ -703,6 +706,8 @@ sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, 
     // which exponent is smaller?
     
     int shift_count = -1;
+    word1 allones = 1;
+    word1 notallzeros = 0;
     word1 last = 0;
     if (e1 == e2)
     {
@@ -714,17 +719,24 @@ sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, 
         shift_count = abs(e2 - e1);
 if (currentRunningCPUnum)
 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
-        bool s = m1 & SIGN72;   // mantissa negative?
+        bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
             last = m1 & 1;
+            allones &= m1 & 1;
+            notallzeros |= m1 & 1;
             m1 >>= 1;
-            if (s)
+            if (sign)
                 m1 |= SIGN72;
         }
         
-        if (last)
-          m1 ++;
+        //if (allones)
+        //if (sign == (allones != 1))
+          //m1 ++;
+if (sign && (last == 1))
+  m1 ++;
+if ((! sign) && (last == 1))
+  m1 ++;
         m1 &= MASK72;
         e3 = e2;
 if (currentRunningCPUnum)
@@ -736,16 +748,23 @@ sim_printf ("UFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word3
         shift_count = abs(e1 - e2);
 if (currentRunningCPUnum)
 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
-        bool s = m2 & SIGN72;   // mantissa negative?
+        bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
             last = m2 & 1;
+            allones &= m2 & 1;
+            notallzeros |= m2 & 1;
             m2 >>= 1;
-            if (s)
+            if (sign)
                 m2 |= SIGN72;
         }
-        if (last)
-          m2 ++;
+        //if (allones)
+        //if (sign == (allones != 1))
+          //m2 ++;
+if (sign && (last == 1))
+  m2 ++;
+if ((! sign) && (last == 1))
+  m2 ++;
         m2 &= MASK72;
         e3 = e1;
 if (currentRunningCPUnum)
