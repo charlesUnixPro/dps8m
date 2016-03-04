@@ -1132,11 +1132,15 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
           // ticket 34
           // XXX See notes in AL39 sscr re: store unit selection
           //sim_printf ("sscr %o\n", function);
-          return STOP_UNIMP;
+          sim_warn ("sscr set unit mode register\n");
+          //return STOP_UNIMP;
+          return SCPE_OK;
 
         default:
+          sim_warn ("sscr unhandled code\n");
+          //return STOP_UNIMP;
+          return SCPE_OK;
           //sim_printf ("sscr %o\n", function);
-          return STOP_UNIMP;
       }
     return SCPE_OK;
   }
@@ -1444,8 +1448,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
           break;
 
         default:
-          sim_printf ("rscr %o\n", function);
-          return STOP_UNIMP;
+          sim_warn ("rscr %o\n", function);
+          return SCPE_OK;
       }
     return SCPE_OK;
   }
@@ -1485,9 +1489,8 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
             if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
               {
-                sim_err ("sim_activate failed (%d)\n", rc); // Dosen't return
-                //cancel_run (STOP_UNK);
-                //return 1;
+                sim_warn ("sim_activate failed (%d)\n", rc); // Dosen't return
+                return 0;
               }
             return 0;
           }
@@ -2038,6 +2041,9 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
     if (scu_port_num < 0)
       {
+        sim_warn ("%s: can't find cpu port in the snarl of cables; "
+                  "scu_unit_no %d, cpu_unit_num %d\n", 
+                  __func__, scu_unit_num, cpu_unit_num);
         sim_debug (DBG_ERR, & scu_dev, 
                    "%s: can't find cpu port in the snarl of cables; "
                    "scu_unit_no %d, cpu_unit_num %d\n", 

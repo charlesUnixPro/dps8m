@@ -495,6 +495,7 @@ enum {
 #define SET_I_ZERO  SETF (cpu . cu . IR, I_ZERO)
 
 #define TST_I_ABS   TSTF (cpu . cu . IR, I_ABS)
+#define TST_I_MIF   TSTF (cpu . cu . IR, I_MIF)
 #define TST_I_NBAR  TSTF (cpu . cu . IR, I_NBAR)
 #define TST_I_PMASK TSTF (cpu . cu . IR, I_PMASK)
 #define TST_I_TRUNC TSTF (cpu . cu . IR, I_TRUNC)

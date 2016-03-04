@@ -436,7 +436,8 @@ startCA:;
 
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
                 __func__, GET_TM (cpu . rTAG));
-    sim_err ("(startCA): unknown Tm\n");
+    sim_warn ("(startCA): unknown Tmi; can't happen!\n");
+    return SCPE_OK;
 
 
         //! Register modification. Fig 6-3
@@ -457,6 +458,7 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012llo\n", directOperand);
 
+            //cpu . TPR . CA = directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
             return SCPE_OK;
           }

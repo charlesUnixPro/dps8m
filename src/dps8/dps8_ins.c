@@ -452,7 +452,8 @@ static void scu2words(word36 *words)
 
     putbits36 (& words [4],  0, 18, cpu.PPR.IC);
     putbits36 (& words [4], 18, 18, cpu.cu.IR);
-
+if(currentRunningCPUnum)
+sim_printf ("saved IR %06o\n", cpu.cu.IR);
     // words [5]
 
     putbits36 (& words [5],  0, 18, cpu.TPR.CA);
@@ -505,7 +506,7 @@ void tidy_cu (void)
     cpu.cu.pot = false;
     cpu.cu.xde = false;
     cpu.cu.xdo = false;
-    CLR_I_MIF;
+    //CLR_I_MIF;
   }
 
 static void words2scu (word36 * words)
@@ -1971,7 +1972,11 @@ static t_stat DoEISInstruction (void);
 static t_stat doInstruction (void)
 {
     DCDstruct * i = & cpu.currentInstruction;
-    CLR_I_MIF;
+    // AL39 says it is always cleared, but that makes no sense. Clear it if
+    // an multiword EIS is at bat.
+    // NB: Never clearing it renders Multics unbootable.
+    if (i -> info -> ndes > 0)
+      CLR_I_MIF;
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
 
@@ -2217,7 +2222,8 @@ static t_stat DoBasicInstruction (void)
             SC_I_TRUNC (tmp18 & I_TRUNC);
             if (bAbsPriv)
               SC_I_MIF (tmp18 & I_MIF);
-
+if (currentRunningCPUnum)
+sim_printf ("LDI tmp18 %06o IR %06o\n", tmp18, cpu.cu.IR);
             }
 
             break;
@@ -4685,10 +4691,12 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
 
             word18 tempIR = GETLO(cpu.CY) & 0777770;
             // XXX Assuming 'mask privileged mode' is 'temporary absolute mode'
-            if (get_addr_mode () != ABSOLUTE_mode) // abs. or temp. abs.
+            if (get_addr_mode () == ABSOLUTE_mode) // abs. or temp. abs.
               {
-                // if not abs, copy existing parity mask to tempIR
+                // if abs, copy existing parity mask to tempIR
                 SCF (TST_I_PMASK, tempIR, I_PMASK);
+                // if abs, copy existing I_MIF to tempIR
+                SCF (TST_I_MIF, tempIR, I_MIF);
               }
             // can be set OFF but not on
             //  IR   ret   result
@@ -6114,8 +6122,13 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
 
         case 0231:  // rsw
           {
-            if (i -> tag == TD_DL)
+            //if (i -> tag == TD_DL)
+            word6 rTAG = GET_TAG (IWB_IRODD);
+            word6 Td = GET_TD (rTAG);
+            word6 Tm = GET_TM (rTAG);
+            if (Tm == TM_R && Td == TD_DL)
               {
+
 // 58009997-040 MULTICS Differences Manual DPS 8-70M Aug83
 // disagress with Multics source, but probably a typo,
 //  0-13 CPU Model Number
@@ -6155,7 +6168,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 sprintf ((char *) PROM, "%13s%13d%8s",
                   "DPS8/70M Emul",  //  0-12 CPU Model number
                   cpu.switches.serno, // 13-25 CPU Serial number
-                  "140730  ");      // 26-33 Ship date (YYMMDD)
+                  "20160304");      // 26-33 Ship date (YYMMDD)
 
 #else
                 static unsigned char PROM [1024] =
@@ -7592,8 +7605,7 @@ sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
-            else
-                doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
     }
 
     return SCPE_OK;

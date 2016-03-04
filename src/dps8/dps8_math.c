@@ -729,14 +729,15 @@ sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
             if (sign)
                 m1 |= SIGN72;
         }
+if (currentRunningCPUnum)
+sim_printf ("UFA m1 shifted %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
-        //if (allones)
-        //if (sign == (allones != 1))
-          //m1 ++;
-if (sign && (last == 1))
-  m1 ++;
-if ((! sign) && (last == 1))
-  m1 ++;
+//if (sign && (notallzeros == 1))
+  //m1 ++;
+//if ((! sign) && (allones == 1))
+  //m1 ++;
+if (m1 == MASK72 && notallzeros == 1)
+  m1 = 0;
         m1 &= MASK72;
         e3 = e2;
 if (currentRunningCPUnum)
@@ -758,13 +759,17 @@ sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             if (sign)
                 m2 |= SIGN72;
         }
+if (currentRunningCPUnum)
+sim_printf ("UFA m2 shifted %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
         //if (allones)
         //if (sign == (allones != 1))
           //m2 ++;
-if (sign && (last == 1))
-  m2 ++;
-if ((! sign) && (last == 1))
-  m2 ++;
+//if (sign && (notallzeros == 1))
+  //m2 ++;
+//if ((! sign) && (allones == 1))
+  //m2 ++;
+if (m2 == MASK72 && notallzeros == 1)
+  m2 = 0;
         m2 &= MASK72;
         e3 = e1;
 if (currentRunningCPUnum)
@@ -773,7 +778,7 @@ sim_printf ("UFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word3
     //sim_printf ("shift_count = %d\n", shift_count);
     
 if (currentRunningCPUnum)
-sim_printf ("UFA last %d\n", last);
+sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
 if (currentRunningCPUnum)
 sim_printf ("UFA e3 %d\n", e3);
 

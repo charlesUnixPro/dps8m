@@ -924,9 +924,9 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
         case cm2:
         case cm3b:
           {
-sim_err ("iomDirectDataService DCW paged\n");
+sim_warn ("iomDirectDataService DCW paged\n");
           }
-          //break;
+          break;
 
         case cm3a:
         case cm4:
@@ -983,7 +983,10 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
             else
               {
                 if (daddr > MASK18) // 256K overflow
-                  sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
+                  {
+                    sim_warn ("iomIndirectDataService 256K ovf\n"); // XXX
+                    daddr &= MASK18;
+                  }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | p -> ADDR_EXT << 18;
@@ -1002,8 +1005,10 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
           {
 // XXX assuming DCW_ABS
             if (daddr > MASK18) // 256K overflow
-sim_err ("iomIndirectDataService 256K ovf\n"); // XXX
-
+              {
+                sim_warn ("iomIndirectDataService 256K ovf\n"); // XXX
+                daddr &= MASK18;
+              }
             if (p -> PCW_63_PTP)
               {
                 fetchIDSPTW (iomUnitIdx, chan, daddr);
@@ -1291,7 +1296,8 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
 //sim_printf ("PCW_64_PGE %u\n", p -> PCW_64_PGE);
 //sim_printf ("%d %p\n", chan, p);
     p -> PCW_65_AUX = getbits36 (p -> PCW1, 29, 1);
-if (p -> PCW_65_AUX) sim_err ("PCW_65_AUX\n");
+    if (p -> PCW_65_AUX)
+      sim_warn ("PCW_65_AUX\n");
     p -> DCW = p -> PCW0;
     unpackDCW (iomUnitIdx, chan);
 
@@ -1346,9 +1352,9 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm2:
         case cm3b:
           {
-sim_err ("fetchAndParseDCW LPW paged\n");
+            sim_warn ("fetchAndParseDCW LPW paged\n");
           }
-          //break;
+          break;
 
         case cm3a:
         case cm4:

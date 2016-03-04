@@ -1195,8 +1195,11 @@ t_stat simh_hooks (void)
   {
     int reason = 0;
 
+#ifndef SPEED
     if (stop_cpu)
       return STOP_STOP;
+#endif
+
     // check clock queue 
     if (sim_interval <= 0)
       {
@@ -1209,6 +1212,7 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
+#ifndef SPEED
     // breakpoint? 
     //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
     // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
@@ -1220,6 +1224,7 @@ t_stat simh_hooks (void)
       return STOP_BKPT; /* stop simulation */
     if (sim_deb_break && sim_timell () >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
+#endif
 
     return reason;
   }       
@@ -2623,7 +2628,7 @@ void set_addr_mode(addr_modes_t mode)
         CLR_I_ABS;
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
-        sim_err ("APU: Unable to determine address mode.\n"); // Doesn't return
+        sim_warn ("APU: Unable to determine address mode. Can't happen!\n");
     }
 }
 
