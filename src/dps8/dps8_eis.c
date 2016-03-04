@@ -8807,6 +8807,13 @@ void dv2d (void)
             break;  // no sign wysiwyg
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);    // divisor
+    
+    // check for divide by 0!
+    if (decNumberIsZero(op1))
+    {
+        doFault(FAULT_DIV, 0, "dv2d division by 0");
+    }
+
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
@@ -9060,6 +9067,39 @@ void dv3d (void)
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     //PRINTDEC("op1", op1);
+    
+    /*
+     isolts error message sequence # 7 logged at 03/03/16  2029.9 pst Thu for cpu b using memory b
+     
+     
+     ************************* eis divide test    **************************
+     ps817    test-01a    dv3d test 1     bar-100016
+     ***dsbr***  addr= 00017042 bnd= 00000 u= 1 stack= 0000
+     test start 000534   patch 000623   subtest loop point 000564
+     
+     testing the dv3d instruction divide check faults
+     
+     location 000572  000000227600   instruction is   dv3d
+     location 000573  010450030077   descriptor word
+     location 000574  010470030077   descriptor word
+     location 000575  010510030077   descriptor word
+     
+     prime results   ir
+     s/b 000240
+     was 000200
+     faults         s/b                       was
+     divide check   -000573    divide check   - 000573
+     
+     function in error - the divisor operand equals zero; the divide
+     check fault should have occurred.
+
+     */
+    
+    // check for divide by 0!
+    if (decNumberIsZero(op1))
+    {
+        doFault(FAULT_DIV, 0, "dv3d division by 0");
+    }
     
     if (e->sign == -1)
         op1->bits = DECNEG;
