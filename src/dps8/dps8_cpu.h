@@ -816,7 +816,7 @@ typedef struct
                    // 18    RF  First cycle of all repeat instructions
     word1 rpt;     // 19    RPT Execute an Repeat (rpt) instruction
     word1 rd;      // 20    RD  Execute an Repeat Double (rpd) instruction
-                   // 21    RL  Execute a Repeat Link (rpl) instruction
+    word1 rl;      // 21    RL  Execute a Repeat Link (rpl) instruction
     word1 pot;     // 22    POT Prepare operand tally
                    // 23    PON Prepare operand no tally
     //xde xdo

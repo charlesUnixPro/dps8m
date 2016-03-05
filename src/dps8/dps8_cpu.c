@@ -1681,7 +1681,8 @@ setCPU:;
                 if ((! cpu.wasInhibited) &&
                     (cpu.PPR.IC % 2) == 0 &&
                     (! cpu.wasXfer) &&
-                    (! (cpu.cu.xde | cpu.cu.xdo | cpu.cu.rpt | cpu.cu.rd)))
+                    (! (cpu.cu.xde | cpu.cu.xdo |
+                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
                   {
                     cpu.interrupt_flag = sample_interrupts ();
                     cpu.g7_flag = bG7Pending ();
@@ -1719,7 +1720,8 @@ setCPU:;
 #if 0
                 if (cpu.interrupt_flag && 
                     ((cpu.PPR.IC % 2) == 0) &&
-                    (! (cpu.cu.xde | cpu.cu.xdo | cpu.cu.rpt | cpu.cu.rd)))
+                    (! (cpu.cu.xde | cpu.cu.xdo |
+                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
@@ -1781,7 +1783,8 @@ setCPU:;
 // not sampled.
                 if (PPR.IC % 2 == 0 && // Even address
                     GET_I (cpu.cu.IWB) == 0 &&  // Not inhibited
-                    (! (cpu.cu.xde | cpu.cu.xdo | cpu.cu.rpt | cpu.cu.rd)))
+                    (! (cpu.cu.xde | cpu.cu.xdo |
+                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
                   {
                     cpu.interrupt_flag = sample_interrupts ();
                     cpu.g7_flag = bG7Pending ();
@@ -1834,9 +1837,12 @@ setCPU:;
                     break;
                   }
 
-                if ((! cpu.cu.repeat_first) && (cpu.cu.rpt || (cpu.cu.rd & (cpu.PPR.IC & 1))))
+                if ((! cpu.cu.repeat_first) &&
+                    (cpu.cu.rpt ||
+                     (cpu.cu.rd && (cpu.PPR.IC & 1)) ||
+                     cpu.cu.rl))
                   {
-                    if (! cpu.cu.rpt)
+                    if (cpu.cu.rd)
                       -- cpu.PPR.IC;
                     cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);

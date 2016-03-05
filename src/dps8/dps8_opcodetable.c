@@ -353,7 +353,7 @@ struct opCode NonEISopcodes[01000] = {
     {"dfad", READ_YPAIR, NO_DDCSS, 0},
 
     /* 500 */
-    {"rpl", NO_TAG | NO_RPT, 0, 0},   // really wierd XXX verify PREPARE_CA
+    {"rpl", NO_TAG | NO_RPT, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},

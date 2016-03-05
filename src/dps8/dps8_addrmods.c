@@ -465,13 +465,13 @@ startCA:;
 
         // For the case of RPT/RPD, the instruction decoder has
         // verified that Tm is R or RI, and Td is X1..X7.
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
-                cpu . TPR . CA = (Cr & MASK15) + cpu . PR [PRn] . WORDNO;
-                cpu . TPR . CA &= AMASK;
+                cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
+                cpu.TPR.CA &= AMASK;
               }
             else
               {
@@ -488,8 +488,8 @@ startCA:;
         // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (! (cpu . cu  . rpt || cpu . cu  . rd))
-          updateIWB (cpu . TPR . CA, 0); // Known to be 0 or ,n
+        if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
+          updateIWB (cpu.TPR.CA, 0); // Known to be 0 or ,n
         return SCPE_OK;
       } // R_MOD
 
@@ -515,7 +515,7 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
-            if (cpu . cu  . rpt || cpu . cu  . rd)
+            if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
                  word6 Td = GET_TD (i -> tag);
                  uint Xn = X (Td);  // Get Xn of next instruction
@@ -547,7 +547,7 @@ startCA:;
         // interpreted.  The indirect word is treated as though it had R
         // modification with R = N."
 
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           {
              indword &= ~ INST_M_TAG;
              indword |= TM_R | GET_TD (iTAG);
@@ -588,7 +588,7 @@ startCA:;
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           return SCPE_OK;
 
         updateIWB (cpu . TPR . CA, cpu . rTAG);
