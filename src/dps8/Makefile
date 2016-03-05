@@ -179,7 +179,7 @@ zzzCFLAGS += \
 # Configuration switches
 
 # Enable M[] as shared memory segment
-#LDFLAGS += -lrt
+LDFLAGS += -lrt
 
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
@@ -228,7 +228,7 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
 #C_SRCS += ./fnpp.c
-#C_SRCS += ./shm.c
+C_SRCS += ./shm.c
 #C_SRCS += ./fnp_ipc.c
 C_SRCS += ./fnp.c
 C_SRCS += ./fnp_mux.c
@@ -299,6 +299,9 @@ android :
 
 blinkenLights : blinkenLights.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
+
+blinkenLights2 : blinkenLights2.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights2.c -o blinkenLights2 shm.o `pkg-config --cflags --libs gtk+-3.0`
 
 #all : blinkenLights
 

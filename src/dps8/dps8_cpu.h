@@ -1155,7 +1155,8 @@ typedef struct
   } cpu_state_t;
 
 #ifdef ROUND_ROBIN
-extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+//extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+extern cpu_state_t * cpus;
 extern uint currentRunningCPUnum;
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)

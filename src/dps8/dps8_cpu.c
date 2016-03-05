@@ -818,16 +818,40 @@ void cpu_init (void)
     if (! M)
       {
         M = (word36 *) create_shm ("M", getsid (0), MEMSIZE * sizeof (word36));
-        if (M == NULL)
-          {
-            sim_printf ("create_shm M failed\n");
-            sim_err ("create_shm M failed\n");
-          }
       }
+#else
+    if (M)
+        free(M);
+    
+    M = (word36 *) calloc (MEMSIZE, sizeof (word36));
 #endif
+    if (M == NULL)
+      {
+        sim_printf ("create M failed\n");
+        sim_err ("create M failed\n");
+      }
+
+#ifdef M_SHARED
+    if (! cpus)
+      {
+        cpus = (cpu_state_t *) create_shm ("cpus", getsid (0), N_CPU_UNITS_MAX * sizeof (cpu_state_t));
+      }
+#else
+    if (cpus)
+        free(cpus);
+    
+    cpus = (cpu_state_t *) calloc (N_CPU_UNITS_MAX, sizeof (cpu_state_t));
+#endif
+    if (cpus == NULL)
+      {
+        sim_printf ("create cpus failed\n");
+        sim_err ("create cpus failed\n");
+      }
+
     memset (& watchBits, 0, sizeof (watchBits));
+
 #ifdef ROUND_ROBIN
-    memset (& cpus, 0, sizeof (cpus));
+    memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
     for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
       cpus [c].switches.trlsb = 12; // 6 MIP processor
@@ -848,16 +872,6 @@ void cpu_init (void)
 
 static t_stat cpu_reset (UNUSED DEVICE *dptr)
 {
-
-#ifndef M_SHARED
-    if (M)
-        free(M);
-    
-    M = (word36 *) calloc (MEMSIZE, sizeof (word36));
-    if (M == NULL)
-        return SCPE_MEM;
-#endif
-    
     //memset (M, -1, MEMSIZE * sizeof (word36));
 
     // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
@@ -972,11 +986,14 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
  * register stuff ...
  */
 
+static word18 dummyIC;
 static REG cpu_reg[] = {
+// simh has to have a statically allocated IC to refer to.
+    { ORDATA (IC, dummyIC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
 #ifdef ROUND_ROBIN
-    { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
 #else
-    { ORDATA (IC, cpu.PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    //{ ORDATA (IC, cpu.PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IR, cpu.cu.IR, 18), 0, 0 },
     //{ ORDATADF (IR, cpu.cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
@@ -1161,7 +1178,8 @@ jmp_buf jmpMain;        ///< This is where we should return to from a fault or i
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
 cpu_state_t * restrict cpup;
-cpu_state_t cpus [N_CPU_UNITS_MAX];
+//cpu_state_t cpus [N_CPU_UNITS_MAX];
+cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpu;
 #endif
