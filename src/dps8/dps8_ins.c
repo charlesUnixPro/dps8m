@@ -1296,7 +1296,8 @@ t_stat executeInstruction (void)
               break;
             default:
               // generate fault. Only R & RI allowed
-              doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT");
+              doFault(FAULT_IPR, flt_ipr_ill_mod,
+                      "ill addr mod from RPT/RPD/RPL");
           }
         word6 Td = GET_TD(ci->tag);
 #if 0
@@ -1318,6 +1319,8 @@ t_stat executeInstruction (void)
 #else
         if (Td == TD_X0)
           doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT");
+        if (! cpu.cu.rd && Td < TD_X0)
+          doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT/RPL");
 #endif
         // XXX Does this need to also check for NO_RPL?
         // repeat allowed for this instruction?
