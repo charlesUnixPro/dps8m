@@ -978,6 +978,9 @@ typedef struct du_unit_data_t
     // These values must be restored on instruction restart
     word7 MF [3]; // Modifier fields for each instruction.
 
+    // Image of LPL/SPL for ISOLTS compliance
+    word36 image [8];
+
   } du_unit_data_t;
 
 // History registers

@@ -620,8 +620,17 @@ void cu_safe_restore (void)
 
 static void du2words (word36 * words)
   {
-    memset (words, 0, 8 * sizeof (* words));
 
+#ifdef ISOLTS
+    for (int i = 0; i < 8; i ++)
+      {
+        words [i] = cpu.du.image [i];
+if (currentRunningCPUnum)
+sim_printf ("rest %d %012llo\n", i, words [i]);
+      }
+#else
+    memset (words, 0, 8 * sizeof (* words));
+#endif
     // Word 0
 
     putbits36 (& words [0],  9,  1, cpu.du.Z);
@@ -630,6 +639,11 @@ static void du2words (word36 * words)
 
     // Word 1
 
+#ifdef ISOLTS
+//if (words [1] == 0) putbits36 (& words [1], 35, 1, 1);
+    words[1] = words[0];
+    //words [1] ++;
+#endif
     // Word 2
 
     putbits36 (& words [2],  0, 18, cpu.du.D1_PTR_W);
@@ -720,6 +734,14 @@ static void words2du (word36 * words)
 
     cpu.du.D3_RES   = getbits36 (words [7], 12, 24);
 
+#ifdef ISOLTS
+    for (int i = 0; i < 8; i ++)
+      {
+        cpu.du.image [i] = words [i];
+if (currentRunningCPUnum)
+sim_printf ("save %d %012llo\n", i, words [i]);
+      }
+#endif
   }
 
 static char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
