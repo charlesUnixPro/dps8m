@@ -625,8 +625,8 @@ static void du2words (word36 * words)
     for (int i = 0; i < 8; i ++)
       {
         words [i] = cpu.du.image [i];
-if (currentRunningCPUnum)
-sim_printf ("rest %d %012llo\n", i, words [i]);
+//if (currentRunningCPUnum)
+//sim_printf ("rest %d %012llo\n", i, words [i]);
       }
 #else
     memset (words, 0, 8 * sizeof (* words));
@@ -738,8 +738,8 @@ static void words2du (word36 * words)
     for (int i = 0; i < 8; i ++)
       {
         cpu.du.image [i] = words [i];
-if (currentRunningCPUnum)
-sim_printf ("save %d %012llo\n", i, words [i]);
+//if (currentRunningCPUnum)
+//sim_printf ("save %d %012llo\n", i, words [i]);
       }
 #endif
   }
@@ -1875,10 +1875,10 @@ restart_1:
             //  a. Execute the repeated instruction
             //  b. C(X0)0,7 - 1 -> C(X0)0,7
             // a:AL39/rpd9
-            uint x = bitfieldExtract (cpu.rX [0], 10, 8);
+            uint x = getbits18 (cpu.rX [0], 0, 8);
             x -= 1;
             x &= MASK8;
-            cpu.rX [0] = bitfieldInsert (cpu.rX [0], x, 10, 8);
+            putbits18 (& cpu.rX [0], 0, 8, x);
 
             //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 
@@ -2212,8 +2212,10 @@ static t_stat DoBasicInstruction (void)
 
                 tmp72 = ~tmp72 + 1;
 
-                cpu.rA = bitfieldExtract72(tmp72, 36, 36);
-                cpu.rQ = bitfieldExtract72(tmp72,  0, 36);
+                //cpu.rA = bitfieldExtract72(tmp72, 36, 36);
+                //cpu.rQ = bitfieldExtract72(tmp72,  0, 36);
+                cpu.rA = GETHI72 (tmp72); 
+                cpu.rQ = GETLO72 (tmp72);
 
                 SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
                 SC_I_NEG (cpu.rA & SIGN36);
@@ -5969,7 +5971,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
         case 0257:  // lsdp
             // Not clear what the subfault should be; see Fault Register in
             //  AL39.
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "lsdp is illproc on DPS8M");
+            doFault(FAULT_IPR, flt_ipr_ill_op, "lsdp is illproc on DPS8M");
 
         case 0613:  // rcu
             doRCU (); // never returns
@@ -6371,16 +6373,19 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                   cpu.rA |= (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1);
                   cpu.rA |= (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2);
                   cpu.rA |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
-                  cpu.rA |= (0b01L)  /* DPS8M */                        << (35- 5);
+                  cpu.rA |= (0b01L)  /* DPS8M */                          << (35- 5);
                   cpu.rA |= (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
-                  cpu.rA |= (0b1L)                                      << (35-13);
-                  cpu.rA |= (0b0000L)                                   << (35-17);
-                  cpu.rA |= (0b111L)                                    << (35-20);
-                  cpu.rA |= (0b00L)                                     << (35-22);
-                  cpu.rA |= (0b1L)  /* DPS8M */                         << (35-23);
+                  cpu.rA |= (0b1L)                                        << (35-13);
+                  cpu.rA |= (0b0000L)                                     << (35-17);
+                  //cpu.rA |= (0b111L)                                    << (35-20);
+                  cpu.rA |= (0b1L)                                        << (35-18);  //BCD option
+                  cpu.rA |= (0b1L)                                        << (35-19);  //DPS option
+                  cpu.rA |= (0b0L)                                        << (35-20);  //8K cache installed
+                  cpu.rA |= (0b00L)                                       << (35-22);
+                  cpu.rA |= (0b1L)  /* DPS8M */                           << (35-23);
                   cpu.rA |= (cpu.switches.proc_mode & 01LL)               << (35-24);
-                  cpu.rA |= (0b1L)                                      << (35-25);
-                  cpu.rA |= (0b000L)                                    << (35-28);
+                  cpu.rA |= (0b0L)                                        << (35-25); // new product line (CPL/NPL)
+                  cpu.rA |= (0b000L)                                      << (35-28);
                   cpu.rA |= (cpu.switches.proc_speed & 017LL)             << (35-32);
                   cpu.rA |= (cpu.switches.cpu_num & 07LL)                 << (35-35);
                   break;

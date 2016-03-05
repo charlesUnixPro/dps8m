@@ -317,10 +317,10 @@ bit-28 tp inhibit interrupts
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
-if (currentRunningCPUnum)
-    sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
-               faultNumber, faultNumber, subFault, subFault, 
-               cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+//if (currentRunningCPUnum)
+//    sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
+//               faultNumber, faultNumber, subFault, subFault, 
+//               cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 

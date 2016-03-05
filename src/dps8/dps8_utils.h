@@ -68,8 +68,49 @@ void sim_printf( const char * format, ... )    // not really simh, by my impl
 #endif
 ;
 
+//
+// getbitsNN/setbitsNN/putbitsNN
+//
+//   Manipluate bitfields.
+//     NN      the word size (18, 36, 72).
+//     data    the incoming word
+//     i       the starting bit number (DPS8 notation, 0 is the MSB)
+//     n       the number of bits, starting at i
+//     val     the bits
+//
+//   val = getbitsNN (data, i, n)
+//
+//       extract n bits from data, starting at i.
+//
+//           val = getbits36 (data, 0, 1) --> the sign bit
+//           val = getbits36 (data, 18, 18) --> the low eighteen bits
+//
+//   newdata = setbitsNN (data, i, n, val)
+//
+//       return 'data' with n bits of val inserted.
+// 
+//           newdata = setbits36 (data, 0, 18, 1) --> move '1' into the high
+//                                                    18 bits.
+//
+//   putbitsNN (& data, i, n, val)
+//
+//        put val into data (equivalent to 'data = setbitsNN (data, ....)'
+//
+//           putbits (& data, 0, 18, 1) --> set the high 18 bits to '1'.
+//
 
-//  getbits36 (data, starting bit, number of bits)
+static inline word72 getbits72 (word72 x, uint i, uint n)
+  {
+    // bit 71 is right end, bit zero is 72nd from the right
+    int shift = 71 - (int) i - (int) n + 1;
+    if (shift < 0 || shift > 71)
+      {
+        sim_printf ("getbits72: bad args (i=%d,n=%d)\n", i, n);
+        return 0;
+      }
+     else
+      return (x >> (unsigned) shift) & ~ (~0U << n);
+  }
 
 static inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
@@ -129,6 +170,24 @@ static inline word36 getbits18 (word18 x, uint i, uint n)
       }
     else
       return (x >> (unsigned) shift) & ~ (~0U << n);
+  }
+
+//  putbits18 (data, starting bit, number of bits, bits)
+
+static inline void putbits18 (word18 * x, uint p, uint n, word18 val)
+  {
+    int shift = 18 - (int) p - (int) n;
+    if (shift < 0 || shift > 17)
+      {
+        sim_printf ("putbits18: bad args (%06o,pos=%d,n=%d)\n", * x, p, n);
+        return;
+      }
+    word18 mask = ~ (~0U << n);  // n low bits on
+    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (18 - p - n));
+    return;
   }
 
 char * strdupesc (const char * str);

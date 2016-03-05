@@ -5302,7 +5302,7 @@ void csl (bool isSZTL)
         // instruction, then a truncation (overflow) fault occurs.
         
         SET_I_TRUNC;
-        if (T && ! tstOVFfault ())
+        if (T && tstOVFfault ())
         {
             doFault(FAULT_OFL, 0, "csl truncation fault");
         }

@@ -974,7 +974,8 @@ void fno (void)
     int e = SIGNEXT8_int (cpu . rE & MASK8);
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
 
-    while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
+    while (s  == !! getbits72 (m, 1, 1)) // until C(AQ)0 != C(AQ)1?
+    //while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
     {
         m <<= 1;
         e -= 1;
@@ -2583,8 +2584,8 @@ sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+//if (currentRunningCPUnum)
+//sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 #if 0
     if (cpu.CY == 0)
       {
@@ -2641,10 +2642,10 @@ sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
       }
     dFrac &= MASK35;
 
-if (currentRunningCPUnum)
-sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
@@ -2653,7 +2654,8 @@ sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) 
     //if (dFrac == 0 || zFrac >= dFrac << 35)
     if (dFrac == 0)
       {
-sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+//if (currentRunningCPUnum)
+//sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 // case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
 //         dFrac 000000000000 000000000000
 
@@ -2669,10 +2671,10 @@ sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
-if (currentRunningCPUnum)
-sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 
 
 
@@ -2682,10 +2684,10 @@ sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word
 
     if (quot & ~MASK35)
       {
-if (currentRunningCPUnum)
-sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+//if (currentRunningCPUnum)
+//sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
 //
 // this got:
 //            s/b 373737373737 373737373740 200200
@@ -2696,17 +2698,17 @@ sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) q
         bool AQzero = cpu.rA == 0 && cpu.rQ == 0;
         if (cpu.rA & SIGN36)
           {
-if (currentRunningCPUnum)
-sim_printf ("negating AQ\n");
+//if (currentRunningCPUnum)
+//sim_printf ("negating AQ\n");
             cpu.rA = (~cpu.rA) & MASK36;
             cpu.rQ = (~cpu.rQ) & MASK36;
             cpu.rQ += 1;
-if (currentRunningCPUnum)
-sim_printf ("Q after incr: %012llo\n", cpu.rQ);
+//if (currentRunningCPUnum)
+//sim_printf ("Q after incr: %012llo\n", cpu.rQ);
             if (cpu.rQ & BIT37) // overflow?
               {
-if (currentRunningCPUnum)
-sim_printf ("incr. A\n");
+//if (currentRunningCPUnum)
+//sim_printf ("incr. A\n");
                 cpu.rQ &= MASK36;
                 cpu.rA = (cpu.rA + 1) & MASK36;
               }
@@ -2738,10 +2740,10 @@ sim_printf ("incr. A\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-if (currentRunningCPUnum)
-sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
  
@@ -2787,7 +2789,7 @@ void dfrd (void)
     m += (word72)0177LL; // add 1's into lower 64-bits
 
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (!s1)     //bitfieldExtract72(m, 71, 1) == 0)
+    if (!s1)
         m += 1;
     
     // 0 → C(AQ)64,71 
@@ -2994,22 +2996,22 @@ void dfcmp (void)
     // equal to the difference in the two exponents.
     // The aligned mantissas are compared and the indicators set accordingly.
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMP E %03o A %012llo Q %012llo CY %012llo %12llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMP E %03o A %012llo Q %012llo CY %012llo %12llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     word72 m1 = ((uint128) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
-if (currentRunningCPUnum)
-sim_printf ("DFCMP e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMP e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
     word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
     int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMP e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMP e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e3 = -1;
 
@@ -3051,10 +3053,10 @@ sim_printf ("DFCMP e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36
         e3 = e1;
     }
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMP shifted e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("DFCMP shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMP shifted e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMP shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
     int128 sm1 = SIGNEXT72_128 (m1);
     int128 sm2 = SIGNEXT72_128 (m2);
@@ -3082,14 +3084,14 @@ void dfcmg (void)
     // the magnitudes of the mantissas are compared instead of the algebraic
     // values.
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMG E %03o A %012llo Q %012llo CY %012llo %12llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMG E %03o A %012llo Q %012llo CY %012llo %12llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     word72 m1 = ((uint128) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
-if (currentRunningCPUnum)
-sim_printf ("DFCMG e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//if (currentRunningCPUnum)
+//sim_printf ("DFCMG e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
     word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  

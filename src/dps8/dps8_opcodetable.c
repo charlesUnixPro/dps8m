@@ -202,7 +202,7 @@ struct opCode NonEISopcodes[01000] = {
     {"spri", STORE_YBLOCK16 | NO_BAR | NO_RPT, NO_DDCSS, 0},
     {"orsa", RMW | NO_RPL, NO_DDCSS, 0},
     {"orsq", RMW | NO_RPL, NO_DDCSS, 0},
-    {"lsdp", READ_YBLOCK16 | PRIV_INS | NO_RPT, NO_DDCSS, 0},    // not available on a dps8m
+    {NULL, 0, 0, 0},//  {"lsdp", READ_YBLOCK16 | PRIV_INS | NO_RPT, NO_DDCSS, 0},    // not available on a dps8m
     {"orx0", READ_OPERAND, NO_CSS, 0},
     {"orx1", READ_OPERAND, NO_CSS, 0},
     {"orx2", READ_OPERAND, NO_CSS, 0},
