@@ -8811,7 +8811,6 @@ void dv2d (void)
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
-        SET_I_MIF;
         doFault(FAULT_DIV, 0, "dv2d division by 0");
     }
 
@@ -9099,7 +9098,6 @@ void dv3d (void)
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
-        SET_I_MIF;
         doFault(FAULT_DIV, 0, "dv3d division by 0");
     }
     
