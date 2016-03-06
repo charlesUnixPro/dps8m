@@ -1350,6 +1350,10 @@ void s4bd (void)
 
 void axbd (uint sz)
   {
+static int testno = 0;
+if (currentRunningCPUnum)
+sim_printf ("axbd test no %d\n", ++testno);
+
     uint ARn = GET_ARN (cpu . cu . IWB);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     uint reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
@@ -1357,6 +1361,8 @@ void axbd (uint sz)
     // r is the count of characters
     int32_t r = getCrAR (reg);
 
+if (currentRunningCPUnum)
+sim_printf ("axbd r 0%o %d.\n", r, r);
     if (sz == 1)
       r = SIGNEXT24_32 (r);
     else if (sz == 4)
@@ -1368,17 +1374,39 @@ void axbd (uint sz)
     else // if (sz == 36)
       r = SIGNEXT18_32 (r);
 
+if (currentRunningCPUnum)
+sim_printf ("axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
   
     uint augend = 0;
     if (GET_A (cpu . cu . IWB))
+      {
+if (currentRunningCPUnum)
+sim_printf ("axbd ARn %d WORDNO %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+       sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd ARn %d WORDNO %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
        augend = cpu . AR [ARn] . WORDNO * 36 + cpu . AR [ARn] . BITNO;
+      }
+if (currentRunningCPUnum)
+sim_printf ("axbd augend 0%o\n", augend);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o\n", augend);
     // force to character boundary
-    if (sz == 9 || sz == 36|| GET_A (cpu . cu . IWB))
+    if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
       {
         augend = (augend / sz) * sz;
+if (currentRunningCPUnum)
+sim_printf ("axbd force augend 0%o\n", augend);
+        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd force augend 0%o\n", augend);
       }
+// If sz == 9, this is an a9bd instruction; ISOLTS says that r is in characters, not bits.
+// wow. That breaks the boot bad.
+//    if (sz == 9)
+//      {
+//        r *= 9;
+//if (currentRunningCPUnum)
+//sim_printf ("axbd force chars 0%o %d. bits\n", r, r);
+//      }
+
     int32_t addend = address * 36 + r * sz;
     int32_t sum = augend + addend;
 
@@ -1387,10 +1415,14 @@ void axbd (uint sz)
       sum += nxbits;
     sum = sum % nxbits;
 
+if (currentRunningCPUnum)
+sim_printf ("axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     cpu . AR [ARn] . WORDNO = (sum / 36) & AMASK;
     cpu . AR [ARn] . BITNO = sum % 36;
+if (currentRunningCPUnum)
+sim_printf ("axbd WORDNO 0%o %d. BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
   }
 
 void sxbd (uint sz)

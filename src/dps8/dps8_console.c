@@ -442,7 +442,10 @@ static void oscar (char * text)
     if ((cmdp = find_cmd (gbuf)))                       /* lookup command */
       {
         t_stat stat = cmdp->action (cmdp->arg, cptr);          /* if found, exec */
-        sim_printf ("oscar thinks %d\n", stat);
+        if (stat == SCPE_OK)
+          sim_printf ("oscar thinks thats ok.\n");
+        else
+          sim_printf ("oscar thinks %d\n", stat);
       }
     else
       sim_printf ("oscar says huh?\n");

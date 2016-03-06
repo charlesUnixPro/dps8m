@@ -986,14 +986,17 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
  * register stuff ...
  */
 
-static word18 dummyIC;
-static REG cpu_reg[] = {
-// simh has to have a statically allocated IC to refer to.
-    { ORDATA (IC, dummyIC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
 #ifdef ROUND_ROBIN
+// simh has to have a statically allocated IC to refer to.
+static word18 dummyIC;
+#endif
+
+static REG cpu_reg[] = {
+#ifdef ROUND_ROBIN
+    { ORDATA (IC, dummyIC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
 #else
-    //{ ORDATA (IC, cpu.PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    { ORDATA (IC, cpu.PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IR, cpu.cu.IR, 18), 0, 0 },
     //{ ORDATADF (IR, cpu.cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
@@ -1182,6 +1185,7 @@ cpu_state_t * restrict cpup;
 cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpu;
+cpu_state_t * cpus = & cpu;
 #endif
 
 static uint get_highest_intr (void)
@@ -1360,6 +1364,13 @@ t_stat sim_instr (void)
     if (u->filename == NULL || strlen(u->filename) == 0)
         sim_printf("Warning: MUX not attached.\n");
       
+#ifdef ROUND_ROBIN
+// simh needs to have the IC statically allocated, so a placeholder was
+// created. Copy the placeholder in so the IC can be set by simh.
+
+    cpus [0].PPR.IC = dummyIC;
+#endif
+
 #ifdef ROUND_ROBIN
     setCPUnum (cpu_dev.numunits - 1);
     cpus [0] . isRunning = true;
@@ -2077,6 +2088,14 @@ leave:
           sim_printf("%s faults = %lld\n", faultNames [i], sys_stats.total_faults [i]);
      }
     
+#ifdef ROUND_ROBIN
+// simh needs to have the IC statically allocated, so a placeholder was
+// created. Update the placeholder in so the IC can be seen by simh, and
+// restarting sim_instr doesn't lose the place.
+
+    dummyIC = cpus [0].PPR.IC;
+#endif
+
     return reason;
   }
 
@@ -2528,27 +2547,12 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
 {
-    // TODO: fix this when time permits
-    
-    // something has already set .P
     if (cpu.PPR.P)
         return 1;
     
-    switch (get_addr_mode())
-    {
-        case ABSOLUTE_mode:
-            cpu.PPR.P = 1;
-            return 1;
-        
-        case APPEND_mode:
-            // XXX This is probably too simplistic, but it's a start
-            
-            if (cpu.switches.super_user)
-                return 1;
+    if (get_addr_mode () == ABSOLUTE_mode)
+        return 1;
 
-            break;
-    }
-    
     return 0;
 }
 
@@ -2747,7 +2751,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
     sim_printf("Degenerate mode:          %01o(8)\n", cpu.switches.degenerate_mode);
     sim_printf("Append after:             %01o(8)\n", cpu.switches.append_after);
-    sim_printf("Super user:               %01o(8)\n", cpu.switches.super_user);
+    //sim_printf("Super user:               %01o(8)\n", cpu.switches.super_user);
     sim_printf("EPP hack:                 %01o(8)\n", cpu.switches.epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
     sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", cpu.switches.disable_wam);
@@ -2785,7 +2789,6 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 //           steadyclock = on|off
 //           degenerate_mode = n // deprecated
 //           append_after = n
-//           super_user = n
 //           epp_hack = n
 //           halt_on_unimplmented = n
 //           disable_wam = n
@@ -3061,7 +3064,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 19: // SUPER_USER
-              cpu.switches.super_user = v;
+              sim_printf ("SUPER_USER deprecated\n");
               break;
 
             case 20: // EPP_HACK

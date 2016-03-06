@@ -452,6 +452,31 @@ static void scu2words(word36 *words)
 
     putbits36 (& words [4],  0, 18, cpu.PPR.IC);
     putbits36 (& words [4], 18, 18, cpu.cu.IR);
+
+#ifdef ISOLTS
+//testing for ipr fault by attempting execution of
+//the illegal opcode  000   and bit 27 not set
+//in privileged-append-bar mode.
+//
+//expects ABS to be clear....
+//
+//testing for ipr fault by attempting execution of
+//the illegal opcode  000   and bit 27 not set
+//in absolute-bar mode.
+//
+//expects ABS to be set
+
+//if (cpu.PPR.P && TST_I_NBAR == 0) fails 101007 absolute-bar mode; s/b set
+//if (cpu.PPR.P == 0 && TST_I_NBAR == 0)
+//if (TST_I_NBAR == 0 && TST_I_ABS == 1) // If ABS BAR
+//{
+  //putbits36 (& words [4], 31, 1, 0);
+//  putbits36 (& words [4], 31, 1, cpu.PPR.P ? 0 : 1);
+//if(currentRunningCPUnum)
+//sim_printf ("cleared ABS\n");
+//}
+#endif
+
     // words [5]
 
     putbits36 (& words [5],  0, 18, cpu.TPR.CA);
@@ -5034,7 +5059,11 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 // XXX According to figure 8.1, all of this is done by the
                 //  append unit.
                 cpu.PR[n].RNR = cpu.PPR.PRR;
-                cpu.PR[n].SNR = cpu.PPR.PSR;
+
+// According the AL39, the PSR is 'undefined' in absolute mode.
+// ISOLTS thinks means don't change the operand
+                if (get_addr_mode () == APPEND_mode)
+                  cpu.PR[n].SNR = cpu.PPR.PSR;
                 cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
                 cpu.PR[n].BITNO = 0;
                 cpu.PPR.IC = cpu.TPR.CA;
@@ -5274,7 +5303,12 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                   cpu.PR[n].RNR = Crr;
                 cpu.PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
                 cpu.PR[n].WORDNO = GETHI(cpu.Ypair[1]);
-                cpu.PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
+// According to ISOLTS, loading a 077 into bitno results in 037
+                //cpu.PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
+                uint bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
+                if (bitno == 077)
+                  bitno = 037;
+                cpu.PR[n].BITNO = bitno;
             }
 
             break;
@@ -5447,12 +5481,12 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
-            cpu.Ypair[0] = 043;
+            cpu.Ypair[0]  = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[0].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[0].RNR) << 15;
 
-            cpu.Ypair[1] = (word36) cpu.PR[0].WORDNO << 18;
-            cpu.Ypair[1]|= (word36) cpu.PR[0].BITNO << 9;
+            cpu.Ypair[1]  = (word36) cpu.PR[0].WORDNO << 18;
+            cpu.Ypair[1] |= (word36) cpu.PR[0].BITNO << 9;
 
             break;
 
@@ -5604,6 +5638,8 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
 
             cpu.rQ = cpu.TPR.TBR & MASK6;
             cpu.rQ |= (word36) (cpu.TPR.CA & MASK18) << 18;
+
+            SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
 
             break;
 
@@ -6380,7 +6416,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                   //cpu.rA |= (0b111L)                                    << (35-20);
                   cpu.rA |= (0b1L)                                        << (35-18);  //BCD option
                   cpu.rA |= (0b1L)                                        << (35-19);  //DPS option
-                  cpu.rA |= (0b0L)                                        << (35-20);  //8K cache installed
+                  cpu.rA |= (0b1L)                                        << (35-20);  //8K cache installed
                   cpu.rA |= (0b00L)                                       << (35-22);
                   cpu.rA |= (0b1L)  /* DPS8M */                           << (35-23);
                   cpu.rA |= (cpu.switches.proc_mode & 01LL)               << (35-24);
@@ -6632,12 +6668,14 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
                 sys_stats.total_cycles ++;
                 //longjmp (jmpMain, JMP_REFETCH);
+#ifdef ROUND_ROBIN
 #ifdef ISOLTS
                 if (currentRunningCPUnum)
                 {
 //if (cpus [currentRunningCPUnum] . isRunning) sim_printf ("stopping CPU %c\n", currentRunningCPUnum + 'A');
                   cpus [currentRunningCPUnum] . isRunning = false;
                 }
+#endif
 #endif
                 return CONT_DIS;
               }

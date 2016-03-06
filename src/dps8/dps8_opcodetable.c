@@ -719,7 +719,7 @@ struct opCode EISopcodes[01000] = {
     {"dv3d",  NO_TAG | NO_XED | NO_RPT | IGN_B29, 0, 3},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
-    {"lsdr", READ_YBLOCK32 | PRIV_INS | NO_RPT, NO_DDCSS, 0},
+    {NULL, 0, 0, 0}, // {"lsdr", READ_YBLOCK32 | PRIV_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},

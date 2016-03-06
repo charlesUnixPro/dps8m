@@ -651,7 +651,6 @@ typedef struct
     uint lprp_highonly;   // If non-zero lprp only sets the high bits
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after;
-    uint super_user;
     uint epp_hack;
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
@@ -1164,6 +1163,7 @@ void setCPUnum (uint cpuNum);
 #else
 extern cpu_state_t cpu;
 #define currentRunningCPUnum 0
+extern cpu_state_t * cpus;
 #endif
 
 bool sample_interrupts (void);
