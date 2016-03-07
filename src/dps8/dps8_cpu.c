@@ -273,7 +273,7 @@ static t_stat dpsCmd_InitSDWAM ()
   {
 #ifdef ROUND_ROBIN
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
-      memset (cpus[i].SDWAM, 0, sizeof (struct _sdw));
+      memset (cpus[i].SDWAM, 0, sizeof (cpu.SDWAM));
 #else
     memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
 #endif
@@ -362,8 +362,6 @@ t_stat dpsCmd_DumpSegmentTable()
             sim_printf("Seg %d - ", segno);
             _sdw0 *s = fetchSDW(segno);
             printSDW0(s);
-            
-            //free(s); no longer needed
         }
     } else {
         sim_printf("*** Descriptor Segment Table (Paged) ***\n");
@@ -820,12 +818,12 @@ void cpu_init (void)
         M = (word36 *) create_shm ("M", getsid (0), MEMSIZE * sizeof (word36));
       }
 #else
-    if (M)
-        free(M);
-    
-    M = (word36 *) calloc (MEMSIZE, sizeof (word36));
+    if (! M)
+      {
+        M = (word36 *) calloc (MEMSIZE, sizeof (word36));
+      }
 #endif
-    if (M == NULL)
+    if (! M)
       {
         sim_printf ("create M failed\n");
         sim_err ("create M failed\n");
@@ -837,12 +835,12 @@ void cpu_init (void)
         cpus = (cpu_state_t *) create_shm ("cpus", getsid (0), N_CPU_UNITS_MAX * sizeof (cpu_state_t));
       }
 #else
-    if (cpus)
-        free(cpus);
-    
-    cpus = (cpu_state_t *) calloc (N_CPU_UNITS_MAX, sizeof (cpu_state_t));
+    if (! cpus)
+      {
+        cpus = (cpu_state_t *) calloc (N_CPU_UNITS_MAX, sizeof (cpu_state_t));
+      }
 #endif
-    if (cpus == NULL)
+    if (! cpus)
       {
         sim_printf ("create cpus failed\n");
         sim_err ("create cpus failed\n");
