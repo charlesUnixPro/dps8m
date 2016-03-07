@@ -1752,25 +1752,6 @@ void sim_puts (char * str)
       sim_putchar (* (p ++));
   }
 
-#if 0
-void sim_warn (const char * format, ...)
-  {
-    va_list arglist;
-    va_start (arglist, format);
-    _sim_err (format, arglist);
-    va_end (arglist);
-  }
-
-void sim_err (const char * format, ...)
-  {
-    va_list arglist;
-    va_start (arglist, format);
-    _sim_err (format, arglist);
-    va_end (arglist);
-    longjmp (jmpMain, JMP_STOP);
-  }
-#endif
-
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
 // return -2: error; -1: done; >= 0 option found

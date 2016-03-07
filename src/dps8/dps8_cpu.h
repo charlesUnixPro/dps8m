@@ -417,8 +417,6 @@ typedef struct mode_registr
   } _mode_register;
 
 extern DEVICE cpu_dev;
-extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
-                          // retry an instruction
 
 typedef struct MOPstruct MOPstruct;
 
@@ -1025,6 +1023,7 @@ typedef struct
 
 typedef struct
   {
+    jmp_buf jmpMain; // This is the entry to the CPU state machine
     cycles_t cycle;
     uint IC_abs; // translation of odd IC to an absolute address; see
                  // ADDRESS of cu history
@@ -1159,7 +1158,7 @@ extern cpu_state_t * cpus;
 extern uint currentRunningCPUnum;
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
-void setCPUnum (uint cpuNum);
+uint setCPUnum (uint cpuNum);
 #else
 extern cpu_state_t cpu;
 #define currentRunningCPUnum 0

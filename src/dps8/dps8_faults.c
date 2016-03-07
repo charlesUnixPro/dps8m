@@ -533,7 +533,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
-                longjmp (jmpMain, JMP_STOP);
+                longjmp (cpu.jmpMain, JMP_STOP);
               }
 #endif
           }
@@ -555,7 +555,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     cpu . cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
-    longjmp (jmpMain, JMP_REENTRY);
+    longjmp (cpu.jmpMain, JMP_REENTRY);
 }
 
 void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 
@@ -589,8 +589,10 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %d %o\n", 
                cpuNo, faultNo, faultNo, subFault, subFault);
 #ifdef ROUND_ROBIN
-    cpus[cpuNo].g7Faults |= (1u << faultNo);
-    cpus[cpuNo].g7SubFaults [faultNo] = subFault;
+    uint save = setCPUnum (cpuNo);
+    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7SubFaults [faultNo] = subFault;
+    setCPUnum (save);
 #else
     cpu.g7Faults |= (1u << faultNo);
     cpu.g7SubFaults [faultNo] = subFault;

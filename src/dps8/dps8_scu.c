@@ -1574,11 +1574,13 @@ static void deliverInterrupts (uint scu_unit_num)
                 else
                   {
 #ifdef ROUND_ROBIN
-                    cpus [cpu_unit_num] . events . XIP [scu_unit_num] = true;
-//if (cpu_unit_num && ! cpus [cpu_unit_num] . isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
-                    cpus [cpu_unit_num] . isRunning = true;
+                    uint save = setCPUnum (cpu_unit_num);
+//if (cpu_unit_num && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
+                    cpu.isRunning = true;
+                    cpu.events.XIP[scu_unit_num] = true;
+                    setCPUnum (save);
 #else
-                    cpu . events . XIP [scu_unit_num] = true;
+                    cpu.events.XIP[scu_unit_num] = true;
 #endif
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
                   }

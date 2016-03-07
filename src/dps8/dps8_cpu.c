@@ -272,8 +272,13 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 static t_stat dpsCmd_InitSDWAM ()
   {
 #ifdef ROUND_ROBIN
+    uint save = currentRunningCPUnum;
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
-      memset (cpus[i].SDWAM, 0, sizeof (cpu.SDWAM));
+      {
+        setCPUnum (i);
+        memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
+      }
+    setCPUnum (save);
 #else
     memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
 #endif
@@ -782,8 +787,10 @@ static void getSerialNumber (void)
           {
             if (cpun < N_CPU_UNITS_MAX)
               {
-                cpus [cpun].switches.serno = sn;
-                sim_printf ("Serial number of CPU %u is %u\n", cpun, cpus [cpun].switches.serno);
+                uint save = setCPUnum (cpun);
+                cpu.switches.serno = sn;
+                sim_printf ("Serial number of CPU %u is %u\n", cpun, cpu.switches.serno);
+                setCPUnum (save);
                 havesn = true;
               }
           }
@@ -812,6 +819,10 @@ static void getSerialNumber (void)
 
 void cpu_init (void)
   {
+
+// !!!! Do not use 'cpu' in this routine; usage of 'cpus' violates 'restrict'
+// !!!! attribute
+
 #ifdef M_SHARED
     if (! M)
       {
@@ -1174,12 +1185,9 @@ DEVICE cpu_dev = {
     NULL            // description
 };
 
-jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
-
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
 cpu_state_t * restrict cpup;
-//cpu_state_t cpus [N_CPU_UNITS_MAX];
 cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpu;
@@ -1285,13 +1293,12 @@ static void setCpuCycle (cycles_t cycle)
 
 
 #ifdef ROUND_ROBIN
-void setCPUnum (uint cpuNum)
+uint setCPUnum (uint cpuNum)
   {
-    //static char name [5] = "CPU0\0";
+    uint prev = currentRunningCPUnum;
     currentRunningCPUnum = cpuNum;
     cpup = & cpus [currentRunningCPUnum];
-    //name[3] = '0' + currentRunningCPUnum;
-    //cpu_dev.name = name;
+    return prev;
   }
 #endif
 
@@ -1366,32 +1373,36 @@ t_stat sim_instr (void)
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Copy the placeholder in so the IC can be set by simh.
 
+    setCPUnum (0);
     cpus [0].PPR.IC = dummyIC;
 #endif
 
 #ifdef ROUND_ROBIN
+    setCPUnum (0);
+    cpu.isRunning = true;
     setCPUnum (cpu_dev.numunits - 1);
-    cpus [0] . isRunning = true;
 
 setCPU:;
-    {
-      uint c;
-      for (c = 0; c < cpu_dev.numunits; c ++)
-        if (cpus [c] . isRunning)
+    uint current = currentRunningCPUnum;
+    uint c;
+    for (c = 0; c < cpu_dev.numunits; c ++)
+      {
+        setCPUnum (c);
+        if (cpu.isRunning)
           break;
-      if (c == cpu_dev.numunits)
-        {
-          sim_printf ("All CPUs stopped\n");
-          goto leave;
-        }
-    }
-    setCPUnum ((currentRunningCPUnum + 1) % cpu_dev.numunits);
+      }
+    if (c == cpu_dev.numunits)
+      {
+        sim_printf ("All CPUs stopped\n");
+        goto leave;
+      }
+    setCPUnum ((current + 1) % cpu_dev.numunits);
     if (! cpu . isRunning)
       goto setCPU;
 #endif
 
     // This allows long jumping to the top of the state machine
-    int val = setjmp(jmpMain);
+    int val = setjmp(cpu.jmpMain);
 
     switch (val)
     {
@@ -1399,7 +1410,6 @@ setCPU:;
         case JMP_REENTRY:
             reason = 0;
             break;
-        case JMP_NEXT:
         case JMP_SYNC_FAULT_RETURN:
             setCpuCycle (SYNC_FAULT_RTN_cycle);
             break;
@@ -2091,7 +2101,8 @@ leave:
 // created. Update the placeholder in so the IC can be seen by simh, and
 // restarting sim_instr doesn't lose the place.
 
-    dummyIC = cpus [0].PPR.IC;
+    setCPUnum (0);
+    dummyIC = cpu.PPR.IC;
 #endif
 
     return reason;
@@ -2963,8 +2974,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
       }
 
 #ifdef ROUND_ROBIN
-    uint save = currentRunningCPUnum;
-    setCPUnum (cpu_unit_num);
+    uint save = setCPUnum (cpu_unit_num);
 #endif
 
     static int port_num = 0;

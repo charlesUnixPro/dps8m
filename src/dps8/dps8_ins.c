@@ -6612,7 +6612,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats.total_cycles);
                 //stop_reason = STOP_DIS;
-                longjmp (jmpMain, JMP_STOP);
+                longjmp (cpu.jmpMain, JMP_STOP);
               }
 
 // Multics/BCE halt
@@ -6620,7 +6620,7 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                 {
                   sim_printf ("BCE DIS causes CPU halt\n");
                   sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
-                  longjmp (jmpMain, JMP_STOP);
+                  longjmp (cpu.jmpMain, JMP_STOP);
                 }
 
             sim_debug (DBG_TRACEEXT, & cpu_dev, "entered DIS_cycle\n");
@@ -6667,13 +6667,14 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
               {
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
                 sys_stats.total_cycles ++;
-                //longjmp (jmpMain, JMP_REFETCH);
+                //longjmp (cpu.jmpMain, JMP_REFETCH);
 #ifdef ROUND_ROBIN
 #ifdef ISOLTS
                 if (currentRunningCPUnum)
                 {
-//if (cpus [currentRunningCPUnum] . isRunning) sim_printf ("stopping CPU %c\n", currentRunningCPUnum + 'A');
-                  cpus [currentRunningCPUnum] . isRunning = false;
+//sim_printf ("stopping CPU %c\n", currentRunningCPUnum + 'A');
+                  cpu.isRunning = false;
+
                 }
 #endif
 #endif
@@ -8243,7 +8244,7 @@ void doRCU (void)
     if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
       {
         sim_debug (DBG_TRACE, & cpu_dev, "RCU interrupt return\n");
-        longjmp (jmpMain, JMP_REFETCH);
+        longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
 // All of the faults list as having handlers have actually
@@ -8319,7 +8320,7 @@ void doRCU (void)
 
         cpu.cu.rfi = 0;
         sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
-        longjmp (jmpMain, JMP_REFETCH);
+        longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
 // It seems obvious that MMEx should do a JMP_SYNC_FAULT_RETURN, but doing
@@ -8330,7 +8331,7 @@ void doRCU (void)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 1;
-        longjmp (jmpMain, JMP_RESTART);
+        longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
     // MME faults resume with the next instruction
@@ -8346,14 +8347,14 @@ void doRCU (void)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx sync fault return\n");
         cpu.cu.rfi = 0;
-        longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+        longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
 
     // LUF can happen during fetch or CAF. If fetch, handled above
     if (cpu.cu.FI_ADDR == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
-        longjmp (jmpMain, JMP_RESTART);
+        longjmp (cpu.jmpMain, JMP_RESTART);
         sim_debug (DBG_TRACE, & cpu_dev, "RCU LUF RESTART return\n");
       }
 
@@ -8371,7 +8372,7 @@ void doRCU (void)
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
         sim_debug (DBG_TRACE, & cpu_dev, "RCU ACV RESTART return\n");
-        longjmp (jmpMain, JMP_RESTART);
+        longjmp (cpu.jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);
     doFault (FAULT_TRB, cpu.cu.FI_ADDR, "doRCU dies with unhandled fault number");
