@@ -1048,6 +1048,16 @@ void fetchInstruction (word18 addr)
     else
       {
         Read(addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
+#ifdef ISOLTS
+// ISOLTS test pa870 expects IRODD to be set up.
+// If we are fetching an even instruction, also fetch the odd.
+// If we are fetching an odd instruction, copy it to IRODD as
+// if that was where we got it from.
+        if ((cpu.PPR.IC & 1) == 0) // Even
+          Read(addr+1, & cpu.cu.IRODD, INSTRUCTION_FETCH, 0);
+        else
+          cpu.cu.IRODD = cpu.cu.IWB;
+#endif
       }
 
     // TODO: Need to add no DL restrictions?
@@ -2056,11 +2066,16 @@ static t_stat DoEISInstruction (void);
 static t_stat doInstruction (void)
 {
     DCDstruct * i = & cpu.currentInstruction;
-    // AL39 says it is always cleared, but that makes no sense. Clear it if
+    // AL39 says it is always cleared, but that makes no sense (what good
+    // is an indicator bit if it is always 0 when you check it?). Clear it if
     // an multiword EIS is at bat.
     // NB: Never clearing it renders Multics unbootable.
     if (i -> info -> ndes > 0)
       CLR_I_MIF;
+
+    // Simple CU history hack
+    addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
+
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
 
@@ -3647,7 +3662,7 @@ static t_stat DoBasicInstruction (void)
 
             if ((cpu.rQ == MAXNEG && (cpu.CY == 1 || cpu.CY == NEG136)) || (cpu.CY == 0))
             {
-sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY); 
+//sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY); 
 // case 1  400000000000 000000000000 --> 000000000000
 // case 2  000000000000 000000000000 --> 400000000000
                 //cpu.rA = 0;  // works for case 1
@@ -5929,37 +5944,54 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
  (((from) >> (35 - (where))) & (word36) (mask))
 
                 case 02: // cache mode register
-                  //cpu.CMR = cpu.CY;
-                  // cpu.CMR.cache_dir_address = <ignored for lcpr>
-                  // cpu.CMR.par_bit = <ignored for lcpr>
-                  // cpu.CMR.lev_ful = <ignored for lcpr>
-                     cpu.CMR.csh1_on = GETBITS (cpu.CY, 1, 72 - 54);
-                     cpu.CMR.csh2_on = GETBITS (cpu.CY, 1, 72 - 55);
-                  // cpu.CMR.opnd_on = ; // DPS8, not DPS8M
+                  {
+                    //cpu.CMR = cpu.CY;
+                    // cpu.CMR.cache_dir_address = <ignored for lcpr>
+                    // cpu.CMR.par_bit = <ignored for lcpr>
+                    // cpu.CMR.lev_ful = <ignored for lcpr>
+
+                   // a:AL39/cmr2  If either cache enable bit c or d changes
+                   // from disable state to enable state, the entire cache is
+                   // cleared.
+                     uint csh1_on = GETBITS (cpu.CY, 1, 72 - 54);
+                     uint csh2_on = GETBITS (cpu.CY, 1, 72 - 55);
+                     //bool clear = (cpu.CMR.csh1_on == 0 && csh1_on != 0) ||
+                                  //(cpu.CMR.csh1_on == 0 && csh1_on != 0);
+                     cpu.CMR.csh1_on = csh1_on;
+                     cpu.CMR.csh2_on = csh2_on;
+                     //if (clear) // a:AL39/cmr2
+                       //{
+                       //}
+                      // cpu.CMR.opnd_on = ; // DPS8, not DPS8M
                      cpu.CMR.inst_on = GETBITS (cpu.CY, 1, 72 - 57);
                      cpu.CMR.csh_reg = GETBITS (cpu.CY, 1, 72 - 59);
-                  // cpu.CMR.str_asd = <ignored for lcpr>
-                  // cpu.CMR.col_ful = <ignored for lcpr>
-                  // cpu.CMR.rro_AB = GETBITS (cpu.CY, 1, 18);
-                     cpu.CMR.luf = GETBITS (cpu.CY, 3, 72 - 71);
-                  // You need bypass_cache_bit to actually manage the cache,
-                  // but it is not stored
+                     if (cpu.CMR.csh_reg)
+                       sim_warn ("LCPR set csh_reg\n");
+                      // cpu.CMR.str_asd = <ignored for lcpr>
+                      // cpu.CMR.col_ful = <ignored for lcpr>
+                      // cpu.CMR.rro_AB = GETBITS (cpu.CY, 1, 18);
+                     cpu.CMR.bypass_cache = GETBITS (cpu.CY, 1, 72 - 68);
+                     cpu.CMR.luf = GETBITS (cpu.CY, 2, 72 - 72);
+                  }
                   break;
 
                 case 04: // mode register
-                  cpu.MR.cuolin = GETBITS (cpu.CY, 1, 18);
-                  cpu.MR.solin = GETBITS (cpu.CY, 1, 19);
-                  cpu.MR.sdpap = GETBITS (cpu.CY, 1, 20);
-                  cpu.MR.separ = GETBITS (cpu.CY, 1, 21);
-                  cpu.MR.tm = GETBITS (cpu.CY, 3, 23);
-                  cpu.MR.vm = GETBITS (cpu.CY, 3, 26);
-                  cpu.MR.hrhlt = GETBITS (cpu.CY, 1, 28);
-                  cpu.MR.hrxfr = GETBITS (cpu.CY, 1, 29);
-                  cpu.MR.ihr = GETBITS (cpu.CY, 1, 30);
-                  cpu.MR.ihrrs = GETBITS (cpu.CY, 1, 31);
-                  cpu.MR.mrgctl = GETBITS (cpu.CY, 1, 32);
-                  cpu.MR.hexfp = GETBITS (cpu.CY, 1, 33);
-                  cpu.MR.emr = GETBITS (cpu.CY, 1, 35);
+                  if (GETBITS (cpu.CY, 1, 35))
+                    {
+                      cpu.MR.cuolin = GETBITS (cpu.CY, 1, 18);
+                      cpu.MR.solin = GETBITS (cpu.CY, 1, 19);
+                      cpu.MR.sdpap = GETBITS (cpu.CY, 1, 20);
+                      cpu.MR.separ = GETBITS (cpu.CY, 1, 21);
+                      cpu.MR.tm = GETBITS (cpu.CY, 3, 23);
+                      cpu.MR.vm = GETBITS (cpu.CY, 3, 26);
+                      cpu.MR.hrhlt = GETBITS (cpu.CY, 1, 28);
+                      cpu.MR.hrxfr = GETBITS (cpu.CY, 1, 29);
+                      cpu.MR.ihr = GETBITS (cpu.CY, 1, 30);
+                      cpu.MR.ihrrs = GETBITS (cpu.CY, 1, 31);
+                      cpu.MR.mrgctl = GETBITS (cpu.CY, 1, 32);
+                      cpu.MR.hexfp = GETBITS (cpu.CY, 1, 33);
+                      //cpu.MR.emr = GETBITS (cpu.CY, 1, 35);
+                    }
                   break;
 
                 case 03: // DPS 8m 0's -> history
@@ -6132,9 +6164,9 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
             // XXX The associative memory is ignored (forced to "no match")
             // during address preparation.
 
-#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#ifndef SPEED
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -6149,6 +6181,17 @@ sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY);
                            cpu.SDWAM [toffset + i].USE);
 #endif
               }
+#ifdef SPEED
+            if (level == 0)
+              {
+                putbits36 (& cpu.Yblock16 [0], 0, 15,
+                           cpu.SDWAM0.POINTER);
+                putbits36 (& cpu.Yblock16 [0], 27, 1,
+                           cpu.SDWAM0.F);
+                putbits36 (& cpu.Yblock16 [0], 30, 6,
+                           cpu.SDWAM0.USE);
+              }
+#endif
           }
           break;
 
@@ -7102,9 +7145,9 @@ static t_stat DoEISInstruction (void)
 // XXX The associative memory is ignored (forced to "no match") during address
 // preparation.
 
-#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#ifndef SPEED
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -7121,6 +7164,19 @@ static t_stat DoEISInstruction (void)
                            cpu.PTWAM [toffset + i].USE);
 #endif
               }
+#ifdef SPEED
+            if (level == 0)
+              {
+                putbits36 (& cpu.Yblock16 [0],  0, 15,
+                           cpu.PTWAM0.POINTER);
+                putbits36 (& cpu.Yblock16 [0], 15, 12,
+                           cpu.PTWAM0.PAGENO);
+                putbits36 (& cpu.Yblock16 [0], 27,  1,
+                           cpu.PTWAM0.F);
+                putbits36 (& cpu.Yblock16 [0], 30,  6,
+                           cpu.PTWAM0.USE);
+              }
+#endif
           }
           break;
 
@@ -7129,9 +7185,9 @@ static t_stat DoEISInstruction (void)
 // XXX The associative memory is ignored (forced to "no match") during address
 // preparation.
 
-#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#ifndef SPEED
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -7142,6 +7198,10 @@ static t_stat DoEISInstruction (void)
                 putbits36 (& cpu.Yblock16 [i], 29, 1, cpu.PTWAM [toffset + i].M);
 #endif
               }
+#ifdef SPEED
+            if (level == 0)
+              putbits36 (& cpu.Yblock16 [0], 0, 13, cpu.PTWAM0.ADDR);
+#endif
           }
           break;
 
@@ -7150,9 +7210,9 @@ static t_stat DoEISInstruction (void)
 // XXX The associative memory is ignored (forced to "no match") during address
 // preparation.
 
-#ifndef SPEED
             // Level j is selected by C(TPR.CA)12,13
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#ifndef SPEED
             uint toffset = level * 16;
 #endif
             for (uint i = 0; i < 16; i ++)
@@ -7190,6 +7250,38 @@ static t_stat DoEISInstruction (void)
                            cpu.SDWAM [toffset + i].CL);
 #endif
               }
+#ifdef SPEED
+            if (level == 0)
+              {
+                putbits36 (& cpu.Yblock32 [0],  0, 23,
+                           cpu.SDWAM0.ADDR);
+                putbits36 (& cpu.Yblock32 [0], 24,  3,
+                           cpu.SDWAM0.R1);
+                putbits36 (& cpu.Yblock32 [0], 27,  3,
+                           cpu.SDWAM0.R2);
+                putbits36 (& cpu.Yblock32 [0], 30,  3,
+                           cpu.SDWAM0.R3);
+                putbits36 (& cpu.Yblock32 [0], 37 - 36, 14,
+                           cpu.SDWAM0.BOUND);
+                putbits36 (& cpu.Yblock32 [1], 51 - 36,  1,
+                           cpu.SDWAM0.R);
+                putbits36 (& cpu.Yblock32 [1], 52 - 36,  1,
+                           cpu.SDWAM0.E);
+                putbits36 (& cpu.Yblock32 [1], 53 - 36,  1,
+                           cpu.SDWAM0.W);
+                putbits36 (& cpu.Yblock32 [1], 54 - 36,  1,
+                           cpu.SDWAM0.P);
+                putbits36 (& cpu.Yblock32 [1], 55 - 36,  1,
+                           cpu.SDWAM0.U);
+                putbits36 (& cpu.Yblock32 [1], 56 - 36,  1,
+                           cpu.SDWAM0.G);
+                putbits36 (& cpu.Yblock32 [1], 57 - 36,  1,
+                           cpu.SDWAM0.C);
+                putbits36 (& cpu.Yblock32 [1], 58 - 36, 14,
+                           cpu.SDWAM0.CL);
+
+              }
+#endif
           }
           break;
 

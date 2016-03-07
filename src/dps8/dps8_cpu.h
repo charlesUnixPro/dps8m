@@ -380,10 +380,14 @@ struct _cache_mode_register
     word15   cache_dir_address;
     word1    par_bit;
     word1    lev_ful;
-    word1    csh1_on;
-    word1    csh2_on;
-    word1    opnd_on; // DPS8, but not DPS8M
-    word1    inst_on;
+    word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
+    word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
+    //word1    opnd_on; // DPS8, but not DPS8M
+    word1    inst_on; // 1: The cache memory (if active) is used for instructions.
+    // When the cache-to-register mode flag (bit 59 of the cache mode register) is set ON, the
+    // processor is forced to fetch the operands of all double-precision operations unit load operations
+    // from the cache memory. Y0,12 are ignored, Y15,21 select a column, and Y13,14 select a level. All
+    // other operations (e.g., instruction fetches, single-precision operands, etc.) are treated normally.
     word1    csh_reg;
     word1    str_asd;
     word1    col_ful;
@@ -981,42 +985,10 @@ typedef struct du_unit_data_t
 
 // History registers
 
-#if 0
-typedef struct
-  {
-    word18 flags;
-    word18 opcode;
-    word24 address;
-    word5 proccmd;
-    word4 portsel;
-    word6 flags2;
+// CU History register flag2 field bit
 
-  } cu_hist_t;
-
-typedef struct
-  {
-    word36 flags;
-    word18 ICT;
-    word9 RS_REG;
-    word9 flags2;
-  } du_ou_hist_t;
-
-typedef struct
-  {
-    word15 ESN;
-    word21 flags;
-    word24 RMA;
-    word3 RTRR;
-    word9 flags2;
-  } apu_hist_t;
-
-typedef struct
-  {
-    word18 ZCA;
-    word18 opcode;
-    //word36 notused;
-  } eapu_hist_t;
-#endif
+enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
+       CUH_MSTO = 04, CUH_PIB = 02 };
 
 #define N_CPU_UNITS_MAX 8
 
@@ -1124,18 +1096,6 @@ typedef struct
     // Map memory to port
     int scbank_map [N_SCBANKS];
     int scbank_pg_os [N_SCBANKS];
-
-    //cu_hist_t cu_hist [N_HIST_SIZE];
-    //uint cu_cyclic; // 0..63;
-
-    //du_ou_hist_t du_ou_hist [N_HIST_SIZE];
-    //uint du_ou_cyclic; // 0..63;
-
-    //apu_hist_t apu_hist [N_HIST_SIZE];
-    //uint apu_cyclic; // 0..63;
-
-    //eapu_hist_t eapu_hist [N_HIST_SIZE];
-    //uint eapu_cyclic; // 0..63;
 
     uint history_cyclic [N_HIST_SETS]; // 0..63
     word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];

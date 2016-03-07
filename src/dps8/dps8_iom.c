@@ -563,7 +563,8 @@ static void setupIOMScbankMap (void)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
             __func__, pg, iomScbankMap [iomUnitIdx] [pg]);
   }
-   
+
+#if 0   
 static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
   {
     uint scpg = addr / SCBANK;
@@ -571,6 +572,7 @@ static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
       return iomScbankMap [iomUnitIdx] [scpg];
     return -1;
   }
+#endif
 
 static uint mbxLoc (uint iomUnitIdx, uint chan)
   {
@@ -2147,6 +2149,10 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     
 // XXX this should call scu_svc
 
+// XXX shouldn't it interrupt the SCU that invoked the connect?
+#if 1
+    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
+#else
     uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     uint base_addr = base << 6; // 01400
     // XXX this is wrong; I believe that the SCU unit number should be
@@ -2154,10 +2160,6 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     // For now, however, the same information is in the CPU config. switches, so
     // this should result in the same values.
 
-// XXX shouldn't it interrupt the SCU that invoked the connect?
-#if 1
-    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
-#else
     int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
     int scuUnitNum;
     if (cpu_port_num >= 0)

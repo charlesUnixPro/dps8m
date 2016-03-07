@@ -351,6 +351,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     cpu.subFault = subFault;
     sys_stats.total_faults [faultNumber] ++;
 
+    // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
+    cpu.CMR.csh_reg = 0;   
+
     // Increment FCT
 
     uint FCT = cpu.cu.APUCycleBits & MASK3;

@@ -679,8 +679,6 @@ t_stat dpsCmd_Segments (UNUSED int32 arg, char *buf)
     return SCPE_ARG;
 }
 
-static void ic_history_init(void);
-
 static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 {
     // The boot button on the cpu is conneted to the boot button on the IOM
@@ -950,8 +948,6 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
 #endif
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
 
-    ic_history_init();
-    
     // TODO: reset *all* other structures to zero
     
     memset(&sys_stats, 0, sizeof(sys_stats));
@@ -2672,43 +2668,6 @@ void set_addr_mode(addr_modes_t mode)
 
 //=============================================================================
 
-/*
- ic_hist - Circular queue of instruction history
- Used for display via cpu_show_history()
- */
-
-static int ic_hist_max = 0;
-static int ic_hist_ptr;
-static int ic_hist_wrapped;
-enum hist_enum { h_instruction, h_fault, h_intr };
-struct ic_hist_t {
-    addr_modes_t addr_mode;
-    uint seg;
-    uint ic;
-    //enum hist_enum { instruction, fault, intr } htype;
-    enum hist_enum htype;
-    union {
-        //int intr;
-        int fault;
-        //instr_t instr;
-    } detail;
-};
-
-typedef struct ic_hist_t ic_hist_t;
-
-static ic_hist_t *ic_hist;
-
-static void ic_history_init(void)
-{
-    ic_hist_wrapped = 0;
-    ic_hist_ptr = 0;
-    if (ic_hist != NULL)
-        free(ic_hist);
-    if (ic_hist_max < 60)
-        ic_hist_max = 60;
-    ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
-}
-
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
     if (cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].inuse)
@@ -3628,12 +3587,6 @@ void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word
     w1 |= (proccmd & MASK5) << 7;
     w1 |= flags2 & 0176;
     addHist (CU_HIST_REG, w0, w1);
-    //cpu.cu_hist[cpu.cu_cyclic].flags = flags;
-    //cpu.cu_hist[cpu.cu_cyclic].opcode = opcode;
-    //cpu.cu_hist[cpu.cu_cyclic].address = address;
-    //cpu.cu_hist[cpu.cu_cyclic].proccmd = proccmd;
-    //cpu.cu_hist[cpu.cu_cyclic].portsel = portsel;
-    //cpu.cu_hist[cpu.cu_cyclic].flags2 = flags2;
   }
 
 void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2)
@@ -3643,10 +3596,6 @@ void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2)
     w1 |= (RS_REG & MASK9) << 9;
     w1 |= flags2 & MASK9;
     addHist (DU_OU_HIST_REG, w0, w1);
-    //cpu.du_ou_hist[cpu.du_ou_cyclic].flags = flags;
-    //cpu.du_ou_hist[cpu.du_ou_cyclic].ICT = ICT;
-    //cpu.du_ou_hist[cpu.du_ou_cyclic].RS_REG = RS_REG;
-    //cpu.du_ou_hist[cpu.du_ou_cyclic].flags2 = flags2;
   }
 
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2)
@@ -3658,11 +3607,6 @@ void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2)
     w1 |= (RTRR & MASK3) << 9;
     w1 |= flags2 & MASK9;
     addHist (APU_HIST_REG, w0, w1);
-    //cpu.apu_hist[cpu.apu_cyclic].ESN = ESN;
-    //cpu.apu_hist[cpu.apu_cyclic].flags = flags;
-    //cpu.apu_hist[cpu.apu_cyclic].RMA = RMA;
-    //cpu.apu_hist[cpu.apu_cyclic].RTRR = RTRR;
-    //cpu.apu_hist[cpu.apu_cyclic].flags2 = flags2;
   }
 
 void addEAPUhist (word18 ZCA, word18 opcode)

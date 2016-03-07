@@ -191,6 +191,11 @@ void do_ldbr (word36 * Ypair)
 #ifdef do_selftestPTWAM
     selftestPTWAM ();
 #endif
+#else
+    cpu.SDWAM0.F = 0;
+    cpu.SDWAM0.USE = 0;
+    cpu.PTWAM0.F = 0;
+    cpu.PTWAM0.USE = 0;
 #endif // SPEED
 
     // If cache is enabled, reset all cache column and level full flags
@@ -249,9 +254,23 @@ void do_camp (UNUSED word36 Y)
 #ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
-        cpu . PTWAM [i] . F = 0;
+        cpu.PTWAM[i].F = 0;
+        cpu.PTWAM[i].USE = i;
       }
+#else
+    cpu.PTWAM0.F = 0;
+    cpu.PTWAM0.USE = 0;
 #endif
+// 8009997-040 A level of the associative memory is disabled if
+// C(TPR.CA) 16,17 = 01
+// 8009997-040 A level of the associative memory is enabled if
+// C(TPR.CA) 16,17 = 10
+// Level j is selected to be enabled/disable if
+// C(TPR.CA) 10+j = 1; j=1,2,3,4
+// All levels are selected to be enabled/disabled if
+// C(TPR.CA) 11,14 = 0
+    if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
+      sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
   }
 
 /**
@@ -271,9 +290,25 @@ void do_cams (UNUSED word36 Y)
 #ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
-        cpu . SDWAM [i] . F = 0;
+        cpu.SDWAM[i].F = 0;
+        cpu.SDWAM[i].USE = i;
+if (currentRunningCPUnum)
+sim_printf ("CAMS cleared it\n");
       }
+#else
+    cpu.SDWAM0.F = 0;
+    cpu.SDWAM0.USE = 0;
 #endif
+// 8009997-040 A level of the associative memory is disabled if
+// C(TPR.CA) 16,17 = 01
+// 8009997-040 A level of the associative memory is enabled if
+// C(TPR.CA) 16,17 = 10
+// Level j is selected to be enabled/disable if
+// C(TPR.CA) 10+j = 1; j=1,2,3,4
+// All levels are selected to be enabled/disabled if
+// C(TPR.CA) 11,14 = 0
+    if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
+      sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
   }
 
     
@@ -798,6 +833,7 @@ static char *strAccessType(MemoryAccessType accessType)
 }
 #endif
 
+#ifndef QUIET_UNUSED
 static char *strACV(_fault_subtype acv)
 {
     switch (acv)
@@ -827,24 +863,19 @@ static char *strACV(_fault_subtype acv)
     }
   return "unhandled acv in strACV";
 }
+#endif
 
 static int acvFaults = 0;   ///< pending ACV faults
 
-// CANFAULT
-void acvFault(_fault_subtype acvfault, char * msg)
+static void acvFault(_fault_subtype acvfault, char * msg)
 {
-    
-    char temp[256];
-    sprintf(temp, "group 6 ACV fault %s(%d): %s\n", strACV(acvfault), acvfault, msg);
+    sim_debug(DBG_APPENDING, &cpu_dev,
+              "doAppendCycle(acvFault): acvFault=%o acvFaults=%o: %s",
+              acvfault, acvFaults, msg);
 
-    sim_debug (DBG_APPENDING, & cpu_dev, "%s", temp);
-    
-    //acvFaults |= (1 << acvfault);   // or 'em all together
-    acvFaults |= acvfault;   // or 'em all together
-
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvfault, acvFaults, msg);
-    
-    doFault(FAULT_ACV, acvfault, temp); // NEW HWR 17 Dec 2013
+    // This isn't right; the ACV faults should be accmulated until
+    // G: Any ACV faults?
+    //doFault(FAULT_ACV, acvfault, temp); // NEW HWR 17 Dec 2013
 }
 
 static char *strPCT(_processor_cycle_type t)
@@ -1083,7 +1114,7 @@ A:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B)\n");
     
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
-    if (!(cpu . SDW->R1 <= cpu . SDW->R2 && cpu . SDW->R2 <= cpu . SDW->R3))
+    if (!(cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
         // Set fault ACV0 = IRO
         acvFault(ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
 
@@ -1293,7 +1324,7 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        doFault(FAULT_ACV, acvFaults, acvFaultsMsg);
+        doFault(FAULT_ACV, acvFaults, "ACV fault");
     
     // is segment C(TPR.TSR) paged?
     if (cpu . SDW->U)
