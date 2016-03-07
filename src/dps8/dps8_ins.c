@@ -393,12 +393,9 @@ static void scu2words(word36 *words)
     putbits36 (& words [0], 30,  1, cpu.cu.FAP);     // 30    FAP
     putbits36 (& words [0], 31,  1, cpu.cu.FANP);    // 31    FANP
     putbits36 (& words [0], 32,  1, cpu.cu.FABS);    // 32    FABS
+                   // 33-35 FCT   Fault counter - counts retries
+
 #else
-    // XXX Only the top 9 bits are used in APUCycleBits, so this is
-    // zeroing the 3 FTC bits at the end of the word; on the
-    // other hand this keeps the values in apuStatusBits clearer.
-    // If FTC is ever used, be sure to put it's save code after this
-    // line.
     putbits36 (& words [0], 24, 12, cpu.cu.APUCycleBits);
 #endif
 
@@ -558,7 +555,7 @@ static void words2scu (word36 * words)
     cpu.cu.FANP         = getbits36(words[0], 31, 1);
     cpu.cu.FABS         = getbits36(words[0], 32, 1);
 #else
-    cpu.cu.APUCycleBits = getbits36 (words [0], 24, 12) & 07770;
+    cpu.cu.APUCycleBits = getbits36 (words [0], 24, 12);
 #endif
 
     // words[1]
@@ -1276,6 +1273,9 @@ t_stat executeInstruction (void)
 
     if (ci -> restart)
       goto restart_1;
+
+    // Reset the fault counter
+    cpu.cu.APUCycleBits &= 07770;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
     // illegal procedure fault.

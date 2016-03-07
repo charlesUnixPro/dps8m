@@ -46,7 +46,8 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    cpu . cu . APUCycleBits = status & 07770;
+    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    cpu.cu.APUCycleBits = (status & 07770) | FCT;
 #else
     cpu . cu . PI_AP = 0;
     cpu . cu . DSPTW = 0;
@@ -1071,7 +1072,7 @@ A:;
     }
 #endif
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(A) R1 %o R2 %o R3 %o\n", cpu . SDW -> R1, cpu . SDW -> R1, cpu . SDW -> R3);
+               "doAppendCycle(A) R1 %o R2 %o R3 %o\n", cpu . SDW -> R1, cpu . SDW -> R2, cpu . SDW -> R3);
     // Yes...
     cpu . RSDWH_R1 = cpu . SDW->R1;
 

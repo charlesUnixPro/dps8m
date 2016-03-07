@@ -351,6 +351,12 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     cpu.subFault = subFault;
     sys_stats.total_faults [faultNumber] ++;
 
+    // Increment FCT
+
+    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    FCT = (FCT + 1) & MASK3;
+    cpu.cu.APUCycleBits = (cpu.cu.APUCycleBits & 07770) | FCT;
+
     // Set fault register bits
 
     if (faultNumber == FAULT_IPR)

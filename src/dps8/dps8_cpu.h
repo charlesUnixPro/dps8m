@@ -710,11 +710,10 @@ typedef struct
     word1 FAP;     // 30    FAP   Fetch final address - paged
     word1 FANP;    // 31    FANP  Fetch final address - nonpaged
     word1 FABS;    // 32    FABS  Fetch final address - absolute
+                   // 33-35 FCT   Fault counter - counts retries
 #else
     word12 APUCycleBits;
 #endif
-
-                   // 33-35 FCT   Fault counter - counts retries
 
     /* word 1 */
                    //               AVF Access Violation Fault
