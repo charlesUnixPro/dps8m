@@ -316,9 +316,9 @@ dps8 : tags $(OBJS) $(LOCALLIBS)
 .PHONY: FORCE
 
 dps8.sha1.txt : FORCE
-	echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
-	-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
-	if [ -e dps8.sha1.txt ] ; then \
+	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
+	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
+	@if [ -e dps8.sha1.txt ] ; then \
 	    if diff dps8.sha1.txt dps8.sha1.txt~ >/dev/null ; then \
 	        rm dps8.sha1.txt~ ; echo rm ; \
 	    else \

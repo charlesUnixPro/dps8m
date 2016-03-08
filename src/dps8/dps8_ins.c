@@ -2045,6 +2045,28 @@ restart_1:
 static t_stat DoBasicInstruction (void);
 static t_stat DoEISInstruction (void);
 
+static inline void overflow (bool ovf, bool dly, const char * msg)
+  {
+    // If an overflow occured and the repeat instruction is not inhibiting
+    // overflow checking.
+    if (ovf && chkOVF ())
+      {
+        SET_I_OFLOW;
+        // If overflows are not masked
+        if (tstOVFfault ())
+          {
+            // ISOLTS test ps768: Overflows set TRO.
+            if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+              {
+                SET_I_TALLY;
+              }
+            if (dly)
+              dlyDoFault (FAULT_OFL, 0, msg);
+            else
+              doFault (FAULT_OFL, 0, msg);
+          }
+      }
+  }
 
 // Return values
 //  CONT_TRA
@@ -2132,11 +2154,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.rA = compl36 (cpu.CY, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "lca overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "lca overflow fault");
+              //}
+            overflow (ovf, false, "lca overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -2157,11 +2180,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.rQ = compl36 (cpu.CY, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "lcq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "lcq overflow fault");
+              //}
+            overflow (ovf, false, "lcq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -2194,11 +2218,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX [n] = compl18 (GETHI (cpu.CY), & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "lcxn overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "lcxn overflow fault");
+              //}
+            overflow (ovf, false, "lcxn overflow fault");
 #else
             bool ovf;
             uint32 n = opcode & 07;  // get n
@@ -2231,11 +2256,12 @@ static t_stat DoBasicInstruction (void)
                 SET_I_NEG;
                 CLR_I_ZERO;
 #endif
-                if (tstOVFfault ())
-                  {
-                    SET_I_OFLOW;
-                    doFault(FAULT_OFL, 0, "lcaq overflow fault");
-                  }
+                //if (tstOVFfault ())
+                  //{
+                    //SET_I_OFLOW;
+                    //doFault(FAULT_OFL, 0, "lcaq overflow fault");
+                  //}
+                overflow (true, false, "lcaq overflow fault");
               }
             else if (cpu.Ypair[0] == 0 && cpu.Ypair[1] == 0)
               {
@@ -2864,11 +2890,21 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.rA = Add36b (cpu.rA, cpu.CY, 0, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
+#if 0
+            if (ovf && chkOVF ())
               {
                 SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "ada overflow fault");
+                if (tstOVFfault ())
+                  {
+                    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+                      {
+                        SET_I_TALLY;
+                      }
+                    doFault (FAULT_OFL, 0, "ada overflow fault");
+                  }
               }
+#endif
+            overflow (ovf, false, "ada overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -2893,11 +2929,12 @@ static t_stat DoBasicInstruction (void)
             tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNOC, & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "adaq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "adaq overflow fault");
+              //}
+            overflow (ovf, false, "adaq overflow fault");
 #else
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
@@ -2925,11 +2962,12 @@ static t_stat DoBasicInstruction (void)
                             I_ZNOC,
                             & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "adl overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "adl overflow fault");
+              //}
+            overflow (ovf, false, "adl overflow fault");
 #else
             bool ovf;
             word72 tmp72 = SIGNEXT36_72 (cpu.CY); // sign extend Cy
@@ -3010,11 +3048,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Add36b (cpu.rQ, cpu.CY, 0, I_ZNOC,
                                  & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "adq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "adq overflow fault");
+              //}
+            overflow (ovf, false, "adq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3046,11 +3085,12 @@ static t_stat DoBasicInstruction (void)
             cpu.rX [n] = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
                                  I_ZNOC,
                                  & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "adxn overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "adxn overflow fault");
+              //}
+            overflow (ovf, false, "adxn overflow fault");
 #else
             bool ovf;
             uint32 n = opcode & 07;  // get n
@@ -3077,11 +3117,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.CY = Add36b (cpu.CY, 1, 0, I_ZNOC,
                                  & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "aos overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "aos overflow fault");
+              //}
+            overflow (ovf, true, "aos overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3106,11 +3147,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.CY = Add36b (cpu.rA, cpu.CY, 0, I_ZNOC,
                              & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "asa overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "asa overflow fault");
+              //}
+            overflow (ovf, true, "asa overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3133,11 +3175,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.CY = Add36b (cpu.rQ, cpu.CY, 0, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "asq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "asq overflow fault");
+              //}
+            overflow (ovf, true, "asq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3170,11 +3213,12 @@ static t_stat DoBasicInstruction (void)
             word18 tmp18 = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
                                    I_ZNOC, & cpu.cu.IR, & ovf);
             SETHI (cpu.CY, tmp18);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "asxn overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "asxn overflow fault");
+              //}
+            overflow (ovf, true, "asxn overflow fault");
 #else
             bool ovf;
             uint32 n = opcode & 07;  // get n
@@ -3201,11 +3245,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rA = Add36b (cpu.rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "awca overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "awca overflow fault");
+              //}
+            overflow (ovf, false, "awca overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3231,11 +3276,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Add36b (cpu.rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                              I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "awcq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "awcq overflow fault");
+              //}
+            overflow (ovf, false, "awcq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3261,11 +3307,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.rA = Sub36b (cpu.rA, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "sba overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "sba overflow fault");
+              //}
+            overflow (ovf, false, "sba overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3291,11 +3338,12 @@ static t_stat DoBasicInstruction (void)
                             I_ZNOC, & cpu.cu.IR,
                             & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "sbaq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "sbaq overflow fault");
+              //}
+            overflow (ovf, false, "sbaq overflow fault");
 #else
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
@@ -3374,11 +3422,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.rQ = Sub36b (cpu.rQ, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "sbq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "sbq overflow fault");
+              //}
+            overflow (ovf, false, "sbq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3411,11 +3460,12 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             cpu.rX [n] = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "sbxn overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "sbxn overflow fault");
+              //}
+            overflow (ovf, false, "sbxn overflow fault");
 #else
             bool ovf;
             uint32 n = opcode & 07;  // get n
@@ -3440,11 +3490,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.CY = Sub36b (cpu.rA, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "ssa overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "ssa overflow fault");
+              //}
+            overflow (ovf, true, "ssa overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3467,11 +3518,12 @@ static t_stat DoBasicInstruction (void)
 #ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             cpu.CY = Sub36b (cpu.rQ, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "ssq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "ssq overflow fault");
+              //}
+            overflow (ovf, true, "ssq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3505,11 +3557,12 @@ static t_stat DoBasicInstruction (void)
             word18 tmp18 = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
                                    I_ZNOC, & cpu.cu.IR, & ovf);
             SETHI (cpu.CY, tmp18);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                dlyDoFault (FAULT_OFL, 0, "ssxn overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //dlyDoFault (FAULT_OFL, 0, "ssxn overflow fault");
+              //}
+            overflow (ovf, true, "ssxn overflow fault");
 #else
             bool ovf;
             uint32 n = opcode & 07;  // get n
@@ -3537,11 +3590,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rA = Sub36b (cpu.rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                              I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "swca overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "swca overflow fault");
+              //}
+            overflow (ovf, false, "swca overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3567,11 +3621,12 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Sub36b (cpu.rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "swcq overflow fault");
-              }
+            //if (ovf && tstOVFfault ())
+              //{
+                //SET_I_OFLOW;
+                //doFault (FAULT_OFL, 0, "swcq overflow fault");
+              //}
+            overflow (ovf, false, "swcq overflow fault");
 #else
             bool ovf;
             word18 ir = cpu.cu.IR;
@@ -3612,11 +3667,12 @@ static t_stat DoBasicInstruction (void)
                     SET_I_NEG;
                     CLR_I_ZERO;
 #endif
-                    if (tstOVFfault ())
-                      {
-                        SET_I_OFLOW;
-                        doFault(FAULT_OFL, 0,"mpf overflow fault");
-                      }
+                    //if (tstOVFfault ())
+                      //{
+                        //SET_I_OFLOW;
+                        //doFault(FAULT_OFL, 0,"mpf overflow fault");
+                      //}
+                    overflow (true, false, "mpf overflow fault");
                 }
 
                 convertToWord36(tmp72, &cpu.rA, &cpu.rQ);
@@ -3787,11 +3843,12 @@ static t_stat DoBasicInstruction (void)
             {
                 CLR_I_ZERO;
                 SET_I_NEG;
-                if (tstOVFfault ())
-                  {
-                    SET_I_OFLOW;
-                    doFault(FAULT_OFL, 0,"neg overflow fault");
-                  }
+                //if (tstOVFfault ())
+                  //{
+                    //SET_I_OFLOW;
+                    //doFault(FAULT_OFL, 0,"neg overflow fault");
+                  //}
+                overflow (true, false, "neg overflow fault");
             }
 
             cpu.rA = -cpu.rA;
@@ -3832,11 +3889,12 @@ static t_stat DoBasicInstruction (void)
                 {
                     CLR_I_ZERO;
                     SET_I_NEG;
-                    if (tstOVFfault ())
-                      {
-                        SET_I_OFLOW;
-                        doFault(FAULT_OFL, 0,"negl overflow fault");
-                      }
+                    //if (tstOVFfault ())
+                      //{
+                        //SET_I_OFLOW;
+                        //doFault(FAULT_OFL, 0,"negl overflow fault");
+                      //}
+                    overflow (true, false, "negl overflow fault");
                 }
 
                 word72 tmp72 = convertToWord72(cpu.rA, cpu.rQ);
