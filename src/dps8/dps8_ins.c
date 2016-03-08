@@ -1976,7 +1976,9 @@ restart_1:
             if (TST_I_OFLOW && (cpu.rX[0] & 01))
               {
                 sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
-                CLR_I_TALLY;
+// ISOLTS test ps805 says that on overflow the tally should be set.
+                //CLR_I_TALLY;
+                SET_I_TALLY;
                 exit = true;
               }
 
