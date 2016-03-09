@@ -4850,10 +4850,12 @@ static t_stat DoBasicInstruction (void)
 
             word18 tempIR = GETLO(cpu.CY) & 0777770;
             // XXX Assuming 'mask privileged mode' is 'temporary absolute mode'
-            if (get_addr_mode () == ABSOLUTE_mode) // abs. or temp. abs.
+            //if (get_addr_mode () == ABSOLUTE_mode) // abs. or temp. abs.
+            if (is_priv_mode ()) // abs. or temp. abs. or priv.
               {
                 // if abs, copy existing parity mask to tempIR
-                SCF (TST_I_PMASK, tempIR, I_PMASK);
+                // According to ISOLTS pm785, not the case.
+                //SCF (TST_I_PMASK, tempIR, I_PMASK);
                 // if abs, copy existing I_MIF to tempIR
                 SCF (TST_I_MIF, tempIR, I_MIF);
               }
