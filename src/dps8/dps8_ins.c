@@ -374,7 +374,6 @@ static void scu2words(word36 *words)
     memset (words, 0, 8 * sizeof (* words));
 
     // words [0]
-
     putbits36 (& words [0],  0,  3, cpu.PPR.PRR);
     putbits36 (& words [0],  3, 15, cpu.PPR.PSR);
     putbits36 (& words [0], 18,  1, cpu.PPR.P);
@@ -527,7 +526,6 @@ void tidy_cu (void)
     cpu.cu.pot = false;
     cpu.cu.xde = false;
     cpu.cu.xdo = false;
-    //CLR_I_MIF;
   }
 
 static void words2scu (word36 * words)
@@ -2347,10 +2345,15 @@ static t_stat DoBasicInstruction (void)
             SC_I_TALLY (tmp18 & I_TALLY);
             SC_I_PERR  (tmp18 & I_PERR);
             if (bAbsPriv)
-              SC_I_PMASK (tmp18 & I_PMASK);
-            SC_I_TRUNC (tmp18 & I_TRUNC);
-            if (bAbsPriv)
-              SC_I_MIF (tmp18 & I_MIF);
+              {
+                SC_I_PMASK (tmp18 & I_PMASK);
+                SC_I_MIF (tmp18 & I_MIF);
+              }
+            else
+              {
+                CLR_I_PMASK;
+                CLR_I_MIF;
+              }
             }
 
             break;
@@ -4859,6 +4862,10 @@ static t_stat DoBasicInstruction (void)
                 // if abs, copy existing I_MIF to tempIR
                 SCF (TST_I_MIF, tempIR, I_MIF);
               }
+            else
+              {
+                CLRF (tempIR, I_MIF);
+              }
             // can be set OFF but not on
             //  IR   ret   result
             //  off  off   off
@@ -4866,7 +4873,16 @@ static t_stat DoBasicInstruction (void)
             //  on   on    on
             //  on   off   off
             // "If it was on, set it to on"
-            SCF (TST_I_NBAR, tempIR, I_NBAR);
+            //SCF (TST_I_NBAR, tempIR, I_NBAR);
+            if (! (TST_I_NBAR && TSTF (tempIR, I_NBAR)))
+              {
+                CLRF (tempIR, I_NBAR);
+              }
+            if (! (TST_I_ABS && TSTF (tempIR, I_ABS)))
+              {
+                CLRF (tempIR, I_ABS);
+              }
+            
 
             //sim_debug (DBG_TRACE, & cpu_dev,
             //           "RET NBAR was %d now %d\n",

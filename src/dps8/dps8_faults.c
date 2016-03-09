@@ -318,9 +318,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
               const char * faultMsg)
   {
 //if (currentRunningCPUnum)
-//    sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
-//               faultNumber, faultNumber, subFault, subFault, 
-//               cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    //sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
+               //faultNumber, faultNumber, subFault, subFault, 
+               //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
@@ -447,7 +447,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 // EIS instructions are not used in fault/interrupt pairs, so the
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
-#if 0
+#if 1
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
         cpu . currentInstruction . info -> ndes > 0);
 #endif

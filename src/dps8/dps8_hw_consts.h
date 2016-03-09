@@ -480,6 +480,7 @@ enum {
 #define CLR_I_TRUNC CLRF (cpu . cu . IR, I_TRUNC)
 #define CLR_I_NBAR  CLRF (cpu . cu . IR, I_NBAR)
 #define CLR_I_TALLY CLRF (cpu . cu . IR, I_TALLY)
+#define CLR_I_PMASK CLRF (cpu . cu . IR, I_PMASK)
 #define CLR_I_EOFL  CLRF (cpu . cu . IR, I_EOFL)
 #define CLR_I_EUFL  CLRF (cpu . cu . IR, I_EUFL)
 #define CLR_I_OFLOW CLRF (cpu . cu . IR, I_OFLOW)
