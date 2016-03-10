@@ -320,12 +320,12 @@ dps8.sha1.txt : FORCE
 	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
 	@if [ -e dps8.sha1.txt ] ; then \
 	    if diff dps8.sha1.txt dps8.sha1.txt~ >/dev/null ; then \
-	        rm dps8.sha1.txt~ ; echo rm ; \
+	        rm dps8.sha1.txt~ ; \
 	    else \
-	        mv dps8.sha1.txt~ dps8.sha1.txt ; echo mv1 ; \
+	        mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
 	    fi \
 	else \
-	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo mv2 ; \
+	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
 	fi
 
 slte.inc : system_book_12_3.ascii
