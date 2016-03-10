@@ -113,7 +113,8 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
     p -> scu_unit_num = scu_unit_num;
     p -> devp = & scu_dev;
 
-    //setup_scbank_map ();
+    // Taking this out breaks the unit test segment loader.
+    setup_scbank_map ();
 
     return SCPE_OK;
   }

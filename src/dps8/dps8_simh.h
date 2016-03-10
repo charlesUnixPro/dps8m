@@ -1,5 +1,11 @@
 extern DEVICE scu_dev;
 
+#ifdef ISOLTS
+#define isISOLTS 1
+#else
+#define isISOLTS 0
+#endif
+
 #ifdef SPEED
 #define if_sim_debug(dbits, dptr) if ((0))
 
@@ -7,7 +13,7 @@ extern DEVICE scu_dev;
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
-currentRunningCPUnum != 0 && \
+      (isISOLTS == 0 || currentRunningCPUnum != 0) && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \

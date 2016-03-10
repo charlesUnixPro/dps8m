@@ -1111,17 +1111,19 @@ typedef struct
 
   } cpu_state_t;
 
-#ifdef ROUND_ROBIN
-//extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+#ifdef M_SHARED
 extern cpu_state_t * cpus;
-extern uint currentRunningCPUnum;
+#else
+extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+#endif
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
+
+#ifdef ROUND_ROBIN
+extern uint currentRunningCPUnum;
 uint setCPUnum (uint cpuNum);
 #else
-extern cpu_state_t cpu;
 #define currentRunningCPUnum 0
-extern cpu_state_t * cpus;
 #endif
 
 bool sample_interrupts (void);

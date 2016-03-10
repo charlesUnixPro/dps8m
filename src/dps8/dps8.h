@@ -23,7 +23,7 @@
 #endif
 
 #ifndef EMULATOR_ONLY
-//#define EMULATOR_ONLY 1
+#define EMULATOR_ONLY 1
 #endif
 
 #ifndef USE_INT64
@@ -60,7 +60,7 @@
 #define ROUND_ROBIN
 
 // Enable ISOLTS support
-#define ISOLTS
+//#define ISOLTS
 
 #define OSCAR
 

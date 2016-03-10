@@ -843,17 +843,12 @@ void cpu_init (void)
       {
         cpus = (cpu_state_t *) create_shm ("cpus", getsid (0), N_CPU_UNITS_MAX * sizeof (cpu_state_t));
       }
-#else
-    if (! cpus)
-      {
-        cpus = (cpu_state_t *) calloc (N_CPU_UNITS_MAX, sizeof (cpu_state_t));
-      }
-#endif
     if (! cpus)
       {
         sim_printf ("create cpus failed\n");
         sim_err ("create cpus failed\n");
       }
+#endif
 
     memset (& watchBits, 0, sizeof (watchBits));
 
@@ -991,17 +986,17 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
  * register stuff ...
  */
 
-#ifdef ROUND_ROBIN
+#ifdef M_SHARED
 // simh has to have a statically allocated IC to refer to.
 static word18 dummyIC;
 #endif
 
 static REG cpu_reg[] = {
-#ifdef ROUND_ROBIN
+#ifdef M_SHARED
     { ORDATA (IC, dummyIC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
 #else
-    { ORDATA (IC, cpu.PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IR, cpu.cu.IR, 18), 0, 0 },
     //{ ORDATADF (IR, cpu.cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
@@ -1021,53 +1016,53 @@ static REG cpu_reg[] = {
     //    { FLDATA (AbsMode, cpu.cu.IR, F_V_N), 0, 0 },
     //    { FLDATA (HexMode, cpu.cu.IR, F_V_O), 0, 0 },
     
-    { ORDATA (A, cpu.rA, 36), 0, 0 },
-    { ORDATA (Q, cpu.rQ, 36), 0, 0 },
-    { ORDATA (E, cpu.rE, 8), 0, 0 },
+    { ORDATA (A, cpus[0].rA, 36), 0, 0 },
+    { ORDATA (Q, cpus[0].rQ, 36), 0, 0 },
+    { ORDATA (E, cpus[0].rE, 8), 0, 0 },
     
-    { ORDATA (X0, cpu.rX [0], 18), 0, 0 },
-    { ORDATA (X1, cpu.rX [1], 18), 0, 0 },
-    { ORDATA (X2, cpu.rX [2], 18), 0, 0 },
-    { ORDATA (X3, cpu.rX [3], 18), 0, 0 },
-    { ORDATA (X4, cpu.rX [4], 18), 0, 0 },
-    { ORDATA (X5, cpu.rX [5], 18), 0, 0 },
-    { ORDATA (X6, cpu.rX [6], 18), 0, 0 },
-    { ORDATA (X7, cpu.rX [7], 18), 0, 0 },
+    { ORDATA (X0, cpus[0].rX [0], 18), 0, 0 },
+    { ORDATA (X1, cpus[0].rX [1], 18), 0, 0 },
+    { ORDATA (X2, cpus[0].rX [2], 18), 0, 0 },
+    { ORDATA (X3, cpus[0].rX [3], 18), 0, 0 },
+    { ORDATA (X4, cpus[0].rX [4], 18), 0, 0 },
+    { ORDATA (X5, cpus[0].rX [5], 18), 0, 0 },
+    { ORDATA (X6, cpus[0].rX [6], 18), 0, 0 },
+    { ORDATA (X7, cpus[0].rX [7], 18), 0, 0 },
     
-    { ORDATA (PPR.IC,  cpu.PPR.IC,  18), 0, 0 },
-    { ORDATA (PPR.PRR, cpu.PPR.PRR,  3), 0, 0 },
-    { ORDATA (PPR.PSR, cpu.PPR.PSR, 15), 0, 0 },
-    { ORDATA (PPR.P,   cpu.PPR.P,    1), 0, 0 },
+    { ORDATA (PPR.IC,  cpus[0].PPR.IC,  18), 0, 0 },
+    { ORDATA (PPR.PRR, cpus[0].PPR.PRR,  3), 0, 0 },
+    { ORDATA (PPR.PSR, cpus[0].PPR.PSR, 15), 0, 0 },
+    { ORDATA (PPR.P,   cpus[0].PPR.P,    1), 0, 0 },
     
-    { ORDATA (RALR,    cpu.rRALR,    3), 0, 0 },
+    { ORDATA (RALR,    cpus[0].rRALR,    3), 0, 0 },
     
-    { ORDATA (DSBR.ADDR,  cpu.DSBR.ADDR,  24), 0, 0 },
-    { ORDATA (DSBR.BND,   cpu.DSBR.BND,   14), 0, 0 },
-    { ORDATA (DSBR.U,     cpu.DSBR.U,      1), 0, 0 },
-    { ORDATA (DSBR.STACK, cpu.DSBR.STACK, 12), 0, 0 },
+    { ORDATA (DSBR.ADDR,  cpus[0].DSBR.ADDR,  24), 0, 0 },
+    { ORDATA (DSBR.BND,   cpus[0].DSBR.BND,   14), 0, 0 },
+    { ORDATA (DSBR.U,     cpus[0].DSBR.U,      1), 0, 0 },
+    { ORDATA (DSBR.STACK, cpus[0].DSBR.STACK, 12), 0, 0 },
     
-    { ORDATA (BAR.BASE,  cpu.BAR.BASE,  9), 0, 0 },
-    { ORDATA (BAR.BOUND, cpu.BAR.BOUND, 9), 0, 0 },
+    { ORDATA (BAR.BASE,  cpus[0].BAR.BASE,  9), 0, 0 },
+    { ORDATA (BAR.BOUND, cpus[0].BAR.BOUND, 9), 0, 0 },
     
     //{ ORDATA (FAULTBASE, rFAULTBASE, 12), 0, 0 }, ///< only top 7-msb are used
     
-    { ORDATA (PR0.SNR, cpu.PR[0].SNR, 18), 0, 0 },
-    { ORDATA (PR1.SNR, cpu.PR[1].SNR, 18), 0, 0 },
-    { ORDATA (PR2.SNR, cpu.PR[2].SNR, 18), 0, 0 },
-    { ORDATA (PR3.SNR, cpu.PR[3].SNR, 18), 0, 0 },
-    { ORDATA (PR4.SNR, cpu.PR[4].SNR, 18), 0, 0 },
-    { ORDATA (PR5.SNR, cpu.PR[5].SNR, 18), 0, 0 },
-    { ORDATA (PR6.SNR, cpu.PR[6].SNR, 18), 0, 0 },
-    { ORDATA (PR7.SNR, cpu.PR[7].SNR, 18), 0, 0 },
+    { ORDATA (PR0.SNR, cpus[0].PR[0].SNR, 18), 0, 0 },
+    { ORDATA (PR1.SNR, cpus[0].PR[1].SNR, 18), 0, 0 },
+    { ORDATA (PR2.SNR, cpus[0].PR[2].SNR, 18), 0, 0 },
+    { ORDATA (PR3.SNR, cpus[0].PR[3].SNR, 18), 0, 0 },
+    { ORDATA (PR4.SNR, cpus[0].PR[4].SNR, 18), 0, 0 },
+    { ORDATA (PR5.SNR, cpus[0].PR[5].SNR, 18), 0, 0 },
+    { ORDATA (PR6.SNR, cpus[0].PR[6].SNR, 18), 0, 0 },
+    { ORDATA (PR7.SNR, cpus[0].PR[7].SNR, 18), 0, 0 },
     
-    { ORDATA (PR0.RNR, cpu.PR[0].RNR, 18), 0, 0 },
-    { ORDATA (PR1.RNR, cpu.PR[1].RNR, 18), 0, 0 },
-    { ORDATA (PR2.RNR, cpu.PR[2].RNR, 18), 0, 0 },
-    { ORDATA (PR3.RNR, cpu.PR[3].RNR, 18), 0, 0 },
-    { ORDATA (PR4.RNR, cpu.PR[4].RNR, 18), 0, 0 },
-    { ORDATA (PR5.RNR, cpu.PR[5].RNR, 18), 0, 0 },
-    { ORDATA (PR6.RNR, cpu.PR[6].RNR, 18), 0, 0 },
-    { ORDATA (PR7.RNR, cpu.PR[7].RNR, 18), 0, 0 },
+    { ORDATA (PR0.RNR, cpus[0].PR[0].RNR, 18), 0, 0 },
+    { ORDATA (PR1.RNR, cpus[0].PR[1].RNR, 18), 0, 0 },
+    { ORDATA (PR2.RNR, cpus[0].PR[2].RNR, 18), 0, 0 },
+    { ORDATA (PR3.RNR, cpus[0].PR[3].RNR, 18), 0, 0 },
+    { ORDATA (PR4.RNR, cpus[0].PR[4].RNR, 18), 0, 0 },
+    { ORDATA (PR5.RNR, cpus[0].PR[5].RNR, 18), 0, 0 },
+    { ORDATA (PR6.RNR, cpus[0].PR[6].RNR, 18), 0, 0 },
+    { ORDATA (PR7.RNR, cpus[0].PR[7].RNR, 18), 0, 0 },
     
     //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0 },
     //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0 },
@@ -1087,14 +1082,14 @@ static REG cpu_reg[] = {
     //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0 },
     //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0 },
     
-    { ORDATA (PR0.WORDNO, cpu.PR[0].WORDNO, 18), 0, 0 },
-    { ORDATA (PR1.WORDNO, cpu.PR[1].WORDNO, 18), 0, 0 },
-    { ORDATA (PR2.WORDNO, cpu.PR[2].WORDNO, 18), 0, 0 },
-    { ORDATA (PR3.WORDNO, cpu.PR[3].WORDNO, 18), 0, 0 },
-    { ORDATA (PR4.WORDNO, cpu.PR[4].WORDNO, 18), 0, 0 },
-    { ORDATA (PR5.WORDNO, cpu.PR[5].WORDNO, 18), 0, 0 },
-    { ORDATA (PR6.WORDNO, cpu.PR[6].WORDNO, 18), 0, 0 },
-    { ORDATA (PR7.WORDNO, cpu.PR[7].WORDNO, 18), 0, 0 },
+    { ORDATA (PR0.WORDNO, cpus[0].PR[0].WORDNO, 18), 0, 0 },
+    { ORDATA (PR1.WORDNO, cpus[0].PR[1].WORDNO, 18), 0, 0 },
+    { ORDATA (PR2.WORDNO, cpus[0].PR[2].WORDNO, 18), 0, 0 },
+    { ORDATA (PR3.WORDNO, cpus[0].PR[3].WORDNO, 18), 0, 0 },
+    { ORDATA (PR4.WORDNO, cpus[0].PR[4].WORDNO, 18), 0, 0 },
+    { ORDATA (PR5.WORDNO, cpus[0].PR[5].WORDNO, 18), 0, 0 },
+    { ORDATA (PR6.WORDNO, cpus[0].PR[6].WORDNO, 18), 0, 0 },
+    { ORDATA (PR7.WORDNO, cpus[0].PR[7].WORDNO, 18), 0, 0 },
     
     //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0 },
     //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0 },
@@ -1181,13 +1176,15 @@ DEVICE cpu_dev = {
     NULL            // description
 };
 
-#ifdef ROUND_ROBIN
-uint currentRunningCPUnum;
-cpu_state_t * restrict cpup;
+#ifdef M_SHARED
 cpu_state_t * cpus = NULL;
 #else
-cpu_state_t cpu;
-cpu_state_t * cpus = & cpu;
+cpu_state_t cpus [N_CPU_UNITS_MAX];
+#endif
+cpu_state_t * restrict cpup;
+
+#ifdef ROUND_ROBIN
+uint currentRunningCPUnum;
 #endif
 
 static uint get_highest_intr (void)
@@ -1365,7 +1362,7 @@ t_stat sim_instr (void)
     if (u->filename == NULL || strlen(u->filename) == 0)
         sim_printf("Warning: MUX not attached.\n");
       
-#ifdef ROUND_ROBIN
+#ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Copy the placeholder in so the IC can be set by simh.
 
@@ -2092,7 +2089,7 @@ leave:
           sim_printf("%s faults = %lld\n", faultNames [i], sys_stats.total_faults [i]);
      }
     
-#ifdef ROUND_ROBIN
+#ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Update the placeholder in so the IC can be seen by simh, and
 // restarting sim_instr doesn't lose the place.
