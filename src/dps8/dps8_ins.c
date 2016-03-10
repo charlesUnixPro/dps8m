@@ -2344,6 +2344,13 @@ static t_stat DoBasicInstruction (void)
             SC_I_OMASK (tmp18 & I_OMASK);
             SC_I_TALLY (tmp18 & I_TALLY);
             SC_I_PERR  (tmp18 & I_PERR);
+            // I_PMASK handled below
+            // LDI cannot change I_NBAR
+            SC_I_TRUNC (tmp18 & I_TRUNC);
+            // I_MIF handled below
+            // LDI cannot change I_ABS
+            SC_I_HEX  (tmp18 & I_HEX);
+
             if (bAbsPriv)
               {
                 SC_I_PMASK (tmp18 & I_PMASK);
