@@ -1394,7 +1394,7 @@ setCPU:;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            AIO_CHECK_EVENT;
+            //AIO_CHECK_EVENT;
             dequeue_fnp_command ();
           }
 #if 0
