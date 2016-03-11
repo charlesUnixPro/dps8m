@@ -7,6 +7,8 @@
 // XXX the real DN355 dealt with this?
 
 #include <stdio.h>
+#include <ctype.h>
+
 #include "dps8.h"
 #include "dps8_fnp.h"
 #include "dps8_sys.h"
@@ -60,6 +62,7 @@ UNIT fnp_unit [N_FNP_UNITS_MAX] = {
 
 static DEBTAB fnpDT [] =
   {
+    { "TRACE", DBG_TRACE },
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
     { "ERR", DBG_ERR },
@@ -425,7 +428,8 @@ void fnpProcessEvent (void)
           }
         else if (strncmp (msg, "input", 5) == 0)
           {
-//sim_printf ("got input <%s>\n", msg);
+//sim_printf ("CPU got input <%s>\n", msg);
+            sim_debug (DBG_TRACE, & fnpDev, "CPU got input <%s>\n", msg);
             int chanNum, charsAvail, outputPresent, hasBreak;
             int n = sscanf(msg, "%*s %d %d %d %d", & chanNum, & charsAvail, & outputPresent, & hasBreak);
             if (n != 4)
@@ -439,6 +443,19 @@ void fnpProcessEvent (void)
                 sim_debug (DBG_ERR, & fnpDev, "illformatted input message data; dropping\n");
                 goto drop;
               }
+
+            if_sim_debug (DBG_TRACE, & fnpDev)
+             {
+               sim_printf ("'");
+               for (int i = 0; i < charsAvail; i ++)
+                 {
+                   if (isprint (data [i]))
+                     sim_printf ("%c", data[i]);
+                   else
+                     sim_printf ("\\%03o", data[i]);
+                 }
+               sim_printf ("'\n");
+             }
 
             if (charsAvail > 100)
               {
@@ -1863,7 +1880,7 @@ int fnpIOMCmd (uint iomUnitIdx, uint chan)
 static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                               UNUSED int val, UNUSED void * desc)
   {
-    sim_printf("Number of FNO units in system is %d\n", fnpDev . numunits);
+    sim_printf("Number of FNP units in system is %d\n", fnpDev . numunits);
     return SCPE_OK;
   }
 

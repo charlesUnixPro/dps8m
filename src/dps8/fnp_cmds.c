@@ -7,7 +7,11 @@
 //
 
 #include <string.h>
+#include <ctype.h>
+
 #include "dps8.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_fnp.h"
 //#include "fnp_defs.h"
@@ -140,7 +144,8 @@ t_stat dequeue_fnp_command (void)
     free (rv);
 
     //sim_printf("fnp_command(\"%s\", \"%s\", \"%s\")\n", nodename, id, arg3);
-    
+//sim_printf ("FNP CMD '%s'\n", arg3);
+    sim_debug (DBG_TRACE, & fnpDev, "FNP CMD '%s'\n", arg3);
     size_t arg3_len = strlen (arg3);
     char keyword [arg3_len];
     sscanf (arg3, "%s", keyword);
@@ -608,8 +613,8 @@ t_stat dequeue_fnp_command (void)
             sim_printf("err: block_xfer p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
-        MState . line [p1] . block_xfer_in_frame = p2;
-        MState . line [p1] . block_xfer_out_of_frame = p3;
+        MState . line [p1] . block_xfer_out_of_frame = p2;
+        MState . line [p1] . block_xfer_in_frame = p3;
 
 
 
@@ -648,12 +653,24 @@ t_stat dequeue_fnp_command (void)
             goto scpe_arg;
         }
         char * data = unpack (arg3, 1, NULL);
-//sim_printf ("msg:<%s>\n", data);
+        //sim_debug (DBG_TRACE, & fnpDev, "output :<%s>\n", data);
         if (! data)
         {
             sim_printf ("illformatted output message data; dropping\n");
             goto scpe_arg;
         }
+        if_sim_debug (DBG_TRACE, & fnpDev)
+         {
+           sim_printf ("data '");
+           for (int i = 0; i < p2; i ++)
+             {
+               if (isprint (data [i]))
+                 sim_printf ("%c", data[i]);
+               else
+                 sim_printf ("\\%03o", data[i]);
+             }
+           sim_printf ("'\n");
+         }
         // delete NULs
         char * clean = malloc (p2 + 1);
         char * p = data;
@@ -667,6 +684,18 @@ t_stat dequeue_fnp_command (void)
         * q ++ = 0;
 
 //sim_printf ("clean:<%s>\r\n", clean);
+        if_sim_debug (DBG_TRACE, & fnpDev)
+         {
+           sim_printf ("clean '");
+           for (uint i = 0; i < strlen (clean); i ++)
+             {
+               if (isprint (data [i]))
+                 sim_printf ("%c", clean[i]);
+               else
+                 sim_printf ("\\%03o", clean[i]);
+             }
+           sim_printf ("'\n");
+         }
         int muxLineNum = MState . line [p1] . muxLineNum;
         tmxr_linemsg_stall (& mux_ldsc [muxLineNum], clean);
         free (data);
