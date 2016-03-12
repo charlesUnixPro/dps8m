@@ -12,7 +12,6 @@ FNP:      D;
    image:           >system_library_unbundled>site_mcs;
    service:         active;
 name: d.h000;
-attributes: hardwired;
 name: d.h001;
 name: d.h002;
 name: d.h003;
@@ -44,5 +43,6 @@ name: d.h028;
 name: d.h029;
 name: d.h030;
 name: d.h031;
+attributes: slave;
 end;
 

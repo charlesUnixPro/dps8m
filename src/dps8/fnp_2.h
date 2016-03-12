@@ -46,6 +46,7 @@ struct fauxMulticsTerminalInfo
         char    *regex;    // text of optional regex
         
         ATTRIBUTE   *attrs;
+        bool    isSlave;
     } multics;
 
     char    *uti;         // UNIX terminfo terminal type
@@ -79,3 +80,4 @@ void connectPrompt (TMLN *tmln);
 void processInputCharacter(TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 line, int32 kar);
 void tmxr_linemsg_stall (TMLN *lp, char *msg);
 #endif /* defined(__fnp__fnp_2__) */
+ATTRIBUTE *searchForAttribute(char *attrib, ATTRIBUTE *a);

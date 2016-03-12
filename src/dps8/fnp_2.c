@@ -221,6 +221,7 @@ getDevList()
     while (t)
     {
         if (t->inUse == false &&
+            t->multics.isSlave == false &&
             t->multics.hsla_line_num != -1)
         {
             if (strlen(buf) > 0)
@@ -240,7 +241,7 @@ FMTI *searchForDevice(char *name)
         
     while (t)
     {
-        if (t->inUse == false)
+        if (t->inUse == false && t->multics.isSlave == false)
         {
             if (t->multics.regex)    // a regex is to be used to match the device names
             {
@@ -435,6 +436,8 @@ FMTI * readDevInfo(FILE *src)
                 a->Attribute = strdup(first);
                 a->Value = strdup(second);
                 HASH_ADD_KEYPTR(hh, current->multics.attrs, a->Attribute, strlen(a->Attribute), a);
+                if (strcmp (first, "attributes") == 0 && strcmp (second, "slave") == 0)
+                 current->multics.isSlave = true;
             }
         }
     }
