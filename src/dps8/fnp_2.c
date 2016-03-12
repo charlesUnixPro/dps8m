@@ -436,7 +436,7 @@ FMTI * readDevInfo(FILE *src)
                 a->Attribute = strdup(first);
                 a->Value = strdup(second);
                 HASH_ADD_KEYPTR(hh, current->multics.attrs, a->Attribute, strlen(a->Attribute), a);
-                if (strcmp (first, "attributes") == 0 && strcmp (second, "slave") == 0)
+                if (strcmp (first, "service") == 0 && strcmp (second, "slave") == 0)
                  current->multics.isSlave = true;
             }
         }
