@@ -196,9 +196,14 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
 /*
  * called when a BREAK is received on a MUX line ...
  */
-t_stat OnMuxRxBreak(int line, int kar)
+t_stat OnMuxRxBreak(int line, UNUSED int kar)
 {
-    sim_printf("%s Rx (BREAK): line:%d %03o\n", Now(), line, kar);
+    //sim_printf("%s Rx (BREAK): line:%d %03o\n", Now(), line, kar);
+    MUXTERMIO *tty = &ttys[line]; // fetch tty connection info
+    int hsla_line_num = tty->fmti->multics.hsla_line_num;
+    char buf [256];
+    sprintf (buf, "line_break %d 1 0", hsla_line_num);
+    tellCPU (0, buf);
     
     return SCPE_OK;
 }
