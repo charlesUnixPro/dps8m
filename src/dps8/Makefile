@@ -236,6 +236,7 @@ C_SRCS += ./fnp_cmds.c
 C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
 C_SRCS += ./fnp_utils.c
+C_SRCS += ./fnp_fTCP.c
 C_SRCS += ./dps8_crdrdr.c
 C_SRCS += ./dps8_crdpun.c
 C_SRCS += ./dps8_cable.c
@@ -280,6 +281,17 @@ H_SRCS += dps8_cable.h
 H_SRCS += dps8_prt.h
 H_SRCS += dps8_urp.h
 H_SRCS += hdbg.h
+H_SRCS += hdbg.h
+H_SRCS += hdbg.h
+H_SRCS += fnp_1.h  
+H_SRCS += fnp_2.h  
+H_SRCS += fnp_cmds.h  
+H_SRCS += fnp_defs.h  
+H_SRCS += fnp.h  
+H_SRCS += fnp_mux.h  
+H_SRCS += fnp_rev.h  
+H_SRCS += fnp_utils.h
+H_SRCS += fnp_fTCP.h
 
 H_SRCS += shm.h
 

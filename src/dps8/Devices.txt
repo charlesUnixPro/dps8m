@@ -44,5 +44,6 @@ name: d.h029;
 name: d.h030;
 name: d.h031;
 service: slave;
+attribute: fTCP;
 end;
 

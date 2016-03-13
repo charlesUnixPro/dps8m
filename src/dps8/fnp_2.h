@@ -46,7 +46,6 @@ struct fauxMulticsTerminalInfo
         char    *regex;    // text of optional regex
         
         ATTRIBUTE   *attrs;
-        bool    isSlave;
     } multics;
 
     char    *uti;         // UNIX terminfo terminal type

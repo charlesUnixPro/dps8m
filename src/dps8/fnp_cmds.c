@@ -14,6 +14,7 @@
 #include "fnp_cmds.h"
 #include "fnp_2.h"
 #include "fnp_mux.h"
+#include "fnp_fTCP.h"
 #include "utlist.h"
 
 void tellCPU (UNUSED int cpuUnitNum, char * msg)
@@ -148,7 +149,7 @@ while (fnpQueue) {
     size_t arg3_len = strlen (arg3);
     char keyword [arg3_len];
     sscanf (arg3, "%s", keyword);
-
+sim_printf ("fnp: %s\n", arg3);
     if (strcmp(keyword, "bootload") == 0)
     {
         sim_printf("Received BOOTLOAD command...\n");
@@ -205,6 +206,13 @@ while (fnpQueue) {
             if (muxLineNum != -1 && ttys[muxLineNum].state == ePassThrough)
             {
                 tmxr_linemsg_stall(ttys[muxLineNum].tmln, "Multics is now listening to this line\r\n");
+                char buf [256];
+                sprintf (buf, "accept_new_terminal %d 1 0", p1);
+                tellCPU (0, buf);
+            }
+            if (MState.line[p1].isfTCP)
+            {
+                fTCPinit (p1);
                 char buf [256];
                 sprintf (buf, "accept_new_terminal %d 1 0", p1);
                 tellCPU (0, buf);
@@ -645,36 +653,41 @@ while (fnpQueue) {
         int n = sscanf(arg3, "%*s %d %d", &p1, &p2);
         if (n != 2)
             goto scpe_arg;
-        //sim_printf("received output %d %d ...\n", p1, p2);
+        //sim_printf("received output %d %d %s\n", p1, p2, arg3);
         if (p1 < 0 && p1 >= MAX_LINES)
         {
             sim_printf("err: output p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
-        char * data = unpack (arg3, 1, NULL);
-//sim_printf ("msg:<%s>\n", data);
-        if (! data)
-        {
-            sim_printf ("illformatted output message data; dropping\n");
-            goto scpe_arg;
-        }
-        // delete NULs
-        char * clean = malloc (p2 + 1);
-        char * p = data;
-        char * q = clean;
-        for (int i = 0; i < p2; i ++)
-          {
-            char c = * p ++;
-            if (c)
-              * q ++ = c;
-          }
-        * q ++ = 0;
 
+            char * data = unpack (arg3, 1, NULL);
+//sim_printf ("msg:<%s>\n", data);
+            if (! data)
+            {
+                sim_printf ("illformatted output message data; dropping\n");
+                goto scpe_arg;
+            }
+        if (MState.line[p1].isfTCP)
+        {
+            fTCP (p1, p2, data);
+        } else {
+            // delete NULs
+            char clean [p2 + 1];
+            char * p = data;
+            char * q = clean;
+            for (int i = 0; i < p2; i ++)
+              {
+                char c = * p ++;
+                if (c)
+                  * q ++ = c;
+              }
+            * q ++ = 0;
+    
 //sim_printf ("clean:<%s>\r\n", clean);
-        int muxLineNum = MState . line [p1] . muxLineNum;
-        tmxr_linemsg_stall (& mux_ldsc [muxLineNum], clean);
+            int muxLineNum = MState . line [p1] . muxLineNum;
+            tmxr_linemsg_stall (& mux_ldsc [muxLineNum], clean);
+        }
         free (data);
-        free (clean);
         char msg [256];
         sprintf (msg, "send_output %d", p1);
 //sim_printf ("tell CPU to send_output\n");

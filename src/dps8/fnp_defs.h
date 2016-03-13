@@ -204,6 +204,10 @@ typedef struct
     struct
       {
         int muxLineNum;
+
+        bool isSlave;
+        bool isfTCP;
+
         t_bool listen;
         int inputBufferSize;
         int ctrlStrIdx;
@@ -243,6 +247,13 @@ typedef struct
         int frame_begin;
         int frame_end;
         bool echnego [256];
+
+        // fTCP buffers
+        struct fTCP_t
+          {
+            char inbuf [4097]; // should be big enough for a encoded MTU?
+            int nbytes; // Number of chars in inbuf.
+          } fTCP;
       } line [MAX_LINES];
   } t_MState;
 extern t_MState MState;

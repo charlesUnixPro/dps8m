@@ -221,8 +221,8 @@ getDevList()
     while (t)
     {
         if (t->inUse == false &&
-            t->multics.isSlave == false &&
-            t->multics.hsla_line_num != -1)
+            t->multics.hsla_line_num != -1 &&
+            ! MState.line[t->multics.hsla_line_num].isSlave)
         {
             if (strlen(buf) > 0)
                 strcat(buf, ",");
@@ -241,7 +241,8 @@ FMTI *searchForDevice(char *name)
         
     while (t)
     {
-        if (t->inUse == false && t->multics.isSlave == false)
+        if (t->inUse == false &&
+            ! MState.line[t->multics.hsla_line_num].isSlave)
         {
             if (t->multics.regex)    // a regex is to be used to match the device names
             {
@@ -436,8 +437,10 @@ FMTI * readDevInfo(FILE *src)
                 a->Attribute = strdup(first);
                 a->Value = strdup(second);
                 HASH_ADD_KEYPTR(hh, current->multics.attrs, a->Attribute, strlen(a->Attribute), a);
+                if (strcmp (first, "attribute") == 0 && strcmp (second, "fTCP") == 0)
+                 MState.line[current->multics.hsla_line_num].isfTCP = true;
                 if (strcmp (first, "service") == 0 && strcmp (second, "slave") == 0)
-                 current->multics.isSlave = true;
+                 MState.line[current->multics.hsla_line_num].isSlave = true;
             }
         }
     }
