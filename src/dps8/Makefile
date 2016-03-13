@@ -242,6 +242,7 @@ C_SRCS += ./dps8_cable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./hdbg.c
+C_SRCS += dps8_math128.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
