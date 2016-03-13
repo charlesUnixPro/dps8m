@@ -1,6 +1,8 @@
 #ifndef DPS8_MATH128
 #define DPS8_MATH128
 
+#if __SIZEOF_LONG__ < 8
+
 #include "dps8_math128.h"
 
 void __udivmodti3(UTItype div, UTItype dvd,UTItype *result,UTItype *remain);
@@ -113,4 +115,6 @@ TItype __multi3 (TItype u, TItype v)
 
 	return result;
 }
+#endif
+
 #endif
