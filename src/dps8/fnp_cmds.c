@@ -149,7 +149,7 @@ while (fnpQueue) {
     size_t arg3_len = strlen (arg3);
     char keyword [arg3_len];
     sscanf (arg3, "%s", keyword);
-sim_printf ("fnp: %s\n", arg3);
+//sim_printf ("fnp: %s\n", arg3);
     if (strcmp(keyword, "bootload") == 0)
     {
         sim_printf("Received BOOTLOAD command...\n");

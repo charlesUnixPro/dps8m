@@ -253,6 +253,10 @@ typedef struct
           {
             char inbuf [4097]; // should be big enough for a encoded MTU?
             int nbytes; // Number of chars in inbuf.
+            int portno;
+            int sockfd;
+            struct hostent * server;
+            struct sockaddr_in serv_addr;
           } fTCP;
       } line [MAX_LINES];
   } t_MState;
