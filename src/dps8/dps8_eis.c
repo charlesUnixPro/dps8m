@@ -2629,7 +2629,7 @@ void mlr (void)
 
 void mrl (void)
   {
-    EISstruct * e = & cpu . currentEISinstruction;
+    EISstruct * e = & cpu.currentEISinstruction;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -2674,9 +2674,9 @@ void mrl (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = bitfieldExtract36 (cpu.cu.IWB, 26, 1) != 0;  // truncation bit
     
-    uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    uint fill = getbits36 (cpu.cu.IWB, 0, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2739,9 +2739,9 @@ void mrl (void)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
         uint limit = e -> N2;
-        for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY += 4)
+        for ( ; cpu.du.CHTALLY < limit; cpu.du.CHTALLY += 4)
           {
-            uint n = (limit - cpu . du . CHTALLY - 1) / 4;
+            uint n = (limit - cpu.du.CHTALLY - 1) / 4;
             word36 w = EISReadIdx (& e -> ADDR1, n);
             EISWriteIdx (& e -> ADDR2, n, w);
           }
@@ -2769,9 +2769,9 @@ void mrl (void)
                   ((word36) fill << 18) |
                   ((word36) fill << 27);
         uint limit = e -> N2;
-        for ( ; cpu . du . CHTALLY < e -> N2; cpu . du . CHTALLY += 4)
+        for ( ; cpu.du.CHTALLY < e -> N2; cpu.du.CHTALLY += 4)
           {
-            uint n = (limit - cpu . du . CHTALLY - 1) / 4;
+            uint n = (limit - cpu.du.CHTALLY - 1) / 4;
             EISWriteIdx (& e -> ADDR2, n, w);
           }
         cleanupOperandDescriptor (1);
@@ -2782,13 +2782,13 @@ void mrl (void)
         return;
       }
 
-    for ( ; cpu . du . CHTALLY < min (e -> N1, e -> N2); cpu . du . CHTALLY ++)
+    for ( ; cpu.du.CHTALLY < min (e -> N1, e -> N2); cpu.du.CHTALLY ++)
       {
-        word9 c = EISget469 (1, e -> N1 - cpu . du . CHTALLY - 1); // get src char
+        word9 c = EISget469 (1, e -> N1 - cpu.du.CHTALLY - 1); // get src char
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
-          EISput469 (2, e -> N2 - cpu . du . CHTALLY - 1, c);
+          EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, c);
         else
           {
 	  // If data types are dissimilar (TA1 ≠ TA2), each character is
@@ -2826,15 +2826,15 @@ void mrl (void)
 	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
 	  // is placed in C(Y-charn2)N2-1.
             
-            if (ovp && (cpu . du . CHTALLY == e -> N1 - 1))
+            if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
                 bOvp = isOvp (c, & on);
-                cout = on;   // replace char with the digit the overpunch 
+                //cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
-            EISput469 (2, e -> N2 - cpu . du . CHTALLY - 1, cout);
+            EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, cout);
           }
       }
     
@@ -2846,19 +2846,19 @@ void mrl (void)
 
     if (e -> N1 < e -> N2)
       {
-        for ( ; cpu . du . CHTALLY < e -> N2 ; cpu . du . CHTALLY ++)
+        for ( ; cpu.du.CHTALLY < e -> N2 ; cpu.du.CHTALLY ++)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
+            if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
                 if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, e -> N2 - cpu . du . CHTALLY - 1, 015); // 015 is decimal -
+                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
                 else
-                  EISput469 (2, e -> N2 - cpu . du . CHTALLY - 1, 014); // 014 is decimal +
+                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
               }
             else
-              EISput469 (2, e -> N2 - cpu . du . CHTALLY - 1, fillT);
+              EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
           }
     }
     cleanupOperandDescriptor (1);
