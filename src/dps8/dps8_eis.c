@@ -6443,6 +6443,10 @@ void dtb (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
    
+    // Bits 0 to 10 of the instruction Must Be Zero. So Say We ISOLTS.
+    uint mbz = getbits36 (IWB_IRODD, 0, 11);
+    if (mbz)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "dtb(): 0-10 MBZ");
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
