@@ -4259,7 +4259,11 @@ static void mopExecutor (int kMop)
     while (e->dstTally && e->mopTally)
     {
         MOPstruct *m = EISgetMop();
-        
+        if (! m)
+          {
+            e->_faults |= FAULT_IPR;   // XXX ill proc fault
+            break;        
+          } 
         int mres = m->f();    // execute mop
         if (mres)
             break;        
