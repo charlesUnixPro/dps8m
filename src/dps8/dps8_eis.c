@@ -4219,7 +4219,7 @@ static MOPstruct* EISgetMop (void)
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
     {
-        sim_printf ("getMop(e->m == NULL || e->m->f == NULL): mop:%d IF:%d\n", mop, e->mopIF);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "getMop(e->m == NULL || e->m->f == NULL): mop:%d IF:%d\n", mop, e->mopIF);
         return NULL;
     }
     
@@ -4294,6 +4294,9 @@ void mve (void)
     parseAlphanumericOperandDescriptor(2, 2, false);
     parseAlphanumericOperandDescriptor(3, 3, false);
     
+    // Bits 0, 1, 9, and 10 MBZ
+    if (IWB_IRODD & 0600600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mve(): 0, 1, 9, 10 MBZ");
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
     e->mopSN = false; // Sign flag
@@ -4362,6 +4365,10 @@ void mvne (void)
     parseAlphanumericOperandDescriptor (2, 2, false);
     parseAlphanumericOperandDescriptor (3, 3, false);
     
+    // Bits 0, 1, 9, and 10 MBZ
+    if (IWB_IRODD & 0600600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mvne(): 0, 1, 9, 10 MBZ");
+
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
     e->mopSN = false; // Sign flag
@@ -4683,6 +4690,10 @@ void cmpn (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 0-10 MBZ
+    if (IWB_IRODD & 0777600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "cmpn 0-10 MBZ");
+
     uint srcTN = e->TN1;    // type of chars in src
     
     decContext set;
@@ -4924,6 +4935,10 @@ void mvn (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 2-8 MBZ
+    if (IWB_IRODD & 0377000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mvn 2-8 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -5194,6 +5209,10 @@ void csl (bool isSZTL)
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
     
+    // Bits 1-4 and 10 MBZ
+    if (IWB_IRODD & 0360200000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "csl 1-4,10 MBZ");
+
     e->ADDR1.cPos = e->C1;
     e->ADDR2.cPos = e->C2;
     
@@ -5463,6 +5482,10 @@ void csr (bool isSZTR)
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
     
+    // Bits 1-4 and 10 MBZ
+    if (IWB_IRODD & 0360200000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "csr 1-4,10 MBZ");
+
     e->ADDR1.cPos = e->C1;
     e->ADDR2.cPos = e->C2;
     
@@ -5679,6 +5702,10 @@ void cmpb (void)
     parseBitstringOperandDescriptor(1);
     parseBitstringOperandDescriptor(2);
     
+    // Bits 1-8 MBZ
+    if (IWB_IRODD & 0377000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "cmpb 1-8 MBZ");
+
     int charPosn1 = e->C1;
     int charPosn2 = e->C2;
     
@@ -6516,6 +6543,10 @@ void ad2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 0-8 MBZ
+    if (IWB_IRODD & 0777000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "ad2d 0-8 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -6798,6 +6829,11 @@ void ad3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
+    // Bit 1 MBZ
+    if (IWB_IRODD & 0200000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "ad3d(): 1 MBZ");
+
+    // initialize mop flags. Probably best done elsewhere.
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -7058,6 +7094,10 @@ void sb2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 0-8 MBZ
+    if (IWB_IRODD & 0777000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "sb2d 0-8 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -7293,6 +7333,10 @@ void sb3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
+    // Bit 1 MBZ
+    if (IWB_IRODD & 0200000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "sb3d(): 1 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -7543,6 +7587,10 @@ void mp2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 0-8 MBZ
+    if (IWB_IRODD & 0777000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mp2d 0-8 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -7778,6 +7826,10 @@ void mp3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
+    // Bit 1 MBZ
+    if (IWB_IRODD & 0200000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mp3d(): 1 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -8796,6 +8848,10 @@ void dv2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 0-8 MBZ
+    if (IWB_IRODD & 0777000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "dv2d 0-8 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -9057,6 +9113,10 @@ void dv3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
+    // Bit 1 MBZ
+    if (IWB_IRODD & 0200000000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "dv3d(): 1 MBZ");
+
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
