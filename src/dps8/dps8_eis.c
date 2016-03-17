@@ -7552,7 +7552,8 @@ void mp2d (void)
     
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
+    //decContextDefaultDPS8(&set);
+    decContextDefaultDPS8_80(&set);
     
     set.traps=0;
     
@@ -7785,7 +7786,7 @@ void mp3d (void)
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
     //set.traps=0;
-    decContextDefaultDPS8(&set);
+    decContextDefaultDPS8_80(&set);
     
     decNumber _1, _2, _3;
     
@@ -7864,9 +7865,21 @@ void mp3d (void)
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
     
+//    char c1[1024];
+//    char c2[1024];
+//    char c3[1024];
+//    
+//    decNumberToString(op1, c1);
+//    sim_printf("c1:%s\n", c1);
+//    decNumberToString(op2, c2);
+//    sim_printf("c2:%s\n", c2);
+//    decNumberToString(op3, c3);
+//    sim_printf("c3:%s\n", c3);
+    
     bool Ovr = false, EOvr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op3, dstTN, e->N3, e->S3, e->SF3, R, &Ovr, &Trunc);
+//    sim_printf("res:<%s>\n", res);
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -7903,7 +7916,7 @@ void mp3d (void)
         case CSFL:  // floating-point, leading sign.
         case CSLS:  // fixed-point, leading sign
             switch(dstTN)
-        {
+            {
             case CTN4:
                 if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
                     EISwrite49(&e->ADDR3, &pos, dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? 015 :  013);  // special +
@@ -7913,7 +7926,7 @@ void mp3d (void)
             case CTN9:
                 EISwrite49(&e->ADDR3, &pos, dstTN, (decNumberIsNegative(op3) && !decNumberIsZero(op3)) ? '-' : '+');
                 break;
-        }
+            }
             break;
             
         case CSTS:  // nuttin' to do here .....

@@ -25,6 +25,7 @@
 
 
 decContext * decContextDefaultDPS8(decContext *context);
+decContext * decContextDefaultDPS8_80(decContext *context);
 decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn);
 char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC);
 

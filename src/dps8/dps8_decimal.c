@@ -40,6 +40,25 @@ decContext * decContextDefaultDPS8(decContext *context)
     
     return context;
 }
+/* ------------------------------------------------------------------ */
+/* HWR 6/28/14 18:54 derived from ......                              */
+/*     decContextDefault(...)                                         */
+/*                                                                    */
+/* decContextDefaultDPS8 -- initialize a context structure            */
+/*                                                                    */
+/* Similar to decContextDefault EXCEPT digits are set to 80 for our   */
+/* dps8 simulator (add additional features as required                */
+/*                                                                    */
+/* ------------------------------------------------------------------ */
+decContext * decContextDefaultDPS8_80(decContext *context)
+{
+    decContextDefault(context, DEC_INIT_BASE);
+    context->traps=0;
+    
+    context->digits = 80;   //63 * 63;  // worse case for multiply
+    
+    return context;
+}
 
 
 decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn)
@@ -240,6 +259,49 @@ static const char *CTN[] = {"CTN9", "CTN4"};
 
 char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
+    /*
+     * this is for mp3d ISOLTS error (and perhaps others)
+     */
+    if (r->digits > 63 || r->digits > n)
+    {
+        static char out1 [132];
+        bzero(out1, sizeof(out1));
+        
+        static char out2 [132];
+        bzero(out2, sizeof(out2));
+        
+        int scale, adjLen = n;
+        
+        switch (s)
+        {
+            case CSFL:              // we have a leading sign and a trailing exponent.
+                if (tn == CTN9)
+                    adjLen -= 2;    // a sign and an 1 9-bit exponent
+                else
+                    adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away
+            case CSLS:
+            case CSTS:              // take sign into assount. One less char to play with
+                adjLen -= 1;
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away (again)
+            case CSNS:              // no sign to worry about. Use everything
+                decBCDFromNumber((uint8_t *)out1, r->digits, &scale, r);
+                for(int i = 0 ; i < r->digits ; i += 1)
+                    out1[i] += '0';
+                // now copy the lower n chars to out2
+//                for(int i = 0 ; i < n ; i += 1)
+//                {
+//                    out2[i] = out1[i + r->digits - n];
+//                    sim_printf("out2[%d]:%s\n", i, out2);
+//                }
+                // memcpy
+                memcpy(out2, out1 + r->digits - n, n);
+                
+                *OVR = true;
+        }
+        return (char *) out2;
+    }
+
     
     if (s == CSFL)
         sf = 0;
