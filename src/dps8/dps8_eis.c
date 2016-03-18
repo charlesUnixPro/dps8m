@@ -1506,6 +1506,10 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "cmpc op1 23 MBZ");
+
     int fill = (int) getbits36 (cpu . cu . IWB, 0, 9);
     
     SET_I_ZERO;  // set ZERO flag assuming strings are equal ...
@@ -1600,6 +1604,10 @@ void scd ()
     parseAlphanumericOperandDescriptor (2, 1, true); // use TA1
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scd op1 23 MBZ");
+
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
@@ -1720,6 +1728,10 @@ void scdr (void)
     parseAlphanumericOperandDescriptor(2, 1, true); // Use TA1
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scdr op1 23 MBZ");
+
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
@@ -1859,6 +1871,10 @@ void scm (void)
     parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scm op1 23 MBZ");
+
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
@@ -1981,6 +1997,10 @@ void scmr (void)
     parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scmr op1 23 MBZ");
+
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
     // pair, TA2, is ignored.
@@ -2113,6 +2133,18 @@ void tct (void)
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op1 23 MBZ");
+
+    // Bits 18-28, 39-31 of OP2 MBZ
+    if (e -> op [1]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op2 18-28, 39-31 MBZ");
+
+    // Bits 18-28, 39-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op3 18-28, 39-31 MBZ");
+
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
 
@@ -2251,6 +2283,18 @@ void tctr (void)
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tctr op1 23 MBZ");
+
+    // Bits 18-28, 39-31 of OP2 MBZ
+    if (e -> op [1]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op2 18-28, 39-31 MBZ");
+
+    // Bits 18-28, 39-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op3 18-28, 39-31 MBZ");
+
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
 
@@ -2403,6 +2447,14 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+    // Bit 10 MBZ
+    if (IWB_IRODD & 0000200000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mlr 10 MBZ");
+
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mlr op1 23 MBZ");
+
     int srcSZ, dstSZ;
 
     switch (e -> TA1)
@@ -2646,6 +2698,14 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+    // Bit 10 MBZ
+    if (IWB_IRODD & 0000200000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mrl 10 MBZ");
+
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mrl op1 23 MBZ");
+
     int srcSZ, dstSZ;
 
     switch (e -> TA1)
@@ -4300,7 +4360,20 @@ void mve (void)
     
     // Bits 0, 1, 9, and 10 MBZ
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, flt_ipr_ill_op, "mve(): 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mve: 0, 1, 9, 10 MBZ");
+
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mve op1 23 MBZ");
+
+    // Bits 21-23 of OP1 MBZ
+    if (e -> op [1]  & 0000000070000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mve op2 21-23 MBZ");
+
+    // Bit 23 of OP3 MBZ
+    if (e -> op [2]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mve op3 23 MBZ");
+
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
     e->mopSN = false; // Sign flag
@@ -4371,7 +4444,29 @@ void mvne (void)
     
     // Bits 0, 1, 9, and 10 MBZ
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, flt_ipr_ill_op, "mvne(): 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, flt_ipr_ill_op, "mvne: 0, 1, 9, 10 MBZ");
+
+//if (currentRunningCPUnum)
+if ((e -> op [0]  & 0000000007700) ||
+    (e -> op [1]  & 0000000077700) ||
+    (e -> op [2]  & 0000000017700))
+sim_printf ("%012llo\n%012llo\n%012llo\n%012llo\n", cpu.cu.IWB, e->op[0], e->op[1], e-> op[2]);
+if (e -> op [0]  & 0000000007700) sim_printf ("op1\n");
+if (e -> op [1]  & 0000000077700) sim_printf ("op2\n");
+if (e -> op [2]  & 0000000017700) sim_printf ("op3\n");
+
+    // Bit 24-29 of OP1 MBZ
+    // Multics has been observed to use 600162017511
+    //if (e -> op [0]  & 0000000007700)
+      //doFault (FAULT_IPR, flt_ipr_ill_proc, "mvne op1 24-29 MBZ");
+
+    // Bits 21-29 of OP1 MBZ
+    if (e -> op [1]  & 0000000077700)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvne op2 21-29 MBZ");
+
+    // Bits 23-29 of OP3 MBZ
+    if (e -> op [2]  & 0000000017700)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvne op3 23-29 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -4480,6 +4575,10 @@ void mvt (void)
     parseAlphanumericOperandDescriptor (2, 2, false);
     parseArgOperandDescriptor (3);
     
+    // Bit 23 of OP1 MBZ
+    if (e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvt op1 23 MBZ");
+
     e->srcTA = e->TA1;
     uint dstTA = e->TA2;
     
@@ -6478,6 +6577,7 @@ void dtb (void)
     uint mbz = getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
       doFault (FAULT_IPR, flt_ipr_ill_op, "dtb(): 0-10 MBZ");
+
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
