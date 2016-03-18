@@ -443,7 +443,7 @@ static void oscar (char * text)
       {
         t_stat stat = cmdp->action (cmdp->arg, cptr);          /* if found, exec */
         if (stat == SCPE_OK)
-          sim_printf ("oscar thinks thats ok.\n");
+          sim_printf ("oscar thinks that's ok.\n");
         else
           sim_printf ("oscar thinks %d\n", stat);
       }
