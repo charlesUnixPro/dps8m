@@ -895,13 +895,17 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
               break;
 
             default:
-              sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
-              break;
+              doFault (FAULT_IPR, flt_ipr_ill_proc, "parseAlphanumericOperandDescriptor TA 3");
+              //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
+              //break;
           }
       }
     else
       e -> N [k - 1] = opDesc & 07777;
     
+    //if (e->N [k - 1] == 0)
+      //doFault (FAULT_IPR, flt_ipr_ill_proc, "parseAlphanumericOperandDescriptor N 0");
+
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
 
     word36 r = getMFReg36 (MFk & 017, allowDU);
@@ -927,6 +931,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     uint effBITNO = 0;
     uint effCHAR = 0;
     uint effWORDNO = 0;
+
     switch (e -> TA [k - 1])
       {
         case CTA4:
@@ -948,6 +953,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           break;
 
         case CTA6:
+          if (CN >= 6)
+            doFault (FAULT_IPR, flt_ipr_ill_proc, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
           effBITNO = (9 * ARn_CHAR + 6 * r + ARn_BITNO) % 9;
           effCHAR = ((6 * CN +
                       9 * ARn_CHAR +
@@ -989,8 +996,9 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           break;
 
         default:
-          sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
-            break;
+           doFault (FAULT_IPR, flt_ipr_ill_proc, "parseAlphanumericOperandDescriptor TA1 3");
+          //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
+            //break;
     }
     
     EISaddr * a = & e -> addr [k - 1];
@@ -1107,6 +1115,24 @@ static void parseNumericOperandDescriptor (int k)
         r = 0;
     }
 
+    int TN = e->TN[k-1];
+    int N = e->N[k-1];  // number of chars in string
+    int S = e->S[k-1];  // This is where MVNE gets really nasty.
+    // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
+
+    if (N == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "parseNumericOperandDescriptor N=0");
+
+    if (N == 1 && (S == 0 || S == 1 || S == 2))
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "parseNumericOperandDescriptor N=1 S=0|1|2");
+
+    if (N == 2 && S == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "parseNumericOperandDescriptor N=2 S=0");
+
+    if (N == 3 && S == 0 && TN == 1)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+
+
     uint effBITNO = 0;
     uint effCHAR = 0;
     uint effWORDNO = 0;
@@ -1211,6 +1237,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
     int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
+    if (B >= 9)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "parseBitstringOperandDescriptor B >= 9");
+     
     int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
     
     word36 r = getMFReg36(MFk & 017, false);
@@ -1506,9 +1535,17 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
+    // Bits 9-10 MBZ
+    if (IWB_IRODD & 0000600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "cmpc 9-10 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "cmpc op1 23 MBZ");
+
+    // Bits 21-23 of OP2 MBZ
+    if (e -> op [1]  & 0000000070000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "cmpc op2 21-23 MBZ");
 
     int fill = (int) getbits36 (cpu . cu . IWB, 0, 9);
     
@@ -1604,9 +1641,17 @@ void scd ()
     parseAlphanumericOperandDescriptor (2, 1, true); // use TA1
     parseArgOperandDescriptor (3);
     
+    // Bits 9-10 MBZ
+    if (IWB_IRODD & 0000600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "scd 9-10 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "scd op1 23 MBZ");
+
+    // Bits 18-28. 30-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scd op3 18-28. 30-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -1728,9 +1773,17 @@ void scdr (void)
     parseAlphanumericOperandDescriptor(2, 1, true); // Use TA1
     parseArgOperandDescriptor (3);
     
+    // Bits 9-10 MBZ
+    if (IWB_IRODD & 0000600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "scdr 9-10 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "scdr op1 23 MBZ");
+
+    // Bits 18-28. 30-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scdr op3 18-28. 30-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -1871,9 +1924,17 @@ void scm (void)
     parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
+    // Bits 9-10 MBZ
+    if (IWB_IRODD & 0000600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "scm 9-10 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "scm op1 23 MBZ");
+
+    // Bits 18-28, 39-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scm op3 18-28, 39-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -1997,9 +2058,21 @@ void scmr (void)
     parseAlphanumericOperandDescriptor (2, 1, true);
     parseArgOperandDescriptor (3);
     
+    // Bits 9-10 MBZ
+    if (IWB_IRODD & 0000600000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "scmr 9-10 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "scmr op1 23 MBZ");
+
+    // Bits 18 of OP3 MBZ
+    if (e -> op [2]  & 0000000400000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scmr op3 18 MBZ");
+
+    // Bits 18-28, 39-31 of OP3 MBZ
+    if (e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "scmr op3 18-28, 39-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -2133,6 +2206,10 @@ void tct (void)
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
+    // Bits 0-17 MBZ
+    if (IWB_IRODD & 0777777000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "tct 0-17 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op1 23 MBZ");
@@ -2283,20 +2360,24 @@ void tctr (void)
     parseArgOperandDescriptor (2);
     parseArgOperandDescriptor (3);
     
+    // Bits 0-17 MBZ
+    if (IWB_IRODD & 0777777000000)
+      doFault (FAULT_IPR, flt_ipr_ill_op, "tctr 0-17 MBZ");
+
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "tctr op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP2 MBZ
     if (e -> op [1]  & 0000000777660)
-      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op2 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tctr op2 18-28, 39-31 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, flt_ipr_ill_proc, "tct op3 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "tctr op3 18-28, 39-31 MBZ");
 
     sim_debug (DBG_TRACEEXT, & cpu_dev,
-               "TCT CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
+               "TCTR CN1: %d TA1: %d\n", e -> CN1, e -> TA1);
 
     uint srcSZ;
 
@@ -2454,6 +2535,10 @@ void mlr (void)
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "mlr op1 23 MBZ");
+
+    // Bit 23 of OP2 MBZ
+    if (e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mlr op2 23 MBZ");
 
     int srcSZ, dstSZ;
 
@@ -2705,6 +2790,10 @@ void mrl (void)
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "mrl op1 23 MBZ");
+
+    // Bit 23 of OP2 MBZ
+    if (e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mrl op2 23 MBZ");
 
     int srcSZ, dstSZ;
 
@@ -4359,6 +4448,7 @@ void mve (void)
     parseAlphanumericOperandDescriptor(3, 3, false);
     
     // Bits 0, 1, 9, and 10 MBZ
+    // According to RJ78, bit 9 is T, but is not mentioned in the text.
     if (IWB_IRODD & 0600600000000)
       doFault (FAULT_IPR, flt_ipr_ill_op, "mve: 0, 1, 9, 10 MBZ");
 
@@ -4446,14 +4536,21 @@ void mvne (void)
     if (IWB_IRODD & 0600600000000)
       doFault (FAULT_IPR, flt_ipr_ill_op, "mvne: 0, 1, 9, 10 MBZ");
 
-//if (currentRunningCPUnum)
-if ((e -> op [0]  & 0000000007700) ||
-    (e -> op [1]  & 0000000077700) ||
-    (e -> op [2]  & 0000000017700))
-sim_printf ("%012llo\n%012llo\n%012llo\n%012llo\n", cpu.cu.IWB, e->op[0], e->op[1], e-> op[2]);
-if (e -> op [0]  & 0000000007700) sim_printf ("op1\n");
-if (e -> op [1]  & 0000000077700) sim_printf ("op2\n");
-if (e -> op [2]  & 0000000017700) sim_printf ("op3\n");
+//if ((e -> op [0]  & 0000000007700) ||
+//    (e -> op [1]  & 0000000077700) ||
+//    (e -> op [2]  & 0000000017700))
+//sim_printf ("%012llo\n%012llo\n%012llo\n%012llo\n", cpu.cu.IWB, e->op[0], e->op[1], e-> op[2]);
+//if (e -> op [0]  & 0000000007700) sim_printf ("op1\n");
+//if (e -> op [1]  & 0000000077700) sim_printf ("op2\n");
+//if (e -> op [2]  & 0000000017700) sim_printf ("op3\n");
+//000140  aa  100 004 024 500   mvne      (pr),(ic),(pr)
+//000141  aa  6 00162 01 7511   desc9ls   pr6|114,9,-3
+//000142  aa   000236 00 0007   desc9a    158,7               000376 = 403040144040
+//000143  aa  6 00134 00 0012   desc9a    pr6|92,10           vcpu
+//
+// The desc8ls is sign-extending the -3.
+
+
 
     // Bit 24-29 of OP1 MBZ
     // Multics has been observed to use 600162017511
@@ -4578,6 +4675,14 @@ void mvt (void)
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "mvt op1 23 MBZ");
+
+    // Bits 18 of OP2 MBZ
+    if (e -> op [1]  & 0000000400000)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvt op2 18 MBZ");
+
+    // Bits 18-28 of OP3 MBZ
+    if (e -> op [2]  & 0000000777600)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvt op3 18-28 MBZ");
 
     e->srcTA = e->TA1;
     uint dstTA = e->TA2;
@@ -5041,6 +5146,12 @@ void mvn (void)
     // Bits 2-8 MBZ
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, flt_ipr_ill_op, "mvn 2-8 MBZ");
+
+    if (e->N2 == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvn N2=0");
+
+    if (e->N2 == 0 && e->S2 == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvn N2=0 S2=0");
 
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
