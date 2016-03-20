@@ -4419,15 +4419,39 @@ static void mopExecutor (int kMop)
     }
     
     // XXX this stuff should probably best be done in the mop's themselves. We'll see.
-    if (e->dstTally == 0)  // normal termination
-        return;
-   
-    // mop string exhausted?
+    //if (e->dstTally == 0)  // normal termination
+        //return;
+if (currentRunningCPUnum)
+sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
+
+// ISOLTS ps841
+// testing for ipr fault when micro-op tally runs out
+// prior to the sending or receiving field tally.
+
+    if (e->mopTally < e->srcTally || e->mopTally < e->dstTally)
+        e->_faults |= FAULT_IPR;   // XXX ill proc fault
+#if 0
+    // dst string not exhausted?
+    if (e->dstTally != 0)
+      {
+        e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
+#endif
+
+    // mop string not exhausted?
     if (e->mopTally != 0)
       {
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
     
+#if 0
+    // src string not exhausted?
+    if (e->srcTally != 0)
+      {
+        e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
+#endif
+
     if (e -> _faults)
       doFault (FAULT_IPR, flt_ipr_ill_proc, "mopExecutor");
 }

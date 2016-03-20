@@ -1810,8 +1810,6 @@ restart_1:
       {
         cpu.cu.IWB = cpu.Ypair [0];
         cpu.cu.IRODD = cpu.Ypair [1];
-if (currentRunningCPUnum)
-sim_printf ("xed %012llo %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
       }
     else if (cpu.cu.xde)
       {
