@@ -4536,6 +4536,13 @@ void mvne (void)
     if (IWB_IRODD & 0600600000000)
       doFault (FAULT_IPR, flt_ipr_ill_op, "mvne: 0, 1, 9, 10 MBZ");
 
+    // Putting this check in pAOD breaks Multics boot
+    if (e->N[1] == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvne N2 0");
+
+    if (e->N[2] == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "mvne N3 0");
+
 //if ((e -> op [0]  & 0000000007700) ||
 //    (e -> op [1]  & 0000000077700) ||
 //    (e -> op [2]  & 0000000017700))
@@ -6688,6 +6695,12 @@ void dtb (void)
     uint mbz = getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
       doFault (FAULT_IPR, flt_ipr_ill_op, "dtb(): 0-10 MBZ");
+
+    //if (e->TN2 != 0)
+      //doFault (FAULT_IPR, flt_ipr_ill_proc, "dtb: TN2 MBZ");
+    // Bits 21-29 of OP2 MBZ
+    if (e -> op [1]  & 0000000077700)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "dtb op2 21-28 MBZ");
 
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
