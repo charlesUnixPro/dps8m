@@ -6459,14 +6459,19 @@ void btd (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+    // Bits 21-29 of OP1 MBZ
+    if (e -> op [0]  & 0000000077700)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "btd op1 21-29 MBZ");
+
+    // Bits 24-29 of OP2 MBZ
+    if (e -> op [1]  & 0000000007700)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "btd op2 24-29 MBZ");
+
+    if (e->S[1] == 0)
+      doFault (FAULT_IPR, flt_ipr_ill_proc, "btd op2 S=0");
+
     e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
     
-// XXX ticket #35
-    // Technically, flt_ipr_ill_proc should be "illegal eis modifier",
-    // but the Fault Register has no such bit; the Fault
-    // register description says flt_ipr_ill_proc is anything not
-    // handled by other bits.
-
     if (e->N1 == 0 || e->N1 > 8)
         doFault(FAULT_IPR, flt_ipr_ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
@@ -6481,7 +6486,8 @@ void btd (void)
     if (ovf)
       {
         SET_I_OFLOW;
-        doFault(FAULT_OFL, 0, "btd overflow fault");
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, 0, "btd overflow fault");
       }
 }
 

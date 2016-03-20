@@ -80,42 +80,62 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
     //for (first=bcd; *first==0;) first++;
     
     //Also, a bug in decBCD9ToNumber; in the input is all zeros, the skip leading zeros code wanders off the end of the input buffer....
-    for (first=bcd; *first==0 && first <= last;) first++;
+    for (first=bcd; *first==0 && first <= last;)
+        first++;
     
     digits=(Int)(last-first)+1;              // calculate digits ..
     //if ((*first & 0xf0)==0) digits--;     // adjust for leading zero nibble
-    if (digits!=0) dn->digits=digits;     // count of actual digits [if 0,
+    if (digits!=0) 
+       dn->digits=digits;     // count of actual digits [if 0,
     // leave as 1]
     
     // check the adjusted exponent; note that scale could be unbounded
     dn->exponent=-scale;                 // set the exponent
-    if (scale>=0) {                      // usual case
-        if ((dn->digits-scale-1)<-DECNUMMAXE) {      // underflow
+    if (scale>=0)                        // usual case
+    {
+        if ((dn->digits-scale-1)<-DECNUMMAXE)        // underflow
+        {
             decNumberZero(dn);
-            return NULL;}
+            //return NULL;
+            // XXX check subfault
+            doFault (FAULT_IPR, flt_ipr_ill_proc, "decBCD9ToNumber underflow");
+        }
     }
-    else { // -ve scale; +ve exponent
+    else  // -ve scale; +ve exponent
+    {
         // need to be careful to avoid wrap, here, also BADINT case
         if ((scale<-DECNUMMAXE)            // overflow even without digits
-            || ((dn->digits-scale-1)>DECNUMMAXE)) { // overflow
+            || ((dn->digits-scale-1)>DECNUMMAXE))   // overflow
+        {
             decNumberZero(dn);
-            return NULL;}
+            //return NULL;
+            // XXX check subfault
+            doFault (FAULT_IPR, flt_ipr_ill_proc, "decBCD9ToNumber overflow");
+        }
     }
-    if (digits==0) return dn;             // result was zero
+    if (digits==0)
+      return dn;             // result was zero
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;last >= bcd;) {                            // forever
+    for (;last >= bcd;)                             // forever
+    {
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
-        if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
+        //if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
+        if (nib > 9)
+          doFault (FAULT_IPR, flt_ipr_ill_dig, "decBCD9ToNumber ill digit");
         
-        if (cut==0) *up=(Unit)nib;
-        else *up=(Unit)(*up+nib*DECPOWERS[cut]);
+        if (cut==0)
+          *up=(Unit)nib;
+        else
+          *up=(Unit)(*up+nib*DECPOWERS[cut]);
         digits--;
-        if (digits==0) break;               // got them all
+        if (digits==0)
+          break;               // got them all
         cut++;
-        if (cut==DECDPUN) {
+        if (cut==DECDPUN)
+        {
             up++;
             cut=0;
         }
