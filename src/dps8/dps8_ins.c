@@ -7413,7 +7413,11 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 01 (TA code = 1) and C(Y)18,20 = 110
                         // or 111 an illegal procedure fault occurs.
                         if (CN > 5)
-                          doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn TN > 5");
+                        {
+                            cpu.AR[n].WORDNO = 0;
+                            SET_AR_CHAR_BIT (n, 0, 0);
+                            doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn TN > 5");
+                        }
 
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (6 * C(Y)18,20) / 9 -> C(ARn.CHAR)
@@ -7432,6 +7436,8 @@ static t_stat DoEISInstruction (void)
                     case CTAILL: // 3
                         // If C(Y)21,22 = 11 (TA code = 3) an illegal procedure
                         // fault occurs.
+                        cpu.AR[n].WORDNO = 0;
+                        SET_AR_CHAR_BIT (n, 0, 0);
                         doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn TA = 3");
                 }
             }
