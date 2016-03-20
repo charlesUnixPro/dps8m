@@ -1057,8 +1057,6 @@ void fetchInstruction (word18 addr)
           cpu.cu.IRODD = cpu.cu.IWB;
 #endif
       }
-
-    // TODO: Need to add no DL restrictions?
 }
 
 void traceInstruction (uint flag)
@@ -1321,18 +1319,21 @@ t_stat executeInstruction (void)
         if (_nodudl[ci->tag])
             doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal DU/DL modification");
     }
-    if (cpu.cu.xdo == 1) // Execute even or odd of XED
+
+    // If executing the target of XEC/XED, check the instruction is allowed
+    if (cpu.isXED)
     {
-    // XXX Not clear what the subfault should be; see Fault Register in AL39.
-        if (ci->info->flags == NO_XED)
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "Instruction not allowed in XED");
+        if (ci->info->flags & NO_XED)
+            doFault(FAULT_IPR, flt_ipr_ill_proc, "Instruction not allowed in XEC/XED");
     }
-    if (cpu.cu.xde == 1 && cpu.cu.xdo == 0) // Execute XEC
-    {
-    // XXX Not clear what the subfault should be; see Fault Register in AL39.
-        if (ci->info->flags == NO_XEC)
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "Instruction not allowed in XEC");
-    }
+
+    // Instruction not allowed in RPx?
+
+    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+      {
+        if (ci->info->flags & NO_RPT)
+          doFault(FAULT_IPR, flt_ipr_ill_proc, "no rpx allowed for instruction");
+      }
 
     // RPT/RPD illegal modifiers
     // a:AL39/rpd3
@@ -1377,11 +1378,6 @@ t_stat executeInstruction (void)
         if (! cpu.cu.rd && Td < TD_X0)
           doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT/RPL");
 #endif
-        // XXX Does this need to also check for NO_RPL?
-        // repeat allowed for this instruction?
-        // XXX Not clear what the subfault should be
-        if (ci->info->flags & NO_RPT)
-          doFault(FAULT_IPR, flt_ipr_ill_proc, "no rpt allowed for instruction");
       }
 
     ///
@@ -1814,6 +1810,8 @@ restart_1:
       {
         cpu.cu.IWB = cpu.Ypair [0];
         cpu.cu.IRODD = cpu.Ypair [1];
+if (currentRunningCPUnum)
+sim_printf ("xed %012llo %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
       }
     else if (cpu.cu.xde)
       {

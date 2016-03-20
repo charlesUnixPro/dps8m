@@ -1772,21 +1772,32 @@ setCPU:;
                   {
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
-                    cpu.cu.xde = cpu.cu.xdo = 0; // and done
+                    // Do nothing next time
+                    cpu.cu.xde = cpu.cu.xdo = 0;
+                    cpu.isExec = true;
+                    cpu.isXED = true;
                   }
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
-                    cpu.cu.xde = 0; // do the odd next time
+                    // Do the even this time and the odd the next time
+                    cpu.cu.xde = 0;
                     cpu.cu.xdo = 1;
+                    cpu.isExec = true;
+                    cpu.isXED = true;
                   }
-                // If were nave not yet done the XEC
+                // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
                   {
-                    cpu.cu.xde = cpu.cu.xdo = 0; // and done
+                    // do it this time, and nothing next time
+                    cpu.cu.xde = cpu.cu.xdo = 0;
+                    cpu.isExec = true;
+                    cpu.isXED = false;
                   }
                 else
                   {
+                    cpu.isExec = false;
+                    cpu.isXED = false;
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
@@ -1849,6 +1860,8 @@ setCPU:;
                 if (ret == CONT_TRA)
                   {
                     cpu.cu.xde = cpu.cu.xdo = 0;
+                    cpu.isExec = false;
+                    cpu.isXED = false;
                     cpu.wasXfer = true;
                     setCpuCycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
@@ -1887,6 +1900,8 @@ setCPU:;
                   }
 
                 cpu.cu.xde = cpu.cu.xdo = 0;
+                cpu.isExec = false;
+                cpu.isXED = false;
                 cpu.PPR.IC ++;
                 if (ci->info->ndes > 0)
                   cpu.PPR.IC += ci->info->ndes;

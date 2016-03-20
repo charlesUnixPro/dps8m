@@ -996,23 +996,8 @@ typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
     cycles_t cycle;
-    uint IC_abs; // translation of odd IC to an absolute address; see
-                 // ADDRESS of cu history
-    bool irodd_invalid;
-                // cached odd instr invalid due to memory write by even instr
 
     // The following are all from the control unit history register:
-
-    bool trgo;               // most recent instruction caused a transfer?
-    bool ic_odd;             // executing odd pair?
-    bool poa;                // prepare operand address
-    uint opcode;             // currently executing opcode
-    struct
-      {
-        bool fhld; // An access violation or directed fault is waiting.
-                   // AL39 mentions that the APU has this flag, but not
-                   // where scpr stores it
-      } apu_state;
 
     bool interrupt_flag;     // an interrupt is pending in this cycle
     bool g7_flag;            // a g7 fault is pending in this cycle;
@@ -1023,6 +1008,11 @@ typedef struct
 
     bool wasInhibited; // One or both of the previous instruction 
                        // pair was interrupr inhibited.
+
+    bool isExec;  // The instruction being executed is the target of
+                  // an XEC or XED instruction
+    bool isXED; // The instruction being executed is the target of an
+                // XEC instruction
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
