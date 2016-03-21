@@ -156,7 +156,7 @@ static void printTrace (struct hevt * p)
 
 static void printFault (struct hevt * p)
   {
-    fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %d(0%o), '%s'\n",
+    fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %ld(0%lo), '%s'\n",
                 p -> time, 
                 p -> fault . faultNumber, p -> fault . faultNumber,
                 p -> fault . subFault, p -> fault . subFault,

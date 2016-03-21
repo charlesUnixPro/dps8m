@@ -870,7 +870,7 @@ static int acvFaults = 0;   ///< pending ACV faults
 static void acvFault(_fault_subtype acvfault, char * msg)
 {
     sim_debug(DBG_APPENDING, &cpu_dev,
-              "doAppendCycle(acvFault): acvFault=%o acvFaults=%o: %s",
+              "doAppendCycle(acvFault): acvFault=%lo acvFaults=%o: %s",
               acvfault, acvFaults, msg);
 
     // This isn't right; the ACV faults should be accmulated until

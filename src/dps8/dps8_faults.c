@@ -1,4 +1,4 @@
- //
+//
 //  dps8_faults.c
 //  dps8
 //
@@ -224,7 +224,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %d (%o)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  subfault number %ld (%lo)\n", cpu . subFault, cpu . subFault);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -318,13 +318,13 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
               const char * faultMsg)
   {
 //if (currentRunningCPUnum)
-    //sim_printf ("Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
+    //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 
                //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 //if (currentRunningCPUnum)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
-               "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
+               "Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
@@ -343,7 +343,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?
     {
-        sim_printf ("fault(out-of-range): %d %d '%s'\n", 
+        sim_printf ("fault(out-of-range): %d %lo '%s'\n", 
                     faultNumber, subFault, faultMsg ? faultMsg : "?");
         sim_warn ("fault out-of-range\n");
         faultNumber = FAULT_TRB;
@@ -366,6 +366,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     if (faultNumber == FAULT_IPR)
       {
+#if 0
         if (subFault == flt_ipr_ill_op)
           cpu . faultRegister [0] |= FR_ILL_OP;
         else if (subFault == flt_ipr_ill_mod)
@@ -374,6 +375,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
           cpu . faultRegister [0] |= FR_ILL_DIG;
         else /* if (subFault == flt_ipr_ill_proc) */ // and all others
           cpu . faultRegister [0] |= FR_ILL_PROC;
+#else
+        cpu . faultRegister [0] |= subFault;
+#endif
       }
     else if (faultNumber == FAULT_ONC && subFault == flt_onc_nem)
       {
@@ -505,16 +509,14 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
       }
     else if (faultNumber == FAULT_IPR)
       {
-        if (subFault == flt_ipr_ill_op)
+        if (subFault & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault == flt_ipr_ill_mod)
+        else if (subFault & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault == flt_ipr_ill_slv)
+        else if (subFault & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault == flt_ipr_ill_dig)
+        else if (subFault & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
-        // else if (subFault == flt_ipr_ill_proc)
-          // cpu . cu . ? = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
@@ -597,7 +599,7 @@ bool bG7PendingNoTRO (void)
 
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
-    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %d %o\n", 
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %ld %lo\n", 
                cpuNo, faultNo, faultNo, subFault, subFault);
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpuNo);

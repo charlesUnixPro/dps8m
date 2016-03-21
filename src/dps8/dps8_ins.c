@@ -102,12 +102,12 @@ static void writeOperands (void)
 
         if (characterOperandSize == TB6 && characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR, flt_ipr_ill_mod,
+          doFault (FAULT_IPR, FR_ILL_MOD,
                    "co size == TB6 && offset > 5");
 
         if (characterOperandSize == TB9 && characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR, flt_ipr_ill_mod,
+          doFault (FAULT_IPR, FR_ILL_MOD,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -288,12 +288,12 @@ static void readOperands (void)
 
         if (characterOperandSize == TB6 && characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR, flt_ipr_ill_mod,
+          doFault (FAULT_IPR, FR_ILL_MOD,
                    "co size == TB6 && offset > 5");
 
         if (characterOperandSize == TB9 && characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR, flt_ipr_ill_mod,
+          doFault (FAULT_IPR, FR_ILL_MOD,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -1287,7 +1287,7 @@ t_stat executeInstruction (void)
     // illegal procedure fault.
     // XXX Not clear what the subfault should be; see Fault Register in AL39.
     if ((ci -> info -> flags & PRIV_INS) && ! is_priv_mode ())
-        doFault (FAULT_IPR, flt_ipr_ill_proc,
+        doFault (FAULT_IPR, FR_ILL_PROC,
                  "Attempted execution of privileged instruction.");
 
     ///
@@ -1299,85 +1299,103 @@ t_stat executeInstruction (void)
     if (ci->info->mods == NO_CSS)
     {
         if (_nocss[ci->tag])
-            doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal CI/SC/SCR modification");
+            doFault(FAULT_IPR, FR_ILL_MOD, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DDCSS)
     {
         if (_noddcss[ci->tag])
-            doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(FAULT_IPR, FR_ILL_MOD, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DLCSS)
     {
         if (_nodlcss[ci->tag])
-            doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal DL/CI/SC/SCR modification");
+            doFault(FAULT_IPR, FR_ILL_MOD, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (ci->info->mods == NO_DUDL)
     {
         if (_nodudl[ci->tag])
-            doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal DU/DL modification");
+            doFault(FAULT_IPR, FR_ILL_MOD, "Illegal DU/DL modification");
     }
 
     // If executing the target of XEC/XED, check the instruction is allowed
     if (cpu.isXED)
     {
         if (ci->info->flags & NO_XED)
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "Instruction not allowed in XEC/XED");
+            doFault(FAULT_IPR, FR_ILL_PROC, "Instruction not allowed in XEC/XED");
     }
+
+    // ISOLTS wants both the not allowed in RPx and RPx illegal modifier 
+    // tested.
+    _fault_subtype RPx_fault = 0;
+
+    // In BAR mode and not allowed?
+
+#if 0
+    if (TST_I_NBAR == 0)
+      if (ci->info->flags & NO_BAR)
+        RPx_fault |= FR_ILL_SLV;
+#endif
 
     // Instruction not allowed in RPx?
 
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
         if (ci->info->flags & NO_RPT)
-          doFault(FAULT_IPR, flt_ipr_ill_proc, "no RPx allowed for instruction");
+          //doFault(FAULT_IPR, FR_ILL_PROC, "no RPx allowed for instruction");
+          RPx_fault |= FR_ILL_PROC;
+      }
+
+    if (cpu.cu.rl)
+      {
+        if (ci->info->flags & NO_RPL)
+          //doFault(FAULT_IPR, FR_ILL_PROC, "no RPx allowed for instruction");
+          RPx_fault |= FR_ILL_PROC;
       }
 
     // RPT/RPD illegal modifiers
     // a:AL39/rpd3
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
-        // check for illegal modifiers:
-        //    only R & RI are allowed
-        //    only X1..X7
-        switch (GET_TM(ci->tag))
+        if (! (ci -> info -> flags & NO_TAG))
           {
-            case TM_RI:
-              if (cpu.cu.rl)
-                doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPL");
-              break;
-            case TM_R:
-              break;
-            default:
-              // generate fault. Only R & RI allowed
-              doFault(FAULT_IPR, flt_ipr_ill_mod,
-                      "ill addr mod from RPT/RPD/RPL");
+            // check for illegal modifiers:
+            //    only R & RI are allowed
+            //    only X1..X7
+            switch (GET_TM(ci->tag))
+              {
+                case TM_RI:
+                  if (cpu.cu.rl)
+                    //doFault(FAULT_IPR, FR_ILL_MOD, "ill addr mod from RPL");
+                    RPx_fault |= FR_ILL_MOD;
+                  break;
+                case TM_R:
+                  break;
+                default:
+                  // generate fault. Only R & RI allowed
+                  //doFault(FAULT_IPR, FR_ILL_MOD,
+                          //"ill addr mod from RPT/RPD/RPL");
+                  RPx_fault |= FR_ILL_MOD;
+              }
+
+            word6 Td = GET_TD(ci->tag);
+            if (Td == TD_X0)
+              //doFault(FAULT_IPR, FR_ILL_MOD, "ill addr mod from RPT");
+              RPx_fault |= FR_ILL_MOD;
+            //if (! cpu.cu.rd && Td < TD_X0)
+            if (Td < TD_X0)
+              //doFault(FAULT_IPR, FR_ILL_MOD, "ill addr mod from RPT/RPL");
+              RPx_fault |= FR_ILL_MOD;
           }
-        word6 Td = GET_TD(ci->tag);
-#if 0
-        switch (Td)
-          {
-            //case TD_X0: Only X1-X7 permitted
-            case TD_X1:
-            case TD_X2:
-            case TD_X3:
-            case TD_X4:
-            case TD_X5:
-            case TD_X6:
-            case TD_X7:
-              break;
-            default:
-              // generate fault. Only Xn allowed
-              doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT");
-          }
-#else
-        if (Td == TD_X0)
-          doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT");
-        if (! cpu.cu.rd && Td < TD_X0)
-          doFault(FAULT_IPR, flt_ipr_ill_mod, "ill addr mod from RPT/RPL");
-#endif
+      }
+
+    if (RPx_fault)
+      {
+if (currentRunningCPUnum)
+sim_printf ("RPx_fault %012lo\n", RPx_fault);
+        doFault (FAULT_IPR, RPx_fault, "RPx test fail");
       }
 
     ///
@@ -5809,7 +5827,7 @@ static t_stat DoBasicInstruction (void)
             if (cpu.switches.halt_on_unimp)
                 return STOP_UNIMP;
             // Technically not true
-            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, FR_ILL_OP, "Illegal instruction");
 #endif
             {
               uint c = (i->address >> 7) & 1;
@@ -5989,7 +6007,7 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 default:
-                  doFault (FAULT_IPR, flt_ipr_ill_mod, "lcpr tag invalid");
+                  doFault (FAULT_IPR, FR_ILL_MOD, "lcpr tag invalid");
 
               }
             break;
@@ -6019,7 +6037,7 @@ static t_stat DoBasicInstruction (void)
         case 0257:  // lsdp
             // Not clear what the subfault should be; see Fault Register in
             //  AL39.
-            doFault(FAULT_IPR, flt_ipr_ill_op, "lsdp is illproc on DPS8M");
+            doFault(FAULT_IPR, FR_ILL_OP, "lsdp is illproc on DPS8M");
 
         case 0613:  // rcu
             doRCU (); // never returns
@@ -6109,7 +6127,7 @@ static t_stat DoBasicInstruction (void)
 
                 default:
                   {
-                    doFault(FAULT_IPR, flt_ipr_ill_mod,
+                    doFault(FAULT_IPR, FR_ILL_MOD,
                             "SCPR Illegal register select value");
                   }
               }
@@ -6481,7 +6499,7 @@ static t_stat DoBasicInstruction (void)
                 default:
                   // XXX Guessing values; also don't know if this is actually
                   //  a fault
-                  doFault(FAULT_IPR, flt_ipr_ill_mod, "Illegal register select value");
+                  doFault(FAULT_IPR, FR_ILL_MOD, "Illegal register select value");
               }
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -6707,7 +6725,7 @@ static t_stat DoBasicInstruction (void)
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
-            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, FR_ILL_OP, "Illegal instruction");
     }
     return SCPE_OK;
 }
@@ -7103,12 +7121,12 @@ static t_stat DoEISInstruction (void)
         case 0257:  // lptp
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "lptp is illproc on DPS8M");
+            doFault(FAULT_IPR, FR_ILL_PROC, "lptp is illproc on DPS8M");
 
         case 0173:  // lptr
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "lptr is illproc on DPS8M");
+            doFault(FAULT_IPR, FR_ILL_PROC, "lptr is illproc on DPS8M");
 
         case 0774:  // lra
             cpu.rRALR = cpu.CY & MASK3;
@@ -7118,7 +7136,7 @@ static t_stat DoEISInstruction (void)
         case 0232:  // lsdr
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
-            doFault(FAULT_IPR, flt_ipr_ill_proc, "lsdr is illproc on DPS8M");
+            doFault(FAULT_IPR, FR_ILL_PROC, "lsdr is illproc on DPS8M");
 
         case 0557:  // sptp
           {
@@ -7285,7 +7303,7 @@ static t_stat DoEISInstruction (void)
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 if (getbits36 (cpu.CY, 23, 1) != 0)
-                  doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn C(Y)23 != 0");
+                  doFault (FAULT_IPR, FR_ILL_PROC, "aarn C(Y)23 != 0");
 
                 uint32 n = opcode & 07;  // get
 
@@ -7313,7 +7331,7 @@ static t_stat DoEISInstruction (void)
                         {
                             cpu.AR[n].WORDNO = 0;
                             SET_AR_CHAR_BIT (n, 0, 0);
-                            doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn TN > 5");
+                            doFault (FAULT_IPR, FR_ILL_PROC, "aarn TN > 5");
                         }
 
                         // If C(Y)21,22 = 01 (TA code = 1), then
@@ -7335,7 +7353,7 @@ static t_stat DoEISInstruction (void)
                         // fault occurs.
                         cpu.AR[n].WORDNO = 0;
                         SET_AR_CHAR_BIT (n, 0, 0);
-                        doFault (FAULT_IPR, flt_ipr_ill_proc, "aarn TA = 3");
+                        doFault (FAULT_IPR, FR_ILL_PROC, "aarn TA = 3");
                 }
             }
             break;
@@ -7426,7 +7444,7 @@ sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * 
                         // If C(Y)21 = 0 (TN code = 0) and C(Y)20 = 1 an
                         // illegal procedure fault occurs.
                         if ((CN & 1) != 0)
-                          doFault (FAULT_IPR, flt_ipr_ill_proc, "narn N9 and CN odd");
+                          doFault (FAULT_IPR, FR_ILL_PROC, "narn N9 and CN odd");
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
@@ -7457,9 +7475,9 @@ sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
                 // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit),
                 // an illegal procedure fault occurs.
                 if (TA == 03)
-                  doFault (FAULT_IPR, flt_ipr_ill_proc, "ARAn tag == 3");
+                  doFault (FAULT_IPR, FR_ILL_PROC, "ARAn tag == 3");
                 if (getbits36 (cpu.CY, 23, 1) != 0)
-                  doFault (FAULT_IPR, flt_ipr_ill_proc, "ARAn b23 == 1");
+                  doFault (FAULT_IPR, FR_ILL_PROC, "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get
                 // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7795,7 +7813,7 @@ sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
-            doFault(FAULT_IPR, flt_ipr_ill_op, "Illegal instruction");
+            doFault(FAULT_IPR, FR_ILL_OP, "Illegal instruction");
     }
 
     return SCPE_OK;
@@ -8019,7 +8037,7 @@ static int doABSA (word36 * result)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
-        //doFault (FAULT_IPR, flt_ipr_ill_proc, "ABSA in absolute mode.");
+        //doFault (FAULT_IPR, FR_ILL_PROC, "ABSA in absolute mode.");
         * result = (cpu.TPR.CA & MASK18) << 12; // 24:12 format
         return SCPE_OK;
       }

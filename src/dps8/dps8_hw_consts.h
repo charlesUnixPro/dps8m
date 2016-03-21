@@ -590,11 +590,11 @@ enum _fault_subtype {
 
     // FAULT_IPR
 
-    flt_ipr_ill_op,     // An illegal operation code has been detected.
-    flt_ipr_ill_mod,    // An illegal address modifier has been detected.
-    flt_ipr_ill_slv,    // An illegal BAR mode procedure has been encountered.
-    flt_ipr_ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
-    flt_ipr_ill_proc,   // An illegal procedure other than the four above has been encountered.
+    //flt_ipr_ill_op,     // An illegal operation code has been detected.
+    //flt_ipr_ill_mod,    // An illegal address modifier has been detected.
+    //flt_ipr_ill_slv,    // An illegal BAR mode procedure has been encountered.
+    //flt_ipr_ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
+    //flt_ipr_ill_proc,   // An illegal procedure other than the four above has been encountered.
 
     // FAULT_ONC
 
@@ -674,38 +674,39 @@ enum _fault_subtype {
     ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
     ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
     ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
+
+    FR_ILL_OP    = 0400000000000llu, //  0 a ILL OP
+    FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
+    FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
+    FR_ILL_PROC  = 0040000000000llu, //  3 d ILL PROC
+    FR_NEM       = 0020000000000llu, //  4 e NEM
+    FR_OOB       = 0010000000000llu, //  5 f OOB
+    FR_ILL_DIG   = 0004000000000llu, //  6 g ILL DIG
+    FR_PROC_PARU = 0002000000000llu, //  7 h PROC PARU
+    FR_PROC_PARL = 0001000000000llu, //  8 i PROC PARU
+    FR_CON_A     = 0000400000000llu, //  9 j $CON A
+    FR_CON_B     = 0000200000000llu, // 10 k $CON B
+    FR_CON_C     = 0000100000000llu, // 11 l $CON C
+    FR_CON_D     = 0000040000000llu, // 12 m $CON D
+    FR_DA_ERR    = 0000020000000llu, // 13 n DA ERR
+    FR_DA_ERR2   = 0000010000000llu, // 14 o DA ERR2
+
 };
 typedef enum _fault_subtype _fault_subtype;
 
 // Fault Register bits
 enum _faultRegisterBits0
   {
-     FR_ILL_OP    = 0400000000000llu, //  0 a ILL OP
-     FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
-     FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
-     FR_ILL_PROC  = 0040000000000llu, //  3 d ILL PROC
-     FR_NEM       = 0020000000000llu, //  4 e NEM
-     FR_OOB       = 0010000000000llu, //  5 f OOB
-     FR_ILL_DIG   = 0004000000000llu, //  6 g ILL DIG
-     FR_PROC_PARU = 0002000000000llu, //  7 h PROC PARU
-     FR_PROC_PARL = 0001000000000llu, //  8 i PROC PARU
-     FR_CON_A     = 0000400000000llu, //  9 j $CON A
-     FR_CON_B     = 0000200000000llu, // 10 k $CON B
-     FR_CON_C     = 0000100000000llu, // 11 l $CON C
-     FR_CON_D     = 0000040000000llu, // 12 m $CON D
-     FR_DA_ERR    = 0000020000000llu, // 13 n DA ERR
-     FR_DA_ERR2   = 0000010000000llu, // 14 o DA ERR2
+    FR_IA_MASK   = 017,
+    FR_IAA_SHIFT = 16, // 0000003600000llu,
+    FR_IAB_SHIFT = 12, // 0000000170000llu,
+    FR_IAC_SHIFT = 8,  // 0000000007400llu,
+    FR_IAD_SHIFT = 4,  // 0000000000360llu,
 
-     FR_IA_MASK   = 017,
-     FR_IAA_SHIFT = 16, // 0000003600000llu,
-     FR_IAB_SHIFT = 12, // 0000000170000llu,
-     FR_IAC_SHIFT = 8,  // 0000000007400llu,
-     FR_IAD_SHIFT = 4,  // 0000000000360llu,
-
-     FR_CPAR_DIR  = 0000000000010llu, // 32 p CPAR DIR
-     FR_CPAR_STR  = 0000000000004llu, // 33 q CPAR STR
-     FR_CPAR_IA   = 0000000000002llu, // 34 r CPAR IA
-     FR_CPAR_BLK  = 0000000000001llu  // 35 s CPAR BLK
+    FR_CPAR_DIR  = 0000000000010llu, // 32 p CPAR DIR
+    FR_CPAR_STR  = 0000000000004llu, // 33 q CPAR STR
+    FR_CPAR_IA   = 0000000000002llu, // 34 r CPAR IA
+    FR_CPAR_BLK  = 0000000000001llu  // 35 s CPAR BLK
   };
 
 enum _faultRegisterBits1
