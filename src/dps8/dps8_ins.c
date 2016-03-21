@@ -1332,7 +1332,7 @@ t_stat executeInstruction (void)
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
         if (ci->info->flags & NO_RPT)
-          doFault(FAULT_IPR, flt_ipr_ill_proc, "no rpx allowed for instruction");
+          doFault(FAULT_IPR, flt_ipr_ill_proc, "no RPx allowed for instruction");
       }
 
     // RPT/RPD illegal modifiers
@@ -2208,29 +2208,10 @@ static t_stat DoBasicInstruction (void)
             // the same register given as target and modifier causes an illegal
             // procedure fault.
 
-#ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX [n] = compl18 (GETHI (cpu.CY), & cpu.cu.IR, & ovf);
-            //if (ovf && tstOVFfault ())
-              //{
-                //SET_I_OFLOW;
-                //doFault (FAULT_OFL, 0, "lcxn overflow fault");
-              //}
             overflow (ovf, false, "lcxn overflow fault");
-#else
-            bool ovf;
-            uint32 n = opcode & 07;  // get n
-            word18 ir = cpu.cu.IR;
-            word18 tmp = compl18 (GETHI (cpu.CY), & ir, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "lcxn overflow fault");
-              }
-            cpu.rX [n] = tmp;
-            cpu.cu.IR = ir;
-#endif
           }
           break;
 
@@ -2603,7 +2584,6 @@ static t_stat DoBasicInstruction (void)
         case 0447:  // sxl7
             {
                 uint32 n = opcode & 07;  // get n
-
                 SETLO(cpu.CY, cpu.rX[n]);
             }
             break;
@@ -3085,33 +3065,12 @@ static t_stat DoBasicInstruction (void)
         case 0066:   // adx6
         case 0067:   // adx7
           {
-#ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX [n] = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
                                  I_ZNOC,
                                  & cpu.cu.IR, & ovf);
-            //if (ovf && tstOVFfault ())
-              //{
-                //SET_I_OFLOW;
-                //doFault (FAULT_OFL, 0, "adxn overflow fault");
-              //}
             overflow (ovf, false, "adxn overflow fault");
-#else
-            bool ovf;
-            uint32 n = opcode & 07;  // get n
-            word18 ir = cpu.cu.IR;
-            word18 tmp = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
-                                 I_ZNOC,
-                                 & ir, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "adxn overflow fault");
-              }
-            cpu.rX [n] = tmp;
-            cpu.cu.IR = ir;
-#endif
           }
           break;
 
@@ -3213,32 +3172,12 @@ static t_stat DoBasicInstruction (void)
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
             //    C(Xn) + C(Y)0,17 -> C(Y)0,17
-#ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 tmp18 = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
                                    I_ZNOC, & cpu.cu.IR, & ovf);
             SETHI (cpu.CY, tmp18);
-            //if (ovf && tstOVFfault ())
-              //{
-                //SET_I_OFLOW;
-                //doFault (FAULT_OFL, 0, "asxn overflow fault");
-              //}
             overflow (ovf, true, "asxn overflow fault");
-#else
-            bool ovf;
-            uint32 n = opcode & 07;  // get n
-            word18 ir = cpu.cu.IR;
-            word18 tmp18 = Add18b (cpu.rX [n], GETHI (cpu.CY), 0,
-                                   I_ZNOC, & ir, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "asxn overflow fault");
-              }
-            SETHI (cpu.CY, tmp18);
-            cpu.cu.IR = ir;
-#endif
           }
           break;
 
@@ -3461,31 +3400,11 @@ static t_stat DoBasicInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code
             // C(Xn) - C(Y)0,17 -> C(Xn)
 
-#ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX [n] = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
-            //if (ovf && tstOVFfault ())
-              //{
-                //SET_I_OFLOW;
-                //doFault (FAULT_OFL, 0, "sbxn overflow fault");
-              //}
             overflow (ovf, false, "sbxn overflow fault");
-#else
-            bool ovf;
-            uint32 n = opcode & 07;  // get n
-            word18 ir = cpu.cu.IR;
-            word18 tmp = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
-                                 I_ZNOC, & ir, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "sbxn overflow fault");
-              }
-            cpu.rX [n] = tmp;
-            cpu.cu.IR = ir;
-#endif
           }
           break;
 
@@ -3557,32 +3476,12 @@ static t_stat DoBasicInstruction (void)
             // For uint32 n = 0, 1, ..., or 7 as determined by operation code
             // C(Xn) - C(Y)0,17 -> C(Y)0,17
 
-#ifdef OVERFLOW_WRITE_THROUGH
             bool ovf;
             uint32 n = opcode & 07;  // get n
             word18 tmp18 = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
                                    I_ZNOC, & cpu.cu.IR, & ovf);
             SETHI (cpu.CY, tmp18);
-            //if (ovf && tstOVFfault ())
-              //{
-                //SET_I_OFLOW;
-                //dlyDoFault (FAULT_OFL, 0, "ssxn overflow fault");
-              //}
             overflow (ovf, true, "ssxn overflow fault");
-#else
-            bool ovf;
-            uint32 n = opcode & 07;  // get n
-            word18 ir = cpu.cu.IR;
-            word18 tmp18 = Sub18b (cpu.rX [n], GETHI (cpu.CY), 1,
-                                   I_ZNOC, & ir, & ovf);
-            if (ovf && tstOVFfault ())
-              {
-                SET_I_OFLOW;
-                doFault (FAULT_OFL, 0, "ssxn overflow fault");
-              }
-            SETHI (cpu.CY, tmp18);
-            cpu.cu.IR = ir;
-#endif
           }
           break;
 
@@ -4123,14 +4022,14 @@ static t_stat DoBasicInstruction (void)
             }
             break;
 
-        case 0340:  // asnx0
-        case 0341:  // asnx1
-        case 0342:  // asnx2
-        case 0343:  // asnx3
-        case 0344:  // asnx4
-        case 0345:  // asnx5
-        case 0346:  // asnx6
-        case 0347:  // asnx7
+        case 0340:  // ansx0
+        case 0341:  // ansx1
+        case 0342:  // ansx2
+        case 0343:  // ansx3
+        case 0344:  // ansx4
+        case 0345:  // ansx5
+        case 0346:  // ansx6
+        case 0347:  // ansx7
             // For n = 0, 1, ..., or 7 as determined by operation code
             // C(Xn)i & C(Y)i -> C(Y)i for i = (0, 1, ..., 17)
             {
