@@ -603,17 +603,17 @@ int loadDeferredSegments(bool bVerbose)
         // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
-            cpu . PR[4].BITNO = 0;
-            // PR[4].CHAR = 0; // Covered by the BITNO above
-            cpu . PR[4].SNR = segno;
-            cpu . PR[4].WORDNO = 0;
+            cpu.PR[4].BIT = 0;
+            cpu.PR[4].CHAR = 0;
+            cpu.PR[4].SNR = segno;
+            cpu.PR[4].WORDNO = 0;
             
-            cpu . PR[5] = cpu . PR[4];
+            cpu.PR[5] = cpu . PR[4];
             
             int n = 4;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, GET_PR_BITNO (n));
             n = 5;
-            if (bVerbose) sim_printf("LOT => cpu . PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => cpu . PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, GET_PR_BITNO(n));
 
         }
         

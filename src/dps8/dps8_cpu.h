@@ -156,10 +156,12 @@ struct _par
     //
     // We use this to deduce the BITNO <-> CHAR/BITNO mapping.
 
-    word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
+//    word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
                     // first bit of the data item. Data items aligned on word 
                     // boundaries always have the value 0. Unaligned data
                     //  items may have any value in the range [1,35].
+    word2   CHAR;
+    word4   BIT;
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
   };
@@ -168,14 +170,6 @@ struct _par
 
 #define AR    PAR
 #define PR    PAR
-
-// Support code to access ARn . BITNO and CHAR
-
-#define GET_AR_BITNO(n) (cpu . PAR [n] . BITNO % 9)
-#define GET_AR_CHAR(n) (cpu . PAR [n] . BITNO / 9)
-#define SET_AR_BITNO(n, b) cpu . PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
-#define SET_AR_CHAR(n, c) cpu . PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
-#define SET_AR_CHAR_BIT(n, c, b) cpu . PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
 
 struct _bar
   {
@@ -1115,6 +1109,29 @@ uint setCPUnum (uint cpuNum);
 #else
 #define currentRunningCPUnum 0
 #endif
+
+// Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
+
+#define GET_PR_BITNO(n) (cpu.PAR[n].CHAR * 9 + cpu.PAR[n].BIT)
+#define GET_AR_BITNO(n) (cpu.PAR[n].BIT)
+#define GET_AR_CHAR(n) (cpu.PAR[n].CHAR)
+static inline void SET_PR_BITNO (uint n, word6 b)
+  {
+     cpu.PAR[n].BIT = (b % 9) & MASK4;
+     cpu.PAR[n].CHAR = (b / 9) & MASK2;
+  }
+static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
+  {
+     cpu.PAR[n].BIT = b & MASK4;
+     cpu.PAR[n].CHAR = c & MASK2;
+  }
+
+
+//#define GET_AR_BITNO(n) (cpu . PAR [n] . BITNO % 9)
+//#define GET_AR_CHAR(n) (cpu . PAR [n] . BITNO / 9)
+//#define SET_AR_BITNO(n, b) cpu . PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
+//#define SET_AR_CHAR(n, c) cpu . PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
+//#define SET_AR_CHAR_BIT(n, c, b) cpu . PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
 
 bool sample_interrupts (void);
 t_stat simh_hooks (void);

@@ -121,12 +121,12 @@ void doPtrReg(void)
     word3 n = GET_PRN(IWB_IRODD);  // get PRn
     word15 offset = GET_OFFSET(IWB_IRODD);
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, cpu . PAR[n].BITNO);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
     cpu . TPR.TSR = cpu . PAR[n].SNR;
     cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
     
     cpu . TPR.CA = (cpu . PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
-    cpu . TPR.TBR = cpu . PAR[n].BITNO;
+    cpu . TPR.TBR = GET_PR_BITNO (n);
     
     set_went_appending ();
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, cpu . TPR.CA, cpu . TPR.TBR, cpu . TPR.TSR, cpu . TPR.TRR);
