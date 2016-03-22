@@ -4749,7 +4749,7 @@ static t_stat DoBasicInstruction (void)
             else
                 cpu.PPR.P = 0;
             cpu.PR[7].WORDNO = 0;
-            cpu.PR[7].BIT = 0;
+            cpu.PR[7].BITNO = 0;
             cpu.PR[7].CHAR = 0;
             cpu.PPR.PRR = cpu.TPR.TRR;
             cpu.PPR.PSR = cpu.TPR.TSR;
@@ -5079,7 +5079,7 @@ static t_stat DoBasicInstruction (void)
                 if (get_addr_mode () == APPEND_mode)
                   cpu.PR[n].SNR = cpu.PPR.PSR;
                 cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
-                cpu.PR[n].BIT = 0;
+                cpu.PR[n].BITNO = 0;
                 cpu.PR[n].CHAR = 0;
                 cpu.PPR.IC = cpu.TPR.CA;
                 cpu.PPR.PSR = cpu.TPR.TSR;
@@ -5217,7 +5217,7 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[1].RNR = cpu.TPR.TRR;
             cpu.PR[1].SNR = cpu.TPR.TSR;
             cpu.PR[1].WORDNO = 0;
-            cpu.PR[1].BIT = 0;
+            cpu.PR[1].BITNO = 0;
             cpu.PR[1].CHAR = 0;
             break;
         case 0353:  // epbp3
@@ -5229,7 +5229,7 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[3].RNR = cpu.TPR.TRR;
             cpu.PR[3].SNR = cpu.TPR.TSR;
             cpu.PR[3].WORDNO = 0;
-            cpu.PR[3].BIT = 0;
+            cpu.PR[3].BITNO = 0;
             cpu.PR[3].CHAR = 0;
             break;
         case 0371:  // epbp5
@@ -5241,7 +5241,7 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[5].RNR = cpu.TPR.TRR;
             cpu.PR[5].SNR = cpu.TPR.TSR;
             cpu.PR[5].WORDNO = 0;
-            cpu.PR[5].BIT = 0;
+            cpu.PR[5].BITNO = 0;
             cpu.PR[5].CHAR = 0;
             break;
         case 0373:  // epbp7
@@ -5253,7 +5253,7 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[7].RNR = cpu.TPR.TRR;
             cpu.PR[7].SNR = cpu.TPR.TSR;
             cpu.PR[7].WORDNO = 0;
-            cpu.PR[7].BIT = 0;
+            cpu.PR[7].BITNO = 0;
             cpu.PR[7].CHAR = 0;
             break;
 
@@ -5621,7 +5621,7 @@ static t_stat DoBasicInstruction (void)
                 uint32 n = opcode & 03;  // get n
                 cpu.PR[n].WORDNO += GETHI(cpu.CY);
                 cpu.PR[n].WORDNO &= MASK18;
-                cpu.PR[n].BIT = 0;
+                cpu.PR[n].BITNO = 0;
                 cpu.PR[n].CHAR = 0;
             }
             break;
@@ -5637,7 +5637,7 @@ static t_stat DoBasicInstruction (void)
                 uint32 n = (opcode & MASK3) + 4U;  // get n
                 cpu.PR[n].WORDNO += GETHI(cpu.CY);
                 cpu.PR[n].WORDNO &= MASK18;
-                cpu.PR[n].BIT = 0;
+                cpu.PR[n].BITNO = 0;
                 cpu.PR[n].CHAR = 0;
             }
             break;
@@ -6896,7 +6896,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[0].RNR = cpu.TPR.TRR;
             cpu.PR[0].SNR = cpu.TPR.TSR;
             cpu.PR[0].WORDNO = 0;
-            cpu.PR[0].BIT = 0;
+            cpu.PR[0].BITNO = 0;
             cpu.PR[0].CHAR = 0;
             break;
         case 0352:  // epbp2
@@ -6908,7 +6908,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[2].RNR = cpu.TPR.TRR;
             cpu.PR[2].SNR = cpu.TPR.TSR;
             cpu.PR[2].WORDNO = 0;
-            cpu.PR[2].BIT = 0;
+            cpu.PR[2].BITNO = 0;
             cpu.PR[2].CHAR = 0;
             break;
         case 0370:  // epbp4
@@ -6920,7 +6920,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[4].RNR = cpu.TPR.TRR;
             cpu.PR[4].SNR = cpu.TPR.TSR;
             cpu.PR[4].WORDNO = 0;
-            cpu.PR[4].BIT = 0;
+            cpu.PR[4].BITNO = 0;
             cpu.PR[4].CHAR = 0;
             break;
         case 0372:  // epbp6
@@ -6932,7 +6932,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[6].RNR = cpu.TPR.TRR;
             cpu.PR[6].SNR = cpu.TPR.TSR;
             cpu.PR[6].WORDNO = 0;
-            cpu.PR[6].BIT = 0;
+            cpu.PR[6].BITNO = 0;
             cpu.PR[6].CHAR = 0;
             break;
 
@@ -7387,7 +7387,7 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get n
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
                 cpu.AR[n].CHAR = getbits36 (cpu.CY, 18, 2);
-                cpu.AR[n].BIT = getbits36 (cpu.CY, 20, 4);
+                cpu.AR[n].BITNO = getbits36 (cpu.CY, 20, 4);
             }
             break;
 
@@ -7398,7 +7398,7 @@ static t_stat DoEISInstruction (void)
                 word36 tmp36 = cpu.Yblock8[n];
                 cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
                 cpu.AR[n].CHAR = getbits36 (tmp36, 18, 2);
-                cpu.AR[n].BIT = getbits36 (tmp36, 20, 4);
+                cpu.AR[n].BITNO = getbits36 (tmp36, 20, 4);
             }
             break;
 
@@ -7415,7 +7415,6 @@ static t_stat DoEISInstruction (void)
         case 0666:  // beware!!!! :-)
         case 0667:
             {
-sim_printf ("NARn CY %012llo\n", cpu.CY);
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 uint32 n = opcode & 07;  // get
@@ -7428,14 +7427,13 @@ sim_printf ("NARn CY %012llo\n", cpu.CY);
                 uint TN = getbits36 (cpu.CY, 21, 1); // C(Y) 21
                 uint CN = getbits36 (cpu.CY, 18, 3); // C(Y) 18-20
 
-sim_printf ("NARn CY %012llo TN %o CN %o\n", cpu.CY, TN, CN);
                 switch(TN)
                 {
                     case CTN4:   // 1
                         // If C(Y)21 = 1 (TN code = 1), then
                         //   (C(Y)18,20) / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
-sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * (CN % 2) + 1);
+
                         // According to AL39, CN is translated:
                         //  CN   CHAR  BIT
                         //   0      0    1
@@ -7472,11 +7470,9 @@ sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * 
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
-sim_printf ("NARn9 CHAR %o %d. BIT %o %d.\n", CN, CN, 0, 0);
                         SET_AR_CHAR_BITNO (n, CN, 0);
                         break;
                 }
-sim_printf ("NARn BITNO %o\n", GET_PR_BITNO(n));
             }
             break;
 
@@ -7612,7 +7608,7 @@ sim_printf ("NARn BITNO %o\n", GET_PR_BITNO(n));
                 word36 arx = 0;
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
                 putbits36 (& arx, 18,  2, cpu.PR[n].CHAR);
-                putbits36 (& arx, 20,  4, cpu.PR[n].BIT);
+                putbits36 (& arx, 20,  4, cpu.PR[n].BITNO);
                 cpu.Yblock8[n] = arx;
             }
             break;

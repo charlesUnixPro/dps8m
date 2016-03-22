@@ -161,7 +161,7 @@ struct _par
                     // boundaries always have the value 0. Unaligned data
                     //  items may have any value in the range [1,35].
     word2   CHAR;
-    word4   BIT;
+    word4   BITNO;
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
   };
@@ -1112,17 +1112,17 @@ uint setCPUnum (uint cpuNum);
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
 
-#define GET_PR_BITNO(n) (cpu.PAR[n].CHAR * 9 + cpu.PAR[n].BIT)
-#define GET_AR_BITNO(n) (cpu.PAR[n].BIT)
+#define GET_PR_BITNO(n) (cpu.PAR[n].CHAR * 9 + cpu.PAR[n].BITNO)
+#define GET_AR_BITNO(n) (cpu.PAR[n].BITNO)
 #define GET_AR_CHAR(n) (cpu.PAR[n].CHAR)
 static inline void SET_PR_BITNO (uint n, word6 b)
   {
-     cpu.PAR[n].BIT = (b % 9) & MASK4;
+     cpu.PAR[n].BITNO = (b % 9) & MASK4;
      cpu.PAR[n].CHAR = (b / 9) & MASK2;
   }
 static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
   {
-     cpu.PAR[n].BIT = b & MASK4;
+     cpu.PAR[n].BITNO = b & MASK4;
      cpu.PAR[n].CHAR = c & MASK2;
   }
 
