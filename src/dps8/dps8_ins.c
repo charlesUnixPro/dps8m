@@ -1,4 +1,4 @@
-#define ISOLTS_BITNO
+//#define ISOLTS_BITNO
 
 /**
  * \file dps8_ins.c
@@ -5768,6 +5768,8 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0001:   // mme
+            if (sim_deb_mme_cntdwn > 0)
+              sim_deb_mme_cntdwn --;
             // Causes a fault that fetches and executes, in absolute mode, the
             // instruction pair at main memory location C+4. The value of C is
             // obtained from the FAULT VECTOR switches on the processor
@@ -7373,12 +7375,15 @@ static t_stat DoEISInstruction (void)
 	  // in BITNO format, not CHAR/BITNO.
             {
                 uint32 n = opcode & 07;  // get n
-#ifdef ISOLTS_BITNO
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
-                                 (word2)bitfieldExtract36(cpu.CY, 16, 2));
+#ifdef ISOLTS_BITNO
+                if (getbits36 (cpu.CY, 18, 6) == MASK6)
+                  cpu.AR[n].BITNO = getbits36 (cpu.CY, 18, 6);
+                else
+                  SET_AR_CHAR_BIT (n,
+                                   getbits36 (cpu.CY, 18, 2),
+                                   getbits36 (cpu.CY, 20, 4));
 #else
-                cpu.AR[n].WORDNO = getbits36 (cpu.CY, 0, 18);
                 cpu.AR[n].BITNO = getbits36 (cpu.CY, 18, 6);
 #endif
             }
@@ -7392,14 +7397,8 @@ static t_stat DoEISInstruction (void)
             {
                 word36 tmp36 = cpu.Yblock8[n];
 
-#ifdef ISOLTS_BITNO
-                cpu.AR[n].WORDNO = GETHI(tmp36);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
-                                 (word2)bitfieldExtract36(tmp36, 16, 2));
-#else
                 cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
                 cpu.AR[n].BITNO = getbits36 (tmp36, 18, 6);
-#endif
             }
             break;
 
@@ -7576,13 +7575,18 @@ sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
 	  // in BITNO format, not CHAR/BITNO.
             {
                 uint32 n = opcode & 07;  // get n
-#ifdef ISOLTS_BITNO
-                cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
-                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
-#else
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
-                putbits36 (& cpu.CY, 18,  6, cpu.PR[n].BITNO);
+#ifdef ISOLTS_BITNO
+                if (cpu.AR[n].BITNO == MASK6)
+                  putbits36 (& cpu.CY, 18, 6, cpu.AR[n].BITNO);
+                else
+                 {
+                   putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
+                   putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
+                 }
+                
+#else
+                putbits36 (& cpu.CY, 18, 6, cpu.AR[n].BITNO);
 #endif
             }
             break;
@@ -7594,14 +7598,8 @@ sim_printf ("NARn BITNO %o\n", cpu.PR[n].BITNO);
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
-#ifdef ISOLTS_BITNO
-                arx = bitfieldInsert36(arx, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
-                arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
-#else
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
                 putbits36 (& arx, 18,  6, cpu.PR[n].BITNO);
-#endif
                 cpu.Yblock8[n] = arx;
             }
             break;
