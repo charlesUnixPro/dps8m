@@ -7335,7 +7335,31 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         //   C(Y)18,20 / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
-                        SET_AR_CHAR_BITNO (n,  CN / 2, 4 * (CN % 2) + 1);
+
+                        // According to AL39, CN is translated:
+                        //  CN   CHAR  BIT
+                        //   0      0    1
+                        //   1      0    5
+                        //   2      1    1
+                        //   3      1    5
+                        //   4      2    1
+                        //   5      2    5
+                        //   6      3    1
+                        //   7      3    5
+                        //SET_AR_CHAR_BITNO (n, CN/2, 4 * (CN % 2) + 1);
+
+                        // According to ISOLTS ps805
+                        //  CN   CHAR  BIT
+                        //   0      0    0
+                        //   1      0    5
+                        //   2      1    0
+                        //   3      1    5
+                        //   4      2    0
+                        //   5      2    5
+                        //   6      3    0
+                        //   7      3    5
+                        SET_AR_CHAR_BITNO (n, CN/2, (CN % 2) ? 5 : 0);
+                        
                         break;
 
                     case CTA6:  // 1
