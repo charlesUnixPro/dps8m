@@ -1281,6 +1281,9 @@ static void cleanupOperandDescriptor (int k)
 // For a4bd/s4bd, the world is made of 32 bit words, so the address space
 // is 2^18 * 32 bits
 #define n4bits (1 << 23)
+// For a4bd/s4bd, the world is made of 8 4-bitcharacter words, so the address space
+// is 2^18 * 8 characters
+#define n4chars (1 << 21)
 // For axbd/sxbd, the world is made of 36 bits words, so the address space
 // is 2^18 * 36 bits
 #define nxbits ((1 << 18) * 36)
@@ -1295,32 +1298,69 @@ static int cntFromBit[36] = {
 
 static int bitFromCnt[8] = {1, 5, 10, 14, 19, 23, 28, 32};
 
+static int testno = 0;
+
 void a4bd (void)
   {
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd test no %d\n", ++testno);
+
+    // 8 4-bit characters/word
+
     uint ARn = GET_ARN (cpu . cu . IWB);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
-    uint reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
-                                  // au, qu, al, ql, xn)
-    // r is the count of characters
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd address %o %d.\n", address, address);
+
+    // 4-bit register modification (None except 
+    // au, qu, al, ql, xn)
+    uint reg = GET_TD (cpu . cu . IWB);
+    // r is the count of 4bit characters
     int32_t r = getCrAR (reg);
+
     r = SIGNEXT22_32 (r);
-  
-    uint augend = 0;
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd r %o %d.\n", r, r);
+
+    uint augend = 0; // in 4bit characters
     if (GET_A (cpu . cu . IWB))
        {
-         augend = cpu.AR[ARn].WORDNO * 32u + cntFromBit [GET_PR_BITNO (ARn)];
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd AR%d WORDNO %o %d. CHAR %o BITNO %o\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO);
+
+         //augend = cpu.AR[ARn].WORDNO * 32u + cntFromBit [GET_PR_BITNO (ARn)];
          // force to 4 bit character boundary
-         augend = augend & ~3;
+         //augend = augend & ~3;
+         augend = cpu.AR[ARn].WORDNO * 8 + cpu.AR[ARn].CHAR * 2;
+
+         if (cpu.AR[ARn].BITNO >= 5)
+           augend ++;
        }
-    int32_t addend = address * 32 + r * 4;
+
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd augend %o %d.\n", augend, augend);
+
+    int32_t addend = address * 8 + r;  // in characters
+
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd addend %o %d.\n", addend, addend);
+
     int32_t sum = augend + addend;
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd sum %o %d.\n", sum, sum);
+
 
     // Handle over/under flow
     while (sum < 0)
-      sum += n4bits;
-    sum = sum % n4bits;
+      sum += n4chars;
+    sum = sum % n4chars;
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd sum %o %d.\n", sum, sum);
 
-    cpu . AR [ARn] . WORDNO = (sum / 32) & AMASK;
+
+    cpu.AR[ARn].WORDNO = (sum / 8) & AMASK;
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd WORDNO %o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO);
 
 //    // 0aaaabbbb0ccccdddd0eeeeffff0gggghhhh
 //    //             111111 11112222 22222233
@@ -1330,10 +1370,19 @@ void a4bd (void)
 //                           19, 20, 21, 22, 23, 24, 25, 26,
 //                           28, 29, 30, 31, 32, 33, 34, 35};
 //
-    uint bitno = sum % 32;
+    //uint bitno = sum % 32;
 //    AR [ARn] . BITNO = tab [bitno];
     //cpu . AR [ARn] . BITNO = bitFromCnt[bitno % 8];
-    SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
+    //SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
+    uint char4no = sum % 8;
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd char4no %d.\n", char4no);
+
+    SET_AR_CHAR_BITNO (ARn, char4no / 2, (char4no % 2) ? 5 : 0);
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd CHAR %o %d.\n", cpu.AR[ARn].CHAR, cpu.AR[ARn].CHAR);
+//if (currentRunningCPUnum)
+//sim_printf ("a4bd BITNO %o %d.\n", cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
   }
 
 
@@ -1378,7 +1427,6 @@ void s4bd (void)
     SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
   }
 
-static int testno = 0;
 void axbd (uint sz)
   {
 if (currentRunningCPUnum)
