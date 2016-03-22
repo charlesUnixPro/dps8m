@@ -7436,7 +7436,30 @@ sim_printf ("NARn CY %012llo TN %o CN %o\n", cpu.CY, TN, CN);
                         //   (C(Y)18,20) / 2 -> C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 -> C(ARn.BITNO)
 sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * (CN % 2) + 1);
-                        SET_AR_CHAR_BITNO (n,  CN / 2, 4 * (CN % 2) + 1);
+                        // According to AL39, CN is translated:
+                        //  CN   CHAR  BIT
+                        //   0      0    1
+                        //   1      0    5
+                        //   2      1    1
+                        //   3      1    5
+                        //   4      2    1
+                        //   5      2    5
+                        //   6      3    1
+                        //   7      3    5
+                        //SET_AR_CHAR_BITNO (n, CN/2, 4 * (CN % 2) + 1);
+
+                        // According to ISOLTS ps805
+                        //  CN   CHAR  BIT
+                        //   0      0    0
+                        //   1      0    5
+                        //   2      1    0
+                        //   3      1    5
+                        //   4      2    0
+                        //   5      2    5
+                        //   6      3    0
+                        //   7      3    5
+                        SET_AR_CHAR_BITNO (n, CN/2, (CN % 2) ? 5 : 0);
+                        
                         break;
 
                     case CTN9:  // 0
@@ -7444,6 +7467,8 @@ sim_printf ("NARn4 CHAR %o %d. BIT %o %d.\n", CN/2, CN/2, 4 * (CN % 2) + 1, 4 * 
                         // illegal procedure fault occurs.
                         if ((CN & 1) != 0)
                           doFault (FAULT_IPR, FR_ILL_PROC, "narn N9 and CN odd");
+                        // The character number is in bits 18-19; recover it
+                        CN >>= 1;
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
@@ -7570,21 +7595,13 @@ sim_printf ("NARn BITNO %o\n", GET_PR_BITNO(n));
             //For n = 0, 1, ..., or 7 as determined by operation code
             //  C(ARn) -> C(Y)0,23
             //  C(Y)24,35 -> unchanged
-
-	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
-	  // in BITNO format, not CHAR/BITNO.
             {
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
-                if (cpu.AR[n].BIT == MASK6)
-                  putbits36 (& cpu.CY, 18, 6, cpu.AR[n].BIT);
-                else
-                 {
-                   putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
-                   putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
-                 }
+                putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
+                putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
+                break;
             }
-            break;
 
         case 0443:  // sareg - Store Address Registers
 	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
