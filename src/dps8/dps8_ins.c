@@ -7660,7 +7660,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0507:  // awd Add  word Displacement to Address Register
-          axbd (36);
+          awd ();
           break;
 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register

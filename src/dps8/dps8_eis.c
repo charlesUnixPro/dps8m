@@ -1378,9 +1378,9 @@ void s4bd (void)
     SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
   }
 
+static int testno = 0;
 void axbd (uint sz)
   {
-static int testno = 0;
 if (currentRunningCPUnum)
 sim_printf ("axbd test no %d\n", ++testno);
 
@@ -1421,7 +1421,8 @@ if (currentRunningCPUnum)
 sim_printf ("axbd augend 0%o\n", augend);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o\n", augend);
     // force to character boundary
-    if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
+    //if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
+    if (sz == 9 || GET_A (cpu . cu . IWB))
       {
         augend = (augend / sz) * sz;
 if (currentRunningCPUnum)
@@ -1453,6 +1454,61 @@ sim_printf ("axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     SET_PR_BITNO (ARn, sum % 36);
 if (currentRunningCPUnum)
 sim_printf ("axbd WORDNO 0%o %d. BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_PR_BITNO (ARn), GET_PR_BITNO (ARn));
+  }
+
+void awd (void)
+  {
+//if (currentRunningCPUnum)
+//sim_printf ("awd test no %d\n", ++testno);
+
+    uint ARn = GET_ARN (cpu.cu.IWB);
+    int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
+    // 4-bit register modification (None except 
+    // au, qu, al, ql, xn)
+    uint reg = GET_TD (cpu.cu.IWB);
+    // r is the count of characters
+    int32_t r = getCrAR (reg);
+
+//if (currentRunningCPUnum)
+//sim_printf ("awd r 0%o %d.\n", r, r);
+
+    r = SIGNEXT18_32 (r);
+
+//if (currentRunningCPUnum)
+//sim_printf ("awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
+
+  
+    uint augend = 0;
+    if (GET_A (cpu . cu . IWB))
+      {
+//if (currentRunningCPUnum)
+//sim_printf ("awd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+
+       sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+
+       //augend = cpu . AR [ARn] . WORDNO * 36 + GET_PR_BITNO (ARn);
+       augend = cpu . AR [ARn] . WORDNO;
+      }
+
+//if (currentRunningCPUnum)
+//sim_printf ("awd augend 0%o\n", augend);
+
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o\n", augend);
+
+    int32_t addend = address + r;
+    int32_t sum = augend + addend;
+
+//if (currentRunningCPUnum)
+//sim_printf ("awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+
+    cpu . AR [ARn] . WORDNO = sum & AMASK;
+    SET_PR_BITNO (ARn, 0);
+
+//if (currentRunningCPUnum)
+//sim_printf ("awd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+
   }
 
 void sxbd (uint sz)
