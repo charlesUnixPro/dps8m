@@ -7672,7 +7672,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0520:  // s9bd   Subtract 9-bit Displacement from Address Register
-          sxbd (9);
+          s9bd ();
           break;
 
         case 0523:  // sbd Subtract   bit Displacement from Address Register
@@ -7680,7 +7680,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0527:  // swd Subtract  word Displacement from Address Register
-          sxbd (36);
+          swd ();
           break;
 
         /// EIS = Alphanumeric Compare
