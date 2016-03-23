@@ -7656,7 +7656,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0503:  // abd  Add bit Displacement to Address Register
-          axbd (1);
+          abd ();
           break;
 
         case 0507:  // awd Add  word Displacement to Address Register
