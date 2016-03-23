@@ -104,6 +104,13 @@ UTItype __umodti3(UTItype div, UTItype dvd)
 TItype __multi3 (TItype u, TItype v)
 {
 	TItype result = (TItype)0;
+	int sign = 1;
+
+	if(u<0)
+	{
+		sign = -1;
+		u = -u;
+	}
 
 	while (u!=(TItype)0)
 	{
@@ -113,7 +120,11 @@ TItype __multi3 (TItype u, TItype v)
 		v<<=1;
 	}
 
-	return result;
+	if ( sign < 0 )
+		return -result;
+	else
+		return result;
+
 }
 #endif
 
