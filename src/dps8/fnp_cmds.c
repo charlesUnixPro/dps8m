@@ -320,7 +320,7 @@ while (fnpQueue) {
         }
         if (p2 != 0 && p2 != 1)
         {
-            sim_printf("err: full_duplex p2 (%d) != [0..1]\n", p2);
+            sim_printf("err: handle_quit p2 (%d) != [0..1]\n", p2);
             goto scpe_arg; 
         }
         MState . line [p1] . handleQuit = !! p2;
@@ -362,7 +362,7 @@ while (fnpQueue) {
         }
         if (p2 != 0 && p2 != 1)
         {
-            sim_printf("err: full_duplex p2 (%d) != [0..1]\n", p2);
+            sim_printf("err: echoplex p2 (%d) != [0..1]\n", p2);
             goto scpe_arg; 
         }
         MState . line [p1] . echoPlex = !! p2;
