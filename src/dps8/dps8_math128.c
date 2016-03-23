@@ -52,13 +52,13 @@ TItype __divti3(TItype div, TItype dvd)
 {
 	int sign=1;
 
-	if (div < 0)
+	if (div < (TItype)0)
 	{
 		sign = -1;
 		div = -div;
 	}
 
-	if (dvd < 0) 
+	if (dvd < (TItype)0) 
 	{
 		sign = -sign;
 		dvd = -dvd;
@@ -74,13 +74,13 @@ TItype __modti3(TItype div, TItype dvd)
 {
         int sign=1;
 
-        if (div < 0)
+        if (div < (TItype)0)
 	{
                 sign = -1;
 		div = -div;
 	}
 
-        if (dvd < 0)
+        if (dvd < (TItype)0)
 	{
                 sign = -sign;
 		dvd = -dvd;
@@ -105,9 +105,9 @@ TItype __multi3 (TItype u, TItype v)
 {
 	TItype result = (TItype)0;
 
-	while (u)
+	while (u!=(TItype)0)
 	{
-		if( u&1 )
+		if( u&(TItype)1 )
 			result += v;
 		u>>=1;
 		v<<=1;
