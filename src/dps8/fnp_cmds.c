@@ -721,7 +721,7 @@ while (fnpQueue) {
         char * data = unpack (arg3, 1, & retSize);
         if (retSize > FC_STR_SZ)
           {
-            sim_printf ("data sz (%lu) truncated\n", retSize);
+            sim_printf ("data sz (%lu) truncated\n", (long) retSize);
             retSize = FC_STR_SZ;
           }
         memcpy (MState . line [p1] . outputSuspendStr, data, retSize);
@@ -730,7 +730,7 @@ while (fnpQueue) {
         data = unpack (arg3, 2, & retSize);
         if (retSize > FC_STR_SZ)
           {
-            sim_printf ("data sz (%lu) truncated\n", retSize);
+            sim_printf ("data sz (%lu) truncated\n", (long) retSize);
             retSize = FC_STR_SZ;
           }
         memcpy (MState . line [p1] . outputResumeStr, data, retSize);

@@ -52,7 +52,7 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-//#define SPEED
+#define SPEED
 
 // Enable history debugger
 #define HDBG

@@ -477,7 +477,7 @@ ddcws:;
     tape_statep -> words_processed = 0;
     if (unitp->flags & UNIT_WATCH)
       sim_printf ("Tape %ld reads record %d\n",
-                  MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                  (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
     tape_statep -> io_mode = read_mode;
 
 
@@ -741,7 +741,7 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     tape_statep -> rec_num ++;
     if (unitp->flags & UNIT_WATCH)
       sim_printf ("Tape %ld writes record %d\n",
-                  MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                  (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
     p -> stati = 04000;
     if (sim_tape_wrp (unitp))
@@ -1360,7 +1360,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             tape_statep -> rec_num += skipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld forward skips to record %d\n",
-                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                          (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> tallyResidue = tally - skipped;
 
@@ -1409,7 +1409,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             tape_statep -> rec_num += recsskipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld forward skips to record %d\n",
-                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                          (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> tallyResidue = tally - skipped;
             sim_debug (DBG_NOTIFY, & tape_dev, 
@@ -1483,7 +1483,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             tape_statep -> rec_num -= skipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld skip back to record %d\n",
-                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                          (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> tallyResidue = tally - skipped;
 
@@ -1547,7 +1547,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             tape_statep -> rec_num -= recsskipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld backward skips to record %d\n",
-                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                          (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> tallyResidue = tally - skipped;
             sim_debug (DBG_NOTIFY, & tape_dev, 
@@ -1638,7 +1638,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             tape_statep -> rec_num ++;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld writes tape mark %d\n",
-                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+                          (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
 
             p -> stati = 04000; 
             if (sim_tape_eot (unitp))
@@ -1737,7 +1737,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
 
             tape_statep -> rec_num = 0;
             if (unitp->flags & UNIT_WATCH)
-              sim_printf ("Tape %ld rewinds\n", MT_UNIT_NUM (unitp));
+              sim_printf ("Tape %ld rewinds\n", (long) MT_UNIT_NUM (unitp));
 
             p -> stati = 04000;
             if (sim_tape_wrp (unitp))
@@ -1760,7 +1760,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           {
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld unloads\n",
-                          MT_UNIT_NUM (unitp));
+                          (long) MT_UNIT_NUM (unitp));
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Rewind/unload\n", __func__);
             sim_tape_detach (unitp);
