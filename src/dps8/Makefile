@@ -1,3 +1,7 @@
+INSTALL_ROOT ?= /usr/local/
+INSTALL_BIN ?= $(INSTALL_ROOT)/bin
+
+
 include ../Makefile.mk
 
 CFLAGS += -Wall 
@@ -286,6 +290,9 @@ H_SRCS += shm.h
 
 
 all: locallibs_then_dps8 
+
+install: all
+	cp dps8 $(INSTALL_BIN)/dps8
 
 cscope:
 	cscope $(C_SRCS)
