@@ -1185,7 +1185,7 @@ void fstr(word36 *Y)
         E = -128;
         SET_I_ZERO;
         CLR_I_NEG;
-        Y = 0;
+        *Y = 0;
         putbits36 (Y, 0, 8, E & MASK8);
         return;
     }
