@@ -242,6 +242,9 @@ FMTI *searchForDevice(char *name)
     {
         if (t->inUse == false)
         {
+            if (strlen (name) == 0)
+              return t;
+
             if (t->multics.regex)    // a regex is to be used to match the device names
             {
                 bool iMatch = match_regex(& t->multics.r, name);
