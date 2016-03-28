@@ -736,7 +736,7 @@ sim_printf ("UFA m1 shifted %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (w
   //m1 ++;
 //if ((! sign) && (allones == 1))
   //m1 ++;
-if (m1 == MASK72 && notallzeros == 1)
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
   m1 = 0;
         m1 &= MASK72;
         e3 = e2;
@@ -768,7 +768,7 @@ sim_printf ("UFA m2 shifted %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (w
   //m2 ++;
 //if ((! sign) && (allones == 1))
   //m2 ++;
-if (m2 == MASK72 && notallzeros == 1)
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
   m2 = 0;
         m2 &= MASK72;
         e3 = e1;
