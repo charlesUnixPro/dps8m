@@ -233,14 +233,14 @@ void IEEElongdoubleToEAQ(long double f0)
 }
 #endif
 
-#ifndef QUIET_UNUSED
+//#ifndef QUIET_UNUSED
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
-double float36ToIEEEdouble(uint64_t f36)
+double float36ToIEEEdouble(word36 f36)
 {
     unsigned char E;    ///< exponent
-    uint64_t M;         ///< mantissa
+    uint64 M;         ///< mantissa
     E = (f36 >> 28) & 0xff;
     M = f36 & 01777777777LL;
     if (M == 0)
@@ -270,7 +270,7 @@ double float36ToIEEEdouble(uint64_t f36)
     
     return (S ? -1 : 1) * ldexp(m, e);
 }
-#endif
+//#endif
 
 #ifndef QUIET_UNUSED
 /*!
@@ -665,7 +665,7 @@ if(currentRunningCPUnum)
 sim_printf ("UFA returning %03o %012llo %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 #else
-void ufa (void)
+void ufa (bool sub)
 {
     // C(EAQ) + C(Y) → C(EAQ)
     // The ufa instruction is executed as follows:
@@ -685,9 +685,13 @@ void ufa (void)
 
 static int testno = 1;
 if (currentRunningCPUnum)
-sim_printf ("UFA testno %d\n", testno ++);
+sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
 if (currentRunningCPUnum)
 sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
+if (currentRunningCPUnum)
+sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
@@ -732,10 +736,6 @@ sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
 if (currentRunningCPUnum)
 sim_printf ("UFA m1 shifted %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
-//if (sign && (notallzeros == 1))
-  //m1 ++;
-//if ((! sign) && (allones == 1))
-  //m1 ++;
 if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
   m1 = 0;
         m1 &= MASK72;
@@ -768,8 +768,16 @@ sim_printf ("UFA m2 shifted %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (w
   //m2 ++;
 //if ((! sign) && (allones == 1))
   //m2 ++;
+//if (sub)
+//{
+//if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  //m2 = 0;
+//}
+//else
+{
 if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
   m2 = 0;
+}
         m2 &= MASK72;
         e3 = e1;
 if (currentRunningCPUnum)
@@ -784,7 +792,14 @@ sim_printf ("UFA e3 %d\n", e3);
 
     //m3 = m1 + m2;
     bool ovf;
-    word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+    word72 m3;
+    if (sub)
+      m3 = Sub72b (m1, m2, 1, I_CARRY, & cpu.cu.IR, & ovf);
+    else
+      m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+
+if (currentRunningCPUnum)
+sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
 
     if (ovf)
     {
@@ -836,11 +851,19 @@ sim_printf ("UFA returning E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ
 }
 #endif
 
+#if 0
 /*!
  * unnormalized floating single-precision subtract
  */
 void ufs (void)
 {
+static int testno = 1;
+if (currentRunningCPUnum)
+sim_printf ("UFS testno %d\n", testno ++);
+if (currentRunningCPUnum)
+sim_printf ("UFS E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("UFS Y %lf\n", float36ToIEEEdouble (cpu.CY));
     //! The ufs instruction is identical to the ufa instruction with the exception that the twos complement of the mantissa of the operand from main memory (op2) is used.
     
     //! They're probably a few gotcha's here but we'll see.
@@ -862,6 +885,8 @@ void ufs (void)
     word36 m2c = ~m2 + 1;     ///< & 01777777777LL;     ///< take 2-comp of mantissa
     m2c &= FLOAT36MASK;
    
+if (currentRunningCPUnum)
+sim_printf ("UFS m2 %012llo m2c %02llo\n", m2, m2c);
     /*
      * When signs are the *same* after complement we have an overflow
      * (Treat as in addition when we get an overflow)
@@ -870,6 +895,8 @@ void ufs (void)
 
     if (ov && m2 != 0)
     {
+if (currentRunningCPUnum)
+sim_printf ("UFS overflow\n");
         //sim_printf ("OV\n");
         //int8   e = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
         int e = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
@@ -899,6 +926,7 @@ void ufs (void)
     ufa();
 
 }
+#endif
 
 /*
  * floating normalize ...
@@ -943,6 +971,7 @@ void fno (void)
         }
         else
         {
+            CLR_I_ZERO;
             if (cpu . rE == 127)
             {
                 SET_I_EOFL;
@@ -955,7 +984,7 @@ void fno (void)
 
         cpu . rA = (m >> 36) & MASK36;
         cpu . rQ = m & MASK36;
-        SC_I_NEG (cpu . rA & SIGN72);
+        SC_I_NEG (cpu . rA & SIGN36);
 
         return;
     }

@@ -1123,6 +1123,13 @@ static void parseNumericOperandDescriptor (int k)
     if (N == 0)
       doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=0");
 
+// Causes:
+//DBG(662088814)> CPU0 FAULT: Fault 10(012), sub 4294967296(040000000000), dfc N, 'parseNumericOperandDescriptor N=1 S=0|1|2'^M
+//DBG(662088814)> CPU0 FAULT: 00257:004574 bound_process_env_:command_query_+04574^M
+//DBG(662088814)> CPU0 FAULT:       664 end print_question;^M
+//DBG(662088814)> CPU0 FAULT: 00257:004574 4 000100301500 (BTD PR0|100) 000100 301(1) 0 0 0 00^M
+
+#ifdef ISOLTS
     if (N == 1 && (S == 0 || S == 1 || S == 2))
       doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=1 S=0|1|2");
 
@@ -1131,6 +1138,7 @@ static void parseNumericOperandDescriptor (int k)
 
     if (N == 3 && S == 0 && TN == 1)
       doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+#endif
 
 
     uint effBITNO = 0;

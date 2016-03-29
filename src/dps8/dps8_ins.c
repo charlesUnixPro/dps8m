@@ -4503,7 +4503,7 @@ static t_stat DoBasicInstruction (void)
             // followed by a fno instruction.
             // (Heh, heh. We'll see....)
 
-            ufa();
+            ufa(false);
             fno ();
 
             break;
@@ -4511,7 +4511,7 @@ static t_stat DoBasicInstruction (void)
         case 0435:  // ufa
             // C(EAQ) + C(Y) -> C(EAQ)
 
-            ufa();
+            ufa(false);
             break;
 
         /// Floating-Point Subtraction
@@ -4534,7 +4534,8 @@ static t_stat DoBasicInstruction (void)
         case 0575:  // fsb
             // The fsb instruction may be thought of as an ufs instruction
             // followed by a fno instruction.
-            ufs ();
+            //ufs ();
+            ufa (true);
             fno ();
 
             break;
@@ -4542,7 +4543,8 @@ static t_stat DoBasicInstruction (void)
         case 0535:  // ufs
             // C(EAQ) - C(Y) -> C(EAQ)
 
-            ufs ();
+            //ufs ();
+            ufa (true);
             break;
 
         /// Floating-Point Multiplication
