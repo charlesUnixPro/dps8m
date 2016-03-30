@@ -3,7 +3,7 @@
 #define DECDPUN     8
 #define DECBUFFER   32
     
-#define DECNUMDIGITS    64
+#define DECNUMDIGITS    126
     
 #include "decNumber.h"        // base number library
 #include "decNumberLocal.h"   // decNumber local types, etc.
