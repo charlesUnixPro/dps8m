@@ -864,6 +864,15 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       }
                       break;
 
+                    case 22: // line_control
+                      {
+                        word36 command_data0 = smbxp -> command_data [0];
+                        word36 command_data1 = smbxp -> command_data [1];
+                        char cmd [256];
+                        sprintf (cmd, "line_control %d %012llo %012llo", slot_no, command_data0, command_data1);
+                        tellFNP (devUnitIdx, cmd);          
+                      }
+
 #if 1
                     case 24: // set_echnego_break_table
                       {
@@ -1373,7 +1382,6 @@ word36 pad;
                     case 19: // dump_mem
                     case 20: // patch_mem
                     case 21: // fnp_break
-                    case 22: // line_control
                     case 23: // sync_msg_size
                     //case 24: // set_echnego_break_table
                     //case 25: // start_negotiated_echo
