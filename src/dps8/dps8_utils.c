@@ -1968,6 +1968,9 @@ char * strdupesc (const char * str)
           * p = '"';
         else if (p [1] == 'z')       //  \z    ^D  eof (VAXism)
           * p = '\004';
+        else if (p [1] == 'k')       //  \k    caret
+          * p = '^';
+
 #if 0
         else if (p [1] == 'T' && p [2] == 'Z')  // \TZ   time zone
           {
