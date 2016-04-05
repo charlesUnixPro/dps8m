@@ -31,4 +31,9 @@ LDFLAGS = -g
 #CFLAGS += -pg
 #LDFLAGS += -pg
 
+MAKEFLAGS += --no-print-directory
+
+%.o : %.c
+	@echo CC $<
+	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
