@@ -444,6 +444,7 @@ printline:
         black=0;
         GLOBAL_ADD=0;
 
+#if 0
         /* +1 for roundoff , using floating point point units */
         if (GLOBAL_YPOS <= (GLOBAL_PAGE_MARGIN_BOTTOM + 1) &&
             strlen(buffer) != 0 &&
@@ -452,6 +453,7 @@ printline:
             end_page ();
             start_page ();
           }
+#endif
         buffer [i ++] = 0;
         printstring (buffer);
         printf ("'\n");
@@ -808,11 +810,11 @@ int main(int argc, char **argv) {
        int c;
    GLOBAL_PAGE_DEPTH =        612.0;
    GLOBAL_PAGE_WIDTH =        792.0;      /* Default is 72 points per inch */
-   GLOBAL_PAGE_MARGIN_TOP =    36.0;
-   GLOBAL_PAGE_MARGIN_BOTTOM = 36.0;
+   GLOBAL_PAGE_MARGIN_TOP =    36.0 -24.0;
+   GLOBAL_PAGE_MARGIN_BOTTOM = 36.0 -24.0;
    GLOBAL_PAGE_MARGIN_LEFT =   40.0 -14.0;
    GLOBAL_PAGE_MARGIN_RIGHT =  39.0 -14.0;
-   GLOBAL_LINES_PER_PAGE=      60.0;
+   GLOBAL_LINES_PER_PAGE=      64.0;
    GLOBAL_GRAY_SCALE=           0.800781; /* gray-scale value */
 
 

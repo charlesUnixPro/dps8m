@@ -25,17 +25,20 @@ sim_tape.o \
 sim_timer.o \
 sim_tmxr.o
 
-CFLAGS += -Wall 
+#CFLAGS += -Wall 
+CFLAGS += -Wno-array-bounds -Wno-unevaluated-expression
+
 
 all: simh.a
 
 simh.a : $(OBJS)
-	$(AR) r $@ $?
+	@echo AR $@
+	@$(AR) cr $@ $?
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS) simh.a tags
-	-@echo ' '
+	@echo CLEAN simh
+	-@$(RM) $(OBJS) simh.a tags
 
 
 .PHONY: all clean dependents
