@@ -38,6 +38,7 @@
 #include "dps8_prt.h"
 #include "dps8_urp.h"
 #include "dps8_cable.h"
+#include "dps8_absi.h"
 #include "utlist.h"
 #ifdef HDBG
 #include "hdbg.h"
@@ -239,6 +240,7 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
+    absi_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -2166,6 +2168,7 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+    & absi_dev,
     NULL
   };
 

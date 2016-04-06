@@ -1,22 +1,21 @@
 //
-//  dps8_urp.c
-//  dps8
-//
-//  Created by Harry Reed on 6/16/13.
-//  Copyright (c) 2013 Harry Reed. All rights reserved.
+//  dps8_absi.c
 //
 
 #include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
-#include "dps8_urp.h"
+#include "dps8_absi.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
+
+#include "udplib.h"
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -32,39 +31,24 @@
  */
 
 
-#define N_PRU_UNITS 1 // default
+#define N_ABSI_UNITS 1 // default
 
-static t_stat urp_reset (DEVICE * dptr);
-static t_stat urp_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat urp_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat urp_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat urp_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat absi_reset (DEVICE * dptr);
+static t_stat absi_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat absi_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat absiAttach (UNIT *uptr, char *cptr);
+static t_stat absiDetach (UNIT *uptr);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
-UNIT urp_unit [N_URP_UNITS_MAX] =
+UNIT absi_unit [N_ABSI_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
-#define URPUNIT_NUM(uptr) ((uptr) - urp_unit)
+#define ABSIUNIT_NUM(uptr) ((uptr) - absi_unit)
 
-static DEBTAB urp_dt [] =
+static DEBTAB absi_dt [] =
   {
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
@@ -77,7 +61,7 @@ static DEBTAB urp_dt [] =
 
 #define UNIT_WATCH UNIT_V_UF
 
-static MTAB urp_mod [] =
+static MTAB absi_mod [] =
   {
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
@@ -86,32 +70,22 @@ static MTAB urp_mod [] =
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      urp_set_nunits, /* validation routine */
-      urp_show_nunits, /* display routine */
-      "Number of URPunits in the system", /* value descriptor */
+      absi_set_nunits, /* validation routine */
+      absi_show_nunits, /* display routine */
+      "Number of ABSIunits in the system", /* value descriptor */
       NULL // Help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
-      0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
-      urp_set_device_name, /* validation routine */
-      urp_show_device_name, /* display routine */
-      "Select the boot drive", /* value descriptor */
-      NULL          // help
     },
 
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
 
 
-DEVICE urp_dev = {
-    "URP",       /*  name */
-    urp_unit,    /* units */
+DEVICE absi_dev = {
+    "ABSI",       /*  name */
+    absi_unit,    /* units */
     NULL,         /* registers */
-    urp_mod,     /* modifiers */
-    N_PRU_UNITS, /* #units */
+    absi_mod,     /* modifiers */
+    N_ABSI_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */
@@ -119,14 +93,14 @@ DEVICE urp_dev = {
     36,           /* data width */
     NULL,         /* examine */
     NULL,         /* deposit */ 
-    urp_reset,   /* reset */
+    absi_reset,   /* reset */
     NULL,         /* boot */
-    NULL,         /* attach */
-    NULL,         /* detach */
+    absiAttach,         /* attach */
+    absiDetach,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
-    urp_dt,      /* debug flag names */
+    absi_dt,      /* debug flag names */
     NULL,         /* memory size change */
     NULL,         /* logical name */
     NULL,         // help
@@ -135,73 +109,119 @@ DEVICE urp_dev = {
     NULL          // description
 };
 
-#define MAX_DEV_NAME_LEN 64
-static struct urp_state
+static struct absi_state
   {
-    char device_name [MAX_DEV_NAME_LEN];
-  } urp_state [N_URP_UNITS_MAX];
+    int link;
+  } absi_state [N_ABSI_UNITS_MAX];
 
 /*
- * urp_init()
+ * absi_init()
  *
  */
 
 // Once-only initialization
 
-void urp_init (void)
+void absi_init (void)
   {
-    memset (urp_state, 0, sizeof (urp_state));
-    //for (int i = 0; i < N_URP_UNITS_MAX; i ++)
-      //urp_state [i] . urpfile = -1;
+    memset (absi_state, 0, sizeof (absi_state));
+    for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
+      absi_state [i] . link = NOLINK;
   }
 
-static t_stat urp_reset (DEVICE * dptr)
+static t_stat absi_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_urp_reset (& urp_unit [i]);
-        sim_cancel (& urp_unit [i]);
-      }
+    //absiResetRX (0);
+    //absiResetTX (0);
+
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //sim_cancel (& absi_unit [i]);
+      //}
+    // if ((uptr->flags & UNIT_ATT) != 0) sim_activate(uptr, uptr->wait);
     return SCPE_OK;
   }
 
-#ifndef QUIET_UNUSED
-// Given an array of word36 and a 9bit char offset, return the char
-
-static word9 gc (word36 * b, uint os)
-  {
-    uint wordno = os / 4;
-    uint charno = os % 4;
-    return (word9) getbits36 (b [wordno], charno * 9, 9);
-  }
-#endif
-
-static int urp_cmd (uint iomUnitIdx, uint chan)
+static int absi_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
-    UNIT * unitp = & urp_unit [devUnitIdx];
-    int urp_unit_num = URPUNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPun [urp_unit_num] . iomUnitIdx;
+    //struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+    //                  devices [chan] [p -> IDCW_DEV_CODE];
+    //uint devUnitIdx = d -> devUnitIdx;
+    //UNIT * unitp = & absi_unit [devUnitIdx];
+    //int absi_unit_num = ABSIUNIT_NUM (unitp);
 
-    sim_debug (DBG_TRACE, & urp_dev, "urp_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
+sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
+    sim_debug (DBG_TRACE, & absi_dev, "absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
 
+
+    switch (p -> IDCW_DEV_CMD)
+      {
+        case 000: // CMD 00 Request status
+          {
+            p -> stati = 04000;
+sim_printf ("absi request status\n");
+          }
+          break;
+
+        case 001: // CMD 01 Read
+          {
+            p -> stati = 04000;
+sim_printf ("absi read\n");
+          }
+          break;
+
+        case 011: // CMD 11 Write
+          {
+            p -> stati = 04000;
+sim_printf ("absi write\n");
+          }
+          break;
+
+        case 020: // CMD 20 Host switch down
+          {
+            p -> stati = 04000;
+sim_printf ("absi host switch down\n");
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+sim_printf ("absi reset status\n");
+          }
+          break;
+
+        case 060: // CMD 60 Host switch up
+          {
+            p -> stati = 04000;
+sim_printf ("absi host switch up\n");
+          }
+          break;
+
+        default:
+          {
+            sim_warn ("absi daze %o\n", p -> IDCW_DEV_CMD);
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
+          }
+          break;
+      }
+
+#if 0
     switch (p -> IDCW_DEV_CMD)
       {
 #if 0
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & urp_dev, "Request status %d\n", urp_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Request status %d\n", absi_unit_num);
           }
           break;
 
 
         case 001: // CMD 001 -- load image buffer
           {
-            sim_debug (DBG_NOTIFY, & urp_dev, "load image buffer\n");
+            sim_debug (DBG_NOTIFY, & absi_dev, "load image buffer\n");
             p -> isRead = false;
             // Get the DDCW
 
@@ -265,7 +285,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
 
         case 005: // CMD 001 -- load vfc image
           {
-            sim_debug (DBG_NOTIFY, & urp_dev, "load vfc image\n");
+            sim_debug (DBG_NOTIFY, & absi_dev, "load vfc image\n");
             p -> isRead = false;
 
             // Get the DDCW
@@ -342,7 +362,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
                   }
 
                 uint tally = p -> DDCW_TALLY;
-                sim_debug (DBG_DEBUG, & urp_dev,
+                sim_debug (DBG_DEBUG, & absi_dev,
                            "%s: Tally %d (%o)\n", __func__, tally, tally);
 
                 if (tally == 0)
@@ -375,8 +395,8 @@ sim_printf ("\n");
                 sim_printf (">\n");
 #endif
 
-                if (urp_state [urp_unit_num] . urpfile == -1)
-                  openPunFile (urp_unit_num, buffer, tally);
+                if (absi_state [absi_unit_num] . urpfile == -1)
+                  openPunFile (absi_unit_num, buffer, tally);
 
                 uint8 bytes [tally * 4];
                 for (uint i = 0; i < tally * 4; i ++)
@@ -394,7 +414,7 @@ sim_printf ("\n");
                         const uint8 spaces [128] = "                                                                                                                                ";
                         i ++;
                         uint8 n = bytes [i] & 0177;
-                        write (urp_state [urp_unit_num] . urpfile, spaces, n);
+                        write (absi_state [absi_unit_num] . urpfile, spaces, n);
                       }
                     else if (ch == 013) // insert n new lines
                       {
@@ -402,41 +422,41 @@ sim_printf ("\n");
                         i ++;
                         uint8 n = bytes [i] & 0177;
                         if (n)
-                          write (urp_state [urp_unit_num] . urpfile, newlines, n);
+                          write (absi_state [absi_unit_num] . urpfile, newlines, n);
                         else
                           {
                             const uint cr = '\r';
-                            write (urp_state [urp_unit_num] . urpfile, & cr, 1);
+                            write (absi_state [absi_unit_num] . urpfile, & cr, 1);
                           }
                       }
                     else if (ch == 014) // slew
                       {
                         const uint8 ff = '\f';
                         i ++;
-                        write (urp_state [urp_unit_num] . urpfile, & ff, 1);
+                        write (absi_state [absi_unit_num] . urpfile, & ff, 1);
                       }
                     else if (ch)
                       {
-                        write (urp_state [urp_unit_num] . urpfile, & ch, 1);
+                        write (absi_state [absi_unit_num] . urpfile, & ch, 1);
                       }
                   }
 
 #if 0
-                if (urp_state [urp_unit_num] . last)
+                if (absi_state [absi_unit_num] . last)
                   {
-                    close (urp_state [urp_unit_num] . urpfile);
-                    urp_state [urp_unit_num] . urpfile = -1;
-                    urp_state [urp_unit_num] . last = false;
+                    close (absi_state [absi_unit_num] . urpfile);
+                    absi_state [absi_unit_num] . urpfile = -1;
+                    absi_state [absi_unit_num] . last = false;
                   }
                 // Check for slew to bottom of page
-                urp_state [urp_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
+                absi_state [absi_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
 #else
                 if (eoj (buffer, tally))
                   {
                     //sim_printf ("urp end of job\n");
-                    close (urp_state [urp_unit_num] . urpfile);
-                    urp_state [urp_unit_num] . urpfile = -1;
-                    //urp_state [urp_unit_num] . last = false;
+                    close (absi_state [absi_unit_num] . urpfile);
+                    absi_state [absi_unit_num] . urpfile = -1;
+                    //absi_state [absi_unit_num] . last = false;
                   }
 #endif
             } // for (ddcwIdx)
@@ -449,14 +469,14 @@ sim_printf ("\n");
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & urp_dev, "Request status %d\n", urp_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Request status %d\n", absi_unit_num);
           }
           break;
 
         case 006: // CMD 005 Initiate read data xfer (load_mpc.pl1)
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & urp_dev, "Initiate read data xfer %d\n", urp_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Initiate read data xfer %d\n", absi_unit_num);
 
             // Get the DDCW
 
@@ -498,7 +518,7 @@ sim_printf ("\n");
         case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & urp_dev, "Set Diagnostic Mode %d\n", urp_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Set Diagnostic Mode %d\n", absi_unit_num);
 
             // Get the DDCW
 
@@ -536,7 +556,7 @@ sim_printf ("\n");
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & urp_dev, "Reset status %d\n", urp_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Reset status %d\n", absi_unit_num);
           }
           break;
 
@@ -548,9 +568,11 @@ sim_printf ("\n");
           }
           break;
         }   
+#endif
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
+sim_printf ("absi marker\n");
         send_marker_interrupt (iomUnitIdx, chan);
       }
 
@@ -562,58 +584,126 @@ sim_printf ("\n");
 // 1 ignored command
 // 0 ok
 // -1 problem
-int urp_iom_cmd (uint iomUnitIdx, uint chan)
+int absi_iom_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
       {
-        return urp_cmd (iomUnitIdx, chan);
+        return absi_cmd (iomUnitIdx, chan);
       }
     sim_printf ("%s expected IDCW\n", __func__);
     return -1;
   }
 
-static t_stat urp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+void absiProcessEvent (void)
   {
-    sim_printf("Number of URPunits in system is %d\n", urp_dev . numunits);
+#define psz 17000
+    uint16_t pkt [psz];
+    for (uint32 unit = 0; unit < absi_dev.numunits; unit ++)
+      {
+        if (absi_state[unit].link == NOLINK)
+          continue;
+        int sz = udp_receive (unit, pkt, psz);
+        if (sz < 0)
+          {
+            printf ("udp_receive failed\n");
+          }
+        else if (sz == 0)
+          {
+            //printf ("udp_receive 0\n");
+          }
+        else
+          {
+            for (int i = 0; i < sz; i ++)
+              {
+                printf ("  %06o  %04x  ", pkt [i], pkt [i]);
+                for (int b = 0; b < 16; b ++)
+                  printf ("%c", pkt [i] & (1 << (16 - b)) ? '1' : '0');
+                printf ("\n");
+              }
+            // Send a NOP reply
+            //int16_t reply [2] = 0x0040
+            int rc = udp_send (absi_state[unit].link, pkt, sz, PFLG_FINAL);
+            if (rc < 0)
+              {
+                printf ("udp_send failed\n");
+              }
+          }
+      }
+  }
+
+static t_stat absi_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+  {
+    sim_printf("Number of ABSIunits in system is %d\n", absi_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat urp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_URP_UNITS_MAX)
+    if (n < 1 || n > N_ABSI_UNITS_MAX)
       return SCPE_ARG;
-    urp_dev . numunits = n;
+    absi_dev . numunits = n;
     return SCPE_OK;
   }
 
-static t_stat urp_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED void * desc)
+t_stat absiAttach (UNIT * uptr, char * cptr)
   {
-    int n = URPUNIT_NUM (uptr);
-    if (n < 0 || n >= N_URP_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Card punch device name is %s\n", urp_state [n] . device_name);
-    return SCPE_OK;
-  }
+    int unitno = uptr - absi_unit;
 
-static t_stat urp_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED char * cptr, UNUSED void * desc)
-  {
-    int n = URPUNIT_NUM (uptr);
-    if (n < 0 || n >= N_URP_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
+    //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
+
+    t_stat ret;
+    char * pfn;
+    //uint16 imp = 0; // we only support a single attachment to a single IMP
+
+    // If we're already attached, then detach ...
+    if ((uptr -> flags & UNIT_ATT) != 0)
+      detach_unit (uptr);
+
+    //   Make a copy of the "file name" argument.  udp_create() actually modifies
+    // the string buffer we give it, so we make a copy now so we'll have something
+    // to display in the "SHOW HIn ..." command.
+    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
+    if (pfn == NULL)
+      return SCPE_MEM;
+    strncpy (pfn, cptr, CBUFSIZE);
+
+    // Create the UDP connection.
+    ret = udp_create (cptr, & absi_state [unitno] . link);
+    if (ret != SCPE_OK)
       {
-        strncpy (urp_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        urp_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+        free (pfn);
+        return ret;
       }
-    else
-      urp_state [n] . device_name [0] = 0;
+
+    uptr -> flags |= UNIT_ATT;
+    uptr -> filename = pfn;
     return SCPE_OK;
   }
+
+// Detach (connect) ...
+t_stat absiDetach (UNIT * uptr)
+  {
+    int unitno = uptr - absi_unit;
+    t_stat ret;
+    if ((uptr -> flags & UNIT_ATT) == 0)
+      return SCPE_OK;
+    if (absi_state [unitno] . link == NOLINK)
+      return SCPE_OK;
+
+    ret = udp_release (absi_state [unitno] . link);
+    if (ret != SCPE_OK)
+      return ret;
+    absi_state [unitno] . link = NOLINK;
+    uptr -> flags &= ~UNIT_ATT;
+    free (uptr -> filename);
+    uptr -> filename = NULL;
+    return SCPE_OK;
+  }
+
+
 
 

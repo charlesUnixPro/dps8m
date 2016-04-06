@@ -210,7 +210,8 @@ LIBS ?= $(LOCALLIBS) -lm -ldl
 
 #LIBS = -lrt -lpthread 
 
-C_SRCS  = ./dps8_addrmods.c 
+C_SRCS  = ./dps8_absi.c
+C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
 C_SRCS += ./dps8_bar.c
 C_SRCS += ./dps8_cable.c
@@ -246,10 +247,12 @@ C_SRCS += ./fnp_mux.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./hdbg.c
 #C_SRCS += ./shm.c
+C_SRCS += ./udplib.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
-H_SRCS  = dps8_addrmods.h
+H_SRCS  = dps8_absi.h
+H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
 H_SRCS += dps8_bar.h
 H_SRCS += dps8_cable.h
@@ -274,6 +277,7 @@ H_SRCS += dps8_math.h
 H_SRCS += dps8_mp.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
+H_SRCS += dps8_prt.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
@@ -288,8 +292,10 @@ H_SRCS += fnp_mux.h
 #H_SRCS += fnpp.h
 H_SRCS += fnp_rev.h
 H_SRCS += fnp_utils.h
+H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
 H_SRCS += shm.h
+H_SRCS += udplib.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
@@ -345,6 +351,9 @@ locallibs_then_dps8 :
 	@$(MAKE) dps8
 
 # Other Targets
+
+udplib : udplib.c udplib.h
+	clang udplib.c -o udplib -DTEST=1
 
 .PHONY: zeromq czmq zyre 
 
