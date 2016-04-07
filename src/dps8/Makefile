@@ -340,9 +340,9 @@ slte.inc : system_book_12_3.ascii
 locallibs_then_dps8 : 
 	@(cd ../simhv40-beta; $(MAKE))
 	@(cd ../decNumber; $(MAKE))
-	#@$(MAKE) zmq
 	@$(MAKE) dps8_sha1_txt
 	@$(MAKE) dps8
+
 
 # Other Targets
 
@@ -368,7 +368,7 @@ zyre : ../lib/libzyre.so
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
-tags : $(C_SRCS) $(H_SRCS) dps8_sha1_txt
+tags : $(C_SRCS) $(H_SRCS) 
 	@echo CTAGS dps8
 	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
@@ -383,11 +383,18 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 .PHONY : clean 
 
 clean:
+	@echo CLEAN
 	#(cd ../simhv40-beta; $(MAKE) clean)
 	@$(MAKE) -C ../simhv40-beta clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
 	@echo CLEAN dps8
+	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
+
+.PHONY : clean_dps8
+
+clean_dps8:
+	@echo CLEAN_DPS8
 	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 
 dps8_sys.c : dps8_sha1_txt
