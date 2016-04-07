@@ -6,6 +6,8 @@
 //  Copyright (c) 2014 Harry Reed. All rights reserved.
 //
 #include "dps8.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "fnp_defs.h"
 #include "fnp_2.h"
@@ -419,6 +421,11 @@ FMTI * readDevInfo(FILE *src)
                 if (lineno >= 0 && lineno < MAX_LINES)  
                     current->multics.hsla_line_num = lineno;
             }
+            // fnp unit number is encoded in the first char
+            int fnpUnitNum = current->multics.name [0] - 'a';
+            if (fnpUnitNum < 0 || fnpUnitNum >= N_FNP_UNITS_MAX)
+                sim_err ("bad unit name in Devices.txt: %s", current->multics.name);
+            current->multics.fnpUnitNum = fnpUnitNum;
         //sim_printf ("%s %d\n", current->multics.name, current->multics.hsla_line_num);
         }
         else if (current && second && strcmp(first, "regex") == 0)
@@ -465,6 +472,7 @@ FMTI *readAndPrint(char *file)
 void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 line, int32 kar)
 {
     int hsla_line_num = tty->fmti->multics.hsla_line_num;
+    int fnpUnitNum = tty->fmti->multics.fnpUnitNum;
 
     if (MState . line [hsla_line_num] .echoPlex)
     {
@@ -512,7 +520,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         ttys [line] . buffer [ttys [line] . nPos ++] = kar;
         ttys [line] . buffer [ttys [line] . nPos] = 0;
         int hsla_line_num = ttys [line] . fmti -> multics . hsla_line_num;
-        sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+        sendInputLine (fnpUnitNum, hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
         ttys [line] . nPos = 0;
         
         return;
@@ -531,7 +539,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     // 2 --> the current char plus a '\0'
     if ((size_t) tty->nPos >= sizeof(tty->buffer) - 2)
     {
-        sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, false);
+        sendInputLine (fnpUnitNum, hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, false);
         tty->nPos = 0;
         ttys [line] . buffer [ttys [line] . nPos ++] = kar;
         tty->buffer[tty->nPos] = 0;
@@ -545,7 +553,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
       {
         if (tty -> nPos != 0)
           {
-            sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+            sendInputLine (fnpUnitNum, hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
           }
         tty->nPos = 0;
         tty->buffer[tty->nPos] = 0;
@@ -567,7 +575,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
             kar = '\n';     // translate to NL
             tty->buffer[tty->nPos++] = kar;
             tty->buffer[tty->nPos] = 0;
-            sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+            sendInputLine (fnpUnitNum, hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
             tty->nPos = 0;
             tty->buffer[tty->nPos] = 0;
             return;
@@ -576,7 +584,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
             {
                 char buf [256];
                 sprintf (buf, "line_break %d 1 0", hsla_line_num);
-                tellCPU (0, buf);
+                tellCPU (fnpUnitNum, buf);
             }
             return;
 

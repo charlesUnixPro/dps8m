@@ -16,9 +16,10 @@
 #include "fnp_mux.h"
 #include "utlist.h"
 
-void tellCPU (UNUSED int cpuUnitNum, char * msg)
+void tellCPU (int fnpUnitNum, char * msg)
   {
-    fnpQueueMsg (msg);
+//sim_printf ("tellCPU %d %s\n", fnpUnitNum, msg);
+    fnpQueueMsg (fnpUnitNum, msg);
   }
 
 t_MState MState;
@@ -90,9 +91,8 @@ static pthread_mutex_t fnpMQlock;
 typedef struct fnpQueueElement fnpQueueElement;
 struct fnpQueueElement
   {
-    char * nodename;
-    char *id;
-    char *arg3;
+    int fnpUnitNum;
+    char * arg3;
     fnpQueueElement * prev, * next;
   };
 
@@ -106,7 +106,7 @@ void fnpQueueInit (void)
       }
   }
 
-t_stat fnp_command(char *nodename, char *id, char *arg3)
+t_stat fnp_command (int fnpUnitNum, char *arg3)
   {
     pthread_mutex_lock (& fnpMQlock);
     fnpQueueElement * element = malloc (sizeof (fnpQueueElement));
@@ -116,8 +116,7 @@ t_stat fnp_command(char *nodename, char *id, char *arg3)
       }
     else
       {
-        element -> nodename = strdup (nodename);
-        element -> id = strdup (id);
+        element -> fnpUnitNum = fnpUnitNum;
         element -> arg3 = strdup (arg3);
         DL_APPEND (fnpQueue, element);
       }
@@ -127,19 +126,13 @@ t_stat fnp_command(char *nodename, char *id, char *arg3)
 
 t_stat dequeue_fnp_command (void)
 {
-// char *nodename, char *id, char *arg3
-    //if (! fnpQueue)
-      //return SCPE_OK;
-    char * nodename = NULL;
-    char * id = NULL;
     char * arg3 = NULL;
 while (fnpQueue) {
     pthread_mutex_lock (& fnpMQlock);
     fnpQueueElement * rv = fnpQueue;
     DL_DELETE (fnpQueue, rv);
     pthread_mutex_unlock (& fnpMQlock);
-    char * nodename = rv -> nodename;
-    char * id = rv -> id;
+    int fnpUnitNum = rv -> fnpUnitNum;
     char * arg3 = rv -> arg3;
     free (rv);
 
@@ -207,7 +200,7 @@ while (fnpQueue) {
                 tmxr_linemsg_stall(ttys[muxLineNum].tmln, "Multics is now listening to this line\r\n");
                 char buf [256];
                 sprintf (buf, "accept_new_terminal %d 1 0", p1);
-                tellCPU (0, buf);
+                tellCPU (fnpUnitNum, buf);
             }
         }
 
@@ -261,7 +254,7 @@ while (fnpQueue) {
         // XXX for now, just reply that there was a timeout
         char msg [256];
         sprintf (msg, "wru_timeout %d", p1);
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 
 
 
@@ -280,7 +273,7 @@ while (fnpQueue) {
         // XXX terminal accepted ... init stuff?
         char msg [256];
         sprintf (msg, "send_output %d", p1);
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 
 
 
@@ -711,7 +704,7 @@ while (fnpQueue) {
         char msg [256];
         sprintf (msg, "send_output %d", p1);
 //sim_printf ("tell CPU to send_output\n");
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 
 
 
@@ -734,7 +727,7 @@ while (fnpQueue) {
 
         char msg [256];
         sprintf (msg, "line_disconnected %d", p1);
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
         
 
     } else if (strcmp(keyword, "output_fc_chars") == 0)
@@ -806,7 +799,7 @@ while (fnpQueue) {
         char msg [256];
         sprintf (msg, "send_output %d", p1);
 //ipc_printf ("tell CPU to send_output\n");
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 
 
 
@@ -870,7 +863,7 @@ while (fnpQueue) {
         char msg [256];
         sprintf (msg, "ack_echnego_init %d", p1);
 //ipc_printf ("tell CPU to send_output\n");
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 
 
     } else {
@@ -878,26 +871,20 @@ while (fnpQueue) {
        goto scpe_arg;
     }
     
-    free (nodename);
-    free (id);
     free (arg3);
 } // while fnpQueue
     return SCPE_OK;
 
 scpe_arg:
-    if (nodename)
-      free (nodename);
-    if (id)
-      free (id);
     if (arg3)
       free (arg3);
     return SCPE_ARG;
 }
 
 
-void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
+void sendInputLine (int fnpUnitNum, int hsla_line_num, char * buffer, int nChars, bool isBreak)
   {
-
+//sim_printf ("sendInputLine fnpUnitNum %d hsla_line_num %d nChars %d\n", fnpUnitNum, hsla_line_num, nChars);
     int inputBufferSize =  MState . line [hsla_line_num].inputBufferSize;
     int remaining = nChars;
     int offset = 0;
@@ -933,7 +920,7 @@ void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
              * tail ++ = "0123456789abcdef" [(buffer [i + offset]     ) % 16];
            }
         * tail = 0;
-        tellCPU (0, cmd);
+        tellCPU (fnpUnitNum, cmd);
         offset += thisSize;
         remaining -= thisSize;
 
@@ -942,7 +929,7 @@ void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
         char msg [256];
         sprintf (msg, "send_output %d", hsla_line_num);
 //ipc_printf ("tell CPU to send_output\n");
-        tellCPU (0, msg);
+        tellCPU (fnpUnitNum, msg);
 #endif
       }
   }

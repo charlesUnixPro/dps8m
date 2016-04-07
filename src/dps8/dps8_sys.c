@@ -525,7 +525,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, char * buf)
+static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -1411,7 +1411,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED

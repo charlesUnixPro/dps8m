@@ -41,6 +41,7 @@ struct fauxMulticsTerminalInfo
     struct
     {
         char    *name;     // Multics device name
+        int     fnpUnitNum;
         int     hsla_line_num; // Multiplexor slot number associated with name
         regex_t r;         // optional regex to match name
         char    *regex;    // text of optional regex

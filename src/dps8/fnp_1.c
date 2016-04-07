@@ -84,7 +84,7 @@ t_stat OnMuxDisconnect(int line, int why)
         // TODO for CAC: send a "line_disconnected" to Multics
         char msg [256];
         sprintf (msg, "line_disconnected %d", hsla_line_num);
-        tellCPU (0, msg);
+        tellCPU (tty->fmti->multics.fnpUnitNum, msg);
     }
     tty->fmti = NULL;               // line no longer connected to a multics device
     
@@ -150,7 +150,7 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
                         }
                         char buf [256];
                         sprintf (buf, "accept_new_terminal %d 1 0", q->multics.hsla_line_num);
-                        tellCPU (0, buf);
+                        tellCPU (q->multics.fnpUnitNum, buf);
                     }
                     else
                     {
@@ -203,7 +203,7 @@ t_stat OnMuxRxBreak(int line, UNUSED int kar)
     int hsla_line_num = tty->fmti->multics.hsla_line_num;
     char buf [256];
     sprintf (buf, "line_break %d 1 0", hsla_line_num);
-    tellCPU (0, buf);
+    tellCPU (tty->fmti->multics.fnpUnitNum, buf);
     
     return SCPE_OK;
 }

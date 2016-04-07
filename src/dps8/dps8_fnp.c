@@ -196,15 +196,18 @@ struct fnpQueueElement
     fnpQueueElement * prev, * next;
   };
 
-fnpQueueElement * fnpQueue = NULL;
+fnpQueueElement * fnpQueue [N_FNP_UNITS_MAX] = 
+  {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-void fnpQueueMsg (char * msg)
+void fnpQueueMsg (int fnpUnitNum, char * msg)
   {
+//sim_printf ("tellCPU %d %s\n", fnpUnitNum, msg);
     pthread_mutex_lock (& fnpMQlock);
+    fnpQueueElement * q = fnpQueue [fnpUnitNum];
     // Compress multiple send_output commands
     if (strncmp ("send_output ", msg, strlen ("send_output ")) == 0)
       {
-        if (fnpQueue && fnpQueue -> prev && strcmp (msg, fnpQueue -> prev -> msg) == 0)
+        if (q && q -> prev && strcmp (msg, q -> prev -> msg) == 0)
           {
             //sim_printf ("dropping\n");
             goto skip;
@@ -218,36 +221,37 @@ void fnpQueueMsg (char * msg)
     else
       {
         element -> msg = strdup (msg);
-        DL_APPEND (fnpQueue, element);
+        DL_APPEND (fnpQueue[fnpUnitNum], element);
       }
 skip:;
     pthread_mutex_unlock (& fnpMQlock);
   }
 
-static bool fnpPollQueue (void)
+static bool fnpPollQueue (int fnpUnitNum)
   {
-    // ASSUME0 XXX there should be a queue for each FNP unit.
-    return !! fnpQueue;
-    
+    return !! fnpQueue [fnpUnitNum];
   }
 
-static char * fnpDequeueMsg (void)
+static char * fnpDequeueMsg (int fnpUnitNum)
   {
-    if (! fnpQueue)
-      return NULL;
     pthread_mutex_lock (& fnpMQlock);
-    fnpQueueElement * rv = fnpQueue;
-    DL_DELETE (fnpQueue, rv);
+    if (! fnpQueue [fnpUnitNum])
+      {
+        pthread_mutex_unlock (& fnpMQlock);
+        return NULL;
+      }
+    fnpQueueElement * rv = fnpQueue [fnpUnitNum];
+    DL_DELETE (fnpQueue [fnpUnitNum], rv);
     pthread_mutex_unlock (& fnpMQlock);
     char * msg = rv -> msg;
     free (rv);
+//sim_printf ("fnpDequeueMsg %d %s\n", fnpUnitNum, msg);
     return msg;
   }
 
-t_stat diaCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
+t_stat diaCommand (int fnpUnitNum, char *arg3)
   {
-    // ASSUME0 XXX parse nodename to get unit #
-    fnpQueueMsg (arg3);
+    fnpQueueMsg (fnpUnitNum, arg3);
     return SCPE_OK;
   }
 
@@ -358,21 +362,20 @@ static char * unpack (char * buffer)
     return out;
   }
 
-void fnpProcessEvent (void)
+void fnpNProcessEvent (int fnpUnitNum)
   {
-    // ASSUME0 XXX there should be a queue for each FNP unit.
-    if (! fnpUnitData [ASSUME0] . fnpIsRunning)
+    if (! fnpUnitData [fnpUnitNum] . fnpIsRunning)
       return;
     int mbx;
     // While queue not empty and mailbox available
-    while (fnpPollQueue () && (mbx = findMbx (ASSUME0)) >= 0) // XXX
+    while (fnpPollQueue (fnpUnitNum) && (mbx = findMbx (fnpUnitNum)) >= 0) // XXX
       {
         //sim_printf ("selected mbx %d\n", mbx);
-        struct fnpUnitData * fudp = & fnpUnitData [ASSUME0]; // XXX
+        struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNum]; // XXX
         struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
         struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
         bzero (smbxp, sizeof (struct fnp_submailbox));
-        char * msg = fnpDequeueMsg ();
+        char * msg = fnpDequeueMsg (fnpUnitNum);
         if (msg)
           {
             //sim_printf ("dia dequeued %s\n", msg);
@@ -401,7 +404,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "wru_timeout", 11) == 0)
               {
@@ -424,7 +427,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "input", 5) == 0)
               {
@@ -530,7 +533,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "send_output", 11) == 0)
               {
@@ -554,7 +557,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "line_disconnected", 17) == 0)
               {
@@ -577,7 +580,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "line_break", 10) == 0)
               {
@@ -600,7 +603,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else if (strncmp (msg, "ack_echnego_init", 16) == 0)
               {
@@ -623,7 +626,7 @@ void fnpProcessEvent (void)
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
                 putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num);
               }
             else
               {
@@ -635,6 +638,14 @@ drop:
             free (msg);
           }
       } // while
+  }
+
+void fnpProcessEvent (void)
+  {
+    for (int fnpUnitNum = 0; fnpUnitNum < N_FNP_UNITS_MAX; fnpUnitNum ++)
+      {
+        fnpNProcessEvent (fnpUnitNum);
+      }
   }
 
 int lookupFnpsIomUnitNumber (int fnpUnitNum)
@@ -666,31 +677,13 @@ static t_stat fnpReset (DEVICE * dptr)
     return SCPE_OK;
   }
 
-#if 1
-static void tellFNP (UNUSED int fnpUnitNum, char * msg)
-  {
-    fnp_command ("fnp-d", "cpu-a", msg);
-  }
-#else
 static void tellFNP (int fnpUnitNum, char * msg)
   {
-    //sim_printf ("tellFNP (%s)\n", msg);
-
-#if 0
-#define RETRIES 2048
-    int retry;
-    for (retry = 0; retry < RETRIES; retry ++)
-      {
-        if (findPeer ("fnp-d"))
-          break;
-        usleep (1000);
-      }
-    if (retry >= RETRIES)
-#else
-    if (! findPeer ("fnp-d"))
-#endif
+//sim_printf ("tellFNP %d %s\n", fnpUnitNum, msg);
+    if (fnpUnitNum < 0 || fnpUnitNum > N_FNP_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & fnpDev, "FNP not found....\n");
+        sim_warn ("tellFNP fnpUnitNum out of range: %d\n", fnpUnitNum);
 
         struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNum];
         struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
@@ -699,18 +692,11 @@ static void tellFNP (int fnpUnitNum, char * msg)
         putbits36 (& mbxp -> crash_data [1],  0, 18, 0); // iom_fault_status = o
         putbits36 (& mbxp -> crash_data [1], 18, 18, 0); // fault_word = 0
 
-        send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
+        send_special_interrupt (ASSUME0, cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num, 0 /* dev_code */, 0 /* status 0 */, 0 /* status 1*/);
         return;
       }
-
-    t_stat stat = ipc (ipcWhisperTx, "fnp-d", msg, NULL, 0);
-    if (stat != SCPE_OK)
-      {
-        sim_debug (DBG_ERR, & fnpDev, "tellFNP returned %d\n", stat);
-      }
-    return;
+    fnp_command (fnpUnitNum, msg);
   }
-#endif
 
 static void dmpmbx (uint mailboxAddress)
   {
@@ -808,6 +794,10 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
         //uint terminal_id = getbits36 (word1, 18, 18);
 
 #if 0
+        uint dn355_no = getbits36 (word1, 0, 3);
+        uint is_hsla = getbits36 (word1, 8, 1);
+        uint la_no = getbits36 (word1, 9, 3);
+        uint terminal_id = getbits36 (word1, 18, 18);
         sim_printf ("  dn355_no %d\n", dn355_no);
         sim_printf ("  is_hsla %d\n", is_hsla);
         sim_printf ("  la_no %d\n", la_no);
@@ -1464,7 +1454,7 @@ word36 pad;
                     sprintf (cmd, "output %d %d data:%d:", slot_no, tally, tally);
                     pack (cmd, tally, 0, p -> PCW_PAGE_TABLE_PTR, dataAddr);
 
-                    tellFNP (0, cmd);
+                    tellFNP (devUnitIdx, cmd);
                   } // for each dcw
 #if 0
                 uint dcwCnt = getbits36 (smbxp -> command_data [0], 18, 18);
@@ -1945,15 +1935,15 @@ static config_list_t fnp_config_list [] =
 
 static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
   {
-    uint fnpUnitNUm = FNP_UNIT_NUM (uptr);
-    if (fnpUnitNUm >= fnpDev . numunits)
+    uint fnpUnitNum = FNP_UNIT_NUM (uptr);
+    if (fnpUnitNum >= fnpDev . numunits)
       {
-        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitNUm);
-        sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitNUm);
+        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitNum);
+        sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitNum);
         return SCPE_ARG;
       }
 
-    struct fnpUnitData * fudp = fnpUnitData + fnpUnitNUm;
+    struct fnpUnitData * fudp = fnpUnitData + fnpUnitNum;
 
     config_state_t cfg_state = { NULL, NULL };
 
