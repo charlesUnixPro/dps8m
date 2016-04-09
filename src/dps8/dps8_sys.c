@@ -38,6 +38,7 @@
 #include "dps8_prt.h"
 #include "dps8_urp.h"
 #include "dps8_cable.h"
+#include "dps8_absi.h"
 #include "utlist.h"
 #ifdef HDBG
 #include "hdbg.h"
@@ -239,6 +240,7 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
+    absi_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -527,9 +529,12 @@ static char * sourceSearchPath = NULL;
 
 static t_stat setSearchPath (UNUSED int32 arg, char * buf)
   {
+// Quietly ignore if debugging not enabled
+#ifndef SPEED
     if (sourceSearchPath)
       free (sourceSearchPath);
     sourceSearchPath = strdup (buf);
+#endif
     return SCPE_OK;
   }
 
@@ -1410,7 +1415,8 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
 
 static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
   {
-  
+// Quietly ignore if not debug enabled
+#ifndef SPEED
     // Multics 12.5 assigns segment number to collection 3 starting at 0244.
     uint c3 = 0244;
 
@@ -1540,7 +1546,7 @@ static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
           }
       }
 #endif
-
+#endif
     return SCPE_OK;
   }
 
@@ -2162,6 +2168,7 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+    & absi_dev,
     NULL
   };
 

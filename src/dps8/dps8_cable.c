@@ -12,6 +12,7 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#include "dps8_absi.h"
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 #ifdef M_SHARED
@@ -516,6 +517,45 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
  
+//
+// String a cable from a ABSI to an IOM
+//
+// This end: asbi_unit_num
+// That end: iomUnitIdx, chan_num, dev_code
+// 
+
+static t_stat cable_absi (int absi_unit_num, int iomUnitIdx, int chan_num, 
+                          int dev_code)
+  {
+    if (absi_unit_num < 0 || absi_unit_num >= (int) absi_dev . numunits)
+      {
+        sim_printf ("cable_absi: absi_unit_num out of range <%d>\n", absi_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToAbsi [absi_unit_num] . iomUnitIdx != -1)
+      {
+        sim_printf ("cable_absi: ABSI socket in use; unit number %d. (%o); uncabling.\n", absi_unit_num, absi_unit_num);
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
+                              chanTypePSI, absi_unit_num, & tape_dev, 
+                              & absi_unit [absi_unit_num], absi_iom_cmd);
+    if (rc)
+      {
+        sim_printf ("cable_absi: IOM socket error; uncabling ABSI unit number %d. (%o)\n", absi_unit_num, absi_unit_num);
+        return rc;
+      }
+
+    cables -> cablesFromIomToAbsi [absi_unit_num] . iomUnitIdx = iomUnitIdx;
+    cables -> cablesFromIomToAbsi [absi_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToAbsi [absi_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+ 
 
 static int getval (char * * save, char * text)
   {
@@ -631,6 +671,10 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_urp (n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "ABSI") == 0)
+      {
+        rc = cable_absi (n1, n2, n3, n4);
+      }
     else
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
@@ -659,6 +703,7 @@ void sysCableInit (void)
           }
       }
 
+    // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (cables, 0, sizeof (struct cables_t));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
@@ -679,5 +724,6 @@ void sysCableInit (void)
       cables -> cablesFromIomToPrt [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_URP_UNITS_MAX; i ++)
       cables -> cablesFromIomToUrp [i] . iomUnitIdx = -1;
-    // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
+    for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
+      cables -> cablesFromIomToAbsi [i] . iomUnitIdx = -1;
   }

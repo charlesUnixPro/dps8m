@@ -25,6 +25,7 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
+#include "dps8_absi.h"
 #ifdef MULTIPASS
 #include "dps8_mp.h"
 #endif
@@ -1203,7 +1204,7 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
-#ifndef SPEED
+// This is needed for BCE_TRAP in install scripts
     // breakpoint? 
     //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
     // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
@@ -1213,6 +1214,7 @@ t_stat simh_hooks (void)
                       ((((t_addr) cpu.PPR.PSR) & 037777) << 18),
                       SWMASK ('E')))  /* breakpoint? */
       return STOP_BKPT; /* stop simulation */
+#ifndef SPEED
     if (sim_deb_break && sim_timell () >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
 #endif
@@ -1396,6 +1398,7 @@ setCPU:;
             consoleProcess ();
             //AIO_CHECK_EVENT;
             dequeue_fnp_command ();
+            absiProcessEvent ();
           }
 #if 0
         if (sim_gtime () % 1024 == 0)

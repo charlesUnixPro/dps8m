@@ -574,6 +574,7 @@ void fno (void)
         }
         else
         {
+            CLR_I_ZERO;
             if (cpu . rE == 127)
             {
                 SET_I_EOFL;
@@ -586,7 +587,7 @@ void fno (void)
 
         cpu . rA = (m >> 36) & MASK36;
         cpu . rQ = m & MASK36;
-        SC_I_NEG (cpu . rA & SIGN72);
+        SC_I_NEG (cpu . rA & SIGN36);
 
         return;
     }

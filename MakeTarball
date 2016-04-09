@@ -1,6 +1,0 @@
-#/bin/sh
-
-#git ls-tree -r master --name-only --full-tree -z | tar cf dps8.tar --null -T - --exclude=dps8.tar.gz
-#tar fr dps8.tar src/dps8/dps8
-#gzip dps8.tar
-git archive --prefix dps8m/ -o dps8.tgz HEAD
