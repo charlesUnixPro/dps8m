@@ -6,7 +6,7 @@ include ../Makefile.mk
 
 CFLAGS += -Wall 
 
-CFLAGS += -Wunused-argument \
+CFLAGS += \
 -Wunused-function \
 -Wunused-label \
 -Wunused-parameter \
@@ -14,8 +14,10 @@ CFLAGS += -Wunused-argument \
 -Wunused-variable \
 -Wunused \
 -Wextra \
--Wno-parentheses-equality -Wno-array-bounds
+-Wno-array-bounds
 
+#CFLAGS += -Wunused-argument \
+#-Wno-parentheses-equality -Wno-array-bounds
 #CFLAGS += -Wunreachable-code
 
 #CFLAGS += -Wsign-conversion

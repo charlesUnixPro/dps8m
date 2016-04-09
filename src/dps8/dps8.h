@@ -161,7 +161,7 @@ typedef enum _processor_cycle_type _processor_cycle_type;
 
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
-    Unknown          = 0,
+    eMATUnknown          = 0,
     InstructionFetch,
     IndirectRead,
     //IndirectWrite,
@@ -200,6 +200,13 @@ typedef enum eMemoryAccessType MemoryAccessType;
 
 #define GET_TALLY(src) (((src) >> 6) & MASK12)   // 12-bits
 #define GET_DELTA(src)  ((src) & MASK6)           // 6-bits
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 
 #define max(a,b)    max2((a),(b))
 #define max2(a,b)   ((a) > (b) ? (a) : (b))

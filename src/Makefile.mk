@@ -1,7 +1,9 @@
 #CC = gcc
 #LD = gcc
-CC = clang
-LD = clang
+#CC = clang
+#LD = clang
+CC = x86_64-w64-mingw32-gcc
+LD = x86_64-w64-mingw32-gcc
 
 # Our Cygwin users are using gcc.
 ifeq ($(OS),Windows_NT)

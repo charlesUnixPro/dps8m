@@ -783,7 +783,7 @@ static char *strAccessType(MemoryAccessType accessType)
 {
     switch (accessType)
     {
-        case Unknown:           return "Unknown";
+        case eMATUnknown:           return "Unknown";
         case InstructionFetch:  return "InstructionFetch";
         case IndirectRead:      return "IndirectRead";
         //case DataRead:          return "DataRead";
