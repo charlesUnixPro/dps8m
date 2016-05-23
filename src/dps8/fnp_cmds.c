@@ -896,8 +896,8 @@ void sendInputLine (int hsla_line_num, char * buffer, int nChars, bool isBreak)
           tail ++;
         for (int i = 0; i < thisSize; i ++)
            {
-             * tail ++ = "0123456789abcdef" [(buffer [i + offset] >> 4) % 16];
-             * tail ++ = "0123456789abcdef" [(buffer [i + offset]     ) % 16];
+             * tail ++ = "0123456789abcdef" [(buffer [i + offset] >> 4) & 0xf];
+             * tail ++ = "0123456789abcdef" [(buffer [i + offset]     ) & 0xf];
            }
         * tail = 0;
         tellCPU (0, cmd);

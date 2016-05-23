@@ -503,13 +503,13 @@ void fnpProcessEvent (void)
                   {
                     word36 v = 0;
                     if (i < charsAvail)
-                      putbits36 (& v, 0, 9, data [i]);
+                      putbits36 (& v, 0, 9, (data [i] & 0xff));
                     if (i + 1 < charsAvail)
-                      putbits36 (& v, 9, 9, data [i + 1]);
+                      putbits36 (& v, 9, 9, (data [i + 1] & 0xff));
                     if (i + 2 < charsAvail)
-                      putbits36 (& v, 18, 9, data [i + 2]);
+                      putbits36 (& v, 18, 9, (data [i + 2] & 0xff));
                     if (i + 3 < charsAvail)
-                      putbits36 (& v, 27, 9, data [i + 3]);
+                      putbits36 (& v, 27, 9, (data [i + 3] & 0xff));
                     smbxp -> mystery [j ++] = v;
                   }
                 free (data);
@@ -737,7 +737,9 @@ static void dmpmbx (uint mailboxAddress)
 static int findMbx (uint fnpUnitNumber)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNumber];
-    for (uint i = 0; i < 4; i ++)
+    // TEMP FIX FOR MBX REORDER ISSUE
+    //for (uint i = 0; i < 4; i ++)
+    for (uint i = 0; i < 1; i ++)
       if (! fudp -> fnpMBXinUse [i])
         return i;
     return -1;
