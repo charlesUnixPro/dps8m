@@ -15,7 +15,6 @@
 #include "dps8_simh.h"
 #include "sim_tmxr.h"
 
-#include "fnp_rev.h"
 
 #define STR(s) #s
 
@@ -115,7 +114,9 @@ enum fnpOP
     CLEAR,
     SELECT,
     START,
-
+    READ,
+    WRITE,
+    
     STCLK = START,      // clock start
     CLCLK = CLEAR,      // clock clear
 
@@ -125,9 +126,6 @@ enum fnpOP
     STTTI = START,
     CLTTI = CLEAR,
 
-    READ,
-    WRITE,
-    
     TTOWR = WRITE,
     TTIRD = READ,
 };

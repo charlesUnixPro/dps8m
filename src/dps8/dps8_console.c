@@ -152,7 +152,7 @@ typedef struct con_state_t
     uint tally;
     uint daddr;
     UNIT * unitp;
-    int chan;
+    uint chan;
  } con_state_t;
 
 // We only support a single console instance, so this should be okay.
@@ -272,8 +272,8 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
                                  UNUSED int val, UNUSED void * desc)
   {
     sim_debug (DBG_NOTIFY, & opcon_dev,
-               "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
-               __func__, st, uptr, val, desc);
+               "%s: FILE=%p, uptr=%p, val=%u,desc=%p\n",
+               __func__, (void *) st, (void *) uptr, val, (void *) desc);
 
     if (console_state . auto_input == NULL)
       sim_debug (DBG_NOTIFY, & opcon_dev,
@@ -287,9 +287,12 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
  
 t_stat console_attn (UNUSED UNIT * uptr)
   {
-    send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
-                            cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
-                            ASSUME0, 0, 0);
+    if (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx < 0)
+      sim_warn ("console_attn(): No cable to console\n");
+    else
+      send_special_interrupt ((uint) cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
+                              cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
+                              ASSUME0, 0, 0);
     return SCPE_OK;
   }
 
@@ -312,7 +315,7 @@ static void newlineOff (void)
       }
     struct termios runtty;
     runtty = ttyTermios;
-    runtty . c_oflag &= ~OPOST; /* no output edit */
+    runtty . c_oflag &= ~ (unsigned int) OPOST; /* no output edit */
     tcsetattr (0, TCSAFLUSH, & runtty);
   }
 
@@ -426,26 +429,31 @@ sim_printf ("<%s>\n", labelDotDsk);
 #endif
   }
 
-static void sendConsole (uint stati)
+static void sendConsole (word12 stati)
   {
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
-    int con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
+    long con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
     int iomUnitIdx = cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx;
+    if (iomUnitIdx < 0)
+      {
+        sim_warn ("sendConsole(): No cable to console\n");
+        return;
+      }
     
-    int chan = console_state . chan;
+    uint chan = console_state . chan;
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // XXX this should be iomIndirectDataService
     p -> charPos = tally % 4;
     while (tally && console_state . readp < console_state . tailp)
       {
-        int charno;
+        uint charno;
         for (charno = 0; charno < 4; ++ charno)
           {
             if (console_state . readp >= console_state . tailp)
               break;
-            unsigned char c = * console_state . readp ++;
-            putbits36 (& M [daddr], charno * 9, 9, c);
+            unsigned char c = (unsigned char) (* console_state . readp ++);
+            putbits36 (& M [daddr], charno * 9u, 9, c);
           }
         // cp = charno % 4;
 
@@ -461,7 +469,7 @@ static void sendConsole (uint stati)
     console_state . io_mode = no_mode;
 
     p -> stati = stati;
-    send_terminate_interrupt (iomUnitIdx, chan);
+    send_terminate_interrupt ((uint) iomUnitIdx, chan);
   }
 
 
@@ -837,7 +845,7 @@ eol:
               }
             else
               {
-                * console_state . tailp ++ = c;
+                * console_state . tailp ++ = (char) ((unsigned int) c & MASK8);
                 sim_putchar (c);
               }
           } // for (;;)
@@ -955,7 +963,7 @@ eol:
         if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
           return;
 
-        * console_state . tailp ++ = c;
+        * console_state . tailp ++ = (char) ((unsigned int) c & MASK8);
         sim_putchar (c);
         return;
       }
@@ -989,10 +997,15 @@ int con_iom_cmd (uint iomUnitIdx, uint chan)
 
 static t_stat opcon_svc (UNIT * unitp)
   {
-    int conUnitNum = OPCON_UNIT_NUM (unitp);
+    long conUnitNum = OPCON_UNIT_NUM (unitp);
     int iomUnitIdx = cables -> cablesFromIomToCon [conUnitNum] . iomUnitIdx;
-    int chan = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
-    con_iom_cmd (iomUnitIdx, chan);
+    if (iomUnitIdx < 0)
+      {
+        sim_warn ("opcon_sve(): No cable to console\n");
+        return SCPE_OK;
+      }
+    uint chan = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
+    con_iom_cmd ((uint) iomUnitIdx, chan);
     return SCPE_OK;
   }
 
@@ -1007,7 +1020,7 @@ static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, char * c
     int n = atoi (cptr);
     if (n < 1 || n > N_OPCON_UNITS_MAX)
       return SCPE_ARG;
-    opcon_dev . numunits = n;
+    opcon_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
@@ -1048,7 +1061,7 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
               break;
 
             case  0: // attn_hack
-              attn_hack = v;
+              attn_hack = (int) v;
               break;
     
             default:

@@ -25,8 +25,8 @@ bool directOperandFlag;
 word36 directOperand;
 
 bool characterOperandFlag;
-int characterOperandSize;
-int characterOperandOffset;
+uint characterOperandSize;
+uint characterOperandOffset;
 
 //
 // return contents of register indicated by Td
@@ -237,7 +237,7 @@ static void doITP (void)
     TPR . CA &= AMASK;
     rY = TPR.CA;
 
-    rTAG = GET_ITP_MOD (itxPair);
+    rTAG = (word8) GET_ITP_MOD (itxPair);
     return;
 }
 
@@ -276,7 +276,7 @@ static void doITS(void)
 
     rY = TPR . CA;
 
-    rTAG = GET_ITS_MOD (itxPair);
+    rTAG = (word8) GET_ITS_MOD (itxPair);
 
     return;
   }
@@ -388,7 +388,7 @@ t_stat doComputedAddressFormation (void)
     word6 Tm = 0;
     word6 Td = 0;
 
-    int iTAG;   // tag of word preceeding an indirect fetch
+    word6 iTAG;   // tag of word preceeding an indirect fetch
 
     directOperandFlag = false;
     characterOperandFlag = false;
@@ -469,8 +469,8 @@ startCA:;
 
         if (cu . rpt || cu . rd)
           {
-            word6 Td = GET_TD (i -> tag);
-            uint Xn = X (Td);  // Get Xn of next instruction
+            word6 Td_ = GET_TD (i -> tag);
+            uint Xn = X (Td_);  // Get Xn of next instruction
             TPR . CA = rX [Xn];
             if (i -> a)
               {
@@ -518,8 +518,8 @@ startCA:;
 
             if (cu . rpt || cu . rd)
               {
-                 word6 Td = GET_TD (i -> tag);
-                 uint Xn = X (Td);  // Get Xn of next instruction
+                 word6 Td_ = GET_TD (i -> tag);
+                 uint Xn = X (Td_);  // Get Xn of next instruction
                  tmpCA = rX [Xn];
               }
             else
@@ -782,7 +782,7 @@ startCA:;
         //    IT_IDC        = 017
         word12 tally;
         word6 idwtag, delta;
-        word24 Yi = -1;
+        word24 Yi;
 
         switch (Td)
           {
@@ -953,7 +953,7 @@ startCA:;
                 // field is reduced to 0, the tally runout indicator is set ON,
                 // otherwise it is set OFF.
 
-                int cos = characterOperandOffset + 1;
+                uint cos = characterOperandOffset + 1;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SC): characterOperandOffset = %o\n", cos);
 

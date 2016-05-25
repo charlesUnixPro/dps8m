@@ -844,7 +844,7 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
-#if EMULATOR_ONLY 
+#ifdef EMULATOR_ONLY 
      /* 420 - 437 */
     {"emcall", IGN_B29, 0, 0},  // 420 we add a emulator call instruction for SIMH use ONLY! (opcode 0420(1))
     {"fxe",  0, 0, 0}, // 421 fxe fault handler

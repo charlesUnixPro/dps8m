@@ -295,7 +295,7 @@ struct opCode {
     const char *mne;    ///< mnemonic
     opc_flag flags;        ///< various and sundry flags
     opc_mod mods;         ///< disallowed addr mods
-    int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+    uint ndes;         ///< number of operand descriptor words for instruction (mw EIS)
 };
 typedef struct opCode opCode;
 

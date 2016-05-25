@@ -42,7 +42,6 @@ typedef enum
 
 typedef enum
   {
-    ABORT_cycle /* = ABORT_CYCLE */,
     FAULT_cycle /* = FAULT_CYCLE */,
     EXEC_cycle,
     FAULT_EXEC_cycle,
@@ -928,7 +927,7 @@ typedef struct
     word1 rfi;     // 27    RFI Restart this instruction
                    // 28    ITS Execute ITS indirect cycle
     word1 FIF;     // 29    FIF Fault occured during instruction fetch
-    uint CT_HOLD;  // 30-35 CT HOLD contents of the "remember modifier" register
+    word6 CT_HOLD; // 30-35 CT HOLD contents of the "remember modifier" register
 
     
     
@@ -1090,7 +1089,7 @@ extern du_unit_data_t du;
 
 #define N_CPU_UNITS_MAX 1
 
-word36 faultRegister [2];
+extern word36 faultRegister [2];
 
 
 //extern int stop_reason;     // sim_instr return value for JMP_STOP

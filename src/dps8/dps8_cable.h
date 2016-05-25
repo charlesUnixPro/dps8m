@@ -34,9 +34,9 @@ struct cableFromScuToCpu
 
 struct cableFromIom
   {
-    int iomUnitIdx;
-    int chan_num;
-    int dev_code;
+    int iomUnitIdx; // -1 is used to indicate missing cable
+    uint chan_num;
+    uint dev_code;
   };
 
 struct cablesFromScu

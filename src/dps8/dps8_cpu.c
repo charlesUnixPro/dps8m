@@ -263,28 +263,28 @@ _sdw0 *fetchSDW (word15 segno)
     // even word
     static _sdw0 _s;
     
-    _sdw0 *SDW = &_s;
-    memset (SDW, 0, sizeof (_s));
+    _sdw0 *SDW_ = &_s;
+    memset (SDW_, 0, sizeof (_s));
     
-    SDW -> ADDR = (SDWeven >> 12) & 077777777;
-    SDW -> R1 = (SDWeven >> 9) & 7;
-    SDW -> R2 = (SDWeven >> 6) & 7;
-    SDW -> R3 = (SDWeven >> 3) & 7;
-    SDW -> F = TSTBIT(SDWeven, 2);
-    SDW -> FC = SDWeven & 3;
+    SDW_ -> ADDR = (SDWeven >> 12) & 077777777;
+    SDW_ -> R1 = (SDWeven >> 9) & 7;
+    SDW_ -> R2 = (SDWeven >> 6) & 7;
+    SDW_ -> R3 = (SDWeven >> 3) & 7;
+    SDW_ -> F = TSTBIT(SDWeven, 2);
+    SDW_ -> FC = SDWeven & 3;
     
     // odd word
-    SDW -> BOUND = (SDWodd >> 21) & 037777;
-    SDW -> R = TSTBIT(SDWodd, 20);
-    SDW -> E = TSTBIT(SDWodd, 19);
-    SDW -> W = TSTBIT(SDWodd, 18);
-    SDW -> P = TSTBIT(SDWodd, 17);
-    SDW -> U = TSTBIT(SDWodd, 16);
-    SDW -> G = TSTBIT(SDWodd, 15);
-    SDW -> C = TSTBIT(SDWodd, 14);
-    SDW -> EB = SDWodd & 037777;
+    SDW_ -> BOUND = (SDWodd >> 21) & 037777;
+    SDW_ -> R = TSTBIT(SDWodd, 20);
+    SDW_ -> E = TSTBIT(SDWodd, 19);
+    SDW_ -> W = TSTBIT(SDWodd, 18);
+    SDW_ -> P = TSTBIT(SDWodd, 17);
+    SDW_ -> U = TSTBIT(SDWodd, 16);
+    SDW_ -> G = TSTBIT(SDWodd, 15);
+    SDW_ -> C = TSTBIT(SDWodd, 14);
+    SDW_ -> EB = SDWodd & 037777;
     
-    return SDW;
+    return SDW_;
   }
 
 static char * strDSBR (void)
@@ -300,27 +300,27 @@ static void printDSBR (void)
   }
 
 
-char * strSDW0 (_sdw0 * SDW)
+char * strSDW0 (_sdw0 * SDW_)
   {
     static char buff [256];
     
-    //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (! SDW -> F) 
+    //if (SDW_->ADDR == 0 && SDW_->BOUND == 0) // need a better test
+    if (! SDW_ -> F) 
       sprintf (buff, "*** Uninitialized ***");
     else
       sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
-               SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> F,
-               SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
-               SDW -> P, SDW -> U, SDW -> G, SDW -> C, SDW -> EB);
+               SDW_ -> ADDR, SDW_ -> R1, SDW_ -> R2, SDW_ -> R3, SDW_ -> F,
+               SDW_ -> FC, SDW_ -> BOUND, SDW_ -> R, SDW_ -> E, SDW_ -> W,
+               SDW_ -> P, SDW_ -> U, SDW_ -> G, SDW_ -> C, SDW_ -> EB);
     return buff;
  }
 
-static void printSDW0 (_sdw0 *SDW)
+static void printSDW0 (_sdw0 *SDW_)
   {
-    sim_printf ("%s\n", strSDW0 (SDW));
+    sim_printf ("%s\n", strSDW0 (SDW_));
   }
 
-t_stat dpsCmd_DumpSegmentTable()
+static t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
@@ -360,34 +360,34 @@ t_stat dpsCmd_DumpSegmentTable()
             {
                 word36 SDWeven, SDWodd;
                 core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
-                struct _sdw0 SDW0;
+                struct _sdw0 SDW0_;
                 // even word
-                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-                SDW0.R1 = (SDWeven >> 9) & 7;
-                SDW0.R2 = (SDWeven >> 6) & 7;
-                SDW0.R3 = (SDWeven >> 3) & 7;
-                SDW0.F = TSTBIT(SDWeven, 2);
-                SDW0.FC = SDWeven & 3;
+                SDW0_.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0_.R1 = (SDWeven >> 9) & 7;
+                SDW0_.R2 = (SDWeven >> 6) & 7;
+                SDW0_.R3 = (SDWeven >> 3) & 7;
+                SDW0_.F = TSTBIT(SDWeven, 2);
+                SDW0_.FC = SDWeven & 3;
 
                 // odd word
-                SDW0.BOUND = (SDWodd >> 21) & 037777;
-                SDW0.R = TSTBIT(SDWodd, 20);
-                SDW0.E = TSTBIT(SDWodd, 19);
-                SDW0.W = TSTBIT(SDWodd, 18);
-                SDW0.P = TSTBIT(SDWodd, 17);
-                SDW0.U = TSTBIT(SDWodd, 16);
-                SDW0.G = TSTBIT(SDWodd, 15);
-                SDW0.C = TSTBIT(SDWodd, 14);
-                SDW0.EB = SDWodd & 037777;
+                SDW0_.BOUND = (SDWodd >> 21) & 037777;
+                SDW0_.R = TSTBIT(SDWodd, 20);
+                SDW0_.E = TSTBIT(SDWodd, 19);
+                SDW0_.W = TSTBIT(SDWodd, 18);
+                SDW0_.P = TSTBIT(SDWodd, 17);
+                SDW0_.U = TSTBIT(SDWodd, 16);
+                SDW0_.G = TSTBIT(SDWodd, 15);
+                SDW0_.C = TSTBIT(SDWodd, 14);
+                SDW0_.EB = SDWodd & 037777;
 
-                if (SDW0.F == 0)
+                if (SDW0_.F == 0)
                     continue;
                 sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
-                          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
-                //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0 . BOUND; offset += 1024)
-                if (SDW0.U == 0)
+                          tspt, SDW0_.ADDR, SDW0_.R1, SDW0_.R2, SDW0_.R3, SDW0_.F, SDW0_.BOUND, SDW0_.R ? 'R' : '.', SDW0_.E ? 'E' : '.', SDW0_.W ? 'W' : '.', SDW0_.P ? 'P' : '.', SDW0_.U ? 'U' : '.');
+                //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0_ . BOUND; offset += 1024)
+                if (SDW0_.U == 0)
                 {
-                    for (word18 offset = 0; offset < 16u * (SDW0.BOUND + 1u); offset += 1024u)
+                    for (word18 offset = 0; offset < 16u * (SDW0_.BOUND + 1u); offset += 1024u)
                     {
                         word24 y2 = offset % 1024;
                         word24 x2 = (offset - y2) / 1024;
@@ -395,7 +395,7 @@ t_stat dpsCmd_DumpSegmentTable()
                         // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
                         word36 PTWx2;
-                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
+                        core_read ((SDW0_ . ADDR + x2) & PAMASK, & PTWx2, __func__);
 
                         struct _ptw0 PTW_2;
                         PTW_2.ADDR = GETHI(PTWx2);
@@ -435,7 +435,7 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
 
 static word36 getKST (word24 offset)
   {
-    word18 kst_seg = 067; // From system_book
+    word15 kst_seg = 067; // From system_book
     char * msg;
     word24 fa;
     if (dbgLookupAddress (kst_seg, offset, & fa, & msg))
@@ -1229,7 +1229,7 @@ static uint get_highest_intr (void)
             return scuGetHighestIntr (scuUnitNum);
           }
       }
-    return -1;
+    return 1;
   }
 
 #if 0
@@ -1286,7 +1286,7 @@ bool sample_interrupts (void)
 
 t_stat simh_hooks (void)
   {
-    int reason = 0;
+    int hook_reason = 0;
 
     if (stop_cpu)
       return STOP_STOP;
@@ -1294,10 +1294,10 @@ t_stat simh_hooks (void)
     if (sim_interval <= 0)
       {
 //int32 int0 = sim_interval;
-        reason = sim_process_event ();
+        hook_reason = sim_process_event ();
 //sim_printf ("int delta %d\n", sim_interval - int0);
-        if (reason)
-          return reason;
+        if (hook_reason)
+          return hook_reason;
       }
         
     sim_interval --;
@@ -1314,15 +1314,13 @@ t_stat simh_hooks (void)
     if (sim_deb_break && sim_timell () >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
 
-    return reason;
+    return hook_reason;
   }       
 
 static char * cycleStr (cycles_t cycle)
   {
     switch (cycle)
       {
-        case ABORT_cycle:
-          return "ABORT_cycle";
         case FAULT_cycle:
           return "FAULT_cycle";
         case EXEC_cycle:
@@ -1400,8 +1398,6 @@ static void setCpuCycle (cycles_t cycle)
 //     load instruction pair into instruction buffer
 //     set EXEC_cyvle
 //  
-// other extant cycles:
-//  ABORT_cycle
 
 static word36 instr_buf [2];
 
@@ -1602,7 +1598,7 @@ last = M[01007040];
                 // present register.  
 
                 uint intr_pair_addr = get_highest_intr ();
-                cu . FI_ADDR = intr_pair_addr / 2;
+                cu . FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
 
                 // Temporary absolute mode
@@ -1990,7 +1986,7 @@ last = M[01007040];
                 TPR . TRR = 0;
 
                 // (12-bits of which the top-most 7-bits are used)
-                int fltAddress = (switches.FLT_BASE << 5) & 07740;
+                uint fltAddress = (switches.FLT_BASE << 5) & 07740;
 
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * cpu . faultNumber;
@@ -2196,18 +2192,18 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
-            for (int j = 0 ; j < 8 ; j += 1)
+            for (uint j = 0 ; j < 8 ; j += 1)
                 Read (addr + j, Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
-            for (int j = 0 ; j < 16 ; j += 1)
+            for (uint j = 0 ; j < 16 ; j += 1)
                 Read (addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
-            for (int j = 0 ; j < 32 ; j += 1)
+            for (uint j = 0 ; j < 32 ; j += 1)
                 Read (addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
@@ -2239,17 +2235,17 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
-            for (int j = 0 ; j < 8 ; j += 1)
+            for (uint j = 0 ; j < 8 ; j += 1)
                 Write (addr + j, Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
-            for (int j = 0 ; j < 16 ; j += 1)
+            for (uint j = 0 ; j < 16 ; j += 1)
                 Write (addr + j, Yblock16[j], OPERAND_STORE, b29);
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
-            for (int j = 0 ; j < 32 ; j += 1)
+            for (uint j = 0 ; j < 32 ; j += 1)
                 Write (addr + j, Yblock32[j], OPERAND_STORE, b29);
             break;
     }
@@ -2729,7 +2725,7 @@ void set_addr_mode(addr_modes_t mode)
  Used for display via cpu_show_history()
  */
 
-static int ic_hist_max = 0;
+static uint ic_hist_max = 0;
 static int ic_hist_ptr;
 static int ic_hist_wrapped;
 enum hist_enum { h_instruction, h_fault, h_intr };
@@ -2782,15 +2778,15 @@ static void cpu_init_array (void)
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
                                UNUSED int val, UNUSED void * desc)
 {
-    int unit_num = UNIT_NUM (uptr);
+    long int unit_num = UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= (int) cpu_dev . numunits)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
-        sim_printf ("error: invalid unit number %d\n", unit_num);
+        sim_printf ("error: invalid unit number %ld\n", unit_num);
         return SCPE_ARG;
       }
 
-    sim_printf ("CPU unit number %d\n", unit_num);
+    sim_printf ("CPU unit number %ld\n", unit_num);
 
     sim_printf("Fault base:               %03o(8)\n", switches . FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", switches . cpu_num);
@@ -3012,11 +3008,11 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
-    int cpu_unit_num = UNIT_NUM (uptr);
+    long cpu_unit_num = UNIT_NUM (uptr);
     if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
-        sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
+        sim_printf ("error: cpu_set_config: invalid unit number %ld\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
@@ -3038,123 +3034,123 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case  0: // FAULTBASE
-              switches . FLT_BASE = v;
+              switches . FLT_BASE = (uint) v;
               break;
 
             case  1: // NUM
-              switches . cpu_num = v;
+              switches . cpu_num = (uint) v;
               break;
 
             case  2: // DATA
-              switches . data_switches = v;
+              switches . data_switches = (word36) v;
               break;
 
             case  3: // MODE
-              switches . proc_mode = v;
+              switches . proc_mode = (uint) v;
               break;
 
             case  4: // SPEED
-              switches . proc_speed = v;
+              switches . proc_speed = (uint) v;
               break;
 
             case  5: // PORT
-              port_num = v;
+              port_num = (int) v;
               break;
 
             case  6: // ASSIGNMENT
-              switches . assignment [port_num] = v;
+              switches . assignment [port_num] = (uint) v;
               break;
 
             case  7: // INTERLACE
-              switches . interlace [port_num] = v;
+              switches . interlace [port_num] = (uint) v;
               break;
 
             case  8: // ENABLE
-              switches . enable [port_num] = v;
+              switches . enable [port_num] = (uint) v;
               break;
 
             case  9: // INIT_ENABLE
-              switches . init_enable [port_num] = v;
+              switches . init_enable [port_num] = (uint) v;
               break;
 
             case 10: // STORE_SIZE
-              switches . store_size [port_num] = v;
+              switches . store_size [port_num] = (uint) v;
               break;
 
             case 11: // INVERTABSOLUTE
-              switches . invert_absolute = v;
+              switches . invert_absolute = (uint) v;
               break;
 
             case 12: // B29TEST
-              switches . b29_test = v;
+              switches . b29_test = (uint) v;
               break;
 
             case 13: // DIS_ENABLE
-              switches . dis_enable = v;
+              switches . dis_enable = (uint) v;
               break;
 
             case 14: // AUTO_APPEND_DISABLE
-              switches . auto_append_disable = v;
+              switches . auto_append_disable = (uint) v;
               break;
 
             case 15: // LPRP_HIGHONLY
-              switches . lprp_highonly = v;
+              switches . lprp_highonly = (uint) v;
               break;
 
             case 16: // STEADY_CLOCK
-              switches . steady_clock = v;
+              switches . steady_clock = (uint) v;
               break;
 
             case 17: // DEGENERATE_MODE
-              switches . degenerate_mode = v;
+              switches . degenerate_mode = (uint) v;
               break;
 
             case 18: // APPEND_AFTER
-              switches . append_after = v;
+              switches . append_after = (uint) v;
               break;
 
             case 19: // SUPER_USER
-              switches . super_user = v;
+              switches . super_user = (uint) v;
               break;
 
             case 20: // EPP_HACK
-              switches . epp_hack = v;
+              switches . epp_hack = (uint) v;
               break;
 
             case 21: // HALT_ON_UNIMPLEMENTED
-              switches . halt_on_unimp = v;
+              switches . halt_on_unimp = (uint) v;
               break;
 
             case 22: // DISABLE_WAM
-              switches . disable_wam = v;
+              switches . disable_wam = (uint) v;
               break;
 
             case 23: // BULLET_TIME
-              switches . bullet_time = v;
+              switches . bullet_time = (uint) v;
               break;
 
             case 24: // DISABLE_KBD_BKPT
-              switches . disable_kbd_bkpt = v;
+              switches . disable_kbd_bkpt = (uint) v;
               break;
 
             case 25: // REPORT_FAULTS
-              switches . report_faults = v;
+              switches . report_faults = (uint) v;
               break;
 
             case 26: // TRO_ENABLE
-              switches . tro_enable = v;
+              switches . tro_enable = (uint) v;
               break;
 
             case 27: // Y2K
-              switches . y2k = v;
+              switches . y2k = (uint) v;
               break;
 
             case 28: // DRL_FATAL
-              switches . drl_fatal = v;
+              switches . drl_fatal = (uint) v;
               break;
 
             case 29: // TRLSB
-              switches . trlsb = v;
+              switches . trlsb = (uint) v;
               break;
 
             default:
@@ -3176,10 +3172,10 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
       {
         return 1;
       }
-    prp->SNR = getbits36(word1, 3, 15);
-    prp->WORDNO = getbits36(word2, 0, 18);
-    prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
-    prp->BITNO = getbits36(word2, 57 - 36, 6);
+    prp->SNR = (word15) getbits36(word1, 3, 15);
+    prp->WORDNO = (word18) getbits36(word2, 0, 18);
+    prp->RNR = (word3) getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
+    prp->BITNO = (word6) getbits36(word2, 57 - 36, 6);
     return 0;
   }   
 
@@ -3194,9 +3190,9 @@ static int stack_to_entry (unsigned abs_addr, struct _par * prp)
 
 
 static void print_frame (
-    int seg,        // Segment portion of frame pointer address.
-    int offset,     // Offset portion of frame pointer address.
-    int addr)       // 24-bit address corresponding to above seg|offset
+    word15 seg,        // Segment portion of frame pointer address.
+    word18 offset,     // Offset portion of frame pointer address.
+    word24 addr)      // 24-bit address corresponding to above seg|offset
   {
     // Print a single stack frame for walk_stack()
     // Frame pointers can be found in PR[6] or by walking a process's stack segment
@@ -3229,7 +3225,8 @@ static void print_frame (
 #endif
 }
 
-static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, char * ctx)
+#if 0
+static int dsLookupAddress (word15 segno, word18 offset, word24 * finalAddress, char * ctx)
   {
     char * msg;
     int rc = dbgLookupAddress (segno, offset, finalAddress, & msg);
@@ -3242,7 +3239,9 @@ static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, 
       }
     return 0;
   }
+#endif
 
+#if 0
 static int dumpStack (uint stkBase, uint stkNo)
   {
     word36 w0, w1;
@@ -3275,14 +3274,14 @@ static int dumpStack (uint stkBase, uint stkNo)
         sim_printf("stack_begin_ptr is not an ITS\n");
         return 1;
       }
-    word15 stkBeginSegno = getbits36 (M [hdrPage + 022], 3, 15);
+    word15 stkBeginSegno = (word15) getbits36 (M [hdrPage + 022], 3, 15);
 
     if (stkBeginSegno != stkBase)
       {
         sim_printf("stack_begin_ptr segno (%o) is wrong\n", stkBeginSegno);
         return 1;
       }
-    word18 stkBeginOffset = getbits36 (M [hdrPage + 023], 0, 18);
+    word18 stkBeginOffset = (word18) getbits36 (M [hdrPage + 023], 0, 18);
 
 
 
@@ -3292,13 +3291,13 @@ static int dumpStack (uint stkBase, uint stkNo)
         return 1;
       }
 
-    word15 stkEndSegno = getbits36 (M [hdrPage + 024], 3, 15);
+    word15 stkEndSegno = (word15) getbits36 (M [hdrPage + 024], 3, 15);
     if (stkBeginSegno != stkBase)
       {
         sim_printf("stack_end_ptr segno (%o) is wrong\n", stkEndSegno);
         return 1;
       }
-    word18 stkEndOffset = getbits36 (M [hdrPage + 025], 0, 18);
+    word18 stkEndOffset = (word18) getbits36 (M [hdrPage + 025], 0, 18);
 
     word18 currentFrame = stkBeginOffset;
     int currentFrameNumber = 1;
@@ -3371,8 +3370,10 @@ static int dumpStack (uint stkBase, uint stkNo)
     return 0;
     
   }
+#endif
 
-int dumpStacks (void)
+#if 0
+static int dumpStacks (void)
   {
     sim_printf ("DSBR.STACK %04u\n", DSBR . STACK);
     uint stkBase = DSBR.STACK << 3;
@@ -3382,6 +3383,7 @@ int dumpStacks (void)
       }
     return 0;
   }
+#endif
 
 #if 0
 int dumpSystem (void)
@@ -3409,7 +3411,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
 
     // PR6 should point to the current stack frame.  That stack frame
     // should be within the stack segment.
-    int seg = PAR [6].SNR;
+    word15 seg = PAR [6].SNR;
 
     uint curr_frame;
     char * msg;
@@ -3423,7 +3425,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
       }
 
     // The stack header will be at offset 0 within the stack segment.
-    int offset = 0;
+    word18 offset = 0;
     word24 hdr_addr;  // 24bit main memory address
     //if (computeAbsAddrN (& hdr_addr, seg, offset))
     if (dbgLookupAddress (seg, offset, & hdr_addr, & msg))
@@ -3467,7 +3469,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
 
     if (output)
       sim_printf ("%s: Stack Trace via back-links in current stack frame:\n", __func__);
-    uint framep = stack_begin_pr.WORDNO;
+    word18 framep = stack_begin_pr.WORDNO;
     uint prev = 0;
     int finished = 0;
 #if 0
@@ -3478,7 +3480,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
       {
         // Might find ourselves in a different page while moving from frame to frame...
         // BUG: We assume a stack frame doesn't cross page boundries
-        uint addr;
+        word24 addr;
         //if (computeAbsAddrN (& addr, seg, framep))
         if (dbgLookupAddress (seg, offset, & addr, & msg))
           {
@@ -3561,12 +3563,12 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
             if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
               {
 //---                 where_t where;
-                int offset = return_pr . WORDNO;
-                if (offset > 0)
-                    -- offset;      // call was from an instr prior to the return point
+                word18  roffset = return_pr . WORDNO;
+                if (roffset > 0)
+                    -- roffset;      // call was from an instr prior to the return point
                 char * compname;
                 word18 compoffset;
-                char * where = lookupAddress (return_pr . SNR, offset, & compname, & compoffset);
+                char * where = lookupAddress (return_pr . SNR, roffset, & compname, & compoffset);
                 if (where)
                   {
                     sim_printf ("%s\n", where);

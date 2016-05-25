@@ -139,7 +139,7 @@ static inline int SIGNEXT6_int (word6 w)
   {
     if (w & SIGN6)
       {
-        return ((int) w) | (((uint) -1) << 6);
+        return ((int) w) | ((int) (((uint) -1) << 6));
       }
     return w & MASK6;
   }
@@ -148,7 +148,7 @@ static inline int32 SIGNEXT15_32 (word18 w)
   {
     if (w & SIGN15)
       {
-        return ((int32) w) | (((uint32) -1) << 15);
+        return ((int32) w) | ((int32) (((uint32) -1) << 15));
       }
     return w & MASK15;
   }
@@ -157,7 +157,7 @@ static inline int32 SIGNEXT18_32 (word18 w)
   {
     if (w & SIGN18)
       {
-        return ((int32) w) | (((uint32) -1) << 18);
+        return ((int32) w) | ((int32) (((uint32) -1) << 18));
       }
     return w & MASK18;
   }
@@ -166,7 +166,7 @@ static inline int32 SIGNEXT21_32 (word18 w)
   {
     if (w & SIGN21)
       {
-        return ((int32) w) | (((uint32) -1) << 21);
+        return ((int32) w) | ((int32) (((uint32) -1) << 21));
       }
     return w & MASK21;
   }
@@ -175,7 +175,7 @@ static inline int32 SIGNEXT22_32 (word18 w)
   {
     if (w & SIGN22)
       {
-        return ((int32) w) | (((uint32) -1) << 22);
+        return ((int32) w) | ((int32) (((uint32) -1) << 22));
       }
     return w & MASK22;
   }
@@ -184,7 +184,7 @@ static inline int32 SIGNEXT24_32 (word18 w)
   {
     if (w & SIGN24)
       {
-        return ((int32) w) | (((uint32) -1) << 24);
+        return ((int32) w) | ((int32) (((uint32) -1) << 24));
       }
     return w & MASK24;
   }
@@ -193,7 +193,7 @@ static inline t_int64 SIGNEXT36_64 (word36 w)
   {
     if (w & SIGN36)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 36;
+        return ((t_int64) w) | ((t_int64) (((t_uint64) -1ll) << 36));
       }
     return w & MASK36;
   }
@@ -202,7 +202,7 @@ static inline t_int64 SIGNEXT18_64 (word36 w)
   {
     if (w & SIGN18)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 18;
+        return ((t_int64) w) | ((t_int64) (((t_uint64) -1ll) << 18));
       }
     return w & MASK18;
   }
@@ -211,7 +211,7 @@ static inline t_int64 SIGNEXT21_64 (word36 w)
   {
     if (w & SIGN21)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 21;
+        return ((t_int64) w) | ((t_int64) (((t_uint64) -1ll) << 21));
       }
     return w & MASK21;
   }
@@ -220,7 +220,7 @@ static inline t_int64 SIGNEXT22_64 (word36 w)
   {
     if (w & SIGN22)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 22;
+        return ((t_int64) w) | ((t_int64) (((t_uint64) -1ll) << 22));
       }
     return w & MASK22;
   }
@@ -229,7 +229,7 @@ static inline t_int64 SIGNEXT24_64 (word36 w)
   {
     if (w & SIGN24)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 24;
+        return ((t_int64) w) | ((t_int64) (((t_uint64) -1ll) << 24));
       }
     return w & MASK24;
   }
@@ -238,7 +238,7 @@ static inline int128 SIGNEXT72_128 (word72 w)
   {
     if (w & SIGN72)
       {
-        return ((int128) w) | (((uint128) -1ll) << 72);
+        return ((int128) w) | ((int128) (((uint128) -1ll) << 72));
       }
     return w & MASK72;
   }
@@ -304,18 +304,18 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define INST_M_ARN      07U
 
 
-#define GET_TAG(x)      ((int32)  ( (x)                   & INST_M_TAG ))
-#define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
-#define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
-#define GET_OP(x)       ((int32)  (((x) >> INST_V_OP)     & INST_M_OP ))
+#define GET_TAG(x)      ((word6)  ( (x)                   & INST_M_TAG ))
+#define GET_A(x)        ((uint32) (((x) >> INST_V_A)      & INST_M_A   ))
+#define GET_I(x)        ((uint32) (((x) >> INST_V_I)      & INST_M_I   ))
+#define GET_OP(x)       ((uint32) (((x) >> INST_V_OP)     & INST_M_OP ))
 #define GET_OPX(x)      ((bool)   (((x) >> INST_V_OPX)    & INST_M_OPX))
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
 #define GET_PRN(x)      ((word3)  (((x) >> INST_V_PRN)    & INST_M_PRN))
 #define GET_ARN(x)      ((word3)  (((x) >> INST_V_ARN)    & INST_M_ARN))
 
-#define GET_TM(x)       ((int32)(GET_TAG(x) & 060U))
-#define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))
+#define GET_TM(x)       ((word6)(GET_TAG(x) & 060U))
+#define GET_TD(x)       ((word6)(GET_TAG(x) & 017U))
 
 #define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
@@ -515,9 +515,49 @@ typedef enum _fault _fault;
 enum _fault_subtype {
     no_fault_subtype = 0,
 
+    // Access violation fault subtypes
+    ACV0  = (1U << 15),   ///< 15.Illegal ring order (ACV0=IRO)
+    ACV1  = (1U << 14),   ///< 3. Not in execute bracket (ACV1=OEB)
+    ACV2  = (1U << 13),   ///< 6. No execute permission (ACV2=E-OFF)
+    ACV3  = (1U << 12),   ///< 1. Not in read bracket (ACV3=ORB)
+    ACV4  = (1U << 11),   ///< 4. No read permission (ACV4=R-OFF)
+    ACV5  = (1U << 10),   ///< 2. Not in write bracket (ACV5=OWB)
+    ACV6  = (1U <<  9),   ///< 5. No write permission (ACV6=W-OFF)
+    ACV7  = (1U <<  8),   ///< 8. Call limiter fault (ACV7=NO GA)
+    ACV8  = (1U <<  7),   ///< 16.Out of call brackets (ACV8=OCB)
+    ACV9  = (1U <<  6),   ///< 9. Outward call (ACV9=OCALL)
+    ACV10 = (1U <<  5),   ///< 10.Bad outward call (ACV10=BOC)
+    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET) XXX ??
+    ACV12 = (1U <<  3),   ///< 7. Invalid ring crossing (ACV12=CRT)
+    ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
+    ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
+    ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
+    
+    // ACDF0  = ( 1U << 16), ///< directed fault 0
+    // ACDF1  = ( 1U << 17), ///< directed fault 1
+    // ACDF2  = ( 1U << 18), ///< directed fault 2
+    // ACDF3  = ( 1U << 19), ///< directed fault 3
+    
+    IRO = ACV0,
+    OEB = ACV1,
+    E_OFF = ACV2,
+    ORB = ACV3,
+    R_OFF = ACV4,
+    OWB = ACV5,
+    W_OFF = ACV6,
+    NO_GA = ACV7,
+    OCB = ACV8,
+    OCALL = ACV9,
+    BOC = ACV10,
+    INRET = ACV11,
+    CRT = ACV12,
+    RALR = ACV13,
+    AME = ACV14,
+    OOSB = ACV15,
+
     // FAULT_IPR
 
-    ill_op,     // An illegal operation code has been detected.
+    ill_op = ACV0 + 1,     // An illegal operation code has been detected.
     ill_mod,    // An illegal address modifier has been detected.
     ill_slv,    // An illegal BAR mode procedure has been encountered.
     ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
@@ -581,47 +621,8 @@ enum _fault_subtype {
     cdd,
     
     par_sdwam,  // A parity error has been detected in the SDWAM.
-    par_ptwam,  // A parity error has been detected in the PTWAM.
+    par_ptwam   // A parity error has been detected in the PTWAM.
     
-    // Access violation fault subtypes
-    ACV0  = (1U << 15),   ///< 15.Illegal ring order (ACV0=IRO)
-    ACV1  = (1U << 14),   ///< 3. Not in execute bracket (ACV1=OEB)
-    ACV2  = (1U << 13),   ///< 6. No execute permission (ACV2=E-OFF)
-    ACV3  = (1U << 12),   ///< 1. Not in read bracket (ACV3=ORB)
-    ACV4  = (1U << 11),   ///< 4. No read permission (ACV4=R-OFF)
-    ACV5  = (1U << 10),   ///< 2. Not in write bracket (ACV5=OWB)
-    ACV6  = (1U <<  9),   ///< 5. No write permission (ACV6=W-OFF)
-    ACV7  = (1U <<  8),   ///< 8. Call limiter fault (ACV7=NO GA)
-    ACV8  = (1U <<  7),   ///< 16.Out of call brackets (ACV8=OCB)
-    ACV9  = (1U <<  6),   ///< 9. Outward call (ACV9=OCALL)
-    ACV10 = (1U <<  5),   ///< 10.Bad outward call (ACV10=BOC)
-    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET) XXX ??
-    ACV12 = (1U <<  3),   ///< 7. Invalid ring crossing (ACV12=CRT)
-    ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
-    ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
-    ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
-    
-    // ACDF0  = ( 1U << 16), ///< directed fault 0
-    // ACDF1  = ( 1U << 17), ///< directed fault 1
-    // ACDF2  = ( 1U << 18), ///< directed fault 2
-    // ACDF3  = ( 1U << 19), ///< directed fault 3
-    
-    IRO = ACV0,
-    OEB = ACV1,
-    E_OFF = ACV2,
-    ORB = ACV3,
-    R_OFF = ACV4,
-    OWB = ACV5,
-    W_OFF = ACV6,
-    NO_GA = ACV7,
-    OCB = ACV8,
-    OCALL = ACV9,
-    BOC = ACV10,
-    INRET = ACV11,
-    CRT = ACV12,
-    RALR = ACV13,
-    AME = ACV14,
-    OOSB = ACV15
 };
 typedef enum _fault_subtype _fault_subtype;
 

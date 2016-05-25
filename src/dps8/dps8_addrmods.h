@@ -15,8 +15,8 @@ typedef struct modificationContinuation modificationContinuation;
 
 extern bool directOperandFlag;
 extern bool characterOperandFlag;
-extern int characterOperandSize;
-extern int characterOperandOffset;
+extern uint characterOperandSize;
+extern uint characterOperandOffset;
 extern word36 directOperand;
 
 t_stat doComputedAddressFormation (void);

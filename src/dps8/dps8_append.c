@@ -827,7 +827,7 @@ static char *strACV(_fault_subtype acv)
   return "unhandled acv in strACV";
 }
 
-static int acvFaults = 0;   ///< pending ACV faults
+static _fault_subtype acvFaults = 0;   ///< pending ACV faults
 
 // CANFAULT
 void acvFault(_fault_subtype acvfault, char * msg)
@@ -864,6 +864,7 @@ static char *strPCT(_processor_cycle_type t)
         case APU_DATA_MOVEMENT: return "APU_DATA_MOVEMENT";
         case ABORT_CYCLE: return "ABORT_CYCLE";
         case FAULT_CYCLE: return "FAULT_CYCLE";
+        case EIS_OPERAND_DESCRIPTOR : return "EIS_OPERAND_DESCRIPTOR";
         case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
         case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
 
@@ -934,7 +935,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
 
-    word24 finalAddress = -1;  // not everything requires a final address
+    word24 finalAddress = (word24) -1;  // not everything requires a final address
     
 //
 //  A:
@@ -1447,7 +1448,7 @@ Exit:;
 // Translate a segno:offset to a absolute address.
 // Return 0 if successful.
 
-int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
+int dbgLookupAddress (word15 segno, word18 offset, word24 * finalAddress,
                       char * * msg)
   {
     // Local copies so we don't disturb machine state

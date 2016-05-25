@@ -6791,7 +6791,7 @@ static t_stat DoEISInstruction (void)
           cmpn ();
           break;
 
-#if EMULATOR_ONLY
+#ifdef EMULATOR_ONLY
             
         case 0420:  ///< emcall instruction Custom, for an emulator call for simh stuff ...
         {
