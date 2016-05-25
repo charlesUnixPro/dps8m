@@ -30,6 +30,7 @@
 #define USE_INT64
 #endif
 
+#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED

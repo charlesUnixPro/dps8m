@@ -230,6 +230,7 @@ C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
 C_SRCS += ./dps8_loader.c
 C_SRCS += ./dps8_math.c
+C_SRCS += ./dps8_math128.c
 C_SRCS += ./dps8_mt.c
 C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
