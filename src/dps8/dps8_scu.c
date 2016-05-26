@@ -1710,6 +1710,12 @@ static void deliverInterrupts (uint scu_unit_num)
     cpu . events . XIP [scu_unit_num] = false;
   }
 
+// Scan a SCU for interrupts from highest to lowest. If an interrupt is
+// present, clear it, update the interrupt state bits and return the fault
+// pair address for the interrupt (2 * interrupt number). If no interrupt
+// is present, return 1.
+//
+
 uint scuGetHighestIntr (uint scuUnitNum)
   {
     //for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)

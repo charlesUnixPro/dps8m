@@ -1158,16 +1158,22 @@ cpu_state_t cpus [N_CPU_UNITS_MAX];
 cpu_state_t cpu;
 #endif
 
+// Scan the SCUs; it one has an interrupt present, return the fault pair
+// address for the highest numbered interrupt on that SCU. If no interrupts
+// are found, return 1.
+ 
 static uint get_highest_intr (void)
   {
     for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
         if (cpu.events.XIP [scuUnitNum])
           {
-            return scuGetHighestIntr (scuUnitNum);
+            uint fp = scuGetHighestIntr (scuUnitNum);
+            if (fp != 1)
+              return fp;
           }
       }
-    return -1;
+    return 1;
   }
 
 bool sample_interrupts (void)
