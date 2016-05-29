@@ -14,12 +14,13 @@ CFLAGS += -Wall
 all: decNumber.a
 
 decNumber.a : $(OBJS)
-	$(AR) r $@ $?
+	@echo AR $@
+	@$(AR) cr $@ $?
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS) decNumber.a
-	-@echo ' '
+	@echo CLEAN decNumber
+	-@$(RM) $(OBJS) decNumber.a
 
 $(OBJS) : decContext.h decimal128.h decNumber.h decQuad.h decDouble.h decimal32.h decNumberLocal.h decSingle.h decDPD.h decimal64.h  decPacked.h
 

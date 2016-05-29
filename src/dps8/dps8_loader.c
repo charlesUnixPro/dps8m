@@ -1379,7 +1379,7 @@ t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam,
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)
     {
-        sim_printf ("fwrite returned %ld; expected %d\n", rc, MEMSIZE);
+        sim_printf ("fwrite returned %ld; expected %d\n", (long) rc, MEMSIZE);
         return SCPE_IOERR;  
     }
     return SCPE_OK;

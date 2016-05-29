@@ -1394,7 +1394,7 @@ t_stat executeInstruction (void)
     if (RPx_fault)
       {
 if (currentRunningCPUnum)
-sim_printf ("RPx_fault %012lo\n", RPx_fault);
+sim_printf ("RPx_fault %012llo\n", RPx_fault);
         doFault (FAULT_IPR, RPx_fault, "RPx test fail");
       }
 

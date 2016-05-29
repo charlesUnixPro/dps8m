@@ -526,7 +526,6 @@ enum {
 #define SC_I_PERR(v)  SCF (v, cpu.cu.IR, I_PERR);
 #define SC_I_PMASK(v) SCF (v, cpu.cu.IR, I_PMASK);
 #define SC_I_TRUNC(v) SCF (v, cpu.cu.IR, I_TRUNC);
-
 //
 //  floating-point constants
 //

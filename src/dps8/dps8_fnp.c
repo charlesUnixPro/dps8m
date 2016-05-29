@@ -205,6 +205,15 @@ fnpQueueElement * fnpQueue = NULL;
 void fnpQueueMsg (char * msg)
   {
     pthread_mutex_lock (& fnpMQlock);
+    // Compress multiple send_output commands
+    if (strncmp ("send_output ", msg, strlen ("send_output ")) == 0)
+      {
+        if (fnpQueue && fnpQueue -> prev && strcmp (msg, fnpQueue -> prev -> msg) == 0)
+          {
+            //sim_printf ("dropping\n");
+            goto skip;
+          }
+      }
     fnpQueueElement * element = malloc (sizeof (fnpQueueElement));
     if (! element)
       {
@@ -215,6 +224,7 @@ void fnpQueueMsg (char * msg)
         element -> msg = strdup (msg);
         DL_APPEND (fnpQueue, element);
       }
+skip:;
     pthread_mutex_unlock (& fnpMQlock);
   }
 
@@ -357,124 +367,118 @@ void fnpProcessEvent (void)
     // ASSUME0 XXX there should be a queue for each FNP unit.
     if (! fnpUnitData [ASSUME0] . fnpIsRunning)
       return;
-    // Queue empty?
-    if (! fnpPollQueue ())
-      return;
-    // Mailbox available?
-    int mbx = findMbx (ASSUME0); // XXX
-    if (mbx < 0)
+    int mbx;
+    // While queue not empty and mailbox available
+    while (fnpPollQueue () && (mbx = findMbx (ASSUME0)) >= 0) // XXX
       {
-        //sim_printf ("no mbx available; requeuing\n");
-        return;
-      }
-    //sim_printf ("selected mbx %d\n", mbx);
-    struct fnpUnitData * fudp = & fnpUnitData [ASSUME0]; // XXX
-    struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
-    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
-    bzero (smbxp, sizeof (struct fnp_submailbox));
-    char * msg = fnpDequeueMsg ();
-    if (msg)
-      {
-        //sim_printf ("dia dequeued %s\n", msg);
-
-        if (strncmp (msg, "accept_new_terminal", 19) == 0)
+        //sim_printf ("selected mbx %d\n", mbx);
+        struct fnpUnitData * fudp = & fnpUnitData [ASSUME0]; // XXX
+        struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
+        struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+        bzero (smbxp, sizeof (struct fnp_submailbox));
+        char * msg = fnpDequeueMsg ();
+        if (msg)
           {
-            int chanNum, termType, chanBaud;
-            int n = sscanf(msg, "%*s %d %d %d", & chanNum, & termType, & chanBaud);
-            if (n != 3)
+            //sim_printf ("dia dequeued %s\n", msg);
+
+            if (strncmp (msg, "accept_new_terminal", 19) == 0)
               {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted accept_new_terminal message; dropping\n");
-                goto drop;
+                int chanNum, termType, chanBaud;
+                int n = sscanf(msg, "%*s %d %d %d", & chanNum, & termType, & chanBaud);
+                if (n != 3)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted accept_new_terminal message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 64); // op_code accept_new_terminal
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                smbxp -> mystery [0] = termType; 
+                smbxp -> mystery [1] = chanBaud; 
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 64); // op_code accept_new_terminal
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            smbxp -> mystery [0] = termType; 
-            smbxp -> mystery [1] = chanBaud; 
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "wru_timeout", 11) == 0)
-          {
-            int chanNum;
-            int n = sscanf(msg, "%*s %d", & chanNum);
-            if (n != 1)
+            else if (strncmp (msg, "wru_timeout", 11) == 0)
               {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted wru_timeout message; dropping\n");
-                goto drop;
+                int chanNum;
+                int n = sscanf(msg, "%*s %d", & chanNum);
+                if (n != 1)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted wru_timeout message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 0114); // op_code wru_timeout
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 0114); // op_code wru_timeout
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "input", 5) == 0)
-          {
+            else if (strncmp (msg, "input", 5) == 0)
+              {
 //sim_printf ("CPU got input <%s>\n", msg);
-            sim_debug (DBG_TRACE, & fnpDev, "CPU got input <%s>\n", msg);
-            int chanNum, charsAvail, outputPresent, hasBreak;
-            int n = sscanf(msg, "%*s %d %d %d %d", & chanNum, & charsAvail, & outputPresent, & hasBreak);
-            if (n != 4)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted input message; dropping\n");
-                goto drop;
-              }
-            char * data = unpack (msg);
-            if (! data)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted input message data; dropping\n");
-                goto drop;
-              }
+                sim_debug (DBG_TRACE, & fnpDev, "CPU got input <%s>\n", msg);
+                int chanNum, charsAvail, outputPresent, hasBreak;
+                int n = sscanf(msg, "%*s %d %d %d %d", & chanNum, & charsAvail, & outputPresent, & hasBreak);
+                if (n != 4)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted input message; dropping\n");
+                    goto drop;
+                  }
+                char * data = unpack (msg);
+                if (! data)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted input message data; dropping\n");
+                    goto drop;
+                  }
 
-            if_sim_debug (DBG_TRACE, & fnpDev)
-             {
-               sim_printf ("'");
-               for (int i = 0; i < charsAvail; i ++)
+                if_sim_debug (DBG_TRACE, & fnpDev)
                  {
-                   if (isprint (data [i]))
-                     sim_printf ("%c", data[i]);
-                   else
-                     sim_printf ("\\%03o", data[i]);
+                   sim_printf ("'");
+                   for (int i = 0; i < charsAvail; i ++)
+                     {
+                       if (isprint (data [i]))
+                         sim_printf ("%c", data[i]);
+                       else
+                         sim_printf ("\\%03o", data[i]);
+                     }
+                   sim_printf ("'\n");
                  }
-               sim_printf ("'\n");
-             }
 
-            if (charsAvail > 100)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "input message too big; dropping\n");
-                goto drop;
-              }
+                if (charsAvail > 100)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "input message too big; dropping\n");
+                    goto drop;
+                  }
 
-            // Confused about "blocks available"; I am assuming that
-            // that is the number of fixed sized buffers that the
-            // message is spread over, and that each invidual buffer
-            // may only partially filled, so that the relationship
-            // between #chars and #buffers is non-trivial.
-            //
-            // We will simplify...
-            //
-            // ... later. For now, looking at dn355$process_input_in_mbx,
-            // it dosn't look like it examines blocks_avail.
+                // Confused about "blocks available"; I am assuming that
+                // that is the number of fixed sized buffers that the
+                // message is spread over, and that each invidual buffer
+                // may only partially filled, so that the relationship
+                // between #chars and #buffers is non-trivial.
+                //
+                // We will simplify...
+                //
+                // ... later. For now, looking at dn355$process_input_in_mbx,
+                // it dosn't look like it examines blocks_avail.
 
-            uint blksAvail = 256;
+                uint blksAvail = 256;
   
 //   /* The structure below defines the long form of submailbox used by the FNP. Note that
 //      the declaration of command_data and input_data is that used for the input_in_mailbox
@@ -500,154 +504,155 @@ void fnpProcessEvent (void)
 //       2 command_data bit (36) unaligned;                      /* shouldn't need more than one word */
 //   
 
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-            putbits36 (& smbxp -> word1, 18, 18, blksAvail);
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 18, 18, blksAvail);
 
-            putbits36 (& smbxp -> word2, 9, 9, charsAvail); // n_chars
-            putbits36 (& smbxp -> word2, 18, 9, 0102); // op_code input_in_mailbox
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+                putbits36 (& smbxp -> word2, 9, 9, charsAvail); // n_chars
+                putbits36 (& smbxp -> word2, 18, 9, 0102); // op_code input_in_mailbox
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
 
 // data goes in mystery [0..24]
 
-            int j = 0;
-            for (int i = 0; i < charsAvail + 3; i += 4)
-              {
-                word36 v = 0;
-                if (i < charsAvail)
-                  putbits36 (& v, 0, 9, data [i]);
-                if (i + 1 < charsAvail)
-                  putbits36 (& v, 9, 9, data [i + 1]);
-                if (i + 2 < charsAvail)
-                  putbits36 (& v, 18, 9, data [i + 2]);
-                if (i + 3 < charsAvail)
-                  putbits36 (& v, 27, 9, data [i + 3]);
-                smbxp -> mystery [j ++] = v;
-              }
-            free (data);
+                int j = 0;
+                for (int i = 0; i < charsAvail + 3; i += 4)
+                  {
+                    word36 v = 0;
+                    if (i < charsAvail)
+                      putbits36 (& v, 0, 9, data [i]);
+                    if (i + 1 < charsAvail)
+                      putbits36 (& v, 9, 9, data [i + 1]);
+                    if (i + 2 < charsAvail)
+                      putbits36 (& v, 18, 9, data [i + 2]);
+                    if (i + 3 < charsAvail)
+                      putbits36 (& v, 27, 9, data [i + 3]);
+                    smbxp -> mystery [j ++] = v;
+                  }
+                free (data);
 
 // command_data is at mystery[25]?
 
-            putbits36 (& smbxp -> mystery [25], 16, 1, outputPresent);
-            putbits36 (& smbxp -> mystery [25], 17, 1, hasBreak);
+                putbits36 (& smbxp -> mystery [25], 16, 1, outputPresent);
+                putbits36 (& smbxp -> mystery [25], 17, 1, hasBreak);
 
 #if 0
-            sim_printf ("    %012llo\n", smbxp -> word1);
-            sim_printf ("    %012llo\n", smbxp -> word2);
-            for (int i = 0; i < 26; i ++)
-              sim_printf ("    %012llo\n", smbxp -> mystery [i]);
-            sim_printf ("interrupting!\n"); 
+                sim_printf ("    %012llo\n", smbxp -> word1);
+                sim_printf ("    %012llo\n", smbxp -> word2);
+                for (int i = 0; i < 26; i ++)
+                  sim_printf ("    %012llo\n", smbxp -> mystery [i]);
+                sim_printf ("interrupting!\n"); 
 #endif
 
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "send_output", 11) == 0)
-          {
-            int chanNum;
-            int n = sscanf(msg, "%*s %d", & chanNum);
-            if (n != 1)
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+              }
+            else if (strncmp (msg, "send_output", 11) == 0)
               {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted send_output message; dropping\n");
+                int chanNum;
+                int n = sscanf(msg, "%*s %d", & chanNum);
+                if (n != 1)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted send_output message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 18, 18, 256); // blocks available XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 0); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 0105); // op_code send_output
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+              }
+            else if (strncmp (msg, "line_disconnected", 17) == 0)
+              {
+                int chanNum;
+                int n = sscanf(msg, "%*s %d", & chanNum);
+                if (n != 1)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted line_disconnected message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 0101); // op_code line_disconnected
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+              }
+            else if (strncmp (msg, "line_break", 10) == 0)
+              {
+                int chanNum;
+                int n = sscanf(msg, "%*s %d", & chanNum);
+                if (n != 1)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted line_disconnected message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 0113); // op_code line_break
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+              }
+            else if (strncmp (msg, "ack_echnego_init", 16) == 0)
+              {
+                int chanNum;
+                int n = sscanf(msg, "%*s %d", & chanNum);
+                if (n != 1)
+                  {
+                    sim_debug (DBG_ERR, & fnpDev, "illformatted ack_echnego_init message; dropping\n");
+                    goto drop;
+                  }
+                putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
+                putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
+                putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+
+                putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
+                putbits36 (& smbxp -> word2, 18, 9, 70); // op_code ack_echnego_init
+                putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
+
+                fudp -> fnpMBXinUse [mbx] = true;
+                // Set the TIMW
+                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+              }
+            else
+              {
+                sim_debug (DBG_ERR, & fnpDev, "unrecognized message; dropping\n");
                 goto drop;
               }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-            putbits36 (& smbxp -> word1, 18, 18, 256); // blocks available XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 0); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 0105); // op_code send_output
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "line_disconnected", 17) == 0)
-          {
-            int chanNum;
-            int n = sscanf(msg, "%*s %d", & chanNum);
-            if (n != 1)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted line_disconnected message; dropping\n");
-                goto drop;
-              }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 0101); // op_code line_disconnected
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "line_break", 10) == 0)
-          {
-            int chanNum;
-            int n = sscanf(msg, "%*s %d", & chanNum);
-            if (n != 1)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted line_disconnected message; dropping\n");
-                goto drop;
-              }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 0113); // op_code line_break
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else if (strncmp (msg, "ack_echnego_init", 16) == 0)
-          {
-            int chanNum;
-            int n = sscanf(msg, "%*s %d", & chanNum);
-            if (n != 1)
-              {
-                sim_debug (DBG_ERR, & fnpDev, "illformatted ack_echnego_init message; dropping\n");
-                goto drop;
-              }
-            putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
-            putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
-            putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-            putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
-
-            putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
-            putbits36 (& smbxp -> word2, 18, 9, 70); // op_code ack_echnego_init
-            putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
-
-            fudp -> fnpMBXinUse [mbx] = true;
-            // Set the TIMW
-            putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-            send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
-          }
-        else
-          {
-            sim_debug (DBG_ERR, & fnpDev, "unrecognized message; dropping\n");
-            goto drop;
-          }
 
 drop:
-        free (msg);
-      }
+            free (msg);
+          }
+      } // while
   }
 
 int lookupFnpsIomUnitNumber (int fnpUnitNum)

@@ -166,6 +166,7 @@ static t_stat urp_reset (DEVICE * dptr)
     return SCPE_OK;
   }
 
+#ifndef QUIET_UNUSED
 // Given an array of word36 and a 9bit char offset, return the char
 
 static word9 gc (word36 * b, uint os)
@@ -174,7 +175,7 @@ static word9 gc (word36 * b, uint os)
     uint charno = os % 4;
     return (word9) getbits36 (b [wordno], charno * 9, 9);
   }
-
+#endif
 
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {

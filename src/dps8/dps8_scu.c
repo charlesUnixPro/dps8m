@@ -1589,6 +1589,12 @@ sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_n
       }
   }
 
+// Scan a SCU for interrupts from highest to lowest. If an interrupt is
+// present, clear it, update the interrupt state bits and return the fault
+// pair address for the interrupt (2 * interrupt number). If no interrupt
+// is present, return 1.
+//
+
 uint scuGetHighestIntr (uint scuUnitNum)
   {
     //for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)

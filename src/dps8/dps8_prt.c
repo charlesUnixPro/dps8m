@@ -242,10 +242,10 @@ static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
     int rc = parseID (buffer, tally, qno, name);
     char template [129 + LONGEST];
     if (rc == 0)
-      sprintf (template, "prt%c.spool.XXXXXX", 'a' + prt_unit_num);
+      sprintf (template, "prt%c.spool.XXXXXX.prt", 'a' + prt_unit_num);
     else
-      sprintf (template, "prt%c.spool.%s.%s.XXXXXX", 'a' + prt_unit_num, qno, name);
-    prt_state [prt_unit_num] . prtfile = mkstemp (template);
+      sprintf (template, "prt%c.spool.%s.%s.XXXXXX.prt", 'a' + prt_unit_num, qno, name);
+    prt_state [prt_unit_num] . prtfile = mkstemps (template, 4);
     if (prt_state [prt_unit_num] . cachedFF)
       {
         // 014 013 is slew to 013 (top of odd page?); just do a ff

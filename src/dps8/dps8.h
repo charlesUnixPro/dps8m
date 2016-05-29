@@ -30,12 +30,13 @@
 #define USE_INT64
 #endif
 
+#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
 
 // Enable M[] as shared memory segment
-//#define M_SHARED
+#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
@@ -51,10 +52,16 @@
 //#define REAL_TR
 
 // Enable speed over debuggibility
-//#define SPEED
+#define SPEED
 
 // Enable history debugger
 #define HDBG
+
+// XXX FixMe
+// history debugger wont build under XCode just yet.
+#ifdef __APPLE__
+#undef HDBG
+#endif
 
 // Enable round-robin multi-CPU
 #define ROUND_ROBIN

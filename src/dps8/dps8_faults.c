@@ -224,7 +224,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %ld (%lo)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  subfault number %llu (%llo)\n", cpu . subFault, cpu . subFault);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -324,7 +324,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 //if (currentRunningCPUnum)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
-               "Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
+               "Fault %d(0%0o), sub %llu(0%llo), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault, subFault, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
@@ -343,7 +343,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?
     {
-        sim_printf ("fault(out-of-range): %d %lo '%s'\n", 
+        sim_printf ("fault(out-of-range): %d %llo '%s'\n", 
                     faultNumber, subFault, faultMsg ? faultMsg : "?");
         sim_warn ("fault out-of-range\n");
         faultNumber = FAULT_TRB;
@@ -599,7 +599,7 @@ bool bG7PendingNoTRO (void)
 
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
-    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %ld %lo\n", 
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %lld %llo\n", 
                cpuNo, faultNo, faultNo, subFault, subFault);
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpuNo);

@@ -1836,8 +1836,8 @@ sim_printf ("FCMG m1 %012llo\n", m1);
 if (currentRunningCPUnum)
 sim_printf ("FCMG m2 %012llo\n", m2);
     SC_I_ZERO (m1 == m2);
-    t_int64 sm1 = labs (SIGNEXT36_64 (m1));
-    t_int64 sm2 = labs (SIGNEXT36_64 (m2));
+    t_int64 sm1 = llabs (SIGNEXT36_64 (m1));
+    t_int64 sm2 = llabs (SIGNEXT36_64 (m2));
 if (currentRunningCPUnum)
 sim_printf ("FCMG sm1 %lld\n", sm1);
 if (currentRunningCPUnum)

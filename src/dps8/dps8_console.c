@@ -495,7 +495,7 @@ static void sendConsole (uint stati)
       }
     if (console_state . readp < console_state . tailp)
       {
-        sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %ld characters from end of line\n", console_state . tailp - console_state . readp);
+        sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %d characters from end of line\n", (int) (console_state . tailp - console_state . readp));
       }
     console_state . readp = console_state . buf;
     console_state . tailp = console_state . buf;

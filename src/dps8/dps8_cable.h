@@ -54,8 +54,13 @@ struct cableFromCpu
 
 struct cables_t
   {
+    // CPU -> SCU
     struct cableFromCpu cablesFromCpus [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+
+    // IOM -> SCU
     struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
+
+    // IOM -> device
     struct cableFromIom cablesFromIomToUrp [N_URP_UNITS_MAX];
     struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
     struct cableFromIom cablesFromIomToCrdPun [N_CRDPUN_UNITS_MAX];
@@ -64,7 +69,12 @@ struct cables_t
     struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
     struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
     struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
+    struct cableFromIom cablesFromIomToAbsi [N_ABSI_UNITS_MAX];
+
+    // SCU -> CPU
     struct cableFromScuToCpu cablesFromScuToCpu [N_CPU_UNITS_MAX];
+
+    // SCU -> IOM
     struct cableFromIomToDev cablesFromIomToDev [N_IOM_UNITS_MAX];
   };
 
