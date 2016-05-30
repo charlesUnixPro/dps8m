@@ -1,3 +1,9 @@
+//
+// blinkenLightsPi: Run a blinkenLights display on a Raspberry Pi framebuffer.
+//
+// This code is targeted for a AdaFruit 2441 3.5" PiTFT+ 480x320 display
+//
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +40,8 @@
 #define FONTW 8
 #define FONTH 8
 
-char fontImg[][FONTW * FONTH] = {
+char fontImg[][FONTW * FONTH] =
+  {
     { // ' ' (space)
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -440,7 +447,6 @@ char fontImg[][FONTW * FONTH] = {
             0, 1, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0  
     },
-    // G-Z (TODO)
     { // G
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -705,20 +711,24 @@ char fontImg[][FONTW * FONTH] = {
     // a-z (TODO) ...
     // {|}~ (TODO) ...
 
-};
+  };
 
-// helper function to get the 'image'/'pixel map' index
+// get the 'image'/'pixel map' index
 // for a given character - returns 0 (space) if not found
-int font_index(char a) {
+
+int font_index(char a)
+  {
     int ret = a - 32;
     // is the value in the 'printable' range (a >= 32) and 
     // within the defined entries
-    if ( (ret >= 0) && ( ret < ( sizeof(fontImg) / (FONTW * FONTH) ) ) ) {
+    if ((ret >= 0) && ( ret < (int) (sizeof(fontImg) / (FONTW * FONTH) ) ) )
+      {
         ret = a - 32; // we start at zero
-    }
-    else {  // if not, return 0 (== space character)
+      }
+    else
+      {  // if not, return 0 (== space character)
         ret = 0;
-    }
+      }
     return ret;
 }
 
@@ -732,44 +742,39 @@ struct fb_fix_screeninfo finfo;
 static pxl bg_col = 0;
 static pxl fg_col = 0xffff;
 
-// helper function to 'plot' a pixel in given color
-void put_pixel(int x, int y, pxl c)
-{
+// 'plot' a pixel in given color
+
+void put_pixel (int x, int y, pxl c)
+  {
     // calculate the pixel's byte offset inside the buffer
     unsigned int pix_offset = x + y * finfo.line_length/bytes_per_pixel;
-
-    // now this is about the same as 'fbp[pix_offset] = value'
     *(fbp + pix_offset) = c;
-}
+  }
 
-// helper function to draw a rectangle in given color
-void fill_rect(int x, int y, int w, int h, pxl c) {
+void fill_rect (int x, int y, int w, int h, pxl c)
+  {
     int cx, cy;
-    for (cy = 0; cy < h; cy++) {
-        for (cx = 0; cx < w; cx++) {
-            put_pixel(x + cx, y + cy, c);
-        }
-    }
-}
-
-// helper function to clear the screen - fill whole
-// screen with given color
-void clear_screen(pxl c) {
-    memset(fbp, c, vinfo.xres * vinfo.yres * sizeof (pxl));
-}
+    for (cy = 0; cy < h; cy ++)
+      {
+        for (cx = 0; cx < w; cx ++)
+          {
+            put_pixel (x + cx, y + cy, c);
+          }
+      }
+  }
 
 static pxl grey = 0x8410;
 
-// helper function for drawing - no more need to go mess with
-// the main function when just want to change what to draw...
+// Draw a text string on the display
+
 static void draw (int textX, int textY, char *arg)
   {
 
+    // Convert from text row/col to pixel coordinates.
     textX *= FONTW;
     textY *= FONTH;
 
     char * text = arg;
-    pxl textC = 0xffff;
 
     int i, l, x, y;
 
@@ -785,10 +790,12 @@ static void draw (int textX, int textY, char *arg)
             continue;
           }
         pxl color = fg_col;
+        // Draw '+' as a white circle
         if (ch == '+')
           {
             ch = '@';
           }
+        // Draw '-' as a black circle
         else if (ch == '-')
           {
             ch = '@';
@@ -834,9 +841,13 @@ cpu_state_t * cpus;
 cpu_state_t * cpun;
 
 
+// Draw a number on the screen in binary. draw() will draw '+' as a white
+// circle and '-' as a black circle.
+// 'n' is the number of bits in the number, 'v' is the value to draw.
+
 
 static char buf [128];
-static void drawn (int n, word36 v, int x, int y)
+static void draw_n (int n, word36 v, int col, int row)
   {
     char * p = buf;
     for (int i = n - 1; i >= 0; i --)
@@ -844,22 +855,20 @@ static void drawn (int n, word36 v, int x, int y)
         * p ++ = ((1llu << i) & v) ? '+' : '-';
       }
     * p ++ = 0;
-    draw (x, y, buf);
+    draw (col, row, buf);
   }
 
-static void draw36 (word36 v, int x, int y)
-  {
-    char * p = buf;
-    for (int i = 35; i >= 0; i --)
-      {
-        * p ++ = ((1llu << i) & v) ? '+' : '-';
-      }
-    * p ++ = 0;
-    draw (x, y, buf);
-  }
+//
+// Usage: blinkenLightsPi sid [cpu_number]
+//
 
 int main (int argc, char * argv [])
   {
+
+// Attach the DPS8M emulator shared memory
+
+// Get the SID from the command line
+
     sid = getsid (0);
     if (argc > 1 && strlen (argv [1]))
       {
@@ -871,6 +880,8 @@ int main (int argc, char * argv [])
             argv [1] [0] = 0;
           }
       }
+
+// Get the optional CPU number from the command line
 
     int cpunum = 0;
     if (argc > 2 && strlen (argv [2]))
@@ -889,74 +900,69 @@ int main (int argc, char * argv [])
         return 1;
       }
 
+// Open the emulator CPU state memory segment
+
     cpus = (cpu_state_t *) open_shm ("cpus", sid, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     if (! cpus)
       {
-        perror ("cpus open_shm");
+        printf ("open_shm (cpus) failed\n");
         return 1;
       }
+
+// Point to the selected CPU number
+
     cpun = cpus + cpunum;
 
 
+// Open the framebuffer
 
     int fbfd = 0;
-    struct fb_var_screeninfo orig_vinfo;
     long int screensize = 0;
 
-    // Open the framebuffer file for reading and writing
     fbfd = open("/dev/fb1", O_RDWR);
-    if (!fbfd) {
-      printf("Error: cannot open framebuffer device.\n");
-      return(1);
-    }
-    printf("The framebuffer device was opened successfully.\n");
+    if (! fbfd)
+      {
+        printf ("Error: cannot open framebuffer device.\n");
+        return 1;
+      }
+    //printf ("The framebuffer device was opened successfully.\n");
 
     // Get variable screen information
-    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo)) {
-      printf("Error reading variable information.\n");
-    }
-    printf("Original %dx%d, %dbpp\n", vinfo.xres, vinfo.yres,
-       vinfo.bits_per_pixel );
+    if (ioctl (fbfd, FBIOGET_VSCREENINFO, & vinfo))
+      {
+        printf ("Error reading variable information.\n");
+        return 1;
+      }
+    //printf ("Original %dx%d, %dbpp\n", vinfo.xres, vinfo.yres,
+            //vinfo.bits_per_pixel);
     bytes_per_pixel = vinfo.bits_per_pixel / 8;
 
-    // Store for reset (copy vinfo to vinfo_orig)
-    memcpy(&orig_vinfo, &vinfo, sizeof(struct fb_var_screeninfo));
-
     // Get fixed screen information
-    if (ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo)) {
-      printf("Error reading fixed information.\n");
-    }
+    if (ioctl (fbfd, FBIOGET_FSCREENINFO, & finfo))
+      {
+        printf ("Error reading fixed information.\n");
+      }
     //printf("Fixed info: smem_len %d, line_length %d\n", finfo.smem_len, finfo.line_length);
-    // map fb to user mem
+
+// map fb to user mem
+
     screensize = finfo.smem_len;
-    //printf ("screensize accoring to ioctl %d; according to s/w %d\n", screensize, vinfo.xres * vinfo.yres * sizeof (pxl));
-    fbp = (pxl*)mmap(0,
-              screensize,
-              PROT_READ | PROT_WRITE,
-              MAP_SHARED,
-              fbfd,
-              0);
+    fbp = (pxl *) mmap (0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                       fbfd, 0);
 
-    if ((int)fbp == -1) {
-        printf("Failed to mmap.\n");
+    if ((int) fbp == -1)
+      {
+        printf ("Failed to mmap.\n");
         return 1;
-    }
+      }
 
-//  0  PRR P PSR
-//  1  IC
-//  2  IWB
-//  3  A
-//  4  Q
-//  5  E (8bits)
-//  6  X0 X1
-//  7  X2 X3
-//  8  X4 X5
-//  9  X6 X7
-// 10  IR
-// 11  TR
-// 12  RALR
+// Set the screen
+
+    // Paint the screen grey
 
     fill_rect (0, 0, vinfo.xres, vinfo.yres, grey);
+
+    // Write the labels
 
 //                 "0123456789012345678901234567890123456789"
     int l = 0;
@@ -997,69 +1003,67 @@ int main (int argc, char * argv [])
 //                 "0123456789012345678901234567890123456789"
 
 
+// Update values
 
     while (1)
       {
         l = 0;
-        drawn ( 3, cpun -> PPR.PRR, 4,  l); drawn ( 1, cpun -> PPR.P,  10,  l); drawn (15, cpun -> PPR.PSR, 16,  l);
+        draw_n ( 3, cpun -> PPR.PRR,  4, l); 
+        draw_n ( 1, cpun -> PPR.P,   10, l);
+        draw_n (15, cpun -> PPR.PSR, 16, l);
         l ++;
-        drawn ( 3, cpun -> TPR.TRR, 4,  l); drawn (15, cpun -> TPR.TSR,  12,  l); drawn (6, cpun -> TPR.TBR, 32,  l);
+        draw_n ( 3, cpun -> TPR.TRR,  4, l);
+        draw_n (15, cpun -> TPR.TSR, 12, l);
+        draw_n ( 6, cpun -> TPR.TBR, 32, l);
         l ++;
-        drawn (18, cpun -> PPR.IC,  4,  l);
+        draw_n (18, cpun -> PPR.IC,   4, l);
         l ++;
-        drawn (36, cpun -> cu.IWB,  4,  l);
+        draw_n (36, cpun -> cu.IWB,   4, l);
         l ++;
-        drawn (36, cpun -> rA,      4,  l);
+        draw_n (36, cpun -> rA,       4, l);
         l ++;
-        drawn (36, cpun -> rQ,      4,  l);
+        draw_n (36, cpun -> rQ,       4, l);
         l ++;
-        drawn ( 8, cpun -> rE,      4,  l);
-        drawn (18, cpun -> TPR.CA, 16,  l);
+        draw_n ( 8, cpun -> rE,       4, l);
+        draw_n (18, cpun -> TPR.CA,  16, l);
         l ++;
         for (int i = 0; i < 8; i += 2)
           {
-            drawn (18, cpun -> rX [i + 0],  3,  l); drawn (18, cpun -> rX [i + 1], 22,  l);
+            draw_n (18, cpun -> rX [i + 0],  3,  l);
+            draw_n (18, cpun -> rX [i + 1], 22,  l);
             l ++;
           }
-        drawn (18, cpun -> cu . IR,   4, l); drawn ( 3, cpun -> rRALR,   28, l);
+        draw_n (18, cpun -> cu . IR,   4, l);
+        draw_n ( 3, cpun -> rRALR,   28, l);
         l ++;
-        drawn (26, cpun -> rTR,     4, l);
+        draw_n (26, cpun -> rTR,     4, l);
         l ++;
         for (int i = 0; i < 8; i ++)
           {
-            drawn (15, cpun -> PAR [i] . SNR,     2, l); 
-            drawn ( 3, cpun -> PAR [i] . RNR,    18, l); 
+            draw_n (15, cpun -> PAR [i] . SNR,     2, l); 
+            draw_n ( 3, cpun -> PAR [i] . RNR,    18, l); 
             l ++;
-            drawn ( 2, cpun -> PAR [i] . CHAR,    2, l);
-            drawn ( 4, cpun -> PAR [i] . BITNO ,  5, l);
-            drawn (18, cpun -> PAR [i] . WORDNO, 10, l);
+            draw_n ( 2, cpun -> PAR [i] . CHAR,    2, l);
+            draw_n ( 4, cpun -> PAR [i] . BITNO ,  5, l);
+            draw_n (18, cpun -> PAR [i] . WORDNO, 10, l);
             l ++;
           }
-        drawn (24, cpun -> DSBR.ADDR, 5, l);
+        draw_n (24, cpun -> DSBR.ADDR, 5, l);
         l ++;
-        drawn (14, cpun -> DSBR.BND,    4, l);
-        drawn ( 1, cpun -> DSBR.U,     21, l);
-        drawn (12, cpun -> DSBR.STACK, 27, l);
+        draw_n (14, cpun -> DSBR.BND,    4, l);
+        draw_n ( 1, cpun -> DSBR.U,     21, l);
+        draw_n (12, cpun -> DSBR.STACK, 27, l);
         l ++;
-        drawn ( 5, cpun -> faultNumber, 4, l);
+        draw_n ( 5, cpun -> faultNumber, 4, l);
         l ++;
-        drawn (36, cpun -> subFault, 4, l);
-
-
+        draw_n (36, cpun -> subFault, 4, l);
 
         usleep (10000);
       }
-// XXX
 
     // cleanup
-    munmap(fbp, screensize);
-    if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &orig_vinfo)) {
-        printf("Error re-setting variable information.\n");
-    }
-    close(fbfd);
+    munmap (fbp, screensize);
 
     return 0;
-
-
-}
+  }
 
