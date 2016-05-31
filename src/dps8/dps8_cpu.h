@@ -630,7 +630,7 @@ typedef struct EISstruct
 #define     ADDR2       addr [1]
 
 #define     ADDR3       addr [2]
-    int     dstTally;       // number of chars in dst (max 63)
+    uint    dstTally;       // number of chars in dst (max 63)
     int     dstSZ;          // size of chars in dst (4-, 6-, or 9-bits)
     
     bool    mvne;           // for MSES micro-op. True when mvne, false when mve

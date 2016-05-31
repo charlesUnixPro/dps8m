@@ -955,7 +955,7 @@ t_stat executeInstruction (void)
               // generate fault. Only R & RI allowed
               doFault(FAULT_IPR, ill_mod, "ill addr mod from RPT");
           }
-        word6 Td = GET_TD(ci->tag);
+        word4 Td = GET_TD(ci->tag);
         switch (Td)
           {
             //case TD_X0: Only X1-X7 permitted
@@ -1122,7 +1122,7 @@ restart_1:
                 sim_debug (DBG_TRACE, & cpu_dev, 
                            "rpt/rd repeat first; offset is %06o\n", offset);
 
-                word6 Td = GET_TD (ci -> tag);
+                word4 Td = GET_TD (ci -> tag);
                 uint Xn = X (Td);  // Get Xn of next instruction
                 sim_debug (DBG_TRACE, & cpu_dev, 
                            "rpt/rd repeat first; X%d was %06o\n", 
@@ -1341,7 +1341,7 @@ restart_1:
 
         if (cu . rpt) // rpt
           {
-            word6 Td = GET_TD(ci -> tag);
+            word4 Td = GET_TD(ci -> tag);
             uint Xn = X(Td);  // Get Xn of instruction
             rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,

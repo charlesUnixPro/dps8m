@@ -386,7 +386,7 @@ t_stat doComputedAddressFormation (void)
     DCDstruct * i = & currentInstruction;
 
     word6 Tm = 0;
-    word6 Td = 0;
+    word4 Td = 0;
 
     word6 iTAG;   // tag of word preceeding an indirect fetch
 
@@ -469,7 +469,7 @@ startCA:;
 
         if (cu . rpt || cu . rd)
           {
-            word6 Td_ = GET_TD (i -> tag);
+            word4 Td_ = GET_TD (i -> tag);
             uint Xn = X (Td_);  // Get Xn of next instruction
             TPR . CA = rX [Xn];
             if (i -> a)
@@ -518,7 +518,7 @@ startCA:;
 
             if (cu . rpt || cu . rd)
               {
-                 word6 Td_ = GET_TD (i -> tag);
+                 word4 Td_ = GET_TD (i -> tag);
                  uint Xn = X (Td_);  // Get Xn of next instruction
                  tmpCA = rX [Xn];
               }

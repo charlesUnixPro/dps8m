@@ -179,7 +179,7 @@ typedef enum
   } idsType;
 
 
-int send_special_interrupt (uint iomUnitIdx, uint chanNum, uint devCode, 
+int send_special_interrupt (int iomUnitIdx, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
 //
 // iomCmd returns:

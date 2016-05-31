@@ -817,10 +817,13 @@ void rdrProcessEvent ()
 
 void crdrdrCardReady (int unitNum)
   {
-    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
-                            cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
-                            cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
-                            0377, 0377 /* tape drive to ready */);
+    if (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx < 0)
+      sim_warn ("crdrdrCardReady(): No cable to card reader\n");
+    else
+      send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
+                              cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
+                              cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
+                              0377, 0377 /* tape drive to ready */);
   }
 
 int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)

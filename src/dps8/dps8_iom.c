@@ -2178,9 +2178,14 @@ int send_marker_interrupt (uint iomUnitIdx, int chan)
  *
  */
 
-int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode, 
+int send_special_interrupt (int iomUnitIdx, uint chan, uint devCode, 
                             word8 status0, word8 status1)
   {
+    if (iomUnitIdx < 0)
+      {
+        sim_warn ("send_special_interrupt(): IOM unassigned\n");
+        return 0;
+      }
     uint chanloc = mbxLoc (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN);
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation

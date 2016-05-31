@@ -348,10 +348,13 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
       mt_unit [driveNumber] . flags |= MTUF_WRP;
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
-    send_special_interrupt (cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
-                            cables -> cablesFromIomToTap [driveNumber] . chan_num,
-                            cables -> cablesFromIomToTap [driveNumber] . dev_code,
-                            0, 020 /* tape drive to ready */);
+    if (cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx < 0)
+      sim_warn ("loadTape(): No cable to tape drive\n");
+    else
+      send_special_interrupt (cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
+                              cables -> cablesFromIomToTap [driveNumber] . chan_num,
+                              cables -> cablesFromIomToTap [driveNumber] . dev_code,
+                              0, 020 /* tape drive to ready */);
   }
 
 void unloadTape (uint driveNumber)

@@ -196,7 +196,7 @@ struct fnpQueueElement
     fnpQueueElement * prev, * next;
   };
 
-fnpQueueElement * fnpQueue = NULL;
+static fnpQueueElement * fnpQueue = NULL;
 
 void fnpQueueMsg (char * msg)
   {
@@ -234,12 +234,14 @@ static char * fnpDequeueMsg (void)
     return msg;
   }
 
+#if 0
 t_stat diaCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
   {
     // ASSUME0 XXX parse nodename to get unit #
     fnpQueueMsg (arg3);
     return SCPE_OK;
   }
+#endif
 
 static uint virtToPhys (uint ptPtr, uint l66Address)
   {

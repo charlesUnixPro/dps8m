@@ -290,7 +290,7 @@ t_stat console_attn (UNUSED UNIT * uptr)
     if (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx < 0)
       sim_warn ("console_attn(): No cable to console\n");
     else
-      send_special_interrupt ((uint) cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
+      send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
                               cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
                               ASSUME0, 0, 0);
     return SCPE_OK;

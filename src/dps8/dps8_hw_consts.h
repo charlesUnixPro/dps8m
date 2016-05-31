@@ -315,7 +315,7 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define GET_ARN(x)      ((word3)  (((x) >> INST_V_ARN)    & INST_M_ARN))
 
 #define GET_TM(x)       ((word6)(GET_TAG(x) & 060U))
-#define GET_TD(x)       ((word6)(GET_TAG(x) & 017U))
+#define GET_TD(x)       ((word4)(GET_TAG(x) & 017U))
 
 #define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
