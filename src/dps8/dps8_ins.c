@@ -2940,7 +2940,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             word18 ir = cpu.cu.IR;
-            word36 tmp = Add36b (cpu.rQ, cpu.CY, TST_I_CARRY,
+            word36 tmp = Add36b (cpu.rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                          I_ZNOC, & ir, & ovf);
             if (ovf && tstOVFfault ())
               {
@@ -3010,7 +3010,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
 
-            tmp72 = Sub72b (convertToWord72 (cpu.rA, cpu.rQ), 1, tmp72,
+            tmp72 = Sub72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 1,
                             I_ZNC, & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
           }
