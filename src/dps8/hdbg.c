@@ -158,9 +158,9 @@ static void printFault (struct hevt * p)
   {
     fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %lld(0%llo), '%s'\n",
                 p -> time, 
-                p -> fault . faultNumber, p -> fault . faultNumber,
-                p -> fault . subFault, p -> fault . subFault,
-                p -> fault . faultMsg);
+                p -> fault.faultNumber, p -> fault.faultNumber,
+                p -> fault.subFault.bits, p -> fault.subFault.bits,
+                p -> fault.faultMsg);
   }
 
 void hdbgPrint (void)

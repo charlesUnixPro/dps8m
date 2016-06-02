@@ -200,7 +200,7 @@ static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
     // Assume the bootload CPU
-    setG7fault (0, FAULT_EXF, 0);
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
 
@@ -539,7 +539,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, char * buf)
+static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -1020,7 +1020,7 @@ static t_stat absAddrN (int segno, uint offset)
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
     // Assume bootload CPU
-    setG7fault (0, FAULT_EXF, 0);
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return SCPE_OK;
   }
 
@@ -1426,7 +1426,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED

@@ -407,6 +407,11 @@ clean:
 	@$(MAKE) -C ../simhv40-beta clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
+	@$(MAKE) clean_dps8
+
+.PHONY: clean_dps8
+
+clean_dps8:
 	@echo CLEAN dps8
 	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 

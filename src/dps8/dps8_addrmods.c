@@ -289,7 +289,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
            (ISITP(indword) || ISITS(indword))))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP: faulting\n");
-        doFault (FAULT_IPR, FR_ILL_MOD, "Incorrect address modifier");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "Incorrect address modifier");
       }
 
     // Whenever the processor is forming a virtual address two special address
@@ -399,7 +399,7 @@ startCA:;
 
     if (++ lockupCnt > lockupLimit)
       {
-        doFault (FAULT_LUF, 0,
+        doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
                  "Lockup in addrmod");
       }
 
@@ -500,7 +500,7 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "RI_MOD: Td=%o\n", Td);
 
         if (Td == TD_DU || Td == TD_DL)
-          doFault (FAULT_IPR, FR_ILL_MOD,
+          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
         word18 tmpCA = cpu . TPR . CA;
@@ -562,12 +562,12 @@ startCA:;
             if (GET_TD (GET_TAG(indword)) == IT_F2)
               {
                 cpu . TPR . CA = tmpCA;
-                doFault (FAULT_F2, 0, "RI_MOD: IT_F2 (0)");
+                doFault (FAULT_F2, (_fault_subtype) {.bits=0}, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
                 cpu . TPR . CA = tmpCA;
-                doFault (FAULT_F3, 0, "RI_MOD: IT_F3");
+                doFault (FAULT_F3, (_fault_subtype) {.bits=0}, "RI_MOD: IT_F3");
               }
           }
 
@@ -607,7 +607,7 @@ startCA:;
 
         if (++ lockupCnt > lockupLimit)
           {
-            doFault (FAULT_LUF, 0,
+            doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
                      "Lockup in addrmod IR mode");
           }
 
@@ -655,11 +655,11 @@ startCA:;
                     {
                         case IT_F2:
                             cpu . TPR . CA = saveCA;
-                            doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
+                            doFault (FAULT_F2, (_fault_subtype) {.bits=0}, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
                             cpu . TPR . CA = saveCA;
-                            doFault( FAULT_F3, 0, "TM_IT: IT_F3");
+                            doFault( FAULT_F3, (_fault_subtype) {.bits=0}, "TM_IT: IT_F3");
                     }
                 }
                 // fall through to TM_R
@@ -771,7 +771,7 @@ startCA:;
             case SPEC_ITP:
             case SPEC_ITS:
               {
-                doFault(FAULT_IPR, FR_ILL_MOD, "ITx in IT_MOD)");
+                doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ITx in IT_MOD)");
               }
 
             case 2:
@@ -779,24 +779,24 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(): illegal procedure, illegal modifier, "
                            "fault Td=%o\n", Td);
-                doFault (FAULT_IPR, FR_ILL_MOD,
+                doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                          "IT_MOD(): illegal procedure, illegal modifier, "
                          "fault");
               }
 
             case IT_F1:
               {
-                doFault(FAULT_F1, 0, "IT_MOD: IT_F1");
+                doFault(FAULT_F1, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F1");
               }
 
             case IT_F2:
               {
-                doFault(FAULT_F2, 0, "IT_MOD: IT_F2 (2)");
+                doFault(FAULT_F2, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F2 (2)");
               }
 
             case IT_F3:
               {
-                doFault(FAULT_F3, 0, "IT_MOD: IT_F3");
+                doFault(FAULT_F3, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F3");
               }
 
 #if 0
@@ -859,12 +859,12 @@ startCA:;
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR, FR_ILL_MOD,
+                  doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB6 && offset > 5");
 
                 if (characterOperandSize == TB9 && characterOperandOffset > 3)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR, FR_ILL_MOD,
+                  doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB9 && offset > 3");
 
                 // CI uses the address, and SC uses the pre-increment address;
@@ -1271,7 +1271,7 @@ startCA:;
                   {
                      if (GET_TD (cpu.rTAG) != 0)
                        {
-                         doFault (FAULT_IPR, FR_ILL_MOD, "DIC Incorrect address modifier");
+                         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "DIC Incorrect address modifier");
                        }
                   }
 #endif
@@ -1371,7 +1371,7 @@ startCA:;
                   {
                      if (GET_TD (cpu.rTAG) != 0)
                        {
-                         doFault (FAULT_IPR, FR_ILL_MOD, "IDC Incorrect address modifier");
+                         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "IDC Incorrect address modifier");
                        }
                   }
 #endif

@@ -1548,7 +1548,7 @@ setCPU:;
               {
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
                 if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, 0);
+                  setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
               }
           }
 #endif
@@ -1753,7 +1753,7 @@ setCPU:;
                 if (cpu.lufCounter > 32000)
                   {
                     cpu.lufCounter = 0;
-                    doFault (FAULT_LUF, 0, "instruction cycle lockup");
+                    doFault (FAULT_LUF, (_fault_subtype) {.bits=0}, "instruction cycle lockup");
                   }
 
 #if 0

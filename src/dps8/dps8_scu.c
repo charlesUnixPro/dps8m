@@ -1499,7 +1499,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
       {
         setG7fault (cables -> 
                     cablesFromCpus[scu_unit_num][scu_port_num].cpu_unit_num,
-                    FAULT_CON, 0);
+                    FAULT_CON, (_fault_subtype) {.bits=0});
         return 1;
       }
     else

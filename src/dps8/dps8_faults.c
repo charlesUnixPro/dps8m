@@ -224,7 +224,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %llu (%llo)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  subfault number %llu (%llo)\n", cpu.subFault.bits, cpu.subFault.bits);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -325,7 +325,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %llu(0%llo), dfc %c, '%s'\n", 
-               faultNumber, faultNumber, subFault, subFault, 
+               faultNumber, faultNumber, subFault.bits, subFault.bits, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
     hdbgFault (faultNumber, subFault, faultMsg);
@@ -344,7 +344,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     if (faultNumber & ~037U)  // quicker?
     {
         sim_printf ("fault(out-of-range): %d %llo '%s'\n", 
-                    faultNumber, subFault, faultMsg ? faultMsg : "?");
+                    faultNumber, subFault.bits, faultMsg ? faultMsg : "?");
         sim_warn ("fault out-of-range\n");
         faultNumber = FAULT_TRB;
     }
@@ -376,36 +376,36 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         else /* if (subFault == flt_ipr_ill_proc) */ // and all others
           cpu . faultRegister [0] |= FR_ILL_PROC;
 #else
-        cpu . faultRegister [0] |= subFault;
+        cpu . faultRegister [0] |= subFault.bits;
 #endif
       }
-    else if (faultNumber == FAULT_ONC && subFault == flt_onc_nem)
+    else if (faultNumber == FAULT_ONC && subFault.fault_onc_subtype == flt_onc_nem)
       {
         cpu . faultRegister [0] |= FR_NEM;
       }
     else if (faultNumber == FAULT_STR)
       {
-        if (subFault == flt_str_oob)
+        if (subFault.fault_str_subtype == flt_str_oob)
           cpu . faultRegister [0] |= FR_OOB;
-        //else if (subFault == flt_str_ill_ptr)
+        //else if (subFault.fault_str_subtype == flt_str_ill_ptr)
           //cpu . faultRegister [0] |= ?;    // XXX
-        //else if (subFault == flt_str_nea)
+        //else if (subFault.fault_str_subtype == flt_str_nea)
           //cpu . faultRegister [0] |= ?;    // XXX
       }
     else if (faultNumber == FAULT_CON)
       {
-        switch (subFault)
+        switch (subFault.fault_con_subtype)
           {
-            case 0:
+            case con_a:
               cpu . faultRegister [0] |= FR_CON_A;
               break;
-            case 1:
+            case con_b:
               cpu . faultRegister [0] |= FR_CON_B;
               break;
-            case 2:
+            case con_c:
               cpu . faultRegister [0] |= FR_CON_C;
               break;
-            case 3:
+            case con_d:
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
@@ -465,75 +465,75 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         // if the upperhalf were not broken out, then this would be
         // cpu . cu . word1_upper_half = subFault.
 
-        if (subFault & ACV0)
+        if (subFault.fault_acv_subtype & ACV0)
           cpu . cu . IRO_ISN = 1;
-        if (subFault & ACV1)
+        if (subFault.fault_acv_subtype & ACV1)
           cpu . cu . OEB_IOC = 1;
-        if (subFault & ACV2)
+        if (subFault.fault_acv_subtype & ACV2)
           cpu . cu . EOFF_IAIM = 1;
-        if (subFault & ACV3)
+        if (subFault.fault_acv_subtype & ACV3)
           cpu . cu . ORB_ISP = 1;
-        if (subFault & ACV4)
+        if (subFault.fault_acv_subtype & ACV4)
           cpu . cu . ROFF_IPR = 1;
-        if (subFault & ACV5)
+        if (subFault.fault_acv_subtype & ACV5)
           cpu . cu . OWB_NEA = 1;
-        if (subFault & ACV6)
+        if (subFault.fault_acv_subtype & ACV6)
           cpu . cu . WOFF_OOB = 1;
-        if (subFault & ACV7)
+        if (subFault.fault_acv_subtype & ACV7)
           cpu . cu . NO_GA = 1;
-        if (subFault & ACV8)
+        if (subFault.fault_acv_subtype & ACV8)
           cpu . cu . OCB = 1;
-        if (subFault & ACV9)
+        if (subFault.fault_acv_subtype & ACV9)
           cpu . cu . OCALL = 1;
-        if (subFault & ACV10)
+        if (subFault.fault_acv_subtype & ACV10)
           cpu . cu . BOC = 1;
-        if (subFault & ACV11)
+        if (subFault.fault_acv_subtype & ACV11)
           cpu . cu . PTWAM_ER = 1;
-        if (subFault & ACV12)
+        if (subFault.fault_acv_subtype & ACV12)
           cpu . cu . CRT = 1;
-        if (subFault & ACV13)
+        if (subFault.fault_acv_subtype & ACV13)
           cpu . cu . RALR = 1;
-        if (subFault & ACV14)
+        if (subFault.fault_acv_subtype & ACV14)
           cpu . cu . SWWAM_ER = 1;
-        if (subFault & ACV15)
+        if (subFault.fault_acv_subtype & ACV15)
           cpu . cu . OOSB = 1;
       }
     else if (faultNumber == FAULT_STR)
       {
-        if (subFault == flt_str_oob)
+        if (subFault.fault_str_subtype == flt_str_oob)
           cpu . cu . WOFF_OOB = 1;
-        //else if (subFault == flt_str_ill_ptr)
+        //else if (subFault.fault_str_subtype == flt_str_ill_ptr)
           //cpu . cu . ??? = 1; // XXX
-        else if (subFault == flt_str_nea)
+        else if (subFault.fault_str_subtype == flt_str_nea)
           cpu . cu . OWB_NEA = 1;
       }
     else if (faultNumber == FAULT_IPR)
       {
-        if (subFault & FR_ILL_OP)
+        if (subFault.fault_ipr_subtype & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault & FR_ILL_MOD)
+        else if (subFault.fault_ipr_subtype & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault & FR_ILL_SLV)
+        else if (subFault.fault_ipr_subtype & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault & FR_ILL_DIG)
+        else if (subFault.fault_ipr_subtype & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
-        if (subFault == flt_cmd_lprpn_bits)
+        if (subFault.fault_cmd_subtype == flt_cmd_lprpn_bits)
           cpu . cu . IA = 0;
-        else if (subFault == flt_cmd_not_control)
+        else if (subFault.fault_cmd_subtype == flt_cmd_not_control)
           cpu . cu . IA = 010;
       }
 
     // If already in a FAULT CYCLE then signal trouble fault
 
-    if (cpu . cycle == FAULT_EXEC_cycle ||
-        cpu . cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle ||
+        cpu.cycle == FAULT_EXEC2_cycle)
       {
-        cpu . faultNumber = FAULT_TRB;
-        cpu . cu . FI_ADDR = FAULT_TRB;
-        cpu . subFault = 0; // XXX ???
+        cpu.faultNumber = FAULT_TRB;
+        cpu.cu.FI_ADDR = FAULT_TRB;
+        cpu.subFault.bits = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
@@ -600,7 +600,7 @@ bool bG7PendingNoTRO (void)
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %lld %llo\n", 
-               cpuNo, faultNo, faultNo, subFault, subFault);
+               cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpuNo);
     cpu.g7Faults |= (1u << faultNo);
@@ -628,15 +628,15 @@ void doG7Fault (void)
        {
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
-         doFault (FAULT_TRO, 0, "Timer runout"); 
+         doFault (FAULT_TRO, (_fault_subtype) {.bits=0}, "Timer runout"); 
        }
 
-     if (cpu . g7Faults & (1u << FAULT_CON))
+     if (cpu.g7Faults & (1u << FAULT_CON))
        {
-         cpu . g7Faults &= ~(1u << FAULT_CON);
+         cpu.g7Faults &= ~(1u << FAULT_CON);
 
-         cpu . cu . CNCHN = cpu . g7SubFaults [FAULT_CON] & MASK3;
-         doFault (FAULT_CON, cpu . g7SubFaults [FAULT_CON], "Connect"); 
+         cpu.cu.CNCHN = cpu.g7SubFaults[FAULT_CON].fault_con_subtype & MASK3;
+         doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
@@ -646,8 +646,8 @@ void doG7Fault (void)
        {
          cpu . g7Faults &= ~(1u << FAULT_EXF);
 
-         doFault (FAULT_EXF, 0, "Execute fault");
+         doFault (FAULT_EXF, (_fault_subtype) {.bits=0}, "Execute fault");
        }
 
-     doFault (FAULT_TRB, (_fault_subtype) cpu . g7Faults, "Dazed and confused in doG7Fault");
+     doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.g7Faults}, "Dazed and confused in doG7Fault");
   }

@@ -528,7 +528,7 @@ sim_printf ("UFA e3 now %d\n", e3);
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -536,7 +536,7 @@ sim_printf ("UFA e3 now %d\n", e3);
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp underflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
     }
 
 #else
@@ -631,7 +631,7 @@ sim_printf ("UFA e3 now %d\n", e3);
         cpu . rE = e3 & 0377;
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -640,7 +640,7 @@ sim_printf ("UFA e3 now %d\n", e3);
         cpu . rE = e3 & 0377;
         SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp underflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
     }
 
     cpu . rA = (m3 >> 36) & MASK36;
@@ -835,7 +835,7 @@ sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) 
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -843,7 +843,7 @@ sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) 
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "ufa exp underflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
     }
 
 if(currentRunningCPUnum)
@@ -909,7 +909,7 @@ sim_printf ("UFS overflow\n");
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "ufs exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufs exp overflow fault");
         }
         
         //cpu.CY = bitfieldInsert36(cpu.CY, (word36)e, 28, 8) & DMASK;
@@ -976,7 +976,7 @@ void fno (void)
             {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                    doFault (FAULT_OFL, 0, "fno exp overflow fault");
+                    doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
             }
             cpu . rE ++;
             cpu . rE &= MASK8;
@@ -1021,7 +1021,7 @@ void fno (void)
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, 0, "fno exp underflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp underflow fault");
     }
 
     cpu . rE = e & MASK8;
@@ -1206,7 +1206,7 @@ void fneg (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "fneg exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fneg exp overflow fault");
         }
         cpu . rE ++;
         cpu . rE &= MASK8;
@@ -1292,13 +1292,13 @@ void ufm (void)
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          doFault (FAULT_OFL, 0, "ufm exp overflow fault");
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          doFault (FAULT_OFL, 0, "ufm exp underflow fault");
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp underflow fault");
     }
 
     word72 m3 = ((word72)m1) * ((word72)m2);
@@ -1399,7 +1399,7 @@ static void fdvX(bool bInvert)
         
         cpu . rA = m1;
         
-        doFault(FAULT_DIV, 0, "DFDV: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DFDV: divide check fault");
     }
 
     while (m1 >= m2)
@@ -1412,7 +1412,7 @@ static void fdvX(bool bInvert)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "fdvX exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp overflow fault");
     }
     
         
@@ -1566,7 +1566,7 @@ sim_printf ("FRD add carry E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, 0, "frd exp overflow fault");
+                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "frd exp overflow fault");
         }
         cpu.rE ++;
 if (currentRunningCPUnum)
@@ -1664,7 +1664,7 @@ void fstr(word36 *Y)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "fstr exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fstr exp overflow fault");
         }
         E +=  1;
     }
@@ -1921,7 +1921,7 @@ sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK3
           {
             SET_I_EOFL;
             if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, 0, "dufs exp overflow fault");
+                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
           }
           e2 ++;
       }
@@ -2024,7 +2024,7 @@ sim_printf ("DUFA e3 now %d\n", e3);
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, 0, "dufa exp overflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -2032,7 +2032,7 @@ sim_printf ("DUFA e3 now %d\n", e3);
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, 0, "dufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp underflow fault");
     }
 }
 
@@ -2075,7 +2075,7 @@ void dufs (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "dufs exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
         }
         e2 += 1;
     }
@@ -2196,7 +2196,7 @@ void dufm (void)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "dufm exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
     }
 
     // EUFL: If exponent is less than -128, then ON
@@ -2204,7 +2204,7 @@ void dufm (void)
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "dufm exp underflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
     }
 
     cpu . rE = e3 & MASK8;
@@ -2320,7 +2320,7 @@ static void dfdvX (bool bInvert)
         
         cpu . rA = m1;
         
-        doFault(FAULT_DIV, 0, "DFDV: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DFDV: divide check fault");
     }
     
     while (m1 >= m2)
@@ -2332,7 +2332,7 @@ static void dfdvX (bool bInvert)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "dfdvX exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp overflow fault");
     }
 
     int e3 = e1 - e2;
@@ -2340,13 +2340,13 @@ static void dfdvX (bool bInvert)
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "dfdvX exp overflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp overflow fault");
        }
     else if (e3 < -127)
       {
          SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, 0, "dfdvX exp underflow fault");
+            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp underflow fault");
        }
 
     //uint128 M1 = (uint128)m1 << 63;
@@ -2459,7 +2459,7 @@ void dvf (void)
 //HWR--        SET_I_ZERO;
 //HWR--        SC_I_NEG (cpu . rA & SIGN36);
 //HWR--        
-//HWR--        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+//HWR--        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
 //HWR--    }
 //HWR--    
 //HWR--    uint128 dividend = (uint128)m1 << 63;
@@ -2554,7 +2554,7 @@ sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
 
     uint128 sn = zFrac;
@@ -2599,7 +2599,7 @@ sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         SC_I_ZERO (cpu.rA == 0);
         SC_I_NEG (cpu.rA & SIGN36);
         
-        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
@@ -2695,7 +2695,7 @@ sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
 
     uint128 quot = zFrac / dFrac;
@@ -2757,7 +2757,7 @@ sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         SC_I_ZERO (AQzero);
         SC_I_NEG (Aneg);
         
-        doFault(FAULT_DIV, 0, "DVF: divide check fault");
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
     //char buf3 [128] = "";
     //print_int128 (remainder, buf3);
@@ -2839,7 +2839,7 @@ void dfrd (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "dfrd exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfrd exp overflow fault");
         }
         cpu . rE +=  1;
         cpu . rE &= MASK8;
@@ -2931,7 +2931,7 @@ void dfstr (word36 *Ypair)
         if (E == 127)
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, 0, "dfrd exp overflow fault");
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfrd exp overflow fault");
         E +=  1;
         
         A = (m >> 36) & MASK36;

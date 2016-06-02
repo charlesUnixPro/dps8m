@@ -584,7 +584,7 @@ enum _fault
 
 typedef enum _fault _fault;
 
-enum _fault_subtype {
+#if 0
     //no_fault_subtype = 0,
 
     // FAULT_IPR
@@ -595,31 +595,12 @@ enum _fault_subtype {
     //flt_ipr_ill_dig,    // An illegal decimal digit or sign has been detected by the decimal unit.
     //flt_ipr_ill_proc,   // An illegal procedure other than the four above has been encountered.
 
-    // FAULT_ONC
-
-    flt_onc_nem,        // A nonexistent main memory address has been requested.
-
-    // FAULT_STR
-
-    flt_str_oob,        // A BAR mode boundary violation has occurred.
-    flt_str_ill_ptr,    // SPRPn illegal ptr.
-    flt_str_nea, // non-existent address
-
-    // FAULT_CMD
-
-    flt_cmd_lprpn_bits,  // illegal bits in lprpn instruction
-    flt_cmd_not_control, // not control
 
     // FAULT_PAR
 
     //proc_paru,  // A parity error has been detected in the upper 36 bits of data. (Yeah, right)
     //proc_parl,  // A parity error has been detected in the lower 36 bits of data. (Yeah, right)
 
-    // FAULT_CON
-    //con_a,      // A $CONNECT signal has been received through port A.
-    //con_b,      // A $CONNECT signal has been received through port B.
-    //con_c,      // A $CONNECT signal has been received through port C.
-    //con_d,      // A $CONNECT signal has been received through port D.
 
 
     // FAULT_ONC 
@@ -656,7 +637,36 @@ enum _fault_subtype {
     //par_sdwam,  // A parity error has been detected in the SDWAM.
     //par_ptwam,  // A parity error has been detected in the PTWAM.
     
-    // Access violation fault subtypes
+
+};
+typedef enum _fault_subtype _fault_subtype;
+#endif
+
+typedef enum fault_onc_subtype_
+  {
+    flt_onc_nem,        // A nonexistent main memory address has been requested.
+    flt_onc_FORCE  = 0400000000000llu // Force enum size to 36 bits.
+  } fault_onc_subtype_;
+
+typedef enum fault_str_subtype_
+  {
+    flt_str_oob,        // A BAR mode boundary violation has occurred.
+    flt_str_ill_ptr,    // SPRPn illegal ptr.
+    flt_str_nea, // non-existent address
+    flt_str_FORCE  = 0400000000000llu // Force enum size to 36 bits.
+  } fault_str_subtype_;
+
+typedef enum fault_con_subtype_
+  {
+    con_a = 0,      // A $CONNECT signal has been received through port A.
+    con_b = 1,      // A $CONNECT signal has been received through port B.
+    con_c = 2,      // A $CONNECT signal has been received through port C.
+    con_d = 3,      // A $CONNECT signal has been received through port D.
+    flt_con_FORCE  = 0400000000000llu // Force enum size to 36 bits.
+  } fault_con_subtype_;
+
+typedef enum fault_acv_subtype_
+  {
     ACV0  = (1U << 15),   ///< 15.Illegal ring order (ACV0=IRO)
     ACV1  = (1U << 14),   ///< 3. Not in execute bracket (ACV1=OEB)
     ACV2  = (1U << 13),   ///< 6. No execute permission (ACV2=E-OFF)
@@ -673,7 +683,11 @@ enum _fault_subtype {
     ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
     ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
     ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
+    flt_acv_FORCE  = 0400000000000llu // Force enum size to 36 bits.
+  } fault_acv_subtype_;
 
+typedef enum fault_ipr_subtype_
+  {
     FR_ILL_OP    = 0400000000000llu, //  0 a ILL OP
     FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
     FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
@@ -688,10 +702,26 @@ enum _fault_subtype {
     FR_CON_C     = 0000100000000llu, // 11 l $CON C
     FR_CON_D     = 0000040000000llu, // 12 m $CON D
     FR_DA_ERR    = 0000020000000llu, // 13 n DA ERR
-    FR_DA_ERR2   = 0000010000000llu, // 14 o DA ERR2
+    FR_DA_ERR2   = 0000010000000llu  // 14 o DA ERR2
+  } fault_ipr_subtype_;
 
-};
-typedef enum _fault_subtype _fault_subtype;
+typedef enum fault_cmd_subtype_
+  {
+    flt_cmd_lprpn_bits,  // illegal bits in lprpn instruction
+    flt_cmd_not_control,  // not control
+    flt_cmd_FORCE  = 0400000000000llu // Force enum size to 36 bits.
+  } fault_cmd_subtype_;
+
+typedef union _fault_subtype
+  {
+    fault_onc_subtype_ fault_onc_subtype;
+    fault_str_subtype_ fault_str_subtype;
+    fault_con_subtype_ fault_con_subtype;
+    fault_acv_subtype_ fault_acv_subtype;
+    fault_ipr_subtype_ fault_ipr_subtype;
+    fault_cmd_subtype_ fault_cmd_subtype;
+    word36 bits;
+  } _fault_subtype;
 
 // Fault Register bits
 enum _faultRegisterBits0
