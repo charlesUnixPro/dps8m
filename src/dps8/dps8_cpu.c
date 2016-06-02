@@ -2279,7 +2279,7 @@ static void nem_check (word24 addr, char * context)
     if (query_scbank_map (addr) < 0)
       {
         //sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
-        doFault (FAULT_STR, flt_str_nea,  context);
+        doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  context);
       }
   }
 #endif
@@ -2294,7 +2294,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 //sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
         if (os < 0)
           { 
-            doFault (FAULT_STR, flt_str_nea,  __func__);
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
         addr = os + addr % SCBANK;
       }
@@ -2328,7 +2328,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           { 
-            doFault (FAULT_STR, flt_str_nea,  __func__);
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
         addr = os + addr % SCBANK;
       }
@@ -2363,7 +2363,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
         if (os < 0)
           { 
-            doFault (FAULT_STR, flt_str_nea,  __func__);
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
         addr = os + addr % SCBANK;
       }
@@ -2430,7 +2430,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           { 
-            doFault (FAULT_STR, flt_str_nea,  __func__);
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
         addr = os + addr % SCBANK;
       }

@@ -1350,7 +1350,7 @@ G:;
         {
             //cpu . TPR.CA = address;
             // initiate a directed fault
-            doFault(FAULT_DF0 + cpu . PTW0.FC, 0, "PTW0.F == 0");
+            doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
         }
 
         //loadPTWAM(cpu . SDW->POINTER, cpu . TPR.CA);    // load PTW0 to PTWAM
