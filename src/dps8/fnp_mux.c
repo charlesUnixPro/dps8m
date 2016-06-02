@@ -23,12 +23,12 @@
 
 int32   mux_chars_Rx = 0;
 
-int32   mux_brkio   = SCPE_OK ;                         /*  default I/O status code     */
+static int32   mux_brkio   = SCPE_OK ;                         /*  default I/O status code     */
 int32   mux_max     = MAX_LINES ;                         /*  max # QTY lines - user      */
                                                         /*  controllable                */
-int32   mux_mdm     = 0 ;                               /*  QTY modem control active?   */
-int32   mux_auto    = 0 ;                               /*  QTY auto disconnect active? */
-int32   mux_polls   = 0 ;                               /*  total 'qty_svc' polls       */
+static int32   mux_mdm     = 0 ;                               /*  QTY modem control active?   */
+static int32   mux_auto    = 0 ;                               /*  QTY auto disconnect active? */
+static int32   mux_polls   = 0 ;                               /*  total 'qty_svc' polls       */
 
 TMLN    mux_ldsc[ MAX_LINES ] = {                       /*  QTY line descriptors        */
    { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL },
@@ -97,14 +97,14 @@ TMLN    mux_ldsc[ MAX_LINES ] = {                       /*  QTY line descriptors
    { 0, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, false, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, NULL, NULL, NULL, "", "", NULL, NULL, NULL, 0, false, 0, NULL, NULL, NULL }
  }; 
 TMXR    mux_desc    = { MAX_LINES, NULL, 0, mux_ldsc, NULL, NULL, NULL, "", 0, 0, 0, 0, false, false } ;     /*  mux descriptor      */
-int32   mux_status[ MAX_LINES ] = { 0 } ;                 /*  QTY line status             */
+static int32   mux_status[ MAX_LINES ] = { 0 } ;                 /*  QTY line status             */
                                                         /*  (must be at least 32 bits)  */
-int32   mux_tx_chr[ MAX_LINES ] = { 0 } ;                 /*  QTY line output character   */
+static int32   mux_tx_chr[ MAX_LINES ] = { 0 } ;                 /*  QTY line output character   */
 
-int     mux_section     = -1 ;               /*  current line "section" (0 = RCV, 1 = XMT)  */
-int     mux_line        = -1 ;               /*  current line [0-63]                        */
-int     mux_diag_mode   =  0 ;               /*  <not yet supported>                        */
-int     mux_line_mask   = 0x003F ;           /*  maximum of 64 lines in this rev            */
+static int     mux_section     = -1 ;               /*  current line "section" (0 = RCV, 1 = XMT)  */
+static int     mux_line        = -1 ;               /*  current line [0-63]                        */
+//int     mux_diag_mode   =  0 ;               /*  <not yet supported>                        */
+static int     mux_line_mask   = 0x003F ;           /*  maximum of 64 lines in this rev            */
 
 int32 mux_int_req, mux_busy, mux_done, mux_disable;
 
@@ -113,7 +113,7 @@ UNIT mux_unit =
       UDATA (&mux_svc, (UNIT_DISABLE + UNIT_ATTABLE + UNIT_IDLE), 0), 0, 0, 0, 0, 0, NULL, NULL
 } ;
 
-DIB mux_dib = { DEV_FNPMUX, FNP_INT_MUX, PI_MUX, &mux } ;
+static DIB mux_dib = { DEV_FNPMUX, FNP_INT_MUX, PI_MUX, &mux } ;
 
 int mux_busy, mux_done, mux_disable, mux_int_req;
 
@@ -297,7 +297,7 @@ int32 mux( int32 oper, int32 oper2, int32 AC )
 }
 
 
-REG mux_reg[] =  /* */
+static REG mux_reg[] =  /* */
 {
 //    { ORDATA (PC, saved_PC, 32) },
 //    { ORDATA (BUF, mux_unit.buf, 8) },
@@ -316,7 +316,7 @@ REG mux_reg[] =  /* */
     { NULL, 0, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 } ;
 
-MTAB mux_mod[] =
+static MTAB mux_mod[] =
 {
     { UNIT_8B, 0, "7b", "7B", NULL, NULL, NULL, NULL },
     { UNIT_8B, UNIT_8B, "8b", "8B", NULL, NULL, NULL, NULL },
@@ -333,7 +333,7 @@ MTAB mux_mod[] =
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 } ;
 
-t_stat mux_attach(UNIT *unitp, char *cptr)
+static t_stat mux_attach(UNIT *unitp, char *cptr)
 {
 //    int muxU = muxWhatUnitAttached();
 //    if (muxU != -1)
@@ -358,11 +358,11 @@ t_stat mux_attach(UNIT *unitp, char *cptr)
     {
         return ( r ) ;                                  /* error! */
     }
-    if ( sim_switches & SWMASK('M') )                   /* modem control? */
+    if ( sim_switches & (int32) SWMASK('M') )                   /* modem control? */
     {
         mux_mdm = 1;
         sim_printf( "Modem control activated\n" ) ;
-        if ( sim_switches & SWMASK ('A') )              /* autodisconnect? */
+        if ( sim_switches & (int32) SWMASK ('A') )              /* autodisconnect? */
         {
             mux_auto = 1 ;
             sim_printf( "Auto disconnect activated\n" ) ;
@@ -381,7 +381,7 @@ t_stat mux_attach(UNIT *unitp, char *cptr)
     return ( SCPE_OK ) ;
 }
 
-t_stat mux_detach( UNIT * unitp )
+static t_stat mux_detach( UNIT * unitp )
 {
     //int muxU1 = muxWhatUnitAttached();              // what is attached
     //int muxU2 = (int32) (unitp - mux_dev.units);    // what wants to be detached
@@ -513,7 +513,7 @@ int mux_tmxr_putc( int line, TMLN * lp, int kar )
     return ( a ) ;
 }
 
-int mux_update_xmti( TMXR * mp )
+static int mux_update_xmti( TMXR * mp )
 {
     int     line ;
     TMLN *      lp ;
@@ -547,7 +547,7 @@ int mux_update_xmti( TMXR * mp )
     return ( changes ) ;
 }
 
-int mux_update_rcvi( TMXR * mp )
+static int mux_update_rcvi( TMXR * mp )
 {
     int     line ;
     TMLN *  lp ;

@@ -37,12 +37,12 @@ char *Strdup(char *s, int size);
 char *strrev(char *s);
 int strcpyWhile(char *dst, char *src, int (*f)(int));
 char *strlower(char *q);
-bool startsWith(const char *str, const char *pre);
+//bool startsWith(const char *str, const char *pre);
 
 //#define strsep  "Replaced w/ Strsep()"
 
 char *Strsep(char **stringp, const char *delim);
 
-char *Now();
+char *Now(void);
 
 #endif /* defined(__fnp__fnp_utils__) */

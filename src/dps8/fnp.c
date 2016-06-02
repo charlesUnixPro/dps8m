@@ -17,16 +17,6 @@
 #include "fnp_cmds.h"
 
 
-
-FMTI *readAndParse(char *file);
-FMTI *readDevInfo(FILE *);
-
-void dumpFMTI(FMTI *);
-
-void freeFMTI(FMTI *p, bool bRecurse);
-
-extern FMTI *fmti;
-
 // Once-only initialization
 
 void fnp_init(void)
@@ -51,7 +41,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
 
     FMTI *p = readDevInfo(fileref);
  
-    if (sim_switches & SWMASK ('V'))  /* verbose? */
+    if (sim_switches & (int32) SWMASK ('V'))  /* verbose? */
     {
         FMTI *q = p;
         sim_printf("Faux Multics devices loaded ...\n");
@@ -62,7 +52,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
         }
     }
     
-    if (sim_switches & SWMASK ('A'))  /* append? */
+    if (sim_switches & (int32) SWMASK ('A'))  /* append? */
     {
         if (fmti)
         {

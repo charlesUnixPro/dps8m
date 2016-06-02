@@ -11,6 +11,7 @@
 #include "fnp_2.h"
 #include "fnp_utils.h"
 #include "fnp_cmds.h"
+#include "fnp_mux.h"
 
 FMTI *fmti = NULL;
 
@@ -206,13 +207,12 @@ void freeFMTI(FMTI *p, bool bRecurse)
     
 }
 
-FMTI *newFMTI()
+static FMTI *newFMTI()
 {
     return calloc(1, sizeof(FMTI));
 }
 
-char *
-getDevList()
+char * getDevList(void)
 {
     static char buf[2048];
     strcpy(buf, "");
@@ -258,7 +258,7 @@ FMTI *searchForDevice(char *name)
     return NULL;
 }
 
-ATTRIBUTE *searchForAttribute(char *attrib, ATTRIBUTE *a)
+static ATTRIBUTE *searchForAttribute(char *attrib, ATTRIBUTE *a)
 {
     ATTRIBUTE *s;
     
@@ -267,7 +267,6 @@ ATTRIBUTE *searchForAttribute(char *attrib, ATTRIBUTE *a)
 }
 
 MUXTERMIO ttys[MAX_LINES];
-extern TMLN mux_ldsc[MAX_LINES];
 
 void connectPrompt (TMLN *tmln)
 {
@@ -327,7 +326,7 @@ MUXTERMSTATE processUserInput(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32
     if (isprint(kar))   // printable?
     {
         MuxWrite(line, kar);
-        tty->buffer[tty->nPos++] = kar;
+        tty->buffer[tty->nPos++] = (char) kar;
     } else {
         switch (kar)
         {
@@ -442,6 +441,7 @@ FMTI * readDevInfo(FILE *src)
     return head;
 }
 
+#if 0
 FMTI *readAndPrint(char *file)
 {
     FILE *in = fopen(file, "r");
@@ -456,6 +456,7 @@ FMTI *readAndPrint(char *file)
     
     return p;
 }
+#endif
 
 
 //void processInputCharacter (int line, int kar)
@@ -506,10 +507,10 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     // send of each and every character
     if (MState . line [hsla_line_num] .breakAll)
     {
-        ttys [line] . buffer [ttys [line] . nPos ++] = kar;
+        ttys [line] . buffer [ttys [line] . nPos ++] = (char) kar;
         ttys [line] . buffer [ttys [line] . nPos] = 0;
-        int hsla_line_num = ttys [line] . fmti -> multics . hsla_line_num;
-        sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+        int hsla_line_num2 = ttys [line] . fmti -> multics . hsla_line_num;
+        sendInputLine (hsla_line_num2, ttys [line] . buffer, ttys [line] . nPos, true);
         ttys [line] . nPos = 0;
         
         return;
@@ -530,7 +531,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     {
         sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, false);
         tty->nPos = 0;
-        ttys [line] . buffer [ttys [line] . nPos ++] = kar;
+        ttys [line] . buffer [ttys [line] . nPos ++] = (char) kar;
         tty->buffer[tty->nPos] = 0;
         return;
     }
@@ -548,7 +549,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         case '\r':          // CR
         case '\f':          // FF
             kar = '\n';     // translate to NL
-            tty->buffer[tty->nPos++] = kar;
+            tty->buffer[tty->nPos++] = (char) kar;
             tty->buffer[tty->nPos] = 0;
             sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
             tty->nPos = 0;
@@ -600,7 +601,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     if (!(MState . line [hsla_line_num] .fullDuplex))
         MuxWrite(line, kar);
     
-    tty->buffer[tty->nPos++] = kar;
+    tty->buffer[tty->nPos++] = (char) kar;
     tty->buffer[tty->nPos] = 0;
         
     return ;  // stay in input mode

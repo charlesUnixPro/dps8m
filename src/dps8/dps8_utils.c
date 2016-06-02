@@ -80,10 +80,10 @@ struct opCode *getIWBInfo(DCDstruct *i)
 
 char *disAssemble(word36 instruction)
 {
-    int32  opcode  = GET_OP(instruction);   ///< get opcode
+    uint32  opcode  = GET_OP(instruction);   ///< get opcode
     int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
     word18 address = GET_ADDR(instruction);
-    int32  a       = GET_A(instruction);
+    uint32  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
     int32  tag     = GET_TAG(instruction);
 
@@ -334,7 +334,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
+word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
@@ -410,7 +410,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    return res;
+    return (word18) res;
   }
 
 word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
@@ -856,8 +856,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
     t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
     t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
-    word36 sign1 = op1 & SIGN36;
-    word36 sign2 = op2 & SIGN36;
+    word36 sign1 = oP1 & SIGN36;
+    word36 sign2 = oP2 & SIGN36;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -892,8 +892,8 @@ void cmp18(word18 oP1, word18 oP2, word18 *flags)
     int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
     int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
-    word18 sign1 = op1 & SIGN18;
-    word18 sign2 = op2 & SIGN18;
+    word18 sign1 = oP1 & SIGN18;
+    word18 sign2 = oP2 & SIGN18;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -1118,7 +1118,6 @@ int strmask(char *str, char *mask)
                 break;
                 }
         }
-        return(true);
 }
 
 /**
@@ -1200,12 +1199,14 @@ Strtok(char *line, char *sep)
     return NULL;		/* no more fields in buffer		*/
     
 }
+#if 0
 bool startsWith(const char *str, const char *pre)
 {
     size_t lenpre = strlen(pre),
     lenstr = strlen(str);
     return lenstr < lenpre ? false : strncasecmp(pre, str, lenpre) == 0;
 }
+#endif
 
 /**
  * Removes the trailing spaces from a string.
@@ -2030,7 +2031,7 @@ char * strdupesc (const char * str)
 //     extract the word36 at woffset
 //
 
-word36 extrASCII36 (uint8 * bits, uint woffset)
+static word36 extrASCII36 (uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
 
@@ -2079,7 +2080,7 @@ word36 extr36 (uint8 * bits, uint woffset)
     return (word36) (w & MASK36);
   }
 
-void putASCII36 (word36 val, uint8 * bits, uint woffset)
+static void putASCII36 (word36 val, uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
     p [0]  = (val >> 27) & 0xff;

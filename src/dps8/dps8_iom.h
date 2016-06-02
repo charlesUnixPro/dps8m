@@ -40,8 +40,8 @@ typedef struct
     // packed LPWX
     word36 LPWX;
     // unpacked LPWX
-    word9 LPWX_BOUND; // MOD 2 (pg B16) 0-2^19; ie val = LPX_BOUND * 2
-    word9 LPWX_SIZE;  // MOD 1 (pg B16) 0-2^18
+    word18 LPWX_BOUND; // MOD 2 (pg B16) 0-2^19; ie val = LPX_BOUND * 2
+    word18 LPWX_SIZE;  // MOD 1 (pg B16) 0-2^18
 
 // PCW_63_PTP indicates paging mode; indicates that a page table
 // is available. 

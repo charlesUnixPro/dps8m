@@ -162,8 +162,8 @@ static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       {
         if (iomUnitIdx == cables -> cablesFromIomToCrdRdr [i] . iomUnitIdx &&
-            chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
-            dev_code     == cables -> cablesFromIomToCrdRdr [i] . dev_code)
+            chan_num   == (int) cables -> cablesFromIomToCrdRdr [i] . chan_num &&
+            dev_code   == (int) cables -> cablesFromIomToCrdRdr [i] . dev_code)
           return i;
       }
     return -1;
@@ -394,32 +394,32 @@ static int getCardLine (int fd, char * buffer)
     while (1)
       {
         uint8 ch;
-        int rc = read (fd, & ch, 1);
+        ssize_t rc = read (fd, & ch, 1);
         if (rc <= 0) // eof or err
           return n == 0;
         if (ch == '\n')
           return 0;
-        buffer [n ++] = ch;
+        buffer [n ++] = (char) ch;
         buffer [n] = 0;
         if (n >= 79)
          return 0;
      }
   }
 
-static int getCardData (int fd, char * buffer)
+static ssize_t getCardData (int fd, char * buffer)
   {
     memset (buffer, 0, 80);
-    int rc = read (fd, buffer, 80);
+    ssize_t rc = read (fd, buffer, 80);
     if (rc < 0)
       return 0;
     return rc;
   }
 
 #define rawCardImageBytes (80 * 12 / 8)
-static int getRawCardData (int fd, uint8_t * buffer)
+static ssize_t getRawCardData (int fd, uint8_t * buffer)
   {
     memset (buffer, 0, rawCardImageBytes + 2);
-    int rc = read (fd, buffer, rawCardImageBytes);
+    ssize_t rc = read (fd, buffer, rawCardImageBytes);
     if (rc < 0)
       return 0;
     return rc;
@@ -429,7 +429,7 @@ static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
-    uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
+    uint unitIdx = (uint) findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
 
     if (crdrdr_state [unitIdx] . deckfd < 0)
        {
@@ -510,7 +510,7 @@ sim_printf ("hopper empty\n");
             
               case streamDeck:
                 {
-                  l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
+                  l = (size_t) getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
                   if (l)
                     {
                       thisCard = streamDeck;
@@ -527,7 +527,7 @@ sim_printf ("hopper empty\n");
 
               case sevenDeck:
                 {
-                  l = getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
+                  l = (size_t) getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
                   if (l)
                     {
                       thisCard = sevenDeck;
@@ -614,7 +614,7 @@ sim_printf ("\n");
             asciiToH (cardImage, hbuf, l);
 
             // 12 bits / char
-            uint nbits = l * 12;
+            uint nbits = (uint) l * 12;
             // 36 bits / word
             uint tally = (nbits + 35) / 36;
 
@@ -686,7 +686,7 @@ sim_printf ("\n");
                             & tally, true);
     p -> stati = 04000; // ok
     p -> initiate = false;
-    p -> tallyResidue = tally;
+    p -> tallyResidue = (word12) tally;
     p -> charPos = 0;
 
     if (p -> DDCW_22_23_TYPE != 0)
@@ -698,7 +698,7 @@ sim_printf ("\n");
 static int crdrdr_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
+    uint unitIdx = (uint) findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
     crdrdr_state [unitIdx] . running = true;
 
     sim_debug (DBG_TRACE, & crdrdr_dev, "IDCW_DEV_CMD %o\n", p -> IDCW_DEV_CMD);
@@ -850,14 +850,14 @@ static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * 
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
-    crdrdr_dev . numunits = n;
+    crdrdr_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
 static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
+    int n = (int) CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("Card reader device name is %s\n", crdrdr_state [n] . device_name);
@@ -867,7 +867,7 @@ static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
 static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
+    int n = (int) CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)

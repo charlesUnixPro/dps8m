@@ -39,14 +39,14 @@ long double exp2l (long double e) {
 long double EAQToIEEElongdouble(void)
 {
     // mantissa
-    word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);
+    word72 Mant = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);
 
-    if (M == 0)
+    if (Mant == 0)
         return 0;
     
-    bool S = M & SIGN72; // sign of mantissa
+    bool S = Mant & SIGN72; // sign of mantissa
     if (S)
-        M = (-M) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
+        Mant = (-Mant) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
     
     long double m = 0;  // mantissa value;
     int e = (int8) rE; // make signed
@@ -54,7 +54,7 @@ long double EAQToIEEElongdouble(void)
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1)
     {
-        if (M & ((word72)1 << n))
+        if (Mant & ((word72)1 << n))
         {
             m += v;
         }
@@ -240,15 +240,15 @@ void IEEElongdoubleToEAQ(long double f0)
 double float36ToIEEEdouble(uint64_t f36)
 {
     unsigned char E;    ///< exponent
-    uint64_t M;         ///< mantissa
+    uint64_t Mant;         ///< mantissa
     E = (f36 >> 28) & 0xff;
-    M = f36 & 01777777777LL;
-    if (M == 0)
+    Mant = f36 & 01777777777LL;
+    if (Mant == 0)
         return 0;
     
-    bool S = M & 01000000000LL; ///< sign of mantissa
+    bool S = Mant & 01000000000LL; ///< sign of mantissa
     if (S)
-        M = (-M) & 0777777777; // 27 bits (not 28!)
+        Mant = (-Mant) & 0777777777; // 27 bits (not 28!)
     
     double m = 0;       ///< mantissa value;
     int e = (char)E;  ///< make signed
@@ -256,7 +256,7 @@ double float36ToIEEEdouble(uint64_t f36)
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1)
     {
-        if (M & (1 << n))
+        if (Mant & (1 << n))
         {
             m += v;
         }   //else
@@ -343,12 +343,12 @@ void ufa (void)
     //! * C(E) is increased by one.
 
     float72 m1 = ((word72)rA << 36) | (word72)rQ;
-    float72 op2 = CY;
+    //float72 op2 = CY;
             
     int8   e1 = (int8)rE; 
     
-    int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-    word72 m2 = (word72)bitfieldExtract36(op2, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+    word72 m2 = (word72)bitfieldExtract36(CY, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
     
     int e3 = -1;
     word72 m3 = 0;
@@ -559,7 +559,7 @@ void fno (void)
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
         {
-            rE = -128;
+            rE = 0200U; /*-128*/
             SETF(cu.IR, I_ZERO);
         }
 
@@ -1336,11 +1336,11 @@ void fcmg ()
  */
 
 //! extract mantissa + exponent from a YPair ....
-static void YPairToExpMant(word36 Ypair[], word72 *mant, int8 *exp)
+static void YPairToExpMant(word36 ypair[], word72 *mant, int8 *exp)
 {
-    *mant = (word72)bitfieldExtract36(Ypair[0], 0, 28) << 44;   // 28-bit mantissa (incl sign)
-    *mant |= (Ypair[1] & DMASK) << 8;
-    *exp = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);           // 8-bit signed integer (incl sign)
+    *mant = (word72)bitfieldExtract36(ypair[0], 0, 28) << 44;   // 28-bit mantissa (incl sign)
+    *mant |= (ypair[1] & DMASK) << 8;
+    *exp = (int8) (bitfieldExtract36(ypair[0], 28, 8) & 0377U);           // 8-bit signed integer (incl sign)
 }
 
 //! combine mantissa + exponent intoa YPair ....
@@ -2050,7 +2050,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         SCF (rA & SIGN36, cu . IR, I_NEG);
         
         rA = (zFrac >> 31) & MASK35;
-        rQ = (zFrac & MASK35) << 1;
+        rQ = ((word36) zFrac & MASK35) << 1;
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
 
@@ -2068,7 +2068,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         SCF (rA & SIGN36, cu . IR, I_NEG);
         
         rA = (zFrac >> 31) & MASK35;
-        rQ = (zFrac & MASK35) << 1;
+        rQ = ((word36) zFrac & MASK35) << 1;
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
     //char buf3 [128] = "";
@@ -2169,7 +2169,7 @@ void dfrd (void)
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }
 
-void dfstr (word36 *Ypair)
+void dfstr (word36 *ypair)
 {
     //! The dfstr instruction performs a double-precision true round and normalization on C(EAQ) as it is stored.
     //! The definition of true round is located under the description of the frd instruction.
@@ -2203,8 +2203,8 @@ void dfstr (word36 *Ypair)
         SETF(cu.IR, I_ZERO);
         CLRF(cu.IR, I_NEG);
         
-        Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
-        Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
+        ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
+        ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
 
         return;
     }
@@ -2258,8 +2258,8 @@ void dfstr (word36 *Ypair)
     
     SCF(A & SIGN36, cu.IR, I_NEG);
     
-    Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
-    Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
+    ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
+    ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
 }
 
 /*!

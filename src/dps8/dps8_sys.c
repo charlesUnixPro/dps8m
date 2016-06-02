@@ -301,7 +301,7 @@ static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
 #define bookSegmentsMax 1024
 #define bookComponentsMax 4096
 #define bookSegmentNameLen 33
-struct bookSegment
+static struct bookSegment
   {
     char * segname;
     int segno;
@@ -487,7 +487,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
  }
 
 // Warning: returns ptr to static buffer
-int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
+static int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
   {
     int i;
     for (i = 0; i < nBookSegments; i ++)
@@ -538,7 +538,7 @@ static t_stat listSourceAt (UNUSED int32 arg, UNUSED char *  buf)
       return SCPE_ARG;
     char * compname;
     word18 compoffset;
-    char * where = lookupAddress (segno, offset,
+    char * where = lookupAddress ((word18) segno, offset,
                                   & compname, & compoffset);
     if (where)
       {
@@ -981,7 +981,7 @@ static t_stat absAddrN (int segno, uint offset)
     word24 res;
 
     //t_stat rc = computeAbsAddrN (& res, segno, offset);
-    if (dbgLookupAddress (segno, offset, & res, NULL))
+    if (dbgLookupAddress ((word15) segno, offset, & res, NULL))
       return SCPE_ARG;
 
     sim_printf ("Address is %08o\n", res);
@@ -998,10 +998,12 @@ static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
 
 // STK 
 
-t_stat dbgStackTrace (void)
+#if 0
+static t_stat dbgStackTrace (void)
   {
     return stackTrace (0, "");
   }
+#endif
 
 static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
   {
@@ -1031,7 +1033,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
     //  pr7/sb stack base
 
     word15 fpSegno = PR [6] . SNR;
-    word15 fpOffset = PR [6] . WORDNO;
+    word18 fpOffset = PR [6] . WORDNO;
 
     for (uint frameNo = 1; ; frameNo ++)
       {
@@ -1230,33 +1232,33 @@ t_stat virtAddrN (uint address)
             {
                 word36 SDWeven, SDWodd;
                 core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
-                struct _sdw0 SDW0;
+                struct _sdw0 SDW0_;
                 // even word
-                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-                SDW0.R1 = (SDWeven >> 9) & 7;
-                SDW0.R2 = (SDWeven >> 6) & 7;
-                SDW0.R3 = (SDWeven >> 3) & 7;
-                SDW0.F = TSTBIT(SDWeven, 2);
-                SDW0.FC = SDWeven & 3;
+                SDW0_.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0_.R1 = (SDWeven >> 9) & 7;
+                SDW0_.R2 = (SDWeven >> 6) & 7;
+                SDW0_.R3 = (SDWeven >> 3) & 7;
+                SDW0_.F = TSTBIT(SDWeven, 2);
+                SDW0_.FC = SDWeven & 3;
 
                 // odd word
-                SDW0.BOUND = (SDWodd >> 21) & 037777;
-                SDW0.R = TSTBIT(SDWodd, 20);
-                SDW0.E = TSTBIT(SDWodd, 19);
-                SDW0.W = TSTBIT(SDWodd, 18);
-                SDW0.P = TSTBIT(SDWodd, 17);
-                SDW0.U = TSTBIT(SDWodd, 16);
-                SDW0.G = TSTBIT(SDWodd, 15);
-                SDW0.C = TSTBIT(SDWodd, 14);
-                SDW0.EB = SDWodd & 037777;
+                SDW0_.BOUND = (SDWodd >> 21) & 037777;
+                SDW0_.R = TSTBIT(SDWodd, 20);
+                SDW0_.E = TSTBIT(SDWodd, 19);
+                SDW0_.W = TSTBIT(SDWodd, 18);
+                SDW0_.P = TSTBIT(SDWodd, 17);
+                SDW0_.U = TSTBIT(SDWodd, 16);
+                SDW0_.G = TSTBIT(SDWodd, 15);
+                SDW0_.C = TSTBIT(SDWodd, 14);
+                SDW0_.EB = SDWodd & 037777;
 
-                if (SDW0.F == 0)
+                if (SDW0_.F == 0)
                     continue;
                 //sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
-                //          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
-                if (SDW0.U == 0)
+                //          tspt, SDW0_.ADDR, SDW0_.R1, SDW0_.R2, SDW0_.R3, SDW0_.F, SDW0_.BOUND, SDW0_.R ? 'R' : '.', SDW0_.E ? 'E' : '.', SDW0_.W ? 'W' : '.', SDW0_.P ? 'P' : '.', SDW0_.U ? 'U' : '.');
+                if (SDW0_.U == 0)
                 {
-                    for (word18 offset = 0; offset < 16u * (SDW0.BOUND + 1u); offset += 1024)
+                    for (word18 offset = 0; offset < 16u * (SDW0_.BOUND + 1u); offset += 1024)
                     {
                         word24 y2 = offset % 1024;
                         word24 x2 = (offset - y2) / 1024;
@@ -1264,7 +1266,7 @@ t_stat virtAddrN (uint address)
                         // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
                         word36 PTWx2;
-                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
+                        core_read ((SDW0_ . ADDR + x2) & PAMASK, & PTWx2, __func__);
 
                         struct _ptw0 PTW2;
                         PTW2.ADDR = GETHI(PTWx2);
@@ -1282,8 +1284,8 @@ t_stat virtAddrN (uint address)
                   }
                 else
                   {
-                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16)
-                      sim_printf ("  %06o:%06o\n", tspt, address - SDW0.ADDR);
+                    if (address >= SDW0_.ADDR && address < SDW0_.ADDR + SDW0_.BOUND * 16)
+                      sim_printf ("  %06o:%06o\n", tspt, address - SDW0_.ADDR);
                   }
             }
         }
@@ -1338,7 +1340,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupAddress (segno, offset, NULL, NULL);
+        char * ans = lookupAddress ((word18) segno, (word18) offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
@@ -1360,7 +1362,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
             return SCPE_OK;
           }
         sim_printf ("0%o:0%o\n", (uint) segno, (uint) (comp_offset + offset));
-        absAddrN  (segno, comp_offset + offset);
+        absAddrN  ((int) segno, (uint) (comp_offset + offset));
       }
 /*
     if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
@@ -1388,11 +1390,11 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
                 & symbol_start, & symbol_length) != 9)
       return SCPE_ARG;
 
-    int idx = addBookSegment (segname, segno);
+    int idx = addBookSegment (segname, (int) segno);
     if (idx < 0)
       return SCPE_ARG;
 
-    if (addBookComponent (idx, compname, txt_start, txt_len, intstat_start, intstat_length, symbol_start, symbol_length) < 0)
+    if (addBookComponent (idx, compname, txt_start, txt_len, (int) intstat_start, (int) intstat_length, (int) symbol_start, (int) symbol_length) < 0)
       return SCPE_ARG;
 
     return SCPE_OK;
@@ -1449,7 +1451,7 @@ static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
                 if (strstr (name, "fw.") || strstr (name, ".ec"))
                   continue;
                 //sim_printf ("A: %s %d\n", name, segno);
-                int rc = addBookSegment (name, c3 ++);
+                int rc = addBookSegment (name, (int) (c3 ++));
                 if (rc < 0)
                   {
                     sim_printf ("error adding segment name\n");
@@ -1730,10 +1732,10 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
             
             // XXX Need to complete MW EIS support in disAssemble()
             
-            for(int n = 0 ; n < p->info->ndes; n += 1)
+            for(uint n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
-            return -p->info->ndes;
+            return SCPE_OK;
         }
         
         return SCPE_OK;
@@ -2271,7 +2273,7 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the simh code.
 
-pthread_mutex_t scpMQlock;
+static pthread_mutex_t scpMQlock;
 typedef struct scpQueueElement scpQueueElement;
 struct scpQueueElement
   {
@@ -2279,7 +2281,7 @@ struct scpQueueElement
     scpQueueElement * prev, * next;
   };
 
-scpQueueElement * scpQueue = NULL;
+static scpQueueElement * scpQueue = NULL;
 
 static void scpQueueMsg (char * msg)
   {

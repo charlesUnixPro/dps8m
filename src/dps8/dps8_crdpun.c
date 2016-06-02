@@ -418,7 +418,7 @@ static int crdpun_cmd (uint iomUnitIdx, uint chan)
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & crdpun_unit [devUnitIdx];
-    int crdpun_unit_num = CRDPUN_UNIT_NUM (unitp);
+    int crdpun_unit_num = (int) CRDPUN_UNIT_NUM (unitp);
     //int iomUnitIdx = cables -> cablesFromIomToPun [crdpun_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
@@ -503,7 +503,7 @@ for (uint row = 0; row < 12; row ++)
     for (int col = 79; col >= 0; col --)
       {
         // 3 cols/word
-        uint wordno = col / 3;
+        uint wordno = (uint) col / 3;
         uint fieldno = col % 3;
         word36 bit = getbits36 (buffer [wordno], fieldno * 12 + row, 1); 
         if (bit)
@@ -521,7 +521,7 @@ sim_printf ("\n");
 
             write (crdpun_state [crdpun_unit_num] . crdpunfile, buffer, sizeof (buffer));
 
-            if (eoj (crdpun_unit_num, buffer, p -> DDCW_TALLY))
+            if (eoj ((uint) crdpun_unit_num, buffer, p -> DDCW_TALLY))
               {
                 //sim_printf ("crdpun end of job\n");
                 close (crdpun_state [crdpun_unit_num] . crdpunfile);
@@ -557,7 +557,7 @@ sim_printf ("\n");
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
-        send_marker_interrupt (iomUnitIdx, chan);
+        send_marker_interrupt (iomUnitIdx, (int) chan);
       }
     return 0;
   }
@@ -593,14 +593,14 @@ static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * 
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDPUN_UNITS_MAX)
       return SCPE_ARG;
-    crdpun_dev . numunits = n;
+    crdpun_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
 static t_stat crdpun_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = CRDPUN_UNIT_NUM (uptr);
+    int n = (int) (uptr);
     if (n < 0 || n >= N_CRDPUN_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("Card punch device name is %s\n", crdpun_state [n] . device_name);
@@ -610,7 +610,7 @@ static t_stat crdpun_show_device_name (UNUSED FILE * st, UNIT * uptr,
 static t_stat crdpun_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = CRDPUN_UNIT_NUM (uptr);
+    int n = (int) CRDPUN_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDPUN_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)

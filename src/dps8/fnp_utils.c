@@ -235,6 +235,7 @@ int strmask(char *str, char *mask)
 #endif
 
 
+#if 0
 /** -------------------------------------------------------------------------- */
 
 char *strwrap(char *text, int *row, int width)
@@ -329,6 +330,8 @@ char *strwrap(char *text, int *row, int width)
     
     return(string);
 }
+#endif
+
 /** ------------------------------------------------------------------------- */
 
 #if 0
@@ -476,7 +479,7 @@ strexp(char *d, char *s)
                         fprintf(stderr, "strexp(%s): strtoll conversion error", s);
                     else
                         s = end_ptr;
-                    *d++ = val & 0x1ff; // unfortunately since we aren't using wide characters we're still stuck at 8-bits
+                    *d++ = (char) (val & 0xff); // unfortunately since we aren't using wide characters we're still stuck at 8-bits
                     
                     goto h;
                 case 'a' :  /*!< A bell       */
@@ -558,7 +561,7 @@ char *Strsep(char **stringp, const char *delim)
 
 #define TIMEFORMAT "%Y/%m/%d %T"
 
-char *Now()
+char *Now(void)
 {
     static char outstr[200];
     time_t t;

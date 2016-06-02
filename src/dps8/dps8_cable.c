@@ -139,8 +139,8 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CRDRDR, 
-                              chanTypePSI, crdrdr_unit_num, & crdrdr_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CRDRDR, 
+                              chanTypePSI, (uint) crdrdr_unit_num, & crdrdr_dev, 
                               & crdrdr_unit [crdrdr_unit_num], crdrdr_iom_cmd);
     if (rc)
       {
@@ -149,8 +149,8 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToCrdRdr [crdrdr_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -172,8 +172,8 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CRDPUN, 
-                              chanTypePSI, crdpun_unit_num, & crdpun_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CRDPUN, 
+                              chanTypePSI, (uint) crdpun_unit_num, & crdpun_dev, 
                               & crdpun_unit [crdpun_unit_num], crdpun_iom_cmd);
     if (rc)
       {
@@ -182,8 +182,8 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToCrdPun [crdpun_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToCrdPun [crdpun_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -205,19 +205,18 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_PRT, 
-                              chanTypePSI, prt_unit_num, & prt_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_PRT, 
+                              chanTypePSI, (uint) prt_unit_num, & prt_dev, 
                               & prt_unit [prt_unit_num], prt_iom_cmd);
     if (rc)
       {
         sim_printf ("cable_prt: IOM socket error; uncabling Printer unit number %d. (%o)\n", prt_unit_num, prt_unit_num);
         return rc;
       }
-      return rc;
 
     cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToPrt [prt_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToPrt [prt_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToPrt [prt_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToPrt [prt_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -239,8 +238,8 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_URP, 
-                              chanTypePSI, urp_unit_num, & urp_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_URP, 
+                              chanTypePSI, (uint) urp_unit_num, & urp_dev, 
                               & urp_unit [urp_unit_num], urp_iom_cmd);
     if (rc)
       {
@@ -249,8 +248,8 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToUrp [urp_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToUrp [urp_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToUrp [urp_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToUrp [urp_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToUrp [urp_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -271,8 +270,8 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_DN355, 
-                              chanTypeDirect, fnpUnitNum, & fnpDev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_DN355, 
+                              chanTypeDirect, (uint) fnpUnitNum, & fnpDev, 
                               & fnp_unit [fnpUnitNum], fnpIOMCmd);
     if (rc)
       {
@@ -281,8 +280,8 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToFnp [fnpUnitNum] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num = chan_num;
-    cables -> cablesFromIomToFnp [fnpUnitNum] . dev_code = dev_code;
+    cables -> cablesFromIomToFnp [fnpUnitNum] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToFnp [fnpUnitNum] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -305,8 +304,8 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_DISK, 
-                              chanTypePSI, disk_unit_num, & disk_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_DISK, 
+                              chanTypePSI, (uint) disk_unit_num, & disk_dev, 
                               & disk_unit [disk_unit_num], disk_iom_cmd);
     if (rc)
       {
@@ -315,8 +314,8 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToDsk [disk_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToDsk [disk_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToDsk [disk_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToDsk [disk_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToDsk [disk_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -338,8 +337,8 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CON, 
-                              chanTypeCPI, con_unit_num, & opcon_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CON, 
+                              chanTypeCPI, (uint) con_unit_num, & opcon_dev, 
                               & opcon_unit [con_unit_num], con_iom_cmd);
     if (rc)
       {
@@ -348,8 +347,8 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToCon [con_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToCon [con_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToCon [con_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToCon [con_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -463,7 +462,7 @@ static t_stat cable_iom (uint iomUnitIdx, int iomPortNum, int scuUnitNum,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, iomUnitIdx, iomPortNum);
+    t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, (int) iomUnitIdx, iomPortNum);
     if (rc)
       {
         sim_printf ("cable_iom: SCU socket error; uncabling IOM unit number %d. (%o), port number %d. (%o)\n", iomUnitIdx, iomUnitIdx, iomPortNum, iomPortNum);
@@ -500,8 +499,8 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
-                              chanTypePSI, mt_unit_num, & tape_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
+                              chanTypePSI, (uint) mt_unit_num, & tape_dev, 
                               & mt_unit [mt_unit_num], mt_iom_cmd);
     if (rc)
       {
@@ -510,8 +509,8 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
       }
 
     cables -> cablesFromIomToTap [mt_unit_num] . iomUnitIdx = iomUnitIdx;
-    cables -> cablesFromIomToTap [mt_unit_num] . chan_num = chan_num;
-    cables -> cablesFromIomToTap [mt_unit_num] . dev_code = dev_code;
+    cables -> cablesFromIomToTap [mt_unit_num] . chan_num = (uint) chan_num;
+    cables -> cablesFromIomToTap [mt_unit_num] . dev_code = (uint) dev_code;
 
     return SCPE_OK;
   }
@@ -605,7 +604,7 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       }
     else if (strcasecmp (name, "IOM") == 0)
       {
-        rc = cable_iom (n1, n2, n3, n4);
+        rc = cable_iom ((uint) n1, n2, n3, n4);
       }
     else if (strcasecmp (name, "SCU") == 0)
       {

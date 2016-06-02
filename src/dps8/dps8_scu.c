@@ -882,7 +882,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
   
     if (getbits36 (rega, 35, 1))
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i] = getbits36 (rega, i, 1) ? 1 : 0;
           }
@@ -892,7 +892,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
       }
     else
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i + 16] = 
               getbits36 (rega, i, 1) ? 1 : 0;
@@ -994,7 +994,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
         case 00000: // Set system controller mode register
           {
             scu [scu_unit_num] . id = (word4) getbits36 (regq, 50 - 36,  4);
-            scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
+            scu [scu_unit_num] . modeReg = (word18) getbits36 (regq, 54 - 36, 18);
           }
           break;
 
@@ -1115,7 +1115,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
 
         case 00003: // Set interrupt cells
           {
-            for (int i = 0; i < 16; i ++)
+            for (uint i = 0; i < 16; i ++)
               {
                 scu [scu_unit_num] . cells [i] = 
                   getbits36 (rega, i, 1) ? 1 : 0;
@@ -1311,7 +1311,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             putbits36 (& a,  9,  3, up -> lower_store_size);
             // XXX A, A1, B, B1 not implemented. (AG87-00A pgs 2-5. 2-6)
             putbits36 (& a, 12,  4, 017); // A, A1, B, B1 online
-            putbits36 (& a, 16,  4, scu_port_num);
+            putbits36 (& a, 16,  4, (word36) scu_port_num);
             putbits36 (& a, 21,  1, up -> mode);
             putbits36 (& a, 22,  8, up -> nea);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
@@ -1606,7 +1606,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 #else
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (iomUnitNum);
+            iom_interrupt ((uint) iomUnitNum);
             return 0;
           }
         else
@@ -1633,7 +1633,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (FAULT_CON, cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (FAULT_CON, (_fault_subtype) cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else
@@ -1718,7 +1718,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
               {
                 scu [scuUnitNum] . cells [inum] = false;
                 deliverInterrupts (scuUnitNum);
-                return inum * 2;
+                return (uint) inum * 2;
               }
           }
       }
@@ -2043,7 +2043,7 @@ void scu_init (void)
         //  ID: 0000  8034, 8035
         //      0001  Level 68 SC
         //      0010  Level 66 SCU
-        scu [u] . id = 0b0010;
+        scu [u] . id = 02;
         scu [u] . modeReg = 0; // used by T&D
       }
 

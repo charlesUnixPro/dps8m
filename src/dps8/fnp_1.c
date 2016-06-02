@@ -17,11 +17,6 @@
 #include "fnp_utils.h"
 #include "fnp_cmds.h"
 
-extern TMLN mux_ldsc[MAX_LINES];
-
-char *
-getDevList();
-
 /*
  * called when a MUX line in connected to a telnet client ...
  */
@@ -37,7 +32,8 @@ t_stat OnMuxConnect(TMLN *tmln, int line)
     return SCPE_OK;
 }
 
-void MUXDisconnectLine(int line)
+#if 0
+static void MUXDisconnectLine(int line)
 {
     if (line >= 0 && line < mux_max)
     {
@@ -51,12 +47,15 @@ void MUXDisconnectLine(int line)
         }
     }
 }
+#endif
 
-void MUXDisconnectAll()
+#if 0
+static void MUXDisconnectAll()
 {
     for (int line = 0 ; line < mux_max ; line += 1)
         MUXDisconnectLine(line);
 }
+#endif
 
 
 /*
@@ -101,9 +100,6 @@ t_stat OnMuxStalled(int line, int kar)
     
     return SCPE_OK;
 }
-
-FMTI *searchForDevice(char *dev);
-char *strFMTI(FMTI *p, int line);
 
 /*
  * called when a character is received on a MUX line ...

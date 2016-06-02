@@ -165,6 +165,7 @@ static t_stat urp_reset (DEVICE * dptr)
     return SCPE_OK;
   }
 
+#if 0
 // Given an array of word36 and a 9bit char offset, return the char
 
 static word9 gc (word36 * b, uint os)
@@ -173,7 +174,7 @@ static word9 gc (word36 * b, uint os)
     uint charno = os % 4;
     return (word9) getbits36 (b [wordno], charno * 9, 9);
   }
-
+#endif
 
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {
@@ -182,7 +183,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & urp_unit [devUnitIdx];
-    int urp_unit_num = URPUNIT_NUM (unitp);
+    int urp_unit_num = (int) URPUNIT_NUM (unitp);
     //int iomUnitIdx = cables -> cablesFromIomToPun [urp_unit_num] . iomUnitIdx;
 
     sim_debug (DBG_TRACE, & urp_dev, "urp_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
@@ -550,7 +551,7 @@ sim_printf ("\n");
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
-        send_marker_interrupt (iomUnitIdx, chan);
+        send_marker_interrupt (iomUnitIdx, (int) chan);
       }
 
     if (p -> IDCW_CHAN_CMD == 0)
@@ -585,14 +586,14 @@ static t_stat urp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
     int n = atoi (cptr);
     if (n < 1 || n > N_URP_UNITS_MAX)
       return SCPE_ARG;
-    urp_dev . numunits = n;
+    urp_dev . numunits = (uint) n;
     return SCPE_OK;
   }
 
 static t_stat urp_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = URPUNIT_NUM (uptr);
+    int n = (int) URPUNIT_NUM (uptr);
     if (n < 0 || n >= N_URP_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("Card punch device name is %s\n", urp_state [n] . device_name);
@@ -602,7 +603,7 @@ static t_stat urp_show_device_name (UNUSED FILE * st, UNIT * uptr,
 static t_stat urp_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = URPUNIT_NUM (uptr);
+    int n = (int) URPUNIT_NUM (uptr);
     if (n < 0 || n >= N_URP_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
