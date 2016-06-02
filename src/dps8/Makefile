@@ -325,6 +325,9 @@ blinkenLights : blinkenLights.c shm.o
 blinkenLights2 : blinkenLights2.c shm.o
 	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights2.c -o blinkenLights2 shm.o `pkg-config --cflags --libs gtk+-3.0`
 
+blinkenLightsPi : blinkenLightsPi.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLightsPi.c -o blinkenLightsPi shm.o 
+
 #all : blinkenLights
 
 blinkenLightsCurses : blinkenLightsCurses.c shm.o
