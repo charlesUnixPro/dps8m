@@ -542,13 +542,13 @@ sim_printf ("UFA e3 now %d\n", e3);
 #else
 
     float72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
-    float72 op2 = cpu.CY;
+    //float72 op2 = cpu.CY;
             
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     
     //int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-    int e2 = SIGNEXT8_int (getbits36 (op2, 0, 8));
-    word72 m2 = (word72)bitfieldExtract36(op2, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
+    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    word72 m2 = (word72)bitfieldExtract36(cpu.CY, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
     
     int e3 = -1;
     word72 m3 = 0;
