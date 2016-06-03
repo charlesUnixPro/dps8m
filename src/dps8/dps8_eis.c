@@ -1115,9 +1115,11 @@ static void parseNumericOperandDescriptor (int k)
         r = 0;
     }
 
+#ifdef ISOLTS
     int TN = e->TN[k-1];
-    int N = e->N[k-1];  // number of chars in string
     int S = e->S[k-1];  // This is where MVNE gets really nasty.
+#endif
+    int N = e->N[k-1];  // number of chars in string
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
 
     if (N == 0)
@@ -3983,35 +3985,39 @@ static int mopINSB (void)
         return -1;
     }
     
-    // If IF = 0, the 9 bits immediately following the INSB micro operation are
-    // treated as a 9-bit character (not a MOP) and are moved or skipped
-    // according to ES.
-    if (e->mopIF == 0)
+    if (!e->mopES)
     {
         // If ES is OFF, then edit insertion table entry 1 is moved to the
         // receiving field. If IF = 0, then the next 9 bits are also skipped.
         // If IF is not 0, the next 9 bits are treated as a MOP.
-        if (!e->mopES)
+        writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+ 
+
+        if (e->mopIF == 0)
         {
-            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
-     
-            //get49(e, &e->mopAddr, &e->mopPos, CTN9);
             EISget49(e->mopAddress, &e->mopPos, CTN9);
             e->mopTally -= 1;
-        } else {
-            // If ES is ON and IF = 0, then the 9-bit character immediately
-            // following the INSB micro-instruction is moved to the receiving
-            // field.
-            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
-            e->mopTally -= 1;            
         }
-      
+
     } else {
-      // If ES is ON and IF<>0, then IF specifies which edit insertion table
-      // entry (1-8) is to be moved to the receiving field.
-        if (e->mopES)
+
+        // ES is ON
+
+        // If C(IF) != 0
+        if (e->mopIF)
         {
+	  // If ES is ON and IF<>0, then IF specifies which edit
+	  // insertion table entry (1-8) is to be moved to the receiving
+	  // field.
             writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+        } else {
+	  // If ES is ON and IF = 0, then the 9-bit character immediately
+	  // following the INSB micro-instruction is moved to the
+	  // receiving field.
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+            EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;            
+
         }
     }
     return 0;
@@ -4461,20 +4467,26 @@ static int mopMVC (void)
     if (e->mopIF == 0)
         e->mopIF = 16;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC mopIF %d\n", e->mopIF);
+
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC n %d srcTally %d dstTally %d\n", n, e->srcTally, e->dstTally);
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstTally);
             e->_faults |= FAULT_IPR;
             return -1;
         }
         
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC write to output buffer %o\n", *e->in);
         writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
         e->in += 1;
         
         e->srcTally -= 1;
     }
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC done\n");
     return 0;
 }
 
@@ -4878,6 +4890,7 @@ static void mopExecutor (int kMop)
     
     while (e->dstTally && e->mopTally)
     {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor dstTally %d mopTally %d\n", e->dstTally, e->mopTally);
         MOPstruct *m = EISgetMop();
         if (! m)
           {
@@ -4886,7 +4899,10 @@ static void mopExecutor (int kMop)
           } 
         int mres = m->f();    // execute mop
         if (mres)
+          {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor mop forced break\n");
             break;        
+          }
     }
     
     // XXX this stuff should probably best be done in the mop's themselves. We'll see.
@@ -4900,7 +4916,10 @@ sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->
 // prior to the sending or receiving field tally.
 
     if (e->mopTally < e->srcTally || e->mopTally < e->dstTally)
+      {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
+      }
 #if 0
     // dst string not exhausted?
     if (e->dstTally != 0)
@@ -4912,6 +4931,7 @@ sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->
     // mop string not exhausted?
     if (e->mopTally != 0)
       {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d\n", e->mopTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
     
