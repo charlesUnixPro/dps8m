@@ -4015,7 +4015,6 @@ static int mopINSB (void)
 	  // following the INSB micro-instruction is moved to the
 	  // receiving field.
             writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
-            EISget49(e->mopAddress, &e->mopPos, CTN9);
             e->mopTally -= 1;            
 
         }
