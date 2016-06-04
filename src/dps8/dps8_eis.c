@@ -3331,35 +3331,39 @@ static int mopINSB (void)
         return -1;
     }
     
-    // If IF = 0, the 9 bits immediately following the INSB micro operation are
-    // treated as a 9-bit character (not a MOP) and are moved or skipped
-    // according to ES.
-    if (e->mopIF == 0)
+    if (!e->mopES)
     {
         // If ES is OFF, then edit insertion table entry 1 is moved to the
         // receiving field. If IF = 0, then the next 9 bits are also skipped.
         // If IF is not 0, the next 9 bits are treated as a MOP.
-        if (!e->mopES)
+        writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
+
+
+        if (e->mopIF == 0)
         {
-            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
-     
-            //get49(e, &e->mopAddr, &e->mopPos, CTN9);
             EISget49(e->mopAddress, &e->mopPos, CTN9);
             e->mopTally -= 1;
+        }
+
+    } else {
+
+        // ES is ON
+
+        // If C(IF) != 0
+        if (e->mopIF)
+        {
+            // If ES is ON and IF<>0, then IF specifies which edit
+            // insertion table entry (1-8) is to be moved to the receiving
+            // field.
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         } else {
             // If ES is ON and IF = 0, then the 9-bit character immediately
-            // following the INSB micro-instruction is moved to the receiving
-            // field.
+            // following the INSB micro-instruction is moved to the
+            // receiving field.
             writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
-            e->mopTally -= 1;            
-        }
-      
-    } else {
-      // If ES is ON and IF<>0, then IF specifies which edit insertion table
-      // entry (1-8) is to be moved to the receiving field.
-        if (e->mopES)
-        {
-            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
+            //EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;
+
         }
     }
     return 0;
