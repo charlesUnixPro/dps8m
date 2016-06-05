@@ -1133,13 +1133,13 @@ static void parseNumericOperandDescriptor (int k)
 
 #ifdef ISOLTS
     if (N == 1 && (S == 0 || S == 1 || S == 2))
-      doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=1 S=0|1|2");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=1 S=0|1|2");
 
     if (N == 2 && S == 0)
-      doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=2 S=0");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=2 S=0");
 
     if (N == 3 && S == 0 && TN == 1)
-      doFault (FAULT_IPR, FR_ILL_PROC, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=3 S=0 TN 1");
 #endif
 
 
