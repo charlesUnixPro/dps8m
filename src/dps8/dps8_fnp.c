@@ -737,7 +737,9 @@ static void dmpmbx (uint mailboxAddress)
 static int findMbx (uint fnpUnitNumber)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNumber];
-    for (uint i = 0; i < 4; i ++)
+// See comment at top of file
+    //for (uint i = 0; i < 4; i ++)
+    for (uint i = 0; i < 1; i ++)
       if (! fudp -> fnpMBXinUse [i])
         return i;
     return -1;
