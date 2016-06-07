@@ -3991,7 +3991,6 @@ static int mopINSB (void)
         // receiving field. If IF = 0, then the next 9 bits are also skipped.
         // If IF is not 0, the next 9 bits are treated as a MOP.
         writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
- 
 
         if (e->mopIF == 0)
         {
@@ -4006,16 +4005,17 @@ static int mopINSB (void)
         // If C(IF) != 0
         if (e->mopIF)
         {
-	  // If ES is ON and IF<>0, then IF specifies which edit
-	  // insertion table entry (1-8) is to be moved to the receiving
-	  // field.
+            // If ES is ON and IF<>0, then IF specifies which edit
+            // insertion table entry (1-8) is to be moved to the receiving
+            // field.
             writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF - 1]);
         } else {
-	  // If ES is ON and IF = 0, then the 9-bit character immediately
-	  // following the INSB micro-instruction is moved to the
-	  // receiving field.
+            // If ES is ON and IF = 0, then the 9-bit character immediately
+            // following the INSB micro-instruction is moved to the
+            // receiving field.
             writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
-            e->mopTally -= 1;            
+            //EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;
 
         }
     }
