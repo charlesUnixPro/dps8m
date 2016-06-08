@@ -1132,8 +1132,16 @@ static void parseNumericOperandDescriptor (int k)
 //DBG(662088814)> CPU0 FAULT: 00257:004574 4 000100301500 (BTD PR0|100) 000100 301(1) 0 0 0 00^M
 
 #ifdef ISOLTS
+#if 0 
+// This test does not hold true for BTD operand 1; the S field is ignored by
+// the instruction
+
     if (N == 1 && (S == 0 || S == 1 || S == 2))
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=1 S=0|1|2");
+      {
+sim_printf ("k %d N %d S %d\n", k, N, S);
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=1 S=0|1|2");
+      }
+#endif
 
     if (N == 2 && S == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=2 S=0");
@@ -4215,8 +4223,10 @@ static int mopMFLC (void)
     //  Starting with the next available sending field character, the next IF
     //  characters are individually fetched and the following conditional
     //  actions occur.
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC IF %d, srcTally %d, dstTally %d\n", e->mopIF, e->srcTally, e->dstTally);
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC n %d, srcTally %d, dstTally %d\n", n, e->srcTally, e->dstTally);
         if (e->srcTally == 0 || e->dstTally == 0)
         {
             e->_faults |= FAULT_IPR;
@@ -4229,37 +4239,39 @@ static int mopMFLC (void)
         // moved to the receiving field, and ES is set ON.
         
         int c = *(e->in);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC c %d (0%o)\n", c, c);
         if (!e->mopES) { // e->mopES is OFF
-            //if (c == 0) {
-            // XXX See srcTA comment in MVNE
 
 
-            if (isDecimalZero (c))
-                {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC ES off\n");
+            if (isDecimalZero (c)) {
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC is zero\n");
                 // edit insertion table entry 1 is moved to the receiving field
                 // in place of the character.
                 writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
             } else {
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC is not zero\n");
                 // then edit insertion table entry 5 is moved to the receiving
                 // field, the character is also moved to the receiving field,
                 // and ES is set ON.
                 writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[4]);
                 
-                e->in += 1;
-                e->srcTally -= 1;
-                if (e->srcTally == 0 || e->dstTally == 0)
+                if (e->dstTally == 0)
                 {
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
                 
                 writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+                e->in += 1;
+                e->srcTally -= 1;
                 
                 e->mopES = true;
             }
         } else {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC ES on\n");
             // If ES is ON, the character is moved to the receiving field.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
             
@@ -4431,10 +4443,27 @@ static int mopMORS (void)
     if (e->mopIF == 0)
         e->mopIF = 16;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MORS mopIF %d src %d dst %d\n", e->mopIF, e->srcTally, e->dstTally);
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
-        if (e->srcTally == 0 || e->dstTally == 0)
+// The micro operation sequence is terminated normally when the receiving
+// string length becomes exhausted. The micro operation sequence is terminated
+// abnormally (with an illegal procedure fault) if a move from an exhausted
+// sending string or the use of an exhausted MOP string is attempted.
+
+//        if (e->srcTally == 0 || e->dstTally == 0)
+//        {
+//            sim_debug (DBG_TRACEEXT, & cpu_dev, "MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
+//            e->_faults |= FAULT_IPR;
+//            return -1;
+//        }
+        if (e->srcTally == 0)
         {
+            return 0;
+        }
+        if (e->dstTally == 0)
+        {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
             e->_faults |= FAULT_IPR;
             return -1;
         }
@@ -4846,7 +4875,7 @@ static MOPstruct* EISgetMop (void)
     e->mopIF = mop9 & 0xf;
     
     MOPstruct *m = &mopTab[mop];
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s\n", m -> mopName);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s(%o) %o\n", m -> mopName, mop, e->mopIF);
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
     {
@@ -4889,10 +4918,11 @@ static void mopExecutor (int kMop)
     
     while (e->dstTally && e->mopTally)
     {
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor dstTally %d mopTally %d\n", e->dstTally, e->mopTally);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor srcTally %d dstTally %d mopTally %d\n", e->srcTally, e->dstTally, e->mopTally);
         MOPstruct *m = EISgetMop();
         if (! m)
           {
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor EISgetMop forced break\n");
             e->_faults |= FAULT_IPR;   // XXX ill proc fault
             break;        
           } 
@@ -4909,6 +4939,7 @@ static void mopExecutor (int kMop)
         //return;
 if (currentRunningCPUnum)
 sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
 
 // ISOLTS ps841
 // testing for ipr fault when micro-op tally runs out
@@ -5197,9 +5228,12 @@ void mvt (void)
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op1 23 MBZ");
 
+// This breaks eis_tester mvt 110
+#if 0
     // Bits 18 of OP2 MBZ
     if (e -> op [1]  & 0000000400000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op2 18 MBZ");
+#endif
 
     // Bits 18-28 of OP3 MBZ
     if (e -> op [2]  & 0000000777600)
