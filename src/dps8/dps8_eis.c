@@ -1123,7 +1123,9 @@ static void parseNumericOperandDescriptor (int k)
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
 
     if (N == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=0");
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=0");
+      }
 
 // Causes:
 //DBG(662088814)> CPU0 FAULT: Fault 10(012), sub 4294967296(040000000000), dfc N, 'parseNumericOperandDescriptor N=1 S=0|1|2'^M
@@ -1143,11 +1145,18 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
       }
 #endif
 
+// This breaks eis_tester 631 dtb; the S field in OP2 is ignored by the instruction.
+#if 0
     if (N == 2 && S == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=2 S=0");
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=2 S=0");
+      }
+#endif
 
     if (N == 3 && S == 0 && TN == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+      }
 #endif
 
 
@@ -7248,13 +7257,16 @@ void dtb (void)
     // Bits 0 to 10 of the instruction Must Be Zero. So Say We ISOLTS.
     uint mbz = getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
-
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
+      }
     //if (e->TN2 != 0)
       //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb: TN2 MBZ");
     // Bits 21-29 of OP2 MBZ
     if (e -> op [1]  & 0000000077700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
+       }
 
     //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
     //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
@@ -7876,9 +7888,12 @@ void sb2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
+// This breaks eis_tester 410 s2bd
+#if 0
     // Bits 0-8 MBZ
     if (IWB_IRODD & 0777000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
+#endif
 
     e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
