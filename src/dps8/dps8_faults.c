@@ -526,6 +526,35 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
           cpu . cu . IA = 010;
       }
 
+    // History registers
+    // IHRRS; AL39 pg 49
+    // Additional resetting of bit 30. If bit 31 = 1, the following faults also
+    // reset bit 30:
+    //   Lock Up
+    //   Parity
+    //   Command
+    //   Store
+    //   Illegal Procedure
+    //   Shutdown
+    if (cpu.MR.ihrrs)
+      {
+        if (faultNumber == FAULT_LUF ||
+            faultNumber == FAULT_PAR ||
+            faultNumber == FAULT_CMD ||
+            faultNumber == FAULT_STR ||
+            faultNumber == FAULT_IPR ||
+            faultNumber == FAULT_SDF)
+          {
+            cpu.MR.ihr = 0;
+          }
+      }
+    // Enable History Registers.  This bit will be reset by ... an Op Not
+    // Complete fault. It may be reset by other faults (see bit 31). 
+    if (faultNumber == FAULT_ONC)
+      {
+        cpu.MR.ihr = 0;
+      }
+
     // If already in a FAULT CYCLE then signal trouble fault
 
     if (cpu.cycle == FAULT_EXEC_cycle ||
