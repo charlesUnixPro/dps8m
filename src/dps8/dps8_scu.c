@@ -879,11 +879,11 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
       return CONT_FAULT;
 #endif
   
-    if (getbits36 (rega, 35, 1))
+    if (getbits36_1 (rega, 35))
       {
         for (int i = 0; i < 16; i ++)
           {
-            scu [scu_unit_num] . cells [i] = getbits36 (rega, i, 1) ? 1 : 0;
+            scu [scu_unit_num] . cells [i] = getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC low: Unit %u Cells: %s\n", 
@@ -894,7 +894,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
         for (int i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i + 16] = 
-              getbits36 (rega, i, 1) ? 1 : 0;
+              getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC high: Unit %d Cells: %s\n",
@@ -1120,9 +1120,9 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             for (int i = 0; i < 16; i ++)
               {
                 scu [scu_unit_num] . cells [i] = 
-                  getbits36 (rega, i, 1) ? 1 : 0;
+                  getbits36_1 (rega, i) ? 1 : 0;
                 scu [scu_unit_num] . cells [i + 16] = 
-                  getbits36 (regq, i, 1) ? 1 : 0;
+                  getbits36_1 (regq, i) ? 1 : 0;
               }
             sim_debug (DBG_TRACE, & scu_dev, 
                        "SSCR Set int. cells: Unit %u Cells: %s\n", 
@@ -2276,14 +2276,14 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     //sim_printf ("smcm  exec_intr_mask %012o\n",
                   //scu [scu_unit_num] . exec_intr_mask [mask_num]);
     //sim_printf ("[%lld]\n", sim_timell ());
-    scu [scu_unit_num] . port_enable [0] = (uint) getbits36 (rega, 32, 1);
-    scu [scu_unit_num] . port_enable [1] = (uint) getbits36 (rega, 33, 1);
-    scu [scu_unit_num] . port_enable [2] = (uint) getbits36 (rega, 34, 1);
-    scu [scu_unit_num] . port_enable [3] = (uint) getbits36 (rega, 35, 1);
-    scu [scu_unit_num] . port_enable [4] = (uint) getbits36 (regq, 32, 1);
-    scu [scu_unit_num] . port_enable [5] = (uint) getbits36 (regq, 33, 1);
-    scu [scu_unit_num] . port_enable [6] = (uint) getbits36 (regq, 34, 1);
-    scu [scu_unit_num] . port_enable [7] = (uint) getbits36 (regq, 35, 1);
+    scu [scu_unit_num] . port_enable [0] = (uint) getbits36_1 (rega, 32);
+    scu [scu_unit_num] . port_enable [1] = (uint) getbits36_1 (rega, 33);
+    scu [scu_unit_num] . port_enable [2] = (uint) getbits36_1 (rega, 34);
+    scu [scu_unit_num] . port_enable [3] = (uint) getbits36_1 (rega, 35);
+    scu [scu_unit_num] . port_enable [4] = (uint) getbits36_1 (regq, 32);
+    scu [scu_unit_num] . port_enable [5] = (uint) getbits36_1 (regq, 33);
+    scu [scu_unit_num] . port_enable [6] = (uint) getbits36_1 (regq, 34);
+    scu [scu_unit_num] . port_enable [7] = (uint) getbits36_1 (regq, 35);
     deliverInterrupts (scu_unit_num);
     
     return SCPE_OK;

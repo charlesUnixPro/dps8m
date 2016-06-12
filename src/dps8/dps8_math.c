@@ -2022,8 +2022,8 @@ sim_printf ("CY %llu\n", cpu.CY);
     //  C(AQ)
 
     int sign = 1;
-    bool dividendNegative = (getbits36 (cpu . rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (cpu.CY, 0, 1) != 0);
+    bool dividendNegative = (getbits36_1 (cpu . rA, 0) != 0);
+    bool divisorNegative = (getbits36_1 (cpu.CY, 0) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.
@@ -2119,8 +2119,8 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
     //  C(AQ)
 
     int sign = 1;
-    bool dividendNegative = (getbits36 (cpu . rA, 0, 1) != 0);
-    bool divisorNegative = (getbits36 (cpu.CY, 0, 1) != 0);
+    bool dividendNegative = (getbits36_1 (cpu . rA, 0) != 0);
+    bool divisorNegative = (getbits36_1 (cpu.CY, 0) != 0);
 
     // Get the 70 bits of the dividend (72 bits less the sign bit and the
     // ignored bit 71.

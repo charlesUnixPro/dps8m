@@ -81,6 +81,17 @@ static inline word36 getbits36(word36 x, uint i, uint n) {
         return (x >> (unsigned) shift) & ~ (~0U << n);
 }
 
+static inline word1 getbits36_1 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_1: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 1u;
+  }
+
 static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;

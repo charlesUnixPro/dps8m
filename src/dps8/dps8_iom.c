@@ -1174,12 +1174,12 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012llo\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36 (p -> LPW,  0, 18);
-    p -> LPW_18_RES =  getbits36 (p -> LPW, 18,  1);
-    p -> LPW_19_REL =  getbits36 (p -> LPW, 19,  1);
-    p -> LPW_20_AE =   getbits36 (p -> LPW, 20,  1);
-    p -> LPW_21_NC =   getbits36 (p -> LPW, 21,  1);
-    p -> LPW_22_TAL =  getbits36 (p -> LPW, 22,  1);
-    p -> LPW_23_REL =  getbits36 (p -> LPW, 23,  1);
+    p -> LPW_18_RES =  getbits36_1 (p -> LPW, 18);
+    p -> LPW_19_REL =  getbits36_1 (p -> LPW, 19);
+    p -> LPW_20_AE =   getbits36_1 (p -> LPW, 20);
+    p -> LPW_21_NC =   getbits36_1 (p -> LPW, 21);
+    p -> LPW_22_TAL =  getbits36_1 (p -> LPW, 22);
+    p -> LPW_23_REL =  getbits36_1 (p -> LPW, 23);
     p -> LPW_TALLY =   getbits36 (p -> LPW, 24, 12);
 
 
@@ -1235,7 +1235,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
-          p -> IDCW_EC =         getbits36 (p -> DCW, 21,  1);
+          p -> IDCW_EC =         getbits36_1 (p -> DCW, 21);
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
         p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
@@ -1245,12 +1245,12 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
     else // TDCW or DDCW
       {
         p -> TDCW_DATA_ADDRESS = getbits36 (p -> DCW,  0, 18);
-        p -> TDCW_31_SEG =       getbits36 (p -> DCW, 31,  1);
-        p -> TDCW_32_PDTA =      getbits36 (p -> DCW, 32,  1);
-        p -> TDCW_33_PDCW =      getbits36 (p -> DCW, 33,  1);
-        p -> TDCW_33_EC =        getbits36 (p -> DCW, 33,  1);
-        p -> TDCW_34_RES =       getbits36 (p -> DCW, 34,  1);
-        p -> TDCW_35_REL =       getbits36 (p -> DCW, 35,  1);
+        p -> TDCW_31_SEG =       getbits36_1 (p -> DCW, 31);
+        p -> TDCW_32_PDTA =      getbits36_1 (p -> DCW, 32);
+        p -> TDCW_33_PDCW =      getbits36_1 (p -> DCW, 33);
+        p -> TDCW_33_EC =        getbits36_1 (p -> DCW, 33);
+        p -> TDCW_34_RES =       getbits36_1 (p -> DCW, 34);
+        p -> TDCW_35_REL =       getbits36_1 (p -> DCW, 35);
 
         p -> DDCW_TALLY =        getbits36 (p -> DCW, 24, 12);
         p -> DDCW_ADDR =         getbits36 (p -> DCW,  0, 18);
@@ -1285,13 +1285,13 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
 //sim_printf ("%012llo %012llo\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36 (p -> PCW1, 3, 6);
     p -> PCW_AE = getbits36 (p -> PCW0, 12, 6);
-    p -> PCW_21_MSK = getbits36 (p -> PCW0, 21, 1);
+    p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
     p -> PCW_PAGE_TABLE_PTR = getbits36 (p -> PCW1, 9, 18);
-    p -> PCW_63_PTP = getbits36 (p -> PCW1, 27, 1);
-    p -> PCW_64_PGE = getbits36 (p -> PCW1, 28, 1);
+    p -> PCW_63_PTP = getbits36_1 (p -> PCW1, 27);
+    p -> PCW_64_PGE = getbits36_1 (p -> PCW1, 28);
 //sim_printf ("PCW_64_PGE %u\n", p -> PCW_64_PGE);
 //sim_printf ("%d %p\n", chan, p);
-    p -> PCW_65_AUX = getbits36 (p -> PCW1, 29, 1);
+    p -> PCW_65_AUX = getbits36_1 (p -> PCW1, 29);
     if (p -> PCW_65_AUX)
       sim_warn ("PCW_65_AUX\n");
     p -> DCW = p -> PCW0;

@@ -1026,7 +1026,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         // it is in command data...
                         //uint subtype = getbits36 (word2, 0, 9);
                         uint subtype = getbits36 (smbxp -> command_data [0], 0, 9);
-                        uint flag = getbits36 (smbxp -> command_data [0], 17, 1);
+                        uint flag = getbits36_1 (smbxp -> command_data [0], 17);
                         //sim_printf ("  subtype %d\n", subtype);
                         switch (subtype)
                           {

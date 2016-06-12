@@ -705,7 +705,7 @@ static bool EISgetBitRWN (EISaddr * p)
     
     if (p -> mode == eRWreadBit)
       {
-        p -> bit = getbits36 (p -> data, bitPosn, 1);
+        p -> bit = getbits36_1 (p -> data, bitPosn);
       } 
     else if (p -> mode == eRWwriteBit)
       {
@@ -1123,7 +1123,7 @@ static void parseNumericOperandDescriptor (int k)
     //e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
     //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
     word8 CN = getbits36 (opDesc, 18, 3);    // character number
-    e->TN[k-1] = getbits36 (opDesc, 21, 1); // type numeric
+    e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
     e->S[k-1]  = getbits36 (opDesc, 22, 2);    // Sign and decimal type of data
     e->SF[k-1] = SIGNEXT6_int (getbits36 (opDesc, 24, 6));    // Scaling factor.
 
@@ -2460,7 +2460,7 @@ void mlr (void)
       }
     
     //uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
+    word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
     uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
@@ -2705,7 +2705,7 @@ void mrl (void)
       }
     
     //uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
+    word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
     uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
@@ -4572,7 +4572,7 @@ void mvt (void)
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
+    word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //int fill = (int)bitfieldExtract36(cpu . cu . IWB, 27, 9);
     uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
@@ -4979,9 +4979,9 @@ void mvn (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    word1 T = getbits36_1 (cpu.cu.IWB, 9);
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -5257,8 +5257,8 @@ void csl (bool isSZTL)
     
     //uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
-    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;   // T (enablefault) bit
+    bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
     //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
     uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
@@ -5458,7 +5458,7 @@ return false;
     if (p -> mode == eRWreadBit)
       {
         //p -> bit = (bool) bitfieldExtract36 (p -> data, bitPosn, 1);
-        p -> bit = getbits36 (p -> data, bitPosn, 1);
+        p -> bit = getbits36_1 (p -> data, bitPosn);
       } 
     else if (p -> mode == eRWwriteBit)
       {
@@ -5544,8 +5544,8 @@ void csr (bool isSZTR)
     
     //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
     //bool T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
-    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;   // T (enablefault) bit
+    bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
     //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
     uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
@@ -5712,7 +5712,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
     //bool b = (bool)bitfieldExtract36(p->data, bitPosn, 1);
     int charPosn = *cpos * 9;
     int bitPosn = charPosn + *bpos;
-    bool b = getbits36 (p->data, bitPosn, 1);
+    bool b = getbits36_1 (p->data, bitPosn) != 0;
     
     *bpos += 1;
     
@@ -5750,7 +5750,7 @@ void cmpb (void)
     int bitPosn2 = e->B2;
     
     //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;     // fill bit (was 25)
-    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
+    bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
 
     SET_I_ZERO;  // assume all =
     SET_I_CARRY; // assume all >=
@@ -6291,7 +6291,7 @@ void btd (void)
     parseNumericOperandDescriptor(2);
     
     //e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     
 // XXX ticket #35
     // Technically, ill_proc should be "illegal eis modifier",
@@ -6595,9 +6595,9 @@ void ad2d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -6880,9 +6880,9 @@ void ad3d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
  
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7143,9 +7143,9 @@ void sb2d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7381,9 +7381,9 @@ void sb3d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7634,9 +7634,9 @@ void mp2d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7871,9 +7871,9 @@ void mp3d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -8880,9 +8880,9 @@ void dv2d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9144,9 +9144,9 @@ void dv3d (void)
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
-    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
-    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     

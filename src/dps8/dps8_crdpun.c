@@ -487,7 +487,7 @@ for (uint row = 0; row < 12; row ++)
         // 3 cols/word
         uint wordno = col / 3;
         uint fieldno = col % 3;
-        word36 bit = getbits36 (buffer [wordno], fieldno * 12 + row, 1); 
+        word1 bit = getbits36_1 (buffer [wordno], fieldno * 12 + row); 
         if (bit)
           sim_printf ("*");
         else
@@ -505,7 +505,7 @@ for (uint row = 0; row < 12; row ++)
         // 3 cols/word
         uint wordno = col / 3;
         uint fieldno = col % 3;
-        word36 bit = getbits36 (buffer [wordno], fieldno * 12 + row, 1); 
+        word1 bit = getbits36_1 (buffer [wordno], fieldno * 12 + row); 
         if (bit)
           sim_printf ("*");
         else
