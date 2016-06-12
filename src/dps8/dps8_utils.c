@@ -1380,6 +1380,7 @@ word36 bitfieldExtract36(word36 a, int b, int c)
 }
 #endif
 
+#if 0
 word72 bitfieldExtract72(word72 a, int b, int c)
 {
     word72 mask = ~((word72)-1 << c);
@@ -1388,6 +1389,7 @@ word72 bitfieldExtract72(word72 a, int b, int c)
     else
         return a & mask;
 }
+#endif
 
 #ifndef QUIET_UNUSED
 /*!

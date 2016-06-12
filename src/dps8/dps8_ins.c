@@ -2085,8 +2085,10 @@ static t_stat DoBasicInstruction (void)
 
                 tmp72 = ~tmp72 + 1;
 
-                cpu.rA = bitfieldExtract72(tmp72, 36, 36);
-                cpu.rQ = bitfieldExtract72(tmp72,  0, 36);
+                //cpu.rA = bitfieldExtract72(tmp72, 36, 36);
+                //cpu.rQ = bitfieldExtract72(tmp72,  0, 36);
+                cpu.rA = (tmp72 >> 36) & MASK36;
+                cpu.rQ = (tmp72      ) & MASK36;
 
                 SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
                 SC_I_NEG (cpu.rA & SIGN36);

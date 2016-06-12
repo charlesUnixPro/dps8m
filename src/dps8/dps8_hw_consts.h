@@ -87,6 +87,7 @@ enum { N_DEV_CODES = 64 };
 #define ZEROEXT18       0777777U                 // mask to zero extend a 18 => 32-bit int
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
 #define SIGN72          ((word72)1U << 71)
+#define BIT71           ((word72)1U << 70)  // next to the sign bit
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
 #define MASK71          (((word72)1U << 71) - 1U)

@@ -615,7 +615,8 @@ void fno (void)
     int e = SIGNEXT8_int (cpu . rE & MASK8);
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
 
-    while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
+    //while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
+    while (s  == !! (m & BIT71)) // until C(AQ)0 != C(AQ)1?
     {
         m <<= 1;
         e -= 1;
