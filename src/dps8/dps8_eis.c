@@ -158,82 +158,103 @@ static word9 get9(word36 w, int pos)
     return 0;
   }
 
+// AL39, Figure 2-3
 static word36 put4 (word36 w, int pos, word6 c)
   {
     switch (pos)
       {
         case 0:
-         return bitfieldInsert36 (w, c, 31, 4);
+          //return bitfieldInsert36 (w, c, 31, 4);
+          return setbits36 (w, 1, 4, c);
 
         case 1:
-          return bitfieldInsert36 (w, c, 27, 4);
+          //return bitfieldInsert36 (w, c, 27, 4);
+          return setbits36 (w, 5, 4, c);
 
         case 2:
-          return bitfieldInsert36 (w, c, 22, 4);
+          //return bitfieldInsert36 (w, c, 22, 4);
+          return setbits36 (w, 10, 4, c);
 
         case 3:
-          return bitfieldInsert36 (w, c, 18, 4);
+          //return bitfieldInsert36 (w, c, 18, 4);
+          return setbits36 (w, 14, 4, c);
 
         case 4:
-          return bitfieldInsert36 (w, c, 13, 4);
+          //return bitfieldInsert36 (w, c, 13, 4);
+          return setbits36 (w, 19, 4, c);
 
         case 5:
-          return bitfieldInsert36 (w, c, 9, 4);
+          //return bitfieldInsert36 (w, c, 9, 4);
+          return setbits36 (w, 23, 4, c);
 
         case 6:
-          return bitfieldInsert36 (w, c, 4, 4);
+          //return bitfieldInsert36 (w, c, 4, 4);
+          return setbits36 (w, 28, 4, c);
 
         case 7:
-          return bitfieldInsert36 (w, c, 0, 4);
+          //return bitfieldInsert36 (w, c, 0, 4);
+          return setbits36 (w, 32, 4, c);
 
       }
     sim_printf ("put4(): How'd we get here?\n");
     return 0;
   }
 
+// AL39, Figure 2-4
 static word36 put6 (word36 w, int pos, word4 c)
   {
     switch (pos)
       {
         case 0:
-          return bitfieldInsert36 (w, c, 30, 6);
+          //return bitfieldInsert36 (w, c, 30, 6);
+          return setbits36 (w, 0, 6, c);
 
         case 1:
-          return bitfieldInsert36 (w, c, 24, 6);
+          //`return bitfieldInsert36 (w, c, 24, 6);
+          return setbits36 (w, 6, 6, c);
 
         case 2:
-          return bitfieldInsert36 (w, c, 18, 6);
+          //return bitfieldInsert36 (w, c, 18, 6);
+          return setbits36 (w, 12, 6, c);
 
         case 3:
-          return bitfieldInsert36 (w, c, 12, 6);
+          //return bitfieldInsert36 (w, c, 12, 6);
+          return setbits36 (w, 18, 6, c);
 
         case 4:
-          return bitfieldInsert36 (w, c, 6, 6);
+          //return bitfieldInsert36 (w, c, 6, 6);
+          return setbits36 (w, 24, 6, c);
 
         case 5:
-          return bitfieldInsert36 (w, c, 0, 6);
+          //return bitfieldInsert36 (w, c, 0, 6);
+          return setbits36 (w, 30, 6, c);
 
       }
     sim_printf ("put6(): How'd we get here?\n");
     return 0;
   }
 
+// AL39, Figure 2-5
 static word36 put9 (word36 w, int pos, word9 c)
   {
     
     switch (pos)
       {
         case 0:
-          return bitfieldInsert36 (w, c, 27, 9);
+          //return bitfieldInsert36 (w, c, 27, 9);
+          return setbits36 (w, 0, 9, c);
 
         case 1:
-          return bitfieldInsert36 (w, c, 18, 9);
+          //return bitfieldInsert36 (w, c, 18, 9);
+          return setbits36 (w, 9, 9, c);
 
         case 2:
-          return bitfieldInsert36 (w, c, 9, 9);
+          //return bitfieldInsert36 (w, c, 9, 9);
+          return setbits36 (w, 18, 9, c);
 
         case 3:
-          return bitfieldInsert36 (w, c, 0, 9);
+          //return bitfieldInsert36 (w, c, 0, 9);
+          return setbits36 (w, 27, 9, c);
 
       }
     sim_printf ("put9(): How'd we get here?\n");
@@ -1646,7 +1667,8 @@ void scd ()
         SET_I_TALLY;
       }
     
-    word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1);
@@ -1768,7 +1790,8 @@ void scdr (void)
         SET_I_TALLY;
       }
 
-    word36 CY3 = bitfieldInsert36(0, cpu . du . CHTALLY, 0, 24);
+    //word36 CY3 = bitfieldInsert36(0, cpu . du . CHTALLY, 0, 24);
+    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1);
@@ -1889,7 +1912,8 @@ void scm (void)
             break;
           }
       }
-    word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
     
     SC_I_TALLY (cpu . du . CHTALLY == limit);
     
@@ -2010,7 +2034,8 @@ void scmr (void)
             break;
           }
       }
-    word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
+    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
     
     SC_I_TALLY (cpu . du . CHTALLY == limit);
     
@@ -2165,14 +2190,16 @@ void tct (void)
 
         if (cout)
           {
-            CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            // CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            CY3 = setbits36 (0, 0, 9, cout);
             break;
           }
       }
     
     SC_I_TALLY (cpu . du . CHTALLY == e -> N1);
     
-    CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
+    //CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
+    putbits36 (& CY3, 12, 24, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -2304,14 +2331,16 @@ void tctr (void)
 
         if (cout)
           {
-            CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            //CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
+            CY3 = setbits36 (0, 0, 9, cout);
             break;
           }
       }
     
     SC_I_TALLY (cpu . du . CHTALLY == e -> N1);
     
-    CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
+    //CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
+    putbits36 (& CY3, 12, 24, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -4780,31 +4809,40 @@ static void EISwrite4(EISaddr *p, int *pos, int char4)
 
     w = EISRead(p);      // read dst memory into w
 
+// AL39, Figure 2-3
     switch (*pos)
     {
         case 0: 
-            w = bitfieldInsert36(w, char4, 31, 5);
+            //w = bitfieldInsert36(w, char4, 31, 5);
+            w = setbits36 (w, 1, 4, char4);
             break;
         case 1: 
-            w = bitfieldInsert36(w, char4, 27, 4);
+            //w = bitfieldInsert36(w, char4, 27, 4);
+            w = setbits36 (w, 5, 4, char4);
             break;
         case 2: 
-            w = bitfieldInsert36(w, char4, 22, 5);
+            //w = bitfieldInsert36(w, char4, 22, 5);
+            w = setbits36 (w, 10, 4, char4);
             break;
         case 3: 
-            w = bitfieldInsert36(w, char4, 18, 4);
+            //w = bitfieldInsert36(w, char4, 18, 4);
+            w = setbits36 (w, 14, 4, char4);
             break;
         case 4: 
-            w = bitfieldInsert36(w, char4, 13, 5);
+            //w = bitfieldInsert36(w, char4, 13, 5);
+            w = setbits36 (w, 19, 4, char4);
             break;
         case 5: 
-            w = bitfieldInsert36(w, char4, 9, 4);
+            //w = bitfieldInsert36(w, char4, 9, 4);
+            w = setbits36 (w, 23, 4, char4);
             break;
         case 6: 
-            w = bitfieldInsert36(w, char4, 4, 5);
+            //w = bitfieldInsert36(w, char4, 4, 5);
+            w = setbits36 (w, 28, 4, char4);
             break;
         case 7: 
-            w = bitfieldInsert36(w, char4, 0, 4);
+            //w = bitfieldInsert36(w, char4, 0, 4);
+            w = setbits36 (w, 32, 4, char4);
             break;
     }
 
@@ -4830,19 +4868,24 @@ static void EISwrite9(EISaddr *p, int *pos, int char9)
 
     w = EISRead(p);      // read dst memory into w
 
+// AL39, Figure 2-5
     switch (*pos)
     {
         case 0: 
-            w = bitfieldInsert36(w, char9, 27, 9);
+            //w = bitfieldInsert36(w, char9, 27, 9);
+            w = setbits36 (w, 0, 9, char9);
             break;
         case 1: 
-            w = bitfieldInsert36(w, char9, 18, 9);
+            //w = bitfieldInsert36(w, char9, 18, 9);
+            w = setbits36 (w, 9, 9, char9);
             break;
         case 2: 
-            w = bitfieldInsert36(w, char9, 9, 9);
+            //w = bitfieldInsert36(w, char9, 9, 9);
+            w = setbits36 (w, 18, 9, char9);
             break;
         case 3: 
-            w = bitfieldInsert36(w, char9, 0, 9);
+            //w = bitfieldInsert36(w, char9, 0, 9);
+            w = setbits36 (w, 27, 9, char9);
             break;
     }
 
@@ -5760,31 +5803,40 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
     }
     w = EISRead(p);
     
+// AL39, Figure 2-3
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char4, 31, 5);
+            //w = bitfieldInsert36(w, char4, 31, 5);
+            w = setbits36 (w, 1, 4, char4);
             break;
         case 1:
-            w = bitfieldInsert36(w, char4, 27, 4);
+            //w = bitfieldInsert36(w, char4, 27, 4);
+            w = setbits36 (w, 5, 4, char4);
             break;
         case 2:
-            w = bitfieldInsert36(w, char4, 22, 5);
+            //w = bitfieldInsert36(w, char4, 22, 5);
+            w = setbits36 (w, 10, 4, char4);
             break;
         case 3:
-            w = bitfieldInsert36(w, char4, 18, 4);
+            //w = bitfieldInsert36(w, char4, 18, 4);
+            w = setbits36 (w, 14, 4, char4);
             break;
         case 4:
-            w = bitfieldInsert36(w, char4, 13, 5);
+            //w = bitfieldInsert36(w, char4, 13, 5);
+            w = setbits36 (w, 19, 4, char4);
             break;
         case 5:
-            w = bitfieldInsert36(w, char4, 9, 4);
+            //w = bitfieldInsert36(w, char4, 9, 4);
+            w = setbits36 (w, 23, 4, char4);
             break;
         case 6:
-            w = bitfieldInsert36(w, char4, 4, 5);
+            //w = bitfieldInsert36(w, char4, 4, 5);
+            w = setbits36 (w, 28, 4, char4);
             break;
         case 7:
-            w = bitfieldInsert36(w, char4, 0, 4);
+            //w = bitfieldInsert36(w, char4, 0, 4);
+            w = setbits36 (w, 32, 4, char4);
             break;
     }
     
@@ -5809,19 +5861,24 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
     
     w = EISRead(p);      // read dst memory into w
     
+// AL39, Figure 2-5
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char9, 27, 9);
+            //w = bitfieldInsert36(w, char9, 27, 9);
+            w = setbits36 (w, 0, 9, char9);
             break;
         case 1:
-            w = bitfieldInsert36(w, char9, 18, 9);
+            //w = bitfieldInsert36(w, char9, 18, 9);
+            w = setbits36 (w, 9, 9, char9);
             break;
         case 2:
-            w = bitfieldInsert36(w, char9, 9, 9);
+            //w = bitfieldInsert36(w, char9, 9, 9);
+            w = setbits36 (w, 18, 9, char9);
             break;
         case 3:
-            w = bitfieldInsert36(w, char9, 0, 9);
+            //w = bitfieldInsert36(w, char9, 0, 9);
+            w = setbits36 (w, 27, 9, char9);
             break;
     }
     

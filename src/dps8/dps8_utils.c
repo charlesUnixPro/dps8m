@@ -791,7 +791,7 @@ void putByte(word36 *dst, word9 data, int posn)
 {
     // XXX which is faster switch() or calculation?
     
-    int offset = 27 - (9 * posn);//    0;
+//    int offset = 27 - (9 * posn);//    0;
 //    switch (posn)
 //    {
 //        case 0:
@@ -807,14 +807,15 @@ void putByte(word36 *dst, word9 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    *dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
+    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
+    putbits36 (dst, posn * 9, 9, (word36)data);
 }
 
 void putChar(word36 *dst, word6 data, int posn)
 {
     // XXX which is faster switch() or calculation?
     
-    int offset = 30 - (6 * posn);   //0;
+//    int offset = 30 - (6 * posn);   //0;
 //    switch (posn)
 //    {
 //        case 0:
@@ -836,7 +837,8 @@ void putChar(word36 *dst, word6 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    *dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
+    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
+    putbits36 (dst, posn * 6, 6, (word36)data);
 }
 
 word72 convertToWord72(word36 even, word36 odd)
@@ -1292,6 +1294,7 @@ word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
 }
 #endif
 
+#if 0
 /*!
  a - Bitfield to insert bits into.
  b - Bit pattern to insert.
@@ -1312,7 +1315,7 @@ word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
-
+#endif
 
 /*!
 a - Bitfield to insert bits into.

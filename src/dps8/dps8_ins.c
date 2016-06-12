@@ -6847,7 +6847,8 @@ static t_stat DoEISInstruction (void)
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 // C(ARn.WORDNO) -> C(Y)0,17
-                cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR)
                 // and C(ARn.BITNO) are translated to an equivalent character
@@ -6861,22 +6862,25 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
                         break;
 
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
-                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
                         break;
 
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
-                        cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
-                        cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
+                        //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        putbits36 (& cpu.CY, 18, 3, (CN & MASK3) << 1);
                         break;
                 }
             }
@@ -6900,7 +6904,8 @@ static t_stat DoEISInstruction (void)
 
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17
-                cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
 
                 int CN = 0;
                 switch(TN)
@@ -6910,15 +6915,17 @@ static t_stat DoEISInstruction (void)
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 ->
                         //     C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
                         break;
 
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
-                        cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
-                        cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
+                        //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
+                        putbits36 (& cpu.CY, 18, 3, (CN & MASK3) << 1);
                         break;
                 }
             }
@@ -6937,9 +6944,12 @@ static t_stat DoEISInstruction (void)
             //  C(Y)24,35 -> unchanged
             {
                 uint32 n = opcode & 07;  // get n
-                cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
-                cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
+                //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
+                //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
+                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
+                putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n) & MASK4);
+                putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n) & MASK2);
             }
             break;
 
@@ -6948,9 +6958,12 @@ static t_stat DoEISInstruction (void)
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
-                arx = bitfieldInsert36(arx, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
-                arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
+                //arx = bitfieldInsert36(arx, cpu.AR[n].WORDNO & MASK18, 18, 18);
+                //arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
+                //arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
+                putbits36 (& arx, 0, 18, cpu.AR[n].WORDNO & MASK18);
+                putbits36 (& arx, 20, 4, GET_AR_BITNO (n) & MASK4);
+                putbits36 (& arx, 18, 2, GET_AR_CHAR (n) & MASK2);
 
                 cpu.Yblock8[n] = arx;
             }

@@ -305,7 +305,8 @@ float36 IEEEdoubleTofloat36(double f0)
     {
         if (mant >= bitval)
         {
-            result = bitfieldInsert36(result, 1, n, 1);
+            //result = bitfieldInsert36(result, 1, n, 1);
+            setbits36 (& result, 35-n, 1, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d result=%012llo\n", n, result);
         }
@@ -321,7 +322,8 @@ float36 IEEEdoubleTofloat36(double f0)
     }
     // insert exponent ...
     int e = (int)exp;
-    result = bitfieldInsert36(result, e, 28, 8) & 0777777777777LL;
+    //result = bitfieldInsert36(result, e, 28, 8) & 0777777777777LL;
+    putbits36 (& result, e, 0, 8);
     
     // XXX TODO test for exp under/overflow ...
     
@@ -1250,7 +1252,8 @@ void fstr(word36 *Y)
     
     SC_I_NEG (A & SIGN36);
     
-    *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
+    //*Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
+    *Y = setbits36 (A >> 8, 0, 8, E);
 }
 
 /*!
