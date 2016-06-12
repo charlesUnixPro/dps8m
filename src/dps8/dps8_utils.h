@@ -59,8 +59,8 @@ char *rtrim(char *s);
 word36 bitfieldExtract36(word36 a, int b, int c);
 word72 bitfieldExtract72(word72 a, int b, int c);
 
-int bitfieldInsert(int a, int b, int c, int d);
-int bitfieldExtract(int a, int b, int c);
+//int bitfieldInsert(int a, int b, int c, int d);
+//int bitfieldExtract(int a, int b, int c);
 char *bin2text(uint64 word, int n);
 void sim_printf( const char * format, ... )    // not really simh, by my impl
 #ifdef __GNUC__
@@ -145,6 +145,22 @@ static inline word36 getbits18 (word18 x, uint i, uint n)
       }
     else
       return (x >> (unsigned) shift) & ~ (~0U << n);
+  }
+
+static inline void putbits18 (word18 * x, uint p, uint n, word18 val)
+  {
+    int shift = 18 - (int) p - (int) n;
+    if (shift < 0 || shift > 17)
+      {
+        sim_printf ("putbits18: bad args (%012o,pos=%d,n=%d)\n", * x, p, n);
+        return;
+      }
+    word18 mask = ~ (~0U << n);  // n low bits on
+    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (18 - p - n));
+    return;
   }
 
 char * strdupesc (const char * str);

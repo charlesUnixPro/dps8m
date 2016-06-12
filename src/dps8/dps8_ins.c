@@ -1789,10 +1789,12 @@ restart_1:
             //  a. Execute the repeated instruction
             //  b. C(X0)0,7 - 1 -> C(X0)0,7
             // a:AL39/rpd9
-            uint x = bitfieldExtract (cpu.rX [0], 10, 8);
+            //uint x = bitfieldExtract (cpu.rX [0], 10, 8);
+            uint x = getbits18 (cpu.rX [0], 0, 8);
             x -= 1;
             x &= MASK8;
-            cpu.rX [0] = bitfieldInsert (cpu.rX [0], x, 10, 8);
+            //cpu.rX [0] = bitfieldInsert (cpu.rX [0], x, 10, 8);
+            putbits18 (& cpu.rX [0], 0, 8, x);
 
             //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 

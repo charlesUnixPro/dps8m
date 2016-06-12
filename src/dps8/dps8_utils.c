@@ -1317,6 +1317,7 @@ word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
 }
 #endif
 
+#if 0
 /*!
 a - Bitfield to insert bits into.
 b - Bit pattern to insert.
@@ -1334,7 +1335,9 @@ int bitfieldInsert(int a, int b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
+#endif
 
+#if 0
 /*!
  a -  Bitfield to extract bits from.
  b -  Bit offset number. Bit offsets start at 0.
@@ -1352,6 +1355,8 @@ int bitfieldExtract(int a, int b, int c)
     else
         return a & mask;
 }
+#endif
+
 /*!
  a -  Bitfield to extract bits from.
  b -  Bit offset number. Bit offsets start at 0.
