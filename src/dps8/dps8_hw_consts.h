@@ -112,6 +112,7 @@ enum { N_DEV_CODES = 64 };
 #define MASK70          (((word72)1U << 70) - 1U)
 
 #define MASKBITS(x)     ( ~(~((uint64)0)<<x) )   // lower (x) bits all ones
+#define MASKBITS72(x)   ( ~(~((word72)0)<<x) )   // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
 #define GETLO36(a)      ((word18) ((a) & MASK18))

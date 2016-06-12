@@ -55,7 +55,7 @@ char *ltrim(char *s);
 char *rtrim(char *s);
 
 word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
-word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
+//word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
 word36 bitfieldExtract36(word36 a, int b, int c);
 word72 bitfieldExtract72(word72 a, int b, int c);
 
@@ -109,6 +109,22 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
     * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
+    return;
+  }
+
+static inline void putbits72 (word72 * x, uint p, uint n, word72 val)
+  {
+    int shift = 72 - (int) p - (int) n;
+    if (shift < 0 || shift > 71)
+      {
+        sim_printf ("putbits72: bad args (pos=%d,n=%d)\n", p, n);
+        return;
+      }
+    word72 mask = ~ ((~(word72)0) << n);  // n low bits on
+    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~mask) | ((val & MASKBITS72 (n)) << (72 - p - n));
     return;
   }
 

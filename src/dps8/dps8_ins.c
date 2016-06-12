@@ -2076,10 +2076,10 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
-                word72 tmp72 = 0;
-
-                tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[0] & MASK36, 36, 36);
-                tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[1] & MASK36,  0, 36);
+                //word72 tmp72 = 0;
+                //tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[0] & MASK36, 36, 36);
+                //tmp72 = bitfieldInsert72(tmp72, cpu.Ypair[1] & MASK36,  0, 36);
+                word72 tmp72 = (((word72) (cpu.Ypair[0] & MASK36)) << 36) | (cpu.Ypair[1] & MASK36);
 
                 tmp72 = ~tmp72 + 1;
 

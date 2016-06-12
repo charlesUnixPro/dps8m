@@ -91,7 +91,8 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     if (sign && mant == 0.5)
     {
-        result = bitfieldInsert72(result, 1, 63, 1);
+        //result = bitfieldInsert72(result, 1, 63, 1);
+        putbits72 (& result, 71-62, 1, 1);
         exp -= 1;
         mant -= 0.5;
     }
@@ -101,7 +102,8 @@ float72 IEEElongdoubleToFloat72(long double f0)
     {
         if (mant >= bitval)
         {
-            result = bitfieldInsert72(result, 1, n, 1);
+            //result = bitfieldInsert72(result, 1, n, 1);
+            putbits72 (& result, 71-n, 1, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
         }
@@ -119,7 +121,8 @@ float72 IEEElongdoubleToFloat72(long double f0)
     }
     //! insert exponent ...
     int e = (int)exp;
-    result = bitfieldInsert72(result, e & 0377, 64, 8);    ///< & 0777777777777LL;
+    //result = bitfieldInsert72(result, e & 0377, 64, 8);    ///< & 0777777777777LL;
+    putbits72 (& result, 71-64, 8, e & 0377);
     
     // XXX TODO test for exp under/overflow ...
     
@@ -206,7 +209,8 @@ void IEEElongdoubleToEAQ(long double f0)
     // now let's examine the mantissa and assign bits as necessary...
     if (sign && mant == 0.5)
     {
-        result = bitfieldInsert72(result, 1, 63, 1);
+        //result = bitfieldInsert72(result, 1, 63, 1);
+        result = putbits72 (& result, 71-63, 1, 1);
         exp -= 1;
         mant -= 0.5;
     }
@@ -216,7 +220,8 @@ void IEEElongdoubleToEAQ(long double f0)
     {
         if (mant >= bitval)
         {
-            result = bitfieldInsert72(result, 1, n, 1);
+            //result = bitfieldInsert72(result, 1, n, 1);
+            putbits72 (& result 71-n, 1, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
         }
@@ -1110,7 +1115,7 @@ void frd (void)
     // C(AQ) + (11...1)29,71 → C(AQ)
     bool s1 = m & SIGN72;
     
-    m += (word72)0177777777777777LL; // add 1's into lower 43-bits
+    m += (float72)0177777777777777LL; // add 1's into lower 43-bits
         
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if (!s1)
@@ -1119,8 +1124,8 @@ void frd (void)
     // 0 → C(AQ)29,71 (AL39)
     // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
     //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
-    m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
-    
+    //m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
+    putbits72 (& m, 28, 44, 0);  // 28-71 => 0 per DH02
     bool s2 = (bool)(m & SIGN72);
     
     bool ov = s1 != s2;   // sign change denotes overflow
@@ -1203,7 +1208,8 @@ void fstr(word36 *Y)
     // 0 → C(AQ)29,71 (AL39)
     // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
     //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
-    m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
+    //m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
+    putbits72 (& m, 28, 44, 0);  // 28-71 => 0 per DH02
     
     bool s2 = (m & SIGN72) != (word72)0;
     
@@ -2223,7 +2229,8 @@ void dfrd (void)
     
     // 0 → C(AQ)64,71 
     //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
-    m = bitfieldInsert72(m, 0, 0, 8);
+    //m = bitfieldInsert72(m, 0, 0, 8);
+    putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
     
     bool s2 = (bool)(m & SIGN72);
     
@@ -2316,7 +2323,8 @@ void dfstr (word36 *Ypair)
     
     // 0 → C(AQ)64,71
     //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
-    m = bitfieldInsert72(m, 0, 0, 8);
+    //m = bitfieldInsert72(m, 0, 0, 8);
+    putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
     
     bool s2 = (m & SIGN72) != (word72)0;
     

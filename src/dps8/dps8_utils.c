@@ -1272,6 +1272,7 @@ stripquotes(char *s)
     return trim(s);
 }
 
+#if 0
 /*!
  a - Bitfield to insert bits into.
  b - Bit pattern to insert.
@@ -1289,6 +1290,7 @@ word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
+#endif
 
 /*!
  a - Bitfield to insert bits into.
