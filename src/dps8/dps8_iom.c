@@ -704,7 +704,7 @@ int status_service (uint iomUnitIdx, uint chan, bool marker)
     sim_debug (DBG_DEBUG, & iom_dev,
                "SCW chan %02o %012llo\n", chan, scw);
     word18 addr = getbits36 (scw, 0, 18);   // absolute
-    uint lq = getbits36 (scw, 18, 2);
+    uint lq = getbits36_2 (scw, 18);
     uint tally = getbits36 (scw, 24, 12);
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: Status tally %d (%o) lq %o\n",
@@ -1238,7 +1238,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
           p -> IDCW_EC =         getbits36_1 (p -> DCW, 21);
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
-        p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
+        p -> IDCW_CONTROL =      getbits36_2 (p -> DCW, 22);
         p -> IDCW_CHAN_CMD =     getbits36 (p -> DCW, 24,  6);
         p -> IDCW_COUNT =        getbits36 (p -> DCW, 30,  6);
       }
@@ -1254,7 +1254,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
 
         p -> DDCW_TALLY =        getbits36 (p -> DCW, 24, 12);
         p -> DDCW_ADDR =         getbits36 (p -> DCW,  0, 18);
-        p -> DDCW_22_23_TYPE =   getbits36 (p -> DCW, 22,  2);
+        p -> DDCW_22_23_TYPE =   getbits36_2 (p -> DCW, 22);
       }
   }
 

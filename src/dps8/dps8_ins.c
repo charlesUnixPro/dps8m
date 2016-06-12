@@ -686,7 +686,7 @@ static void words2du (word36 * words)
 
     cpu.du.D1_PTR_W = getbits36 (words [2],  0, 18);
     cpu.du.D1_PTR_B = getbits36 (words [2], 18,  6);
-    cpu.du.TAk [0]  = getbits36 (words [2], 25,  2);
+    cpu.du.TAk [0]  = getbits36_2 (words [2], 25);
     cpu.du.F1       = getbits36_1 (words [2], 31);
     cpu.du.Ak [0]   = getbits36_1 (words [2], 32);
 
@@ -699,7 +699,7 @@ static void words2du (word36 * words)
 
     cpu.du.D2_PTR_W = getbits36 (words [4],  0, 18);
     cpu.du.D2_PTR_B = getbits36 (words [4], 18,  6);
-    cpu.du.TAk [1]  = getbits36 (words [4], 25,  2);
+    cpu.du.TAk [1]  = getbits36_2 (words [4], 25);
     cpu.du.F2       = getbits36_1 (words [4], 31);
     cpu.du.Ak [1]   = getbits36_1 (words [4], 32);
 
@@ -712,7 +712,7 @@ static void words2du (word36 * words)
 
     cpu.du.D3_PTR_W = getbits36 (words [6],  0, 18);
     cpu.du.D3_PTR_B = getbits36 (words [6], 18,  6);
-    cpu.du.TAk [2]  = getbits36 (words [6], 25,  2);
+    cpu.du.TAk [2]  = getbits36_2 (words [6], 25);
     cpu.du.F3       = getbits36_1 (words [6], 31);
     cpu.du.Ak [2]   = getbits36_1 (words [6], 32);
     cpu.du.JMP      = getbits36 (words [6], 33,  3);
@@ -6707,7 +6707,7 @@ static t_stat DoEISInstruction (void)
 
                 //int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21-22
                 //int CN = (int)bitfieldExtract36(cpu.CY, 15, 3); // C(Y) 18-20
-                uint TA = getbits36 (cpu.CY, 21, 2);
+                uint TA = getbits36_2 (cpu.CY, 21);
                 uint CN = getbits36 (cpu.CY, 18, 3);
 
                 switch(TA)
@@ -6763,7 +6763,7 @@ static t_stat DoEISInstruction (void)
                 //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
                                  //(word2)bitfieldExtract36(cpu.CY, 16, 2));
                 SET_AR_CHAR_BIT (n, (word4)getbits36 (cpu.CY, 20, 4),
-                                 (word2)getbits36 (cpu.CY, 18, 2));
+                                 (word2)getbits36_2 (cpu.CY, 18));
             }
             break;
 
@@ -6776,7 +6776,7 @@ static t_stat DoEISInstruction (void)
                 //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
                                  //(word2)bitfieldExtract36(tmp36, 16, 2));
                 SET_AR_CHAR_BIT (n, (word4)getbits36 (tmp36, 20, 4),
-                                 (word2)getbits36 (tmp36, 18, 2));
+                                 (word2)getbits36_2 (tmp36, 18));
             }
             break;
 
@@ -6843,7 +6843,7 @@ static t_stat DoEISInstruction (void)
                 // (TA field) is examined to determine the data type described.
 
                 //int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21,22
-                uint TA = getbits36 (cpu.CY, 21, 2);
+                uint TA = getbits36_2 (cpu.CY, 21);
 
                 // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit),
                 // an illegal procedure fault occurs.

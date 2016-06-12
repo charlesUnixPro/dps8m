@@ -894,7 +894,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     if (useTA != k)
       e -> TA [k - 1] = e -> TA [useTA - 1];
     else
-      e -> TA [k - 1] = getbits36 (opDesc, 21, 2);    // type alphanumeric
+      e -> TA [k - 1] = getbits36_2 (opDesc, 21);    // type alphanumeric
 
     if (MFk & MFkAR)
       {
@@ -1124,7 +1124,7 @@ static void parseNumericOperandDescriptor (int k)
     //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
     word8 CN = getbits36 (opDesc, 18, 3);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
-    e->S[k-1]  = getbits36 (opDesc, 22, 2);    // Sign and decimal type of data
+    e->S[k-1]  = getbits36_2 (opDesc, 22);    // Sign and decimal type of data
     e->SF[k-1] = SIGNEXT6_int (getbits36 (opDesc, 24, 6));    // Scaling factor.
 
     // Operand length. If MFk.RL = 0, this field contains the operand length in
@@ -1260,8 +1260,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     //int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
     //int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
-    int B = (int)getbits36(opDesc, 20, 4) & 0xf;    // bit# from descriptor
-    int C = (int)getbits36(opDesc, 18, 2) & 03;     // char# from descriptor
+    int B = (int)getbits36(opDesc, 20, 4);    // bit# from descriptor
+    int C = (int)getbits36_2 (opDesc, 18);     // char# from descriptor
     
     word36 r = getMFReg36(MFk & 017, false);
     if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
