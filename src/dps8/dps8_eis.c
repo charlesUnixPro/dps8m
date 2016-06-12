@@ -76,82 +76,103 @@
 
 //  EISget49 (k, *pos, tn) get p->addr[*pos++]
 
+// AL39, Figure 2-3
 static word4 get4 (word36 w, int pos)
   {
     switch (pos)
       {
         case 0:
-         return bitfieldExtract36 (w, 31, 4);
+          //return bitfieldExtract36 (w, 31, 4);
+          return getbits36 (w, 1, 4);
 
         case 1:
-          return bitfieldExtract36 (w, 27, 4);
+          //return bitfieldExtract36 (w, 27, 4);
+          return getbits36 (w, 5, 4);
 
         case 2:
-          return bitfieldExtract36 (w, 22, 4);
+          //return bitfieldExtract36 (w, 22, 4);
+          return getbits36 (w, 10, 4);
 
         case 3:
-          return bitfieldExtract36 (w, 18, 4);
+          //return bitfieldExtract36 (w, 18, 4);
+          return getbits36 (w, 14, 4);
 
         case 4:
-          return bitfieldExtract36 (w, 13, 4);
+          //return bitfieldExtract36 (w, 13, 4);
+          return getbits36 (w, 19, 4);
 
         case 5:
-          return bitfieldExtract36 (w, 9, 4);
+          //return bitfieldExtract36 (w, 9, 4);
+          return getbits36 (w, 23, 4);
 
         case 6:
-          return bitfieldExtract36 (w, 4, 4);
+          //return bitfieldExtract36 (w, 4, 4);
+          return getbits36 (w, 28, 4);
 
         case 7:
-          return bitfieldExtract36 (w, 0, 4);
+          //return bitfieldExtract36 (w, 0, 4);
+          return getbits36 (w, 32, 4);
 
       }
     sim_printf ("get4(): How'd we get here?\n");
     return 0;
 }
 
+// AL39, Figure 2-4
 static word4 get6 (word36 w, int pos)
   {
     switch (pos)
       {
         case 0:
-          return bitfieldExtract36 (w, 30, 6);
+         //return bitfieldExtract36 (w, 30, 6);
+         return getbits36 (w, 0, 6);
 
         case 1:
-          return bitfieldExtract36 (w, 24, 6);
+          //return bitfieldExtract36 (w, 24, 6);
+         return getbits36 (w, 6, 6);
 
         case 2:
-          return bitfieldExtract36 (w, 18, 6);
+          //return bitfieldExtract36 (w, 18, 6);
+         return getbits36 (w, 12, 6);
 
         case 3:
-          return bitfieldExtract36 (w, 12, 6);
+          //return bitfieldExtract36 (w, 12, 6);
+         return getbits36 (w, 18, 6);
 
         case 4:
-          return bitfieldExtract36 (w, 6, 6);
+          //return bitfieldExtract36 (w, 6, 6);
+         return getbits36 (w, 24, 6);
 
         case 5:
-          return bitfieldExtract36 (w, 0, 6);
+          //return bitfieldExtract36 (w, 0, 6);
+         return getbits36 (w, 30, 6);
 
       }
     sim_printf ("get6(): How'd we get here?\n");
     return 0;
   }
 
+// AL39, Figure 2-5
 static word9 get9(word36 w, int pos)
   {
     
     switch (pos)
       {
         case 0:
-          return bitfieldExtract36 (w, 27, 9);
+          //return bitfieldExtract36 (w, 27, 9);
+         return getbits36 (w, 0, 9);
 
         case 1:
-          return bitfieldExtract36 (w, 18, 9);
+          //return bitfieldExtract36 (w, 18, 9);
+         return getbits36 (w, 9, 9);
 
         case 2:
-          return bitfieldExtract36 (w, 9, 9);
+          //return bitfieldExtract36 (w, 9, 9);
+         return getbits36 (w, 18, 9);
 
         case 3:
-          return bitfieldExtract36 (w, 0, 9);
+          //return bitfieldExtract36 (w, 0, 9);
+         return getbits36 (w, 27, 9);
 
       }
     sim_printf ("get9(): How'd we get here?\n");
@@ -1079,7 +1100,8 @@ static void parseNumericOperandDescriptor (int k)
         // if MKf contains ar then it Means Y-charn is not the memory address
         // of the data but is a reference to a pointer register pointing to the
         // data.
-        uint n = (int)bitfieldExtract36(address, 15, 3);
+        //uint n = (int)bitfieldExtract36(address, 15, 3);
+        uint n = getbits18 (address, 0, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
@@ -1095,11 +1117,15 @@ static void parseNumericOperandDescriptor (int k)
         }
     }
 
-    word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
+    //word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
 
-    e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
-    e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
-    e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
+    //e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
+    //e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
+    //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
+    word8 CN = getbits36 (opDesc, 18, 3);    // character number
+    e->TN[k-1] = getbits36 (opDesc, 21, 1); // type numeric
+    e->S[k-1]  = getbits36 (opDesc, 22, 2);    // Sign and decimal type of data
+    e->SF[k-1] = SIGNEXT6_int (getbits36 (opDesc, 24, 6));    // Scaling factor.
 
     // Operand length. If MFk.RL = 0, this field contains the operand length in
     // digits. If MFk.RL = 1, it contains the REG code for the register holding
@@ -1194,7 +1220,8 @@ static void parseBitstringOperandDescriptor (int k)
         // if MKf contains ar then it Means Y-charn is not the memory address
         // of the data but is a reference to a pointer register pointing to the
         // data.
-        uint n = (int)bitfieldExtract36(address, 15, 3);
+        //uint n = (int)bitfieldExtract36(address, 15, 3);
+        uint n = getbits18 (address, 0, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
@@ -1231,8 +1258,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc
 sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
-    int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
-    int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
+    //int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
+    //int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
+    int B = (int)getbits36(opDesc, 20, 4) & 0xf;    // bit# from descriptor
+    int C = (int)getbits36(opDesc, 18, 2) & 03;     // char# from descriptor
     
     word36 r = getMFReg36(MFk & 017, false);
     if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
@@ -1855,7 +1884,8 @@ void scm (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    uint mask = (uint) getbits36 (cpu.cu.IWB, 0, 9);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -1978,7 +2008,8 @@ void scmr (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    uint mask = (uint) getbits36 (cpu.cu.IWB, 0, 9);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -2428,9 +2459,11 @@ void mlr (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
     
-    uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2671,9 +2704,11 @@ void mrl (void)
           break;
       }
     
-    uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
     
-    uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
+    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -4536,9 +4571,11 @@ void mvt (void)
     // XXX here is where we probably need to to the prepage thang...
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    uint T = (uint) getbits36 (cpu.cu.IWB, 9, 1);
     
-    int fill = (int)bitfieldExtract36(cpu . cu . IWB, 27, 9);
+    //int fill = (int)bitfieldExtract36(cpu . cu . IWB, 27, 9);
+    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
     int fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
     switch(e->srcSZ)
@@ -4939,9 +4976,12 @@ void mvn (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -5215,10 +5255,13 @@ void csl (bool isSZTL)
     e->ADDR1.bPos = e->B1;
     e->ADDR2.bPos = e->B2;
     
-    uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    //uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;   // T (enablefault) bit
     
-    uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
+    //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
+    uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);
@@ -5499,10 +5542,13 @@ void csr (bool isSZTR)
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
     e->ADDR2.address += numWords2;
     
-    uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
+    //bool T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
+    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;   // T (enablefault) bit
     
-    uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
+    //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
+    uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);
@@ -5660,10 +5706,13 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
     
     p->data = EISRead(p); // read data word from memory
     
-    int charPosn = ((3 - *cpos) * 9);     // 9-bit char bit position
-    int bitPosn = charPosn + (8 - *bpos);
+    //int charPosn = ((3 - *cpos) * 9);     // 9-bit char bit position
+    //int bitPosn = charPosn + (8 - *bpos);
     
-    bool b = (bool)bitfieldExtract36(p->data, bitPosn, 1);
+    //bool b = (bool)bitfieldExtract36(p->data, bitPosn, 1);
+    int charPosn = *cpos * 9;
+    int bitPosn = charPosn + *bpos;
+    bool b = getbits36 (p->data, bitPosn, 1);
     
     *bpos += 1;
     
@@ -5700,7 +5749,8 @@ void cmpb (void)
     int bitPosn1 = e->B1;
     int bitPosn2 = e->B2;
     
-    uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;     // fill bit (was 25)
+    //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;     // fill bit (was 25)
+    bool F = getbits36 (cpu.cu.IWB, 0, 1) != 0;   // fill bit
 
     SET_I_ZERO;  // assume all =
     SET_I_CARRY; // assume all >=
@@ -6240,7 +6290,8 @@ void btd (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
+    //e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
     
 // XXX ticket #35
     // Technically, ill_proc should be "illegal eis modifier",
@@ -6541,9 +6592,12 @@ void ad2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -6823,10 +6877,13 @@ void ad3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
-    
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
+ 
     uint srcTN = e->TN1;    // type of chars in src
     
     uint dstTN = e->TN3;    // type of chars in dst
@@ -7083,9 +7140,12 @@ void sb2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7318,9 +7378,12 @@ void sb3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7568,9 +7631,12 @@ void mp2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7802,9 +7868,12 @@ void mp3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -8808,9 +8877,12 @@ void dv2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9069,9 +9141,12 @@ void dv3d (void)
     parseNumericOperandDescriptor(2);
     parseNumericOperandDescriptor(3);
     
-    e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
+    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
+    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    e->P = getbits36 (cpu.cu.IWB, 0, 1) != 0;  // 4-bit data sign character control
+    bool T = getbits36 (cpu.cu.IWB, 9, 1) != 0;  // truncation bit
+    bool R = getbits36 (cpu.cu.IWB, 10, 1) != 0;  // rounding bit
     
     uint srcTN = e->TN1;    // type of chars in src
     

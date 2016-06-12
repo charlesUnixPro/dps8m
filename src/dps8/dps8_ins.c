@@ -6758,8 +6758,10 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
-                                 (word2)bitfieldExtract36(cpu.CY, 16, 2));
+                //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
+                                 //(word2)bitfieldExtract36(cpu.CY, 16, 2));
+                SET_AR_CHAR_BIT (n, (word4)getbits36 (cpu.CY, 20, 4),
+                                 (word2)getbits36 (cpu.CY, 18, 2));
             }
             break;
 
@@ -6769,8 +6771,10 @@ static t_stat DoEISInstruction (void)
                 word36 tmp36 = cpu.Yblock8[n];
 
                 cpu.AR[n].WORDNO = GETHI(tmp36);
-                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
-                                 (word2)bitfieldExtract36(tmp36, 16, 2));
+                //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
+                                 //(word2)bitfieldExtract36(tmp36, 16, 2));
+                SET_AR_CHAR_BIT (n, (word4)getbits36 (tmp36, 20, 4),
+                                 (word2)getbits36 (tmp36, 18, 2));
             }
             break;
 
@@ -6836,7 +6840,8 @@ static t_stat DoEISInstruction (void)
                 // The alphanumeric descriptor is fetched from Y and C(Y)21,22
                 // (TA field) is examined to determine the data type described.
 
-                int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21,22
+                //int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21,22
+                uint TA = getbits36 (cpu.CY, 21, 2);
 
                 // If C(Y)21,22 = 11 (TA code = 3) or C(Y)23 = 1 (unused bit),
                 // an illegal procedure fault occurs.
@@ -6882,7 +6887,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36 (& cpu.CY, 18, 3, (CN & MASK3) << 1);
+                        putbits36 (& cpu.CY, 18, 3, (GET_AR_CHAR (n) & MASK2) << 1);
                         break;
                 }
             }
@@ -6902,7 +6907,8 @@ static t_stat DoEISInstruction (void)
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA
                 // field) is examined to determine the data type described.
 
-                int TN = (int)bitfieldExtract36(cpu.CY, 14, 1); // C(Y) 21
+                //int TN = (int)bitfieldExtract36(cpu.CY, 14, 1); // C(Y) 21
+                uint TN = getbits36 (cpu.CY, 21, 1); // C(Y) 21
 
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17

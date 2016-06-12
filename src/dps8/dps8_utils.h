@@ -56,7 +56,7 @@ char *rtrim(char *s);
 
 //word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
 //word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
-word36 bitfieldExtract36(word36 a, int b, int c);
+//word36 bitfieldExtract36(word36 a, int b, int c);
 word72 bitfieldExtract72(word72 a, int b, int c);
 
 //int bitfieldInsert(int a, int b, int c, int d);

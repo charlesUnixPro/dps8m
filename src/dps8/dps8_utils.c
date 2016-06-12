@@ -1357,6 +1357,7 @@ int bitfieldExtract(int a, int b, int c)
 }
 #endif
 
+#if 0
 /*!
  a -  Bitfield to extract bits from.
  b -  Bit offset number. Bit offsets start at 0.
@@ -1377,6 +1378,8 @@ word36 bitfieldExtract36(word36 a, int b, int c)
     else
         return a & mask;
 }
+#endif
+
 word72 bitfieldExtract72(word72 a, int b, int c)
 {
     word72 mask = ~((word72)-1 << c);
