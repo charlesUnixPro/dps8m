@@ -174,7 +174,7 @@ static word9 gc (word36 * b, uint os)
   {
     uint wordno = os / 4;
     uint charno = os % 4;
-    return (word9) getbits36 (b [wordno], charno * 9, 9);
+    return (word9) getbits36_9 (b [wordno], charno * 9);
   }
 
 // Don't know what the longest user id is...
@@ -261,28 +261,28 @@ static int eoj (word36 * buffer, uint tally)
   {
     if (tally < 3)
       return 0;
-    if (getbits36 (buffer [0], 0, 9) != 037)
+    if (getbits36_9 (buffer [0], 0) != 037)
       return 0;
-    if (getbits36 (buffer [0], 9, 9) != 014)
+    if (getbits36_9 (buffer [0], 9) != 014)
       return 0;
-    word9 ch = getbits36 (buffer [0], 18, 9);
+    word9 ch = getbits36_9 (buffer [0], 18);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [0], 27, 9);
+    ch = getbits36_9 (buffer [0], 27);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 0, 9);
+    ch = getbits36_9 (buffer [1], 0);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 9, 9);
+    ch = getbits36_9 (buffer [1], 9);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 18, 9);
+    ch = getbits36_9 (buffer [1], 18);
     if (ch < '0' || ch > '9')
       return 0;
-    if (getbits36 (buffer [1], 27, 9) != 037)
+    if (getbits36_9 (buffer [1], 27) != 037)
       return 0;
-    if (getbits36 (buffer [2], 0, 9) != 005)
+    if (getbits36_9 (buffer [2], 0) != 005)
       return 0;
     return 1;
   }

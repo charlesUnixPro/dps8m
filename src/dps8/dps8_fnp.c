@@ -290,7 +290,7 @@ static void pack (char * cmd, uint tally, uint offset, uint ptPtr, uint dataAddr
              word = M [wordAddr];
              // sim_printf ("   %012llo\n", M [wordAddr]);
            }
-         byte = getbits36 (word, byteOff * 9, 9);
+         byte = getbits36_9 (word, byteOff * 9);
 
          * tail ++ = "0123456789abcdef" [(byte >> 4) % 16];
          * tail ++ = "0123456789abcdef" [(byte     ) % 16];
@@ -300,7 +300,7 @@ static void pack (char * cmd, uint tally, uint offset, uint ptPtr, uint dataAddr
 
 static void packWord (char * str, word36 word)
   {
-    uint tally = getbits36 (word, 0, 9);
+    uint tally = getbits36_9 (word, 0);
     if (tally > 3)
       {
         //sim_printf ("packWord truncating %d to 3\n", tally);
@@ -308,7 +308,7 @@ static void packWord (char * str, word36 word)
       }
     for (uint i = 1; i <= tally; i ++)
        {
-         uint byte = getbits36 (word, i * 9, 9);
+         uint byte = getbits36_9 (word, i * 9);
 
          * str ++ = "0123456789abcdef" [(byte >> 4) % 16];
          * str ++ = "0123456789abcdef" [(byte     ) % 16];
@@ -790,7 +790,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 //   12-15 Multics is done with mbx 8-11  (n - 4).
 
     //dmpmbx (fudp -> mailboxAddress);
-    uint cell = getbits36 (dia_pcw, 24, 6);
+    uint cell = getbits36_6 (dia_pcw, 24);
 //sim_printf ("interrupt FNP\n");
 //sim_printf ("mbx #%d\n", cell);
     if (cell < 8)
@@ -798,15 +798,15 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
         struct dn355_submailbox * smbxp = & (mbxp -> dn355_sub_mbxes [cell]);
 
         word36 word2 = smbxp -> word2;
-        //uint cmd_data_len = getbits36 (word2, 9, 9);
-        uint op_code = getbits36 (word2, 18, 9);
-        uint io_cmd = getbits36 (word2, 27, 9);
+        //uint cmd_data_len = getbits36_9 (word2, 9);
+        uint op_code = getbits36_9 (word2, 18);
+        uint io_cmd = getbits36_9 (word2, 27);
 
         word36 word1 = smbxp -> word1;
-        //uint dn355_no = getbits36 (word1, 0, 3);
-        //uint is_hsla = getbits36 (word1, 8, 1);
-        //uint la_no = getbits36 (word1, 9, 3);
-        uint slot_no = getbits36 (word1, 12, 6);
+        //uint dn355_no = getbits36_3 (word1, 0);
+        //uint is_hsla = getbits36_1 (word1, 8);
+        //uint la_no = getbits36_3 (word1, 9);
+        uint slot_no = getbits36_6 (word1, 12);
         //uint terminal_id = getbits36 (word1, 18, 18);
 
 #if 0
@@ -857,8 +857,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp set delay table\n");
                         word36 command_data0 = smbxp -> command_data [0];
-                        uint d1 = getbits36 (command_data0, 0, 9);
-                        uint d2 = getbits36 (command_data0, 9, 9);
+                        uint d1 = getbits36_9 (command_data0, 0);
+                        uint d2 = getbits36_9 (command_data0, 9);
 
                         char cmd [256];
                         sprintf (cmd, "set_framing_chars %d %d %d", slot_no, d1, d2);
@@ -963,7 +963,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp input fc chars\n");
                         word36 suspendStr = smbxp -> command_data [0];
-                        uint suspendLen = getbits36 (suspendStr, 0, 9);
+                        uint suspendLen = getbits36_9 (suspendStr, 0);
                         if (suspendLen > 3)
                           {
                             //sim_printf ("input_fc_chars truncating suspend %d to 3\n", suspendLen);
@@ -973,7 +973,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         packWord (suspendData, suspendStr);
 
                         word36 resumeStr = smbxp -> command_data [0];
-                        uint resumeLen = getbits36 (resumeStr, 0, 9);
+                        uint resumeLen = getbits36_9 (resumeStr, 0);
                         if (resumeLen > 3)
                           {
                             //sim_printf ("input_fc_chars truncating suspend %d to 3\n", suspendLen);
@@ -993,7 +993,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp output_fc_chars\n");
                         word36 suspendStr = smbxp -> command_data [0];
-                        uint suspendLen = getbits36 (suspendStr, 0, 9);
+                        uint suspendLen = getbits36_9 (suspendStr, 0);
                         if (suspendLen > 3)
                           {
                             //sim_printf ("output_fc_chars truncating suspend %d to 3\n", suspendLen);
@@ -1003,7 +1003,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         packWord (suspendData, suspendStr);
 
                         word36 resumeStr = smbxp -> command_data [0];
-                        uint resumeLen = getbits36 (resumeStr, 0, 9);
+                        uint resumeLen = getbits36_9 (resumeStr, 0);
                         if (resumeLen > 3)
                           {
                             //sim_printf ("output_fc_chars truncating suspend %d to 3\n", suspendLen);
@@ -1024,8 +1024,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         //sim_printf ("fnp alter parameters\n");
                         // The docs insist the subype is in word2, but I think
                         // it is in command data...
-                        //uint subtype = getbits36 (word2, 0, 9);
-                        uint subtype = getbits36 (smbxp -> command_data [0], 0, 9);
+                        //uint subtype = getbits36_9 (word2, 0);
+                        uint subtype = getbits36_9 (smbxp -> command_data [0], 0);
                         uint flag = getbits36_1 (smbxp -> command_data [0], 17);
                         //sim_printf ("  subtype %d\n", subtype);
                         switch (subtype)
@@ -1097,7 +1097,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             case 18: // Chngstring
                               {
                                 //sim_printf ("fnp Change control string\n");
-                                uint idx =  getbits36 (smbxp -> command_data [0], 9, 9);
+                                uint idx =  getbits36_9 (smbxp -> command_data [0], 9);
                                 char cmd [256];
                                 sprintf (cmd, "change_control_string %d %d", slot_no, idx);
                                 tellFNP (devUnitIdx, cmd);          
@@ -1439,7 +1439,7 @@ word36 pad;
 
                     // Get the address and the tally from the dcw
                     uint dataAddr = getbits36 (dcw, 0, 18);
-                    uint tally = getbits36 (dcw, 27, 9);
+                    uint tally = getbits36_9 (dcw, 27);
                     //sim_printf ("%6d %012o\n", tally, dataAddr);
                     if (! tally)
                       continue;
@@ -1503,15 +1503,15 @@ for (uint i = 0; i < dcwCnt; i ++)
         sim_printf ("    word2 %012llo\n", smbxp -> word2);
 #endif
         word36 word2 = smbxp -> word2;
-        //uint cmd_data_len = getbits36 (word2, 9, 9);
-        uint op_code = getbits36 (word2, 18, 9);
-        uint io_cmd = getbits36 (word2, 27, 9);
+        //uint cmd_data_len = getbits36_9 (word2, 9);
+        uint op_code = getbits36_9 (word2, 18);
+        uint io_cmd = getbits36_9 (word2, 27);
 
         word36 word1 = smbxp -> word1;
-        //uint dn355_no = getbits36 (word1, 0, 3);
-        //uint is_hsla = getbits36 (word1, 8, 1);
-        //uint la_no = getbits36 (word1, 9, 3);
-        uint slot_no = getbits36 (word1, 12, 6);
+        //uint dn355_no = getbits36_3 (word1, 0);
+        //uint is_hsla = getbits36_1 (word1, 8);
+        //uint la_no = getbits36_3 (word1, 9);
+        uint slot_no = getbits36_6 (word1, 12);
         //uint terminal_id = getbits36 (word1, 18, 18);
 
         switch (io_cmd)
@@ -1761,8 +1761,8 @@ static void processMBX (uint iomUnitIdx, uint chan)
 //        15-23 0
 //
 
-    //uint chanNum = getbits36 (dia_pcw, 24, 6);
-    uint command = getbits36 (dia_pcw, 30, 6);
+    //uint chanNum = getbits36_6 (dia_pcw, 24);
+    uint command = getbits36_6 (dia_pcw, 30);
     word36 bootloadStatus = 0;
 
     if (command == 072) // bootload

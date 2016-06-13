@@ -83,35 +83,35 @@ static word4 get4 (word36 w, int pos)
       {
         case 0:
           //return bitfieldExtract36 (w, 31, 4);
-          return getbits36 (w, 1, 4);
+          return getbits36_4 (w, 1);
 
         case 1:
           //return bitfieldExtract36 (w, 27, 4);
-          return getbits36 (w, 5, 4);
+          return getbits36_4 (w, 5);
 
         case 2:
           //return bitfieldExtract36 (w, 22, 4);
-          return getbits36 (w, 10, 4);
+          return getbits36_4 (w, 10);
 
         case 3:
           //return bitfieldExtract36 (w, 18, 4);
-          return getbits36 (w, 14, 4);
+          return getbits36_4 (w, 14);
 
         case 4:
           //return bitfieldExtract36 (w, 13, 4);
-          return getbits36 (w, 19, 4);
+          return getbits36_4 (w, 19);
 
         case 5:
           //return bitfieldExtract36 (w, 9, 4);
-          return getbits36 (w, 23, 4);
+          return getbits36_4 (w, 23);
 
         case 6:
           //return bitfieldExtract36 (w, 4, 4);
-          return getbits36 (w, 28, 4);
+          return getbits36_4 (w, 28);
 
         case 7:
           //return bitfieldExtract36 (w, 0, 4);
-          return getbits36 (w, 32, 4);
+          return getbits36_4 (w, 32);
 
       }
     sim_printf ("get4(): How'd we get here?\n");
@@ -125,27 +125,27 @@ static word4 get6 (word36 w, int pos)
       {
         case 0:
          //return bitfieldExtract36 (w, 30, 6);
-         return getbits36 (w, 0, 6);
+         return getbits36_6 (w, 0);
 
         case 1:
           //return bitfieldExtract36 (w, 24, 6);
-         return getbits36 (w, 6, 6);
+         return getbits36_6 (w, 6);
 
         case 2:
           //return bitfieldExtract36 (w, 18, 6);
-         return getbits36 (w, 12, 6);
+         return getbits36_6 (w, 12);
 
         case 3:
           //return bitfieldExtract36 (w, 12, 6);
-         return getbits36 (w, 18, 6);
+         return getbits36_6 (w, 18);
 
         case 4:
           //return bitfieldExtract36 (w, 6, 6);
-         return getbits36 (w, 24, 6);
+         return getbits36_6 (w, 24);
 
         case 5:
           //return bitfieldExtract36 (w, 0, 6);
-         return getbits36 (w, 30, 6);
+         return getbits36_6 (w, 30);
 
       }
     sim_printf ("get6(): How'd we get here?\n");
@@ -160,19 +160,19 @@ static word9 get9(word36 w, int pos)
       {
         case 0:
           //return bitfieldExtract36 (w, 27, 9);
-         return getbits36 (w, 0, 9);
+         return getbits36_9 (w, 0);
 
         case 1:
           //return bitfieldExtract36 (w, 18, 9);
-         return getbits36 (w, 9, 9);
+         return getbits36_9 (w, 9);
 
         case 2:
           //return bitfieldExtract36 (w, 9, 9);
-         return getbits36 (w, 18, 9);
+         return getbits36_9 (w, 18);
 
         case 3:
           //return bitfieldExtract36 (w, 0, 9);
-         return getbits36 (w, 27, 9);
+         return getbits36_9 (w, 27);
 
       }
     sim_printf ("get9(): How'd we get here?\n");
@@ -785,13 +785,13 @@ static void setupOperandDescriptor (int k)
     switch (k)
       {
         case 1:
-          e -> MF1 = getbits36 (cpu . cu . IWB, 29, 7);
+          e -> MF1 = getbits36_7 (cpu . cu . IWB, 29);
           break;
         case 2:
-          e -> MF2 = getbits36 (cpu . cu . IWB, 11, 7);
+          e -> MF2 = getbits36_7 (cpu . cu . IWB, 11);
           break;
         case 3:
-          e -> MF3 = getbits36 (cpu . cu . IWB,  2, 7);
+          e -> MF3 = getbits36_7 (cpu . cu . IWB,  2);
           break;
       }
     
@@ -917,7 +917,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           }
       }
 
-    uint CN = getbits36 (opDesc, 18, 3);    // character number
+    uint CN = getbits36_3 (opDesc, 18);    // character number
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "initial CN%u %u\n", k, CN);
     
@@ -1122,10 +1122,10 @@ static void parseNumericOperandDescriptor (int k)
     //e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
     //e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
     //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
-    word8 CN = getbits36 (opDesc, 18, 3);    // character number
+    word3 CN = getbits36_3 (opDesc, 18);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
     e->S[k-1]  = getbits36_2 (opDesc, 22);    // Sign and decimal type of data
-    e->SF[k-1] = SIGNEXT6_int (getbits36 (opDesc, 24, 6));    // Scaling factor.
+    e->SF[k-1] = SIGNEXT6_int (getbits36_6 (opDesc, 24));    // Scaling factor.
 
     // Operand length. If MFk.RL = 0, this field contains the operand length in
     // digits. If MFk.RL = 1, it contains the REG code for the register holding
@@ -1260,7 +1260,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     //int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
     //int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
-    int B = (int)getbits36(opDesc, 20, 4);    // bit# from descriptor
+    int B = (int)getbits36_4(opDesc, 20);    // bit# from descriptor
     int C = (int)getbits36_2 (opDesc, 18);     // char# from descriptor
     
     word36 r = getMFReg36(MFk & 017, false);
@@ -1524,7 +1524,7 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
-    int fill = (int) getbits36 (cpu . cu . IWB, 0, 9);
+    int fill = (int) getbits36_9 (cpu . cu . IWB, 0);
     
     SET_I_ZERO;  // set ZERO flag assuming strings are equal ...
     SET_I_CARRY; // set CARRY flag assuming strings are equal ...
@@ -1885,7 +1885,7 @@ void scm (void)
 
     // get 'mask'
     //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
-    uint mask = (uint) getbits36 (cpu.cu.IWB, 0, 9);
+    uint mask = (uint) getbits36_9 (cpu.cu.IWB, 0);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -2009,7 +2009,7 @@ void scmr (void)
 
     // get 'mask'
     //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
-    uint mask = (uint) getbits36 (cpu.cu.IWB, 0, 9);
+    uint mask = (uint) getbits36_9 (cpu.cu.IWB, 0);
     
     // fetch 'test' char
     // If MF2.ID = 0 and MF2.REG = du, then the second word following the
@@ -2463,7 +2463,7 @@ void mlr (void)
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
-    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
+    uint fill = (uint) getbits36_9 (cpu . cu . IWB, 0);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -2708,7 +2708,7 @@ void mrl (void)
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
-    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
+    uint fill = (uint) getbits36_9 (cpu . cu . IWB, 0);
     uint fillT = fill;  // possibly truncated fill pattern
 
     // play with fill if we need to use it
@@ -4575,7 +4575,7 @@ void mvt (void)
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     //int fill = (int)bitfieldExtract36(cpu . cu . IWB, 27, 9);
-    uint fill = (uint) getbits36 (cpu . cu . IWB, 0, 9);
+    uint fill = (uint) getbits36_9 (cpu . cu . IWB, 0);
     int fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
     switch(e->srcSZ)
@@ -5261,7 +5261,7 @@ void csl (bool isSZTL)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
     //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
-    uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
+    uint BOLR = getbits36_4 (cpu.cu.IWB, 5);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);
@@ -5548,7 +5548,7 @@ void csr (bool isSZTR)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
     //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
-    uint BOLR = getbits36 (cpu.cu.IWB, 5, 4);   // T (enablefault) bit
+    uint BOLR = getbits36_4 (cpu.cu.IWB, 5);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
     bool B7 = (bool)((BOLR >> 1) & 1);

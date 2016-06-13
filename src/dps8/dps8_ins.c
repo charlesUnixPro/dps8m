@@ -515,7 +515,7 @@ static void words2scu (word36 * words)
 
     // words [0]
 
-    cpu.PPR.PRR         = getbits36(words[0], 0, 3);
+    cpu.PPR.PRR         = getbits36_3(words[0], 0);
     cpu.PPR.PSR         = getbits36(words[0], 3, 15);
     cpu.PPR.P           = getbits36_1(words[0], 18);
     // 19 XSF
@@ -524,15 +524,15 @@ static void words2scu (word36 * words)
     // 22 PTWAMM
     cpu.cu.PT_ON        = getbits36_1(words[0], 23);
 #if 0
-    cpu.cu.PI_AP        = getbits36(words[0], 24, 1);
-    cpu.cu.DSPTW        = getbits36(words[0], 25, 1);
-    cpu.cu.SDWNP        = getbits36(words[0], 26, 1);
-    cpu.cu.SDWP         = getbits36(words[0], 27, 1);
-    cpu.cu.PTW          = getbits36(words[0], 28, 1);
-    cpu.cu.PTW2         = getbits36(words[0], 29, 1);
-    cpu.cu.FAP          = getbits36(words[0], 30, 1);
-    cpu.cu.FANP         = getbits36(words[0], 31, 1);
-    cpu.cu.FABS         = getbits36(words[0], 32, 1);
+    cpu.cu.PI_AP        = getbits36_1(words[0], 24);
+    cpu.cu.DSPTW        = getbits36_1(words[0], 25);
+    cpu.cu.SDWNP        = getbits36_1(words[0], 26);
+    cpu.cu.SDWP         = getbits36_1(words[0], 27);
+    cpu.cu.PTW          = getbits36_1(words[0], 28);
+    cpu.cu.PTW2         = getbits36_1(words[0], 29);
+    cpu.cu.FAP          = getbits36_1(words[0], 30);
+    cpu.cu.FANP         = getbits36_1(words[0], 31);
+    cpu.cu.FABS         = getbits36_1(words[0], 32);
 #else
     cpu.cu.APUCycleBits = getbits36 (words [0], 24, 12) & 07770;
 #endif
@@ -559,21 +559,21 @@ static void words2scu (word36 * words)
     cpu.cu.PARL         = getbits36_1 (words [1], 17);
     cpu.cu.ONC1         = getbits36_1 (words [1], 18);
     cpu.cu.ONC2         = getbits36_1 (words [1], 19);
-    cpu.cu.IA           = getbits36 (words [1], 20,  4);
-    cpu.cu.IACHN        = getbits36 (words [1], 24,  3);
-    cpu.cu.CNCHN        = getbits36 (words [1], 27,  3);
-    cpu.cu.FI_ADDR      = getbits36 (words [1], 30,  5);
+    cpu.cu.IA           = getbits36_4 (words [1], 20);
+    cpu.cu.IACHN        = getbits36_3 (words [1], 24);
+    cpu.cu.CNCHN        = getbits36_3 (words [1], 27);
+    cpu.cu.FI_ADDR      = getbits36_5 (words [1], 30);
     cpu.cu.FLT_INT      = getbits36_1 (words [1], 35);
 
     // words[2]
 
-    cpu.TPR.TRR         = getbits36(words[2], 0, 3);
+    cpu.TPR.TRR         = getbits36_3 (words[2], 0);
     cpu.TPR.TSR         = getbits36(words[2], 3, 15);
     // 18-21 PTW
     // 22-25 SDW
     // 26 0
     // 27-29 CPU number
-    cpu.cu.delta        = getbits36(words[2], 30, 6);
+    cpu.cu.delta        = getbits36_6 (words[2], 30);
 
     // words[3]
 
@@ -581,7 +581,7 @@ static void words2scu (word36 * words)
     // 18-21 TSNA
     // 22-26 TSNB
     // 26-29 TSNC
-    cpu.TPR.TBR         = getbits36(words[3], 30, 6);
+    cpu.TPR.TBR         = getbits36_6 (words[3], 30);
 
     // words [4]
 
@@ -603,7 +603,7 @@ static void words2scu (word36 * words)
     cpu.cu.rfi          = getbits36_1(words[5], 27);
     // 28 ITS
     cpu.cu.FIF          = getbits36_1(words[5], 29);
-    cpu.cu.CT_HOLD      = getbits36(words[5], 30, 6);
+    cpu.cu.CT_HOLD      = getbits36_6 (words[5], 30);
 
     // words [6]
 
@@ -685,7 +685,7 @@ static void words2du (word36 * words)
     // Word 2
 
     cpu.du.D1_PTR_W = getbits36 (words [2],  0, 18);
-    cpu.du.D1_PTR_B = getbits36 (words [2], 18,  6);
+    cpu.du.D1_PTR_B = getbits36_6 (words [2], 18);
     cpu.du.TAk [0]  = getbits36_2 (words [2], 25);
     cpu.du.F1       = getbits36_1 (words [2], 31);
     cpu.du.Ak [0]   = getbits36_1 (words [2], 32);
@@ -698,7 +698,7 @@ static void words2du (word36 * words)
     // Word 4
 
     cpu.du.D2_PTR_W = getbits36 (words [4],  0, 18);
-    cpu.du.D2_PTR_B = getbits36 (words [4], 18,  6);
+    cpu.du.D2_PTR_B = getbits36_6 (words [4], 18);
     cpu.du.TAk [1]  = getbits36_2 (words [4], 25);
     cpu.du.F2       = getbits36_1 (words [4], 31);
     cpu.du.Ak [1]   = getbits36_1 (words [4], 32);
@@ -711,11 +711,11 @@ static void words2du (word36 * words)
     // Word 6
 
     cpu.du.D3_PTR_W = getbits36 (words [6],  0, 18);
-    cpu.du.D3_PTR_B = getbits36 (words [6], 18,  6);
+    cpu.du.D3_PTR_B = getbits36_6 (words [6], 18);
     cpu.du.TAk [2]  = getbits36_2 (words [6], 25);
     cpu.du.F3       = getbits36_1 (words [6], 31);
     cpu.du.Ak [2]   = getbits36_1 (words [6], 32);
-    cpu.du.JMP      = getbits36 (words [6], 33,  3);
+    cpu.du.JMP      = getbits36_3 (words [6], 33);
 
     // Word 7
 
@@ -1751,7 +1751,7 @@ restart_1:
 
         if (cpu.cu.rpt) // rpt
           {
-            uint Xn = getbits36 (cpu.cu.IWB, 36 - 3, 3);
+            uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
             cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -1765,7 +1765,7 @@ restart_1:
         if (cpu.cu.rd && icOdd && rptA) // rpd, even instruction
           {
             // a:RJ78/rpd7
-            uint Xn = getbits36 (cpu.cu.IWB, 36 - 3, 3);
+            uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
             cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -1774,7 +1774,7 @@ restart_1:
         if (cpu.cu.rd && icOdd && rptB) // rpdb, odd instruction
           {
             // a:RJ78/rpd8
-            uint Xn = getbits36 (cpu.cu.IRODD, 36 - 3, 3);
+            uint Xn = getbits36_3 (cpu.cu.IRODD, 36 - 3);
             cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
             sim_debug (DBG_TRACE, & cpu_dev,
                        "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -5187,7 +5187,7 @@ static t_stat DoBasicInstruction (void)
               // For the rccl instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
               // 2 bits for the DPS8M.
-              //int cpu_port_num = getbits36 (TPR.CA, 0, 2);
+              //int cpu_port_num = getbits36_2 (TPR.CA, 0);
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
               int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
               if (scu_unit_num < 0)
@@ -5715,7 +5715,7 @@ static t_stat DoBasicInstruction (void)
               // According to privileged_mode_ut,
               //   port*1024 + scr_input*8
 
-              //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+              //int scu_unit_num = getbits36_2 (TPR.CA, 0);
               //uint scu_unit_num = (TPR.CA >> 10) & MASK8;
               int cpu_port_num = query_scbank_map (cpu.iefpFinalAddress);
               if (cpu_port_num < 0)
@@ -6025,7 +6025,7 @@ static t_stat DoBasicInstruction (void)
             // For the smic instruction, the first 2 or 3 bits of the addr
             // field of the instruction are used to specify which SCU.
             // 2 bits for the DPS8M.
-            //int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+            //int scu_unit_num = getbits36_2 (TPR.CA, 0);
 
             // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor)
             // specify which processor port (i.e., which system
@@ -6708,7 +6708,7 @@ static t_stat DoEISInstruction (void)
                 //int TA = (int)bitfieldExtract36(cpu.CY, 13, 2); // C(Y) 21-22
                 //int CN = (int)bitfieldExtract36(cpu.CY, 15, 3); // C(Y) 18-20
                 uint TA = getbits36_2 (cpu.CY, 21);
-                uint CN = getbits36 (cpu.CY, 18, 3);
+                uint CN = getbits36_3 (cpu.CY, 18);
 
                 switch(TA)
                 {
@@ -6762,7 +6762,7 @@ static t_stat DoEISInstruction (void)
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
                 //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(cpu.CY, 12, 4),
                                  //(word2)bitfieldExtract36(cpu.CY, 16, 2));
-                SET_AR_CHAR_BIT (n, (word4)getbits36 (cpu.CY, 20, 4),
+                SET_AR_CHAR_BIT (n, (word4)getbits36_4 (cpu.CY, 20),
                                  (word2)getbits36_2 (cpu.CY, 18));
             }
             break;
@@ -6775,7 +6775,7 @@ static t_stat DoEISInstruction (void)
                 cpu.AR[n].WORDNO = GETHI(tmp36);
                 //SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4),
                                  //(word2)bitfieldExtract36(tmp36, 16, 2));
-                SET_AR_CHAR_BIT (n, (word4)getbits36 (tmp36, 20, 4),
+                SET_AR_CHAR_BIT (n, (word4)getbits36_4 (tmp36, 20),
                                  (word2)getbits36_2 (tmp36, 18));
             }
             break;
@@ -6803,7 +6803,7 @@ static t_stat DoEISInstruction (void)
                 //int TN = (int)bitfieldExtract36(cpu.CY, 13, 1); // C(Y) 21
                 //int CN = (int)bitfieldExtract36(cpu.CY, 15, 3); // C(Y) 18-20
                 uint TN = getbits36_1 (cpu.CY, 21); // C(Y) 21
-                uint CN = getbits36 (cpu.CY, 18, 3); // C(Y) 18-20
+                uint CN = getbits36_3 (cpu.CY, 18); // C(Y) 18-20
 
                 switch(TN)
                 {

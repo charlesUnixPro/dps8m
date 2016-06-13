@@ -172,7 +172,7 @@ static word9 gc (word36 * b, uint os)
   {
     uint wordno = os / 4;
     uint charno = os % 4;
-    return (word9) getbits36 (b [wordno], charno * 9, 9);
+    return (word9) getbits36_9 (b [wordno], charno * 9);
   }
 #endif
 

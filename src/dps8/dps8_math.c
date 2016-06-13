@@ -355,7 +355,7 @@ void ufa (void)
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     
     //int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     //word72 m2 = (word72)bitfieldExtract36(cpu.CY, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
     word72 m2 = (word72) getbits36 (cpu.CY, 8, 28) << 44; ///< 28-bit mantissa (incl sign)
     
@@ -512,7 +512,7 @@ void ufs (void)
     {
         //sim_printf ("OV\n");
         //int8   e = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-        int e = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+        int e = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
         m2c >>= 1;
         m2c &= FLOAT36MASK;
@@ -856,7 +856,7 @@ void ufm (void)
     //uint64 m2 = bitfieldExtract36(cpu.CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
     uint64 m2 = getbits36 (cpu.CY, 8, 28) << (8 + 28); // 28-bit mantissa (incl sign)
     //int8   e2 = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-    int    e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
     if (m1 == 0 || m2 == 0)
     {
@@ -964,7 +964,7 @@ static void fdvX(bool bInvert)
         //m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
         m2 = getbits36 (cpu.CY, 8, 28) << 8 ;     // 28-bit mantissa (incl sign)
         //e2 = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
-        e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+        e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     } else { // invert
         m2 = cpu . rA;    //& 0777777777400LL ;
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
@@ -972,7 +972,7 @@ static void fdvX(bool bInvert)
         //m1 = bitfieldExtract36(cpu.CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
         m1 = getbits36 (cpu.CY, 8, 28) << 8 ;     // 28-bit mantissa (incl sign)
         //e1 = (int8) (bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
-        e1 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+        e1 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     }
 
     // make everything positive, but save sign info for later....
@@ -1283,7 +1283,7 @@ void fcmp(void)
     //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
     word36 m2 = getbits36 (cpu.CY, 8, 28) << 8;      ///< 28-bit mantissa (incl sign)
     //int8   e2 = (int8) (bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
-    int    e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
     //int e3 = -1;
        
@@ -1351,7 +1351,7 @@ void fcmg ()
     //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
     word36 m2 = getbits36 (cpu.CY, 8, 28) << 8;      ///< 28-bit mantissa (incl sign)
     //int8   e2 = (int8) (bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
-    int    e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8)); 
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0)); 
     //int e3 = -1;
     
     //which exponent is smaller???
@@ -1415,7 +1415,7 @@ static void YPairToExpMant(word36 Ypair[], word72 *mant, int *exp)
     *mant = (word72) getbits36 (Ypair[0], 8, 28) << 44;   // 28-bit mantissa (incl sign)
     *mant |= (Ypair[1] & DMASK) << 8;
     //*exp = SIGNEXT8_int (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);           // 8-bit signed integer (incl sign)
-    *exp = SIGNEXT8_int (getbits36 (Ypair[0], 0, 8) & 0377U);           // 8-bit signed integer (incl sign)
+    *exp = SIGNEXT8_int (getbits36_8 (Ypair[0], 0) & 0377U);           // 8-bit signed integer (incl sign)
 }
 
 //! combine mantissa + exponent intoa YPair ....
@@ -1642,7 +1642,7 @@ void dufm (void)
            m2 |= cpu.Ypair[1];
     
     //int8   e2 = (int8)(bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
-    int    e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     sim_debug (DBG_TRACE, & cpu_dev, "dufm e2 %d %03o m2 %012llo\n", e2, e2, m2);
 
     
@@ -1771,7 +1771,7 @@ static void dfdvX (bool bInvert)
         m2 |= cpu.Ypair[1];
         
         //e2 = (int8)(bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
-        e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+        e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     } else { // invert
         m2 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
@@ -1781,7 +1781,7 @@ static void dfdvX (bool bInvert)
         m1 |= cpu.Ypair[1];
         
         //e1 = (int8) (bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
-        e1 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+        e1 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     }
     
     if (m1 == 0)
@@ -2408,7 +2408,7 @@ void dfcmp (void)
           m2 |= cpu.Ypair[1];
     
     //int8 e2 = (int8) (bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 
     //which exponent is smaller???
     
@@ -2458,7 +2458,7 @@ void dfcmg (void)
     m2 |= cpu.Ypair[1];
     
     //int8 e2 = (int8) (bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
     //which exponent is smaller???
     

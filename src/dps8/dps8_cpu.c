@@ -3037,8 +3037,8 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
       }
     prp->SNR = getbits36(word1, 3, 15);
     prp->WORDNO = getbits36(word2, 0, 18);
-    prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
-    prp->BITNO = getbits36(word2, 57 - 36, 6);
+    prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
+    prp->BITNO = getbits36_6 (word2, 57 - 36);
     return 0;
   }   
 
@@ -3130,7 +3130,7 @@ static int dumpStack (uint stkBase, uint stkNo)
                 (word15) getbits36 (w0,  3, 15),
                 (word18) getbits36 (w1,  0, 18));
 
-    if (getbits36 (M [hdrPage + 022], 30, 6) != 043)
+    if (getbits36_6 (M [hdrPage + 022], 30) != 043)
       {
         sim_printf("stack_begin_ptr is not an ITS\n");
         return 1;
@@ -3146,7 +3146,7 @@ static int dumpStack (uint stkBase, uint stkNo)
 
 
 
-    if (getbits36 (M [hdrPage + 024], 30, 6) != 043)
+    if (getbits36_6 (M [hdrPage + 024], 30) != 043)
       {
         sim_printf("stack_end_ptr is not an ITS\n");
         return 1;
@@ -3180,8 +3180,8 @@ static int dumpStack (uint stkBase, uint stkNo)
                         w0, w1,
                         (word15) getbits36 (w0,  3, 15),
                         (word18) getbits36 (w1,  0, 18),
-                        (word6)  getbits36 (w1, 21,  6),
-                        (word3)  getbits36 (w0, 18,  3));
+                                 getbits36_6 (w1, 21),
+                                 getbits36_3 (w0, 18));
           }
 
         rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "prev_sp");

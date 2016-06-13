@@ -995,7 +995,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
       {
         case 00000: // Set system controller mode register
           {
-            scu [scu_unit_num] . id = (word4) getbits36 (regq, 50 - 36,  4);
+            scu [scu_unit_num] . id = (word4) getbits36_4 (regq, 50 - 36);
             scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
           }
           break;

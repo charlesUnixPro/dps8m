@@ -97,10 +97,87 @@ static inline word2 getbits36_2 (word36 x, uint i)
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)2+1;
     if (shift < 0 || shift > 35) {
-        sim_printf ("getbits36_1: bad args (%012llo,i=%d)\n", x, i);
+        sim_printf ("getbits36_2: bad args (%012llo,i=%d)\n", x, i);
         return 0;
     } else
         return (x >> (unsigned) shift) & 03;
+  }
+
+static inline word3 getbits36_3 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)3+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_3: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 07;
+  }
+
+static inline word4 getbits36_4 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)4+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_4: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 017;
+  }
+
+static inline word5 getbits36_5 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)5+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_5: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 037;
+  }
+
+static inline word6 getbits36_6 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)6+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_6: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 077;
+  }
+
+static inline word7 getbits36_7 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)7+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_7: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 0177;
+  }
+
+static inline word8 getbits36_8 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)8+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_8: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 0377;
+  }
+
+static inline word9 getbits36_9 (word36 x, uint i)
+  {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-(int)i-(int)9+1;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("getbits36_9: bad args (%012llo,i=%d)\n", x, i);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & 0777;
   }
 
 static inline word36 setbits36(word36 x, uint p, uint n, word36 val)
@@ -150,7 +227,6 @@ static inline void putbits72 (word72 * x, uint p, uint n, word72 val)
     return;
   }
 
-#define getbits36_6(x,i) ((word6) (getbits36 ((x), (i), 6) & MASK6))
 #define getbits36_15(x,i) ((word15) (getbits36 ((x), (i), 15) & MASK15))
 #define getbits36_24(x,i) ((word24) (getbits36 ((x), (i), 24) & MASK24))
 

@@ -1226,12 +1226,12 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
 static void unpackDCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    p -> DCW_18_20_CP =      getbits36 (p -> DCW, 18,  3);
+    p -> DCW_18_20_CP =      getbits36_3 (p -> DCW, 18);
 
     if (p -> DCW_18_20_CP == 07) // IDCW
       { 
-        p -> IDCW_DEV_CMD =      getbits36 (p -> DCW,  0,  6);
-        p -> IDCW_DEV_CODE =     getbits36 (p -> DCW,  6,  6);
+        p -> IDCW_DEV_CMD =      getbits36_6 (p -> DCW,  0);
+        p -> IDCW_DEV_CODE =     getbits36_6 (p -> DCW,  6);
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
@@ -1239,8 +1239,8 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
         p -> IDCW_CONTROL =      getbits36_2 (p -> DCW, 22);
-        p -> IDCW_CHAN_CMD =     getbits36 (p -> DCW, 24,  6);
-        p -> IDCW_COUNT =        getbits36 (p -> DCW, 30,  6);
+        p -> IDCW_CHAN_CMD =     getbits36_6 (p -> DCW, 24);
+        p -> IDCW_COUNT =        getbits36_6 (p -> DCW, 30);
       }
     else // TDCW or DDCW
       {
@@ -1283,8 +1283,8 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
 //sim_printf ("%012llo %012llo\n", p -> PCW0, p ->  PCW1);
-    p -> PCW_CHAN = getbits36 (p -> PCW1, 3, 6);
-    p -> PCW_AE = getbits36 (p -> PCW0, 12, 6);
+    p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
+    p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
     p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
     p -> PCW_PAGE_TABLE_PTR = getbits36 (p -> PCW1, 9, 18);
     p -> PCW_63_PTP = getbits36_1 (p -> PCW1, 27);
@@ -1946,7 +1946,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       {
 // 04501 : COMMAND REJECTED, invalid command
         p -> stati = 04501;
-        p -> dev_code = getbits36 (p -> DCW, 6, 6);
+        p -> dev_code = getbits36_6 (p -> DCW, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
         sim_warn ("doPayloadChan handler error\n");
         goto done;
@@ -1989,7 +1989,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
           {
 // 04501 : COMMAND REJECTED, invalid command
             p -> stati = 04501;
-            p -> dev_code = getbits36 (p -> DCW, 6, 6);
+            p -> dev_code = getbits36_6 (p -> DCW, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
             sim_warn ("doPayloadChan expected IDCW %d (%o)\n", chan, chan);
             goto done;
@@ -2001,7 +2001,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //          if LPW bit 23 = 1.
 
         if (p -> LPW_23_REL == 0 && p -> IDCW_EC == 1)
-          p -> ADDR_EXT = getbits36 (p -> DCW, 12,  6);
+          p -> ADDR_EXT = getbits36_6 (p -> DCW, 12);
 
         p -> recordResidue = 0;
         p -> tallyResidue = 0;
