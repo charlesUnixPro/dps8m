@@ -329,7 +329,7 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
     word36 even = 0, odd = 0;
     
     //word36 segoff = (bitfieldExtract36(Ypair[1], 18, 18) + offset) & AMASK;
-    word36 segoff = (getbits36 (Ypair[1], 0, 18) + offset) & AMASK;
+    word36 segoff = (getbits36_18 (Ypair[1], 0) + offset) & AMASK;
     
     even = ((word36)segno << 18) | 043;
   //odd = (word36)(offset << 18) | (tag & 077);

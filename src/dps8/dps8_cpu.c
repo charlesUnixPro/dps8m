@@ -3035,8 +3035,8 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
       {
         return 1;
       }
-    prp->SNR = getbits36(word1, 3, 15);
-    prp->WORDNO = getbits36(word2, 0, 18);
+    prp->SNR = getbits36_15 (word1, 3);
+    prp->WORDNO = getbits36_18 (word2, 0);
     prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
     prp->BITNO = getbits36_6 (word2, 57 - 36);
     return 0;
@@ -3120,29 +3120,29 @@ static int dumpStack (uint stkBase, uint stkNo)
     w1 = M [hdrPage + 023];
     sim_printf ("  stack_begin_ptr  %012llo %012llo %05o:%08o\n",
                 w0, w1,
-                (word15) getbits36 (w0,  3, 15),
-                (word18) getbits36 (w1,  0, 18));
+                (word15) getbits36_15 (w0,  3),
+                (word18) getbits36_18 (w1,  0));
 
     w0 = M [hdrPage + 024];
     w1 = M [hdrPage + 025];
     sim_printf ("  stack_end_ptr    %012llo %012llo %05o:%08o\n",
                 w0, w1,
-                (word15) getbits36 (w0,  3, 15),
-                (word18) getbits36 (w1,  0, 18));
+                (word15) getbits36_15 (w0,  3),
+                (word18) getbits36_18 (w1,  0));
 
     if (getbits36_6 (M [hdrPage + 022], 30) != 043)
       {
         sim_printf("stack_begin_ptr is not an ITS\n");
         return 1;
       }
-    word15 stkBeginSegno = getbits36 (M [hdrPage + 022], 3, 15);
+    word15 stkBeginSegno = getbits36_15 (M [hdrPage + 022], 3);
 
     if (stkBeginSegno != stkBase)
       {
         sim_printf("stack_begin_ptr segno (%o) is wrong\n", stkBeginSegno);
         return 1;
       }
-    word18 stkBeginOffset = getbits36 (M [hdrPage + 023], 0, 18);
+    word18 stkBeginOffset = getbits36_18 (M [hdrPage + 023], 0);
 
 
 
@@ -3152,13 +3152,13 @@ static int dumpStack (uint stkBase, uint stkNo)
         return 1;
       }
 
-    word15 stkEndSegno = getbits36 (M [hdrPage + 024], 3, 15);
+    word15 stkEndSegno = getbits36_15 (M [hdrPage + 024], 3);
     if (stkBeginSegno != stkBase)
       {
         sim_printf("stack_end_ptr segno (%o) is wrong\n", stkEndSegno);
         return 1;
       }
-    word18 stkEndOffset = getbits36 (M [hdrPage + 025], 0, 18);
+    word18 stkEndOffset = getbits36_18 (M [hdrPage + 025], 0);
 
     word18 currentFrame = stkBeginOffset;
     int currentFrameNumber = 1;
@@ -3178,8 +3178,8 @@ static int dumpStack (uint stkBase, uint stkNo)
             sim_printf ("    PR%o               %012llo %012llo %05o:%06o BITNO %02o RNG %o\n",
                         n,
                         w0, w1,
-                        (word15) getbits36 (w0,  3, 15),
-                        (word18) getbits36 (w1,  0, 18),
+                        (word15) getbits36_15 (w0,  3),
+                        (word18) getbits36_18 (w1,  0),
                                  getbits36_6 (w1, 21),
                                  getbits36_3 (w0, 18));
           }
@@ -3191,8 +3191,8 @@ static int dumpStack (uint stkBase, uint stkNo)
         w1 = M [addr + 1];
         sim_printf ("    prev_sp         %012llo %012llo %05o:%08o\n",
                     w0, w1,
-                    (word15) getbits36 (w0,  3, 15),
-                    (word18) getbits36 (w1,  0, 18));
+                    (word15) getbits36_15 (w0,  3),
+                    (word18) getbits36_18 (w1,  0));
 
         rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "next_sp");
         if (rc)
@@ -3200,8 +3200,8 @@ static int dumpStack (uint stkBase, uint stkNo)
         w0 = M [addr + 0];
         w1 = M [addr + 1];
 
-        word15 nextSpSegno  = (word15) getbits36 (w0,  3, 15);
-        word18 nextSpOffset = (word18) getbits36 (w1,  3, 18);
+        word15 nextSpSegno  = (word15) getbits36_15 (w0,  3);
+        word18 nextSpOffset = (word18) getbits36_18 (w1,  3);
         sim_printf ("    next_sp         %012llo %012llo %05o:%08o\n",
                     w0, w1, nextSpSegno, nextSpOffset);
 

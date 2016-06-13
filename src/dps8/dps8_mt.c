@@ -1028,9 +1028,9 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             word36 control;
             iomDirectDataService (iomUnitIdx, chan, & control, false);
 //sim_printf ("control %012llo\n", control);
-//sim_printf ("  addr %012llo tally %012llo\n", getbits36 (control, 0, 16), getbits36 (control, 16, 16));
-            tape_statep -> cntlrAddress = getbits36 (control, 0, 16);
-            tape_statep -> cntlrTally = getbits36 (control, 16, 16);
+//sim_printf ("  addr %012llo tally %012llo\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+            tape_statep -> cntlrAddress = getbits36_16 (control, 0);
+            tape_statep -> cntlrTally = getbits36_16 (control, 16);
 
             p -> stati = 04000;
           }
@@ -1275,9 +1275,9 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             word36 control;
             iomDirectDataService (iomUnitIdx, chan, & control, false);
 //sim_printf ("control %012llo\n", control);
-//sim_printf ("  addr %012llo tally %012llo\n", getbits36 (control, 0, 16), getbits36 (control, 16, 16));
-            tape_statep -> cntlrAddress = getbits36 (control, 0, 16);
-            tape_statep -> cntlrTally = getbits36 (control, 16, 16);
+//sim_printf ("  addr %012llo tally %012llo\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+            tape_statep -> cntlrAddress = getbits36_16 (control, 0);
+            tape_statep -> cntlrTally = getbits36_16 (control, 16);
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Write controller main memory address %o\n", __func__,
                        tape_statep -> cntlrAddress);

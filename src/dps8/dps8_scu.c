@@ -996,7 +996,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
         case 00000: // Set system controller mode register
           {
             scu [scu_unit_num] . id = (word4) getbits36_4 (regq, 50 - 36);
-            scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
+            scu [scu_unit_num] . modeReg = getbits36_18 (regq, 54 - 36);
           }
           break;
 
@@ -1096,9 +1096,9 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             //scup -> interrupts[mask_num].exec_intr_mask = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
-              (getbits36(rega, 0, 16) << 16);
+              (getbits36_16(rega, 0) << 16);
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
-              getbits36(regq, 0, 16);
+              getbits36_16(regq, 0);
             sim_debug (DBG_DEBUG, & scu_dev,
                        "%s: PIMA %c: EI mask set to %s\n", 
                        __func__, mask_num + 'A', 
@@ -1135,7 +1135,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
         case 00005: 
           {
             // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
-            word16 b0_15 = (word16) getbits36 (cpu . rA, 20, 16);
+            word16 b0_15 = (word16) getbits36_16 (cpu . rA, 20);
             word36 b16_51 = cpu . rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
             userCorrection = newClk - getSCUclock ();
@@ -2267,8 +2267,8 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     //    IER 16-32       00000000        PER 4-7 
 
     scu [scu_unit_num] . exec_intr_mask [mask_num] =
-      ((uint) getbits36(rega, 0, 16) << 16) |
-      ((uint) getbits36(regq, 0, 16) <<  0);
+      ((uint) getbits36_16(rega, 0) << 16) |
+      ((uint) getbits36_16(regq, 0) <<  0);
     sim_debug (DBG_TRACE, & scu_dev,
                "SMCM unit %u mask_num %u mask 0x%08x\n",
                scu_unit_num, mask_num,

@@ -259,7 +259,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     word36 ptw;
     core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
     //sim_printf ("ptw %012llo\n", ptw);
-    uint page = getbits36 (ptw, 4, 14);
+    uint page = getbits36_14 (ptw, 4);
     //sim_printf ("page %o\n", page);
     uint addr = page * 1024u + l66Address % 1024u;
     //sim_printf ("addr %o\n", addr);
@@ -807,7 +807,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
         //uint is_hsla = getbits36_1 (word1, 8);
         //uint la_no = getbits36_3 (word1, 9);
         uint slot_no = getbits36_6 (word1, 12);
-        //uint terminal_id = getbits36 (word1, 18, 18);
+        //uint terminal_id = getbits36_18 (word1, 18);
 
 #if 0
         sim_printf ("  dn355_no %d\n", dn355_no);
@@ -837,7 +837,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp don't accept calls\n");
                         //word36 command_data0 = smbxp -> command_data [0];
-                        //uint bufferAddress = getbits36 (command_data0, 0, 18);
+                        //uint bufferAddress = getbits36_18 (command_data0, 0);
                         //sim_printf ("  buffer address %06o\n", bufferAddress);
                         tellFNP (devUnitIdx, "dont_accept_calls");
                       }
@@ -847,7 +847,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp accept calls\n");
                         //word36 command_data0 = smbxp -> command_data [0];
-                        //uint bufferAddress = getbits36 (command_data0, 0, 18);
+                        //uint bufferAddress = getbits36_18 (command_data0, 0);
                         //sim_printf ("  buffer address %06o\n", bufferAddress);
                         tellFNP (devUnitIdx, "accept_calls");
                       }
@@ -871,8 +871,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp set_echnego_break_table\n");
                         word36 word6 = smbxp -> word6;
-                        uint data_addr = getbits36 (word6, 0, 18);
-                        uint data_len = getbits36 (word6, 18, 18);
+                        uint data_addr = getbits36_18 (word6, 0);
+                        uint data_len = getbits36_18 (word6, 18);
 
                         //sim_printf ("set_echnego_break_table %d addr %06o len %d\n", slot_no, data_addr, data_len);
 #define echoTableLen 8
@@ -927,8 +927,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
           //           bit (fixed (data_ptr -> echo_start_data.ctr, 18), 18)
           //           || bit (fixed (data_ptr -> echo_start_data.screenleft, 18), 18);
           //      opcode = start_negotiated_echo;
-                        word18 ctr = getbits36 (smbxp -> command_data [0], 0, 18);
-                        word18 screenleft = getbits36 (smbxp -> command_data [0], 18, 18);
+                        word18 ctr = getbits36_18 (smbxp -> command_data [0], 0);
+                        word18 screenleft = getbits36_18 (smbxp -> command_data [0], 18);
 
 //sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
                         char cmd [256];
@@ -1078,7 +1078,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             case 16: // Listen
                               {
                                 //sim_printf ("fnp Listen\n");
-                                uint bufsz =  getbits36 (smbxp -> command_data [0], 18, 18);
+                                uint bufsz =  getbits36_18 (smbxp -> command_data [0], 18);
                                 char cmd [256];
                                 sprintf (cmd, "listen %d %d %d", slot_no, flag, bufsz);
                                 tellFNP (devUnitIdx, cmd);          
@@ -1152,8 +1152,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             case 25: // Block_xfer
                               {
                                 //sim_printf ("fnp block_xfer\n");
-                                uint bufsiz1 = getbits36 (smbxp -> command_data [0], 18, 18);
-                                uint bufsiz2 = getbits36 (smbxp -> command_data [1], 0, 18);
+                                uint bufsiz1 = getbits36_18 (smbxp -> command_data [0], 18);
+                                uint bufsiz2 = getbits36_18 (smbxp -> command_data [1], 0);
                                 char cmd [256];
                                 sprintf (cmd, "block_xfer %d %d %d", slot_no, bufsiz1, bufsiz2);
                                 tellFNP (devUnitIdx, cmd);          
@@ -1249,7 +1249,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                               }
                           } // switch (subtype)
                         //word36 command_data0 = smbxp -> command_data [0];
-                        //uint bufferAddress = getbits36 (command_data0, 0, 18);
+                        //uint bufferAddress = getbits36_18 (command_data0, 0);
                         //sim_printf ("  buffer address %06o\n", bufferAddress);
 
                         // call fnp (accept calls);
@@ -1260,16 +1260,16 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       {
                         //sim_printf ("fnp set delay table\n");
                         word36 command_data0 = smbxp -> command_data [0];
-                        uint d1 = getbits36 (command_data0, 0, 18);
-                        uint d2 = getbits36 (command_data0, 18, 18);
+                        uint d1 = getbits36_18 (command_data0, 0);
+                        uint d2 = getbits36_18 (command_data0, 18);
 
                         word36 command_data1 = smbxp -> command_data [1];
-                        uint d3 = getbits36 (command_data1, 0, 18);
-                        uint d4 = getbits36 (command_data1, 18, 18);
+                        uint d3 = getbits36_18 (command_data1, 0);
+                        uint d4 = getbits36_18 (command_data1, 18);
 
                         word36 command_data2 = smbxp -> command_data [2];
-                        uint d5 = getbits36 (command_data2, 0, 18);
-                        uint d6 = getbits36 (command_data2, 18, 18);
+                        uint d5 = getbits36_18 (command_data2, 0);
+                        uint d6 = getbits36_18 (command_data2, 18);
 
                         char cmd [256];
                         sprintf (cmd, "set_delay_table %d %d %d %d %d %d %d", slot_no, d1, d2, d3, d4, d5, d6);
@@ -1421,8 +1421,8 @@ word36 pad;
                     return -1;
                   }
 // op_code is 012
-                uint dcwAddr = getbits36 (smbxp -> word6, 0, 18);
-                uint dcwCnt = getbits36 (smbxp -> word6, 18, 18);
+                uint dcwAddr = getbits36_18 (smbxp -> word6, 0);
+                uint dcwCnt = getbits36_18 (smbxp -> word6, 18);
 //sim_printf ("dcwAddr %08o\n", dcwAddr);
 //sim_printf ("dcwCnt %d\n", dcwCnt);
 
@@ -1438,7 +1438,7 @@ word36 pad;
                     //sim_printf ("  %012llo\n", dcw);
 
                     // Get the address and the tally from the dcw
-                    uint dataAddr = getbits36 (dcw, 0, 18);
+                    uint dataAddr = getbits36_18 (dcw, 0);
                     uint tally = getbits36_9 (dcw, 27);
                     //sim_printf ("%6d %012o\n", tally, dataAddr);
                     if (! tally)
@@ -1461,7 +1461,7 @@ word36 pad;
                     tellFNP (0, cmd);
                   } // for each dcw
 #if 0
-                uint dcwCnt = getbits36 (smbxp -> command_data [0], 18, 18);
+                uint dcwCnt = getbits36_18 (smbxp -> command_data [0], 18);
 sim_printf ("dcwCnt %d\n", dcwCnt);
 for (uint i = 0; i < dcwCnt; i ++)
   sim_printf ("  %012llo\n", smbxp -> command_data [i + 1]);
@@ -1512,7 +1512,7 @@ for (uint i = 0; i < dcwCnt; i ++)
         //uint is_hsla = getbits36_1 (word1, 8);
         //uint la_no = getbits36_3 (word1, 9);
         uint slot_no = getbits36_6 (word1, 12);
-        //uint terminal_id = getbits36 (word1, 18, 18);
+        //uint terminal_id = getbits36_18 (word1, 18);
 
         switch (io_cmd)
           {
@@ -1531,7 +1531,7 @@ for (uint i = 0; i < dcwCnt; i ++)
                         sim_printf ("  terminal_id %d\n", terminal_id);
 #endif
                         word36 command_data0 = smbxp -> mystery [0];
-                        uint outputBufferThreshold = getbits36 (command_data0, 0, 18);
+                        uint outputBufferThreshold = getbits36_18 (command_data0, 0);
                         //sim_printf ("  outputBufferThreshold %d\n", outputBufferThreshold);
                         char cmd [256];
                         sprintf (cmd, "terminal_accepted %d %d", slot_no, outputBufferThreshold);
