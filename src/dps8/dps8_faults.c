@@ -14,6 +14,7 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
+#include "dps8_faults.h"
 #ifdef HDBG
 #include "hdbg.h"
 #endif
