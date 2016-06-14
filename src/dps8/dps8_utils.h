@@ -343,7 +343,7 @@ static inline void putbits18 (word18 * x, uint p, uint n, word18 val)
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (18 - p - n));
+    * x = (* x & ~mask) | ((val & MASKBITS18 (n)) << (18 - p - n));
     return;
   }
 

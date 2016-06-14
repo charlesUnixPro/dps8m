@@ -1055,14 +1055,11 @@ force:;
           {
             if (isBAR)
               {
+#ifdef ROUND_ROBIN
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
                   "%d: "
-#endif
                   "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
                   currentRunningCPUnum,
-#endif
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1074,17 +1071,29 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM(cpu.currentInstruction.tag) >> 4,
                   GET_TD(cpu.currentInstruction.tag) & 017);
+#else
+                sim_debug(flag, &cpu_dev,
+                  "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  cpu.BAR.BASE,
+                  cpu.PPR.IC,
+                  IWB_IRODD,
+                  disAssemble(IWB_IRODD),
+                  cpu.currentInstruction.address,
+                  cpu.currentInstruction.opcode,
+                  cpu.currentInstruction.opcodeX,
+                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.i,
+                  GET_TM(cpu.currentInstruction.tag) >> 4,
+                  GET_TD(cpu.currentInstruction.tag) & 017);
+#endif
               }
             else
               {
+#ifdef ROUND_ROBIN
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
                   "%d: "
-#endif
                   "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
                   currentRunningCPUnum,
-#endif
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (IWB_IRODD),
@@ -1095,20 +1104,31 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM(cpu.currentInstruction.tag) >> 4,
                   GET_TD(cpu.currentInstruction.tag) & 017);
+#else
+                sim_debug(flag, &cpu_dev,
+                  "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  cpu.PPR.IC,
+                  IWB_IRODD,
+                  disAssemble (IWB_IRODD),
+                  cpu.currentInstruction.address,
+                  cpu.currentInstruction.opcode,
+                  cpu.currentInstruction.opcodeX,
+                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.i,
+                  GET_TM(cpu.currentInstruction.tag) >> 4,
+                  GET_TD(cpu.currentInstruction.tag) & 017);
+#endif
               }
           }
         else if (get_addr_mode() == APPEND_mode)
           {
             if (isBAR)
               {
+#ifdef ROUND_ROBIN
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
                   "%d: "
-#endif
                  "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
                   currentRunningCPUnum,
-#endif
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1121,17 +1141,30 @@ force:;
                   cpu.currentInstruction.a, cpu.currentInstruction.i,
                   GET_TM(cpu.currentInstruction.tag) >> 4,
                   GET_TD(cpu.currentInstruction.tag) & 017);
+#else
+                sim_debug(flag, &cpu_dev,
+                 "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  cpu.PPR.PSR,
+                  cpu.BAR.BASE,
+                  cpu.PPR.IC,
+                  cpu.PPR.PRR,
+                  IWB_IRODD,
+                  disAssemble(IWB_IRODD),
+                  cpu.currentInstruction.address,
+                  cpu.currentInstruction.opcode,
+                  cpu.currentInstruction.opcodeX,
+                  cpu.currentInstruction.a, cpu.currentInstruction.i,
+                  GET_TM(cpu.currentInstruction.tag) >> 4,
+                  GET_TD(cpu.currentInstruction.tag) & 017);
+#endif
               }
             else
               {
+#ifdef ROUND_ROBIN
                 sim_debug(flag, &cpu_dev,
-#ifdef ROUND_ROBIN
                   "%d: "
-#endif
                   "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
-#ifdef ROUND_ROBIN
                   currentRunningCPUnum,
-#endif
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
@@ -1144,6 +1177,22 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM(cpu.currentInstruction.tag) >> 4,
                   GET_TD(cpu.currentInstruction.tag) & 017);
+#else
+                sim_debug(flag, &cpu_dev,
+                  "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  cpu.PPR.PSR,
+                  cpu.PPR.IC,
+                  cpu.PPR.PRR,
+                  IWB_IRODD,
+                  disAssemble(IWB_IRODD),
+                  cpu.currentInstruction.address,
+                  cpu.currentInstruction.opcode,
+                  cpu.currentInstruction.opcodeX,
+                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.i,
+                  GET_TM(cpu.currentInstruction.tag) >> 4,
+                  GET_TD(cpu.currentInstruction.tag) & 017);
+#endif
               }
           }
       }

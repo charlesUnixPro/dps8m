@@ -113,6 +113,7 @@ enum { N_DEV_CODES = 64 };
 #define MASK70          (((word72)1U << 70) - 1U)
 
 #define MASKBITS(x)     ( ~(~((uint64)0)<<x) )   // lower (x) bits all ones
+#define MASKBITS18(x)   ( ~(~((word18)0)<<x) )   // lower (x) bits all ones
 #define MASKBITS72(x)   ( ~(~((word72)0)<<x) )   // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
@@ -143,7 +144,7 @@ static inline int SIGNEXT6_int (word6 w)
   {
     if (w & SIGN6)
       {
-        return ((int) w) | (((uint) -1) << 6);
+        return ((int) w) | (int) (((uint) -1) << 6);
       }
     return w & MASK6;
   }
@@ -152,7 +153,7 @@ static inline int SIGNEXT8_int (word8 w)
   {
     if (w & SIGN8)
       {
-        return ((int) w) | (((uint) -1) << 8);
+        return ((int) w) | (int) (((uint) -1) << 8);
       }
     return w & MASK8;
   }
@@ -161,7 +162,7 @@ static inline int32 SIGNEXT15_32 (word18 w)
   {
     if (w & SIGN15)
       {
-        return ((int32) w) | (((uint32) -1) << 15);
+        return ((int32) w) | (int32) (((uint32) -1) << 15);
       }
     return w & MASK15;
   }
@@ -170,7 +171,7 @@ static inline int32 SIGNEXT18_32 (word18 w)
   {
     if (w & SIGN18)
       {
-        return ((int32) w) | (((uint32) -1) << 18);
+        return ((int32) w) | (int32) (((uint32) -1) << 18);
       }
     return w & MASK18;
   }
@@ -179,7 +180,7 @@ static inline int32 SIGNEXT21_32 (word18 w)
   {
     if (w & SIGN21)
       {
-        return ((int32) w) | (((uint32) -1) << 21);
+        return ((int32) w) | (int32) (((uint32) -1) << 21);
       }
     return w & MASK21;
   }
@@ -188,7 +189,7 @@ static inline int32 SIGNEXT22_32 (word18 w)
   {
     if (w & SIGN22)
       {
-        return ((int32) w) | (((uint32) -1) << 22);
+        return ((int32) w) | (int32) (((uint32) -1) << 22);
       }
     return w & MASK22;
   }
@@ -197,7 +198,7 @@ static inline int32 SIGNEXT24_32 (word18 w)
   {
     if (w & SIGN24)
       {
-        return ((int32) w) | (((uint32) -1) << 24);
+        return ((int32) w) | (int32) (((uint32) -1) << 24);
       }
     return w & MASK24;
   }
@@ -206,7 +207,7 @@ static inline t_int64 SIGNEXT36_64 (word36 w)
   {
     if (w & SIGN36)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 36;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 36);
       }
     return w & MASK36;
   }
@@ -215,7 +216,7 @@ static inline t_int64 SIGNEXT18_64 (word36 w)
   {
     if (w & SIGN18)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 18;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 18);
       }
     return w & MASK18;
   }
@@ -224,7 +225,7 @@ static inline t_int64 SIGNEXT21_64 (word36 w)
   {
     if (w & SIGN21)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 21;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 21);
       }
     return w & MASK21;
   }
@@ -233,7 +234,7 @@ static inline t_int64 SIGNEXT22_64 (word36 w)
   {
     if (w & SIGN22)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 22;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 22);
       }
     return w & MASK22;
   }
@@ -242,7 +243,7 @@ static inline t_int64 SIGNEXT24_64 (word36 w)
   {
     if (w & SIGN24)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 24;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 24);
       }
     return w & MASK24;
   }
@@ -251,7 +252,7 @@ static inline int128 SIGNEXT72_128 (word72 w)
   {
     if (w & SIGN72)
       {
-        return ((int128) w) | (((uint128) -1ll) << 72);
+        return ((int128) w) | (int128) (((uint128) -1ll) << 72);
       }
     return w & MASK72;
   }
