@@ -3003,6 +3003,10 @@ static void EISloadInputBufferNumeric (int k)
                 else if (TN == CTN4 && n == N-1)    // the 2nd 4-chars of the 8-bit exponent
                 {
                     e->exponent |= (c & 0xf);
+
+                    signed char ce = (signed char) (e->exponent & 0xff);
+                    e->exponent = ce;
+
                     e->srcTally -= 1;   // 1 less source char
                 }
                 else
