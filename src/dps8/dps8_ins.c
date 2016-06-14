@@ -83,7 +83,7 @@ static void writeOperands (void)
         //
 
         word36 indword;
-        word36 indwordAddress = cpu.TPR.CA;
+        word18 indwordAddress = cpu.TPR.CA;
         Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -268,7 +268,7 @@ static void readOperands (void)
         //
 
         word36 indword;
-        word36 indwordAddress = cpu.TPR.CA;
+        word18 indwordAddress = cpu.TPR.CA;
         Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -3376,8 +3376,8 @@ static t_stat DoBasicInstruction (void)
                                " rQ %012llo CY %012llo\n", cpu.rQ, cpu.CY);
                   }
 
-                cpu.rA = remainder & DMASK;
-                cpu.rQ = quotient & DMASK;
+                cpu.rA = (word36) remainder & DMASK;
+                cpu.rQ = (word36) quotient & DMASK;
 
 #ifdef DIV_TRACE
                 sim_debug (DBG_CAC, & cpu_dev, "rA (rem)  %012llo\n", cpu.rA);
@@ -4343,7 +4343,7 @@ static t_stat DoBasicInstruction (void)
                          "call6 access violation fault (outward call)");
             }
             if (cpu.TPR.TRR < cpu.PPR.PRR)
-                cpu.PR[7].SNR = ((cpu.DSBR.STACK << 3) | cpu.TPR.TRR) & MASK15;
+                cpu.PR[7].SNR = (((word15) (cpu.DSBR.STACK << 3)) | cpu.TPR.TRR) & MASK15;
             if (cpu.TPR.TRR == cpu.PPR.PRR)
                 cpu.PR[7].SNR = cpu.PR[6].SNR;
             cpu.PR[7].RNR = cpu.TPR.TRR;
@@ -5238,13 +5238,13 @@ static t_stat DoBasicInstruction (void)
               // 2 bits for the DPS8M.
               //int cpu_port_num = getbits36_2 (TPR.CA, 0);
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-              int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+              int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, (int) cpu_port_num);
               if (scu_unit_num < 0)
                 {
                   sim_warn ("RCCL can't find the right SCU; using #0\n");
                   scu_unit_num = 0;
                 }
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & cpu.rA, & cpu.rQ);
+              t_stat rc = scu_rscr ((uint) scu_unit_num, ASSUME_CPU0, 040, & cpu.rA, & cpu.rQ);
               if (rc > 0)
                 return rc;
 #ifndef SPEED
@@ -5439,7 +5439,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rQ <<= 6;       // Shift C(Q) left six positions
                 cpu.rQ &= DMASK;
 
-                cpu.rQ &= ~017;     // 4-bit quotient -> C(Q)32,35
+                cpu.rQ &= (word36) ~017;     // 4-bit quotient -> C(Q)32,35
                 cpu.rQ |= (tmp36q & 017);
 
                 cpu.rA = tmp36r;    // remainder -> C(A)
@@ -5731,13 +5731,13 @@ static t_stat DoBasicInstruction (void)
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, 
-                                                       cpu_port_num);
+                                                       (int) cpu_port_num);
                 if (scu_unit_num < 0)
                   {
                     sim_warn ("RMCM can't find the right SCU; using #0\n");
                     scu_unit_num = 0;
                   }
-                t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & cpu.rA, & cpu.rQ);
+                t_stat rc = scu_rmcm ((uint) scu_unit_num, ASSUME_CPU0, & cpu.rA, & cpu.rQ);
                 if (rc)
                     return rc;
                 SC_I_ZERO (cpu.rA == 0);
@@ -5774,7 +5774,7 @@ static t_stat DoBasicInstruction (void)
                              " defaulting to port A\n", cpu.iefpFinalAddress);
                   cpu_port_num = 0;
                 }
-              uint scu_unit_num = cables -> 
+              uint scu_unit_num = (uint) cables -> 
                 cablesFromScuToCpu [ASSUME_CPU0].
                   ports [cpu_port_num].scu_unit_num;
 
@@ -5887,48 +5887,48 @@ static t_stat DoBasicInstruction (void)
 //     111 4096K   2^22
 
                   cpu.rA  = 0;
-                  cpu.rA |= (cpu.switches.assignment  [0] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.assignment  [0] & 07LL)  <<
                         (35 -  (2 +  0));
-                  cpu.rA |= (cpu.switches.enable      [0] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.enable      [0] & 01LL)  <<
                         (35 -  (3 +  0));
-                  cpu.rA |= (cpu.switches.init_enable [0] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.init_enable [0] & 01LL)  <<
                         (35 -  (4 +  0));
-                  cpu.rA |= (cpu.switches.interlace   [0] ? 1LL:0LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.interlace   [0] ? 1LL:0LL)  <<
                         (35 -  (5 +  0));
-                  cpu.rA |= (cpu.switches.store_size  [0] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.store_size  [0] & 07LL)  <<
                         (35 -  (8 +  0));
 
-                  cpu.rA |= (cpu.switches.assignment  [1] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.assignment  [1] & 07LL)  <<
                         (35 -  (2 +  9));
-                  cpu.rA |= (cpu.switches.enable      [1] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.enable      [1] & 01LL)  <<
                         (35 -  (3 +  9));
-                  cpu.rA |= (cpu.switches.init_enable [1] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.init_enable [1] & 01LL)  <<
                         (35 -  (4 +  9));
-                  cpu.rA |= (cpu.switches.interlace   [1] ? 1LL:0LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.interlace   [1] ? 1LL:0LL)  <<
                         (35 -  (5 +  9));
-                  cpu.rA |= (cpu.switches.store_size  [1] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.store_size  [1] & 07LL)  <<
                         (35 -  (8 +  9));
 
-                  cpu.rA |= (cpu.switches.assignment  [2] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.assignment  [2] & 07LL)  <<
                         (35 -  (2 + 18));
-                  cpu.rA |= (cpu.switches.enable      [2] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.enable      [2] & 01LL)  <<
                         (35 -  (3 + 18));
-                  cpu.rA |= (cpu.switches.init_enable [2] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.init_enable [2] & 01LL)  <<
                         (35 -  (4 + 18));
-                  cpu.rA |= (cpu.switches.interlace   [2] ? 1LL:0LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.interlace   [2] ? 1LL:0LL)  <<
                         (35 -  (5 + 18));
-                  cpu.rA |= (cpu.switches.store_size  [2] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.store_size  [2] & 07LL)  <<
                         (35 -  (8 + 18));
 
-                  cpu.rA |= (cpu.switches.assignment  [3] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.assignment  [3] & 07LL)  <<
                         (35 -  (2 + 27));
-                  cpu.rA |= (cpu.switches.enable      [3] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.enable      [3] & 01LL)  <<
                         (35 -  (3 + 27));
-                  cpu.rA |= (cpu.switches.init_enable [3] & 01LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.init_enable [3] & 01LL)  <<
                         (35 -  (4 + 27));
-                  cpu.rA |= (cpu.switches.interlace   [3] ? 1LL:0LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.interlace   [3] ? 1LL:0LL)  <<
                         (35 -  (5 + 27));
-                  cpu.rA |= (cpu.switches.store_size  [3] & 07LL)  <<
+                  cpu.rA |= (word36) (cpu.switches.store_size  [3] & 07LL)  <<
                         (35 -  (8 + 27));
                   break;
 
@@ -5960,22 +5960,22 @@ static t_stat DoBasicInstruction (void)
 // C(Processor number switches) -> C(A) 33,35
 
                   cpu.rA = 0;
-                  cpu.rA |= (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35- 0);
-                  cpu.rA |= (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1);
-                  cpu.rA |= (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2);
-                  cpu.rA |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
+                  cpu.rA |= (word36) (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35- 0);
+                  cpu.rA |= (word36) (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1);
+                  cpu.rA |= (word36) (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2);
+                  cpu.rA |= (word36) (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
                   cpu.rA |= (0b01L)  /* DPS8M */                        << (35- 5);
-                  cpu.rA |= (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
+                  cpu.rA |= (word36) (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
                   cpu.rA |= (0b1L)                                      << (35-13);
                   cpu.rA |= (0b0000L)                                   << (35-17);
                   cpu.rA |= (0b111L)                                    << (35-20);
                   cpu.rA |= (0b00L)                                     << (35-22);
                   cpu.rA |= (0b1L)  /* DPS8M */                         << (35-23);
-                  cpu.rA |= (cpu.switches.proc_mode & 01LL)               << (35-24);
+                  cpu.rA |= (word36) (cpu.switches.proc_mode & 01LL)               << (35-24);
                   cpu.rA |= (0b1L)                                      << (35-25);
                   cpu.rA |= (0b000L)                                    << (35-28);
-                  cpu.rA |= (cpu.switches.proc_speed & 017LL)             << (35-32);
-                  cpu.rA |= (cpu.switches.cpu_num & 07LL)                 << (35-35);
+                  cpu.rA |= (word36) (cpu.switches.proc_speed & 017LL)             << (35-32);
+                  cpu.rA |= (word36) (cpu.switches.cpu_num & 07LL)                 << (35-35);
                   break;
 
                 case 3: // configuration switches for ports E-H, which
@@ -6001,10 +6001,10 @@ static t_stat DoBasicInstruction (void)
 //                         13 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1             7
 
                   cpu.rA  = 0;
-                  cpu.rA |= (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35-13);
-                  cpu.rA |= (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35-15);
-                  cpu.rA |= (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35-17);
-                  cpu.rA |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35-19);
+                  cpu.rA |= (word36) (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35-13);
+                  cpu.rA |= (word36) (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35-15);
+                  cpu.rA |= (word36) (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35-17);
+                  cpu.rA |= (word36) (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35-19);
                   break;
 
                 default:
@@ -6050,7 +6050,7 @@ static t_stat DoBasicInstruction (void)
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0,
-                                                       cpu_port_num);
+                                                       (int) cpu_port_num);
                 if (scu_unit_num < 0)
                   {
                     if (cpu_port_num == 0)
@@ -6063,7 +6063,7 @@ static t_stat DoBasicInstruction (void)
                       putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                     doFault (FAULT_CMD, not_control, "(smcm)");
                   }
-                t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, cpu.rA, cpu.rQ);
+                t_stat rc = scu_smcm ((uint) scu_unit_num, ASSUME_CPU0, cpu.rA, cpu.rQ);
                 if (rc)
                     return rc;
             }
@@ -6080,7 +6080,7 @@ static t_stat DoBasicInstruction (void)
             // specify which processor port (i.e., which system
             // controller) is used.
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, (int) cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -6094,7 +6094,7 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
-            t_stat rc = scu_smic (scu_unit_num, ASSUME_CPU0, cpu_port_num, cpu.rA);
+            t_stat rc = scu_smic ((uint) scu_unit_num, ASSUME_CPU0, cpu_port_num, cpu.rA);
             // Not used bu 4MW
             // if (rc == CONT_FAULT)
               // doFault (FAULT_STR, not_control, "(smic)");
@@ -6107,7 +6107,7 @@ static t_stat DoBasicInstruction (void)
         case 0057:  // sscr
           {
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, (int) cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -6121,7 +6121,7 @@ static t_stat DoBasicInstruction (void)
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
-            t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, cpu_port_num, 
+            t_stat rc = scu_sscr ((uint) scu_unit_num, ASSUME_CPU0, cpu_port_num, 
                                   cpu.iefpFinalAddress & MASK15, cpu.rA, cpu.rQ);
             if (rc)
               return rc;
@@ -6227,7 +6227,7 @@ static t_stat DoBasicInstruction (void)
 static t_stat DoEISInstruction (void)
 {
     DCDstruct * i = & cpu.currentInstruction;
-    int32 opcode = i->opcode;
+    uint32 opcode = i->opcode;
 
     switch (opcode)
     {
@@ -6921,7 +6921,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
+                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
                         break;
 
                     case CTA6:  // 1
@@ -6929,7 +6929,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
+                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
                         break;
 
                     case CTA9:  // 0
@@ -6966,7 +6966,7 @@ static t_stat DoEISInstruction (void)
                 //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
 
-                int CN = 0;
+                word3 CN = 0;
                 switch(TN)
                 {
                     case CTN4:  // 1
@@ -6975,7 +6975,7 @@ static t_stat DoEISInstruction (void)
                         //     C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, CN & MASK3);
+                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
                         break;
 
                     case CTN9:  // 0
@@ -6984,7 +6984,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36 (& cpu.CY, 18, 3, (CN & MASK3) << 1);
+                        putbits36 (& cpu.CY, 18, 3, (word36) ((CN & MASK3) << 1));
                         break;
                 }
             }
@@ -7872,8 +7872,8 @@ void doRCU (void)
     if (cpu.cu.FI_ADDR == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
-        longjmp (jmpMain, JMP_RESTART);
         sim_debug (DBG_TRACE, & cpu_dev, "RCU LUF RESTART return\n");
+        longjmp (jmpMain, JMP_RESTART);
       }
 
     if (cpu.cu.FI_ADDR == FAULT_DF0 ||
