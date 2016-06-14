@@ -99,6 +99,8 @@ typedef uint32      word18;
 typedef uint32      word19;
 typedef int32       word18s;
 typedef uint32      word20;
+typedef uint32      word21;
+typedef uint32      word22;
 typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word28;
@@ -193,8 +195,8 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
-#define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
-#define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
+#define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
+#define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
 #define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
 

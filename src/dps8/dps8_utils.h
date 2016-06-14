@@ -318,7 +318,7 @@ static inline void putbits72 (word72 * x, uint p, uint n, word72 val)
 
 //  getbits18 (data, starting bit, number of bits)
 
-static inline word36 getbits18 (word18 x, uint i, uint n)
+static inline word18 getbits18 (word18 x, uint i, uint n)
   {
     // bit 17 is right end, bit zero is 18th from the right
     int shift = 17 - (int) i - (int) n + 1;

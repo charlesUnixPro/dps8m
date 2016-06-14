@@ -82,7 +82,7 @@ char *disAssemble(word36 instruction)
     word9  opcode  = GET_OP(instruction);   ///< get opcode
     int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
     word18 address = GET_ADDR(instruction);
-    int32  a       = GET_A(instruction);
+    word1  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
     word6  tag     = GET_TAG(instruction);
 

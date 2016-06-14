@@ -602,7 +602,7 @@ struct DCDstruct
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     word18 address;       // bits 0-17 of instruction
-    bool   a;             // bit-29 - address via pointer register. Usually.
+    word1  a;             // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.
     word6  tag;           // instruction tag
     

@@ -158,7 +158,7 @@ static inline int SIGNEXT8_int (word8 w)
     return w & MASK8;
   }
 
-static inline int32 SIGNEXT15_32 (word18 w)
+static inline int32 SIGNEXT15_32 (word15 w)
   {
     if (w & SIGN15)
       {
@@ -176,7 +176,7 @@ static inline int32 SIGNEXT18_32 (word18 w)
     return w & MASK18;
   }
 
-static inline int32 SIGNEXT21_32 (word18 w)
+static inline int32 SIGNEXT21_32 (word21 w)
   {
     if (w & SIGN21)
       {
@@ -185,7 +185,7 @@ static inline int32 SIGNEXT21_32 (word18 w)
     return w & MASK21;
   }
 
-static inline int32 SIGNEXT22_32 (word18 w)
+static inline int32 SIGNEXT22_32 (word22 w)
   {
     if (w & SIGN22)
       {
@@ -194,7 +194,7 @@ static inline int32 SIGNEXT22_32 (word18 w)
     return w & MASK22;
   }
 
-static inline int32 SIGNEXT24_32 (word18 w)
+static inline int32 SIGNEXT24_32 (word24 w)
   {
     if (w & SIGN24)
       {
@@ -319,7 +319,7 @@ static inline word72 SIGNEXT36_72 (word36 w)
 
 
 #define GET_TAG(x)      ((word6)  ( (x)                   & INST_M_TAG ))
-#define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
+#define GET_A(x)        ((word1)  (((x) >> INST_V_A)      & INST_M_A   ))
 #define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
 #define GET_OP(x)       ((word9)  (((x) >> INST_V_OP)     & INST_M_OP ))
 #define GET_OPX(x)      ((bool)   (((x) >> INST_V_OPX)    & INST_M_OPX))
