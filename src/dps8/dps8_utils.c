@@ -84,7 +84,7 @@ char *disAssemble(word36 instruction)
     word18 address = GET_ADDR(instruction);
     int32  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
-    int32  tag     = GET_TAG(instruction);
+    word6  tag     = GET_TAG(instruction);
 
     static char result[132] = "???";
     strcpy(result, "???");
@@ -125,7 +125,7 @@ char *disAssemble(word36 instruction)
     }
     // get mod
     strcpy(buff, "");
-    for(int n = 0 ; n < 0100 ; n++)
+    for(uint n = 0 ; n < 0100 ; n++)
         if (extMods[n].mod)
             if(n == tag)
             {
@@ -150,7 +150,7 @@ char *disAssemble(word36 instruction)
  *
  */
 
-char *getModString(int32 tag)
+char *getModString(word6 tag)
 {
     static char msg[256];
     strcpy(msg, "none");
@@ -159,7 +159,7 @@ char *getModString(int32 tag)
     {
         sprintf(msg, "getModReg(tag out-of-range %o)", tag);
     } else {
-        for(int n = 0 ; n < 0100 ; n++)
+        for(uint n = 0 ; n < 0100 ; n++)
             if (extMods[n].mod)
                 if(n == tag)
                 {

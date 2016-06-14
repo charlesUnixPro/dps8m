@@ -318,7 +318,7 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define INST_M_ARN      07U
 
 
-#define GET_TAG(x)      ((int32)  ( (x)                   & INST_M_TAG ))
+#define GET_TAG(x)      ((word6)  ( (x)                   & INST_M_TAG ))
 #define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
 #define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
 #define GET_OP(x)       ((int32)  (((x) >> INST_V_OP)     & INST_M_OP ))
@@ -328,8 +328,8 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define GET_PRN(x)      ((word3)  (((x) >> INST_V_PRN)    & INST_M_PRN))
 #define GET_ARN(x)      ((word3)  (((x) >> INST_V_ARN)    & INST_M_ARN))
 
-#define GET_TM(x)       ((int32)(GET_TAG(x) & 060U))
-#define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))
+#define GET_TM(x)       (       (GET_TAG(x) & 060U))
+#define GET_TD(x)       (       (GET_TAG(x) & 017U))
 
 #define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
