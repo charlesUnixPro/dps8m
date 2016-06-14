@@ -1389,7 +1389,7 @@ restart_1:
           }
       }
 
-    cpu.du.JMP = info -> ndes;
+    cpu.du.JMP = (word3) info -> ndes;
 
 ///
 /// executeInstruction: RPT/RPD special processing for 'first time'
@@ -1506,7 +1506,7 @@ restart_1:
             cpu.du.CHTALLY = 0;
             cpu.du.Z = 1;
           }
-        for(int n = 0; n < info -> ndes; n += 1)
+        for(uint n = 0; n < info -> ndes; n += 1)
           {
 // XXX This is a bit of a hack; In general the code is good about
 // setting up for bit29 or PR operations by setting up TPR, but

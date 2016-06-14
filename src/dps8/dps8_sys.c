@@ -1746,10 +1746,10 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
             
             // XXX Need to complete MW EIS support in disAssemble()
             
-            for(int n = 0 ; n < p->info->ndes; n += 1)
+            for(uint n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
-            return -p->info->ndes;
+            return (t_stat) -p->info->ndes;
         }
         
         return SCPE_OK;

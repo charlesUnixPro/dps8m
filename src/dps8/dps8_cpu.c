@@ -352,7 +352,7 @@ static void printSDW0 (_sdw0 *SDW)
     sim_printf ("%s\n", strSDW0 (SDW));
   }
 
-t_stat dpsCmd_DumpSegmentTable()
+static t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
@@ -1500,7 +1500,7 @@ setCPU:;
                 // present register.  
 
                 uint intr_pair_addr = get_highest_intr ();
-                cpu.cu.FI_ADDR = intr_pair_addr / 2;
+                cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
 
                 // Temporary absolute mode

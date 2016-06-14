@@ -931,7 +931,7 @@ typedef struct du_unit_data_t
     // word1 F3;      //    31  1   F3      First time; data in operand 
                       //                      descriptor 3 is valid
     // word1 A3;      //    32  1   A3      Operand descriptor 3 is active
-    word1 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
+    word3 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
                       //                      to skip to find the next
                       //                      instruction following this 
                       //                      multiword instruction
