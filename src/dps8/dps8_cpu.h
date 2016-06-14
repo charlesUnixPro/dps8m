@@ -41,7 +41,7 @@ typedef enum
 
 typedef enum
   {
-    ABORT_cycle /* = ABORT_CYCLE */,
+    //ABORT_cycle /* = ABORT_CYCLE */,
     FAULT_cycle /* = FAULT_CYCLE */,
     EXEC_cycle,
     FAULT_EXEC_cycle,

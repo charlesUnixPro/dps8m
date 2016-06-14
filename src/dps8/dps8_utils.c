@@ -79,7 +79,7 @@ struct opCode *getIWBInfo(DCDstruct *i)
 
 char *disAssemble(word36 instruction)
 {
-    int32  opcode  = GET_OP(instruction);   ///< get opcode
+    word9  opcode  = GET_OP(instruction);   ///< get opcode
     int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
     word18 address = GET_ADDR(instruction);
     int32  a       = GET_A(instruction);

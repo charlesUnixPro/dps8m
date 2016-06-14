@@ -677,7 +677,7 @@ t_stat dpsCmd_Segments (UNUSED int32 arg, char *buf)
     return SCPE_ARG;
 }
 
-static void ic_history_init(void);
+//static void ic_history_init(void);
 
 static t_stat cpu_boot (UNUSED int32 unit_num, UNUSED DEVICE * dptr)
 {
@@ -917,7 +917,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
 #endif
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
 
-    ic_history_init();
+    //ic_history_init();
     
     // TODO: reset *all* other structures to zero
     
@@ -1232,8 +1232,8 @@ static char * cycleStr (cycles_t cycle)
   {
     switch (cycle)
       {
-        case ABORT_cycle:
-          return "ABORT_cycle";
+        //case ABORT_cycle:
+          //return "ABORT_cycle";
         case FAULT_cycle:
           return "FAULT_cycle";
         case EXEC_cycle:
@@ -1879,7 +1879,7 @@ setCPU:;
                 cpu.TPR.TRR = 0;
 
                 // (12-bits of which the top-most 7-bits are used)
-                int fltAddress = (cpu.switches.FLT_BASE << 5) & 07740;
+                uint fltAddress = (cpu.switches.FLT_BASE << 5) & 07740;
 
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * cpu.faultNumber;
@@ -1974,11 +1974,13 @@ setCPU:;
                 break;
               }
 
+#if 0
             default:
               {
                 sim_printf ("cpu.cycle %d?\n", cpu.cycle);
                 return SCPE_UNK;
               }
+#endif
           }  // switch (cpu.cycle)
 
       } while (reason == 0);
@@ -2066,18 +2068,18 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
-            for (int j = 0 ; j < 8 ; j += 1)
+            for (uint j = 0 ; j < 8 ; j += 1)
                 Read (addr + j, cpu.Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
-            for (int j = 0 ; j < 16 ; j += 1)
+            for (uint j = 0 ; j < 16 ; j += 1)
                 Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
             
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
-            for (int j = 0 ; j < 32 ; j += 1)
+            for (uint j = 0 ; j < 32 ; j += 1)
                 Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
             
             break;
@@ -2103,17 +2105,17 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
-            for (int j = 0 ; j < 8 ; j += 1)
+            for (uint j = 0 ; j < 8 ; j += 1)
                 Write (addr + j, cpu.Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
-            for (int j = 0 ; j < 16 ; j += 1)
+            for (uint j = 0 ; j < 16 ; j += 1)
                 Write (addr + j, cpu.Yblock16[j], OPERAND_STORE, b29);
             break;
         case 32:
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
-            for (int j = 0 ; j < 32 ; j += 1)
+            for (uint j = 0 ; j < 32 ; j += 1)
                 Write (addr + j, cpu.Yblock32[j], OPERAND_STORE, b29);
             break;
     }
@@ -2568,6 +2570,7 @@ void set_addr_mode(addr_modes_t mode)
  Used for display via cpu_show_history()
  */
 
+#if 0
 static int ic_hist_max = 0;
 static int ic_hist_ptr;
 static int ic_hist_wrapped;
@@ -2599,6 +2602,7 @@ static void ic_history_init(void)
         ic_hist_max = 60;
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
+#endif
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
@@ -2619,15 +2623,15 @@ static void cpu_init_array (void)
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
                                UNUSED int val, UNUSED void * desc)
 {
-    int unit_num = UNIT_NUM (uptr);
+    long unit_num = UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= (int) cpu_dev.numunits)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
-        sim_printf ("error: invalid unit number %d\n", unit_num);
+        sim_printf ("error: invalid unit number %ld\n", unit_num);
         return SCPE_ARG;
       }
 
-    sim_printf ("CPU unit number %d\n", unit_num);
+    sim_printf ("CPU unit number %ld\n", unit_num);
 
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", cpu.switches.cpu_num);
@@ -2855,11 +2859,11 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
-    int cpu_unit_num = UNIT_NUM (uptr);
-    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev.numunits)
+    long cpu_unit_num = UNIT_NUM (uptr);
+    if (cpu_unit_num < 0 || cpu_unit_num >= (long) cpu_dev.numunits)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
-        sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
+        sim_printf ("error: cpu_set_config: invalid unit number %ld\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
@@ -2887,126 +2891,123 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case  0: // FAULTBASE
-              cpu.switches.FLT_BASE = v;
+              cpu.switches.FLT_BASE = (uint) v;
               break;
 
             case  1: // NUM
-              cpu.switches.cpu_num = v;
+              cpu.switches.cpu_num = (uint) v;
               break;
 
             case  2: // DATA
-              cpu.switches.data_switches = v;
+              cpu.switches.data_switches = (word36) v;
               break;
 
             case  3: // MODE
-              cpu.switches.proc_mode = v;
+              cpu.switches.proc_mode = (uint) v;
               break;
 
             case  4: // SPEED
-              cpu.switches.proc_speed = v;
+              cpu.switches.proc_speed = (uint) v;
               break;
 
             case  5: // PORT
-              port_num = v;
+              port_num = (int) v;
               break;
 
             case  6: // ASSIGNMENT
-              cpu.switches.assignment [port_num] = v;
+              cpu.switches.assignment [port_num] = (uint) v;
               break;
 
             case  7: // INTERLACE
-              cpu.switches.interlace [port_num] = v;
+              cpu.switches.interlace [port_num] = (uint) v;
               break;
 
             case  8: // ENABLE
-              cpu.switches.enable [port_num] = v;
+              cpu.switches.enable [port_num] = (uint) v;
               break;
 
             case  9: // INIT_ENABLE
-              cpu.switches.init_enable [port_num] = v;
+              cpu.switches.init_enable [port_num] = (uint) v;
               break;
 
             case 10: // STORE_SIZE
-              cpu.switches.store_size [port_num] = v;
+              cpu.switches.store_size [port_num] = (uint) v;
               break;
 
             case 11: // INVERTABSOLUTE
-              cpu.switches.invert_absolute = v;
+              cpu.switches.invert_absolute = (uint) v;
               break;
 
             case 12: // B29TEST
-              cpu.switches.b29_test = v;
+              cpu.switches.b29_test = (uint) v;
               break;
 
             case 13: // DIS_ENABLE
-              cpu.switches.dis_enable = v;
+              cpu.switches.dis_enable = (uint) v;
               break;
 
             case 14: // AUTO_APPEND_DISABLE
-              cpu.switches.auto_append_disable = v;
+              cpu.switches.auto_append_disable = (uint) v;
               break;
 
             case 15: // LPRP_HIGHONLY
-              cpu.switches.lprp_highonly = v;
+              cpu.switches.lprp_highonly = (uint) v;
               break;
 
             case 16: // STEADY_CLOCK
-              //cpu.switches.steady_clock = v;
-              scu [0].steady_clock = v;
+              scu [0].steady_clock = (uint) v;
               break;
 
             case 17: // DEGENERATE_MODE
-              cpu.switches.degenerate_mode = v;
+              cpu.switches.degenerate_mode = (uint) v;
               break;
 
             case 18: // APPEND_AFTER
-              cpu.switches.append_after = v;
+              cpu.switches.append_after = (uint) v;
               break;
 
             case 19: // SUPER_USER
-              cpu.switches.super_user = v;
+              cpu.switches.super_user = (uint) v;
               break;
 
             case 20: // EPP_HACK
-              cpu.switches.epp_hack = v;
+              cpu.switches.epp_hack = (uint) v;
               break;
 
             case 21: // HALT_ON_UNIMPLEMENTED
-              cpu.switches.halt_on_unimp = v;
+              cpu.switches.halt_on_unimp = (uint) v;
               break;
 
             case 22: // DISABLE_WAM
-              cpu.switches.disable_wam = v;
+              cpu.switches.disable_wam = (uint) v;
               break;
 
             case 23: // BULLET_TIME
-              //cpu.switches.bullet_time = v;
-              scu [0].bullet_time = v;
+              scu [0].bullet_time = (uint) v;
               break;
 
             case 24: // DISABLE_KBD_BKPT
-              cpu.switches.disable_kbd_bkpt = v;
+              cpu.switches.disable_kbd_bkpt = (uint) v;
               break;
 
             case 25: // REPORT_FAULTS
-              cpu.switches.report_faults = v;
+              cpu.switches.report_faults = (uint) v;
               break;
 
             case 26: // TRO_ENABLE
-              cpu.switches.tro_enable = v;
+              cpu.switches.tro_enable = (uint) v;
               break;
 
             case 27: // Y2K
-              //cpu.switches.y2k = v;
-              scu [0].y2k = v;
+              scu [0].y2k = (uint) v;
               break;
 
             case 28: // DRL_FATAL
-              cpu.switches.drl_fatal = v;
+              cpu.switches.drl_fatal = (uint) v;
               break;
 
             case 29: // TRLSB
-              cpu.switches.trlsb = v;
+              cpu.switches.trlsb = (uint) v;
               break;
 
             default:
@@ -3089,6 +3090,7 @@ static void print_frame (
 }
 #endif
 
+#if 0
 static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, char * ctx)
   {
     char * msg;
@@ -3102,7 +3104,9 @@ static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, 
       }
     return 0;
   }
+#endif
 
+#if 0
 static int dumpStack (uint stkBase, uint stkNo)
   {
     word36 w0, w1;
@@ -3231,17 +3235,20 @@ static int dumpStack (uint stkBase, uint stkNo)
     return 0;
     
   }
+#endif
 
+#if 0
 int dumpStacks (void)
   {
     sim_printf ("DSBR.STACK %04u\n", cpu.DSBR.STACK);
-    uint stkBase = cpu.DSBR.STACK << 3;
+    uint stkBase = (uint) cpu.DSBR.STACK << 3;
     for (uint stkNo = 0; stkNo <= 5; stkNo ++)
       {
         dumpStack (stkBase + stkNo, stkNo);
       }
     return 0;
   }
+#endif
 
 #ifndef SPEED
 static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
@@ -3497,7 +3504,7 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
     int n = atoi (cptr);
     if (n < 1 || n > N_CPU_UNITS_MAX)
       return SCPE_ARG;
-    cpu_dev.numunits = n;
+    cpu_dev.numunits = (uint32) n;
     return SCPE_OK;
   }
 

@@ -321,7 +321,7 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define GET_TAG(x)      ((word6)  ( (x)                   & INST_M_TAG ))
 #define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
 #define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
-#define GET_OP(x)       ((int32)  (((x) >> INST_V_OP)     & INST_M_OP ))
+#define GET_OP(x)       ((word9)  (((x) >> INST_V_OP)     & INST_M_OP ))
 #define GET_OPX(x)      ((bool)   (((x) >> INST_V_OPX)    & INST_M_OPX))
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
