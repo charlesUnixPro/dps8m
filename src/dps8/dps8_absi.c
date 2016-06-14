@@ -573,7 +573,7 @@ sim_printf ("\n");
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
 sim_printf ("absi marker\n");
-        send_marker_interrupt (iomUnitIdx, chan);
+        send_marker_interrupt (iomUnitIdx, (int) chan);
       }
 
     if (p -> IDCW_CHAN_CMD == 0)
@@ -605,7 +605,7 @@ void absiProcessEvent (void)
       {
         if (absi_state[unit].link == NOLINK)
           continue;
-        int sz = udp_receive (unit, pkt, psz);
+        int sz = udp_receive ((int) unit, pkt, psz);
         if (sz < 0)
           {
             printf ("udp_receive failed\n");
@@ -625,7 +625,7 @@ void absiProcessEvent (void)
               }
             // Send a NOP reply
             //int16_t reply [2] = 0x0040
-            int rc = udp_send (absi_state[unit].link, pkt, sz, PFLG_FINAL);
+            int rc = udp_send (absi_state[unit].link, pkt, (uint16_t) sz, PFLG_FINAL);
             if (rc < 0)
               {
                 printf ("udp_send failed\n");
@@ -645,13 +645,13 @@ static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cp
     int n = atoi (cptr);
     if (n < 1 || n > N_ABSI_UNITS_MAX)
       return SCPE_ARG;
-    absi_dev . numunits = n;
+    absi_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
 t_stat absiAttach (UNIT * uptr, char * cptr)
   {
-    int unitno = uptr - absi_unit;
+    int unitno = (int) (uptr - absi_unit);
 
     //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
 
@@ -687,7 +687,7 @@ t_stat absiAttach (UNIT * uptr, char * cptr)
 // Detach (connect) ...
 t_stat absiDetach (UNIT * uptr)
   {
-    int unitno = uptr - absi_unit;
+    int unitno = (int) (uptr - absi_unit);
     t_stat ret;
     if ((uptr -> flags & UNIT_ATT) == 0)
       return SCPE_OK;
@@ -698,7 +698,7 @@ t_stat absiDetach (UNIT * uptr)
     if (ret != SCPE_OK)
       return ret;
     absi_state [unitno] . link = NOLINK;
-    uptr -> flags &= ~UNIT_ATT;
+    uptr -> flags &= ~(unsigned int) UNIT_ATT;
     free (uptr -> filename);
     uptr -> filename = NULL;
     return SCPE_OK;
