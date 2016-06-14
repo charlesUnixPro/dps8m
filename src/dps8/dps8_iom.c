@@ -657,7 +657,7 @@ static uint mbxLoc (uint iomUnitIdx, uint chan)
 // represent the next absoulute address (bits 6-23) of data prior to
 // the application of the Page Table Word"
 
-int status_service (uint iomUnitIdx, uint chan, bool marker)
+static int status_service (uint iomUnitIdx, uint chan, bool marker)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     // See page 33 and AN87 for format of y-pair of status info
@@ -799,7 +799,7 @@ static word24 UNUSED buildAUXPTWaddress (uint iomUnitIdx, int chan)
 
     word12 IOMBaseAddress = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     word24 addr = (((word24) IOMBaseAddress) & MASK12) << 6;
-    addr |= (chan & MASK6) << 2;
+    addr |= ((uint) chan & MASK6) << 2;
     addr |= 03;
     return addr;
   }
@@ -914,7 +914,7 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
         case cm1e:
         case cm2e:
         case cm1:
-          daddr |= p -> ADDR_EXT << 18;
+          daddr |= (uint) p -> ADDR_EXT << 18;
           break;
 
         case cm2:
@@ -929,8 +929,8 @@ sim_warn ("iomDirectDataService DCW paged\n");
         case cm5:
           {
 //sim_printf ("iomDirectDataService DCW segmented\n");
-            fetchDDSPTW (iomUnitIdx, chan, daddr);
-            daddr = (getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK8);
+            fetchDDSPTW (iomUnitIdx, (int) chan, daddr);
+            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK8);
           }
           break;
       }
@@ -959,7 +959,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                    __func__);
         tally = 4096;
       }
-    p -> tallyResidue = tally;
+    p -> tallyResidue = (word12) tally;
 
     if (write)
       {
@@ -971,8 +971,8 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
    
             if (p -> PCW_63_PTP)
               {
-                fetchIDSPTW (iomUnitIdx, chan, daddr);
-                word24 addr = (getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
+                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
                 core_write (addr, * data, __func__);
 //sim_printf (" %o %08o %08o %012llo %012llo\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
@@ -985,7 +985,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                   }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
-                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
                 core_write (daddr2, * data, __func__);
               }
             daddr ++;
@@ -1007,15 +1007,15 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               }
             if (p -> PCW_63_PTP)
               {
-                fetchIDSPTW (iomUnitIdx, chan, daddr);
-                word24 addr = (getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
+                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
                 core_read (addr, data, __func__);
               }
             else
               {
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
-                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
                 core_read (daddr2, data, __func__);
               }
             daddr ++;
@@ -1366,7 +1366,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
 //sim_printf ("PTW %012llo\n", p -> PTW_LPW);
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
-            word24 addr_ = (getbits36_14 (p -> PTW_LPW, 4) << 10) | ((p -> LPW_DCW_PTR) & MASK10);
+            word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
 //sim_printf ("addr now %08o\n", addr_);
             core_read (addr_, & p -> DCW, __func__);
 //sim_printf ("dcw now %012llo\n", p -> DCW);
@@ -2173,8 +2173,8 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
 
 int send_marker_interrupt (uint iomUnitIdx, int chan)
 {
-    status_service (iomUnitIdx, chan, true);
-    return send_general_interrupt (iomUnitIdx, chan, imwMarkerPic);
+    status_service (iomUnitIdx, (uint) chan, true);
+    return send_general_interrupt (iomUnitIdx, (uint) chan, imwMarkerPic);
 }
 
 /*
@@ -2232,8 +2232,8 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 
 static t_stat termIntrSvc (UNIT * unitp)
   {
-    uint iomUnitIdx = unitp -> u3;
-    uint chan = unitp -> u4;
+    uint iomUnitIdx = (uint) unitp -> u3;
+    uint chan = (uint) unitp -> u4;
     status_service (iomUnitIdx, chan, false);
     send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
     return SCPE_OK;
@@ -2533,7 +2533,7 @@ static void initMemoryIOM (uint iomUnitIdx)
 
 static t_stat bootSvc (UNIT * unitp)
   {
-    uint iomUnitIdx = unitp - bootChannelUnit;
+    uint iomUnitIdx = (uint) (unitp - bootChannelUnit);
     // the docs say press sysinit, then boot; simh doesn't have an
     // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
     // The docs don't say what the behavior is is you dont press sysinit
@@ -2561,7 +2561,7 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
         sim_printf ("iomBoot: Invalid unit number %d\n", unitNum);
         return SCPE_ARG;
       }
-    uint iomUnitIdx = unitNum;
+    uint iomUnitIdx = (uint) unitNum;
 #if 0
     // initialize memory with boot program
     initMemoryIOM ((uint)iomUnitIdx);
@@ -2604,7 +2604,7 @@ static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, char * cptr, UN
 static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                              UNUSED void * desc)
   {
-    uint iomUnitIdx = IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
@@ -2764,7 +2764,7 @@ static config_list_t iom_config_list [] =
 
 static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
   {
-    uint iomUnitIdx = IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
@@ -2791,35 +2791,35 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
               break;
 
             case 0: // OS
-              p -> configSwOS = v;
+              p -> configSwOS = (enum configSwOs_t) v;
               break;
 
             case 1: // BOOT
-              p -> configSwBootloadCardTape = v;
+              p -> configSwBootloadCardTape = (enum configSwBlCT_t) v;
               break;
 
             case 2: // IOM_BASE
-              p -> configSwIomBaseAddress = v;
+              p -> configSwIomBaseAddress = (word12) v;
               break;
 
             case 3: // MULTIPLEX_BASE
-              p -> configSwMultiplexBaseAddress = v;
+              p -> configSwMultiplexBaseAddress = (word9) v;
               break;
 
             case 4: // TAPECHAN
-              p -> configSwBootloadMagtapeChan = v;
+              p -> configSwBootloadMagtapeChan = (word6) v;
               break;
 
             case 5: // CARDCHAN
-              p -> configSwBootloadCardrdrChan = v;
+              p -> configSwBootloadCardrdrChan = (word6) v;
               break;
 
             case 6: // SCUPORT
-              p -> configSwBootloadPort = v;
+              p -> configSwBootloadPort = (word3) v;
               break;
 
             case 7: // PORT
-              port_num = v;
+              port_num = (uint) v;
               break;
 
 #if 0
@@ -2831,27 +2831,27 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
                   } 
 #endif
             case 8: // ADDR
-              p -> configSwPortAddress [port_num] = v;
+              p -> configSwPortAddress [port_num] = (uint) v;
               break;
 
             case 9: // INTERLACE
-              p -> configSwPortInterface [port_num] = v;
+              p -> configSwPortInterface [port_num] = (uint) v;
               break;
 
             case 10: // ENABLE
-              p -> configSwPortEnable [port_num] = v;
+              p -> configSwPortEnable [port_num] = (uint) v;
               break;
 
             case 11: // INITENABLE
-              p -> configSwPortSysinitEnable [port_num] = v;
+              p -> configSwPortSysinitEnable [port_num] = (uint) v;
               break;
 
             case 12: // HALFSIZE
-              p -> configSwPortHalfsize [port_num] = v;
+              p -> configSwPortHalfsize [port_num] = (uint) v;
               break;
 
             case 13: // STORE_SIZE
-              p -> configSwPortStoresize [port_num] = v;
+              p -> configSwPortStoresize [port_num] = (uint) v;
               break;
 
             default:
