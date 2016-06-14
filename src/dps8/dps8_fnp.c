@@ -188,7 +188,7 @@ struct mailbox
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the DIA code.
 
-pthread_mutex_t fnpMQlock;
+static pthread_mutex_t fnpMQlock;
 typedef struct fnpQueueElement fnpQueueElement;
 struct fnpQueueElement
   {
@@ -196,7 +196,7 @@ struct fnpQueueElement
     fnpQueueElement * prev, * next;
   };
 
-fnpQueueElement * fnpQueue = NULL;
+static fnpQueueElement * fnpQueue = NULL;
 
 void fnpQueueMsg (char * msg)
   {
@@ -273,7 +273,7 @@ static void pack (char * cmd, uint tally, uint offset, uint ptPtr, uint dataAddr
       tail ++;
     uint wordOff = 0;
     word36 word = 0;
-    uint lastWordOff = -1;
+    uint lastWordOff = (uint) -1;
 
     for (uint i = 0; i < tally; i ++)
        {
@@ -316,41 +316,41 @@ static void packWord (char * str, word36 word)
     * str = 0;
   }
 
-static char * unpack (char * buffer)
+static unsigned char * unpack (char * buffer)
   {
-    char * p = strstr (buffer, "data:");
+    unsigned char * p = (unsigned char *) strstr (buffer, "data:");
     if (! p)
       return NULL;
     p += 5; // strlen ("data:");
-    char * q;
-    int nBytes = strtol (p, & q, 10);
+    unsigned char * q;
+    int nBytes = (int) strtol ((char *) p, (char **) & q, 10);
     if (p == q)
       return NULL;
     if (* q != ':')
       return NULL;
     q ++;
-    char * out = malloc (nBytes);
+    unsigned char * out = malloc ((unsigned long) nBytes);
     if (! out)
       return NULL;
-    char * o = out;
+    unsigned char * o = out;
     int remaining = nBytes;
     while (remaining --)
       {
-        int val;
+        unsigned char val;
 
-        char ch = * q ++;
+        unsigned char ch = * q ++;
         if (ch >= '0' && ch <= '9')
-          val = (ch - '0') << 4;
+          val = (unsigned char) ((ch - '0') << 4);
         else if (ch >= 'a' && ch<= 'f')
-          val = (ch - 'a' + 10) << 4;
+          val = (unsigned char) ((ch - 'a' + 10) << 4);
         else
           return NULL;
 
         ch = * q ++;
         if (ch >= '0' && ch <= '9')
-          val |= (ch - '0');
+          val |= (unsigned char) (ch - '0');
         else if (ch >= 'a' && ch<= 'f')
-          val |= (ch - 'a' + 10);
+          val |= (unsigned char) (ch - 'a' + 10);
         else
           return NULL;
         * o ++ = val;
@@ -389,19 +389,19 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
                 putbits36 (& smbxp -> word2, 18, 9, 64); // op_code accept_new_terminal
                 putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
 
-                smbxp -> mystery [0] = termType; 
-                smbxp -> mystery [1] = chanBaud; 
+                smbxp -> mystery [0] = (word36) termType; 
+                smbxp -> mystery [1] = (word36) chanBaud; 
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "wru_timeout", 11) == 0)
               {
@@ -415,7 +415,7 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
                 putbits36 (& smbxp -> word2, 18, 9, 0114); // op_code wru_timeout
@@ -423,8 +423,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "input", 5) == 0)
               {
@@ -436,7 +436,7 @@ void fnpProcessEvent (void)
                     sim_debug (DBG_ERR, & fnpDev, "illformatted input message; dropping\n");
                     goto drop;
                   }
-                char * data = unpack (msg);
+                unsigned char * data = unpack (msg);
                 if (! data)
                   {
                     sim_debug (DBG_ERR, & fnpDev, "illformatted input message data; dropping\n");
@@ -489,10 +489,10 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
                 putbits36 (& smbxp -> word1, 18, 18, blksAvail);
 
-                putbits36 (& smbxp -> word2, 9, 9, charsAvail); // n_chars
+                putbits36 (& smbxp -> word2, 9, 9, (word36) charsAvail); // n_chars
                 putbits36 (& smbxp -> word2, 18, 9, 0102); // op_code input_in_mailbox
                 putbits36 (& smbxp -> word2, 27, 9, 1); // io_cmd rcd
 
@@ -516,8 +516,8 @@ void fnpProcessEvent (void)
 
 // command_data is at mystery[25]?
 
-                putbits36 (& smbxp -> mystery [25], 16, 1, outputPresent);
-                putbits36 (& smbxp -> mystery [25], 17, 1, hasBreak);
+                putbits36 (& smbxp -> mystery [25], 16, 1, (word36) outputPresent);
+                putbits36 (& smbxp -> mystery [25], 17, 1, (word36) hasBreak);
 
 #if 0
                 sim_printf ("    %012llo\n", smbxp -> word1);
@@ -529,8 +529,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "send_output", 11) == 0)
               {
@@ -544,7 +544,7 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
                 putbits36 (& smbxp -> word1, 18, 18, 256); // blocks available XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 0); // cmd_data_len XXX
@@ -553,8 +553,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "line_disconnected", 17) == 0)
               {
@@ -568,7 +568,7 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
                 putbits36 (& smbxp -> word2, 18, 9, 0101); // op_code line_disconnected
@@ -576,8 +576,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "line_break", 10) == 0)
               {
@@ -591,7 +591,7 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
                 putbits36 (& smbxp -> word2, 18, 9, 0113); // op_code line_break
@@ -599,8 +599,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else if (strncmp (msg, "ack_echnego_init", 16) == 0)
               {
@@ -614,7 +614,7 @@ void fnpProcessEvent (void)
                 putbits36 (& smbxp -> word1, 0, 3, 0); // dn355_no XXX
                 putbits36 (& smbxp -> word1, 8, 1, 1); // is_hsla XXX
                 putbits36 (& smbxp -> word1, 9, 3, 0); // la_no XXX
-                putbits36 (& smbxp -> word1, 12, 6, chanNum); // slot_no XXX
+                putbits36 (& smbxp -> word1, 12, 6, (word36) chanNum); // slot_no XXX
 
                 putbits36 (& smbxp -> word2, 9, 9, 2); // cmd_data_len XXX
                 putbits36 (& smbxp -> word2, 18, 9, 70); // op_code ack_echnego_init
@@ -622,8 +622,8 @@ void fnpProcessEvent (void)
 
                 fudp -> fnpMBXinUse [mbx] = true;
                 // Set the TIMW
-                putbits36 (& mbxp -> term_inpt_mpx_wd, mbx + 8, 1, 1);
-                send_terminate_interrupt (ASSUME0, cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
+                putbits36 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1, 1);
+                send_terminate_interrupt (ASSUME0, (uint) cables -> cablesFromIomToFnp [ASSUME0] . chan_num);
               }
             else
               {
@@ -738,8 +738,8 @@ static int findMbx (uint fnpUnitNumber)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNumber];
 // See comment at top of file
-    //for (uint i = 0; i < 4; i ++)
-    for (uint i = 0; i < 1; i ++)
+    //for (int i = 0; i < 4; i ++)
+    for (int i = 0; i < 1; i ++)
       if (! fudp -> fnpMBXinUse [i])
         return i;
     return -1;
@@ -828,7 +828,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         //sim_printf ("fnp disconnect_line\n");
                         char cmd [256];
                         sprintf (cmd, "disconnect_line %d", slot_no);
-                        tellFNP (devUnitIdx, cmd);          
+                        tellFNP ((int) devUnitIdx, cmd);          
                       }
                       break;
 
@@ -839,7 +839,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         //word36 command_data0 = smbxp -> command_data [0];
                         //uint bufferAddress = getbits36_18 (command_data0, 0);
                         //sim_printf ("  buffer address %06o\n", bufferAddress);
-                        tellFNP (devUnitIdx, "dont_accept_calls");
+                        tellFNP ((int) devUnitIdx, "dont_accept_calls");
                       }
                       break;
 
@@ -849,7 +849,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                         //word36 command_data0 = smbxp -> command_data [0];
                         //uint bufferAddress = getbits36_18 (command_data0, 0);
                         //sim_printf ("  buffer address %06o\n", bufferAddress);
-                        tellFNP (devUnitIdx, "accept_calls");
+                        tellFNP ((int) devUnitIdx, "accept_calls");
                       }
                       break;
 
@@ -862,7 +862,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         char cmd [256];
                         sprintf (cmd, "set_framing_chars %d %d %d", slot_no, d1, d2);
-                        tellFNP (devUnitIdx, cmd);          
+                        tellFNP ((int) devUnitIdx, cmd);          
                       }
                       break;
 
@@ -914,7 +914,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                  (uint) (echoTable [6] >>  2) & MASK16,
                                  (uint) (echoTable [7] >> 20) & MASK16,
                                  (uint) (echoTable [7] >>  2) & MASK16);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 
@@ -933,13 +933,13 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 //sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
                         char cmd [256];
                         sprintf (cmd, "start_negotiated_echo %d %d %d", slot_no, ctr, screenleft);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                     case 26: // stop_negotiated_echo
                       {
                         char cmd [256];
                         sprintf (cmd, "stop_echo_negotiation %d", slot_no);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 
@@ -954,7 +954,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         char cmd [256];
                         sprintf (cmd, "init_echo_negotiation %d", slot_no);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 #endif
@@ -985,7 +985,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         char cmd [256];
                         sprintf (cmd, "input_fc_chars %d data:%d:%s data:%d:%s", slot_no, suspendLen, suspendData, resumeLen, resumeData);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 
@@ -1015,7 +1015,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         char cmd [256];
                         sprintf (cmd, "output_fc_chars %d data:%d:%s data:%d:%s", slot_no, suspendLen, suspendData, resumeLen, resumeData);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 
@@ -1035,7 +1035,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp full_duplex\n");
                                 char cmd [256];
                                 sprintf (cmd, "full_duplex %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1044,7 +1044,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp crecho\n");
                                 char cmd [256];
                                 sprintf (cmd, "crecho %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1053,7 +1053,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp lfecho\n");
                                 char cmd [256];
                                 sprintf (cmd, "lfecho %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1062,7 +1062,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp dumpoutput\n");
                                 char cmd [256];
                                 sprintf (cmd, "dumpoutput %d", slot_no);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1071,7 +1071,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp tabecho\n");
                                 char cmd [256];
                                 sprintf (cmd, "tabecho %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1081,7 +1081,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 uint bufsz =  getbits36_18 (smbxp -> command_data [0], 18);
                                 char cmd [256];
                                 sprintf (cmd, "listen %d %d %d", slot_no, flag, bufsz);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1090,7 +1090,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp handle_quit\n");
                                 char cmd [256];
                                 sprintf (cmd, "handle_quit %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1100,7 +1100,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 uint idx =  getbits36_9 (smbxp -> command_data [0], 9);
                                 char cmd [256];
                                 sprintf (cmd, "change_control_string %d %d", slot_no, idx);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1109,7 +1109,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp wru\n");
                                 char cmd [256];
                                 sprintf (cmd, "wru %d", slot_no);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1118,7 +1118,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp echoplex\n");
                                 char cmd [256];
                                 sprintf (cmd, "echoplex %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1127,7 +1127,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp dump input\n");
                                 char cmd [256];
                                 sprintf (cmd, "dump_input %d", slot_no);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1136,7 +1136,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp replay\n");
                                 char cmd [256];
                                 sprintf (cmd, "replay %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1145,7 +1145,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp polite\n");
                                 char cmd [256];
                                 sprintf (cmd, "polite %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1156,7 +1156,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 uint bufsiz2 = getbits36_18 (smbxp -> command_data [1], 0);
                                 char cmd [256];
                                 sprintf (cmd, "block_xfer %d %d %d", slot_no, bufsiz1, bufsiz2);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1165,7 +1165,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp break_all\n");
                                 char cmd [256];
                                 sprintf (cmd, "break_all %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1174,7 +1174,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp prefixnl\n");
                                 char cmd [256];
                                 sprintf (cmd, "prefixnl %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1183,7 +1183,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp input_flow_control\n");
                                 char cmd [256];
                                 sprintf (cmd, "input_flow_control %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1192,7 +1192,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp output_flow_control\n");
                                 char cmd [256];
                                 sprintf (cmd, "output_flow_control %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1201,7 +1201,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp odd_parity\n");
                                 char cmd [256];
                                 sprintf (cmd, "odd_parity %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1210,7 +1210,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp eight_bit_in\n");
                                 char cmd [256];
                                 sprintf (cmd, "eight_bit_in %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1219,7 +1219,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                                 //sim_printf ("fnp eight_bit_out\n");
                                 char cmd [256];
                                 sprintf (cmd, "eight_bit_out %d %d", slot_no, flag);
-                                tellFNP (devUnitIdx, cmd);          
+                                tellFNP ((int) devUnitIdx, cmd);          
                               }
                               break;
 
@@ -1273,7 +1273,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         char cmd [256];
                         sprintf (cmd, "set_delay_table %d %d %d %d %d %d %d", slot_no, d1, d2, d3, d4, d5, d6);
-                        tellFNP (devUnitIdx, cmd);          
+                        tellFNP ((int) devUnitIdx, cmd);          
                       }
                       break;
 
@@ -1535,7 +1535,7 @@ for (uint i = 0; i < dcwCnt; i ++)
                         //sim_printf ("  outputBufferThreshold %d\n", outputBufferThreshold);
                         char cmd [256];
                         sprintf (cmd, "terminal_accepted %d %d", slot_no, outputBufferThreshold);
-                        tellFNP (devUnitIdx, cmd);
+                        tellFNP ((int) devUnitIdx, cmd);
                       }
                       break;
 
@@ -1767,7 +1767,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     if (command == 072) // bootload
       {
-        tellFNP (devUnitIdx, "bootload");
+        tellFNP ((int) devUnitIdx, "bootload");
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
@@ -1887,7 +1887,7 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
 static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
                               UNUSED int val, UNUSED void * desc)
   {   
-    int n = FNP_UNIT_NUM (uptr);
+    long n = FNP_UNIT_NUM (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("FNP IPC name is %s\n", fnpUnitData [n] . ipcName);
@@ -1897,7 +1897,7 @@ static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
 static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
                              UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = FNP_UNIT_NUM (uptr);
+    long n = FNP_UNIT_NUM (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
@@ -1913,16 +1913,16 @@ static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
 static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                              UNUSED void * desc)
   {
-    uint fnpUnitNum = FNP_UNIT_NUM (uptr);
+    long fnpUnitNum = FNP_UNIT_NUM (uptr);
     if (fnpUnitNum >= fnpDev . numunits)
       {
         sim_debug (DBG_ERR, & fnpDev, 
-                   "fnpShowConfig: Invalid unit number %d\n", fnpUnitNum);
-        sim_printf ("error: invalid unit number %u\n", fnpUnitNum);
+                   "fnpShowConfig: Invalid unit number %ld\n", fnpUnitNum);
+        sim_printf ("error: invalid unit number %ld\n", fnpUnitNum);
         return SCPE_ARG;
       }
 
-    sim_printf ("FNP unit number %u\n", fnpUnitNum);
+    sim_printf ("FNP unit number %ld\n", fnpUnitNum);
     struct fnpUnitData * fudp = fnpUnitData + fnpUnitNum;
 
     sim_printf ("FNP Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
@@ -1939,11 +1939,11 @@ static config_list_t fnp_config_list [] =
 
 static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
   {
-    uint fnpUnitNUm = FNP_UNIT_NUM (uptr);
+    long fnpUnitNUm = FNP_UNIT_NUM (uptr);
     if (fnpUnitNUm >= fnpDev . numunits)
       {
-        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitNUm);
-        sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitNUm);
+        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %ld\n", fnpUnitNUm);
+        sim_printf ("error: fnpSetConfig: invalid unit number %ld\n", fnpUnitNUm);
         return SCPE_ARG;
       }
 
@@ -1965,7 +1965,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
               break;
 
             case 0: // mailbox
-              fudp -> mailboxAddress = v;
+              fudp -> mailboxAddress = (uint) v;
               break;
 
             default:
