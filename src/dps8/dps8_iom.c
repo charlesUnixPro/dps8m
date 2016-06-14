@@ -1366,9 +1366,9 @@ sim_err ("unhandled fetchAndParseDCW\n");
 //sim_printf ("PTW %012llo\n", p -> PTW_LPW);
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
-            word24 addr = (getbits36_14 (p -> PTW_LPW, 4) << 10) | ((p -> LPW_DCW_PTR) & MASK10);
-//sim_printf ("addr now %08o\n", addr);
-            core_read (addr, & p -> DCW, __func__);
+            word24 addr_ = (getbits36_14 (p -> PTW_LPW, 4) << 10) | ((p -> LPW_DCW_PTR) & MASK10);
+//sim_printf ("addr now %08o\n", addr_);
+            core_read (addr_, & p -> DCW, __func__);
 //sim_printf ("dcw now %012llo\n", p -> DCW);
           }
           break;
@@ -1968,8 +1968,8 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
     do
       {
-        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-        if (rc < 0)
+        int rc2 = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc2 < 0)
           {
 // XXX set status flags
             sim_warn ("doPayloadChan list service failed\n");
@@ -2020,16 +2020,16 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
           }
 // Send the DCW list's DCW
 
-        rc = d -> iomCmd (iomUnitIdx, chan);
+        rc2 = d -> iomCmd (iomUnitIdx, chan);
 
-        if (rc == 3) // handler still processing command, don't set
+        if (rc2 == 3) // handler still processing command, don't set
                      // terminate intrrupt.
           {
             sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
             return 0;
           }
 
-        if (rc || p -> IDCW_CONTROL == 0) 
+        if (rc2 || p -> IDCW_CONTROL == 0) 
           ptro = true; 
       } while (! ptro);
  

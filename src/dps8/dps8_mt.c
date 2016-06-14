@@ -486,8 +486,8 @@ ddcws:;
     bool ptro, send, uff;
     do
       {
-        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-        if (rc < 0)
+        int rc2 = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc2 < 0)
           {
             p -> stati = 05001; // BUG: arbitrary error code; config switch
             sim_warn ("%s list service failed\n", __func__);
@@ -530,10 +530,10 @@ ddcws:;
             for (i = 0; i < tally; i ++)
               {
                 if (tape_statep -> is9)
-                  rc = extractASCII36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
+                  rc2 = extractASCII36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
                 else
-                  rc = extractWord36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
-                if (rc)
+                  rc2 = extractWord36FromBuffer (tape_statep -> buf, tape_statep -> tbc, & tape_statep -> words_processed, buffer + i);
+                if (rc2)
                   {
                      break;
                   }
@@ -672,22 +672,22 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     uint i;
     for (i = 0; i < tally; i ++)
       {
-        int rc;
+        int rc2;
         if (tape_statep -> is9)
           {
-            rc = insertASCII36toBuffer (tape_statep -> buf, 
+            rc2 = insertASCII36toBuffer (tape_statep -> buf, 
                                         tape_statep -> tbc, 
                                         & tape_statep -> words_processed, 
                                         buffer [i]);
           }
         else
           {
-            rc = insertWord36toBuffer (tape_statep -> buf, 
+            rc2 = insertWord36toBuffer (tape_statep -> buf, 
                                        tape_statep -> tbc, 
                                        & tape_statep -> words_processed, 
                                        buffer [i]);
             }
-        if (rc)
+        if (rc2)
           {
             p -> stati = 04000;
             if (sim_tape_wrp (unitp))

@@ -2462,7 +2462,7 @@ static t_stat DoBasicInstruction (void)
         case 0775:  // alr
             {
                 word36 tmp36 = cpu.TPR.CA & 0177;   // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
+                for(uint j = 0 ; j < tmp36 ; j++)
                 {
                     bool a0 = cpu.rA & SIGN36;    // A0
                     cpu.rA <<= 1;               // shift left 1
@@ -2483,7 +2483,7 @@ static t_stat DoBasicInstruction (void)
                 word36 tmpSign = cpu.rA & SIGN36;
                 CLR_I_CARRY;
 
-                for (uint i = 0; i < tmp36; i ++)
+                for (uint j = 0; j < tmp36; j ++)
                 {
                     cpu.rA <<= 1;
                     if (tmpSign != (cpu.rA & SIGN36))
@@ -2520,7 +2520,7 @@ static t_stat DoBasicInstruction (void)
             word18 tmp18 = cpu.TPR.CA & 0177;   // CY bits 11-17
 
             bool a0 = cpu.rA & SIGN36;    // A0
-            for (uint i = 0 ; i < tmp18 ; i ++)
+            for (uint j = 0 ; j < tmp18 ; j ++)
               {
                 cpu.rA >>= 1;               // shift right 1
                 if (a0)                 // propagate sign bit
@@ -2540,7 +2540,7 @@ static t_stat DoBasicInstruction (void)
 
             {
                 word36 tmp36 = cpu.TPR.CA & 0177;      // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
+                for(uint j = 0 ; j < tmp36 ; j++)
                 {
                     bool a0 = cpu.rA & SIGN36;    // A0
 
@@ -2573,7 +2573,7 @@ static t_stat DoBasicInstruction (void)
 
             word36 tmp36 = cpu.TPR.CA & 0177;   // CY bits 11-17
             word36 tmpSign = cpu.rA & SIGN36;
-            for(uint i = 0 ; i < tmp36 ; i ++)
+            for(uint j = 0 ; j < tmp36 ; j ++)
               {
                 cpu.rA <<= 1;               // shift left 1
 
@@ -2602,7 +2602,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rA &= DMASK; // Make sure the shifted in bits are 0
                 cpu.rQ &= DMASK; // Make sure the shifted in bits are 0
                 word36 tmp36 = cpu.TPR.CA & 0177;   // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
+                for(uint j = 0 ; j < tmp36 ; j++)
                 {
                     bool a35 = cpu.rA & 1;      // A35
                     cpu.rA >>= 1;               // shift right 1
@@ -2630,7 +2630,7 @@ static t_stat DoBasicInstruction (void)
             cpu.rQ &= DMASK; // Make sure the shifted in bits are 0
             bool a0 = cpu.rA & SIGN36;    // A0
 
-            for (uint i = 0 ; i < tmp36 ; i ++)
+            for (uint j = 0 ; j < tmp36 ; j ++)
               {
                 bool a35 = cpu.rA & 1;      // A35
 
@@ -2655,7 +2655,7 @@ static t_stat DoBasicInstruction (void)
             // C(TPR.CA)11,17; entering each bit leaving Q0 into Q35.
             {
                 word36 tmp36 = cpu.TPR.CA & 0177;   // CY bits 11-17
-                for(uint i = 0 ; i < tmp36 ; i++)
+                for(uint j = 0 ; j < tmp36 ; j++)
                 {
                     bool q0 = cpu.rQ & SIGN36;    // Q0
                     cpu.rQ <<= 1;               // shift left 1
@@ -2677,7 +2677,7 @@ static t_stat DoBasicInstruction (void)
                 word36 tmpSign = cpu.rQ & SIGN36;
                 CLR_I_CARRY;
 
-                for (uint i = 0; i < tmp36; i ++)
+                for (uint j = 0; j < tmp36; j ++)
                 {
                     cpu.rQ <<= 1;
                     if (tmpSign != (cpu.rQ & SIGN36))
@@ -2714,7 +2714,7 @@ static t_stat DoBasicInstruction (void)
             cpu.rQ &= DMASK; // Make sure the shifted in bits are 0
             word36 tmp36 = cpu.TPR.CA & 0177;   // CY bits 11-17
             bool q0 = cpu.rQ & SIGN36;    // Q0
-            for(uint i = 0 ; i < tmp36 ; i++)
+            for(uint j = 0 ; j < tmp36 ; j++)
               {
                 cpu.rQ >>= 1;               // shift right 1
                 if (q0)                 // propagate sign bit
@@ -5682,8 +5682,8 @@ static t_stat DoBasicInstruction (void)
             else
               {
                 // AL-39 behavior
-                for (int i = 0; i < 8; i ++)
-                  cpu.Yblock8 [i] = cpu.scu_data [i];
+                for (int j = 0; j < 8; j ++)
+                  cpu.Yblock8 [j] = cpu.scu_data [j];
               }
             break;
 
@@ -5701,16 +5701,16 @@ static t_stat DoBasicInstruction (void)
             uint level = (cpu.TPR.CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
-            for (uint i = 0; i < 16; i ++)
+            for (uint j = 0; j < 16; j ++)
               {
-                cpu.Yblock16 [i] = 0;
+                cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [i], 0, 15,
-                           cpu.SDWAM [toffset + i].POINTER);
-                putbits36 (& cpu.Yblock16 [i], 27, 1,
-                           cpu.SDWAM [toffset + i].F);
-                putbits36 (& cpu.Yblock16 [i], 30, 6,
-                           cpu.SDWAM [toffset + i].USE);
+                putbits36 (& cpu.Yblock16 [j], 0, 15,
+                           cpu.SDWAM [toffset + j].POINTER);
+                putbits36 (& cpu.Yblock16 [j], 27, 1,
+                           cpu.SDWAM [toffset + j].F);
+                putbits36 (& cpu.Yblock16 [j], 30, 6,
+                           cpu.SDWAM [toffset + j].USE);
 #endif
               }
           }
@@ -6641,18 +6641,18 @@ static t_stat DoEISInstruction (void)
             uint level = (cpu.TPR.CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
-            for (uint i = 0; i < 16; i ++)
+            for (uint j = 0; j < 16; j ++)
               {
-                cpu.Yblock16 [i] = 0;
+                cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [i],  0, 15,
-                           cpu.PTWAM [toffset + i].POINTER);
-                putbits36 (& cpu.Yblock16 [i], 15, 12,
-                           cpu.PTWAM [toffset + i].PAGENO);
-                putbits36 (& cpu.Yblock16 [i], 27,  1,
-                           cpu.PTWAM [toffset + i].F);
-                putbits36 (& cpu.Yblock16 [i], 30,  6,
-                           cpu.PTWAM [toffset + i].USE);
+                putbits36 (& cpu.Yblock16 [j],  0, 15,
+                           cpu.PTWAM [toffset + j].POINTER);
+                putbits36 (& cpu.Yblock16 [j], 15, 12,
+                           cpu.PTWAM [toffset + j].PAGENO);
+                putbits36 (& cpu.Yblock16 [j], 27,  1,
+                           cpu.PTWAM [toffset + j].F);
+                putbits36 (& cpu.Yblock16 [j], 30,  6,
+                           cpu.PTWAM [toffset + j].USE);
 #endif
               }
           }
@@ -6668,12 +6668,12 @@ static t_stat DoEISInstruction (void)
             uint level = (cpu.TPR.CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
-            for (uint i = 0; i < 16; i ++)
+            for (uint j = 0; j < 16; j ++)
               {
-                cpu.Yblock16 [i] = 0;
+                cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [i], 0, 13, cpu.PTWAM [toffset + i].ADDR);
-                putbits36 (& cpu.Yblock16 [i], 29, 1, cpu.PTWAM [toffset + i].M);
+                putbits36 (& cpu.Yblock16 [j], 0, 13, cpu.PTWAM [toffset + j].ADDR);
+                putbits36 (& cpu.Yblock16 [j], 29, 1, cpu.PTWAM [toffset + j].M);
 #endif
               }
           }
@@ -6689,39 +6689,39 @@ static t_stat DoEISInstruction (void)
             uint level = (cpu.TPR.CA >> 4) & 02u;
             uint toffset = level * 16;
 #endif
-            for (uint i = 0; i < 16; i ++)
+            for (uint j = 0; j < 16; j ++)
               {
-                cpu.Yblock32 [i * 2] = 0;
+                cpu.Yblock32 [j * 2] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock32 [i * 2],  0, 23,
-                           cpu.SDWAM [toffset + i].ADDR);
-                putbits36 (& cpu.Yblock32 [i * 2], 24,  3,
-                           cpu.SDWAM [toffset + i].R1);
-                putbits36 (& cpu.Yblock32 [i * 2], 27,  3,
-                           cpu.SDWAM [toffset + i].R2);
-                putbits36 (& cpu.Yblock32 [i * 2], 30,  3,
-                           cpu.SDWAM [toffset + i].R3);
+                putbits36 (& cpu.Yblock32 [j * 2],  0, 23,
+                           cpu.SDWAM [toffset + j].ADDR);
+                putbits36 (& cpu.Yblock32 [j * 2], 24,  3,
+                           cpu.SDWAM [toffset + j].R1);
+                putbits36 (& cpu.Yblock32 [j * 2], 27,  3,
+                           cpu.SDWAM [toffset + j].R2);
+                putbits36 (& cpu.Yblock32 [j * 2], 30,  3,
+                           cpu.SDWAM [toffset + j].R3);
 #endif
-                cpu.Yblock32 [i * 2 + 1] = 0;
+                cpu.Yblock32 [j * 2 + 1] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 37 - 36, 14,
-                           cpu.SDWAM [toffset + i].BOUND);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 51 - 36,  1,
-                           cpu.SDWAM [toffset + i].R);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 52 - 36,  1,
-                           cpu.SDWAM [toffset + i].E);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 53 - 36,  1,
-                           cpu.SDWAM [toffset + i].W);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 54 - 36,  1,
-                           cpu.SDWAM [toffset + i].P);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 55 - 36,  1,
-                           cpu.SDWAM [toffset + i].U);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 56 - 36,  1,
-                           cpu.SDWAM [toffset + i].G);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 57 - 36,  1,
-                           cpu.SDWAM [toffset + i].C);
-                putbits36 (& cpu.Yblock32 [i * 2 + 1], 58 - 36, 14,
-                           cpu.SDWAM [toffset + i].CL);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 37 - 36, 14,
+                           cpu.SDWAM [toffset + j].BOUND);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 51 - 36,  1,
+                           cpu.SDWAM [toffset + j].R);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 52 - 36,  1,
+                           cpu.SDWAM [toffset + j].E);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 53 - 36,  1,
+                           cpu.SDWAM [toffset + j].W);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 54 - 36,  1,
+                           cpu.SDWAM [toffset + j].P);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 55 - 36,  1,
+                           cpu.SDWAM [toffset + j].U);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 56 - 36,  1,
+                           cpu.SDWAM [toffset + j].G);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 57 - 36,  1,
+                           cpu.SDWAM [toffset + j].C);
+                putbits36 (& cpu.Yblock32 [j * 2 + 1], 58 - 36, 14,
+                           cpu.SDWAM [toffset + j].CL);
 #endif
               }
           }

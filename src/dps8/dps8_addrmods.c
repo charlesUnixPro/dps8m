@@ -517,8 +517,8 @@ startCA:;
 
             if (cpu . cu  . rpt || cpu . cu  . rd)
               {
-                 word6 Td = GET_TD (i -> tag);
-                 uint Xn = X (Td);  // Get Xn of next instruction
+                 word6 Td_ = GET_TD (i -> tag);
+                 uint Xn = X (Td_);  // Get Xn of next instruction
                  tmpCA = cpu . rX [Xn];
               }
             else
@@ -850,14 +850,14 @@ startCA:;
                 // Parse and validate the indirect word
                 //
 
-                word18 Yi = GET_ADDR (indword);
+                word18 Yi_ = GET_ADDR (indword);
                 word6 characterOperandSize = GET_TB (GET_TAG (indword));
                 word6 characterOperandOffset = GET_CF (GET_TAG (indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
                            characterOperandSize, characterOperandOffset,
-                           Yi);
+                           Yi_);
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
@@ -894,8 +894,8 @@ startCA:;
                             characterOperandOffset = 5;
                         else
                             characterOperandOffset = 3;
-                        Yi -= 1;
-                        Yi &= MASK18;
+                        Yi_ -= 1;
+                        Yi_ &= MASK18;
                       }
                         else
                       {
@@ -910,7 +910,7 @@ startCA:;
                 cpu . cu  . pot = 1;
 
                 word36 data;
-                Read (Yi, & data, OPERAND_READ, i -> a);
+                Read (Yi_, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012llo\n", data);
 

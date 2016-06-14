@@ -39,14 +39,14 @@ long double exp2l (long double e) {
 long double EAQToIEEElongdouble(void)
 {
     // mantissa
-    word72 M = ((word72)(cpu . rA & DMASK) << 36) | ((word72) cpu . rQ & DMASK);
+    word72 Mant = ((word72)(cpu . rA & DMASK) << 36) | ((word72) cpu . rQ & DMASK);
 
-    if (M == 0)
+    if (Mant == 0)
         return 0;
     
-    bool S = M & SIGN72; // sign of mantissa
+    bool S = Mant & SIGN72; // sign of mantissa
     if (S)
-        M = (-M) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
+        Mant = (-Mant) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
     
     long double m = 0;  // mantissa value;
     int e = SIGNEXT8_int (cpu . rE & MASK8); // make signed
@@ -54,7 +54,7 @@ long double EAQToIEEElongdouble(void)
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1)
     {
-        if (M & ((word72)1 << n))
+        if (Mant & ((word72)1 << n))
         {
             m += v;
         }
@@ -245,15 +245,15 @@ void IEEElongdoubleToEAQ(long double f0)
 double float36ToIEEEdouble(uint64_t f36)
 {
     unsigned char E;    ///< exponent
-    uint64_t M;         ///< mantissa
+    uint64_t Mant;         ///< mantissa
     E = (f36 >> 28) & 0xff;
-    M = f36 & 01777777777LL;
-    if (M == 0)
+    Mant = f36 & 01777777777LL;
+    if (Mant == 0)
         return 0;
     
-    bool S = M & 01000000000LL; ///< sign of mantissa
+    bool S = Mant & 01000000000LL; ///< sign of mantissa
     if (S)
-        M = (-M) & 0777777777; // 27 bits (not 28!)
+        Mant = (-Mant) & 0777777777; // 27 bits (not 28!)
     
     double m = 0;       ///< mantissa value;
     int e = (char)E;  ///< make signed
@@ -261,7 +261,7 @@ double float36ToIEEEdouble(uint64_t f36)
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1)
     {
-        if (M & (1 << n))
+        if (Mant & (1 << n))
         {
             m += v;
         }   //else
