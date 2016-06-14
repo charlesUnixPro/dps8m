@@ -829,7 +829,7 @@ typedef struct
     word1 rfi;     // 27    RFI Restart this instruction
                    // 28    ITS Execute ITS indirect cycle
     word1 FIF;     // 29    FIF Fault occured during instruction fetch
-    uint CT_HOLD;  // 30-35 CT HOLD contents of the "remember modifier" register
+    word6 CT_HOLD; // 30-35 CT HOLD contents of the "remember modifier" register
 
     
     
