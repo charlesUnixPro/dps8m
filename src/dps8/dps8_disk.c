@@ -429,7 +429,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
         sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
-        rc = fread (diskBuffer, SECTOR_SZ_IN_BYTES,
+        rc = (int) fread (diskBuffer, SECTOR_SZ_IN_BYTES,
                     tallySectors,
                     unitp -> fileref);
 
@@ -575,7 +575,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
 
         sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
-        rc = fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
+        rc = (int) fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
                      tallySectors,
                      unitp -> fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",
@@ -872,7 +872,7 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cp
     int n = atoi (cptr);
     if (n < 1 || n > N_DISK_UNITS_MAX)
       return SCPE_ARG;
-    disk_dev . numunits = n;
+    disk_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
@@ -898,19 +898,19 @@ void loadDisk (uint driveNumber, char * diskFilename)
 //    substr (w, 34, 3) is the low 3 bits of status 1
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
-    send_special_interrupt (cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
-                            cables -> cablesFromIomToDsk [driveNumber] . chan_num,
-                            cables -> cablesFromIomToDsk [driveNumber] . dev_code,
+    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
+                            (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
+                            (uint) cables -> cablesFromIomToDsk [driveNumber] . dev_code,
                             0x40, 01 /* disk pack ready */);
   }
 
 t_stat attachDisk (char * label)
   {
     //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
-    int i;
+    uint i;
     for (i = 1; i < N_DISK_UNITS_MAX; i ++)
       {
-sim_printf ("%d fileref %p filename %s\n", i, disk_unit [i] . fileref, disk_unit [i] . filename);
+sim_printf ("%d fileref %p filename %s\n", i, (void *) disk_unit [i] . fileref, disk_unit [i] . filename);
         if (disk_unit [i] . fileref == NULL)
           break;
       }
