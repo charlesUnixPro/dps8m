@@ -387,14 +387,14 @@ static const char *bit_rep[16] = {
 };
 #endif
 
-static int getCardLine (int fd, char * buffer)
+static int getCardLine (int fd, unsigned char * buffer)
   {
     uint n = 0;
     buffer [n] = 0;
     while (1)
       {
         uint8 ch;
-        int rc = read (fd, & ch, 1);
+        ssize_t rc = read (fd, & ch, 1);
         if (rc <= 0) // eof or err
           return n == 0;
         if (ch == '\n')
@@ -409,27 +409,32 @@ static int getCardLine (int fd, char * buffer)
 static int getCardData (int fd, char * buffer)
   {
     memset (buffer, 0, 80);
-    int rc = read (fd, buffer, 80);
+    ssize_t rc = read (fd, buffer, 80);
     if (rc < 0)
       return 0;
-    return rc;
+    return (int) rc;
   }
 
 #define rawCardImageBytes (80 * 12 / 8)
 static int getRawCardData (int fd, uint8_t * buffer)
   {
     memset (buffer, 0, rawCardImageBytes + 2);
-    int rc = read (fd, buffer, rawCardImageBytes);
+    ssize_t rc = read (fd, buffer, rawCardImageBytes);
     if (rc < 0)
       return 0;
-    return rc;
+    return (int) rc;
   }
 
 static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
-    uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
+    int unitIdx = findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
+    if (unitIdx < 0)
+      {
+        sim_warn ("crdrdrReadRecord can't find unit\n");
+        return -1;
+      }
 
     if (crdrdr_state [unitIdx] . deckfd < 0)
        {
@@ -444,7 +449,7 @@ sim_printf ("hopper empty\n");
           return -1;
        }
 
-    char cardImage [80] = "";
+    unsigned char cardImage [80] = "";
     uint8_t rawCardImage [rawCardImageBytes + 2 ];
     size_t l = 0;
     enum deckFormat thisCard;
@@ -455,8 +460,8 @@ sim_printf ("hopper empty\n");
       {
         case deckStart:
           {
-            strcpy (cardImage, "++EOF");
-            l = strlen (cardImage);
+            strcpy ((char *) cardImage, "++EOF");
+            l = strlen ((char *) cardImage);
             thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = eof1Sent;
             jobNo ++;
@@ -465,8 +470,8 @@ sim_printf ("hopper empty\n");
 
         case eof1Sent:
           {
-            sprintf (cardImage, "++UID %d", jobNo);
-            l = strlen (cardImage);
+            sprintf ((char *) cardImage, "++UID %d", jobNo);
+            l = strlen ((char *) cardImage);
             thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = uid1Sent;
           }
@@ -482,9 +487,9 @@ sim_printf ("hopper empty\n");
                 crdrdr_state [unitIdx] . deckState = deckStart;
                 goto empty;
               }
-            l = strlen (cardImage);
+            l = strlen ((char *) cardImage);
             thisCard = cardDeck;
-            if (strncasecmp (cardImage, "++input", 7) == 0)
+            if (strncasecmp ((char *) cardImage, "++input", 7) == 0)
               crdrdr_state [unitIdx] . deckState = inputSent;
           }
           break;
@@ -500,25 +505,25 @@ sim_printf ("hopper empty\n");
                     int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
                     if (rc)
                       {
-                        strcpy (cardImage, "++EOF");
+                        strcpy ((char *) cardImage, "++EOF");
                         crdrdr_state [unitIdx] . deckState = eof2Sent;
                       }
-                    l = strlen (cardImage);
+                    l = strlen ((char *) cardImage);
                   }
                   thisCard = cardDeck;
                   break;
             
               case streamDeck:
                 {
-                  l = getCardData (crdrdr_state [unitIdx] . deckfd, cardImage);
+                  l = (size_t) getCardData (crdrdr_state [unitIdx] . deckfd, (char *) cardImage);
                   if (l)
                     {
                       thisCard = streamDeck;
                     }
                   else
                     {
-                      strcpy (cardImage, "++EOF");
-                      l = strlen (cardImage);
+                      strcpy ((char *) cardImage, "++EOF");
+                      l = strlen ((char *) cardImage);
                       crdrdr_state [unitIdx] . deckState = eof2Sent;
                       thisCard = cardDeck;
                     }
@@ -527,15 +532,15 @@ sim_printf ("hopper empty\n");
 
               case sevenDeck:
                 {
-                  l = getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
+                  l = (size_t) getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
                   if (l)
                     {
                       thisCard = sevenDeck;
                     }
                   else
                     {
-                      strcpy (cardImage, "++EOF");
-                      l = strlen (cardImage);
+                      strcpy ((char *) cardImage, "++EOF");
+                      l = strlen ((char *) cardImage);
                       crdrdr_state [unitIdx] . deckState = eof2Sent;
                       thisCard = cardDeck;
                     }
@@ -548,8 +553,8 @@ sim_printf ("hopper empty\n");
 
         case eof2Sent:
           {
-            sprintf (cardImage, "++UID %d", jobNo);
-            l = strlen (cardImage);
+            sprintf ((char *) cardImage, "++UID %d", jobNo);
+            l = strlen ((char *) cardImage);
             thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = deckStart;
             close (crdrdr_state [unitIdx] . deckfd);
@@ -611,10 +616,10 @@ sim_printf ("\n");
 
 
             uint hbuf [l];
-            asciiToH (cardImage, hbuf, l);
+            asciiToH ((char *) cardImage, hbuf, l);
 
             // 12 bits / char
-            uint nbits = l * 12;
+            uint nbits = (uint) l * 12;
             // 36 bits / word
             uint tally = (nbits + 35) / 36;
 
@@ -686,7 +691,7 @@ sim_printf ("\n");
                             & tally, true);
     p -> stati = 04000; // ok
     p -> initiate = false;
-    p -> tallyResidue = tally;
+    p -> tallyResidue = (word12) tally & MASK12;
     p -> charPos = 0;
 
     if (p -> DDCW_22_23_TYPE != 0)
@@ -698,7 +703,12 @@ sim_printf ("\n");
 static int crdrdr_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    uint unitIdx = findCrdrdrUnit (iomUnitIdx, chan, p -> IDCW_DEV_CODE);
+    int unitIdx = findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
+    if (unitIdx < 0)
+      {
+        sim_warn ("crdrdr_cmd can't find unit\n");
+        return -1;
+      }
     crdrdr_state [unitIdx] . running = true;
 
     sim_debug (DBG_TRACE, & crdrdr_dev, "IDCW_DEV_CMD %o\n", p -> IDCW_DEV_CMD);
@@ -817,9 +827,9 @@ void rdrProcessEvent ()
 
 void crdrdrCardReady (int unitNum)
   {
-    send_special_interrupt (cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
-                            cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
-                            cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
+    send_special_interrupt ((uint) cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
+                            (uint) cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
+                            (uint) cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
                             0377, 0377 /* tape drive to ready */);
   }
 
@@ -847,14 +857,14 @@ static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * 
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
-    crdrdr_dev . numunits = n;
+    crdrdr_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
 static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
+    long n = CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("Card reader device name is %s\n", crdrdr_state [n] . device_name);
@@ -864,7 +874,7 @@ static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
 static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = CRDRDR_UNIT_NUM (uptr);
+    long n = CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
