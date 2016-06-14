@@ -864,6 +864,7 @@ static char *strPCT(_processor_cycle_type t)
         case APU_DATA_MOVEMENT: return "APU_DATA_MOVEMENT";
         case ABORT_CYCLE: return "ABORT_CYCLE";
         case FAULT_CYCLE: return "FAULT_CYCLE";
+        case EIS_OPERAND_DESCRIPTOR : return "EIS_OPERAND_DESCRIPTOR";
         case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
         case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
 
@@ -934,7 +935,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
 
-    word24 finalAddress = -1;  // not everything requires a final address
+    word24 finalAddress = (word24) -1;  // not everything requires a final address
     
 //
 //  A:
