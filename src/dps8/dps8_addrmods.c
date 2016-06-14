@@ -383,7 +383,7 @@ t_stat doComputedAddressFormation (void)
     word6 Tm = 0;
     word6 Td = 0;
 
-    int iTAG;   // tag of word preceeding an indirect fetch
+    word6 iTAG;   // tag of word preceeding an indirect fetch
 
     directOperandFlag = false;
 
@@ -711,8 +711,7 @@ startCA:;
                 if (directOperandFlag)
                   {
                     //cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA = directOperand;
-                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA = (word18) directOperand & MASK18; // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
@@ -761,7 +760,7 @@ startCA:;
         //    IT_IDC        = 017
         word12 tally;
         word6 idwtag, delta;
-        word24 Yi = -1;
+        word24 Yi = (word24) -1;
 
         switch (Td)
           {
@@ -840,7 +839,7 @@ startCA:;
                 //
 
                 word36 indword;
-                word36 indwordAddress = cpu . TPR . CA;
+                word18 indwordAddress = cpu . TPR . CA;
                 Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
