@@ -4837,7 +4837,7 @@ void cmpn (void)
  * write 4-bit chars to memory @ pos ...
  */
 
-static void EISwrite4(EISaddr *p, int *pos, int char4)
+static void EISwrite4(EISaddr *p, int *pos, word4 char4)
 {
     word36 w;
     if (*pos > 7)    // out-of-range?
@@ -4896,7 +4896,7 @@ static void EISwrite4(EISaddr *p, int *pos, int char4)
  * write 9-bit bytes to memory @ pos ...
  */
 
-static void EISwrite9(EISaddr *p, int *pos, int char9)
+static void EISwrite9(EISaddr *p, int *pos, word9 char9)
 {
     word36 w;
     if (*pos > 3)    // out-of-range?
@@ -4937,12 +4937,12 @@ static void EISwrite9(EISaddr *p, int *pos, int char9)
  * write a 4-, or 9-bit numeric char to dstAddr ....
  */
 
-static void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
+static void EISwrite49(EISaddr *p, int *pos, int tn, word9 c49)
 {
     switch(tn)
     {
         case CTN4:
-            EISwrite4(p, pos, c49);
+            EISwrite4(p, pos, (word4) c49);
             return;
         case CTN9:
             EISwrite9(p, pos, c49);
@@ -5122,10 +5122,10 @@ void mvn (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR2, &pos, (int) dstTN, res[i] - '0');
+                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR2, &pos, (int) dstTN, res[i]);
+                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) res[i]);
                 break;
         }
     
@@ -5846,7 +5846,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
  * write 4-bit digits to memory @ pos (in reverse) ...
  */
 
-static void EISwrite4r(EISaddr *p, int *pos, int char4)
+static void EISwrite4r(EISaddr *p, int *pos, word4 char4)
 {
     word36 w;
     
@@ -5904,7 +5904,7 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
  * write 9-bit bytes to memory @ pos (in reverse)...
  */
 
-static void EISwrite9r(EISaddr *p, int *pos, int char9)
+static void EISwrite9r(EISaddr *p, int *pos, word9 char9)
 {
     word36 w;
     if (*pos < 0)    // out-of-range?
@@ -5946,7 +5946,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
 
-static void EISwriteToOutputStringReverse (int k, int charToWrite, bool * ovf)
+static void EISwriteToOutputStringReverse (int k, word9 charToWrite, bool * ovf)
 {
     EISstruct * e = & cpu . currentEISinstruction;
     // first thing we need to do is to find out the last position is the buffer we want to start writing to.
@@ -6028,7 +6028,7 @@ static void EISwriteToOutputStringReverse (int k, int charToWrite, bool * ovf)
     switch(TN)
     {
         case CTN4:
-            EISwrite4r(&e->addr[_k-1], &pos, charToWrite);
+            EISwrite4r(&e->addr[_k-1], &pos, (word4) charToWrite);
             break;
         case CTN9:
             EISwrite9r(&e->addr[_k-1], &pos, charToWrite);
@@ -6115,7 +6115,7 @@ static void load9x(int n, EISaddr *addr, int pos)
  * get sign to buffer position p
  */
 
-static int getSign (word72s n128)
+static word9 getSign (word72s n128)
 {
     EISstruct * e = & cpu . currentEISinstruction;
     // 4- or 9-bit?
@@ -6187,7 +6187,7 @@ static void _btd (bool * ovfp)
         {
             int n = n128 % 10;
         
-            EISwriteToOutputStringReverse(0, (e->TN2 == CTN4) ? n : (n + '0'), ovfp);
+            EISwriteToOutputStringReverse(0, (word9) ((e->TN2 == CTN4) ? n : (n + '0')), ovfp);
         
             if (* ovfp)   // Overflow! Too many chars, not enough room!
                 break;
@@ -6495,7 +6495,7 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     
     for(int n = 0 ; n < N ; n += 1)
     {
-        int charToWrite = x & 0777; // get 9-bits of data
+        word9 charToWrite = x & 0777; // get 9-bits of data
         x >>=9;
         
         // we should write character to word/pos in memory .....
@@ -6737,10 +6737,10 @@ void ad2d (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[j] - '0');
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[j] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[j]);
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[j]);
                 break;
         }
     
@@ -7038,10 +7038,10 @@ void ad3d (void)
         switch(dstTN)
         {
         case CTN4:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
             break;
         case CTN9:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
             break;
         }
     
@@ -7275,10 +7275,10 @@ void sb2d (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
                 break;
         }
     
@@ -7529,10 +7529,10 @@ void sb3d (void)
         switch(dstTN)
     {
         case CTN4:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
             break;
         case CTN9:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
             break;
     }
     
@@ -7765,10 +7765,10 @@ void mp2d (void)
         switch(dstTN)
     {
         case CTN4:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
             break;
         case CTN9:
-            EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+            EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
             break;
     }
     
@@ -8020,10 +8020,10 @@ void mp3d (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
                 break;
         }
     
@@ -9038,10 +9038,10 @@ void dv2d (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
                 break;
         }
     
@@ -9362,10 +9362,10 @@ void dv3d (void)
         switch(dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i] - '0');
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR3, &pos, (int) dstTN, res[i]);
+                EISwrite49(&e->ADDR3, &pos, (int) dstTN, (word9) res[i]);
                 break;
             }
     
