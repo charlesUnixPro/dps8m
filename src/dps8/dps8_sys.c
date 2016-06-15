@@ -313,7 +313,7 @@ static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
 #define bookSegmentsMax 1024
 #define bookComponentsMax 4096
 #define bookSegmentNameLen 33
-struct bookSegment
+static struct bookSegment
   {
     char * segname;
     int segno;
@@ -499,7 +499,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
  }
 
 // Warning: returns ptr to static buffer
-int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
+static int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
   {
     int i;
     for (i = 0; i < nBookSegments; i ++)
@@ -527,7 +527,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, char * buf)
+static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -553,7 +553,7 @@ static t_stat listSourceAt (UNUSED int32 arg, UNUSED char *  buf)
       return SCPE_ARG;
     char * compname;
     word18 compoffset;
-    char * where = lookupAddress (segno, offset,
+    char * where = lookupAddress ((word18) segno, offset,
                                   & compname, & compoffset);
     if (where)
       {
@@ -996,7 +996,7 @@ static t_stat absAddrN (int segno, uint offset)
     word24 res;
 
     //t_stat rc = computeAbsAddrN (& res, segno, offset);
-    if (dbgLookupAddress (segno, offset, & res, NULL))
+    if (dbgLookupAddress ((word18) segno, offset, & res, NULL))
       return SCPE_ARG;
 
     sim_printf ("Address is %08o\n", res);
@@ -1013,10 +1013,12 @@ static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
 
 // STK 
 
+#if 0
 t_stat dbgStackTrace (void)
   {
     return stackTrace (0, "");
   }
+#endif 
 
 static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
   {
@@ -1046,7 +1048,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
     //  pr7/sb stack base
 
     word15 fpSegno = cpu . PR [6] . SNR;
-    word15 fpOffset = cpu . PR [6] . WORDNO;
+    word18 fpOffset = cpu . PR [6] . WORDNO;
 
     for (uint frameNo = 1; ; frameNo ++)
       {
@@ -1353,7 +1355,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupAddress (segno, offset, NULL, NULL);
+        char * ans = lookupAddress ((word18) segno, (word18) offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
@@ -1375,7 +1377,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
             return SCPE_OK;
           }
         sim_printf ("0%o:0%o\n", (uint) segno, (uint) (comp_offset + offset));
-        absAddrN  (segno, comp_offset + offset);
+        absAddrN  ((int) segno, (uint) (comp_offset + offset));
       }
 /*
     if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
@@ -1403,17 +1405,17 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
                 & symbol_start, & symbol_length) != 9)
       return SCPE_ARG;
 
-    int idx = addBookSegment (segname, segno);
+    int idx = addBookSegment (segname, (int) segno);
     if (idx < 0)
       return SCPE_ARG;
 
-    if (addBookComponent (idx, compname, txt_start, txt_len, intstat_start, intstat_length, symbol_start, symbol_length) < 0)
+    if (addBookComponent (idx, compname, txt_start, txt_len, (int) intstat_start, (int) intstat_length, (int) symbol_start, (int) symbol_length) < 0)
       return SCPE_ARG;
 
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UUSED char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED
@@ -2288,7 +2290,7 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the simh code.
 
-pthread_mutex_t scpMQlock;
+static pthread_mutex_t scpMQlock;
 typedef struct scpQueueElement scpQueueElement;
 struct scpQueueElement
   {
@@ -2296,7 +2298,7 @@ struct scpQueueElement
     scpQueueElement * prev, * next;
   };
 
-scpQueueElement * scpQueue = NULL;
+static scpQueueElement * scpQueue = NULL;
 
 static void scpQueueMsg (char * msg)
   {
