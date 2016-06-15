@@ -438,7 +438,7 @@ static void scu2words(word36 *words)
     // 18, 4 PTWAM levels enabled
     // 22, 4 SDWAM levels enabled
     // 26, 1 0
-    putbits36_3 (& words [2], 27, cpu.switches.cpu_num);
+    putbits36_3 (& words [2], 27, (word3) cpu.switches.cpu_num);
     putbits36_6 (& words [2], 30, cpu.cu.delta);
 
     // words [3]
@@ -655,7 +655,7 @@ static void du2words (word36 * words)
 
     // Word 5
 
-    putbits36_1 (& words [5],  9, cpu.du.LEVEL2);
+    putbits36_10 (& words [5],  0, cpu.du.LEVEL2);
     putbits36_24 (& words [5], 12, cpu.du.D2_RES);
 
     // Word 6
@@ -6921,7 +6921,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36_3 (& cpu.CY, 18, CN & MASK3);
+                        putbits36_3 (& cpu.CY, 18, (word3) CN & MASK3);
                         break;
 
                     case CTA6:  // 1
@@ -6929,7 +6929,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36_3 (& cpu.CY, 18, CN & MASK3);
+                        putbits36_3 (& cpu.CY, 18, (word3) CN & MASK3);
                         break;
 
                     case CTA9:  // 0
@@ -6938,7 +6938,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36_3 (& cpu.CY, 18, (GET_AR_CHAR (n) & MASK2) << 1);
+                        putbits36_3 (& cpu.CY, 18, (word3) ((GET_AR_CHAR (n) & MASK2) << 1));
                         break;
                 }
             }
@@ -6984,7 +6984,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36_3 (& cpu.CY, 18, ((CN & MASK3) << 1));
+                        putbits36_3 (& cpu.CY, 18, (word3) ((CN & MASK2) << 1));
                         break;
                 }
             }
