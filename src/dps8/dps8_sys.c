@@ -1415,7 +1415,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, UUSED char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED
