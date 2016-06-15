@@ -771,7 +771,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
                    __func__, scw);
-        putbits36_12 (& scw, 24, tally);
+        putbits36_12 (& scw, 24, (word12) tally);
         putbits36_18 (& scw, 0, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
@@ -1407,7 +1407,7 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     //
 
     word36 faultWord = 0;
-    putbits36_9 (& faultWord, 9, chan);
+    putbits36_9 (& faultWord, 9, (word9) chan);
     putbits36_5 (& faultWord, 18, req);
     // IAC, bits 26..29
     putbits36_6 (& faultWord, 30, signal);
