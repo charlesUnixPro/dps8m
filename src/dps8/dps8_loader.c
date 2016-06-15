@@ -736,8 +736,8 @@ t_stat snapLOT(bool bVerbose)
             
             //pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
             //pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
-            putbits36_18 (& pp, 18, s->linkOffset);
-            putbits36_15 (& pp, 3, s->segno);
+            putbits36_18 (& pp, 18, (word18) s->linkOffset);
+            putbits36_15 (& pp, 3, (word15) s->segno);
             //lot->M[lot->ldaddr + s->segno] = pp & DMASK;
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
