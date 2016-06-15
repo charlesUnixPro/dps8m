@@ -1200,7 +1200,7 @@ void fstr(word36 *Y)
         SET_I_ZERO;
         CLR_I_NEG;
         *Y = 0;
-        putbits36_8 (Y, 0, E & MASK8);
+        putbits36_8 (Y, 0, (word8) E & MASK8);
         return;
     }
     
@@ -1259,7 +1259,7 @@ void fstr(word36 *Y)
     SC_I_NEG (A & SIGN36);
     
     //*Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
-    *Y = setbits36_8 (A >> 8, 0, E);
+    *Y = setbits36_8 (A >> 8, 0, (word8) E);
 }
 
 /*!
