@@ -636,7 +636,7 @@ void fno (void)
             doFault (FAULT_OFL, 0, "fno exp underflow fault");
     }
 
-    cpu . rE = e & MASK8;
+    cpu . rE = (word8) e & MASK8;
     cpu . rA = (m >> 36) & MASK36;
     cpu . rQ = m & MASK36;
 
@@ -917,7 +917,7 @@ void ufm (void)
     if (sign == -1)
         m3a = (~m3a + 1) & 0xffffffffffffffffLL;
     
-    cpu . rE = e3 & MASK8;
+    cpu . rE = (word8) e3 & MASK8;
     cpu . rA = (m3a >> 28) & MASK36;
     cpu . rQ = m3a & MASK36;
     
@@ -1036,7 +1036,7 @@ static void fdvX(bool bInvert)
     if (sign == -1)
         m3b = (~m3b + 1) & 0777777777777LL;
     
-    cpu . rE = e3 & MASK8;
+    cpu . rE = (word8) e3 & MASK8;
     cpu . rA = m3b & MASK36;
     cpu . rQ = 0;
     
@@ -1200,7 +1200,7 @@ void fstr(word36 *Y)
         SET_I_ZERO;
         CLR_I_NEG;
         *Y = 0;
-        putbits36 (Y, 0, 8, E & MASK8);
+        putbits36 (Y, 0, 8, (word36) E & MASK8);
         return;
     }
     
@@ -1259,7 +1259,7 @@ void fstr(word36 *Y)
     SC_I_NEG (A & SIGN36);
     
     //*Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
-    *Y = setbits36 (A >> 8, 0, 8, E);
+    *Y = setbits36 (A >> 8, 0, 8, (word36) E);
 }
 
 /*!
@@ -1549,7 +1549,7 @@ void dufa (void)
     }
     else
     {
-        cpu . rE = e3 & MASK8;
+        cpu . rE = (word8) e3 & MASK8;
         cpu . rA = (m3 >> 36) & MASK36;
         cpu . rQ = m3 & MASK36;
     }
@@ -1721,7 +1721,7 @@ void dufm (void)
             doFault (FAULT_OFL, 0, "dufm exp underflow fault");
     }
 
-    cpu . rE = e3 & MASK8;
+    cpu . rE = (word8) e3 & MASK8;
     cpu . rA = (m3a >> 28) & MASK36;
     cpu . rQ = m3a & MASK36;
     //cpu . rQ = (m3a & 01777777777LL) << 8;
@@ -1874,7 +1874,7 @@ static void dfdvX (bool bInvert)
     if (sign == -1)
         m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
 
-    cpu . rE = e3 & MASK8;
+    cpu . rE = (word8) e3 & MASK8;
     cpu . rA = (m3b >> 28) & MASK36;
     cpu . rQ = (m3b & 01777777777LL) << 8;//MASK36;
     
@@ -2164,7 +2164,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         SC_I_NEG (cpu . rA & SIGN36);
         
         cpu . rA = (zFrac >> 31) & MASK35;
-        cpu . rQ = (zFrac & MASK35) << 1;
+        cpu . rQ = (word36) ((zFrac & MASK35) << 1);
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
 
@@ -2182,7 +2182,7 @@ sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
         SC_I_NEG (cpu . rA & SIGN36);
         
         cpu . rA = (zFrac >> 31) & MASK35;
-        cpu . rQ = (zFrac & MASK35) << 1;
+        cpu . rQ = (word36) ((zFrac & MASK35) << 1);
         doFault(FAULT_DIV, 0, "DVF: divide check fault");
       }
     //char buf3 [128] = "";
@@ -2321,7 +2321,7 @@ void dfstr (word36 *Ypair)
         SET_I_ZERO;
         CLR_I_NEG;
         
-        Ypair[0] = ((word36)(E & MASK8) << 28) | ((A & 0777777777400LLU) >> 8);
+        Ypair[0] = (((word36) E & MASK8) << 28) | ((A & 0777777777400LLU) >> 8);
         Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
 
         return;
@@ -2379,7 +2379,7 @@ void dfstr (word36 *Ypair)
     
     SC_I_NEG (A & SIGN36);
     
-    Ypair[0] = ((word36)(E & MASK8) << 28) | ((A & 0777777777400LL) >> 8);
+    Ypair[0] = (((word36)E & MASK8) << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
 }
 
