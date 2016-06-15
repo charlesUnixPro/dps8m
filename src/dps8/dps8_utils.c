@@ -808,7 +808,7 @@ void putByte(word36 *dst, word9 data, int posn)
 //            break;
 //    }
     //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
-    putbits36 (dst, posn * 9, 9, (word36)data);
+    putbits36_9 (dst, (uint) posn * 9, data);
 }
 
 void putChar(word36 *dst, word6 data, int posn)
@@ -838,7 +838,7 @@ void putChar(word36 *dst, word6 data, int posn)
 //            break;
 //    }
     //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
-    putbits36 (dst, posn * 6, 6, (word36)data);
+    putbits36_6 (dst, (uint) posn * 6, data);
 }
 
 word72 convertToWord72(word36 even, word36 odd)
@@ -857,8 +857,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
     t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
     t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
-    word36 sign1 = op1 & SIGN36;
-    word36 sign2 = op2 & SIGN36;
+    word36 sign1 = (word36) op1 & SIGN36;
+    word36 sign2 = (word36) op2 & SIGN36;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -893,8 +893,8 @@ void cmp18(word18 oP1, word18 oP2, word18 *flags)
     int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
     int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
-    word18 sign1 = op1 & SIGN18;
-    word18 sign2 = op2 & SIGN18;
+    word18 sign1 = (word18) op1 & SIGN18;
+    word18 sign2 = (word18) op2 & SIGN18;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -1030,7 +1030,7 @@ char * strlower(char *q)
 #define NOTSTAR 1
 #define RESET   2
 
-int strmask(char *str, char *mask)
+int strmask (char * str, char * mask)
 /*!
  Tests string 'str' against mask string 'mask'
  Returns TRUE if the string matches the mask.
@@ -1048,79 +1048,93 @@ int strmask(char *str, char *mask)
  strmask("Hello", "H????");     ---> TRUE
  strmask("H", "H????");         ---> FALSE
  */
-{
-        char *sp, *mp, *reset_string, *reset_mask, *sn;
-        int state;
+  {
+    char * sp, * mp, * reset_string, * reset_mask, * sn;
+    int state;
     
-        sp = str;
-        mp = mask;
+    sp = str;
+    mp = mask;
     
-        while (1) {
-                switch (*mp) {
+    while (1)
+      {
+        switch (* mp)
+          {
             case '\0':
-                return(*sp ? false : true);
+              return * sp ? false : true;
+
             case '?':
-                sp++;
-                mp++;
-                break;
+              sp ++;
+              mp ++;
+              break;
+
             default:
-                if (*mp == *sp) {
-                    sp++;
-                    mp++;
-                    break;
-                } else {
-                    return(false);
+              if (* mp == * sp)
+                {
+                  sp ++;
+                  mp ++;
+                  break;
                 }
+              else
+                {
+                  return false;
+                }
+
             case '*':
-                if (*(mp + 1) == '\0') {
-                    return(true);
+              if (* (mp + 1) == '\0')
+                {
+                  return true;
                 }
-                if ((sn = strchr(sp, *(mp + 1))) == NULL) {
-                    return(false);
+              if ((sn = strchr (sp, * (mp + 1))) == NULL)
+                {
+                  return false;
                 }
                 
-                /* save place -- match rest of string */
-                /* if fail, reset to here */
-                reset_mask = mp;
-                reset_string = sn + 1;
+              /* save place -- match rest of string */
+              /* if fail, reset to here */
+              reset_mask = mp;
+              reset_string = sn + 1;
                 
-                mp = mp + 2;
-                sp = sn + 1;
-                state = NOTSTAR;
-                while (state == NOTSTAR) {
-                    switch (*mp) {
-                        case '\0':
-                            if (*sp == '\0')
-                                return(false);
-                            else
-                                state = RESET;
-                            break;
-                        case '?':
-                            sp++;
-                            mp++;
-                            break;
-                        default:
-                            if (*mp == *sp) {
-                                sp++;
-                                mp++;
-                            } else
-                                state = RESET;
-                            break;
-                        case '*':
-                            state = STAR;
-                            break;
+              mp = mp + 2;
+              sp = sn + 1;
+              state = NOTSTAR;
+              while (state == NOTSTAR)
+                {
+                  switch (* mp)
+                    {
+                      case '\0':
+                        if (* sp == '\0')
+                          return false;
+                        else
+                          state = RESET;
+                        break;
+                      case '?':
+                        sp ++;
+                        mp ++;
+                        break;
+                      default:
+                        if (* mp == * sp)
+                          {
+                            sp ++;
+                            mp ++;
+                          }
+                        else
+                          state = RESET;
+                        break;
+                      case '*':
+                        state = STAR;
+                        break;
                     }
+                } // while STATE == NOTSTAR
+              /* we've reach a new star or should reset to last star */
+              if (state == RESET)
+                {
+                  sp = reset_string;
+                  mp = reset_mask;
                 }
-                /* we've reach a new star or should reset to last star */
-                if (state == RESET) {
-                    sp = reset_string;
-                    mp = reset_mask;
-                }
-                break;
-                }
-        }
-        return(true);
-}
+              break;
+          } // switch (* mp)
+      } // while (1)
+  }
 
 /**
  * strtok() with string quoting...
@@ -1201,12 +1215,14 @@ Strtok(char *line, char *sep)
     return NULL;		/* no more fields in buffer		*/
     
 }
+#if 0
 bool startsWith(const char *str, const char *pre)
 {
     size_t lenpre = strlen(pre),
     lenstr = strlen(str);
     return lenstr < lenpre ? false : strncasecmp(pre, str, lenpre) == 0;
 }
+#endif
 
 /**
  * Removes the trailing spaces from a string.
@@ -2044,7 +2060,7 @@ char * strdupesc (const char * str)
 //     extract the word36 at woffset
 //
 
-word36 extrASCII36 (uint8 * bits, uint woffset)
+static word36 extrASCII36 (uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
 
@@ -2093,7 +2109,7 @@ word36 extr36 (uint8 * bits, uint woffset)
     return (word36) (w & MASK36);
   }
 
-void putASCII36 (word36 val, uint8 * bits, uint woffset)
+static void putASCII36 (word36 val, uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
     p [0]  = (val >> 27) & 0xff;
