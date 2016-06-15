@@ -636,7 +636,7 @@ sim_printf ("\n");
               {
                 uint wordno = col / 3;
                 uint fieldno = col % 3;
-                putbits36_12 (& buffer [wordno], fieldno * 12, hbuf [col]);
+                putbits36_12 (& buffer [wordno], fieldno * 12, (word12) hbuf [col]);
               }
           }
           break;
