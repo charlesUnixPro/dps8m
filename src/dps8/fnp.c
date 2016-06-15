@@ -51,7 +51,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
 
     FMTI *p = readDevInfo(fileref);
  
-    if (sim_switches & SWMASK ('V'))  /* verbose? */
+    if ((unsigned int) sim_switches & SWMASK ('V'))  /* verbose? */
     {
         FMTI *q = p;
         sim_printf("Faux Multics devices loaded ...\n");
@@ -62,7 +62,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
         }
     }
     
-    if (sim_switches & SWMASK ('A'))  /* append? */
+    if ((unsigned int) sim_switches & SWMASK ('A'))  /* append? */
     {
         if (fmti)
         {
