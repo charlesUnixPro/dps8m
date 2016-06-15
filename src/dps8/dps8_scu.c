@@ -750,11 +750,13 @@ static uint64 getSCUclock (void)
         // 631184400
         uint64 UnixSecs = 631184400;
 
-        uint64 UnixuSecs = UnixSecs * 1000000llu + big;
+        uint64 UnixuSecs = UnixSecs * 1000000llu + (uint64) big;
         // now determine uSecs since Jan 1, 1901 ...
         uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 
-        MulticsuSecs += userCorrection;
+        // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
+        // is <0, it will come out in the wash ok.
+        MulticsuSecs += (uint64) userCorrection;
 
         // The get calendar clock function is guaranteed to return
         // different values on successive calls. 
@@ -829,7 +831,9 @@ static uint64 getSCUclock (void)
  
     // Correction factor from the set time command
 
-    MulticsuSecs += userCorrection;
+    // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
+    // is <0, it will come out in the wash ok.
+    MulticsuSecs += (uint64) userCorrection;
 
     static uint64 lastRccl = 0;                    //  value from last call
  
@@ -881,7 +885,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
   
     if (getbits36_1 (rega, 35))
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i] = getbits36_1 (rega, i) ? 1 : 0;
           }
@@ -891,7 +895,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint UNUSED cpu_po
       }
     else
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i + 16] = 
               getbits36_1 (rega, i) ? 1 : 0;
@@ -1096,7 +1100,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             //scup -> interrupts[mask_num].exec_intr_mask = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
-              (getbits36_16(rega, 0) << 16);
+              ((word32) getbits36_16(rega, 0) << 16);
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
               getbits36_16(regq, 0);
             sim_debug (DBG_DEBUG, & scu_dev,
@@ -1117,7 +1121,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
 
         case 00003: // Set interrupt cells
           {
-            for (int i = 0; i < 16; i ++)
+            for (uint i = 0; i < 16; i ++)
               {
                 scu [scu_unit_num] . cells [i] = 
                   getbits36_1 (rega, i) ? 1 : 0;
@@ -1138,7 +1142,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, UNUSED uint cpu_po
             word16 b0_15 = (word16) getbits36_16 (cpu . rA, 20);
             word36 b16_51 = cpu . rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
-            userCorrection = newClk - getSCUclock ();
+            userCorrection = (int64) (newClk - getSCUclock ());
             //sim_printf ("sscr %o\n", function);
           }
           break;
@@ -1319,21 +1323,21 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             a = 0;
 // (data, starting bit position, number of bits, value)
             putbits36_9 (& a,  0, maskab [0]);
-            putbits36_3 (& a,  9, up -> lower_store_size);
+            putbits36_3 (& a,  9, (word3) up -> lower_store_size);
             // XXX A, A1, B, B1 not implemented. (AG87-00A pgs 2-5. 2-6)
             putbits36_4 (& a, 12, 017); // A, A1, B, B1 online
-            putbits36_4 (& a, 16, scu_port_num);
-            putbits36_1 (& a, 21, up -> mode);
-            putbits36_8 (& a, 22, up -> nea);
+            putbits36_4 (& a, 16, (word4) scu_port_num);
+            putbits36_1 (& a, 21, (word1) up -> mode);
+            putbits36_8 (& a, 22, (word8) up -> nea);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36_1 (& a, 32,  up -> port_enable [0]);
-            putbits36_1 (& a, 33,  up -> port_enable [1]);
-            putbits36_1 (& a, 34,  up -> port_enable [2]);
-            putbits36_1 (& a, 35,  up -> port_enable [3]);
+            putbits36_1 (& a, 32,  (word1) up -> port_enable [0]);
+            putbits36_1 (& a, 33,  (word1) up -> port_enable [1]);
+            putbits36_1 (& a, 34,  (word1) up -> port_enable [2]);
+            putbits36_1 (& a, 35,  (word1) up -> port_enable [3]);
             * rega = a;
 
             q = 0;
@@ -1341,10 +1345,10 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             // cyclic prior <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36_1 (& q, 32,  up -> port_enable [4]);
-            putbits36_1 (& q, 33,  up -> port_enable [5]);
-            putbits36_1 (& q, 34,  up -> port_enable [6]);
-            putbits36_1 (& q, 35,  up -> port_enable [7]);
+            putbits36_1 (& q, 32,  (word1) up -> port_enable [4]);
+            putbits36_1 (& q, 33,  (word1) up -> port_enable [5]);
+            putbits36_1 (& q, 34,  (word1) up -> port_enable [6]);
+            putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 #endif
             break;
@@ -1357,7 +1361,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             // * regq = up -> exec_intr_mask [1];
             for (uint i = 0; i < N_CELL_INTERRUPTS; i ++)
               {
-                uint cell = up -> cells [i] ? 1 : 0;
+                word1 cell = up -> cells [i] ? 1 : 0;
                 if (i < 16)
                   putbits36_1 (rega, i, cell);
                 else
@@ -1617,7 +1621,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 #else
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (iomUnitNum);
+            iom_interrupt ((uint) iomUnitNum);
             return 0;
           }
         else
@@ -1643,7 +1647,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         // XXX properly, trace the cable from scu_port to the cpu to determine
         // XXX the cpu number.
         // XXX ticket #20
-        setG7fault (FAULT_CON, cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
+        setG7fault (FAULT_CON, (enum _fault_subtype) cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num);
         return 1;
       }
     else
@@ -1734,7 +1738,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
               {
                 scu [scuUnitNum] . cells [inum] = false;
                 deliverInterrupts (scuUnitNum);
-                return inum * 2;
+                return (uint) inum * 2;
               }
           }
       }
@@ -2045,15 +2049,15 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 15: // STEADY_CLOCK
-              scu [scu_unit_num] . steady_clock = v;
+              scu [scu_unit_num] . steady_clock = (uint) v;
               break;
 
             case 16: // BULLET_TIME
-              scu [scu_unit_num] . bullet_time = v;
+              scu [scu_unit_num] . bullet_time = (uint) v;
               break;
 
             case 17: // y2k
-              scu [scu_unit_num] . y2k = v;
+              scu [scu_unit_num] . y2k = (uint) v;
               break;
 
             default:
