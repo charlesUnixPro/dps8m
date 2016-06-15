@@ -160,7 +160,7 @@ static int udp_parse_remote (int link, char * premote)
       }
 
     // Look for the local port number and save it away.
-    lportno = strtoul (premote, & end, 10);
+    lportno = (int) strtoul (premote, & end, 10);
     if ((* end == ':') && (lportno > 0))
       {
         sprintf (udp_links [link] . lport, "%d", lportno);
@@ -346,7 +346,7 @@ int udp_send (int link, uint16_t * pdata, uint16_t count, uint16_t flags)
     if (iret != SCPE_OK) return udp_error(link, "tmxr_put_packet_ln()");
 #endif
 
-    int rc = send (udp_links [link] . sock, & pkt, pktlen, 0);
+    ssize_t rc = send (udp_links [link] . sock, & pkt, (size_t) pktlen, 0);
     if (rc == -1)
       {
         return -2;
@@ -393,7 +393,7 @@ static int udp_receive_packet (int link, UDP_PACKET * ppkt, size_t pktsiz)
         return -1;
       }
 //printf ("udp_receive_packet returns %ld\n", n);
-    return n;
+    return (int) n;
   }
 
 int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
@@ -438,7 +438,7 @@ int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
             continue;
           }
         implen = ntohs (pkt . count);
-        explen = UDP_HEADER_LEN + implen * sizeof (uint16_t);
+        explen = (int32_t) UDP_HEADER_LEN + implen * (int32_t) sizeof (uint16_t);
         if (explen != pktlen)
           {
             //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet length wrong (expected=%d received=%d)\n", link, explen, pktlen);
