@@ -181,41 +181,41 @@ static word9 get9(word36 w, int pos)
   }
 
 // AL39, Figure 2-3
-static word36 put4 (word36 w, int pos, word6 c)
+static word36 put4 (word36 w, int pos, word4 c)
   {
     switch (pos)
       {
         case 0:
           //return bitfieldInsert36 (w, c, 31, 4);
-          return setbits36 (w, 1, 4, c);
+          return setbits36_4 (w, 1, c);
 
         case 1:
           //return bitfieldInsert36 (w, c, 27, 4);
-          return setbits36 (w, 5, 4, c);
+          return setbits36_4 (w, 5, c);
 
         case 2:
           //return bitfieldInsert36 (w, c, 22, 4);
-          return setbits36 (w, 10, 4, c);
+          return setbits36_4 (w, 10, c);
 
         case 3:
           //return bitfieldInsert36 (w, c, 18, 4);
-          return setbits36 (w, 14, 4, c);
+          return setbits36_4 (w, 14, c);
 
         case 4:
           //return bitfieldInsert36 (w, c, 13, 4);
-          return setbits36 (w, 19, 4, c);
+          return setbits36_4 (w, 19, c);
 
         case 5:
           //return bitfieldInsert36 (w, c, 9, 4);
-          return setbits36 (w, 23, 4, c);
+          return setbits36_4 (w, 23, c);
 
         case 6:
           //return bitfieldInsert36 (w, c, 4, 4);
-          return setbits36 (w, 28, 4, c);
+          return setbits36_4 (w, 28, c);
 
         case 7:
           //return bitfieldInsert36 (w, c, 0, 4);
-          return setbits36 (w, 32, 4, c);
+          return setbits36_4 (w, 32, c);
 
       }
     sim_printf ("put4(): How'd we get here?\n");
@@ -223,33 +223,33 @@ static word36 put4 (word36 w, int pos, word6 c)
   }
 
 // AL39, Figure 2-4
-static word36 put6 (word36 w, int pos, word4 c)
+static word36 put6 (word36 w, int pos, word6 c)
   {
     switch (pos)
       {
         case 0:
           //return bitfieldInsert36 (w, c, 30, 6);
-          return setbits36 (w, 0, 6, c);
+          return setbits36_6 (w, 0, c);
 
         case 1:
           //`return bitfieldInsert36 (w, c, 24, 6);
-          return setbits36 (w, 6, 6, c);
+          return setbits36_6 (w, 6, c);
 
         case 2:
           //return bitfieldInsert36 (w, c, 18, 6);
-          return setbits36 (w, 12, 6, c);
+          return setbits36_6 (w, 12, c);
 
         case 3:
           //return bitfieldInsert36 (w, c, 12, 6);
-          return setbits36 (w, 18, 6, c);
+          return setbits36_6 (w, 18, c);
 
         case 4:
           //return bitfieldInsert36 (w, c, 6, 6);
-          return setbits36 (w, 24, 6, c);
+          return setbits36_6 (w, 24, c);
 
         case 5:
           //return bitfieldInsert36 (w, c, 0, 6);
-          return setbits36 (w, 30, 6, c);
+          return setbits36_6 (w, 30, c);
 
       }
     sim_printf ("put6(): How'd we get here?\n");
@@ -264,19 +264,19 @@ static word36 put9 (word36 w, int pos, word9 c)
       {
         case 0:
           //return bitfieldInsert36 (w, c, 27, 9);
-          return setbits36 (w, 0, 9, c);
+          return setbits36_9 (w, 0, c);
 
         case 1:
           //return bitfieldInsert36 (w, c, 18, 9);
-          return setbits36 (w, 9, 9, c);
+          return setbits36_9 (w, 9, c);
 
         case 2:
           //return bitfieldInsert36 (w, c, 9, 9);
-          return setbits36 (w, 18, 9, c);
+          return setbits36_9 (w, 18, c);
 
         case 3:
           //return bitfieldInsert36 (w, c, 0, 9);
-          return setbits36 (w, 27, 9, c);
+          return setbits36_9 (w, 27, c);
 
       }
     sim_printf ("put9(): How'd we get here?\n");
@@ -710,7 +710,7 @@ static bool EISgetBitRWN (EISaddr * p)
       } 
     else if (p -> mode == eRWwriteBit)
       {
-        p -> data = setbits36 (p -> data, (uint) bitPosn, 1, p -> bit);
+        p -> data = setbits36_1 (p -> data, (uint) bitPosn, p -> bit);
         
         EISWriteIdx (p, 0, p -> data); // write data word to memory
       }
@@ -1699,7 +1699,7 @@ void scd ()
       }
     
     //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
-    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
+    word36 CY3 = setbits36_24 (0, 12, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1);
@@ -1822,7 +1822,7 @@ void scdr (void)
       }
 
     //word36 CY3 = bitfieldInsert36(0, cpu . du . CHTALLY, 0, 24);
-    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
+    word36 CY3 = setbits36_24 (0, 12, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
 
     cleanupOperandDescriptor (1);
@@ -1945,7 +1945,7 @@ void scm (void)
           }
       }
     //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
-    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
+    word36 CY3 = setbits36_24 (0, 12, cpu . du . CHTALLY);
     
     SC_I_TALLY (cpu . du . CHTALLY == limit);
     
@@ -2068,7 +2068,7 @@ void scmr (void)
           }
       }
     //word36 CY3 = bitfieldInsert36 (0, cpu . du . CHTALLY, 0, 24);
-    word36 CY3 = setbits36 (0, 12, 24, cpu . du . CHTALLY);
+    word36 CY3 = setbits36_24 (0, 12, cpu . du . CHTALLY);
     
     SC_I_TALLY (cpu . du . CHTALLY == limit);
     
@@ -2224,7 +2224,7 @@ void tct (void)
         if (cout)
           {
             // CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
-            CY3 = setbits36 (0, 0, 9, cout);
+            CY3 = setbits36_9 (0, 0, cout);
             break;
           }
       }
@@ -2232,7 +2232,7 @@ void tct (void)
     SC_I_TALLY (cpu . du . CHTALLY == e -> N1);
     
     //CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
-    putbits36 (& CY3, 12, 24, cpu . du . CHTALLY);
+    putbits36_24 (& CY3, 12, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -2365,7 +2365,7 @@ void tctr (void)
         if (cout)
           {
             //CY3 = bitfieldInsert36 (0, cout, 27, 9); // C(Y-char92)m -> C(Y3)0,8
-            CY3 = setbits36 (0, 0, 9, cout);
+            CY3 = setbits36_9 (0, 0, cout);
             break;
           }
       }
@@ -2373,7 +2373,7 @@ void tctr (void)
     SC_I_TALLY (cpu . du . CHTALLY == e -> N1);
     
     //CY3 = bitfieldInsert36 (CY3, cpu . du . CHTALLY, 0, 24);
-    putbits36 (& CY3, 12, 24, cpu . du . CHTALLY);
+    putbits36_24 (& CY3, 12, cpu . du . CHTALLY);
     EISWriteIdx (& e -> ADDR3, 0, CY3);
     
     cleanupOperandDescriptor (1);
@@ -4853,35 +4853,35 @@ static void EISwrite4(EISaddr *p, int *pos, int char4)
     {
         case 0: 
             //w = bitfieldInsert36(w, char4, 31, 5);
-            w = setbits36 (w, 1, 4, (word36) char4);
+            w = setbits36_4 (w, 1, char4);
             break;
         case 1: 
             //w = bitfieldInsert36(w, char4, 27, 4);
-            w = setbits36 (w, 5, 4, (word36) char4);
+            w = setbits36_4 (w, 5, char4);
             break;
         case 2: 
             //w = bitfieldInsert36(w, char4, 22, 5);
-            w = setbits36 (w, 10, 4, (word36) char4);
+            w = setbits36_4 (w, 10, char4);
             break;
         case 3: 
             //w = bitfieldInsert36(w, char4, 18, 4);
-            w = setbits36 (w, 14, 4, (word36) char4);
+            w = setbits36_4 (w, 14, char4);
             break;
         case 4: 
             //w = bitfieldInsert36(w, char4, 13, 5);
-            w = setbits36 (w, 19, 4, (word36) char4);
+            w = setbits36_4 (w, 19, char4);
             break;
         case 5: 
             //w = bitfieldInsert36(w, char4, 9, 4);
-            w = setbits36 (w, 23, 4, (word36) char4);
+            w = setbits36_4 (w, 23, char4);
             break;
         case 6: 
             //w = bitfieldInsert36(w, char4, 4, 5);
-            w = setbits36 (w, 28, 4, (word36) char4);
+            w = setbits36_4 (w, 28, char4);
             break;
         case 7: 
             //w = bitfieldInsert36(w, char4, 0, 4);
-            w = setbits36 (w, 32, 4, (word36) char4);
+            w = setbits36_4 (w, 32, char4);
             break;
     }
 
@@ -4912,19 +4912,19 @@ static void EISwrite9(EISaddr *p, int *pos, int char9)
     {
         case 0: 
             //w = bitfieldInsert36(w, char9, 27, 9);
-            w = setbits36 (w, 0, 9, (word36) char9);
+            w = setbits36_9 (w, 0, char9);
             break;
         case 1: 
             //w = bitfieldInsert36(w, char9, 18, 9);
-            w = setbits36 (w, 9, 9, (word36) char9);
+            w = setbits36_9 (w, 9, char9);
             break;
         case 2: 
             //w = bitfieldInsert36(w, char9, 9, 9);
-            w = setbits36 (w, 18, 9, (word36) char9);
+            w = setbits36_9 (w, 18, char9);
             break;
         case 3: 
             //w = bitfieldInsert36(w, char9, 0, 9);
-            w = setbits36 (w, 27, 9, (word36) char9);
+            w = setbits36_9 (w, 27, char9);
             break;
     }
 
@@ -5467,7 +5467,7 @@ return false;
     else if (p -> mode == eRWwriteBit)
       {
         //p -> data = bitfieldInsert36 (p -> data, p -> bit, bitPosn, 1);
-        p -> data = setbits36 (p -> data, (uint) bitPosn, 1, p -> bit);
+        p -> data = setbits36_1 (p -> data, (uint) bitPosn, p -> bit);
         
         EISWriteIdx (p, 0, p -> data); // write data word to memory
       }
@@ -5862,35 +5862,35 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
     {
         case 0:
             //w = bitfieldInsert36(w, char4, 31, 5);
-            w = setbits36 (w, 1, 4, (word36) char4);
+            w = setbits36_4 (w, 1, char4);
             break;
         case 1:
             //w = bitfieldInsert36(w, char4, 27, 4);
-            w = setbits36 (w, 5, 4, (word36) char4);
+            w = setbits36_4 (w, 5, char4);
             break;
         case 2:
             //w = bitfieldInsert36(w, char4, 22, 5);
-            w = setbits36 (w, 10, 4, (word36) char4);
+            w = setbits36_4 (w, 10, char4);
             break;
         case 3:
             //w = bitfieldInsert36(w, char4, 18, 4);
-            w = setbits36 (w, 14, 4, (word36) char4);
+            w = setbits36_4 (w, 14, char4);
             break;
         case 4:
             //w = bitfieldInsert36(w, char4, 13, 5);
-            w = setbits36 (w, 19, 4, (word36) char4);
+            w = setbits36_4 (w, 19, char4);
             break;
         case 5:
             //w = bitfieldInsert36(w, char4, 9, 4);
-            w = setbits36 (w, 23, 4, (word36) char4);
+            w = setbits36_4 (w, 23, char4);
             break;
         case 6:
             //w = bitfieldInsert36(w, char4, 4, 5);
-            w = setbits36 (w, 28, 4, (word36) char4);
+            w = setbits36_4 (w, 28, char4);
             break;
         case 7:
             //w = bitfieldInsert36(w, char4, 0, 4);
-            w = setbits36 (w, 32, 4, (word36) char4);
+            w = setbits36_4 (w, 32, char4);
             break;
     }
     
@@ -5920,19 +5920,19 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
     {
         case 0:
             //w = bitfieldInsert36(w, char9, 27, 9);
-            w = setbits36 (w, 0, 9, (word36) char9);
+            w = setbits36_9 (w, 0, char9);
             break;
         case 1:
             //w = bitfieldInsert36(w, char9, 18, 9);
-            w = setbits36 (w, 9, 9, (word36) char9);
+            w = setbits36_9 (w, 9, char9);
             break;
         case 2:
             //w = bitfieldInsert36(w, char9, 9, 9);
-            w = setbits36 (w, 18, 9, (word36) char9);
+            w = setbits36_9 (w, 18, char9);
             break;
         case 3:
             //w = bitfieldInsert36(w, char9, 0, 9);
-            w = setbits36 (w, 27, 9, (word36) char9);
+            w = setbits36_9 (w, 27, char9);
             break;
     }
     

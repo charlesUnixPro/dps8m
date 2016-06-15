@@ -1152,8 +1152,8 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
             word36 buf [tally];
             for (uint i = 0; i < tally; i ++)
               {
-                putbits36 (buf + i,  0, 18, mem [i * 2]);
-                putbits36 (buf + i, 18, 18, mem [i * 2 + 1]);
+                putbits36_18 (buf + i,  0, mem [i * 2]);
+                putbits36_18 (buf + i, 18, mem [i * 2 + 1]);
               }
             iomIndirectDataService (iomUnitIdx, chan, buf, & tally, true);
             p -> stati = 04000;

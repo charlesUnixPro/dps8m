@@ -376,70 +376,70 @@ static void scu2words(word36 *words)
 
     // words [0]
 
-    putbits36 (& words [0],  0,  3, cpu.PPR.PRR);
-    putbits36 (& words [0],  3, 15, cpu.PPR.PSR);
-    putbits36 (& words [0], 18,  1, cpu.PPR.P);
+    putbits36_3 (& words [0],  0,  cpu.PPR.PRR);
+    putbits36_15 (& words [0],  3, cpu.PPR.PSR);
+    putbits36_1 (& words [0], 18,  cpu.PPR.P);
     // 19, 1 XSF External segment flag
     // 20, 1 SDWAMM Match on SDWAM
-    putbits36 (& words [0], 21,  1, cpu.cu.SD_ON);
+    putbits36_1 (& words [0], 21,  cpu.cu.SD_ON);
     // 22, 1 PTWAMM Match on PTWAM
-    putbits36 (& words [0], 23,  1, cpu.cu.PT_ON);
+    putbits36_1 (& words [0], 23,  cpu.cu.PT_ON);
 #if 0
-    putbits36 (& words [0], 24,  1, cpu.cu.PI_AP);   // 24    PI-AP
-    putbits36 (& words [0], 25,  1, cpu.cu.DSPTW);   // 25    DSPTW
-    putbits36 (& words [0], 26,  1, cpu.cu.SDWNP);   // 26    SDWNP
-    putbits36 (& words [0], 27,  1, cpu.cu.SDWP);    // 27    SDWP
-    putbits36 (& words [0], 28,  1, cpu.cu.PTW);     // 28    PTW
-    putbits36 (& words [0], 29,  1, cpu.cu.PTW2);    // 29    PTW2
-    putbits36 (& words [0], 30,  1, cpu.cu.FAP);     // 30    FAP
-    putbits36 (& words [0], 31,  1, cpu.cu.FANP);    // 31    FANP
-    putbits36 (& words [0], 32,  1, cpu.cu.FABS);    // 32    FABS
+    putbits36_1 (& words [0], 24,  cpu.cu.PI_AP);   // 24    PI-AP
+    putbits36_1 (& words [0], 25,  cpu.cu.DSPTW);   // 25    DSPTW
+    putbits36_1 (& words [0], 26,  cpu.cu.SDWNP);   // 26    SDWNP
+    putbits36_1 (& words [0], 27,  cpu.cu.SDWP);    // 27    SDWP
+    putbits36_1 (& words [0], 28,  cpu.cu.PTW);     // 28    PTW
+    putbits36_1 (& words [0], 29,  cpu.cu.PTW2);    // 29    PTW2
+    putbits36_1 (& words [0], 30,  cpu.cu.FAP);     // 30    FAP
+    putbits36_1 (& words [0], 31,  cpu.cu.FANP);    // 31    FANP
+    putbits36_1 (& words [0], 32,  cpu.cu.FABS);    // 32    FABS
 #else
     // XXX Only the top 9 bits are used in APUCycleBits, so this is
     // zeroing the 3 FTC bits at the end of the word; on the
     // other hand this keeps the values in apuStatusBits clearer.
     // If FTC is ever used, be sure to put it's save code after this
     // line.
-    putbits36 (& words [0], 24, 12, cpu.cu.APUCycleBits);
+    putbits36_12 (& words [0], 24, cpu.cu.APUCycleBits);
 #endif
 
     // words [1]
 
-    putbits36 (& words [1],  0,  1, cpu.cu.IRO_ISN);
-    putbits36 (& words [1],  1,  1, cpu.cu.OEB_IOC);
-    putbits36 (& words [1],  2,  1, cpu.cu.EOFF_IAIM);
-    putbits36 (& words [1],  3,  1, cpu.cu.ORB_ISP);
-    putbits36 (& words [1],  4,  1, cpu.cu.ROFF_IPR);
-    putbits36 (& words [1],  5,  1, cpu.cu.OWB_NEA);
-    putbits36 (& words [1],  6,  1, cpu.cu.WOFF_OOB);
-    putbits36 (& words [1],  7,  1, cpu.cu.NO_GA);
-    putbits36 (& words [1],  8,  1, cpu.cu.OCB);
-    putbits36 (& words [1],  9,  1, cpu.cu.OCALL);
-    putbits36 (& words [1], 10,  1, cpu.cu.BOC);
-    putbits36 (& words [1], 11,  1, cpu.cu.PTWAM_ER);
-    putbits36 (& words [1], 12,  1, cpu.cu.CRT);
-    putbits36 (& words [1], 13,  1, cpu.cu.RALR);
-    putbits36 (& words [1], 14,  1, cpu.cu.SWWAM_ER);
-    putbits36 (& words [1], 15,  1, cpu.cu.OOSB);
-    putbits36 (& words [1], 16,  1, cpu.cu.PARU);
-    putbits36 (& words [1], 17,  1, cpu.cu.PARL);
-    putbits36 (& words [1], 18,  1, cpu.cu.ONC1);
-    putbits36 (& words [1], 19,  1, cpu.cu.ONC2);
-    putbits36 (& words [1], 20,  4, cpu.cu.IA);
-    putbits36 (& words [1], 24,  3, cpu.cu.IACHN);
-    putbits36 (& words [1], 27,  3, cpu.cu.CNCHN);
-    putbits36 (& words [1], 30,  5, cpu.cu.FI_ADDR);
-    putbits36 (& words [1], 35, 1, cpu.cycle == INTERRUPT_cycle ? 0 : 1);
+    putbits36_1 (& words [1],  0, cpu.cu.IRO_ISN);
+    putbits36_1 (& words [1],  1, cpu.cu.OEB_IOC);
+    putbits36_1 (& words [1],  2, cpu.cu.EOFF_IAIM);
+    putbits36_1 (& words [1],  3, cpu.cu.ORB_ISP);
+    putbits36_1 (& words [1],  4, cpu.cu.ROFF_IPR);
+    putbits36_1 (& words [1],  5, cpu.cu.OWB_NEA);
+    putbits36_1 (& words [1],  6, cpu.cu.WOFF_OOB);
+    putbits36_1 (& words [1],  7, cpu.cu.NO_GA);
+    putbits36_1 (& words [1],  8, cpu.cu.OCB);
+    putbits36_1 (& words [1],  9, cpu.cu.OCALL);
+    putbits36_1 (& words [1], 10, cpu.cu.BOC);
+    putbits36_1 (& words [1], 11, cpu.cu.PTWAM_ER);
+    putbits36_1 (& words [1], 12, cpu.cu.CRT);
+    putbits36_1 (& words [1], 13, cpu.cu.RALR);
+    putbits36_1 (& words [1], 14, cpu.cu.SWWAM_ER);
+    putbits36_1 (& words [1], 15, cpu.cu.OOSB);
+    putbits36_1 (& words [1], 16, cpu.cu.PARU);
+    putbits36_1 (& words [1], 17, cpu.cu.PARL);
+    putbits36_1 (& words [1], 18, cpu.cu.ONC1);
+    putbits36_1 (& words [1], 19, cpu.cu.ONC2);
+    putbits36_4 (& words [1], 20, cpu.cu.IA);
+    putbits36_3 (& words [1], 24, cpu.cu.IACHN);
+    putbits36_3 (& words [1], 27, cpu.cu.CNCHN);
+    putbits36_5 (& words [1], 30, cpu.cu.FI_ADDR);
+    putbits36_1 (& words [1], 35, cpu.cycle == INTERRUPT_cycle ? 0 : 1);
 
     // words [2]
 
-    putbits36 (& words [2],  0,  3, cpu.TPR.TRR);
-    putbits36 (& words [2],  3, 15, cpu.TPR.TSR);
+    putbits36_3 (& words [2],  0,  cpu.TPR.TRR);
+    putbits36_15 (& words [2],  3, cpu.TPR.TSR);
     // 18, 4 PTWAM levels enabled
     // 22, 4 SDWAM levels enabled
     // 26, 1 0
-    putbits36 (& words [2], 27,  3, cpu.switches.cpu_num);
-    putbits36 (& words [2], 30,  6, cpu.cu.delta);
+    putbits36_3 (& words [2], 27, cpu.switches.cpu_num);
+    putbits36_6 (& words [2], 30, cpu.cu.delta);
 
     // words [3]
 
@@ -447,29 +447,29 @@ static void scu2words(word36 *words)
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
     // 22, 4 TSNB pointer register number for EIS operand #2
     // 26, 4 TSNC pointer register number for EIS operand #3
-    putbits36 (& words [3], 30, 6, cpu.TPR.TBR);
+    putbits36_6 (& words [3], 30, cpu.TPR.TBR);
 
     // words [4]
 
-    putbits36 (& words [4],  0, 18, cpu.PPR.IC);
-    putbits36 (& words [4], 18, 18, cpu.cu.IR);
+    putbits36_18 (& words [4],  0, cpu.PPR.IC);
+    putbits36_18 (& words [4], 18, cpu.cu.IR);
 
     // words [5]
 
-    putbits36 (& words [5],  0, 18, cpu.TPR.CA);
-    putbits36 (& words [5], 18,  1, cpu.cu.repeat_first);
-    putbits36 (& words [5], 19,  1, cpu.cu.rpt);
-    putbits36 (& words [5], 20,  1, cpu.cu.rd);
+    putbits36_18 (& words [5],  0, cpu.TPR.CA);
+    putbits36_1 (& words [5], 18, cpu.cu.repeat_first);
+    putbits36_1 (& words [5], 19, cpu.cu.rpt);
+    putbits36_1 (& words [5], 20, cpu.cu.rd);
     // 21, 1 RL repeat link
-    putbits36 (& words [5], 22,  1, cpu.cu.pot);
+    putbits36_1 (& words [5], 22, cpu.cu.pot);
     // 23, 1 PON Prepare operand no tally
-    putbits36 (& words [5], 24,  1, cpu.cu.xde);
-    putbits36 (& words [5], 25,  1, cpu.cu.xdo);
+    putbits36_1 (& words [5], 24, cpu.cu.xde);
+    putbits36_1 (& words [5], 25, cpu.cu.xdo);
     // 26, 1 ITP Execute ITP indirect cycle
-    putbits36 (& words [5], 27,  1, cpu.cu.rfi);
+    putbits36_1 (& words [5], 27, cpu.cu.rfi);
     // 28, 1 ITS Execute ITS indirect cycle
-    putbits36 (& words [5], 29,  1, cpu.cu.FIF);
-    putbits36 (& words [5], 30,  6, cpu.cu.CT_HOLD);
+    putbits36_1 (& words [5], 29, cpu.cu.FIF);
+    putbits36_6 (& words [5], 30, cpu.cu.CT_HOLD);
 
     // words [6]
 
@@ -625,51 +625,51 @@ static void du2words (word36 * words)
 
     // Word 0
 
-    putbits36 (& words [0],  9,  1, cpu.du.Z);
-    putbits36 (& words [0], 10,  1, cpu.du.NOP);
-    putbits36 (& words [0], 12, 24, cpu.du.CHTALLY);
+    putbits36_1 (& words [0],  9, cpu.du.Z);
+    putbits36_1 (& words [0], 10, cpu.du.NOP);
+    putbits36_24 (& words [0], 12, cpu.du.CHTALLY);
 
     // Word 1
 
     // Word 2
 
-    putbits36 (& words [2],  0, 18, cpu.du.D1_PTR_W);
-    putbits36 (& words [2], 18,  6, cpu.du.D1_PTR_B);
-    putbits36 (& words [2], 25,  2, cpu.du.TAk [0]);
-    putbits36 (& words [2], 31,  1, cpu.du.F1);
-    putbits36 (& words [2], 32,  1, cpu.du.Ak [0]);
+    putbits36_18 (& words [2],  0, cpu.du.D1_PTR_W);
+    putbits36_6 (& words [2], 18, cpu.du.D1_PTR_B);
+    putbits36_2 (& words [2], 25, cpu.du.TAk [0]);
+    putbits36_1 (& words [2], 31, cpu.du.F1);
+    putbits36_1 (& words [2], 32, cpu.du.Ak [0]);
 
     // Word 3
 
-    putbits36 (& words [3],  0, 10, cpu.du.LEVEL1);
-    putbits36 (& words [3], 12, 24, cpu.du.D1_RES);
+    putbits36_10 (& words [3],  0, cpu.du.LEVEL1);
+    putbits36_24 (& words [3], 12, cpu.du.D1_RES);
 
     // Word 4
 
-    putbits36 (& words [4],  0, 18, cpu.du.D2_PTR_W);
-    putbits36 (& words [4], 18,  6, cpu.du.D2_PTR_B);
-    putbits36 (& words [4], 25,  2, cpu.du.TAk [1]);
-    putbits36 (& words [4], 30,  1, cpu.du.R);
-    putbits36 (& words [4], 31,  1, cpu.du.F2);
-    putbits36 (& words [4], 32,  1, cpu.du.Ak [1]);
+    putbits36_18 (& words [4],  0, cpu.du.D2_PTR_W);
+    putbits36_6 (& words [4], 18, cpu.du.D2_PTR_B);
+    putbits36_2 (& words [4], 25, cpu.du.TAk [1]);
+    putbits36_1 (& words [4], 30, cpu.du.R);
+    putbits36_1 (& words [4], 31, cpu.du.F2);
+    putbits36_1 (& words [4], 32, cpu.du.Ak [1]);
 
     // Word 5
 
-    putbits36 (& words [5],  9,  1, cpu.du.LEVEL2);
-    putbits36 (& words [5], 12, 24, cpu.du.D2_RES);
+    putbits36_1 (& words [5],  9, cpu.du.LEVEL2);
+    putbits36_24 (& words [5], 12, cpu.du.D2_RES);
 
     // Word 6
 
-    putbits36 (& words [6],  0, 18, cpu.du.D3_PTR_W);
-    putbits36 (& words [6], 18,  6, cpu.du.D3_PTR_B);
-    putbits36 (& words [6], 25,  2, cpu.du.TAk [2]);
-    putbits36 (& words [6], 31,  1, cpu.du.F3);
-    putbits36 (& words [6], 32,  1, cpu.du.Ak [2]);
-    putbits36 (& words [6], 33,  3, cpu.du.JMP);
+    putbits36_18 (& words [6],  0, cpu.du.D3_PTR_W);
+    putbits36_6 (& words [6], 18, cpu.du.D3_PTR_B);
+    putbits36_2 (& words [6], 25, cpu.du.TAk [2]);
+    putbits36_1 (& words [6], 31, cpu.du.F3);
+    putbits36_1 (& words [6], 32, cpu.du.Ak [2]);
+    putbits36_3 (& words [6], 33, cpu.du.JMP);
 
     // Word 7
 
-    putbits36 (& words [7], 12, 24, cpu.du.D3_RES);
+    putbits36_24 (& words [7], 12, cpu.du.D3_RES);
 
   }
 
@@ -1543,7 +1543,7 @@ restart_1:
 //                // Don't clear a; it is needed to detect change to appending
 //                //  mode
 //                //a = false;
-//                putbits36 (& cpu.cu.IWB, 29,  1, 0);
+//                putbits36_1 (& cpu.cu.IWB, 29, 0);
               }
             else
               {
@@ -2383,13 +2383,13 @@ static t_stat DoBasicInstruction (void)
             //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0], cpu.PPR.PSR, 18, 15);
             //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0], cpu.PPR.PRR, 15,  3);
             //cpu.Ypair[0] = bitfieldInsert36(cpu.Ypair[0],     043,  0,  6);
-            putbits36 (& cpu.Ypair [0],  3, 15, cpu.PPR.PSR);
-            putbits36 (& cpu.Ypair [0], 18,  3, cpu.PPR.PRR);
-            putbits36 (& cpu.Ypair [0], 30,  6,     043);
+            putbits36_15 (& cpu.Ypair [0],  3, cpu.PPR.PSR);
+            putbits36_3 (& cpu.Ypair [0], 18, cpu.PPR.PRR);
+            putbits36_6 (& cpu.Ypair [0], 30, 043);
 
             cpu.Ypair[1] = 0;
             //cpu.Ypair[1] = bitfieldInsert36(cpu.Ypair[0], cpu.PPR.IC + 2, 18, 18);
-            putbits36(& cpu.Ypair [1],  0, 18, cpu.PPR.IC + 2);
+            putbits36_18(& cpu.Ypair [1],  0, cpu.PPR.IC + 2);
 
             break;
 
@@ -4327,7 +4327,7 @@ static t_stat DoBasicInstruction (void)
             // C(E) -> C(Y)0,7
             // 00...0 -> C(Y)8,17
 
-            putbits36 (& cpu.CY, 0, 18, ((word36)(cpu.rE & 0377) << 10));
+            putbits36_18 (& cpu.CY, 0, ((word18)(cpu.rE & 0377) << 10));
             break;
 
 
@@ -5605,33 +5605,33 @@ static t_stat DoBasicInstruction (void)
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
                     cpu.Ypair [0] = 0;
-                    putbits36 (& cpu.Ypair [0], 18, 1, cpu.MR.cuolin);
-                    putbits36 (& cpu.Ypair [0], 19, 1, cpu.MR.solin);
-                    putbits36 (& cpu.Ypair [0], 20, 1, cpu.MR.sdpap);
-                    putbits36 (& cpu.Ypair [0], 21, 1, cpu.MR.separ);
-                    putbits36 (& cpu.Ypair [0], 22, 2, cpu.MR.tm);
-                    putbits36 (& cpu.Ypair [0], 24, 2, cpu.MR.vm);
-                    putbits36 (& cpu.Ypair [0], 28, 1, cpu.MR.hrhlt);
-                    putbits36 (& cpu.Ypair [0], 29, 1, cpu.MR.hrxfr);
-                    putbits36 (& cpu.Ypair [0], 30, 1, cpu.MR.ihr);
-                    putbits36 (& cpu.Ypair [0], 31, 1, cpu.MR.ihrrs);
-                    putbits36 (& cpu.Ypair [0], 32, 1, cpu.MR.mrgctl);
-                    putbits36 (& cpu.Ypair [0], 33, 1, cpu.MR.hexfp);
-                    putbits36 (& cpu.Ypair [0], 35, 1, cpu.MR.emr);
+                    putbits36_1 (& cpu.Ypair [0], 18, cpu.MR.cuolin);
+                    putbits36_1 (& cpu.Ypair [0], 19, cpu.MR.solin);
+                    putbits36_1 (& cpu.Ypair [0], 20, cpu.MR.sdpap);
+                    putbits36_1 (& cpu.Ypair [0], 21, cpu.MR.separ);
+                    putbits36_2 (& cpu.Ypair [0], 22, cpu.MR.tm);
+                    putbits36_24 (& cpu.Ypair [0], 2, cpu.MR.vm);
+                    putbits36_1 (& cpu.Ypair [0], 28, cpu.MR.hrhlt);
+                    putbits36_1 (& cpu.Ypair [0], 29, cpu.MR.hrxfr);
+                    putbits36_1 (& cpu.Ypair [0], 30, cpu.MR.ihr);
+                    putbits36_1 (& cpu.Ypair [0], 31, cpu.MR.ihrrs);
+                    putbits36_1 (& cpu.Ypair [0], 32, cpu.MR.mrgctl);
+                    putbits36_1 (& cpu.Ypair [0], 33, cpu.MR.hexfp);
+                    putbits36_1 (& cpu.Ypair [0], 35, cpu.MR.emr);
                     cpu.Ypair [1] = 0;
-                    putbits36 (& cpu.Ypair [1], 36 - 36, 15,
+                    putbits36_15 (& cpu.Ypair [1], 36 - 36,
                                cpu.CMR.cache_dir_address);
-                    putbits36 (& cpu.Ypair [1], 51 - 36, 1, cpu.CMR.par_bit);
-                    putbits36 (& cpu.Ypair [1], 52 - 36, 1, cpu.CMR.lev_ful);
-                    putbits36 (& cpu.Ypair [1], 54 - 36, 1, cpu.CMR.csh1_on);
-                    putbits36 (& cpu.Ypair [1], 55 - 36, 1, cpu.CMR.csh2_on);
-                    putbits36 (& cpu.Ypair [1], 57 - 36, 1, cpu.CMR.inst_on);
-                    putbits36 (& cpu.Ypair [1], 59 - 36, 1, cpu.CMR.csh_reg);
-                    putbits36 (& cpu.Ypair [1], 60 - 36, 1, cpu.CMR.str_asd);
-                    putbits36 (& cpu.Ypair [1], 61 - 36, 1, cpu.CMR.col_ful);
-                    putbits36 (& cpu.Ypair [1], 62 - 36, 2, cpu.CMR.rro_AB);
-                    putbits36 (& cpu.Ypair [1], 68 - 36, 1, cpu.CMR.bypass_cache);
-                    putbits36 (& cpu.Ypair [1], 70 - 36, 2, cpu.CMR.luf);
+                    putbits36_1 (& cpu.Ypair [1], 51 - 36, cpu.CMR.par_bit);
+                    putbits36_1 (& cpu.Ypair [1], 52 - 36, cpu.CMR.lev_ful);
+                    putbits36_1 (& cpu.Ypair [1], 54 - 36, cpu.CMR.csh1_on);
+                    putbits36_1 (& cpu.Ypair [1], 55 - 36, cpu.CMR.csh2_on);
+                    putbits36_1 (& cpu.Ypair [1], 57 - 36, cpu.CMR.inst_on);
+                    putbits36_1 (& cpu.Ypair [1], 59 - 36, cpu.CMR.csh_reg);
+                    putbits36_1 (& cpu.Ypair [1], 60 - 36, cpu.CMR.str_asd);
+                    putbits36_1 (& cpu.Ypair [1], 61 - 36, cpu.CMR.col_ful);
+                    putbits36_2 (& cpu.Ypair [1], 62 - 36, cpu.CMR.rro_AB);
+                    putbits36_1 (& cpu.Ypair [1], 68 - 36, cpu.CMR.bypass_cache);
+                    putbits36_2 (& cpu.Ypair [1], 70 - 36, cpu.CMR.luf);
                   }
                   break;
 
@@ -5705,11 +5705,11 @@ static t_stat DoBasicInstruction (void)
               {
                 cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [j], 0, 15,
+                putbits36_15 (& cpu.Yblock16 [j], 0,
                            cpu.SDWAM [toffset + j].POINTER);
-                putbits36 (& cpu.Yblock16 [j], 27, 1,
+                putbits36_1 (& cpu.Yblock16 [j], 27,
                            cpu.SDWAM [toffset + j].F);
-                putbits36 (& cpu.Yblock16 [j], 30, 6,
+                putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.SDWAM [toffset + j].USE);
 #endif
               }
@@ -6054,13 +6054,13 @@ static t_stat DoBasicInstruction (void)
                 if (scu_unit_num < 0)
                   {
                     if (cpu_port_num == 0)
-                      putbits36 (& cpu.faultRegister [0], 16, 4, 010);
+                      putbits36_4 (& cpu.faultRegister [0], 16, 010);
                     else if (cpu_port_num == 1)
-                      putbits36 (& cpu.faultRegister [0], 20, 4, 010);
+                      putbits36_4 (& cpu.faultRegister [0], 20, 010);
                     else if (cpu_port_num == 2)
-                      putbits36 (& cpu.faultRegister [0], 24, 4, 010);
+                      putbits36_4 (& cpu.faultRegister [0], 24, 010);
                     else
-                      putbits36 (& cpu.faultRegister [0], 28, 4, 010);
+                      putbits36_4 (& cpu.faultRegister [0], 28, 010);
                     doFault (FAULT_CMD, not_control, "(smcm)");
                   }
                 t_stat rc = scu_smcm ((uint) scu_unit_num, ASSUME_CPU0, cpu.rA, cpu.rQ);
@@ -6085,13 +6085,13 @@ static t_stat DoBasicInstruction (void)
             if (scu_unit_num < 0)
               {
                 if (cpu_port_num == 0)
-                  putbits36 (& cpu.faultRegister [0], 16, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 16, 010);
                 else if (cpu_port_num == 1)
-                  putbits36 (& cpu.faultRegister [0], 20, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 20, 010);
                 else if (cpu_port_num == 2)
-                  putbits36 (& cpu.faultRegister [0], 24, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 24, 010);
                 else
-                  putbits36 (& cpu.faultRegister [0], 28, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 28, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
             t_stat rc = scu_smic ((uint) scu_unit_num, ASSUME_CPU0, cpu_port_num, cpu.rA);
@@ -6112,13 +6112,13 @@ static t_stat DoBasicInstruction (void)
             if (scu_unit_num < 0)
               {
                 if (cpu_port_num == 0)
-                  putbits36 (& cpu.faultRegister [0], 16, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 16, 010);
                 else if (cpu_port_num == 1)
-                  putbits36 (& cpu.faultRegister [0], 20, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 20, 010);
                 else if (cpu_port_num == 2)
-                  putbits36 (& cpu.faultRegister [0], 24, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 24, 010);
                 else
-                  putbits36 (& cpu.faultRegister [0], 28, 4, 010);
+                  putbits36_4 (& cpu.faultRegister [0], 28, 010);
                 doFault (FAULT_CMD, not_control, "(smic)");
               }
             t_stat rc = scu_sscr ((uint) scu_unit_num, ASSUME_CPU0, cpu_port_num, 
@@ -6645,13 +6645,13 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [j],  0, 15,
+                putbits36_15 (& cpu.Yblock16 [j],  0,
                            cpu.PTWAM [toffset + j].POINTER);
-                putbits36 (& cpu.Yblock16 [j], 15, 12,
+                putbits36_12 (& cpu.Yblock16 [j], 15,
                            cpu.PTWAM [toffset + j].PAGENO);
-                putbits36 (& cpu.Yblock16 [j], 27,  1,
+                putbits36_1 (& cpu.Yblock16 [j], 27, 
                            cpu.PTWAM [toffset + j].F);
-                putbits36 (& cpu.Yblock16 [j], 30,  6,
+                putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.PTWAM [toffset + j].USE);
 #endif
               }
@@ -6672,8 +6672,8 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock16 [j], 0, 13, cpu.PTWAM [toffset + j].ADDR);
-                putbits36 (& cpu.Yblock16 [j], 29, 1, cpu.PTWAM [toffset + j].M);
+                putbits36_13 (& cpu.Yblock16 [j], 0, cpu.PTWAM [toffset + j].ADDR);
+                putbits36_1 (& cpu.Yblock16 [j], 29, cpu.PTWAM [toffset + j].M);
 #endif
               }
           }
@@ -6693,34 +6693,34 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock32 [j * 2] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock32 [j * 2],  0, 23,
+                putbits36_23 (& cpu.Yblock32 [j * 2],  0,
                            cpu.SDWAM [toffset + j].ADDR);
-                putbits36 (& cpu.Yblock32 [j * 2], 24,  3,
+                putbits36_3 (& cpu.Yblock32 [j * 2], 24,
                            cpu.SDWAM [toffset + j].R1);
-                putbits36 (& cpu.Yblock32 [j * 2], 27,  3,
+                putbits36_3 (& cpu.Yblock32 [j * 2], 27,
                            cpu.SDWAM [toffset + j].R2);
-                putbits36 (& cpu.Yblock32 [j * 2], 30,  3,
+                putbits36_3 (& cpu.Yblock32 [j * 2], 30,
                            cpu.SDWAM [toffset + j].R3);
 #endif
                 cpu.Yblock32 [j * 2 + 1] = 0;
 #ifndef SPEED
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 37 - 36, 14,
+                putbits36_14 (& cpu.Yblock32 [j * 2 + 1], 37 - 36,
                            cpu.SDWAM [toffset + j].BOUND);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 51 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 51 - 36,
                            cpu.SDWAM [toffset + j].R);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 52 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 52 - 36,
                            cpu.SDWAM [toffset + j].E);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 53 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 53 - 36,
                            cpu.SDWAM [toffset + j].W);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 54 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 54 - 36,
                            cpu.SDWAM [toffset + j].P);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 55 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 55 - 36,
                            cpu.SDWAM [toffset + j].U);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 56 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 56 - 36,
                            cpu.SDWAM [toffset + j].G);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 57 - 36,  1,
+                putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 57 - 36,
                            cpu.SDWAM [toffset + j].C);
-                putbits36 (& cpu.Yblock32 [j * 2 + 1], 58 - 36, 14,
+                putbits36_14 (& cpu.Yblock32 [j * 2 + 1], 58 - 36,
                            cpu.SDWAM [toffset + j].CL);
 #endif
               }
@@ -6906,7 +6906,7 @@ static t_stat DoEISInstruction (void)
 
                 // C(ARn.WORDNO) -> C(Y)0,17
                 //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
+                putbits36_18 (& cpu.CY, 0, cpu.AR[n].WORDNO & MASK18);
 
                 // If TA = 1 (6-bit data) or TA = 2 (4-bit data), C(ARn.CHAR)
                 // and C(ARn.BITNO) are translated to an equivalent character
@@ -6921,7 +6921,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
+                        putbits36_3 (& cpu.CY, 18, CN & MASK3);
                         break;
 
                     case CTA6:  // 1
@@ -6929,7 +6929,7 @@ static t_stat DoEISInstruction (void)
                         // (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 -> C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n)) / 6;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
+                        putbits36_3 (& cpu.CY, 18, CN & MASK3);
                         break;
 
                     case CTA9:  // 0
@@ -6938,7 +6938,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36 (& cpu.CY, 18, 3, (GET_AR_CHAR (n) & MASK2) << 1);
+                        putbits36_3 (& cpu.CY, 18, (GET_AR_CHAR (n) & MASK2) << 1);
                         break;
                 }
             }
@@ -6964,7 +6964,7 @@ static t_stat DoEISInstruction (void)
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 // C(ARn.WORDNO) -> C(Y)0,17
                 //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
-                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
+                putbits36_18 (& cpu.CY, 0, cpu.AR[n].WORDNO & MASK18);
 
                 word3 CN = 0;
                 switch(TN)
@@ -6975,7 +6975,7 @@ static t_stat DoEISInstruction (void)
                         //     C(Y)18,20
                         CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
-                        putbits36 (& cpu.CY, 18, 3, (word36) CN & MASK3);
+                        putbits36_3 (& cpu.CY, 18, CN & MASK3);
                         break;
 
                     case CTN9:  // 0
@@ -6984,7 +6984,7 @@ static t_stat DoEISInstruction (void)
                         //   0 -> C(Y)20
                         //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
                         //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36 (& cpu.CY, 18, 3, (word36) ((CN & MASK3) << 1));
+                        putbits36_3 (& cpu.CY, 18, ((CN & MASK3) << 1));
                         break;
                 }
             }
@@ -7006,9 +7006,9 @@ static t_stat DoEISInstruction (void)
                 //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_BITNO (n) & MASK4,  12,  4);
                 //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2,   16,  2);
-                putbits36 (& cpu.CY, 0, 18, cpu.AR[n].WORDNO & MASK18);
-                putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n) & MASK4);
-                putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n) & MASK2);
+                putbits36_18 (& cpu.CY, 0, cpu.AR[n].WORDNO & MASK18);
+                putbits36_4 (& cpu.CY, 20, GET_AR_BITNO (n) & MASK4);
+                putbits36_2 (& cpu.CY, 18, GET_AR_CHAR (n) & MASK2);
             }
             break;
 
@@ -7020,9 +7020,9 @@ static t_stat DoEISInstruction (void)
                 //arx = bitfieldInsert36(arx, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 //arx = bitfieldInsert36(arx, GET_AR_BITNO (n) & MASK4,  12,  4);
                 //arx = bitfieldInsert36(arx, GET_AR_CHAR (n) & MASK2,   16,  2);
-                putbits36 (& arx, 0, 18, cpu.AR[n].WORDNO & MASK18);
-                putbits36 (& arx, 20, 4, GET_AR_BITNO (n) & MASK4);
-                putbits36 (& arx, 18, 2, GET_AR_CHAR (n) & MASK2);
+                putbits36_18 (& arx, 0, cpu.AR[n].WORDNO & MASK18);
+                putbits36_4 (& arx, 20, GET_AR_BITNO (n) & MASK4);
+                putbits36_2 (& arx, 18, GET_AR_CHAR (n) & MASK2);
 
                 cpu.Yblock8[n] = arx;
             }

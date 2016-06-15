@@ -666,31 +666,31 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     
     word36 word1, word2;
     word1 = 0;
-    putbits36 (& word1, 0, 12, p -> stati);
+    putbits36_12 (& word1, 0, p -> stati);
     // isOdd can be set to zero; see 
     //   http://ringzero.wikidot.com/wiki:cac-2015-10-22
-    //putbits36 (& word1, 12, 1, p -> isOdd ? 0 : 1);
-    putbits36 (& word1, 13, 1, marker ? 1 : 0);
-    putbits36 (& word1, 14, 2, 0); // software status
-    putbits36 (& word1, 16, 1, p -> initiate ? 1 : 0);
-    putbits36 (& word1, 17, 1, 0); // software abort bit
-    putbits36 (& word1, 18, 3, p -> chanStatus);
-    putbits36 (& word1, 21, 3, iomUnitData [iomUnitIdx] . iomStatus);
+    //putbits36_1 (& word1, 12, p -> isOdd ? 0 : 1);
+    putbits36_1 (& word1, 13, marker ? 1 : 0);
+    putbits36_2 (& word1, 14, 0); // software status
+    putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
+    putbits36_1 (& word1, 17, 0); // software abort bit
+    putbits36_3 (& word1, 18, p -> chanStatus);
+    putbits36_3 (& word1, 21, iomUnitData [iomUnitIdx] . iomStatus);
 #if 0
     // BUG: Unimplemented status bits:
-    putbits36 (& word1, 24, 6, chan_status.addr_ext);
+    putbits36_6 (& word1, 24, chan_status.addr_ext);
 #endif
-    putbits36 (& word1, 30, 6, p -> recordResidue);
+    putbits36_6 (& word1, 30, p -> recordResidue);
     
     word2 = 0;
 #if 0
     // BUG: Unimplemented status bits:
-    putbits36 (& word2, 0, 18, chan_status.addr);
-    putbits36 (& word2, 22, 2, chan_status.type);
+    putbits36_18 (& word2, 0, chan_status.addr);
+    putbits36_2 (& word2, 22, chan_status.type);
 #endif
-    putbits36 (& word2, 18, 3, p -> charPos);
-    putbits36 (& word2, 21, 1, p -> isRead ? 1 : 0);
-    putbits36 (& word2, 24, 12, p -> tallyResidue);
+    putbits36_3 (& word2, 18, p -> charPos);
+    putbits36_1 (& word2, 21, p -> isRead ? 1 : 0);
+    putbits36_12 (& word2, 24, p -> tallyResidue);
     
     // BUG: need to write to mailbox queue
     
@@ -771,8 +771,8 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
                    __func__, scw);
-        putbits36 (& scw, 24, 12, tally);
-        putbits36 (& scw, 0, 18, addr);
+        putbits36_12 (& scw, 24, tally);
+        putbits36_18 (& scw, 0, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
                    __func__, scw);
@@ -1262,20 +1262,20 @@ static void packDCW (uint iomUnitIdx, uint chan)
   {
     // DCW_18_20_CP is the only field ever changed.
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36 (& p -> DCW, 18, 3, p -> DCW_18_20_CP);
+    putbits36_3 (& p -> DCW, 18, p -> DCW_18_20_CP);
   }
 
 static void packLPW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36 (& p-> LPW,  0, 18, p -> LPW_DCW_PTR);
-    putbits36 (& p-> LPW, 18,  1, p -> LPW_18_RES);
-    putbits36 (& p-> LPW, 19,  1, p -> LPW_19_REL);
-    putbits36 (& p-> LPW, 20,  1, p -> LPW_20_AE);
-    putbits36 (& p-> LPW, 21,  1, p -> LPW_21_NC);
-    putbits36 (& p-> LPW, 22,  1, p -> LPW_22_TAL);
-    putbits36 (& p-> LPW, 23,  1, p -> LPW_23_REL);
-    putbits36 (& p-> LPW, 24, 12, p -> LPW_TALLY);
+    putbits36_18 (& p-> LPW,  0, p -> LPW_DCW_PTR);
+    putbits36_1 (& p-> LPW, 18, p -> LPW_18_RES);
+    putbits36_1 (& p-> LPW, 19, p -> LPW_19_REL);
+    putbits36_1 (& p-> LPW, 20, p -> LPW_20_AE);
+    putbits36_1 (& p-> LPW, 21, p -> LPW_21_NC);
+    putbits36_1 (& p-> LPW, 22, p -> LPW_22_TAL);
+    putbits36_1 (& p-> LPW, 23, p -> LPW_23_REL);
+    putbits36_12 (& p-> LPW, 24, p -> LPW_TALLY);
   }
 
 static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
@@ -1407,10 +1407,10 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     //
 
     word36 faultWord = 0;
-    putbits36 (& faultWord, 9, 9, chan);
-    putbits36 (& faultWord, 18, 5, req);
+    putbits36_9 (& faultWord, 9, chan);
+    putbits36_5 (& faultWord, 18, req);
     // IAC, bits 26..29
-    putbits36 (& faultWord, 30, 6, signal);
+    putbits36_6 (& faultWord, 30, signal);
 
     uint mbx = mbxLoc (iomUnitIdx, chan);
 
@@ -1429,9 +1429,9 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     word36 ddcw;
     core_read (mbx, & ddcw, __func__);
     // incr addr
-    putbits36 (& ddcw, 0, 18, (getbits36_18 (ddcw, 0) + 1) & MASK18);
+    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1) & MASK18);
     // decr tally
-    putbits36 (& ddcw, 24, 12, (getbits36_12 (ddcw, 24) - 1) & MASK12);
+    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1) & MASK12);
     core_write (mbx, ddcw, __func__);
   }
 
@@ -2136,7 +2136,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     sim_debug (DBG_DEBUG, & iom_dev, 
                "%s: IMW at %#o was %012llo; setting bit %d\n", 
                __func__, imw_addr, imw, chan_in_group);
-    putbits36 (& imw, chan_in_group, 1, 1);
+    putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012llo\n", __func__, imw_addr, imw);
     (void) core_write (imw_addr, imw, __func__);

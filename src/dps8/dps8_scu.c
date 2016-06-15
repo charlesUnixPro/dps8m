@@ -1202,8 +1202,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             * rega = 0;
             //* regq = 0000002000000; // ID = 0010
             * regq = 0;
-            putbits36 (regq, 50 - 36,  4, scu [scu_unit_num] . id);
-            putbits36 (regq, 54 - 36, 18, scu [scu_unit_num] . modeReg);
+            putbits36_4 (regq, 50 - 36, scu [scu_unit_num] . id);
+            putbits36_18 (regq, 54 - 36, scu [scu_unit_num] . modeReg);
             break;
           }
 
@@ -1318,33 +1318,33 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             a = 0;
 // (data, starting bit position, number of bits, value)
-            putbits36 (& a,  0,  9, maskab [0]);
-            putbits36 (& a,  9,  3, up -> lower_store_size);
+            putbits36_9 (& a,  0, maskab [0]);
+            putbits36_3 (& a,  9, up -> lower_store_size);
             // XXX A, A1, B, B1 not implemented. (AG87-00A pgs 2-5. 2-6)
-            putbits36 (& a, 12,  4, 017); // A, A1, B, B1 online
-            putbits36 (& a, 16,  4, scu_port_num);
-            putbits36 (& a, 21,  1, up -> mode);
-            putbits36 (& a, 22,  8, up -> nea);
+            putbits36_4 (& a, 12, 017); // A, A1, B, B1 online
+            putbits36_4 (& a, 16, scu_port_num);
+            putbits36_1 (& a, 21, up -> mode);
+            putbits36_8 (& a, 22, up -> nea);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36 (& a, 32,  1, up -> port_enable [0]);
-            putbits36 (& a, 33,  1, up -> port_enable [1]);
-            putbits36 (& a, 34,  1, up -> port_enable [2]);
-            putbits36 (& a, 35,  1, up -> port_enable [3]);
+            putbits36_1 (& a, 32,  up -> port_enable [0]);
+            putbits36_1 (& a, 33,  up -> port_enable [1]);
+            putbits36_1 (& a, 34,  up -> port_enable [2]);
+            putbits36_1 (& a, 35,  up -> port_enable [3]);
             * rega = a;
 
             q = 0;
-            putbits36 (& q,  0,  9, maskab [1]);
+            putbits36_9 (& q,  0,  maskab [1]);
             // cyclic prior <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36 (& q, 32,  1, up -> port_enable [4]);
-            putbits36 (& q, 33,  1, up -> port_enable [5]);
-            putbits36 (& q, 34,  1, up -> port_enable [6]);
-            putbits36 (& q, 35,  1, up -> port_enable [7]);
+            putbits36_1 (& q, 32,  up -> port_enable [4]);
+            putbits36_1 (& q, 33,  up -> port_enable [5]);
+            putbits36_1 (& q, 34,  up -> port_enable [6]);
+            putbits36_1 (& q, 35,  up -> port_enable [7]);
             * regq = q;
 #endif
             break;
@@ -1359,9 +1359,9 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
               {
                 uint cell = up -> cells [i] ? 1 : 0;
                 if (i < 16)
-                  putbits36 (rega, i, 1, cell);
+                  putbits36_1 (rega, i, cell);
                 else
-                  putbits36 (regq, i - 16, 1, cell);
+                  putbits36_1 (regq, i - 16, cell);
               }
           }
           break;
@@ -2173,7 +2173,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
         mask <<= 1;
         mask |= enabled;
       }
-    * rega = setbits36(0, 0, 16, 
+    * rega = setbits36_16 (0, 0, 
         (scu [scu_unit_num] . exec_intr_mask [mask_num] >> 16) & 0177777);
     * rega |= mask;
     
@@ -2184,7 +2184,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
         mask <<= 1;
         mask |= enabled;
       }
-    * regq = setbits36 (0, 0, 16, 
+    * regq = setbits36_16 (0, 0, 
        (scu [scu_unit_num] . exec_intr_mask [mask_num] >> 0) & 0177777);
     * regq |= mask;
     

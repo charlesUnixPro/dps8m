@@ -445,7 +445,7 @@ static void sendConsole (word12 stati)
             if (console_state . readp >= console_state . tailp)
               break;
             unsigned char c = (unsigned char) (* console_state . readp ++);
-            putbits36 (& M [daddr], charno * 9, 9, c);
+            putbits36_9 (& M [daddr], charno * 9, c);
           }
         // cp = charno % 4;
 

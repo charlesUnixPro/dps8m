@@ -306,7 +306,7 @@ float36 IEEEdoubleTofloat36(double f0)
         if (mant >= bitval)
         {
             //result = bitfieldInsert36(result, 1, n, 1);
-            setbits36 (& result, 35-n, 1, 1);
+            setbits36_1 (& result, 35-n, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d result=%012llo\n", n, result);
         }
@@ -323,7 +323,7 @@ float36 IEEEdoubleTofloat36(double f0)
     // insert exponent ...
     int e = (int)exp;
     //result = bitfieldInsert36(result, e, 28, 8) & 0777777777777LL;
-    putbits36 (& result, e, 0, 8);
+    putbits36_8 (& result, 0, e);
     
     // XXX TODO test for exp under/overflow ...
     
@@ -526,7 +526,7 @@ void ufs (void)
         }
         
         //cpu.CY = bitfieldInsert36(cpu.CY, (word36)e, 28, 8) & DMASK;
-        putbits36 (& cpu.CY, 0, 8, e & 0377);
+        putbits36_8 (& cpu.CY, 0, e & 0377);
         
     }
 
@@ -534,7 +534,7 @@ void ufs (void)
         cpu.CY = 0400000000000LL;
     else
         //cpu.CY = bitfieldInsert36(cpu.CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
-        putbits36 (& cpu.CY, 8, 28, m2c & FLOAT36MASK);
+        putbits36_28 (& cpu.CY, 8, m2c & FLOAT36MASK);
    
     ufa();
 
@@ -1200,7 +1200,7 @@ void fstr(word36 *Y)
         SET_I_ZERO;
         CLR_I_NEG;
         *Y = 0;
-        putbits36 (Y, 0, 8, (word36) E & MASK8);
+        putbits36_8 (Y, 0, E & MASK8);
         return;
     }
     
@@ -1259,7 +1259,7 @@ void fstr(word36 *Y)
     SC_I_NEG (A & SIGN36);
     
     //*Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
-    *Y = setbits36 (A >> 8, 0, 8, (word36) E);
+    *Y = setbits36_8 (A >> 8, 0, E);
 }
 
 /*!
