@@ -41,7 +41,7 @@ typedef enum
 
 typedef enum
   {
-    ABORT_cycle /* = ABORT_CYCLE */,
+    //ABORT_cycle /* = ABORT_CYCLE */,
     FAULT_cycle /* = FAULT_CYCLE */,
     EXEC_cycle,
     FAULT_EXEC_cycle,
@@ -598,7 +598,7 @@ struct DCDstruct
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     word18 address;       // bits 0-17 of instruction
-    bool   a;             // bit-29 - address via pointer register. Usually.
+    word1  a;             // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.
     word6  tag;           // instruction tag
     
@@ -824,7 +824,7 @@ typedef struct
     word1 rfi;     // 27    RFI Restart this instruction
                    // 28    ITS Execute ITS indirect cycle
     word1 FIF;     // 29    FIF Fault occured during instruction fetch
-    uint CT_HOLD;  // 30-35 CT HOLD contents of the "remember modifier" register
+    word6 CT_HOLD; // 30-35 CT HOLD contents of the "remember modifier" register
 
     
     
@@ -926,7 +926,7 @@ typedef struct du_unit_data_t
     // word1 F3;      //    31  1   F3      First time; data in operand 
                       //                      descriptor 3 is valid
     // word1 A3;      //    32  1   A3      Operand descriptor 3 is active
-    word1 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
+    word3 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
                       //                      to skip to find the next
                       //                      instruction following this 
                       //                      multiword instruction

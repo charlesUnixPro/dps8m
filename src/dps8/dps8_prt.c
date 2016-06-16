@@ -175,7 +175,7 @@ static word9 gc (word36 * b, uint os)
   {
     uint wordno = os / 4;
     uint charno = os % 4;
-    return (word9) getbits36 (b [wordno], charno * 9, 9);
+    return (word9) getbits36_9 (b [wordno], charno * 9);
   }
 
 // Don't know what the longest user id is...
@@ -201,7 +201,7 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
         word9 ch = gc (b, 2 + i);
         if (ch < '0' || ch > '9')
           return 0;
-        qno [i] = ch;
+        qno [i] = (char) ch;
       }
     qno [5] = 0;
     if (gc (b, 7) != 037)
@@ -215,7 +215,7 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
           break;
         if (! isprint (ch))
           return 0;
-        name [i] = ch;
+        name [i] = (char) ch;
       }
     name [i] = 0;
     return 1;
@@ -262,28 +262,28 @@ static int eoj (word36 * buffer, uint tally)
   {
     if (tally < 3)
       return 0;
-    if (getbits36 (buffer [0], 0, 9) != 037)
+    if (getbits36_9 (buffer [0], 0) != 037)
       return 0;
-    if (getbits36 (buffer [0], 9, 9) != 014)
+    if (getbits36_9 (buffer [0], 9) != 014)
       return 0;
-    word9 ch = getbits36 (buffer [0], 18, 9);
+    word9 ch = getbits36_9 (buffer [0], 18);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [0], 27, 9);
+    ch = getbits36_9 (buffer [0], 27);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 0, 9);
+    ch = getbits36_9 (buffer [1], 0);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 9, 9);
+    ch = getbits36_9 (buffer [1], 9);
     if (ch < '0' || ch > '9')
       return 0;
-    ch = getbits36 (buffer [1], 18, 9);
+    ch = getbits36_9 (buffer [1], 18);
     if (ch < '0' || ch > '9')
       return 0;
-    if (getbits36 (buffer [1], 27, 9) != 037)
+    if (getbits36_9 (buffer [1], 27) != 037)
       return 0;
-    if (getbits36 (buffer [2], 0, 9) != 005)
+    if (getbits36_9 (buffer [2], 0) != 005)
       return 0;
     return 1;
   }
@@ -295,7 +295,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & prt_unit [devUnitIdx];
-    int prt_unit_num = PRT_UNIT_NUM (unitp);
+    int prt_unit_num = (int) PRT_UNIT_NUM (unitp);
     //int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
@@ -492,7 +492,7 @@ sim_printf ("\n");
                   {
                     uint wordno = i / 4;
                     uint charno = i % 4;
-                    bytes [i] = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
+                    bytes [i] = (uint8) (buffer [wordno] >> ((3 - charno) * 9)) & 0377;
                   }
 
                 for (uint i = 0; i < tally * 4; i ++)
@@ -574,7 +574,7 @@ sim_printf ("\n");
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
-        send_marker_interrupt (iomUnitIdx, chan);
+        send_marker_interrupt (iomUnitIdx, (int) chan);
       }
     return 0;
   }
@@ -610,14 +610,14 @@ static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
     int n = atoi (cptr);
     if (n < 1 || n > N_PRT_UNITS_MAX)
       return SCPE_ARG;
-    prt_dev . numunits = n;
+    prt_dev . numunits = (uint) n;
     return SCPE_OK;
   }
 
 static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED void * desc)
   {
-    int n = PRT_UNIT_NUM (uptr);
+    int n = (int) PRT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_PRT_UNITS_MAX)
       return SCPE_ARG;
     sim_printf("Printer device name is %s\n", prt_state [n] . device_name);
@@ -627,7 +627,7 @@ static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
 static t_stat prt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED char * cptr, UNUSED void * desc)
   {
-    int n = PRT_UNIT_NUM (uptr);
+    int n = (int) PRT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_PRT_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)

@@ -765,11 +765,13 @@ static uint64 getSCUclock (uint scu_unit_num)
         // 631184400
         uint64 UnixSecs = 631184400;
 
-        uint64 UnixuSecs = UnixSecs * 1000000llu + big;
+        uint64 UnixuSecs = UnixSecs * 1000000llu + (uint64) big;
         // now determine uSecs since Jan 1, 1901 ...
         uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 
-        MulticsuSecs += scu [scu_unit_num] . userCorrection;
+        // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
+        // is <0, it will come out in the wash ok.
+        MulticsuSecs += (uint64) scu [scu_unit_num] . userCorrection;
 
         // The get calendar clock function is guaranteed to return
         // different values on successive calls. 
@@ -844,7 +846,9 @@ static uint64 getSCUclock (uint scu_unit_num)
  
     // Correction factor from the set time command
 
-    MulticsuSecs += scu [scu_unit_num] . userCorrection;
+    // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
+    // is <0, it will come out in the wash ok.
+    MulticsuSecs += (uint64) scu [scu_unit_num] . userCorrection;
 
     if (scu [scu_unit_num] . lastTime >= MulticsuSecs)
         MulticsuSecs = scu [scu_unit_num] . lastTime + 1;
@@ -872,13 +876,12 @@ static char * pcells (uint scu_unit_num)
 t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, 
                  uint UNUSED cpu_port_num, word36 rega)
   {
-   
-    if (getbits36 (rega, 35, 1))
+  
+    if (getbits36_1 (rega, 35))
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
-            scu [scu_unit_num] . cells [i + 16] =
-              getbits36 (rega, i, 1) ? 1 : 0;
+            scu [scu_unit_num] . cells [i + 16] = getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC low: Unit %u Cells: %s\n", 
@@ -886,10 +889,10 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num,
       }
     else
       {
-        for (int i = 0; i < 16; i ++)
+        for (uint i = 0; i < 16; i ++)
           {
             scu [scu_unit_num] . cells [i] = 
-              getbits36 (rega, i, 1) ? 1 : 0;
+              getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC high: Unit %d Cells: %s\n",
@@ -970,8 +973,8 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
       {
         case 00000: // Set system controller mode register
           {
-            scu [scu_unit_num] . id = (word4) getbits36 (regq, 50 - 36,  4);
-            scu [scu_unit_num] . modeReg = getbits36 (regq, 54 - 36, 18);
+            scu [scu_unit_num] . id = (word4) getbits36_4 (regq, 50 - 36);
+            scu [scu_unit_num] . modeReg = getbits36_18 (regq, 54 - 36);
           }
           break;
 
@@ -1078,9 +1081,9 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
             //scup -> interrupts[mask_num].exec_intr_mask = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] = 0;
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
-              (getbits36(rega, 0, 16) << 16);
+              ((word32) getbits36_16(rega, 0) << 16);
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
-              getbits36(regq, 0, 16);
+              getbits36_16(regq, 0);
             sim_debug (DBG_DEBUG, & scu_dev,
                        "%s: PIMA %c: EI mask set to %s\n", 
                        __func__, mask_num + 'A', 
@@ -1101,12 +1104,12 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
 
         case 00003: // Set interrupt cells
           {
-            for (int i = 0; i < 16; i ++)
+            for (uint i = 0; i < 16; i ++)
               {
                 scu [scu_unit_num] . cells [i] = 
-                  getbits36 (rega, i, 1) ? 1 : 0;
+                  getbits36_1 (rega, i) ? 1 : 0;
                 scu [scu_unit_num] . cells [i + 16] = 
-                  getbits36 (regq, i, 1) ? 1 : 0;
+                  getbits36_1 (regq, i) ? 1 : 0;
               }
             sim_debug (DBG_TRACE, & scu_dev, 
                        "SSCR Set int. cells: Unit %u Cells: %s\n", 
@@ -1119,10 +1122,10 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
         case 00005: 
           {
             // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
-            word16 b0_15 = (word16) getbits36 (cpu . rA, 20, 16);
+            word16 b0_15 = (word16) getbits36_16 (cpu . rA, 20);
             word36 b16_51 = cpu . rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
-            scu [scu_unit_num] . userCorrection = newClk - getSCUclock (scu_unit_num);
+            scu [scu_unit_num] . userCorrection = (int64) (newClk - getSCUclock (scu_unit_num));
             //sim_printf ("sscr %o\n", function);
           }
           break;
@@ -1184,8 +1187,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             * rega = 0;
             //* regq = 0000002000000; // ID = 0010
             * regq = 0;
-            putbits36 (regq, 50 - 36,  4, scu [scu_unit_num] . id);
-            putbits36 (regq, 54 - 36, 18, scu [scu_unit_num] . modeReg);
+            putbits36_4 (regq, 50 - 36, scu [scu_unit_num] . id);
+            putbits36_18 (regq, 54 - 36, scu [scu_unit_num] . modeReg);
             break;
           }
 
@@ -1297,34 +1300,34 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 
             a = 0;
 // (data, starting bit position, number of bits, value)
-            putbits36 (& a,  0,  9, maskab [0]);
-            putbits36 (& a,  9,  3, up -> lower_store_size);
-            putbits36 (& a, 12,  4, up -> onl); // A, A1, B, B1 online
-            putbits36 (& a, 16,  4, scu_port_num);
-            putbits36 (& a, 21,  1, config_switches[scu_unit_num].mode);
-            putbits36 (& a, 22,  8, up -> nea);
-            putbits36 (& a, 30,  1, up -> interlace);
-            putbits36 (& a, 31,  1, up -> lwr);
+            putbits36_9 (& a,  0,  maskab [0]);
+            putbits36_3 (& a,  9,  (word3) up -> lower_store_size);
+            putbits36_4 (& a, 12,  up -> onl); // A, A1, B, B1 online
+            putbits36_4 (& a, 16,  (word4) scu_port_num);
+            putbits36_1 (& a, 21,  (word1) config_switches[scu_unit_num].mode);
+            putbits36_8 (& a, 22,  (word8) up -> nea);
+            putbits36_1 (& a, 30,  up -> interlace);
+            putbits36_1 (& a, 31,  up -> lwr);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36 (& a, 32,  1, up -> port_enable [0]);
-            putbits36 (& a, 33,  1, up -> port_enable [1]);
-            putbits36 (& a, 34,  1, up -> port_enable [2]);
-            putbits36 (& a, 35,  1, up -> port_enable [3]);
+            putbits36_1 (& a, 32,  (word1) up -> port_enable [0]);
+            putbits36_1 (& a, 33,  (word1) up -> port_enable [1]);
+            putbits36_1 (& a, 34,  (word1) up -> port_enable [2]);
+            putbits36_1 (& a, 35,  (word1) up -> port_enable [3]);
             * rega = a;
 
             q = 0;
-            putbits36 (& q,  0,  9, maskab [1]);
+            putbits36_9 (& q,  0,  maskab [1]);
             // cyclic prior <- 0
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
-            putbits36 (& q, 32,  1, up -> port_enable [4]);
-            putbits36 (& q, 33,  1, up -> port_enable [5]);
-            putbits36 (& q, 34,  1, up -> port_enable [6]);
-            putbits36 (& q, 35,  1, up -> port_enable [7]);
+            putbits36_1 (& q, 32,  (word1) up -> port_enable [4]);
+            putbits36_1 (& q, 33,  (word1) up -> port_enable [5]);
+            putbits36_1 (& q, 34,  (word1) up -> port_enable [6]);
+            putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 #endif
             break;
@@ -1374,11 +1377,11 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             // * regq = up -> exec_intr_mask [1];
             for (uint i = 0; i < N_CELL_INTERRUPTS; i ++)
               {
-                uint cell = up -> cells [i] ? 1 : 0;
+                word1 cell = up -> cells [i] ? 1 : 0;
                 if (i < 16)
-                  putbits36 (rega, i, 1, cell);
+                  putbits36_1 (rega, i, cell);
                 else
-                  putbits36 (regq, i - 16, 1, cell);
+                  putbits36_1 (regq, i - 16, cell);
               }
           }
           break;
@@ -1476,7 +1479,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
         int iomUnitNum = portp -> idnum;
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (scu_unit_num, iomUnitNum);
+            iom_interrupt (scu_unit_num, (uint) iomUnitNum);
             return 0;
           }
         else
@@ -1613,7 +1616,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
               {
                 scu [scuUnitNum] . cells [inum] = false;
                 deliverInterrupts (scuUnitNum);
-                return inum * 2;
+                return (uint) inum * 2;
               }
           }
       }
@@ -1947,15 +1950,15 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 18: // STEADY_CLOCK
-              scu [scu_unit_num] . steady_clock = v;
+              scu [scu_unit_num] . steady_clock = (uint) v;
               break;
 
             case 19: // BULLET_TIME
-              scu [scu_unit_num] . bullet_time = v;
+              scu [scu_unit_num] . bullet_time = (uint) v;
               break;
 
             case 20: // y2k
-              scu [scu_unit_num] . y2k = v;
+              scu [scu_unit_num] . y2k = (uint) v;
               break;
 
             default:
@@ -2082,18 +2085,18 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
     maskContents &= MASK32;
 
     * rega = 0;
-    putbits36 (rega,  0, 16, (maskContents >> 16) & MASK16);
-    putbits36 (rega, 32,  1, up -> port_enable [0]);
-    putbits36 (rega, 33,  1, up -> port_enable [1]);
-    putbits36 (rega, 34,  1, up -> port_enable [2]);
-    putbits36 (rega, 35,  1, up -> port_enable [3]);
+    putbits36_16 (rega,  0, (maskContents >> 16) & MASK16);
+    putbits36_1 (rega, 32,  up -> port_enable [0]);
+    putbits36_1 (rega, 33,  up -> port_enable [1]);
+    putbits36_1 (rega, 34,  up -> port_enable [2]);
+    putbits36_1 (rega, 35,  up -> port_enable [3]);
 
     * regq = 0;
-    putbits36 (regq,  0, 16, (maskContents >>  0) & MASK16);
-    putbits36 (regq, 32,  1, up -> port_enable [4]);
-    putbits36 (regq, 33,  1, up -> port_enable [5]);
-    putbits36 (regq, 34,  1, up -> port_enable [6]);
-    putbits36 (regq, 35,  1, up -> port_enable [7]);
+    putbits36_16 (regq,  0, (maskContents >>  0) & MASK16);
+    putbits36_1 (regq, 32,  up -> port_enable [4]);
+    putbits36_1 (regq, 33,  up -> port_enable [5]);
+    putbits36_1 (regq, 34,  up -> port_enable [6]);
+    putbits36_1 (regq, 35,  up -> port_enable [7]);
 
     sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012llo %012llo\n", 
                * rega, * regq);

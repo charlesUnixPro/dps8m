@@ -80,12 +80,12 @@ struct opCode *getIWBInfo(DCDstruct *i)
 
 char *disAssemble(word36 instruction)
 {
-    int32  opcode  = GET_OP(instruction);   ///< get opcode
+    word9  opcode  = GET_OP(instruction);   ///< get opcode
     int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
     word18 address = GET_ADDR(instruction);
-    int32  a       = GET_A(instruction);
+    word1  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
-    int32  tag     = GET_TAG(instruction);
+    word6  tag     = GET_TAG(instruction);
 
     static char result[132] = "???";
     strcpy(result, "???");
@@ -126,7 +126,7 @@ char *disAssemble(word36 instruction)
     }
     // get mod
     strcpy(buff, "");
-    for(int n = 0 ; n < 0100 ; n++)
+    for(uint n = 0 ; n < 0100 ; n++)
         if (extMods[n].mod)
             if(n == tag)
             {
@@ -151,7 +151,7 @@ char *disAssemble(word36 instruction)
  *
  */
 
-char *getModString(int32 tag)
+char *getModString(word6 tag)
 {
     static char msg[256];
     strcpy(msg, "none");
@@ -160,7 +160,7 @@ char *getModString(int32 tag)
     {
         sprintf(msg, "getModReg(tag out-of-range %o)", tag);
     } else {
-        for(int n = 0 ; n < 0100 ; n++)
+        for(uint n = 0 ; n < 0100 ; n++)
             if (extMods[n].mod)
                 if(n == tag)
                 {
@@ -336,7 +336,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     return res;
   }
 
-word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
+word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
@@ -412,7 +412,7 @@ word36 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    return res;
+    return (word18) res;
   }
 
 word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
@@ -806,7 +806,7 @@ void putByte(word36 *dst, word9 data, int posn)
 {
     // XXX which is faster switch() or calculation?
     
-    int offset = 27 - (9 * posn);//    0;
+//    int offset = 27 - (9 * posn);//    0;
 //    switch (posn)
 //    {
 //        case 0:
@@ -822,14 +822,15 @@ void putByte(word36 *dst, word9 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    *dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
+    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
+    putbits36_9 (dst, (uint) posn * 9, data);
 }
 
 void putChar(word36 *dst, word6 data, int posn)
 {
     // XXX which is faster switch() or calculation?
     
-    int offset = 30 - (6 * posn);   //0;
+//    int offset = 30 - (6 * posn);   //0;
 //    switch (posn)
 //    {
 //        case 0:
@@ -851,7 +852,8 @@ void putChar(word36 *dst, word6 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    *dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
+    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
+    putbits36_6 (dst, (uint) posn * 6, data);
 }
 
 word72 convertToWord72(word36 even, word36 odd)
@@ -870,8 +872,8 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
     t_int64 op1 = SIGNEXT36_64(oP1 & DMASK);
     t_int64 op2 = SIGNEXT36_64(oP2 & DMASK);
     
-    word36 sign1 = op1 & SIGN36;
-    word36 sign2 = op2 & SIGN36;
+    word36 sign1 = (word36) op1 & SIGN36;
+    word36 sign2 = (word36) op2 & SIGN36;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -906,8 +908,8 @@ void cmp18(word18 oP1, word18 oP2, word18 *flags)
     int32 op1 = SIGNEXT18_32 (oP1 & MASK18);
     int32 op2 = SIGNEXT18_32 (oP2 & MASK18);
 
-    word18 sign1 = op1 & SIGN18;
-    word18 sign2 = op2 & SIGN18;
+    word18 sign1 = (word18) op1 & SIGN18;
+    word18 sign2 = (word18) op2 & SIGN18;
 
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
@@ -1043,7 +1045,7 @@ char * strlower(char *q)
 #define NOTSTAR 1
 #define RESET   2
 
-int strmask(char *str, char *mask)
+int strmask (char * str, char * mask)
 /*!
  Tests string 'str' against mask string 'mask'
  Returns TRUE if the string matches the mask.
@@ -1061,79 +1063,93 @@ int strmask(char *str, char *mask)
  strmask("Hello", "H????");     ---> TRUE
  strmask("H", "H????");         ---> FALSE
  */
-{
-        char *sp, *mp, *reset_string, *reset_mask, *sn;
-        int state;
+  {
+    char * sp, * mp, * reset_string, * reset_mask, * sn;
+    int state;
     
-        sp = str;
-        mp = mask;
+    sp = str;
+    mp = mask;
     
-        while (1) {
-                switch (*mp) {
+    while (1)
+      {
+        switch (* mp)
+          {
             case '\0':
-                return(*sp ? false : true);
+              return * sp ? false : true;
+
             case '?':
-                sp++;
-                mp++;
-                break;
+              sp ++;
+              mp ++;
+              break;
+
             default:
-                if (*mp == *sp) {
-                    sp++;
-                    mp++;
-                    break;
-                } else {
-                    return(false);
+              if (* mp == * sp)
+                {
+                  sp ++;
+                  mp ++;
+                  break;
                 }
+              else
+                {
+                  return false;
+                }
+
             case '*':
-                if (*(mp + 1) == '\0') {
-                    return(true);
+              if (* (mp + 1) == '\0')
+                {
+                  return true;
                 }
-                if ((sn = strchr(sp, *(mp + 1))) == NULL) {
-                    return(false);
+              if ((sn = strchr (sp, * (mp + 1))) == NULL)
+                {
+                  return false;
                 }
                 
-                /* save place -- match rest of string */
-                /* if fail, reset to here */
-                reset_mask = mp;
-                reset_string = sn + 1;
+              /* save place -- match rest of string */
+              /* if fail, reset to here */
+              reset_mask = mp;
+              reset_string = sn + 1;
                 
-                mp = mp + 2;
-                sp = sn + 1;
-                state = NOTSTAR;
-                while (state == NOTSTAR) {
-                    switch (*mp) {
-                        case '\0':
-                            if (*sp == '\0')
-                                return(false);
-                            else
-                                state = RESET;
-                            break;
-                        case '?':
-                            sp++;
-                            mp++;
-                            break;
-                        default:
-                            if (*mp == *sp) {
-                                sp++;
-                                mp++;
-                            } else
-                                state = RESET;
-                            break;
-                        case '*':
-                            state = STAR;
-                            break;
+              mp = mp + 2;
+              sp = sn + 1;
+              state = NOTSTAR;
+              while (state == NOTSTAR)
+                {
+                  switch (* mp)
+                    {
+                      case '\0':
+                        if (* sp == '\0')
+                          return false;
+                        else
+                          state = RESET;
+                        break;
+                      case '?':
+                        sp ++;
+                        mp ++;
+                        break;
+                      default:
+                        if (* mp == * sp)
+                          {
+                            sp ++;
+                            mp ++;
+                          }
+                        else
+                          state = RESET;
+                        break;
+                      case '*':
+                        state = STAR;
+                        break;
                     }
+                } // while STATE == NOTSTAR
+              /* we've reach a new star or should reset to last star */
+              if (state == RESET)
+                {
+                  sp = reset_string;
+                  mp = reset_mask;
                 }
-                /* we've reach a new star or should reset to last star */
-                if (state == RESET) {
-                    sp = reset_string;
-                    mp = reset_mask;
-                }
-                break;
-                }
-        }
-        return(true);
-}
+              break;
+          } // switch (* mp)
+      } // while (1)
+  }
 
 /**
  * strtok() with string quoting...
@@ -1214,12 +1230,14 @@ Strtok(char *line, char *sep)
     return NULL;		/* no more fields in buffer		*/
     
 }
+#if 0
 bool startsWith(const char *str, const char *pre)
 {
     size_t lenpre = strlen(pre),
     lenstr = strlen(str);
     return lenstr < lenpre ? false : strncasecmp(pre, str, lenpre) == 0;
 }
+#endif
 
 /**
  * Removes the trailing spaces from a string.
@@ -1287,6 +1305,7 @@ stripquotes(char *s)
     return trim(s);
 }
 
+#if 0
 /*!
  a - Bitfield to insert bits into.
  b - Bit pattern to insert.
@@ -1304,7 +1323,9 @@ word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
+#endif
 
+#if 0
 /*!
  a - Bitfield to insert bits into.
  b - Bit pattern to insert.
@@ -1325,8 +1346,9 @@ word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
+#endif
 
-
+#if 0
 /*!
 a - Bitfield to insert bits into.
 b - Bit pattern to insert.
@@ -1344,7 +1366,9 @@ int bitfieldInsert(int a, int b, int c, int d)
     a &= mask;
     return a | (b << c);
 }
+#endif
 
+#if 0
 /*!
  a -  Bitfield to extract bits from.
  b -  Bit offset number. Bit offsets start at 0.
@@ -1362,6 +1386,9 @@ int bitfieldExtract(int a, int b, int c)
     else
         return a & mask;
 }
+#endif
+
+#if 0
 /*!
  a -  Bitfield to extract bits from.
  b -  Bit offset number. Bit offsets start at 0.
@@ -1382,6 +1409,9 @@ word36 bitfieldExtract36(word36 a, int b, int c)
     else
         return a & mask;
 }
+#endif
+
+#if 0
 word72 bitfieldExtract72(word72 a, int b, int c)
 {
     word72 mask = ~((word72)-1 << c);
@@ -1390,6 +1420,7 @@ word72 bitfieldExtract72(word72 a, int b, int c)
     else
         return a & mask;
 }
+#endif
 
 #ifndef QUIET_UNUSED
 /*!
@@ -2025,7 +2056,7 @@ char * strdupesc (const char * str)
 //     extract the word36 at woffset
 //
 
-word36 extrASCII36 (uint8 * bits, uint woffset)
+static word36 extrASCII36 (uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
 
@@ -2074,7 +2105,7 @@ word36 extr36 (uint8 * bits, uint woffset)
     return (word36) (w & MASK36);
   }
 
-void putASCII36 (word36 val, uint8 * bits, uint woffset)
+static void putASCII36 (word36 val, uint8 * bits, uint woffset)
   {
     uint8 * p = bits + woffset * 4;
     p [0]  = (val >> 27) & 0xff;

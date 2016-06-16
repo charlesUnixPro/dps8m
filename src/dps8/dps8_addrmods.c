@@ -339,9 +339,9 @@ static void updateIWB (word18 addr, word6 tag)
                cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
                extMods [GET_TAG (cpu . cu  . IWB)] . mod);
 
-    putbits36 (& cpu . cu  . IWB,  0, 18, addr);
-    putbits36 (& cpu . cu  . IWB, 30,  6, tag);
-    putbits36 (& cpu . cu  . IWB, 29,  1, 0);
+    putbits36_18 (& cpu . cu  . IWB,  0, addr);
+    putbits36_6 (& cpu . cu  . IWB, 30, tag);
+    putbits36_1 (& cpu . cu  . IWB, 29,  0);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012llo %06o %s\n",
@@ -383,7 +383,7 @@ t_stat doComputedAddressFormation (void)
     word6 Tm = 0;
     word6 Td = 0;
 
-    int iTAG;   // tag of word preceeding an indirect fetch
+    word6 iTAG;   // tag of word preceeding an indirect fetch
 
     directOperandFlag = false;
 
@@ -517,8 +517,8 @@ startCA:;
 
             if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
-                 word6 Td = GET_TD (i -> tag);
-                 uint Xn = X (Td);  // Get Xn of next instruction
+                 word6 Td_ = GET_TD (i -> tag);
+                 uint Xn = X (Td_);  // Get Xn of next instruction
                  tmpCA = cpu . rX [Xn];
               }
             else
@@ -713,8 +713,7 @@ startCA:;
                 if (directOperandFlag)
                   {
                     //cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA = directOperand;
-                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA = (word18) directOperand & MASK18; // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
@@ -763,7 +762,7 @@ startCA:;
         //    IT_IDC        = 017
         word12 tally;
         word6 idwtag, delta;
-        word24 Yi = -1;
+        word24 Yi = (word24) -1;
 
         switch (Td)
           {
@@ -838,7 +837,7 @@ startCA:;
                 //
 
                 word36 indword;
-                word36 indwordAddress = cpu . TPR . CA;
+                word18 indwordAddress = cpu . TPR . CA;
                 Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -848,14 +847,14 @@ startCA:;
                 // Parse and validate the indirect word
                 //
 
-                word18 Yi = GET_ADDR (indword);
+                word18 Yi_ = GET_ADDR (indword);
                 word6 characterOperandSize = GET_TB (GET_TAG (indword));
                 word6 characterOperandOffset = GET_CF (GET_TAG (indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
                            characterOperandSize, characterOperandOffset,
-                           Yi);
+                           Yi_);
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
@@ -896,8 +895,8 @@ startCA:;
                             characterOperandOffset = 5;
                         else
                             characterOperandOffset = 3;
-                        Yi -= 1;
-                        Yi &= MASK18;
+                        Yi_ -= 1;
+                        Yi_ &= MASK18;
                       }
                         else
                       {
@@ -912,7 +911,7 @@ startCA:;
                 cpu . cu  . pot = 1;
 
                 word36 data;
-                Read (Yi, & data, OPERAND_READ, i -> a);
+                Read (Yi_, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012llo\n", data);
 

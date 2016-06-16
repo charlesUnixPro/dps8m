@@ -51,7 +51,7 @@ static char * unpack (char * buffer, int which, size_t * retSize)
         return NULL;
       }
     q ++;
-    char * out = malloc (nBytes);
+    char * out = malloc ((unsigned long) nBytes);
     if (! out)
       goto fail;
     char * o = out;
@@ -77,10 +77,10 @@ static char * unpack (char * buffer, int which, size_t * retSize)
           goto fail;
 
         //sim_printf ("%c%c %02x\n", chh, chl, val);
-        * o ++ = val;
+        * o ++ = (char) val;
       }
     if (retSize)
-      * retSize = nBytes;
+      * retSize = (size_t) nBytes;
     return out;
 fail:
     free (out);
@@ -193,7 +193,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 3)
             goto scpe_arg; // listen is supposed to have 3 args
         //sim_printf("received LISTEN %d %d %d ...\n", p1, p2, p3);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: LISTEN p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -224,7 +224,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg; // change_control_string is supposed to have 2 args
         //sim_printf("received CHANGE_CONTROL_STRING %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: CHANGE_CONTROL_STRING p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -240,7 +240,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received dump_input %d ...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: DUMP_INPUT p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -258,7 +258,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received WRU %d ...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: WRU p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -278,7 +278,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received terminal_accepted %d ...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: terminal_accepted p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -297,7 +297,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received break_all %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: break_all p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -319,7 +319,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received handle_quit %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: handle_quit p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -340,7 +340,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received full_duplex %d ...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: full_duplex p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -361,7 +361,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received echoplex %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: echoplex p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -382,7 +382,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received crecho %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: crecho p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -403,7 +403,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received lfecho %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: lfecho p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -424,7 +424,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received tabecho %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: tabecho p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -445,7 +445,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received replay %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: replay p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -466,7 +466,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received polite %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: polite p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -487,7 +487,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received prefixnl %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: prefixnl p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -508,7 +508,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received eight_bit_out %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: eight_bit_out p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -529,7 +529,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received eight_bit_in %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: eight_bit_in p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -550,7 +550,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received odd_parity %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: odd_parity p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -571,7 +571,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received output_flow_control %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: output_flow_control p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -592,7 +592,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received input_flow_control %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: input_flow_control p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -613,7 +613,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 3)
             goto scpe_arg;
         //sim_printf("received block_xfer %d %d %d ...\n", p1, p2, p3);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: block_xfer p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -630,7 +630,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 7)
             goto scpe_arg;
         //sim_printf("received set_delay_table %d %d %d %d %d %d %d...\n", p1, d1, d2, d3, d4, d5, d6);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: set_delay_table p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -652,7 +652,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 2)
             goto scpe_arg;
         //sim_printf("received output %d %d ...\n", p1, p2);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: output p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -677,7 +677,7 @@ t_stat dequeue_fnp_command (void)
            sim_printf ("'\n");
          }
         // delete NULs
-        char * clean = malloc (p2 + 1);
+        char * clean = malloc ((unsigned long) (p2 + 1));
         char * p = data;
         char * q = clean;
         for (int i = 0; i < p2; i ++)
@@ -720,7 +720,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received disconnect_line %d\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: disconnect_line p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -741,7 +741,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received output_fc_chars %d\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: output_fc_chars p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -755,7 +755,7 @@ t_stat dequeue_fnp_command (void)
             retSize = FC_STR_SZ;
           }
         memcpy (MState . line [p1] . outputSuspendStr, data, retSize);
-        MState . line [p1] . outputSuspendLen = retSize;
+        MState . line [p1] . outputSuspendLen = (int) retSize;
 
         data = unpack (arg3, 2, & retSize);
         if (retSize > FC_STR_SZ)
@@ -764,7 +764,7 @@ t_stat dequeue_fnp_command (void)
             retSize = FC_STR_SZ;
           }
         memcpy (MState . line [p1] . outputResumeStr, data, retSize);
-        MState . line [p1] . outputResumeLen = retSize;
+        MState . line [p1] . outputResumeLen = (int) retSize;
 
 
 
@@ -776,7 +776,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 3)
             goto scpe_arg;
         //sim_printf("received set_framing_chars %d %d %d %d %d %d %d...\n", p1, d1, d2, d3, d4, d5, d6);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: set_framing_chars p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -794,7 +794,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received dumpoutput %d...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
             sim_printf("err: dumpoutput p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
@@ -815,7 +815,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received dumpoutput %d...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
         {
           sim_printf("err: set_echnego_break_table p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
           goto scpe_arg;
@@ -857,7 +857,7 @@ t_stat dequeue_fnp_command (void)
         if (n != 1)
             goto scpe_arg;
         //sim_printf("received init_echo_negotiation %d...\n", p1);
-        if (p1 < 0 && p1 >= MAX_LINES)
+        if (p1 < 0 || p1 >= MAX_LINES)
           {
             sim_printf("err: init_echo_negotiation p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;

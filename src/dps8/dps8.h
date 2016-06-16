@@ -102,13 +102,16 @@ typedef uint16      word12;
 typedef uint16      word14;
 typedef uint16      word15;
 typedef uint16      word16;
+typedef uint32      word17;
 typedef uint32      word18;
 typedef uint32      word19;
 typedef int32       word18s;
 typedef uint32      word20;
 typedef uint32      word21;
+typedef uint32      word22;
 typedef uint32      word24;
 typedef uint32      word27;
+typedef uint32      word28;
 typedef uint32      word32;
 typedef uint64      word36;
 typedef uint64      word37;
@@ -200,8 +203,8 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
-#define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
-#define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
+#define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
+#define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
 #define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
 
@@ -309,7 +312,7 @@ struct opCode {
     const char *mne;    ///< mnemonic
     opc_flag flags;        ///< various and sundry flags
     opc_mod mods;         ///< disallowed addr mods
-    int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+    uint ndes;         ///< number of operand descriptor words for instruction (mw EIS)
 };
 typedef struct opCode opCode;
 

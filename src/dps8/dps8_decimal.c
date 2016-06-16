@@ -731,6 +731,7 @@ int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
 }
 #endif
 
+#if 0
 int findFirstDigit(unsigned char *bcd)
 {
     int i = 0;
@@ -739,6 +740,7 @@ int findFirstDigit(unsigned char *bcd)
     
     return i;
 }
+#endif
 
 
 

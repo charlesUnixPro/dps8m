@@ -91,7 +91,8 @@ enum { N_DEV_CODES = 64 };
 #define ZEROEXT18       0777777U                 // mask to zero extend a 18 => 32-bit int
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
 #define SIGN72          ((word72)1U << 71)
-// NB. these 2 use the wrong bit number convention
+// NB. these use the wrong bit number convention
+#define BIT71           ((word72)1U << 70)  // next to the sign bit
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
 #define MASK71          (((word72)1U << 71) - 1U)
@@ -119,6 +120,8 @@ enum { N_DEV_CODES = 64 };
 #define MASK70          (((word72)1U << 70) - 1U)
 
 #define MASKBITS(x)     ( ~(~((uint64)0)<<x) )   // lower (x) bits all ones
+#define MASKBITS18(x)   ( ~(~((word18)0)<<x) )   // lower (x) bits all ones
+#define MASKBITS72(x)   ( ~(~((word72)0)<<x) )   // lower (x) bits all ones
 
 #define GETHI36(a)      ((word18) (((a) >> 18) & MASK18))
 #define GETLO36(a)      ((word18) ((a) & MASK18))
@@ -148,7 +151,7 @@ static inline int SIGNEXT6_int (word6 w)
   {
     if (w & SIGN6)
       {
-        return ((int) w) | (((uint) -1) << 6);
+        return ((int) w) | (int) (((uint) -1) << 6);
       }
     return w & MASK6;
   }
@@ -157,16 +160,16 @@ static inline int SIGNEXT8_int (word8 w)
   {
     if (w & SIGN8)
       {
-        return ((int) w) | (((uint) -1) << 8);
+        return ((int) w) | (int) (((uint) -1) << 8);
       }
     return w & MASK8;
   }
 
-static inline int32 SIGNEXT15_32 (word18 w)
+static inline int32 SIGNEXT15_32 (word15 w)
   {
     if (w & SIGN15)
       {
-        return ((int32) w) | (((uint32) -1) << 15);
+        return ((int32) w) | (int32) (((uint32) -1) << 15);
       }
     return w & MASK15;
   }
@@ -175,34 +178,34 @@ static inline int32 SIGNEXT18_32 (word18 w)
   {
     if (w & SIGN18)
       {
-        return ((int32) w) | (((uint32) -1) << 18);
+        return ((int32) w) | (int32) (((uint32) -1) << 18);
       }
     return w & MASK18;
   }
 
-static inline int32 SIGNEXT21_32 (word18 w)
+static inline int32 SIGNEXT21_32 (word21 w)
   {
     if (w & SIGN21)
       {
-        return ((int32) w) | (((uint32) -1) << 21);
+        return ((int32) w) | (int32) (((uint32) -1) << 21);
       }
     return w & MASK21;
   }
 
-static inline int32 SIGNEXT22_32 (word18 w)
+static inline int32 SIGNEXT22_32 (word22 w)
   {
     if (w & SIGN22)
       {
-        return ((int32) w) | (((uint32) -1) << 22);
+        return ((int32) w) | (int32) (((uint32) -1) << 22);
       }
     return w & MASK22;
   }
 
-static inline int32 SIGNEXT24_32 (word18 w)
+static inline int32 SIGNEXT24_32 (word24 w)
   {
     if (w & SIGN24)
       {
-        return ((int32) w) | (((uint32) -1) << 24);
+        return ((int32) w) | (int32) (((uint32) -1) << 24);
       }
     return w & MASK24;
   }
@@ -211,7 +214,7 @@ static inline t_int64 SIGNEXT36_64 (word36 w)
   {
     if (w & SIGN36)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 36;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 36);
       }
     return w & MASK36;
   }
@@ -220,7 +223,7 @@ static inline t_int64 SIGNEXT18_64 (word36 w)
   {
     if (w & SIGN18)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 18;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 18);
       }
     return w & MASK18;
   }
@@ -229,7 +232,7 @@ static inline t_int64 SIGNEXT21_64 (word36 w)
   {
     if (w & SIGN21)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 21;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 21);
       }
     return w & MASK21;
   }
@@ -238,7 +241,7 @@ static inline t_int64 SIGNEXT22_64 (word36 w)
   {
     if (w & SIGN22)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 22;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 22);
       }
     return w & MASK22;
   }
@@ -247,7 +250,7 @@ static inline t_int64 SIGNEXT24_64 (word36 w)
   {
     if (w & SIGN24)
       {
-        return ((t_int64) w) | ((t_uint64) -1ll) << 24;
+        return ((t_int64) w) | (t_int64) (((t_uint64) -1ll) << 24);
       }
     return w & MASK24;
   }
@@ -256,7 +259,7 @@ static inline int128 SIGNEXT72_128 (word72 w)
   {
     if (w & SIGN72)
       {
-        return ((int128) w) | (((uint128) -1ll) << 72);
+        return ((int128) w) | (int128) (((uint128) -1ll) << 72);
       }
     return w & MASK72;
   }
@@ -322,18 +325,18 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define INST_M_ARN      07U
 
 
-#define GET_TAG(x)      ((int32)  ( (x)                   & INST_M_TAG ))
-#define GET_A(x)        ((int32)  (((x) >> INST_V_A)      & INST_M_A   ))
+#define GET_TAG(x)      ((word6)  ( (x)                   & INST_M_TAG ))
+#define GET_A(x)        ((word1)  (((x) >> INST_V_A)      & INST_M_A   ))
 #define GET_I(x)        ((int32)  (((x) >> INST_V_I)      & INST_M_I   ))
-#define GET_OP(x)       ((int32)  (((x) >> INST_V_OP)     & INST_M_OP ))
+#define GET_OP(x)       ((word9)  (((x) >> INST_V_OP)     & INST_M_OP ))
 #define GET_OPX(x)      ((bool)   (((x) >> INST_V_OPX)    & INST_M_OPX))
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
 #define GET_PRN(x)      ((word3)  (((x) >> INST_V_PRN)    & INST_M_PRN))
 #define GET_ARN(x)      ((word3)  (((x) >> INST_V_ARN)    & INST_M_ARN))
 
-#define GET_TM(x)       ((int32)(GET_TAG(x) & 060U))
-#define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))
+#define GET_TM(x)       (       (GET_TAG(x) & 060U))
+#define GET_TD(x)       (       (GET_TAG(x) & 017U))
 
 #define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
