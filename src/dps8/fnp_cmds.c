@@ -136,12 +136,15 @@ t_stat dequeue_fnp_command (void)
 //while (fnpQueue) {
     pthread_mutex_lock (& fnpMQlock);
     fnpQueueElement * rv = fnpQueue;
-    DL_DELETE (fnpQueue, rv);
+    if (rv)
+      DL_DELETE (fnpQueue, rv);
     pthread_mutex_unlock (& fnpMQlock);
+    if (! rv)
+      return SCPE_OK;
     nodename = rv -> nodename;
     id = rv -> id;
     arg3 = rv -> arg3;
-    free (rv);
+    //free (rv);
 
     //sim_printf("fnp_command(\"%s\", \"%s\", \"%s\")\n", nodename, id, arg3);
     
@@ -845,22 +848,36 @@ t_stat dequeue_fnp_command (void)
        goto scpe_arg;
     }
     
+#if 1
+    free (rv -> nodename);
+    free (rv -> id);
+    free (rv -> arg3);
+    free (rv);
+#else
     if (nodename)
       free (nodename);
     if (id)
       free (id);
     if (arg3)
       free (arg3);
+#endif
 // } // while fnpQueue
     return SCPE_OK;
 
 scpe_arg:
+#if 1
+    free (rv -> nodename);
+    free (rv -> id);
+    free (rv -> arg3);
+    free (rv);
+#else
     if (nodename)
       free (nodename);
     if (id)
       free (id);
     if (arg3)
       free (arg3);
+#endif
     return SCPE_ARG;
 }
 
