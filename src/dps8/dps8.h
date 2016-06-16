@@ -68,7 +68,7 @@
 #define ROUND_ROBIN
 
 // Enable ISOLTS support
-#define ISOLTS
+//#define ISOLTS
 
 #define OSCAR
 
