@@ -210,6 +210,15 @@ static void dps8_init(void)
 {
 #include "dps8.sha1.txt"
     sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
+#ifdef TESTING
+    sim_printf ("#### TESTING BUILD ####\n");
+#else
+    sim_printf ("Production build\n");
+#endif
+#ifdef ISOLTS
+    sim_printf ("#### ISOLTS BUILD ####\n");
+#endif
+
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
     // These are part of the simh interface
