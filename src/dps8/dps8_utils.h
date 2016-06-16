@@ -602,6 +602,36 @@ static inline void putbits36_12 (word36 * x, uint p, word12 val)
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 }
 
+static inline void putbits36_13 (word36 * x, uint p, word13 val)
+{
+    const int n = 13;
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("putbits36_13: bad args (%012llo,pos=%d)\n", *x, p);
+        return;
+    }
+    word36 mask = ~ (~0U<<n);  // n low bits on
+    word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~ smask) | (((word36) val & mask) << shift);
+}
+
+static inline void putbits36_14 (word36 * x, uint p, word14 val)
+{
+    const int n = 14;
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("putbits36_14: bad args (%012llo,pos=%d)\n", *x, p);
+        return;
+    }
+    word36 mask = ~ (~0U<<n);  // n low bits on
+    word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~ smask) | (((word36) val & mask) << shift);
+}
+
 static inline void putbits36_15 (word36 * x, uint p, word15 val)
 {
     const int n = 15;
@@ -653,6 +683,21 @@ static inline void putbits36_18 (word36 * x, uint p, word18 val)
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35) {
         sim_printf ("putbits36_18: bad args (%012llo,pos=%d)\n", *x, p);
+        return;
+    }
+    word36 mask = ~ (~0U<<n);  // n low bits on
+    word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~ smask) | (((word36) val & mask) << shift);
+}
+
+static inline void putbits36_23 (word36 * x, uint p, word23 val)
+{
+    const int n = 23;
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("putbits36_23: bad args (%012llo,pos=%d)\n", *x, p);
         return;
     }
     word36 mask = ~ (~0U<<n);  // n low bits on

@@ -1,8 +1,28 @@
+#
+# Condition builds
+#
+#  TESTING=1    Enables sim_debug and additional runtime checks
+#
+
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
 
 
 include ../Makefile.mk
+
+ifneq (,$(wildcard Makefile.local))
+$(warning ####)
+$(warning #### Using Makefile.local)
+$(warning ####)
+include Makefile.local
+endif
+
+ifdef TESTING
+$(warning ####)
+$(warning #### TESTING mode)
+$(warning ####)
+CFLAGS += -DTESTING
+endif
 
 CFLAGS += -Wall 
 

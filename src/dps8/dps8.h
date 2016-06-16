@@ -22,9 +22,7 @@
 #include <libgen.h> // needed for OS/X and Android
 #endif
 
-#ifndef EMULATOR_ONLY
-#define EMULATOR_ONLY 1
-#endif
+//#define EMULATOR_ONLY 1
 
 #ifndef USE_INT64
 #define USE_INT64
@@ -51,8 +49,11 @@
 // Enable Real time Timer Register
 //#define REAL_TR
 
+#ifdef TESTING
+#else
 // Enable speed over debuggibility
 #define SPEED
+#endif
 
 // Enable history debugger
 #define HDBG
@@ -99,6 +100,7 @@ typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
 typedef uint16      word10;
 typedef uint16      word12;
+typedef uint16      word13;
 typedef uint16      word14;
 typedef uint16      word15;
 typedef uint16      word16;
@@ -109,6 +111,7 @@ typedef int32       word18s;
 typedef uint32      word20;
 typedef uint32      word21;
 typedef uint32      word22;
+typedef uint32      word23;
 typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word28;
