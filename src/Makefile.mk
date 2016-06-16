@@ -37,3 +37,11 @@ MAKEFLAGS += --no-print-directory
 	@echo CC $<
 	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
+# This file is included as '../Makefile.mk', so it's local include needs the ../
+ifneq (,$(wildcard ../Makefile.local))
+$(warning ####)
+$(warning #### Using ../Makefile.local)
+$(warning ####)
+include ../Makefile.local
+endif
+
