@@ -24,6 +24,11 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
+ifeq ($(OSTYPE),Linux)
+  M_SHARED = 1
+  CLFLAGS += -DM_SHARED
+endif
+
 CFLAGS += -Wall 
 
 CFLAGS += -Wunused-argument \
@@ -202,8 +207,10 @@ zzzCFLAGS += \
 
 # Configuration switches
 
+ifeq ($(M_SHARED),1)
 # Enable M[] as shared memory segment
 LDFLAGS += -lrt
+endif
 
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
@@ -267,7 +274,9 @@ C_SRCS += ./fnp_mux.c
 #C_SRCS += ./fnpp.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./hdbg.c
+ifeq ($(M_SHARED),1)
 C_SRCS += ./shm.c
+endif
 C_SRCS += ./udplib.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
@@ -315,7 +324,9 @@ H_SRCS += fnp_rev.h
 H_SRCS += fnp_utils.h
 H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
+ifeq ($(M_SHARED),1)
 H_SRCS += shm.h
+endif
 H_SRCS += udplib.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
