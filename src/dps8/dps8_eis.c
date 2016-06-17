@@ -362,10 +362,22 @@ static word18 getMFReg18 (uint n, bool allowDUL, bool allowN)
 // XXX needs attention; doesn't work with old code; triggered by
 // XXX parseOperandDescriptor;
           if (! allowDUL)
-           {
-             //sim_printf ("getMFReg18 du\n");
-             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
-           }
+            {
+#if 0 // fixes first fail
+sim_printf ("getMFReg18 %012llo\n", IWB_IRODD);
+              if (cpu.currentInstruction.opcode == 0305 && // dtb
+                  cpu.currentInstruction.opcodeX == 1)
+                {
+                  sim_printf ("dtb special case 2\n");
+                  doFault (FAULT_IPR,
+                    (_fault_subtype) (((_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}).bits |
+                                      ((_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}).bits),
+                    "getMFReg18 du");
+                }
+#endif
+              //sim_printf ("getMFReg18 du\n");
+              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
+            }
           return 0;
 
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
@@ -826,7 +838,22 @@ static void setupOperandDescriptor (int k)
         
         // Bits 18-28,30, 31 MBZ
         if (opDesc & 0000000777660)
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 18-28,30, 31 MBZ");
+          {
+#if 0 // fix 2nd fail
+sim_printf ("setupOperandDescriptor %012llo\n", opDesc);
+sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
+            if (cpu.currentInstruction.opcode == 0305 && // dtb
+                cpu.currentInstruction.opcodeX == 1)
+              {
+                sim_printf ("dtb special case\n");
+                doFault (FAULT_IPR,
+                  (_fault_subtype) (((_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}).bits |
+                                    ((_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}).bits),
+                  "setupOperandDescriptor 18-28,30, 31 MBZ");
+              }
+#endif
+            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 18-28,30, 31 MBZ");
+          }
  
         // fill operand according to MFk....
         word18 address = GETHI (opDesc);
