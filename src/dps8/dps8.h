@@ -49,6 +49,8 @@
 // Enable Real time Timer Register
 //#define REAL_TR
 
+#define CAST_BITNO
+
 #ifdef TESTING
 #else
 // Enable speed over debuggibility
