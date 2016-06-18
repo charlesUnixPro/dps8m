@@ -1139,8 +1139,10 @@ uint setCPUnum (uint cpuNum);
 // to the low 4 bits.
 
 #define GET_PR_BITNO(n) (cpu.PAR[n].bitno)
-#define GET_AR_BITNO(n) (cpu.PAR[n].bitno & MASK4)
-#define GET_AR_CHAR(n) ((cpu.PAR[n].bitno >> 4) & MASK2)
+//#define GET_AR_BITNO(n) (cpu.PAR[n].bitno & MASK4)
+//#define GET_AR_CHAR(n) ((cpu.PAR[n].bitno >> 4) & MASK2)
+#define GET_AR_BITNO(n) ((cpu.PAR[n].bitno >> 2) & MASK4)
+#define GET_AR_CHAR(n) ((cpu.PAR[n].bitno >> 0) & MASK2)
 
 static inline void SET_PR_BITNO (uint n, word6 b)
   {
@@ -1148,7 +1150,8 @@ static inline void SET_PR_BITNO (uint n, word6 b)
   }
 static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
   {
-     cpu.PAR[n].bitno = ((word6) b & MASK4) | (((word6) c & MASK2) << 4);
+     //cpu.PAR[n].bitno = ((word6) b & MASK4) | (((word6) c & MASK2) << 4);
+     cpu.PAR[n].bitno = ((word6) c & MASK2) | (((word6) b & MASK4) << 4);
   }
 
 
