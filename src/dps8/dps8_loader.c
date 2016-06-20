@@ -603,8 +603,9 @@ int loadDeferredSegments(bool bVerbose)
         // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
-            cpu.PR[4].BITNO = 0;
-            cpu.PR[4].CHAR = 0;
+            //cpu.PR[4].BITNO = 0;
+            //cpu.PR[4].CHAR = 0;
+            SET_PR_BITNO (4, 0);
             cpu.PR[4].SNR = (word15) segno;
             cpu.PR[4].WORDNO = 0;
             

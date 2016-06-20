@@ -3129,8 +3129,12 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
     prp->WORDNO = getbits36(word2, 0, 18);
     prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
     //prp->BITNO = getbits36(word2, 57 - 36, 6);
+#ifdef CAST_BITNO
+    prp->bitno = getbits36(word2, 57 - 36, 6);
+#else
     prp->BITNO = getbits36(word2, 57 - 36, 6) % 9;
     prp->CHAR = getbits36(word2, 57 - 36, 6) / 9;
+#endif
     return 0;
   }   
 
