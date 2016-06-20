@@ -1555,6 +1555,7 @@ void s4bd (void)
 
     uint bitno = difference % 32;
 //    cpu . AR [ARn] . BITNO = tab [bitno];
+    // SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
     SET_AR_CHAR_BITNO (ARn, bitFromCnt[bitno % 8] / 9, bitFromCnt[bitno % 8] % 9);
   }
 
@@ -1741,8 +1742,10 @@ sim_printf ("abd ARn %d WORDNO %o CHAR %o BITNO %0o %d. PR_BITNO %0o %d.\n", ARn
        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "abd ARn %d WORDNO %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
 #ifdef SEPARATE
-        augend = cpu.AR[ARn].WORDNO * 36 + cpu.AR[ARn].CHAR * 9;
-        bitno = cpu.AR[ARn].BITNO;
+        //augend = cpu.AR[ARn].WORDNO * 36 + cpu.AR[ARn].CHAR * 9;
+        //bitno = cpu.AR[ARn].BITNO;
+        augend = cpu.AR[ARn].WORDNO * 36 + GET_AR_CHAR (ARn) * 9;
+        bitno = GET_AR_BITNO (ARn);
 #else
         augend = cpu . AR [ARn] . WORDNO * 36 + GET_AR_CHARNO (ARn) * 9 + GET_AR_BITNO (ARn);
 #endif
@@ -1825,7 +1828,8 @@ sim_printf ("abd sum 0%o %d.\n", sum, sum);
 
     cpu.AR[ARn].WORDNO = (sum / 36) & AMASK;
 #ifdef SEPARATE
-    cpu.AR[ARn].CHAR = (sum / 9) & MASK2;
+    //cpu.AR[ARn].CHAR = (sum / 9) & MASK2;
+    SET_AR_CHAR_BITNO (ARn, (sum / 9) & MASK2, GET_AR_BITNO (ARn));
 #else
     // Fails ISOLTS
     //SET_PR_BITNO (ARn, sum % 36);

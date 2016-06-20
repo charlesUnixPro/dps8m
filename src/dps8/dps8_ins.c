@@ -7502,7 +7502,7 @@ static t_stat DoEISInstruction (void)
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
                 //cpu.AR[n].CHAR = getbits36 (cpu.CY, 18, 2);
                 //cpu.AR[n].BITNO = getbits36 (cpu.CY, 20, 4);
-                SET_AR_CHAR_BITNO (n, getbits36 (cpu.CY, 18, 2), getbits36 (cpu.CY, 20, 4));
+                SET_PR_BITNO (n, getbits36 (cpu.CY, 18, 6));
             }
             break;
 
@@ -7514,7 +7514,7 @@ static t_stat DoEISInstruction (void)
                 cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
                 //cpu.AR[n].CHAR = getbits36 (tmp36, 18, 2);
                 //cpu.AR[n].BITNO = getbits36 (tmp36, 20, 4);
-                SET_AR_CHAR_BITNO (n, getbits36 (tmp36, 18, 2), getbits36 (tmp36, 20, 4));
+                SET_PR_BITNO (n, getbits36 (tmp36, 18, 6));
             }
             break;
 
@@ -7719,8 +7719,9 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
-                putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
-                putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
+                //putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
+                //putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
+                putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
                 break;
             }
 
@@ -7732,8 +7733,9 @@ static t_stat DoEISInstruction (void)
             {
                 word36 arx = 0;
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
-                putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
-                putbits36 (& arx, 20,  4, GET_AR_BITNO (n));
+                //putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
+                //putbits36 (& arx, 20,  4, GET_AR_BITNO (n));
+                putbits36 (& arx, 18, 6, GET_PR_BITNO (n));
                 cpu.Yblock8[n] = arx;
             }
             break;
