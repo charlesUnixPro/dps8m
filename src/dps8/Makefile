@@ -424,7 +424,8 @@ zyre : ../lib/libzyre.so
 # '#ctags' below.
 
 tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
-	-ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+	@echo TAGS
+	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 
