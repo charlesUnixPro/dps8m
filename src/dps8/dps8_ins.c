@@ -5411,7 +5411,12 @@ static t_stat DoBasicInstruction (void)
                 uint bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
                 if (bitno == 077)
                   bitno = 037;
+// Multics Differences experiment.
+//#ifdef CAST_BITNO
+//                SET_AR_CHAR_BITNO (n, bitno / 9, bitno % 9);
+//#else
                 SET_PR_BITNO(n, bitno);
+//#endif
             }
 
             break;
@@ -5444,7 +5449,15 @@ static t_stat DoBasicInstruction (void)
 // I interpret this has meaning that only the high bits should be set here
 
                 if (((cpu.CY >> 34) & 3) != 3)
-                    SET_PR_BITNO(n, (cpu.CY >> 30) & 077);
+                  {
+                    word6 bitno = (cpu.CY >> 30) & 077;
+// Multics Differences experiment.
+//#ifdef CAST_BITNO
+//                    SET_AR_CHAR_BITNO (n, bitno / 9, bitno % 9);
+//#else
+                    SET_PR_BITNO(n, bitno);
+//#endif
+                  }
                 else
                   {
 // fim.alm
@@ -5569,6 +5582,9 @@ static t_stat DoBasicInstruction (void)
 
                 cpu.Yblock16[2 * n + 1] = (word36) cpu.PR[n].WORDNO << 18;
                 cpu.Yblock16[2 * n + 1] |= (word36) GET_PR_BITNO(n) << 9;
+// Multics Differences experiment.
+                //putbits36_2 (& cpu.Yblock16[2 * n + 1], 0, GET_AR_CHAR (n));
+                //putbits36_4 (& cpu.Yblock16[2 * n + 1], 2, GET_AR_BITNO (n));
             }
 
             break;
@@ -5590,6 +5606,9 @@ static t_stat DoBasicInstruction (void)
 
             cpu.Ypair[1]  = (word36) cpu.PR[0].WORDNO << 18;
             cpu.Ypair[1] |= (word36) GET_PR_BITNO (0) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (0));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (0));
 
             break;
 
@@ -5610,6 +5629,9 @@ static t_stat DoBasicInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[2].WORDNO << 18;
             cpu.Ypair[1] |= (word36) GET_PR_BITNO (2) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (2));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (2));
 
             break;
 
@@ -5630,6 +5652,9 @@ static t_stat DoBasicInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[4].WORDNO << 18;
             cpu.Ypair[1] |= (word36) GET_PR_BITNO (4) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (4));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (4));
             break;
 
         case 0652:  // spri6
@@ -5649,6 +5674,9 @@ static t_stat DoBasicInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[6].WORDNO << 18;
             cpu.Ypair[1] |= (word36) GET_PR_BITNO (6) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (6));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (6));
             break;
 
         case 0540:  // sprp0
@@ -5673,21 +5701,14 @@ static t_stat DoBasicInstruction (void)
                 if ((cpu.PR[n].SNR & 070000) != 0 && cpu.PR[n].SNR != MASK15)
                   doFault(FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_ill_ptr}, "sprpn");
 
-                if (cpu.switches.lprp_highonly)
-                  {
-                    cpu.CY  =  ((word36) (GET_PR_BITNO(n) & 077)) << 30;
-                    // lower 12- of 15-bits
-                    cpu.CY |=  ((word36) (cpu.PR[n].SNR & 07777)) << 18;
-                    cpu.CY |=  cpu.PR[n].WORDNO & PAMASK;
-                  }
-                else
-                  {
-                    cpu.CY  =  ((word36) GET_PR_BITNO(n)) << 30;
-                    // lower 12- of 15-bits
-                    cpu.CY |=  ((word36) (cpu.PR[n].SNR) & 07777) << 18;
-                    cpu.CY |=  cpu.PR[n].WORDNO;
-                  }
-
+                cpu.CY  =  ((word36) (GET_PR_BITNO(n) & 077)) << 30;
+// Multics Differences experiment.
+                //cpu.CY  =  0;
+                //putbits36_2 (& cpu.CY, 0, GET_AR_CHAR (n));
+                //putbits36_4 (& cpu.CY, 2, GET_AR_BITNO (n));
+                // lower 12- of 15-bits
+                cpu.CY |=  ((word36) (cpu.PR[n].SNR & 07777)) << 18;
+                cpu.CY |=  cpu.PR[n].WORDNO & PAMASK;
                 cpu.CY &= DMASK;    // keep to 36-bits
             }
             break;
@@ -7149,6 +7170,9 @@ static t_stat DoEISInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[1].WORDNO << 18;
             cpu.Ypair[1]|= (word36) GET_PR_BITNO(1) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (1));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (1));
             break;
 
         case 0253:  // spri3
@@ -7168,6 +7192,9 @@ static t_stat DoEISInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[3].WORDNO << 18;
             cpu.Ypair[1]|= (word36) GET_PR_BITNO(3) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (3));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (3));
             break;
 
         case 0651:  // spri5
@@ -7187,6 +7214,9 @@ static t_stat DoEISInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[5].WORDNO << 18;
             cpu.Ypair[1]|= (word36) GET_PR_BITNO(5) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (5));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (5));
             break;
 
         case 0653:  // spri7
@@ -7206,6 +7236,9 @@ static t_stat DoEISInstruction (void)
 
             cpu.Ypair[1] = (word36) cpu.PR[7].WORDNO << 18;
             cpu.Ypair[1]|= (word36) GET_PR_BITNO(7) << 9;
+// Multics Differences experiment.
+            //putbits36_2 (& cpu.Ypair[1], 0, GET_AR_CHAR (7));
+            //putbits36_4 (& cpu.Ypair[1], 2, GET_AR_BITNO (7));
             break;
 
         /// Ring Alarm Register
@@ -7500,6 +7533,7 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
+// AL-38 implies CHAR/BITNO, but ISOLTS requires PR.BITNO.
                 //cpu.AR[n].CHAR = getbits36 (cpu.CY, 18, 2);
                 //cpu.AR[n].BITNO = getbits36 (cpu.CY, 20, 4);
                 SET_PR_BITNO (n, getbits36 (cpu.CY, 18, 6));
@@ -7512,6 +7546,7 @@ static t_stat DoEISInstruction (void)
             {
                 word36 tmp36 = cpu.Yblock8[n];
                 cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
+// AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
                 //cpu.AR[n].CHAR = getbits36 (tmp36, 18, 2);
                 //cpu.AR[n].BITNO = getbits36 (tmp36, 20, 4);
                 SET_PR_BITNO (n, getbits36 (tmp36, 18, 6));
@@ -7719,6 +7754,7 @@ static t_stat DoEISInstruction (void)
             {
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
+// AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
                 //putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
                 //putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
                 putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
@@ -7733,6 +7769,7 @@ static t_stat DoEISInstruction (void)
             {
                 word36 arx = 0;
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
+// AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
                 //putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
                 //putbits36 (& arx, 20,  4, GET_AR_BITNO (n));
                 putbits36 (& arx, 18, 6, GET_PR_BITNO (n));
