@@ -74,6 +74,10 @@ void hdbgTrace (void)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtTrace;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . trace . addrMode = get_addr_mode ();
@@ -88,6 +92,10 @@ void hdbgMRead (word24 addr, word36 data)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtMRead;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . memref . addr = addr;
@@ -99,6 +107,10 @@ void hdbgMWrite (word24 addr, word36 data)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtMWrite;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . memref . addr = addr;
@@ -112,6 +124,10 @@ void hdbgFault (_fault faultNumber, _fault_subtype subFault,
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtFault;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . fault . faultNumber = faultNumber;
