@@ -6201,6 +6201,7 @@ static t_stat DoBasicInstruction (void)
                     putbits36_1 (& cpu.Ypair [0], 32, cpu.MR.mrgctl);
                     putbits36_1 (& cpu.Ypair [0], 33, cpu.MR.hexfp);
                     putbits36_1 (& cpu.Ypair [0], 35, cpu.MR.emr);
+//if (currentRunningCPUnum) sim_printf ("mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair [1] = 0;
                     putbits36_15 (& cpu.Ypair [1], 36 - 36,
                                cpu.CMR.cache_dir_address);
@@ -7536,7 +7537,8 @@ static t_stat DoEISInstruction (void)
 // AL-38 implies CHAR/BITNO, but ISOLTS requires PR.BITNO.
                 //cpu.AR[n].CHAR = getbits36 (cpu.CY, 18, 2);
                 //cpu.AR[n].BITNO = getbits36 (cpu.CY, 20, 4);
-                SET_PR_BITNO (n, getbits36 (cpu.CY, 18, 6));
+                //SET_PR_BITNO (n, getbits36 (cpu.CY, 18, 6));
+                SET_AR_CHAR_BITNO (n,  getbits36 (cpu.CY, 18, 2),  getbits36 (cpu.CY, 20, 4));
             }
             break;
 
@@ -7546,10 +7548,8 @@ static t_stat DoEISInstruction (void)
             {
                 word36 tmp36 = cpu.Yblock8[n];
                 cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
-// AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
-                //cpu.AR[n].CHAR = getbits36 (tmp36, 18, 2);
-                //cpu.AR[n].BITNO = getbits36 (tmp36, 20, 4);
-                SET_PR_BITNO (n, getbits36 (tmp36, 18, 6));
+                //SET_PR_BITNO (n, getbits36 (tmp36, 18, 6));
+                SET_AR_CHAR_BITNO (n,  getbits36 (tmp36, 18, 2),  getbits36 (tmp36, 20, 4));
             }
             break;
 
@@ -7716,25 +7716,22 @@ static t_stat DoEISInstruction (void)
                 //cpu.CY = bitfieldInsert36(cpu.CY, cpu.AR[n].WORDNO & MASK18, 18, 18);
                 putbits36_18 (& cpu.CY, 0, cpu.AR[n].WORDNO & MASK18);
 
-                word3 CN = 0;
                 switch(TN)
                 {
                     case CTN4:  // 1
+                      {
                         // If C(Y)21 = 1 (TN code = 1) then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) - 1) / 4 ->
                         //     C(Y)18,20
-                        CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
-                        //cpu.CY = bitfieldInsert36(cpu.CY, CN & MASK3, 15, 3);
+                        word3 CN = (9 * GET_AR_CHAR (n) + GET_AR_BITNO (n) - 1) / 4;
                         putbits36_3 (& cpu.CY, 18, CN & MASK3);
                         break;
-
+                      }
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(ARn.CHAR) -> C(Y)18,19
                         //   0 -> C(Y)20
-                        //cpu.CY = bitfieldInsert36(cpu.CY,          0, 15, 1);
-                        //cpu.CY = bitfieldInsert36(cpu.CY, GET_AR_CHAR (n) & MASK2, 16, 2);
-                        putbits36_3 (& cpu.CY, 18, (word3) ((CN & MASK2) << 1));
+                        putbits36_3 (& cpu.CY, 18, (word3) ((GET_AR_CHAR (n) & MASK2) << 1));
                         break;
                 }
             }
@@ -7755,9 +7752,9 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
 // AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
-                //putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
-                //putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
-                putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
+                putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
+                putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
+                //putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
                 break;
             }
 
@@ -7769,10 +7766,8 @@ static t_stat DoEISInstruction (void)
             {
                 word36 arx = 0;
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
-// AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
-                //putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
-                //putbits36 (& arx, 20,  4, GET_AR_BITNO (n));
-                putbits36 (& arx, 18, 6, GET_PR_BITNO (n));
+                putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
+                putbits36 (& arx, 20,  4, GET_AR_BITNO (n));
                 cpu.Yblock8[n] = arx;
             }
             break;
