@@ -5863,6 +5863,9 @@ static void EISwrite49(EISaddr *p, int *pos, int tn, word9 c49)
 
 void mvn (void)
 {
+static int testno = 0;
+if (currentRunningCPUnum)
+sim_printf ("mvn test no %d\n", ++testno);
     /*
      * EXPLANATION:
      * Starting at location YC1, the decimal number of data type TN1 and sign
