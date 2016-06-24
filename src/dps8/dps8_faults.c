@@ -458,6 +458,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         cpu . currentInstruction . info -> ndes > 0);
 #endif
 
+#ifdef ISOLTS
+//if (currentRunningCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
+#endif
     if (faultNumber == FAULT_ACV)
       {
         // This is annoyingly inefficent since the subFault value 
