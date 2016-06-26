@@ -7799,7 +7799,8 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
-          s4bd ();
+          //s4bd ();
+          sxbd (4);
           break;
 
         case 0521:  // s6bd   Subtract 6-bit Displacement from Address Register
