@@ -542,6 +542,21 @@ static inline void putbits36_6 (word36 * x, uint p, word6 val)
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 }
 
+static inline void putbits36_7 (word36 * x, uint p, word7 val)
+{
+    const int n = 7;
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("putbits36_7: bad args (%012llo,pos=%d)\n", *x, p);
+        return;
+    }
+    word36 mask = ~ (~0U<<n);  // n low bits on
+    word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~ smask) | (((word36) val & mask) << shift);
+}
+
 static inline void putbits36_8 (word36 * x, uint p, word8 val)
 {
     const int n = 8;

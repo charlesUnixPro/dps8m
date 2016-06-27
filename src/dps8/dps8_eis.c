@@ -1012,7 +1012,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     // but it the emulator ignores RL if reg == IC, then that PL/I
     // generated code in Multics works. "Pragmatic debugging."
 
-    if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4)   // reg == IC ?
+    if ((MFk & 017) == 4)   // reg == IC ?
       {
         // The ic modifier is permitted in MFk.REG and C (od)32,35 only if
         // MFk.RL = 0, that is, if the contents of the register is an address
@@ -1208,7 +1208,7 @@ static void parseNumericOperandDescriptor (int k)
     sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %u\n", k, e->N[k-1]);
 
     word36 r = getMFReg36(MFk & 017, false, true);
-    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    if ((MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if
         //MFk.RL = 0, that is, if the contents of the register is an address
@@ -1315,9 +1315,9 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
 static void parseBitstringOperandDescriptor (int k)
 {
+
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
-    
     word36 opDesc = e->op[k-1];
     
     word8 ARn_CHAR = 0;
@@ -1333,20 +1333,16 @@ static void parseBitstringOperandDescriptor (int k)
         word18 n = getbits18 (address, 0, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-#if 0
-        if (get_addr_mode() == APPEND_mode || get_addr_mode() == APPEND_BAR_mode)
-#else
         if (get_addr_mode() == APPEND_mode)
-#endif
         {
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-            
             e->addr[k-1].mat = viaPR;   // ARs involved
         }
     }
@@ -1358,31 +1354,33 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d AR%d\n", k, n);
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %llo\n", k, reg, getMFReg36(reg, false, false));
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %llo\n", k, reg, getMFReg36(reg, false, false));
         e->N[k-1] = getMFReg36(reg, false, false) & 077777777;
     }
     else
-        e->N[k-1] = opDesc & 07777;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    {
+        e ->N[k-1] = opDesc & 07777;
+    }
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
     //int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
     //int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
     word4 B = getbits36_4(opDesc, 20);    // bit# from descriptor
     word2 C = getbits36_2 (opDesc, 18);     // char# from descriptor
+
     if (B >= 9)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
      
-    
     word36 r = getMFReg36(MFk & 017, false, true);
-    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    if ((MFk & 017) == 4)   // reg == IC ?
     {
-        //The ic modifier is permitted in MFk.REG and C (od)32,35 only if
-        //MFk.RL = 0, that is, if the contents of the register is an address
-        //offset, not the designation of a register containing the operand
-        //length.
+        // If reg == IC, then R is in words, not bits.
+        //r *= 36;
         address += r;
+        address &= AMASK;
         r = 0;
     }
 
@@ -1398,7 +1396,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     a->address = effWORDNO;
     a->cPos = (int) effCHAR;
     a->bPos = (int) effBITNO;
-    // a->_type = eisBIT;
 }
 
 static void cleanupOperandDescriptor (int k)
@@ -6554,6 +6551,23 @@ void csl (bool isSZTL)
     // Invert           1      1      0      0
     //
     
+// 0 0 0 0  Clear
+// 0 0 0 1  a AND b
+// 0 0 1 0  a AND !b
+// 0 0 1 1  a
+// 0 1 0 0  !a AND b
+// 0 1 0 1  b
+// 0 1 1 0  a XOR b
+// 0 1 1 1  a OR b
+// 1 0 0 0  !a AND !b     !(a OR b)
+// 1 0 0 1  a == b        !(a XOR b)
+// 1 0 1 0  !b
+// 1 0 1 1  !b OR A 
+// 1 1 0 0  !a
+// 1 1 0 1  !b AND a
+// 1 1 1 0  a NAND b
+// 1 1 1 1  Set
+
 #ifndef EIS_SETUP
     setupOperandDescriptor(1);
     setupOperandDescriptor(2);
@@ -6586,6 +6600,32 @@ void csl (bool isSZTL)
     
     e->ADDR1.incr = true;
     e->ADDR1.mode = eRWreadBit;
+
+if (cpu.PPR.IC == 004040) sim_printf ("CSL N1 %d N2 %d\n"
+                "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"
+                "CSL BOLR %u%u%u%u\n"
+                "CSL op1 SNR %06o WORDNO %06o CHAR %d BITNO %d\n"
+                "CSL op2 SNR %06o WORDNO %06o CHAR %d BITNO %d\n",
+                e -> N1, e -> N2,
+                e -> C1, e -> C2, e -> B1, e -> B2, F, T,
+                B5, B6, B7, B8,
+                e -> addr [0] . SNR, e -> addr [0] . address, 
+                e -> addr [0] . cPos, e -> addr [0] . bPos,
+                e -> addr [1] . SNR, e -> addr [1] . address, 
+                e -> addr [1] . cPos, e -> addr [1] . bPos);
+
+IF1 sim_printf ("CSL N1 %d N2 %d\n"
+                "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"
+                "CSL BOLR %u%u%u%u\n"
+                "CSL op1 SNR %06o WORDNO %06o CHAR %d BITNO %d\n"
+                "CSL op2 SNR %06o WORDNO %06o CHAR %d BITNO %d\n",
+                e -> N1, e -> N2,
+                e -> C1, e -> C2, e -> B1, e -> B2, F, T,
+                B5, B6, B7, B8,
+                e -> addr [0] . SNR, e -> addr [0] . address, 
+                e -> addr [0] . cPos, e -> addr [0] . bPos,
+                e -> addr [1] . SNR, e -> addr [1] . address, 
+                e -> addr [1] . cPos, e -> addr [1] . bPos);
 
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "CSL N1 %d N2 %d\n"
@@ -6623,6 +6663,8 @@ void csl (bool isSZTL)
         else if (b1 && b2)
             bR = B8;
         
+//IF1 sim_printf ("CSL b1 %u b2 %u bR %u\n", b1, b2, bR);
+
         if (bR)
         {
             //CLR_I_ZERO);
