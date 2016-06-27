@@ -6601,32 +6601,6 @@ void csl (bool isSZTL)
     e->ADDR1.incr = true;
     e->ADDR1.mode = eRWreadBit;
 
-if (cpu.PPR.IC == 004040) sim_printf ("CSL N1 %d N2 %d\n"
-                "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"
-                "CSL BOLR %u%u%u%u\n"
-                "CSL op1 SNR %06o WORDNO %06o CHAR %d BITNO %d\n"
-                "CSL op2 SNR %06o WORDNO %06o CHAR %d BITNO %d\n",
-                e -> N1, e -> N2,
-                e -> C1, e -> C2, e -> B1, e -> B2, F, T,
-                B5, B6, B7, B8,
-                e -> addr [0] . SNR, e -> addr [0] . address, 
-                e -> addr [0] . cPos, e -> addr [0] . bPos,
-                e -> addr [1] . SNR, e -> addr [1] . address, 
-                e -> addr [1] . cPos, e -> addr [1] . bPos);
-
-IF1 sim_printf ("CSL N1 %d N2 %d\n"
-                "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"
-                "CSL BOLR %u%u%u%u\n"
-                "CSL op1 SNR %06o WORDNO %06o CHAR %d BITNO %d\n"
-                "CSL op2 SNR %06o WORDNO %06o CHAR %d BITNO %d\n",
-                e -> N1, e -> N2,
-                e -> C1, e -> C2, e -> B1, e -> B2, F, T,
-                B5, B6, B7, B8,
-                e -> addr [0] . SNR, e -> addr [0] . address, 
-                e -> addr [0] . cPos, e -> addr [0] . bPos,
-                e -> addr [1] . SNR, e -> addr [1] . address, 
-                e -> addr [1] . cPos, e -> addr [1] . bPos);
-
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "CSL N1 %d N2 %d\n"
                "CSL C1 %d C2 %d B1 %d B2 %d F %o T %d\n"

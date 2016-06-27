@@ -1,5 +1,7 @@
 //#define ISOLTS_BITNO
 
+#define IF1 if (currentRunningCPUnum)
+
 /**
  * \file dps8_ins.c
  * \project dps8
@@ -5406,9 +5408,15 @@ static t_stat DoBasicInstruction (void)
                   cpu.PR[n].RNR = Crr;
                 cpu.PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
                 cpu.PR[n].WORDNO = GETHI(cpu.Ypair[1]);
-// According to ISOLTS, loading a 077 into bitno results in 037
                 //cpu.PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
                 uint bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
+IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
+// According to ISOLTS, loading a 077 into bitno results in 037
+// pa851    test-04b    lpri test       bar-100176
+// test start 105321   patch 105461   subtest loop point 105442
+// s/b 77777737
+// was 77777733
+#if 1
                 if (bitno == 077)
                   bitno = 037;
 // Multics Differences experiment.
@@ -5417,6 +5425,9 @@ static t_stat DoBasicInstruction (void)
 //#else
                 SET_PR_BITNO(n, bitno);
 //#endif
+#else
+                SET_AR_CHAR_BITNO (n, (bitno >> 4) & MASK2, bitno & MASK4);
+#endif
             }
 
             break;
@@ -5581,7 +5592,13 @@ static t_stat DoBasicInstruction (void)
                 cpu.Yblock16[2 * n] |= ((word36) cpu.PR[n].RNR) << 15;
 
                 cpu.Yblock16[2 * n + 1] = (word36) cpu.PR[n].WORDNO << 18;
+#if 1
                 cpu.Yblock16[2 * n + 1] |= (word36) GET_PR_BITNO(n) << 9;
+#else
+                cpu.Yblock16[2 * n + 1] |= (word36) cpu.PR[n].CHAR << 9 + 4;
+                cpu.Yblock16[2 * n + 1] |= (word36) cpu.PR[n].BITNO << 9;
+                
+#endif
 // Multics Differences experiment.
                 //putbits36_2 (& cpu.Yblock16[2 * n + 1], 0, GET_AR_CHAR (n));
                 //putbits36_4 (& cpu.Yblock16[2 * n + 1], 2, GET_AR_BITNO (n));
