@@ -1322,6 +1322,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             q = 0;
             putbits36_9 (& q,  0,  maskab [1]);
             // cyclic prior <- 0
+            putbits36_7 (& q, 57-36, (word7) up -> cyclic & MASK7);
             // Looking at scr_util.list, I *think* the port order
             // 0,1,2,3.
             putbits36_1 (& q, 32,  (word1) up -> port_enable [4]);
@@ -1330,6 +1331,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 #endif
+            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, * rega, * regq);
             break;
           }
 
