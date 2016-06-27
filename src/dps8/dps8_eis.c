@@ -2563,6 +2563,8 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
+IF1 sim_printf ("CMPC instr %012llo op1 %012llo op2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpc 9-10 MBZ");
@@ -2571,9 +2573,14 @@ void cmpc (void)
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op1 23 MBZ");
 
-    // Bits 21-23 of OP2 MBZ
-    if (e -> op [1]  & 0000000070000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op2 21-23 MBZ");
+// ISOLTS ps846    test-07a    dec add test
+// Sets TA2 to the same as TA1. AL39 says TA2 ignored.
+// Try only check bit 23.
+    // // Bits 21-23 of OP2 MBZ
+    // if (e -> op [1]  & 0000000070000)
+    // Bit 23 of OP2 MBZ
+    if (e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op2 23 MBZ");
 
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
     
@@ -7969,9 +7976,9 @@ void ad2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    // Bits 0-8 MBZ
-    if (IWB_IRODD & 0777000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 0-8 MBZ");
+    // Bits 1-8 MBZ
+    if (IWB_IRODD & 0377000000000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 1-8 MBZ");
 
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
