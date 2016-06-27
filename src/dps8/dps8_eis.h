@@ -9,6 +9,7 @@ void swd (void);
 void s4bd (void);
 void s9bd (void);
 void sxbd (uint sz);
+void asxbd (uint sz, bool sub);
 
 void s4bd (void);
 void cmpc (void);

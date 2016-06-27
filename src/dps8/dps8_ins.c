@@ -7800,7 +7800,8 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0501:  // a6bd Add 6-bit Displacement to Address Register
-          axbd (6);
+          //axbd (6);
+          asxbd (6, false);
           break;
 
         case 0500:  // a9bd Add 9-bit Displacement to Address Register
@@ -7817,11 +7818,11 @@ static t_stat DoEISInstruction (void)
 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
           //s4bd ();
-          sxbd (4);
+          asxbd (4, true);
           break;
 
         case 0521:  // s6bd   Subtract 6-bit Displacement from Address Register
-          sxbd (6);
+          asxbd (6, true);
           break;
 
         case 0520:  // s9bd   Subtract 9-bit Displacement from Address Register
@@ -7829,7 +7830,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0523:  // sbd Subtract   bit Displacement from Address Register
-          sxbd (1);
+          asxbd (1, true);
           break;
 
         case 0527:  // swd Subtract  word Displacement from Address Register

@@ -1563,6 +1563,13 @@ void axbd (uint sz)
 static int testno = 0;
 if (currentRunningCPUnum)
 sim_printf ("axbd test no %d\n", ++testno);
+if (currentRunningCPUnum)
+{
+if (GET_A (cpu . cu . IWB))
+sim_printf ("axbd AxBD\n");
+else
+sim_printf ("axbd AxBDX\n");
+}
 
     uint ARn = GET_ARN (cpu . cu . IWB);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
@@ -2151,7 +2158,7 @@ if (currentRunningCPUnum)
 sim_printf ("sxbd difference BITNO %d %o\n", difference % 9, difference % 9);
   }
 #else
-void sxbd (uint sz)
+void asxbd (uint sz, bool sub)
   {
 // XXX
 // XXX
@@ -2303,7 +2310,7 @@ void sxbd (uint sz)
 #endif
 
 static int testno = 0;
-IF1 sim_printf ("sxbd test no %d\n", ++testno);
+IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
     uint modbits = nxbits;
     //if (sz == 4)
@@ -2320,9 +2327,9 @@ IF1 sim_printf ("sxbd test no %d\n", ++testno);
     word36 rcnt = getCrAR (reg);
     uint r = 0;
 
-IF1 sim_printf ("sxbd sz %d r 0%llo\n", sz, rcnt);
+IF1 sim_printf ("asxbd sz %d r 0%llo\n", sz, rcnt);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d r 0%llo\n", sz, rcnt);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d r 0%llo\n", sz, rcnt);
 
     if (sz == 1)
       r = (uint) (rcnt & MASK24);
@@ -2335,22 +2342,22 @@ IF1 sim_printf ("sxbd sz %d r 0%llo\n", sz, rcnt);
     else // if (sz == 36)
       r = (uint) (rcnt & MASK18);
 
-IF1 sim_printf ("sxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
+IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
 
 
-IF1 sim_printf ("sxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 
 // According to ISOLTS 805, WORDNO is unsigned.
 IF1 if (sz == 6)
 { uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
-    //sim_printf ("sxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
-    sim_printf ("sxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
+    //sim_printf ("asxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
+    sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
 
-    uint minuend = 0;
+    uint augend = 0;
     if (GET_A (cpu . cu . IWB))
       {
         uint bitno = GET_AR_BITNO (ARn);
@@ -2359,25 +2366,25 @@ IF1 if (sz == 6)
         if (sz == 6)
           {
             uint n = charno * 16 + bitno; // table index format
-IF1 sim_printf ("sxbd map6 %u\n", n);
+IF1 sim_printf ("asxbd map6 %u\n", n);
             uint charno6 = map6 [n] [0];
             uint bitno6 = map6 [n] [1];
-            minuend = cpu.AR[ARn].WORDNO * wdsz + charno6 * 6 + bitno6;
-IF1 sim_printf ("sxbd minuend 6 %06o/%u/%u\n", minuend / wdsz, (minuend % wdsz) / 6u, (minuend % wdsz) % 6u);
+            augend = cpu.AR[ARn].WORDNO * wdsz + charno6 * 6 + bitno6;
+IF1 sim_printf ("asxbd augend 6 %06o/%u/%u\n", augend / wdsz, (augend % wdsz) / 6u, (augend % wdsz) % 6u);
           }
         else
           {
 // According to ISOLTS 805, WORDNO is unsigned.
-            //minuend = SIGNEXT15_18 (cpu.AR[ARn].WORDNO) * wdsz + GET_AR_CHAR (ARn) * 9 + bitno;
-            minuend = cpu.AR[ARn].WORDNO * wdsz + charno * 9 + bitno;
+            //augend = SIGNEXT15_18 (cpu.AR[ARn].WORDNO) * wdsz + GET_AR_CHAR (ARn) * 9 + bitno;
+            augend = cpu.AR[ARn].WORDNO * wdsz + charno * 9 + bitno;
           }
 #else
-IF1 sim_printf ("sxbd map [%u:%u] = %u\n", charno, bitno, map [charno * 16 + bitno]);
-        minuend = cpu.AR[ARn].WORDNO * wdsz + map [charno * 16 + bitno];
+IF1 sim_printf ("asxbd map [%u:%u] = %u\n", charno, bitno, map [charno * 16 + bitno]);
+        augend = cpu.AR[ARn].WORDNO * wdsz + map [charno * 16 + bitno];
 #endif
-        minuend = minuend % modbits;
+        augend = augend % modbits;
 
-IF1 if (sz == 6) sim_printf ("sxbd 6 ARn %06o/%u/%u\n", minuend / 36u, (minuend % 36u) / 6u, (minuend % 36u) % 6u);
+IF1 if (sz == 6) sim_printf ("asxbd 6 ARn %06o/%u/%u\n", augend / 36u, (augend % 36u) / 6u, (augend % 36u) % 6u);
 
       }
 
@@ -2386,13 +2393,13 @@ IF1 if (sz == 6) sim_printf ("sxbd 6 ARn %06o/%u/%u\n", minuend / 36u, (minuend 
     //if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
     if (sz == 9 || sz == 36)
       {
-        minuend = (minuend / sz) * sz;
+        augend = (augend / sz) * sz;
       }
 #endif
 
-IF1 sim_printf ("sxbd minuend %d\n", minuend);
+IF1 sim_printf ("asxbd augend %d\n", augend);
 
-    uint subtractend = 0;
+    uint addend = 0;
     if (sz == 4)
       {
         // r is the number of 4 bit characters; each character is actually
@@ -2401,38 +2408,47 @@ IF1 sim_printf ("sxbd minuend %d\n", minuend);
         //uint residue = r % 8u;
         // The +4 is because we are subtracting; "borrow 4 bits from the next
         // word (36 - 32 --> 4)
-        //subtractend = address * wdsz + nwords * 36u + residue * 4 + 4;
-        subtractend = address * wdsz + (r * 9) / 2;
+        //addend = address * wdsz + nwords * 36u + residue * 4 + 4;
+        addend = address * wdsz + (r * 9) / 2;
 
-IF1 sim_printf ("sxbd 4 r now %u\n", r);
+IF1 sim_printf ("asxbd 4 r now %u\n", r);
       }
     else
-      subtractend = address * wdsz + r * sz;
+      addend = address * wdsz + r * sz;
 
-    subtractend = subtractend % modbits;
+    addend = addend % modbits;
 
-IF1 sim_printf ("sxbd subtractend %u\n", subtractend);
+IF1 sim_printf ("asxbd addend %u\n", addend);
 
-    if (subtractend > minuend)
-      minuend += modbits;
-    uint difference = minuend - subtractend;
+    uint sum = 0;
+    if (sub)
+      {
+        if (addend > augend)
+          augend += modbits;
+        sum = augend - addend;
+      }
+    else
+      {
+        sum = augend + addend;
+        sum %= modbits;
+      }
 
-IF1 sim_printf ("sxbd difference %u %d\n", difference, difference);
-IF1 sim_printf ("sxbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
+IF1 sim_printf ("asxbd sum %u %d\n", sum, sum);
+IF1 sim_printf ("asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     if (sz == 6)
       {
-IF1 if (difference != (difference / sz) * sz) sim_printf ("rounded difference\n");
-        difference = (difference / sz) * sz;
+IF1 if (sum != (sum / sz) * sz) sim_printf ("rounded sum\n");
+        sum = (sum / sz) * sz;
       }
-    cpu . AR [ARn] . WORDNO = (word18) (difference / wdsz) & AMASK;
-    //SET_PR_BITNO (ARn, difference % wdsz);
+    cpu . AR [ARn] . WORDNO = (word18) (sum / wdsz) & AMASK;
+    //SET_PR_BITNO (ARn, sum % wdsz);
     if (sz == 4)
       {
 #if 0
-        uint bitoff = difference % 32;
+        uint bitoff = sum % 32;
         //uint charno= bitoff % 8;
         uint charno= bitoff / 4;
         // ISOLTS test 805, loop point 010177, says char 0 is at bit 0.
@@ -2487,26 +2503,26 @@ IF1 if (difference != (difference / sz) * sz) sim_printf ("rounded difference\n"
             { 3, 5 }, // 34
             { 3, 5 }  // 35
           };
-        uint charno = tab [difference % wdsz] [0];
-        uint bitno = tab [difference % wdsz] [1];
+        uint charno = tab [sum % wdsz] [0];
+        uint bitno = tab [sum % wdsz] [1];
         SET_AR_CHAR_BITNO (ARn, charno, bitno);
       }
     else
       {
-        uint charno = (difference % wdsz) / 9;
-        uint bitno = difference % 9;
-        SET_AR_CHAR_BITNO (ARn, charno, difference % 9);
+        uint charno = (sum % wdsz) / 9;
+        uint bitno = sum % 9;
+        SET_AR_CHAR_BITNO (ARn, charno, sum % 9);
 
-IF1 sim_printf ("sxbd difference WORDNO %d %o\n", (difference / wdsz) & AMASK, (difference / wdsz) & AMASK);
-IF1 sim_printf ("sxbd difference CHAR %d %o\n", charno, charno);
-IF1 sim_printf ("sxbd difference BITNO %d %o\n", bitno, bitno);
+IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / wdsz) & AMASK, (sum / wdsz) & AMASK);
+IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
+IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
       }
 
-IF1 sim_printf ("sxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 IF1 if (sz == 6)
 { uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
-    //sim_printf ("sxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
-    sim_printf ("sxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
+    //sim_printf ("asxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
+    sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
   }
 #endif
