@@ -1423,15 +1423,21 @@ t_stat executeInstruction (void)
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
         if (ci->info->flags & NO_RPT)
-          //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "no RPx allowed for instruction");
-          RPx_fault |= FR_ILL_PROC;
+          {
+IF1 sim_printf ("RPx_fault NO_RPT\n");
+            //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "no RPT allowed for instruction");
+            RPx_fault |= FR_ILL_PROC;
+          }
       }
 
     if (cpu.cu.rl)
       {
         if (ci->info->flags & NO_RPL)
-          //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "no RPx allowed for instruction");
-          RPx_fault |= FR_ILL_PROC;
+          {
+IF1 sim_printf ("RPx_fault NO_RPL\n");
+            //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "no RPx allowed for instruction");
+            RPx_fault |= FR_ILL_PROC;
+          }
       }
 
     // RPT/RPD illegal modifiers
@@ -1447,13 +1453,17 @@ t_stat executeInstruction (void)
               {
                 case TM_RI:
                   if (cpu.cu.rl)
-                    //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPL");
-                    RPx_fault |= FR_ILL_MOD;
+                    {
+IF1 sim_printf ("RPx_fault RPL TM_RI\n");
+                      //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPL");
+                      RPx_fault |= FR_ILL_MOD;
+                    }
                   break;
                 case TM_R:
                   break;
                 default:
                   // generate fault. Only R & RI allowed
+IF1 sim_printf ("RPx_fault RPx not R/RI\n");
                   //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                           //"ill addr mod from RPT/RPD/RPL");
                   RPx_fault |= FR_ILL_MOD;
@@ -1461,12 +1471,18 @@ t_stat executeInstruction (void)
 
             word6 Td = GET_TD(ci->tag);
             if (Td == TD_X0)
-              //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPT");
-              RPx_fault |= FR_ILL_MOD;
+              {
+IF1 sim_printf ("RPx_fault RPx X0/RI\n");
+                //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPT");
+                RPx_fault |= FR_ILL_MOD;
+              }
             //if (! cpu.cu.rd && Td < TD_X0)
             if (Td < TD_X0)
-              //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPT/RPL");
-              RPx_fault |= FR_ILL_MOD;
+              {
+IF1 sim_printf ("RPx_fault RPx not Xn\n");
+                //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ill addr mod from RPT/RPL");
+                RPx_fault |= FR_ILL_MOD;
+              }
           }
       }
 
