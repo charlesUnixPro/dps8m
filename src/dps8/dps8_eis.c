@@ -192,37 +192,32 @@ static word36 put4 (word36 w, int pos, word4 c)
     switch (pos)
       {
         case 0:
-          //return bitfieldInsert36 (w, c, 31, 4);
-          return setbits36_4 (w, 1, c);
+          //return setbits36_4 (w, 1, c);
+          return setbits36_5 (w, 0, c);
 
         case 1:
-          //return bitfieldInsert36 (w, c, 27, 4);
           return setbits36_4 (w, 5, c);
 
         case 2:
-          //return bitfieldInsert36 (w, c, 22, 4);
-          return setbits36_4 (w, 10, c);
+          //return setbits36_4 (w, 10, c);
+          return setbits36_5 (w, 9, c);
 
         case 3:
-          //return bitfieldInsert36 (w, c, 18, 4);
           return setbits36_4 (w, 14, c);
 
         case 4:
-          //return bitfieldInsert36 (w, c, 13, 4);
-          return setbits36_4 (w, 19, c);
+          //return setbits36_4 (w, 19, c);
+          return setbits36_5 (w, 18, c);
 
         case 5:
-          //return bitfieldInsert36 (w, c, 9, 4);
           return setbits36_4 (w, 23, c);
 
         case 6:
-          //return bitfieldInsert36 (w, c, 4, 4);
-          return setbits36_4 (w, 28, c);
+          //return setbits36_4 (w, 28, c);
+          return setbits36_5 (w, 27, c);
 
         case 7:
-          //return bitfieldInsert36 (w, c, 0, 4);
           return setbits36_4 (w, 32, c);
-
       }
     sim_printf ("put4(): How'd we get here?\n");
     return 0;
@@ -676,6 +671,7 @@ static void EISput469 (int k, uint i, word9 c469)
     e -> addr [k - 1] . address = address;
     word36 data = EISRead (& e -> addr [k - 1]);    // read it from memory
 
+IF1 sim_printf ("put469 WN %u CN %u address %06o residue %u\n", e -> WN [k-1], e -> CN [k-1], address, residue);
     word36 w = 0;
     switch (e -> TA [k - 1])
       {
@@ -967,6 +963,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
+IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
         if (get_addr_mode() == APPEND_mode)
           {
@@ -979,6 +977,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
 
+IF1 sim_printf ("initial CN%u %u\n", k, CN);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "initial CN%u %u\n", k, CN);
     
     if (MFk & MFkRL)
@@ -1037,21 +1036,39 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     switch (e -> TA [k - 1])
       {
         case CTA4:
-          effBITNO = 4 * (ARn_CHAR + 2 * r + ARn_BITNO / 4) % 2 + 1;
-          effCHAR = ((4 * CN + 
-                           9 * ARn_CHAR +
-                           4 * r + ARn_BITNO) % 32) / 4;  //9;36) / 4;  //9;
-          effWORDNO = (uint) (address +
-                           (4 * CN +
-                           9 * ARn_CHAR +
-                           4 * r +
-                           ARn_BITNO) / 32);    // 36
-          effWORDNO &= AMASK;
+          {
+            // Calculate character number of ARn CHAR and BITNO
+            uint bitoffset = ARn_CHAR * 9 + ARn_BITNO;
+            uint arn_char4 = bitoffset * 2 / 9; // / 4.5
+            //// The odd chars start at the 6th bit, not the 5th
+            //if (bitoffset & 1) // if odd
+            //  arn_char4 ++;
+            // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
+            uint nchars = address * 8 + r + arn_char4;
+
+            effWORDNO = nchars / 8; // 8 chars/word
+            effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
+            effBITNO = (nchars & 1) ? 5 : 0;
+
+            //effBITNO = 4 * (ARn_CHAR + 2 * r + ARn_BITNO / 4) % 2 + 1;
+            //effCHAR = ((4 * CN + 
+            //                 9 * ARn_CHAR +
+            //                 4 * r + ARn_BITNO) % 32) / 4;  //9;36) / 4;  //9;
+            //effWORDNO = (uint) (address +
+            //                 (4 * CN +
+            //                 9 * ARn_CHAR +
+            //                 4 * r +
+            //                 ARn_BITNO) / 32);    // 36
+            effWORDNO &= AMASK;
             
-          e -> CN [k - 1] = effCHAR;
-          e -> WN [k - 1] = effWORDNO;
-          sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA4\n",
-                     k, e -> CN [k - 1]);
+            e -> CN [k - 1] = effCHAR;
+            e -> WN [k - 1] = effWORDNO;
+
+IF1 sim_printf ("CN%d set to %d by CTA4\n", k, e -> CN [k - 1]);
+
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA4\n",
+                       k, e -> CN [k - 1]);
+          }
           break;
 
         case CTA6:
@@ -1279,14 +1296,35 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
     switch (e->TN[k-1])
     {
         case CTN4:
-            effBITNO = 4 * (ARn_CHAR + 2*r + ARn_BITNO/4) % 2 + 1; // XXX check
-            effCHAR = ((4*CN + 9*ARn_CHAR + 4*r + ARn_BITNO) % 32) / 4;  //9; 36) / 4;  //9;
-            effWORDNO = (uint) (address + (4*CN + 9*ARn_CHAR + 4*r + ARn_BITNO) / 32);    //36;
+          {
+            // Calculate character number of ARn CHAR and BITNO
+            uint bitoffset = ARn_CHAR * 9 + ARn_BITNO;
+            uint arn_char4 = bitoffset * 2 / 9; // / 4.5
+            //// The odd chars start at the 6th bit, not the 5th
+            //if (bitoffset & 1) // if odd
+            //  arn_char4 ++;
+            // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
+            uint nchars = address * 8 + r + arn_char4;
+
+            effWORDNO = nchars / 8; // 8 chars/word
+            effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
+            effBITNO = (nchars & 1) ? 5 : 0;
+
+            //effBITNO = 4 * (ARn_CHAR + 2 * r + ARn_BITNO / 4) % 2 + 1;
+            //effCHAR = ((4 * CN + 
+            //                 9 * ARn_CHAR +
+            //                 4 * r + ARn_BITNO) % 32) / 4;  //9;36) / 4;  //9;
+            //effWORDNO = (uint) (address +
+            //                 (4 * CN +
+            //                 9 * ARn_CHAR +
+            //                 4 * r +
+            //                 ARn_BITNO) / 32);    // 36
             effWORDNO &= AMASK;
 
             e->CN[k-1] = effCHAR;        // ?????
+            }
+          break;
 
-            break;
         case CTN9:
             if (CN & 1)
               doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
@@ -3611,6 +3649,8 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mlr 10 MBZ");
@@ -3698,6 +3738,8 @@ void mlr (void)
                         // found @ N1-1 
 
     
+IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
+    
 //
 // Multics frequently uses certain code sequences which are easily detected
 // and optimized; eg. it uses the MLR instruction to copy or zeros segments.
@@ -3756,9 +3798,10 @@ void mlr (void)
         return;
       }
 
-    for ( ; cpu . du . CHTALLY < min (e -> N1, e -> N2); cpu . du . CHTALLY ++)
+    for ( ; cpu.du.CHTALLY < min (e->N1, e->N2); cpu.du.CHTALLY ++)
       {
-        word9 c = EISget469 (1, cpu . du . CHTALLY); // get src char
+        word9 c = EISget469 (1, cpu.du.CHTALLY); // get src char
+IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
@@ -3953,7 +3996,7 @@ void mrl (void)
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
-    
+
 //
 // Multics frequently uses certain code sequences which are easily detected
 // and optimized; eg. it uses the MLR instruction to copy or zeros segments.

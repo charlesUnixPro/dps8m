@@ -356,6 +356,22 @@ static inline word36 setbits36_4 (word36 x, uint p, word4 val)
     return result;
 }
 
+static inline word36 setbits36_5 (word36 x, uint p, word5 val)
+{
+    const int n = 5;
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35) {
+        sim_printf ("setbits36_5: bad args (%012llo,pos=%d)\n", x, p);
+        return 0;
+    }
+    word36 mask = ~ (~0U<<n);  // n low bits on
+    word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    word36 result = (x & ~ smask) | (((word36) val & mask) << shift);
+    return result;
+}
+
 static inline word36 setbits36_6 (word36 x, uint p, word6 val)
 {
     const int n = 6;
