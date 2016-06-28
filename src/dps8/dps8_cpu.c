@@ -3132,8 +3132,9 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
 #ifdef CAST_BITNO
     prp->bitno = getbits36(word2, 57 - 36, 6);
 #else
-    prp->BITNO = getbits36(word2, 57 - 36, 6) % 9;
-    prp->CHAR = getbits36(word2, 57 - 36, 6) / 9;
+    prp->PR_BITNO = getbits36_6 (word2, 57 - 36);
+    prp->AR_BITNO = getbits36_6 (word2, 57 - 36) % 9;
+    prp->AR_CHAR = getbits36_6 (word2, 57 - 36) / 9;
 #endif
     return 0;
   }   
