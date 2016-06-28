@@ -1,7 +1,10 @@
 //#define ISOLTS_BITNO
 
+#ifdef ISOLTS
 #define IF1 if (currentRunningCPUnum)
-
+#else
+#define IF1 if (0)
+#endif
 /**
  * \file dps8_ins.c
  * \project dps8
@@ -7812,7 +7815,8 @@ static t_stat DoEISInstruction (void)
         /// EIS - Address Register Special Arithmetic
 
         case 0502:  // a4bd Add 4-bit Displacement to Address Register
-          a4bd ();
+          //a4bd ();
+          asxbd (4, false);
           break;
 
         case 0501:  // a6bd Add 6-bit Displacement to Address Register
@@ -7821,15 +7825,18 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0500:  // a9bd Add 9-bit Displacement to Address Register
-          axbd (9);
+          //axbd (9);
+          asxbd (9, false);
           break;
 
         case 0503:  // abd  Add bit Displacement to Address Register
-          abd ();
+          //abd ();
+          asxbd (1, false);
           break;
 
         case 0507:  // awd Add  word Displacement to Address Register
-          awd ();
+          //awd ();
+          asxbd (36, false);
           break;
 
         case 0522:  // s4bd Subtract 4-bit Displacement from Address Register
@@ -7842,7 +7849,8 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0520:  // s9bd   Subtract 9-bit Displacement from Address Register
-          s9bd ();
+          //s9bd ();
+          asxbd (9, true);
           break;
 
         case 0523:  // sbd Subtract   bit Displacement from Address Register
@@ -7850,7 +7858,8 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0527:  // swd Subtract  word Displacement from Address Register
-          swd ();
+          //swd ();
+          asxbd (36, true);
           break;
 
         /// EIS = Alphanumeric Compare

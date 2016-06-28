@@ -6,7 +6,11 @@
  * brief EIS support code...
 */
 
+#ifdef ISOLTS
 #define IF1 if (currentRunningCPUnum)
+#else
+#define IF1 if (0)
+#endif
 
 #include <ctype.h>
 
@@ -2088,146 +2092,103 @@ void s9bd (void)
 //sim_printf ("s9bd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
   }
 
-#if 0
-void sxbd (uint sz)
-  {
-static int testno = 0;
-if (currentRunningCPUnum)
-sim_printf ("sxbd test no %d\n", ++testno);
-    uint ARn = GET_ARN (cpu . cu . IWB);
-    int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
-    word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
-                                  // au, qu, al, ql, xn)
-    // r is the count of characters
-    word36 rcnt = getCrAR (reg);
-    int32_t r;
-if (currentRunningCPUnum)
-sim_printf ("sxbd sz %d r 0%llo\n", sz, rcnt);
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d r 0%llo\n", sz, rcnt);
-    if (sz == 1)
-      r = SIGNEXT24_32 ((word24) rcnt);
-    else if (sz == 4)
-      r = SIGNEXT22_32 ((word22) rcnt);
-    else if (sz == 6)
-      r = SIGNEXT21_32 ((word21) rcnt);
-    else if (sz == 9)
-      r = SIGNEXT21_32 ((word21) rcnt);
-    else // if (sz == 36)
-      r = SIGNEXT18_32 ((word18) rcnt);
 
-if (currentRunningCPUnum)
-sim_printf ("sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
+//
+// Address Register arithmetic
+//
+// This code handles Address Register arithmetic
+//
+// asxbd (  ,       )
+// ABD     1   false
+// A4BD    4   false
+// A6BD    6   false
+// A9BD    9   false
+// AWD    36   false
+// SBD     1   true
+// S4BD    4   true
+// S6BD    6   true
+// S9BD    9   true
+// SWD    36   true
+//
 
-if (currentRunningCPUnum)
-sim_printf ("sxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
-    uint minuend = 0;
-    if (GET_A (cpu . cu . IWB))
-       minuend = cpu . AR [ARn] . WORDNO * 36u + GET_AR_CHAR (ARn) * 9 + GET_AR_BITNO (ARn);
-    // force to character boundary
-    if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
-      {
-        minuend = (minuend / sz) * sz;
-      }
-if (currentRunningCPUnum)
-sim_printf ("sxbd minuend %d\n", minuend);
-    int32_t subtractend = address * 36 + r * (int32_t) sz;
-if (currentRunningCPUnum)
-sim_printf ("sxbd subtractend %d\n", subtractend);
-    int32_t difference = (int32_t) minuend - subtractend;
-if (currentRunningCPUnum)
-sim_printf ("sxbd difference %d\n", difference);
+// The general approach is do all of the math as unsigned number of bits,
+// modulo 2^18 * 36 (the number of bits in a segment).
+//
+// To handle subtraction underflow, a preemptive borrow is done if the 
+// the operation will underflow.
+//
+// Notes:
+//   According to ISOLTS 805, WORDNO is unsigned; this disagrees with AL-39
 
-    // Handle over/under flow
-    while (difference < 0)
-      difference += nxbits;
-    difference = difference % nxbits;
-
-if (currentRunningCPUnum)
-sim_printf ("sxbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "sxbd minuend 0%o subtractend 0%o difference 0%o\n", minuend, subtractend, difference);
-
-    cpu . AR [ARn] . WORDNO = (word18) (difference / 36) & AMASK;
-    //SET_PR_BITNO (ARn, difference % 36);
-    SET_AR_CHAR_BITNO (ARn, (difference % 36) / 9, difference % 9);
-if (currentRunningCPUnum)
-sim_printf ("sxbd difference WORDNO %d %o\n", (difference / 36) & AMASK, (difference / 36) & AMASK);
-if (currentRunningCPUnum)
-sim_printf ("sxbd difference CHAR %d %o\n", (difference % 36) / 9, (difference % 36) / 9);
-if (currentRunningCPUnum)
-sim_printf ("sxbd difference BITNO %d %o\n", difference % 9, difference % 9);
-  }
-#else
 void asxbd (uint sz, bool sub)
   {
-#if 1
     // Map charno:bitno to bit offset for 4 bit char set
     uint map4 [64] =
       {      // 9-bit    4-bit
           0, // 0  0      0 
-          1, // 0  1      0 
-          2, // 0  2      0
-          3, // 0  3      0
-          4, // 0  4      0
+          0, // 0  1      0 
+          0, // 0  2      0
+          0, // 0  3      0
+          0, // 0  4      0
           5, // 0  5      1
-          6, // 0  6      1
-          7, // 0  7      1
-          8, // 0  8      1
-          5, // 0  9  ill  ISOLTS 805 loop point 010100 sxbd test no 12
-          5, // 0 10  ill
-          5, // 0 11  ill
-          5, // 0 12  ill
-          5, // 0 13  ill
-          5, // 0 14  ill
-          5, // 0 15  ill
+          5, // 0  6      1
+          5, // 0  7      1
+          5, // 0  8      1
+          5, // 0  9  ill     guess
+          5, // 0 10  ill     guess
+          5, // 0 11  ill     guess
+          5, // 0 12  ill     guess
+          5, // 0 13  ill     guess
+          5, // 0 14  ill     guess
+          5, // 0 15  ill     guess
           9, // 1  0      2
-         10, // 1  1      2
-         11, // 1  2      2
-         12, // 1  3      2
-         13, // 1  4      2
+          9, // 1  1      2
+          9, // 1  2      2
+          9, // 1  3      2
+          9, // 1  4      2
          14, // 1  5      3
-         15, // 1  6      3
-         16, // 1  7      3
-         17, // 1  8      3
-         14, // 1  9  ill
+         14, // 1  6      3
+         14, // 1  7      3
+         14, // 1  8      3
+         14, // 1  9  ill     guess
          14, // 1 10  ill ISOLTS 805 loop point 010226 sxbd test no 28 (4bit)
-         14, // 1 11  ill ISOLTS 805 loop point 010100 sxbd test no 12
-         14, // 1 12  ill
-         14, // 1 13  ill
-         14, // 1 14  ill
-         14, // 1 15  ill
+         14, // 1 11  ill     guess
+         14, // 1 12  ill     guess
+         14, // 1 13  ill     guess
+         14, // 1 14  ill     guess
+         14, // 1 15  ill     guess
          18, // 2  0      4
-         19, // 2  1      4
-         20, // 2  2      4
-         21, // 2  3      4
-         22, // 2  4      4
+         18, // 2  1      4
+         18, // 2  2      4
+         18, // 2  3      4
+         18, // 2  4      4
          23, // 2  5      5
-         24, // 2  6      5
-         25, // 2  7      5
-         26, // 2  8      5
-         23, // 2  9  ill
-         23, // 2 10  ill
-         23, // 2 11  ill
+         23, // 2  6      5
+         23, // 2  7      5
+         23, // 2  8      5
+         23, // 2  9  ill     guess
+         23, // 2 10  ill     guess
+         23, // 2 11  ill     guess
          23, // 2 12  ill   ISOLTS 805 loop point 010226 sxbd test no 26 (4bit)
-         23, // 2 13  ill   ISOLTS 805 loop point 010100 sxbd test no 10
-         23, // 2 14  ill
-         23, // 2 15  ill
+         23, // 2 13  ill     guess
+         23, // 2 14  ill     guess
+         23, // 2 15  ill     guess
          27, // 3  0      6
-         28, // 3  1      6
-         29, // 3  2      6
-         30, // 3  3      6
-         31, // 3  4      6
+         27, // 3  1      6
+         27, // 3  2      6
+         27, // 3  3      6
+         27, // 3  4      6
          32, // 3  5      7
-         33, // 3  6      7
-         34, // 3  7      7
-         35, // 3  8      7
-         32, // 3  9  ill
-         32, // 3 10  ill
-         32, // 3 11  ill
-         32, // 3 12  ill
-         32, // 3 13  ill
+         32, // 3  6      7
+         32, // 3  7      7
+         32, // 3  8      7
+         32, // 3  9  ill     guess
+         32, // 3 10  ill     guess
+         32, // 3 11  ill     guess
+         32, // 3 12  ill     guess
+         32, // 3 13  ill     guess
          32, // 3 14  ill   ISOLTS 805 loop point 010226 sxbd test no 24 (4bit)
-         32  // 3 15  ill   ISOLTS 805 loop point 010100 sxbd test no 8 (6bit)
+         32  // 3 15  ill     guess
       };
     // Map charno:bitno to bit offset for 6 bit char set
     uint map6 [64] =
@@ -2242,12 +2203,12 @@ void asxbd (uint sz, bool sub)
           7, // 0  7      1
           8, // 0  8      1
           6, // 0  9  ill  ISOLTS 805 loop point 010100 sxbd test no 12
-          6, // 0 10  ill
-          6, // 0 11  ill
-          6, // 0 12  ill
-          6, // 0 13  ill
-          6, // 0 14  ill
-          6, // 0 15  ill
+          6, // 0 10  ill     guess
+          6, // 0 11  ill     guess
+          6, // 0 12  ill     guess
+          6, // 0 13  ill     guess
+          6, // 0 14  ill     guess
+          6, // 0 15  ill     guess
           9, // 1  0      1
          10, // 1  1      1
          11, // 1  2      1
@@ -2257,13 +2218,13 @@ void asxbd (uint sz, bool sub)
          15, // 1  6      2
          16, // 1  7      2
          17, // 1  8      2
-         12, // 1  9  ill
-         12, // 1 10  ill ISOLTS 805 loop point 010226 sxbd test no 28 (4bit)
+         12, // 1  9  ill     guess
+         12, // 1 10  ill     guess
          12, // 1 11  ill ISOLTS 805 loop point 010100 sxbd test no 12
-         12, // 1 12  ill
-         12, // 1 13  ill
-         12, // 1 14  ill
-         12, // 1 15  ill
+         12, // 1 12  ill     guess
+         12, // 1 13  ill     guess
+         12, // 1 14  ill     guess
+         12, // 1 15  ill     guess
          18, // 2  0      3
          19, // 2  1      3
          20, // 2  2      3
@@ -2273,13 +2234,13 @@ void asxbd (uint sz, bool sub)
          24, // 2  6      4
          25, // 2  7      4
          26, // 2  8      4
-         24, // 2  9  ill
-         24, // 2 10  ill
-         24, // 2 11  ill
-         24, // 2 12  ill   ISOLTS 805 loop point 010226 sxbd test no 26 (4bit)
+         24, // 2  9  ill     guess
+         24, // 2 10  ill     guess
+         24, // 2 11  ill     guess
+         24, // 2 12  ill     guess
          24, // 2 13  ill   ISOLTS 805 loop point 010100 sxbd test no 10
-         24, // 2 14  ill
-         24, // 2 15  ill
+         24, // 2 14  ill     guess
+         24, // 2 15  ill     guess
          27, // 3  0      4
          28, // 3  1      4
          29, // 3  2      4
@@ -2289,12 +2250,12 @@ void asxbd (uint sz, bool sub)
          33, // 3  6      5
          34, // 3  7      5
          35, // 3  8      5
-         30, // 3  9  ill
-         30, // 3 10  ill
-         30, // 3 11  ill
-         30, // 3 12  ill
-         30, // 3 13  ill
-         30, // 3 14  ill   ISOLTS 805 loop point 010226 sxbd test no 24 (4bit)
+         30, // 3  9  ill     guess
+         30, // 3 10  ill     guess
+         30, // 3 11  ill     guess
+         30, // 3 12  ill     guess
+         30, // 3 13  ill     guess
+         30, // 3 14  ill     guess
          30  // 3 15  ill   ISOLTS 805 loop point 010100 sxbd test no 8 (6bit)
       };
     // Map charno:bitno to 1 and 9 bit offset
@@ -2309,13 +2270,13 @@ void asxbd (uint sz, bool sub)
           6, // 0  6
           7, // 0  7
           8, // 0  8
-          8, // 0  9  ill  ISOLTS 805 loop point 010100 sxbd test no 12 (s6bd)
-          8, // 0 10  ill
-          8, // 0 11  ill
-          8, // 0 12  ill
-          8, // 0 13  ill
-          8, // 0 14  ill
-          8, // 0 15  ill
+          8, // 0  9  ill     guess
+          8, // 0 10  ill     guess
+          8, // 0 11  ill     guess
+          8, // 0 12  ill     guess
+          8, // 0 13  ill     guess
+          8, // 0 14  ill     guess
+          8, // 0 15  ill     guess
           9, // 1  0
          10, // 1  1
          11, // 1  2
@@ -2325,13 +2286,13 @@ void asxbd (uint sz, bool sub)
          15, // 1  6
          16, // 1  7
          17, // 1  8
-         17, // 1  9  ill
-         17, // 1 10  ill ISOLTS 805 loop point 010226 sxbd test no 28 (4bit)
-         17, // 1 11  ill ISOLTS 805 loop point 010100 sxbd test no 12
-         17, // 1 12  ill
-         17, // 1 13  ill
-         17, // 1 14  ill
-         17, // 1 15  ill
+         17, // 1  9  ill     guess
+         17, // 1 10  ill     guess
+         17, // 1 11  ill     guess
+         17, // 1 12  ill     guess
+         17, // 1 13  ill     guess
+         17, // 1 14  ill     guess
+         17, // 1 15  ill     guess
          18, // 2  0
          19, // 2  1
          20, // 2  2
@@ -2341,13 +2302,13 @@ void asxbd (uint sz, bool sub)
          24, // 2  6
          25, // 2  7
          26, // 2  8
-         26, // 2  9  ill
-         26, // 2 10  ill
-         26, // 2 11  ill
-         26, // 2 12  ill   ISOLTS 805 loop point 010226 sxbd test no 26 (4bit)
-         26, // 2 13  ill   ISOLTS 805 loop point 010100 sxbd test no 10
-         26, // 2 14  ill
-         26, // 2 15  ill
+         26, // 2  9  ill     guess
+         26, // 2 10  ill     guess
+         26, // 2 11  ill     guess
+         26, // 2 12  ill     guess
+         26, // 2 13  ill     guess
+         26, // 2 14  ill     guess
+         26, // 2 15  ill     guess
          27, // 3  0
          28, // 3  1
          29, // 3  2
@@ -2357,185 +2318,40 @@ void asxbd (uint sz, bool sub)
          33, // 3  6
          34, // 3  7
          35, // 3  8
-         35, // 3  9  ill
-         35, // 3 10  ill
-         35, // 3 11  ill
-         35, // 3 12  ill
-         35, // 3 13  ill
-         35, // 3 14  ill   ISOLTS 805 loop point 010226 sxbd test no 24 (4bit)
-         35  // 3 15  ill   ISOLTS 805 loop point 010100 sxbd test no 8 (6bit)
+         35, // 3  9  ill     guess
+         35, // 3 10  ill     guess
+         35, // 3 11  ill     guess
+         35, // 3 12  ill     guess
+         35, // 3 13  ill     guess
+         35, // 3 14  ill     guess
+         35  // 3 15  ill     guess
       };
-#endif
-// XXX
-// XXX
-// XXX
-//
-// This table is incomplete; the 'ill' entries are those explicitly tested
-// by ISOLTS 805. It may be that this table needs to be duplicated into map4/map6/map9/map1.
-//
-#if 0
-    // Map charno:bitno to bit offset
-    uint map [64] =
-      {      // 9-bit    4-bit
-          0, // 0  0      0 
-          1, // 0  1      0 
-          2, // 0  2      0
-          3, // 0  3      0
-          4, // 0  4      0
-          5, // 0  5      1
-          6, // 0  6      1
-          7, // 0  7      1
-          8, // 0  8      1
-          6, // 0  9  ill  ISOLTS 805 loop point 010100 sxbd test no 12 (s6bd)
-          0, // 0 10  ill
-          0, // 0 11  ill
-          0, // 0 12  ill
-          0, // 0 13  ill
-          0, // 0 14  ill
-          0, // 0 15  ill
-          9, // 1  0      2
-         10, // 1  1      2
-         11, // 1  2      2
-         12, // 1  3      2
-         13, // 1  4      2
-         14, // 1  5      3
-         15, // 1  6      3
-         16, // 1  7      3
-         17, // 1  8      3
-          0, // 1  9  ill
-         14, // 1 10  ill ISOLTS 805 loop point 010226 sxbd test no 28 (4bit)
-         12, // 1 11  ill ISOLTS 805 loop point 010100 sxbd test no 12
-          0, // 1 12  ill
-          0, // 1 13  ill
-          0, // 1 14  ill
-          0, // 1 15  ill
-         18, // 2  0      4
-         19, // 2  1      4
-         20, // 2  2      4
-         21, // 2  3      4
-         22, // 2  4      4
-         23, // 2  5      5
-         24, // 2  6      5
-         25, // 2  7      5
-         26, // 2  8      5
-          0, // 2  9  ill
-          0, // 2 10  ill
-          0, // 2 11  ill
-         23, // 2 12  ill   ISOLTS 805 loop point 010226 sxbd test no 26 (4bit)
-         24, // 2 13  ill   ISOLTS 805 loop point 010100 sxbd test no 10
-          0, // 2 14  ill
-          0, // 2 15  ill
-         27, // 3  0      6
-         28, // 3  1      6
-         29, // 3  2      6
-         30, // 3  3      6
-         31, // 3  4      6
-         32, // 3  5      7
-         33, // 3  6      7
-         34, // 3  7      7
-         35, // 3  8      7
-          0, // 3  9  ill
-          0, // 3 10  ill
-          0, // 3 11  ill
-          0, // 3 12  ill
-          0, // 3 13  ill
-         32, // 3 14  ill   ISOLTS 805 loop point 010226 sxbd test no 24 (4bit)
-         30  // 3 15  ill   ISOLTS 805 loop point 010100 sxbd test no 8 (6bit)
-      };
-#endif
-#if 0
-    // Map the 6 bits of 9 bit char/bitno to to 6 bit char/bitno 
-    uint map6 [64] [2] =
-      {
-         // 6 bit char bitno    9 bit  char   bitno
-         {           0,    0 }, //        0       0
-         {           0,    1 }, //        0       1
-         {           0,    2 }, //        0       2
-         {           0,    3 }, //        0       3
-         {           0,    4 }, //        0       4
-         {           0,    5 }, //        0       5
-         {           1,    0 }, //        0       6
-         {           1,    1 }, //        0       7
-         {           1,    2 }, //        0       8
-         {           1,    0 }, //        0       9  ill  ISOLTS 805 loop point 010100 sxbd test no 12
-         {           0,    0 }, //        0      10  ill
-         {           0,    0 }, //        0      11  ill
-         {           0,    0 }, //        0      12  ill
-         {           0,    0 }, //        0      13  ill
-         {           0,    0 }, //        0      14  ill
-         {           0,    0 }, //        0      15  ill
-         {           1,    3 }, //        1       0
-         {           1,    4 }, //        1       1
-         {           1,    5 }, //        1       2
-         {           2,    0 }, //        1       3
-         {           2,    1 }, //        1       4
-         {           2,    2 }, //        1       5
-         {           2,    3 }, //        1       6
-         {           2,    4 }, //        1       7
-         {           2,    5 }, //        1       8
-         {           0,    0 }, //        1       9  ill
-         {           0,    0 }, //        1      10  ill
-         {           2,    0 }, //        1      11  ill  ISOLTS 805 loop point 010100 sxbd test no 12
-         {           0,    0 }, //        1      12  ill
-         {           0,    0 }, //        1      13  ill
-         {           0,    0 }, //        1      14  ill
-         {           0,    0 }, //        1      15  ill
-         {           3,    0 }, //        2       0
-         {           3,    1 }, //        2       1
-         {           3,    2 }, //        2       2
-         {           3,    3 }, //        2       3
-         {           3,    4 }, //        2       4
-         {           3,    5 }, //        2       5
-         {           4,    0 }, //        2       6
-         {           4,    1 }, //        2       7
-         {           4,    2 }, //        2       8
-         {           0,    0 }, //        2       9  ill
-         {           0,    0 }, //        2      10  ill
-         {           0,    0 }, //        2      11  ill
-         {           0,    0 }, //        2      12  ill
-         {           4,    0 }, //        2      13  ill  ISOLTS 805 loop point 010100 sxbd test no 10
-         {           0,    0 }, //        2      14  ill
-         {           0,    0 }, //        2      15  ill
-         {           4,    3 }, //        2       0
-         {           4,    4 }, //        3       1
-         {           4,    5 }, //        3       2
-         {           5,    0 }, //        3       3
-         {           5,    1 }, //        3       4
-         {           5,    2 }, //        3       5
-         {           5,    3 }, //        3       6
-         {           5,    4 }, //        3       7
-         {           5,    5 }, //        3       8
-         {           0,    0 }, //        3       9  ill
-         {           0,    0 }, //        3      10  ill
-         {           0,    0 }, //        3      11  ill
-         {           0,    0 }, //        3      12  ill
-         {           0,    0 }, //        3      13  ill
-         {           0,    0 }, //        3      14  ill
-         {           5,    0 }  //        3      15  ill  ISOLTS 805 loop point 010100 sxbd test no 8
-      };
-#endif
 
 static int testno = 0;
 IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
-    uint modbits = nxbits;
-    //if (sz == 4)
-      //modbits = n4bits;
-    uint wdsz = 36;
-    //if (sz == 4)
-      //wdsz = 32;
+
+//
+// Extract the operand data from the instruction
+//
 
     uint ARn = GET_ARN (cpu . cu . IWB);
     uint address = GET_OFFSET (cpu . cu . IWB);
     word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
-    // r is the count of characters
+
+//
+// Calculate r
+//
+
+    // r is the count of characters (or bits if sz is 1; words if sz == 36)
     word36 rcnt = getCrAR (reg);
-    uint r = 0;
 
 IF1 sim_printf ("asxbd sz %d r 0%llo\n", sz, rcnt);
-
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d r 0%llo\n", sz, rcnt);
+
+    // Crop rcnt into r based on the operand size.
+    uint r = 0;
 
     if (sz == 1)
       r = (uint) (rcnt & MASK24);
@@ -2548,103 +2364,97 @@ IF1 sim_printf ("asxbd sz %d r 0%llo\n", sz, rcnt);
     else // if (sz == 36)
       r = (uint) (rcnt & MASK18);
 
-IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
-
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
-
-
+IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
 IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
-
-// According to ISOLTS 805, WORDNO is unsigned.
 IF1 if (sz == 6)
 { uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
-    //sim_printf ("asxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
     sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
 
+
+//
+// Calculate augend
+//
+
+    // If A is set, the instruction is AR = AR op operand; if not, AR = 0 op operand.
     uint augend = 0;
     if (GET_A (cpu . cu . IWB))
       {
-        uint bitno = GET_AR_BITNO (ARn);
-        uint charno = GET_AR_CHAR (ARn);
-#if 0
-        if (sz == 6)
+        // For AWD/SWD, leave CHAR/BITNO alone
+        if (sz == 36)
           {
-            uint n = charno * 16 + bitno; // table index format
-IF1 sim_printf ("asxbd map6 %u\n", n);
-            uint charno6 = map6 [n] [0];
-            uint bitno6 = map6 [n] [1];
-            augend = cpu.AR[ARn].WORDNO * wdsz + charno6 * 6 + bitno6;
-IF1 sim_printf ("asxbd augend 6 %06o/%u/%u\n", augend / wdsz, (augend % wdsz) / 6u, (augend % wdsz) % 6u);
+            augend = cpu.AR[ARn].WORDNO * 36u;
           }
         else
           {
-// According to ISOLTS 805, WORDNO is unsigned.
-            //augend = SIGNEXT15_18 (cpu.AR[ARn].WORDNO) * wdsz + GET_AR_CHAR (ARn) * 9 + bitno;
-            augend = cpu.AR[ARn].WORDNO * wdsz + charno * 9 + bitno;
-          }
-#else
-        uint * map;
-        if (sz == 4)
-          map = map4;
-        else if (sz == 6)
-          map = map6;
-        else
-          map = map9;
+IF1 sim_printf ("asxbd A set\n");
+            uint bitno = GET_AR_BITNO (ARn);
+            uint charno = GET_AR_CHAR (ARn);
+
+            // The behavior of the DU for cases of CHAR > 9 is not defined; some values
+            // are tested by ISOLTS, and have been recorded in the mapx tables; the 
+            // missing values are guessed at.
+
+            uint * map;
+            if (sz == 4)
+              map = map4;
+            else if (sz == 6)
+              map = map6;
+            else
+              map = map9;
 
 IF1 sim_printf ("asxbd map [%u:%u] = %u\n", charno, bitno, map [charno * 16 + bitno]);
-        augend = cpu.AR[ARn].WORDNO * wdsz + map [charno * 16 + bitno];
-#endif
-        augend = augend % modbits;
+            augend = cpu.AR[ARn].WORDNO * 36u + map [charno * 16 + bitno];
+            augend = augend % nxbits;
 
 IF1 if (sz == 6) sim_printf ("asxbd 6 ARn %06o/%u/%u\n", augend / 36u, (augend % 36u) / 6u, (augend % 36u) % 6u);
-
+          }
       }
-
-#if 0
-    // force to character boundary
-    //if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
-    if (sz == 9 || sz == 36)
-      {
-        augend = (augend / sz) * sz;
-      }
-#endif
 
 IF1 sim_printf ("asxbd augend %d\n", augend);
+
+//
+// Calculate addend
+//
 
     uint addend = 0;
     if (sz == 4)
       {
         // r is the number of 4 bit characters; each character is actually
         // 4.5 bits long
-        //uint nwords = r / 8u;
-        //uint residue = r % 8u;
-        // The +4 is because we are subtracting; "borrow 4 bits from the next
-        // word (36 - 32 --> 4)
-        //addend = address * wdsz + nwords * 36u + residue * 4 + 4;
-        addend = address * wdsz + (r * 9) / 2;
+        addend = address * 36u + (r * 9) / 2;
 
-IF1 sim_printf ("asxbd 4 r now %u\n", r);
+        // round the odd character up one bit
+        // (the odd character starts at bit n/2 + 1, not n/2.)
+        if ((! sub) && r % 2) // r is odd
+          addend ++;
       }
     else
-      addend = address * wdsz + r * sz;
+      addend = address * 36u + r * sz;
 
-    addend = addend % modbits;
+    // Handle overflow
+    addend = addend % nxbits;
 
 IF1 sim_printf ("asxbd addend %u\n", addend);
+
+//
+// Calculate sum or difference
+//
 
     uint sum = 0;
     if (sub)
       {
+        // Prevent underflow
         if (addend > augend)
-          augend += modbits;
+          augend += nxbits;
         sum = augend - addend;
       }
     else
       {
         sum = augend + addend;
-        sum %= modbits;
+        sum %= nxbits;
       }
 
 IF1 sim_printf ("asxbd sum %u %d\n", sum, sum);
@@ -2652,94 +2462,102 @@ IF1 sim_printf ("asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
-    if (sz == 6)
+//
+// Adjust to character boundary
+//
+
+    if (sz == 6 || sz == 9)
       {
-IF1 if (sum != (sum / sz) * sz) sim_printf ("rounded sum\n");
+IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
         sum = (sum / sz) * sz;
       }
-    cpu . AR [ARn] . WORDNO = (word18) (sum / wdsz) & AMASK;
-    //SET_PR_BITNO (ARn, sum % wdsz);
-    if (sz == 4)
+
+//
+// Convert sum to WORDNO/CHAR/BITNO
+//
+
+    cpu . AR [ARn] . WORDNO = (word18) (sum / 36u) & AMASK;
+
+    // If AWD/SWD clear CHAR/BITNO
+
+    if (sz == 36)
       {
-#if 0
-        uint bitoff = sum % 32;
-        //uint charno= bitoff % 8;
-        uint charno= bitoff / 4;
-        // ISOLTS test 805, loop point 010177, says char 0 is at bit 0.
-        //static word6 bitFromCnt[8] = {1, 5, 10, 14, 19, 23, 28, 32};
-        static word6 bitFromCnt[8] = {0, 5, 9, 14, 18, 23, 27, 32};
-        SET_AR_CHAR_BITNO (ARn, bitFromCnt[charno] / 9, bitFromCnt[charno] % 9);
-#endif
-        static uint tab [36] [2] =
-          {
-            // char bitno  offset  4-bit charno
-            { 0, 0 }, // 0   0
-            { 0, 0 }, // 1
-            { 0, 0 }, // 2
-            { 0, 0 }, // 3
-            { 0, 0 }, // 4
-
-            { 0, 5 }, // 5   1
-            { 0, 5 }, // 6
-            { 0, 5 }, // 7
-            { 0, 5 }, // 8
-
-            { 1, 0 }, // 9   2
-            { 1, 0 }, // 10
-            { 1, 0 }, // 11
-            { 1, 0 }, // 12
-            { 1, 0 }, // 13
-
-            { 1, 5 }, // 15  3
-            { 1, 5 }, // 15
-            { 1, 5 }, // 16
-            { 1, 5 }, // 17
-
-            { 2, 0 }, // 18  4
-            { 2, 0 }, // 19
-            { 2, 0 }, // 20
-            { 2, 0 }, // 21
-            { 2, 0 }, // 22
-
-            { 2, 5 }, // 23  5
-            { 2, 5 }, // 24
-            { 2, 5 }, // 25
-            { 2, 5 }, // 26
-
-            { 3, 0 }, // 27  6
-            { 3, 0 }, // 28
-            { 3, 0 }, // 29
-            { 3, 0 }, // 30
-            { 3, 0 }, // 31
-
-            { 3, 5 }, // 32  7
-            { 3, 5 }, // 33
-            { 3, 5 }, // 34
-            { 3, 5 }  // 35
-          };
-        uint charno = tab [sum % wdsz] [0];
-        uint bitno = tab [sum % wdsz] [1];
-        SET_AR_CHAR_BITNO (ARn, charno, bitno);
+        SET_AR_CHAR_BITNO (ARn, 0, 0);
       }
     else
       {
-        uint charno = (sum % wdsz) / 9;
-        uint bitno = sum % 9;
-        SET_AR_CHAR_BITNO (ARn, charno, sum % 9);
+        if (sz == 4)
+          {
+            static uint tab [36] [2] =
+              {
+                // char bitno  offset  4-bit charno
+                { 0, 0 }, // 0   0
+                { 0, 0 }, // 1
+                { 0, 0 }, // 2
+                { 0, 0 }, // 3
+                { 0, 0 }, // 4
 
-IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / wdsz) & AMASK, (sum / wdsz) & AMASK);
+                { 0, 5 }, // 5   1
+                { 0, 5 }, // 6
+                { 0, 5 }, // 7
+                { 0, 5 }, // 8
+
+                { 1, 0 }, // 9   2
+                { 1, 0 }, // 10
+                { 1, 0 }, // 11
+                { 1, 0 }, // 12
+                { 1, 0 }, // 13
+
+                { 1, 5 }, // 15  3
+                { 1, 5 }, // 15
+                { 1, 5 }, // 16
+                { 1, 5 }, // 17
+
+                { 2, 0 }, // 18  4
+                { 2, 0 }, // 19
+                { 2, 0 }, // 20
+                { 2, 0 }, // 21
+                { 2, 0 }, // 22
+
+                { 2, 5 }, // 23  5
+                { 2, 5 }, // 24
+                { 2, 5 }, // 25
+                { 2, 5 }, // 26
+
+                { 3, 0 }, // 27  6
+                { 3, 0 }, // 28
+                { 3, 0 }, // 29
+                { 3, 0 }, // 30
+                { 3, 0 }, // 31
+
+                { 3, 5 }, // 32  7
+                { 3, 5 }, // 33
+                { 3, 5 }, // 34
+                { 3, 5 }  // 35
+              };
+            uint charno = tab [sum % 36u] [0];
+            uint bitno = tab [sum % 36u] [1];
+            SET_AR_CHAR_BITNO (ARn, charno, bitno);
+          }
+        else
+          {
+            uint charno = (sum % 36u) / 9;
+            uint bitno = sum % 9;
+            SET_AR_CHAR_BITNO (ARn, charno, sum % 9);
+
+IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / 36u) & AMASK, (sum / 36u) & AMASK);
 IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
 IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
+          }
       }
 
 IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 IF1 if (sz == 6)
 { uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
-    //sim_printf ("asxbd ARn %06o/%u/%u\n", SIGNEXT15_18 (cpu.AR[ARn].WORDNO), bt / 6u, bt % 6u);
-    sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
+sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
+
   }
-#endif
 
 void cmpc (void)
   {
