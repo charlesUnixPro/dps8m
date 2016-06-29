@@ -1010,10 +1010,6 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
 
     word36 r = getMFReg36 (MFk & 017, allowDU, true);
     
-    // AL-39 implies, and RJ-76 say that RL and reg == IC is illegal;
-    // but it the emulator ignores RL if reg == IC, then that PL/I
-    // generated code in Multics works. "Pragmatic debugging."
-
     if ((MFk & 017) == 4)   // reg == IC ?
       {
         // The ic modifier is permitted in MFk.REG and C (od)32,35 only if
@@ -4468,6 +4464,7 @@ static int mopCHT (void)
     {
         if (e->mopTally == 0)
         {
+IF1 sim_printf ("mopCHT 0\n");
             e->_faults |= FAULT_IPR;
             return -1;      // Oops! ran out of micro-operations!
         }
@@ -4579,6 +4576,7 @@ static int mopINSA (void)
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
+IF1 sim_printf ("mopNSA 9/15\n");
         e->_faults |= FAULT_IPR;
         return -1;
     }
@@ -4640,6 +4638,7 @@ static int mopINSB (void)
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
+IF1 sim_printf ("mopNSB 9/15\n");
         e->_faults |= FAULT_IPR;
         return -1;
     }
@@ -4724,6 +4723,7 @@ static int mopINSN (void)
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
+IF1 sim_printf ("mopNSN 9/15\n");
         e->_faults |= FAULT_IPR;
         return -1;
     }
@@ -4776,6 +4776,7 @@ static int mopINSP (void)
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
     {
+IF1 sim_printf ("mopNSP 9/15\n");
         e->_faults |= FAULT_IPR;
         return -1;
     }
@@ -4816,6 +4817,7 @@ static int mopLTE (void)
     EISstruct * e = & cpu . currentEISinstruction;
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
     {
+IF1 sim_printf ("mopLTE 9/15\n");
         e->_faults |= FAULT_IPR;
         return -1;
     }
@@ -4880,6 +4882,7 @@ static int mopMFLC (void)
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC n %d, srcTally %d, dstTally %d\n", n, e->srcTally, e->dstTally);
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+IF1 sim_printf ("mopMFLC 0,0\n");
             e->_faults |= FAULT_IPR;
             return -1;
         }
@@ -4911,6 +4914,7 @@ static int mopMFLC (void)
                 
                 if (e->dstTally == 0)
                 {
+IF1 sim_printf ("mopMFLC dst 0\n");
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
@@ -4992,6 +4996,7 @@ static int mopMFLS (void)
     {
         if (e->srcTally == 0 && e->dstTally > 1)
         {
+IF1 sim_printf ("mopMFLS 0,1\n");
             e->_faults = FAULT_IPR;
             return -1;
         }
@@ -5021,6 +5026,7 @@ static int mopMFLS (void)
                     e->srcTally -= 1;
                     if (e->srcTally == 0 && e->dstTally > 1)
                     {
+IF1 sim_printf ("mopMFLS b 0,1\n");
                         e->_faults |= FAULT_IPR;
                         return -1;
                     }
@@ -5039,6 +5045,7 @@ static int mopMFLS (void)
                     e->srcTally -= 1;
                     if (e->srcTally == 0 && e->dstTally > 1)
                     {
+IF1 sim_printf ("mopMFLS c 0,1\n");
                         e->_faults |= FAULT_IPR;
                         return -1;
                     }
@@ -5114,6 +5121,7 @@ static int mopMORS (void)
         }
         if (e->dstTally == 0)
         {
+IF1 sim_printf ("MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
             sim_debug (DBG_TRACEEXT, & cpu_dev, "MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
             e->_faults |= FAULT_IPR;
             return -1;
@@ -5153,6 +5161,7 @@ static int mopMVC (void)
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC n %d srcTally %d dstTally %d\n", n, e->srcTally, e->dstTally);
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+IF1 sim_printf ("MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstTally);
             sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstTally);
             e->_faults |= FAULT_IPR;
             return -1;
@@ -5209,6 +5218,7 @@ static int mopMSES (void)
     {
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+IF1 sim_printf ("mopMSES 0 0\n");
             e->_faults |= FAULT_IPR;
             return -1;
         }
@@ -5237,6 +5247,7 @@ static int mopMSES (void)
             {
                 if (e->srcTally == 0 || e->dstTally == 0)
                 {
+IF1 sim_printf ("mopMSES b 0 0\n");
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
@@ -5262,6 +5273,7 @@ static int mopMSES (void)
             {
                 if (e->srcTally == 0 || e->dstTally == 0)
                 {
+IF1 sim_printf ("mopMSES b 0 0\n");
                     e->_faults |= FAULT_IPR;
                     return -1;
                 }
@@ -5302,6 +5314,7 @@ static int mopMVZA (void)
     {
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+IF1 sim_printf ("mopMVZa 0 0\n");
             e->_faults |= FAULT_IPR;
             return -1;
         }
@@ -5370,6 +5383,7 @@ static int mopMVZB (void)
     {
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+IF1 sim_printf ("mopMVZB 0,0\n");
             e->_faults |= FAULT_IPR;
             return -1;
         }
@@ -5573,6 +5587,7 @@ static void mopExecutor (int kMop)
         MOPstruct *m = EISgetMop();
         if (! m)
           {
+IF1 sim_printf ("mopExecutor EISgetMop forced break\n");
             sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor EISgetMop forced break\n");
             e->_faults |= FAULT_IPR;   // XXX ill proc fault
             break;        
@@ -5598,6 +5613,7 @@ sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->
 
     if (e->mopTally < e->srcTally || e->mopTally < e->dstTally)
       {
+IF1 sim_printf ("mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
@@ -5612,6 +5628,7 @@ sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->
     // mop string not exhausted?
     if (e->mopTally != 0)
       {
+IF1 sim_printf ("mop executor IPR fault; mopTally %d\n", e->mopTally);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d\n", e->mopTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
@@ -5659,6 +5676,10 @@ void mve (void)
     // Bit 23 of OP3 MBZ
     if (e -> op [2]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
+
+    // ISOLTS test 841, testing for ipr fault by setting (l=1)(s=00)
+    // in the first descriptor of the
+    // instruction mvn
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6117,6 +6138,12 @@ void cmpn (void)
     if (IWB_IRODD & 0777600000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpn 0-10 MBZ");
 
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn N1=1 S1=0");
+
+    if (e->N1 == 1 && e->S1 == 1)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn N1=1 S1=1");
+
     uint srcTN = e->TN1;    // type of chars in src
     
     decContext set;
@@ -6381,11 +6408,17 @@ sim_printf ("mvn test no %d\n", ++testno);
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvn 2-8 MBZ");
 
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N1=1 S1=0");
+
     if (e->N2 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N2=0");
 
     if (e->N2 == 0 && e->S2 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N2=0 S2=0");
+
+    if (e->N1 == 1 && e->S1 == 1)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N1=1 S1=1");
 
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
@@ -8058,6 +8091,12 @@ void ad2d (void)
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 1-8 MBZ");
 
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=0");
+
+    if (e->N1 == 1 && e->S1 == 1)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=1");
+
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -8618,6 +8657,12 @@ void sb2d (void)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
       }
 
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=0");
+
+    if (e->N1 == 1 && e->S1 == 1)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=1");
+
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
@@ -9117,9 +9162,12 @@ void mp2d (void)
     if (IWB_IRODD & 0777000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 0-8 MBZ");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=0");
+
+    if (e->N1 == 1 && e->S1 == 1)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=1");
+
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
@@ -9132,8 +9180,6 @@ void mp2d (void)
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    //decContextDefaultDPS8(&set);
     decContextDefaultDPS8_80(&set);
     
     set.traps=0;
@@ -10384,6 +10430,9 @@ void dv2d (void)
     // ISOLTS test 840 says bit 9 (T) MBZ as well
     if (IWB_IRODD & 0777400000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 0-9 MBZ");
+
+    if (e->N1 == 1 && e->S1 == 0)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d N1=1 S1=0");
 
     //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
     //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
