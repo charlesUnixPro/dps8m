@@ -89,35 +89,27 @@ static word4 get4 (word36 w, int pos)
     switch (pos)
       {
         case 0:
-          //return bitfieldExtract36 (w, 31, 4);
           return getbits36_4 (w, 1);
 
         case 1:
-          //return bitfieldExtract36 (w, 27, 4);
           return getbits36_4 (w, 5);
 
         case 2:
-          //return bitfieldExtract36 (w, 22, 4);
           return getbits36_4 (w, 10);
 
         case 3:
-          //return bitfieldExtract36 (w, 18, 4);
           return getbits36_4 (w, 14);
 
         case 4:
-          //return bitfieldExtract36 (w, 13, 4);
           return getbits36_4 (w, 19);
 
         case 5:
-          //return bitfieldExtract36 (w, 9, 4);
           return getbits36_4 (w, 23);
 
         case 6:
-          //return bitfieldExtract36 (w, 4, 4);
           return getbits36_4 (w, 28);
 
         case 7:
-          //return bitfieldExtract36 (w, 0, 4);
           return getbits36_4 (w, 32);
 
       }
@@ -189,6 +181,13 @@ static word9 get9(word36 w, int pos)
 // AL39, Figure 2-3
 static word36 put4 (word36 w, int pos, word4 c)
   {
+
+// AL-39 pg 13: "The 0 bits at it positions 0, 9, 18, and 27 are forced to be 0
+// by the processor on data transfers to main memory ..."
+//
+// The code uses 5 bit sets for the even bytes to force the 0 writes.
+
+    c &= MASK4;
     switch (pos)
       {
         case 0:
@@ -1040,31 +1039,21 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
             // Calculate character number of ARn CHAR and BITNO
             uint bitoffset = ARn_CHAR * 9 + ARn_BITNO;
             uint arn_char4 = bitoffset * 2 / 9; // / 4.5
-            //// The odd chars start at the 6th bit, not the 5th
-            //if (bitoffset & 1) // if odd
-            //  arn_char4 ++;
-            // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
-            uint nchars = address * 8 + r + arn_char4;
+            // 8 chars per word plus the number of chars in r, plus the 
+            // number of chars in ARn CHAR/BITNO plus the CN from the operand
+            uint nchars = address * 8 + r + arn_char4 + CN;
 
             effWORDNO = nchars / 8; // 8 chars/word
-            effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
+            effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not 
+                                  // the 9-bit char no
             effBITNO = (nchars & 1) ? 5 : 0;
 
-            //effBITNO = 4 * (ARn_CHAR + 2 * r + ARn_BITNO / 4) % 2 + 1;
-            //effCHAR = ((4 * CN + 
-            //                 9 * ARn_CHAR +
-            //                 4 * r + ARn_BITNO) % 32) / 4;  //9;36) / 4;  //9;
-            //effWORDNO = (uint) (address +
-            //                 (4 * CN +
-            //                 9 * ARn_CHAR +
-            //                 4 * r +
-            //                 ARn_BITNO) / 32);    // 36
             effWORDNO &= AMASK;
             
             e -> CN [k - 1] = effCHAR;
             e -> WN [k - 1] = effWORDNO;
 
-IF1 sim_printf ("CN%d set to %d by CTA4\n", k, e -> CN [k - 1]);
+IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 1]);
 
             sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA4\n",
                        k, e -> CN [k - 1]);
@@ -1304,25 +1293,15 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
             //if (bitoffset & 1) // if odd
             //  arn_char4 ++;
             // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
-            uint nchars = address * 8 + r + arn_char4;
+            uint nchars = address * 8 + r + arn_char4 + CN;
 
             effWORDNO = nchars / 8; // 8 chars/word
             effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
             effBITNO = (nchars & 1) ? 5 : 0;
-
-            //effBITNO = 4 * (ARn_CHAR + 2 * r + ARn_BITNO / 4) % 2 + 1;
-            //effCHAR = ((4 * CN + 
-            //                 9 * ARn_CHAR +
-            //                 4 * r + ARn_BITNO) % 32) / 4;  //9;36) / 4;  //9;
-            //effWORDNO = (uint) (address +
-            //                 (4 * CN +
-            //                 9 * ARn_CHAR +
-            //                 4 * r +
-            //                 ARn_BITNO) / 32);    // 36
             effWORDNO &= AMASK;
 
             e->CN[k-1] = effCHAR;        // ?????
-            }
+          }
           break;
 
         case CTN9:
@@ -2657,10 +2636,10 @@ IF1 sim_printf ("CMPC instr %012llo op1 %012llo op2 %012llo\n", IWB_IRODD, e -> 
     SET_I_ZERO;  // set ZERO flag assuming strings are equal ...
     SET_I_CARRY; // set CARRY flag assuming strings are equal ...
     
-    for (; cpu . du . CHTALLY < min (e->N1, e->N2); cpu . du . CHTALLY ++)
+    for (; cpu.du.CHTALLY < min (e->N1, e->N2); cpu . du . CHTALLY ++)
       {
-        word9 c1 = EISget469 (1, cpu . du . CHTALLY); // get Y-char1n
-        word9 c2 = EISget469 (2, cpu . du . CHTALLY); // get Y-char2n
+        word9 c1 = EISget469 (1, cpu.du.CHTALLY); // get Y-char1n
+        word9 c2 = EISget469 (2, cpu.du.CHTALLY); // get Y-char2n
 
         if (c1 != c2)
           {
@@ -10713,7 +10692,7 @@ void dv3d (void)
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     //PRINTDEC("op1", op1);
-    
+
     /*
      isolts error message sequence # 7 logged at 03/03/16  2029.9 pst Thu for cpu b using memory b
      
