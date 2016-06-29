@@ -2145,7 +2145,7 @@ void dufm (void)
     // CAC uint64 m2  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 44;    ///< 64-bit mantissa (incl sign)
            // CAC m2 |= (uint64) cpu.Ypair[1] << 8;
     //uint64 m2  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-    uint64 m2 = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 44; ///< 28-bit mantissa (incl sign)
+    uint64 m2 = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36; ///< 28-bit mantissa (incl sign)
            m2 |= cpu.Ypair[1];
     
     //int8   e2 = (int8)(bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
