@@ -670,7 +670,7 @@ static void EISput469 (int k, uint i, word9 c469)
     e -> addr [k - 1] . address = address;
     word36 data = EISRead (& e -> addr [k - 1]);    // read it from memory
 
-IF1 sim_printf ("put469 WN %u CN %u address %06o residue %u\n", e -> WN [k-1], e -> CN [k-1], address, residue);
+IF1 sim_printf ("put469 c %03o WN %u CN %u address %06o residue %u\n", c469, e -> WN [k-1], e -> CN [k-1], address, residue);
     word36 w = 0;
     switch (e -> TA [k - 1])
       {
@@ -3587,6 +3587,7 @@ void tctr (void)
  * Refer to Bull NovaScale 9000 RJ78 Rev2 p11-178
  */
 
+#if 0
 static bool isOvp (uint c, word9 * on)
   {
     // look for GEBCD -' 'A B C D E F G H I (positive overpunch)
@@ -3608,6 +3609,22 @@ static bool isOvp (uint c, word9 * on)
       }
     return false;
 }
+#endif
+
+static bool isOvp2 (uint c, bool * isNeg)
+  {
+    if (c & 020)
+      {
+        * isNeg = false;
+        return true;
+      }
+    if (c & 040)
+      {
+        * isNeg = true;
+        return true;
+      }
+    return false;
+  }
 
 void mlr (void)
   {
@@ -3712,7 +3729,8 @@ IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0],
     
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
                (e -> TA2 == 2); // (6-4 move)
-    word9 on;     // number overpunch represents (if any)
+    //word9 on;     // number overpunch represents (if any)
+    bool isNeg = false;
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
@@ -3826,9 +3844,11 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
-                bOvp = isOvp (c, & on);
-                cout = on;   // replace char with the digit the overpunch 
-                             // represents
+                //bOvp = isOvp (c, & on);
+                bOvp = isOvp2 (c, & isNeg);
+IF1 sim_printf ("overpunch char is %03o\n", c);
+                //  cout = on;   // replace char with the digit the overpunch 
+                               // represents
               }
             EISput469 (2, cpu . du . CHTALLY, cout);
           }
@@ -3846,9 +3866,10 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
+            //if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
+            if (bOvp && (cpu . du . CHTALLY == e -> N2 - 1))
               {
-                if (bOvp)   // is c an GEBCD negative overpunch? and of what?
+                if (isNeg)   // is c an GEBCD negative overpunch? and of what?
                   EISput469 (2, cpu . du . CHTALLY, 015); // 015 is decimal -
                 else
                   EISput469 (2, cpu . du . CHTALLY, 014); // 014 is decimal +
@@ -3971,7 +3992,8 @@ void mrl (void)
     
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
                (e -> TA2 == 2); // (6-4 move)
-    word9 on;     // number overpunch represents (if any)
+    //word9 on;     // number overpunch represents (if any)
+    bool isNeg = false;
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
@@ -4087,7 +4109,8 @@ void mrl (void)
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
-                bOvp = isOvp (c, & on);
+                //bOvp = isOvp (c, & on);
+                bOvp = isOvp2 (c, & isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
@@ -4107,12 +4130,13 @@ void mrl (void)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
+            //if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
+            if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
-                if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
-                else
+                if (isNeg)   // is c an GEBCD negative overpunch? and of what?
                   EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
+                else
+                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
               }
             else
               EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
