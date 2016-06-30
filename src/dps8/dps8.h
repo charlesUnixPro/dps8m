@@ -68,7 +68,7 @@
 #endif
 
 // Enable round-robin multi-CPU
-#define ROUND_ROBIN
+//#define ROUND_ROBIN
 
 // Enable ISOLTS support
 //#define ISOLTS

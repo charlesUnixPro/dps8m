@@ -853,6 +853,8 @@ void cpu_init (void)
 
     memset (& watchBits, 0, sizeof (watchBits));
 
+    setCPUnum (0);
+
 #ifdef ROUND_ROBIN
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
@@ -1182,7 +1184,7 @@ cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
-cpu_state_t * restrict cpup;
+cpu_state_t * restrict cpup; 
 
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
@@ -1293,15 +1295,15 @@ static void setCpuCycle (cycles_t cycle)
   }
 
 
-#ifdef ROUND_ROBIN
-uint setCPUnum (uint cpuNum)
+uint setCPUnum (UNUSED uint cpuNum)
   {
     uint prev = currentRunningCPUnum;
+#ifdef ROUND_ROBIN
     currentRunningCPUnum = cpuNum;
+#endif
     cpup = & cpus [currentRunningCPUnum];
     return prev;
   }
-#endif
 
 uint getCPUnum (void)
   {
@@ -1378,8 +1380,8 @@ t_stat sim_instr (void)
     cpus [0].PPR.IC = dummyIC;
 #endif
 
-#ifdef ROUND_ROBIN
     setCPUnum (0);
+#ifdef ROUND_ROBIN
     cpu.isRunning = true;
     setCPUnum (cpu_dev.numunits - 1);
 

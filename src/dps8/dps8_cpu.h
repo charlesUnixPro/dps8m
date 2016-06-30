@@ -1091,9 +1091,9 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
 
+uint setCPUnum (uint cpuNum);
 #ifdef ROUND_ROBIN
 extern uint currentRunningCPUnum;
-uint setCPUnum (uint cpuNum);
 #else
 #define currentRunningCPUnum 0
 #endif
