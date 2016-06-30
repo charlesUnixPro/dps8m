@@ -856,7 +856,7 @@ sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) 
     }
 
 if(currentRunningCPUnum)
-sim_printf ("UFA returning E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+sim_printf ("UFA returning E %03o A %012llo Q %012llo IR %06o\n", cpu.rE, cpu.rA, cpu.rQ, cpu.cu.IR);
 }
 #endif
 
@@ -1792,8 +1792,8 @@ void fcmg ()
    // The fcmg instruction is identical to the fcmp instruction except that the
    // magnitudes of the mantissas are compared instead of the algebraic values.
 
-if (currentRunningCPUnum)
-sim_printf ("FCMG E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("FCMG E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+#if 1
     // C(AQ)0,27
     word36 m1 = cpu . rA & 0777777777400LL;
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
@@ -1862,6 +1862,71 @@ sim_printf ("FCMG sm2 %lld\n", sm2);
 if (currentRunningCPUnum)
 sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
     SC_I_NEG (sm1 < sm2);
+#else
+    int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
+    word36 m1 = cpu . rA & 0777777777400LL;
+    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;      ///< 28-bit mantissa (incl sign)
+IF1 sim_printf ("FCMG e1 %d m1 %012llo\n", e1, m1);
+IF1 sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
+    if (m1 & SIGN36)
+      m1 = ((~m1) + 1) & MASK36;
+    if (m2 & SIGN36)
+      m2 = ((~m2) + 1) & MASK36;
+IF1 sim_printf ("FCMG abs e1 %d m1 %012llo\n", e1, m1);
+IF1 sim_printf ("FCMG abs e2 %d m2 %012llo\n", e2, m2);
+    bool m1waszero = m1 == 0;
+    bool m2waszero = m2 == 0;
+
+    if (e1 < e2)
+      {
+        int shift_count = abs(e2 - e1);
+        bool s = m1 & SIGN36;   // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+          {
+            m1 >>= 1;
+            if (s)
+                m1 |= SIGN36;
+          }
+        
+        m1 &= MASK36;
+        e1 = e2;
+      }
+    else if (e2 < e1)
+      {
+        int shift_count = abs(e1 - e2);
+        bool s = m2 & SIGN36;   // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            m2 >>= 1;
+            if (s)
+                m2 |= SIGN36;
+        }
+        m2 &= MASK36;
+        e2 = e1;
+    }
+
+IF1 sim_printf ("FCMG shft e1 %d m1 %012llo\n", e1, m1);
+IF1 sim_printf ("FCMG shft e2 %d m2 %012llo\n", e2, m2);
+    if (m1 < m2)
+      {
+        SET_I_NEG;
+        CLR_I_ZERO;
+        return;
+      }
+    else if (m1 > m2)
+      {
+        CLR_I_NEG;
+        CLR_I_ZERO;
+        return;
+      }
+// ISOLTS ps736    test-01u  
+    if (m1 == 0 && ! m2waszero)
+      SET_I_NEG;
+    else
+      CLR_I_NEG;
+    SET_I_ZERO;
+#endif
 }
 
 /*

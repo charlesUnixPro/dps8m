@@ -73,6 +73,17 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+#ifdef ISOLTS
+#define ROUND_ROBIN
+#endif
+
+// debugging tool
+#ifdef ISOLTS
+#define IF1 if (currentRunningCPUnum)
+#else
+#define IF1 if (0)
+#endif
+
 #define OSCAR
 
 #define OVERFLOW_WRITE_THROUGH

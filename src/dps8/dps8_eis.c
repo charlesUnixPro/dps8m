@@ -6,11 +6,6 @@
  * brief EIS support code...
 */
 
-#ifdef ISOLTS
-#define IF1 if (currentRunningCPUnum)
-#else
-#define IF1 if (0)
-#endif
 
 #include <ctype.h>
 
