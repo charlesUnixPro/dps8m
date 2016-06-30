@@ -24,11 +24,6 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
-ifeq ($(OSTYPE),Linux)
-  M_SHARED = 1
-  CLFLAGS += -DM_SHARED
-endif
-
 CFLAGS += -Wall 
 
 CFLAGS += -Wunused-argument \
@@ -207,11 +202,6 @@ zzzCFLAGS += \
 
 # Configuration switches
 
-ifeq ($(M_SHARED),1)
-# Enable M[] as shared memory segment
-LDFLAGS += -lrt
-endif
-
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
 # simh requires -ldl
@@ -225,6 +215,9 @@ else
   endif
   ifeq ($(OSTYPE),Linux)
     LIBS = $(LOCALLIBS)  -lm -ldl
+    M_SHARED = 1
+    CFLAGS += -DM_SHARED
+    LDFLAGS += -lrt
   endif
 endif
 LIBS ?= $(LOCALLIBS) -lm -ldl

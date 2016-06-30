@@ -34,7 +34,7 @@
 #define QUIET_UNUSED
 
 // Enable M[] as shared memory segment
-#define M_SHARED
+//#define M_SHARED
 //LDFLAGS += -lrt
 
 // First attempt at RALR repair, needs rework.
