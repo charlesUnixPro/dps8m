@@ -985,9 +985,13 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (tally == 0);
+#if 1
+                SC_I_TALLY (tally == 0);
+#else
+// This breaks emacs
                 if (tally == 0)
                   SET_I_TALLY;
+#endif
 
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
