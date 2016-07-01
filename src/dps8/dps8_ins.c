@@ -2202,7 +2202,10 @@ static t_stat doInstruction (void)
       CLR_I_MIF;
 
     // Simple CU history hack
-    addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
+    if (cpu.MR.emr && cpu.MR.ihr)
+      {
+        addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
+      }
 
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
@@ -6136,7 +6139,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                       cpu.MR.ihrrs = GETBITS (cpu.CY, 1, 31);
                       cpu.MR.mrgctl = GETBITS (cpu.CY, 1, 32);
                       cpu.MR.hexfp = GETBITS (cpu.CY, 1, 33);
-                      //cpu.MR.emr = GETBITS (cpu.CY, 1, 35);
+                      cpu.MR.emr = GETBITS (cpu.CY, 1, 35);
                     }
                   break;
 

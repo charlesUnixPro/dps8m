@@ -539,7 +539,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //   Store
     //   Illegal Procedure
     //   Shutdown
-    if (cpu.MR.ihrrs)
+    if (cpu.MR.emr && cpu.MR.ihrrs)
       {
         if (faultNumber == FAULT_LUF ||
             faultNumber == FAULT_PAR ||
