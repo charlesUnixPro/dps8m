@@ -4132,12 +4132,12 @@ IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
               {
                 if (isNeg)   // is c an GEBCD negative overpunch? and of what?
                   {
-IF1 sim_printf ("MRL TALLY %u FILL -\n");
+IF1 sim_printf ("MRL TALLY %u FILL -\n", cpu.du.CHTALLY);
                     EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
                   }
                 else
                   {
-IF1 sim_printf ("MRL TALLY %u FILL +\n");
+IF1 sim_printf ("MRL TALLY %u FILL +\n", cpu.du.CHTALLY);
                     EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
                   }
               }
