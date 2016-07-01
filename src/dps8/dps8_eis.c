@@ -3859,8 +3859,8 @@ IF1 sim_printf ("overpunch char is %03o\n", c);
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            //if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
-            if (bOvp && (cpu . du . CHTALLY == e -> N2 - 1))
+            if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
+            //if (bOvp && (cpu . du . CHTALLY == e -> N2 - 1))
               {
                 if (isNeg)   // is c an GEBCD negative overpunch? and of what?
                   EISput469 (2, cpu . du . CHTALLY, 015); // 015 is decimal -
@@ -4127,7 +4127,8 @@ IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
+            //if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
+            if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
                 if (isNeg)   // is c an GEBCD negative overpunch? and of what?
                   {
