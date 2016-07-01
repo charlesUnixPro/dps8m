@@ -2345,6 +2345,8 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu . cu . IWB);
     uint address = GET_OFFSET (cpu . cu . IWB);
+    if (sz == 36)
+      address = SIGNEXT15_18 (address);
     word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
 
@@ -3902,6 +3904,7 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mrl 10 MBZ");
@@ -3983,12 +3986,12 @@ void mrl (void)
     
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
                (e -> TA2 == 2); // (6-4 move)
-    //word9 on;     // number overpunch represents (if any)
+IF1 sim_printf ("MRL ovp %u\n", ovp);
     bool isNeg = false;
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
-
+IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 //
 // Multics frequently uses certain code sequences which are easily detected
 // and optimized; eg. it uses the MLR instruction to copy or zeros segments.
@@ -4055,6 +4058,7 @@ void mrl (void)
     for ( ; cpu.du.CHTALLY < min (e -> N1, e -> N2); cpu.du.CHTALLY ++)
       {
         word9 c = EISget469 (1, e -> N1 - cpu.du.CHTALLY - 1); // get src char
+IF1 sim_printf ("MRL TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
@@ -4096,12 +4100,14 @@ void mrl (void)
 	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
 	  // is placed in C(Y-charn2)N2-1.
             
-            if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
+            //if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
+            if (ovp && (cpu.du.CHTALLY == 0))
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
+IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
@@ -4121,16 +4127,24 @@ void mrl (void)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            //if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
             if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
                 if (isNeg)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
+                  {
+IF1 sim_printf ("MRL TALLY %u FILL -\n");
+                    EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
+                  }
                 else
-                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
+                  {
+IF1 sim_printf ("MRL TALLY %u FILL +\n");
+                    EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
+                  }
               }
             else
-              EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
+              {
+IF1 sim_printf ("MRL TALLY %u fillT %03o\n", cpu.du.CHTALLY, fillT);
+                EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
+              }
           }
     }
     cleanupOperandDescriptor (1);
