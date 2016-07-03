@@ -6527,7 +6527,8 @@ void dtb (void)
         doFault(FAULT_IPR, ill_proc, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
-    e->_flags = cpu . cu.IR;
+    //e->_flags = cpu . cu.IR;
+    e->_flags = 0;
     
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
     CLRF(e->_flags, I_NEG);
@@ -6548,12 +6549,17 @@ void dtb (void)
             
             EISwriteToBinaryStringReverse(&e->ADDR2, 2);
             
-            cpu . cu.IR = e->_flags;
+
+            //cpu . cu.IR = e->_flags;
+            SC_I_ZERO (TSTF (e->_flags, I_ZERO));
+            SC_I_NEG (TSTF (e->_flags, I_NEG));
             
-            if (TST_I_OFLOW)
-            {
+            //if (TST_I_OFLOW)
+            if (TSTF  (e->_flags, I_OFLOW))
+              {
+                SET_I_OFLOW;
                 doFault(FAULT_IPR, ill_proc, "dtb():  overflow fault (finish implementing)");
-            }
+              }
             break;
         case 1:
         case 2:
