@@ -4992,7 +4992,8 @@ static int mopMFLS (void)
     if (e->mopIF == 0)
         e->mopIF = 16;
     
-    for(int n = 0 ; n < e->mopIF ; n += 1)
+    for(int n = 0 ; n < e->mopIF && e->srcTally > 0; n += 1)
+    //for(int n = 0 ; n < e->mopIF; n += 1)
     {
         if (e->srcTally == 0 && e->dstTally > 1)
         {
@@ -5603,8 +5604,7 @@ IF1 sim_printf ("mopExecutor EISgetMop forced break\n");
     // XXX this stuff should probably best be done in the mop's themselves. We'll see.
     //if (e->dstTally == 0)  // normal termination
         //return;
-if (currentRunningCPUnum)
-sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
+IF1 sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
 
 // ISOLTS ps841
@@ -5625,6 +5625,7 @@ IF1 sim_printf ("mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n",
       }
 #endif
 
+#if 0
     // mop string not exhausted?
     if (e->mopTally != 0)
       {
@@ -5632,7 +5633,8 @@ IF1 sim_printf ("mop executor IPR fault; mopTally %d\n", e->mopTally);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d\n", e->mopTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
-    
+#endif
+ 
 #if 0
     // src string not exhausted?
     if (e->srcTally != 0)
