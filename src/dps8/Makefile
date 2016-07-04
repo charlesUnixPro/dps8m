@@ -215,9 +215,9 @@ else
   endif
   ifeq ($(OSTYPE),Linux)
     LIBS = $(LOCALLIBS)  -lm -ldl
-    M_SHARED = 1
-    CFLAGS += -DM_SHARED
-    LDFLAGS += -lrt
+    #M_SHARED = 1
+    #CFLAGS += -DM_SHARED
+    #LDFLAGS += -lrt
   endif
 endif
 LIBS ?= $(LOCALLIBS) -lm -ldl

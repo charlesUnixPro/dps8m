@@ -1083,6 +1083,7 @@ typedef struct
 
   } cpu_state_t;
 
+#ifdef ROUND_ROBIN
 #ifdef M_SHARED
 extern cpu_state_t * cpus;
 #else
@@ -1090,6 +1091,14 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
+#else
+#ifdef M_SHARED
+extern cpu_state_t * cpus;
+#else
+extern cpu_state_t cpus [N_CPU_UNITS_MAX];
+#define cpu (cpus[0])
+#endif
+#endif
 
 uint setCPUnum (uint cpuNum);
 #ifdef ROUND_ROBIN
