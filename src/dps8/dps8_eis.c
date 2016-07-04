@@ -5162,10 +5162,15 @@ static int mopMVC (void)
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC n %d srcTally %d dstTally %d\n", n, e->srcTally, e->dstTally);
         if (e->srcTally == 0 || e->dstTally == 0)
         {
+// GD's test_float shows that data exhaustion is not a fault.
+#if 0
 IF1 sim_printf ("MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstTally);
             sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstTally);
             e->_faults |= FAULT_IPR;
             return -1;
+#else
+            return 0;
+#endif
         }
         
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC write to output buffer %o\n", *e->in);
