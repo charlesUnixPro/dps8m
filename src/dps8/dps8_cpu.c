@@ -1181,10 +1181,10 @@ DEVICE cpu_dev = {
 
 #ifdef M_SHARED
 cpu_state_t * cpus = NULL;
+cpu_state_t * restrict cpup; 
 #else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
-cpu_state_t * restrict cpup; 
 
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
@@ -1301,7 +1301,9 @@ uint setCPUnum (UNUSED uint cpuNum)
 #ifdef ROUND_ROBIN
     currentRunningCPUnum = cpuNum;
 #endif
+#ifdef M_SHARED
     cpup = & cpus [currentRunningCPUnum];
+#endif
     return prev;
   }
 
