@@ -40,9 +40,7 @@
 #include "dps8_cable.h"
 #include "dps8_absi.h"
 #include "utlist.h"
-#ifdef HDBG
 #include "hdbg.h"
-#endif
 
 #ifdef MULTIPASS
 #include "dps8_mp.h"
@@ -132,9 +130,7 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL},
-#ifdef HDBG
     {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL},
-#endif
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
     {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
