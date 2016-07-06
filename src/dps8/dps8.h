@@ -59,7 +59,7 @@
 #endif
 
 // Enable history debugger
-#define HDBG
+//#define HDBG
 
 // XXX FixMe
 // history debugger wont build under XCode just yet.
