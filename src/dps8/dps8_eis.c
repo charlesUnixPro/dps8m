@@ -612,7 +612,7 @@ static void EISReadN (EISaddr * p, uint N, word36 *dst)
 
 #else
 
-#define NO_PARA
+//#define NO_PARA
 
 //new
 static void EISWriteCache (EISaddr * p)
