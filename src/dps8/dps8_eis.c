@@ -4056,6 +4056,45 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
         return;
       }
 
+//
+// Page zero
+//
+
+    if ((cpu.du.CHTALLY % PGSZ) == 0 &&
+        e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 == 0 && // the source is entirely fill
+        (e -> N2 % (PGSZ * 4)) == 0 &&  // a page
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0 &&
+        (e -> ADDR1.address & PGMK) == 0 &&
+        (e -> ADDR2.address & PGMK) == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #4\n");
+        word36 pg [PGSZ];
+        if (fill)
+          {
+            word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
+            for (int i = 0; i < PGSZ; i ++)
+              pg [i] = w;
+          }
+        else
+          {
+           memset (pg, 0, sizeof (pg));
+          }
+        while (cpu.du.CHTALLY < e -> N2)
+          {
+            EISWritePage (& e -> ADDR2, cpu.du.CHTALLY / 4, pg);
+            cpu.du.CHTALLY += PGSZ * 4;
+          }
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
+        CLR_I_TRUNC;
+        return;
+      }
+
 // Test for the case of aligned word move; and do things a word at a time,
 // instead of a byte at a time...
 
