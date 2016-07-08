@@ -950,7 +950,9 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
     
     memset(&sys_stats, 0, sizeof(sys_stats));
     
+#ifdef MATRIX
     initializeTheMatrix();
+#endif
 
     tidy_cu ();
 
