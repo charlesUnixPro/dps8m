@@ -449,7 +449,7 @@ typedef struct EISaddr
 
     bool cacheValid;
     bool cacheDirty;
-    word36 cachedWord;
+    //word36 cachedWord;
 #define paragraphSz 8
 #define paragraphMask 077777770
 #define paragraphOffsetMask 07

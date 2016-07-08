@@ -186,6 +186,106 @@ B29:;
     return SCPE_UNK;
   }
 
+t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, bool b29)
+  {
+    if ((address & PGMK) != 0)
+      {
+        sim_err ("ReadPage not on boundary %06o\n", address);
+      }
+    address &= ~PGMK; // Round to page boundary
+    cpu.iefpFinalAddress = address;
+
+    // We don't need get_bar_mode here as this code won't be
+    // used when reading fault pairs
+    bool isBAR = TST_I_NBAR ? false : true;
+
+    if (b29 || get_went_appending ())
+      {
+        goto B29;
+      }
+
+    switch (get_addr_mode ())
+      {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+              {
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                cpu.iefpFinalAddress = getBARaddress (address);
+        
+                core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       bar address=%08o  readData=%012llo\n", address + i, result [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
+#endif
+                return SCPE_OK;
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                core_readN (address, result, PGSZ, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       abs address=%08o  readData=%012llo\n", address, *result);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMRead (address + i, result [i]);
+#endif
+                return SCPE_OK;
+              }
+          }
+
+        case APPEND_mode:
+          {
+B29:;
+            if (isBAR)
+              {
+                word18 barAddress = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp);
+                core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                     sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "ReadPage (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
+#endif
+
+                return SCPE_OK;
+              }
+            else
+              {
+                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp);
+                core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
+                // XXX Don't trace Multics idle loop
+                if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
+                  {
+                    if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                      {
+                        for (int i = 0; i < PGSZ; i ++)
+                          sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
+                      }
+#ifdef HDBG
+                    for (int i = 0; i < PGSZ; i ++)
+                      hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
+#endif
+                  }
+              }
+            return SCPE_OK;
+          }
+      }
+    return SCPE_UNK;
+  }
+
 t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
     //word24 finalAddress;
@@ -289,7 +389,7 @@ t_stat Write8 (word18 address, word36 * data, _processor_cycle_type cyctyp, bool
                       sim_debug (DBG_FINAL, & cpu_dev, "Write8(Actual) Write:      bar address=%08o writeData=%012llo\n", address + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 1; i < 8; i ++)
+                for (int i = 0; i < 8; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
                 return SCPE_OK;
@@ -344,6 +444,103 @@ B29:
                   }
 #ifdef HDBG
                 for (int i = 0; i < 8; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+        
+                return SCPE_OK;
+              }
+          }
+      }
+    return SCPE_UNK;
+  }
+
+t_stat WritePage (word18 address, word36 * data, _processor_cycle_type cyctyp, bool b29)
+  {
+    if ((address & PGMK) != 0)
+      {
+        sim_err ("WritePage not on boundary %06o\n", address);
+      }
+    address &= ~PGMK; // Round to page boundary
+    cpu.iefpFinalAddress = address;
+
+    // We don't need get_bar_mode here as this code won't be
+    // used when reading fault pairs
+    bool isBAR = TST_I_NBAR ? false : true;
+
+    if (b29 || get_went_appending ())
+      goto B29;
+    
+    
+    switch (get_addr_mode ())
+     {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+             {
+                cpu.iefpFinalAddress = getBARaddress (address);
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "WritePage(Actual) Write:      bar address=%08o writeData=%012llo\n", address + i, data [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+                return SCPE_OK;
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                core_writeN (address, data, PGSZ, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "WritePage(Actual) Write:      abs address=%08o writeData=%012llo\n", address + i, data [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMWrite (address + i, data [i]);
+#endif
+                return SCPE_OK;
+              }
+          }
+
+        case APPEND_mode:
+          {
+B29:
+            if (isBAR)
+              {
+                word18 barAddress = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp);
+                core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
+        
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "WritePage(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+        
+                return SCPE_OK;
+              }
+            else
+              {
+                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp);
+                core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
+        
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (int i = 0; i < PGSZ; i ++)
+                      sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "WritePage(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
+                  }
+#ifdef HDBG
+                for (int i = 0; i < PGSZ; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
