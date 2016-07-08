@@ -4030,10 +4030,10 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
 // Page copy
 //
 
-    if (cpu.du.CHTALLY == 0 &&
+    if ((cpu.du.CHTALLY % PGSZ) == 0 &&
         e -> TA1 == CTA9 &&  // src and dst are both char 9
         e -> TA2 == CTA9 &&
-        e -> N1 == PGSZ * 4 &&  // a page
+        (e -> N1 % (PGSZ * 4)) == 0 &&  // a page
         e -> N2 == e -> N1 && // the src is the same size as the dest.
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0 &&
@@ -4041,10 +4041,13 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
         (e -> ADDR2.address & PGMK) == 0)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #3\n");
-        word36 pg [PGSZ];
-        EISReadPage (& e -> ADDR1, 0, pg);
-        EISWritePage (& e -> ADDR2, 0, pg);
-        cpu.du.CHTALLY += PGSZ * 4;
+        while (cpu.du.CHTALLY < e -> N1)
+          {
+            word36 pg [PGSZ];
+            EISReadPage (& e -> ADDR1, cpu.du.CHTALLY / 4, pg);
+            EISWritePage (& e -> ADDR2, cpu.du.CHTALLY / 4, pg);
+            cpu.du.CHTALLY += PGSZ * 4;
+          }
         cleanupOperandDescriptor (1);
         cleanupOperandDescriptor (2);
         // truncation fault check does need to be checked for here since 
