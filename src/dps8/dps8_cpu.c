@@ -1913,6 +1913,8 @@ setCPU:;
 //
 
 
+// For some reason, ISOLTS hangs in 'pft 02a' if ...
+#ifndef ISOLTS
                     // 1/100 is .01 secs.
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
@@ -1936,6 +1938,7 @@ setCPU:;
                           setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
+#endif
                     break;
                   }
 
