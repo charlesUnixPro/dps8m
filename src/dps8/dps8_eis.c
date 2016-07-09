@@ -5035,12 +5035,14 @@ IF1 sim_printf ("mopMFLS 0,1\n");
 
                     e->in += 1;
                     e->srcTally -= 1;
+#if 0
                     if (e->srcTally == 0 && e->dstTally > 1)
                     {
 IF1 sim_printf ("mopMFLS b 0,1\n");
                         e->_faults |= FAULT_IPR;
                         return -1;
                     }
+#endif
                     
                     writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
 
