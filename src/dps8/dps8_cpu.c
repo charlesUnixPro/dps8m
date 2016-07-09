@@ -1227,10 +1227,8 @@ t_stat simh_hooks (void)
   {
     int reason = 0;
 
-#ifndef SPEED
     if (stop_cpu)
       return STOP_STOP;
-#endif
 
     // check clock queue 
     if (sim_interval <= 0)
@@ -1686,6 +1684,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    sim_warn ("DIS in interrupt cycle\n");
                     break;
                   }
 
@@ -1882,6 +1881,61 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+
+
+// If we get here, we have encountered a DIS instruction in EXEC_cycle.
+//
+// We need to idle the CPU until one of the following conditions:
+//
+//  An external interrupt occurs.
+//  The Timer Register underflows.
+//  The emulator polled devices need polling.
+//
+// The external interrupt will only be posted to the CPU engine if the
+// device poll posts an interrupt. This means that we do not need to
+// detect the interrupts here; if we wake up and poll the devices, the 
+// interrupt will be detected by the DIS instruction when it is re-executed.
+//
+// The Timer Register is a fast, high-precision timer but Multics uses it 
+// in only two ways: detecting I/O lockup during early boot, and process
+// quantum scheduling (1/4 second).
+//
+// Neither of these require high resolution or high accuracy.
+//
+// The goal of the polling code is sample at about 100Hz; updating the timer
+// register at that rate should suffice.
+//
+//    sleep for 1/100 of a second
+//    update the polling state to trigger a poll
+//    update the timer register by 1/100 of a second
+//    force the simh queues to process
+//    continue processing
+//
+
+
+                    // 1/100 is .01 secs.
+                    // *1000 is 10  milliseconds
+                    // *1000 is 10000 microseconds
+                    // in uSec;
+                    usleep (10000);
+
+                    // this ignores the amount of time since the last poll;
+                    // worst case is the poll delay of 1/50th of a second.
+                    slowQueueSubsample += 10240; // ~ 1Hz
+                    queueSubsample += 10240; // ~100Hz
+
+                    sim_interval = 0;
+                    // Timer register runs at 512 KHz
+                    // 512000 is 1 second
+                    // 512000/100 -> 5120  is .01 second
+         
+                    // Would we have underflowed while sleeping?
+                    if (cpu.rTR <= 5120)
+                      {
+                        if (cpu.switches.tro_enable)
+                          setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                      }
+                    cpu.rTR = (cpu.rTR - 5120) & MASK27;
                     break;
                   }
 
@@ -2060,6 +2114,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    sim_warn ("DIS in fault cycle\n");
                     break;
                   }
 
@@ -2293,6 +2348,7 @@ static void nem_check (word24 addr, char * context)
 #ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -2305,6 +2361,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
         addr = os + addr % SCBANK;
       }
     else
+#endif
       nem_check (addr,  "core_read nem");
 
     if (M[addr] & MEM_UNINITIALIZED)
@@ -2328,6 +2385,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 
 #ifndef SPEED
 int core_write(word24 addr, word36 data, const char * ctx) {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -2339,6 +2397,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         addr = os + addr % SCBANK;
       }
     else
+#endif
       nem_check (addr,  "core_write nem");
 
     M[addr] = data & DMASK;
@@ -2362,6 +2421,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it an even address */
     }
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -2374,6 +2434,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
         addr = os + addr % SCBANK;
       }
     else
+#endif
       nem_check (addr,  "core_read2 nem");
 
     if (M[addr] & MEM_UNINITIALIZED)
@@ -2430,6 +2491,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -2441,6 +2503,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         addr = os + addr % SCBANK;
       }
     else
+#endif
       nem_check (addr,  "core_write2 nem");
 
     if (watchBits [addr])

@@ -1130,6 +1130,7 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1140,11 +1141,13 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
           }
         addr = os + addr % SCBANK;
       }
+#endif
     *data = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1155,11 +1158,13 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
           }
         addr = os + addr % SCBANK;
       }
+#endif
     M[addr] = data & DMASK;
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1170,12 +1175,14 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
           }
         addr = os + addr % SCBANK;
       }
+#endif
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1186,6 +1193,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
           }
         addr = os + addr % SCBANK;
       }
+#endif
     M[addr++] = even;
     M[addr] = odd;
     return 0;
