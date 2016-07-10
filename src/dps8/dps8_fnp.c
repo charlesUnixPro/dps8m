@@ -756,7 +756,12 @@ static int findMbx (uint fnpUnitNumber)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitNumber];
 // See comment at top of file
+// For some reason ISOLTS hangs during the PROM report if....
+#ifdef ISOLTS
     for (uint i = 0; i < 4; i ++)
+#else
+    for (uint i = 0; i < 1; i ++)
+#endif
       if (! fudp -> fnpMBXinUse [i])
         return i;
     return -1;
