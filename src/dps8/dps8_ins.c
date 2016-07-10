@@ -6125,7 +6125,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   break;
 
                 case 04: // mode register
-                  if (GETBITS (cpu.CY, 1, 35))
+                  //if (GETBITS (cpu.CY, 1, 35))
                     {
                       cpu.MR.cuolin = GETBITS (cpu.CY, 1, 18);
                       cpu.MR.solin = GETBITS (cpu.CY, 1, 19);
