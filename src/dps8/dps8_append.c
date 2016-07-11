@@ -122,7 +122,7 @@ void doPtrReg(void)
     word15 offset = GET_OFFSET(IWB_IRODD);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
-#if 0 // Now done in doAppendCycle
+#if 1 // Now done in doAppendCycle
     cpu . TPR.TSR = cpu . PAR[n].SNR;
     cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
 IF1 sim_printf ("doPtrReg max3 (PR%o.RNR %o TPR.TRR %o PPR.PRR %o) -> TRR %o\n", n, cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR, cpu . TPR.TRR);
@@ -973,6 +973,9 @@ IF1 { if (cpu.PPR.IC == 0101347) sim_printf ("call6 ins fetch\n"); }
 IF6 sim_printf ("call6 doAppendCycle APUWasIndOperand %o APUWasRTCDOperand %o APUWasSeqIns %o\n", cpu.APUWasIndOperand, cpu.APUWasRTCDOperand, cpu.APUWasSeqIns);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
+bool dbg = sim_timell () == 687277;
+if (dbg) sim_printf ("tra doAppendCycle APUWasIndOperand %o APUWasRTCDOperand %o APUWasSeqIns %o\n", cpu.APUWasIndOperand, cpu.APUWasRTCDOperand, cpu.APUWasSeqIns);
+
     cpu . RSDWH_R1 = 0;
     
     acvFaults = 0;
@@ -999,11 +1002,16 @@ IF6 sim_printf ("call6 doAppendCycle APUWasIndOperand %o APUWasRTCDOperand %o AP
     // Was it a sequential instruction fetch?
     if (! cpu.APUWasSeqIns)
       { // No
+if (dbg) sim_printf ("tra doAppendCycle was not sif\n");
         // Is bit 29 on?
-        if (i -> a)
+        //if (i -> a)
+        if (cpu.APUWasA)
           {
+if (dbg) sim_printf ("tra doAppendCycle is a\n");
             // n = C(IWB)0,2
-            uint n = getbits36_3 (cpu.cu.IWB, 0);
+            //uint n = getbits36_3 (cpu.cu.IWB, 0);
+            uint n = cpu.APUWasN;
+if (dbg) sim_printf ("tra doAppendCycle n %d\n", n);
             // C(PRn.RNR) > C(PPR.PRR)?
             if (cpu.PAR[n].RNR > cpu.PPR.PRR)
               { // Yes
@@ -1014,9 +1022,11 @@ IF6 sim_printf ("call6 doAppendCycle APUWasIndOperand %o APUWasRTCDOperand %o AP
                 cpu.TPR.TRR = cpu.PPR.PRR;
               }
             cpu.TPR.TSR = cpu.PAR[n].SNR;
+if (dbg) sim_printf ("tra doAppendCycle sets TSR to %06o\n", cpu.TPR.TSR);
             goto A;
           }
       }
+if (dbg) sim_printf ("tra doAppendCycle is sif or not a\n");
 
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
@@ -1543,6 +1553,11 @@ Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
     cpu . TPR . CA = address;
+
+    cpu.APUWasSeqIns = instructionFetch;
+    cpu.APUWasIndOperand = cpu.cu.pot;
+    cpu.APUWasRTCDOperand = cpu.cu.pon;
+
     return finalAddress;    // or 0 or -1???
 }
 

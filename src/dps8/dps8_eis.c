@@ -474,9 +474,11 @@ static void EISWriteCache (EISaddr * p)
       {
         if (p -> mat == viaPR)
           {
-            cpu . TPR . TRR = p -> RNR;
-            cpu . TPR . TSR = p -> SNR;
-        
+            cpu.TPR.TRR = p -> RNR;
+            cpu.TPR.TSR = p -> SNR;
+            cpu.APUWasA = true;
+            cpu.APUWasN = p -> PRn;
+
             sim_debug (DBG_TRACEEXT, & cpu_dev, 
                        "%s: writeCache (PR) %012llo@%o:%06o\n", 
                        __func__, p -> cachedWord, p -> SNR, p -> cachedAddr);
@@ -543,6 +545,8 @@ static word36 EISRead (EISaddr * p)
     {
         cpu . TPR . TRR = p -> RNR;
         cpu . TPR . TSR = p -> SNR;
+        cpu.APUWasA = true;
+        cpu.APUWasN = p -> PRn;
         
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "%s: read %o:%06o\n", __func__, cpu . TPR . TSR, p -> address);
@@ -894,6 +898,7 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
                                                 cpu . PPR . PRR);
                 
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
+                e -> addr [k - 1] . PRn = n;
               }
           }
         else
@@ -966,6 +971,7 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
 
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
+            e -> addr [k - 1] . PRn = n;
           }
       }
 
@@ -1140,6 +1146,7 @@ static void parseArgOperandDescriptor (uint k)
             e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
             e -> addr [k - 1] . mat = viaPR;
+            e -> addr [k - 1] . PRn = n;
           }
       }
     
@@ -1179,6 +1186,7 @@ static void parseNumericOperandDescriptor (int k)
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
 
             e->addr[k-1].mat = viaPR;   // ARs involved
+            e -> addr [k - 1] . PRn = n;
         }
     }
 
@@ -1356,6 +1364,7 @@ static void parseBitstringOperandDescriptor (int k)
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
             e->addr[k-1].mat = viaPR;   // ARs involved
+	  e->addr[k-1].PRn = n;
         }
     }
     

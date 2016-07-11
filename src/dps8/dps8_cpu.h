@@ -430,7 +430,8 @@ typedef struct EISaddr
     // for when using AR/PR register addressing
     word15  SNR;        // The segment number of the segment containing the data item described by the pointer register.
     word3   RNR;        // The effective ring number value calculated during execution of the instruction that last loaded
-    
+    word3   PRn;        // Needed to pass to doAppendCycle
+   
     //bool    bUsesAR;    // true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
     
     MemoryAccessType    mat;    // memory access type for operation
@@ -1085,6 +1086,11 @@ typedef struct
     bool APUWasIndOperand;
     bool APUWasRTCDOperand;
     bool APUWasSeqIns;
+    // These do not need to be tracked across faults; they 
+    // will only be referenced if APUWasSeqIns, which will only
+    // happen on the first append cycle after a successful intruction fetch.
+    bool APUWasA; // The a-bit before doPtrReg calls updateIWB.
+    word3 APUWasN; // The PR number before doPtrReg calls updateIWB.
 
   } cpu_state_t;
 

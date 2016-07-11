@@ -1028,10 +1028,11 @@ void fetchInstruction (word18 addr)
 
     memset (p, 0, sizeof (struct DCDstruct));
 
-#if 0 // Now done in doAppendCycle
+#if 1 // Now done in doAppendCycle
     // since the next memory cycle will be a instruction fetch setup TPR
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+    cpu.APUWasA = false;
 #endif
 
     //if (get_addr_mode() == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
@@ -1375,7 +1376,10 @@ IF6 sim_printf (" CALL6 not restart\n");
     // Reset the APU cycle tracking
     cpu.APUWasIndOperand = false;
     cpu.APUWasRTCDOperand = false;
-    cpu.APUWasSeqIns = false;
+    cpu.APUWasA = ci -> a;
+if (sim_timell () == 687173)  sim_printf ("WasA set to %o\n", cpu.APUWasA);
+    cpu.APUWasN = getbits36_3 (cpu.cu.IWB, 0);
+if (sim_timell () == 687173)  sim_printf ("WasN set to %o %012llo\n", cpu.APUWasN, cpu.cu.IWB);
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
     // illegal procedure fault.
@@ -1707,7 +1711,7 @@ IF6 sim_printf (" CALL6 inited TPR\n");
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op [n],
-                  EIS_OPERAND_READ, 0); // I think.
+                  EIS_OPERAND_DESCRIPTOR, 0); // I think.
           }
         setupEISoperands ();
       }
