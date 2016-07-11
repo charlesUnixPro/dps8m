@@ -800,7 +800,7 @@ typedef struct
     word1 rd;      // 20    RD  Execute an Repeat Double (rpd) instruction
     word1 rl;      // 21    RL  Execute a Repeat Link (rpl) instruction
     word1 pot;     // 22    POT Prepare operand tally
-                   // 23    PON Prepare operand no tally
+    word1 pon;     // 23    PON Prepare operand no tally
     //xde xdo
     // 0   0   no execute           -> 0 0
     // 1   0   execute XEC          -> 0 0
@@ -1080,6 +1080,11 @@ typedef struct
     _fault dlyFltNum;
     _fault_subtype dlySubFltNum;
     const char * dlyCtx;
+
+    // Append Unit previous cycle tracking
+    bool APUWasIndOperand;
+    bool APUWasRTCDOperand;
+    bool APUWasSeqIns;
 
   } cpu_state_t;
 

@@ -353,12 +353,12 @@ static void updateIWB (word18 addr, word6 tag)
 
 //
 // Input:
-//   cu . IWB
+//   cu.IWB
 //   currentInstruction
-//   TPR . TSR
-//   TPR . TRR
-//   TPR . TBR // XXX check to see if this is initialized
-//   TPR . CA
+//   TPR.TSR
+//   TPR.TRR
+//   TPR.TBR // XXX check to see if this is initialized
+//   TPR.CA
 //
 //  Output:
 //   TPR . CA
@@ -419,7 +419,7 @@ startCA:;
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
                __func__, cpu . rTAG, getModString (cpu . rTAG), Tm, Td);
-
+IF6 sim_printf ("TAG %02o %s \n", cpu.rTAG, getModString (cpu.rTAG));
     switch (Tm)
       {
         case TM_R:
@@ -751,18 +751,24 @@ startCA:;
     IT_MOD:;
       {
         //    IT_SD     = 004,
-        //    IT_SCR        = 005,
+        //    IT_SCR    = 005,
         //    IT_CI     = 010,
         //    IT_I      = 011,
         //    IT_SC     = 012,
         //    IT_AD     = 013,
         //    IT_DI     = 014,
-        //    IT_DIC        = 015,
+        //    IT_DIC    = 015,
         //    IT_ID     = 016,
-        //    IT_IDC        = 017
+        //    IT_IDC    = 017
         word12 tally;
         word6 idwtag, delta;
         word24 Yi = (word24) -1;
+
+        // This affects the doAppendCycle 'was the last cycle an indirect
+        // word fetch?' logic and the CA restore logic in executeInstruction
+
+IF6 sim_printf ("setting pot\n");
+        cpu.cu.pot = 1;
 
         switch (Td)
           {
@@ -797,26 +803,6 @@ startCA:;
               {
                 doFault(FAULT_F3, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F3");
               }
-
-#if 0
-            case IT_CI: ///< Character indirect (Td = 10)
-              {
-//sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
-                return SCPE_OK;
-               } // IT_CI
-
-            case IT_SC: ///< Sequence character (Td = 12)
-              {
-//sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
-                return SCPE_OK;
-              } // IT_SC
-
-            case IT_SCR: // Sequence character reverse (Td = 5)
-              {
-//sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
-                return SCPE_OK;
-              } // IT_SCR
-#endif
 
             case IT_CI:  // Character indirect (Td = 10)
             case IT_SC:  // Sequence character (Td = 12)
@@ -922,6 +908,7 @@ startCA:;
                 //
 
                 cpu . TPR . CA =  indwordAddress;
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_CI, IT_SC, IT_SCR
@@ -942,6 +929,7 @@ startCA:;
                 cpu . TPR . CA = GET_ADDR (indword);
 
                 updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_I
@@ -996,6 +984,8 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
                                     delta);
+// The POT CA management logic breaks down here, but a write fault shouldn't
+// be restartable, so do we care?
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1005,6 +995,7 @@ startCA:;
                 cpu . TPR . CA = computedAddress;
 
                 updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_AD
@@ -1062,6 +1053,7 @@ startCA:;
 
                 cpu . TPR . CA = Yi;
                 updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_SD
@@ -1117,10 +1109,13 @@ startCA:;
                            "addr %06o\n",
                            indword, saveCA);
 
+// The POT CA management logic breaks down here, but a write fault shouldn't
+// be restartable, so do we care?
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
                 cpu . TPR . CA = Yi;
                 updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_DI
@@ -1181,6 +1176,7 @@ startCA:;
 
                 cpu . TPR . CA = computedAddress;
                 updateIWB (cpu . TPR . CA, 0); // XXX guessing here...
+                cpu.cu.pot = 0;
 
                 return SCPE_OK;
               } // IT_ID
@@ -1248,6 +1244,8 @@ startCA:;
                            "IT_MOD(IT_DIC): writing indword=%012llo to "
                            "addr %06o\n", indword, saveCA);
 
+// The POT CA management logic breaks down here, but a write fault shouldn't
+// be restartable, so do we care?
                 Write (saveCA, indword, OPERAND_STORE, i->a);
 #if 0
                 // If the TAG of the indirect word invokes a register, that is,

@@ -80,8 +80,10 @@
 // debugging tool
 #ifdef ISOLTS
 #define IF1 if (currentRunningCPUnum)
+#define IF6 if (currentRunningCPUnum && cpu.currentInstruction.opcode == 0713 && cpu.currentInstruction.opcodeX == 0)
 #else
 #define IF1 if (0)
+#define IF6 if (0)
 #endif
 
 #define OSCAR
@@ -256,36 +258,37 @@ typedef enum opc_flag
     TRANSFER_INS    = (1U << 10), // a transfer instruction
     TSPN_INS        = (1U << 11), // a TSPn instruction
     CALL6_INS       = (1U << 12), // a call6 instruction
-    PREPARE_CA      = (1U << 13), // prepare TPR.CA for instruction
-    STORE_YBLOCK8   = (1U << 14), // stores/writes Y-block8 operand to memory
-    IGN_B29         = (1U << 15), // Bit-29 has an instruction specific meaning. Ignore.
-    NO_TAG          = (1U << 16), // tag is interpreted differently and for addressing purposes is effectively 0
-    PRIV_INS        = (1U << 17), // priveleged instruction
-    NO_BAR          = (1U << 18), // not allowed in BAR mode
-    NO_XEC          = (1U << 19), // can't be executed via xec/xed
-    NO_XED          = (1U << 20), // No execution via XED instruction
+    RTCD_INS        = (1U << 13), // a rtcd instruction
+    PREPARE_CA      = (1U << 14), // prepare TPR.CA for instruction
+    STORE_YBLOCK8   = (1U << 15), // stores/writes Y-block8 operand to memory
+    IGN_B29         = (1U << 16), // Bit-29 has an instruction specific meaning. Ignore.
+    NO_TAG          = (1U << 17), // tag is interpreted differently and for addressing purposes is effectively 0
+    PRIV_INS        = (1U << 18), // priveleged instruction
+    NO_BAR          = (1U << 19), // not allowed in BAR mode
+    NO_XEC          = (1U << 20), // can't be executed via xec/xed
+    NO_XED          = (1U << 21), // No execution via XED instruction
 
 // EIS operand types
 
 #define EOP_ALPHA 1U
 
-// bits 21, 22
-    EOP1_ALPHA      = (EOP_ALPHA << 21),
-    EOP1_MASK       = (3U << 21),
-#define EOP1_SHIFT 21
+// bits 22, 23
+    EOP1_ALPHA      = (EOP_ALPHA << 22),
+    EOP1_MASK       = (3U << 22),
+#define EOP1_SHIFT 22
 
-// bits 23, 24
-    EOP2_ALPHA      = (EOP_ALPHA << 23),
-    EOP2_MASK       = (3U << 23),
-#define EOP2_SHIFT 23
+// bits 24, 25
+    EOP2_ALPHA      = (EOP_ALPHA << 24),
+    EOP2_MASK       = (3U << 24),
+#define EOP2_SHIFT 24
 
-// bits 25, 26
-    EOP3_ALPHA      = (EOP_ALPHA << 25),
-    EOP3_MASK       = (3U << 25),
-#define EOP3_SHIFT 25
+// bits 26, 27
+    EOP3_ALPHA      = (EOP_ALPHA << 26),
+    EOP3_MASK       = (3U << 26),
+#define EOP3_SHIFT 26
 
-    READ_YBLOCK32   = (1U << 26),  // fetches/reads Y-block16 operands from memory
-    STORE_YBLOCK32  = (1U << 27),  // fetches/reads Y-block16 operands from memory
+    READ_YBLOCK32   = (1U << 28),  // fetches/reads Y-block16 operands from memory
+    STORE_YBLOCK32  = (1U << 29),  // fetches/reads Y-block16 operands from memory
   } opc_flag;
 
 

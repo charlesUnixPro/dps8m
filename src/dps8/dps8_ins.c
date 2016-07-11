@@ -479,15 +479,15 @@ static void scu2words(word36 *words)
 
     // words [5]
 
-    putbits36 (& words [5],  0, 18, cpu.TPR.CA);
-    putbits36 (& words [5], 18,  1, cpu.cu.repeat_first);
-    putbits36 (& words [5], 19,  1, cpu.cu.rpt);
-    putbits36 (& words [5], 20,  1, cpu.cu.rd);
-    putbits36 (& words [5], 21,  1, cpu.cu.rl);
-    putbits36 (& words [5], 22,  1, cpu.cu.pot);
-    // 23, 1 PON Prepare operand no tally
-    putbits36_1 (& words [5], 24, cpu.cu.xde);
-    putbits36_1 (& words [5], 25, cpu.cu.xdo);
+    putbits36_18 (& words [5],  0, cpu.TPR.CA);
+    putbits36_1  (& words [5], 18, cpu.cu.repeat_first);
+    putbits36_1  (& words [5], 19, cpu.cu.rpt);
+    putbits36_1  (& words [5], 20, cpu.cu.rd);
+    putbits36_1  (& words [5], 21, cpu.cu.rl);
+    putbits36_1  (& words [5], 22, cpu.cu.pot);
+    putbits36_1  (& words [5], 23, cpu.cu.pon);
+    putbits36_1  (& words [5], 24, cpu.cu.xde);
+    putbits36_1  (& words [5], 25, cpu.cu.xdo);
     // 26, 1 ITP Execute ITP indirect cycle
     putbits36_1 (& words [5], 27, cpu.cu.rfi);
     // 28, 1 ITS Execute ITS indirect cycle
@@ -528,6 +528,7 @@ void tidy_cu (void)
     cpu.cu.rd = false;
     cpu.cu.rl = false;
     cpu.cu.pot = false;
+    cpu.cu.pon = false;
     cpu.cu.xde = false;
     cpu.cu.xdo = false;
   }
@@ -613,12 +614,13 @@ static void words2scu (word36 * words)
 
     // words [5]
 
-    cpu.TPR.CA          = getbits36(words[5], 0, 18);
-    cpu.cu.repeat_first = getbits36(words[5], 18, 1);
-    cpu.cu.rpt          = getbits36(words[5], 19, 1);
-    cpu.cu.rd           = getbits36(words[5], 20, 1);
-    cpu.cu.rl           = getbits36(words[5], 21, 1);
-    cpu.cu.pot          = getbits36(words[5], 22, 1);
+    cpu.TPR.CA          = getbits36_18 (words[5],  0);
+    cpu.cu.repeat_first = getbits36_1  (words[5], 18);
+    cpu.cu.rpt          = getbits36_1  (words[5], 19);
+    cpu.cu.rd           = getbits36_1  (words[5], 20);
+    cpu.cu.rl           = getbits36_1  (words[5], 21);
+    cpu.cu.pot          = getbits36_1  (words[5], 22);
+    cpu.cu.pon          = getbits36_1  (words[5], 23);
     // 23 PON
     cpu.cu.xde          = getbits36_1  (words[5], 24);
     cpu.cu.xdo          = getbits36_1  (words[5], 25);
@@ -1026,9 +1028,11 @@ void fetchInstruction (word18 addr)
 
     memset (p, 0, sizeof (struct DCDstruct));
 
+#if 0 // Now done in doAppendCycle
     // since the next memory cycle will be a instruction fetch setup TPR
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+#endif
 
     //if (get_addr_mode() == ABSOLUTE_mode || get_addr_mode () == BAR_mode)
     if (get_addr_mode() == ABSOLUTE_mode)
@@ -1286,7 +1290,7 @@ t_stat executeInstruction (void)
 // Decode the instruction
 //
 // If not restart
-//     check for priviledge
+//     check for privilege
 //     chcck for illegal modifiers
 //     if rpt/rpd
 //         check for illegal rpt/rpd modifiers
@@ -1346,7 +1350,7 @@ t_stat executeInstruction (void)
                                          // register
     const word6  tag = ci->tag;          // instruction tag
                                          //  XXX replace withrTAG
-
+IF6 sim_printf ("starting CALL6 PRR %o TRR %o\n", cpu.PPR.PRR, cpu.TPR.TRR);
 
     addToTheMatrix (opcode, opcodeX, a, tag);
 
@@ -1355,10 +1359,23 @@ t_stat executeInstruction (void)
 ///
 
     if (ci -> restart)
-      goto restart_1;
+      {
+        // Restore the APU cycle tracking
+        cpu.APUWasIndOperand = cpu.cu.pot;
+        cpu.APUWasRTCDOperand = cpu.cu.pon;
+        cpu.APUWasSeqIns = !! (cpu.cu.APUCycleBits & apuStatus_PI_AP);
+IF6 sim_printf (" CALL6 restart APUWasIndOperand %o\n", cpu.APUWasIndOperand);
+        goto restart_1;
+      }
 
+IF6 sim_printf (" CALL6 not restart\n");
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
+
+    // Reset the APU cycle tracking
+    cpu.APUWasIndOperand = false;
+    cpu.APUWasRTCDOperand = false;
+    cpu.APUWasSeqIns = false;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
     // illegal procedure fault.
@@ -1529,15 +1546,18 @@ restart_1:
 /// executeInstruction: Initialize TPR
 ///
 
+#if 0 // This is done by RCU
     // This must not happen on instruction restart
     if (! ci -> restart)
       {
         if (! ci -> a)
           {
+IF6 sim_printf (" CALL6 inited TPR\n");
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }
       }
+#endif
 
     cpu.du.JMP = (word3) info -> ndes;
 
@@ -1703,7 +1723,9 @@ restart_1:
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
+IF6 sim_printf (" CALL6 calling doPtr\n");
                 doPtrReg ();
+IF6 sim_printf (" CALL6 back from doPtrReg PRR %o TRR %o\n", cpu.PPR.PRR, cpu.TPR.TRR);
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -1715,12 +1737,14 @@ restart_1:
               }
             else
               {
+IF6 sim_printf (" CALL6 not calling doPtr\n");
                 cpu.TPR.TBR = 0;
                 if (get_addr_mode() == ABSOLUTE_mode)
                   {
                     cpu.TPR.TSR = cpu.PPR.PSR;
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
+IF6 sim_printf (" CALL6 abs mode sets TRR to 0\n");
                   }
                 clr_went_appending ();
               }
@@ -8538,6 +8562,7 @@ void doRCU (void)
 
     words2scu (cpu.Yblock8);
 
+IF1 sim_printf ("RCU words2scu set PRR to %o\n", cpu.PPR.PRR);
 // Restore addressing mode
 
     if (TST_I_ABS == 0)

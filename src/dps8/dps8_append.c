@@ -122,8 +122,11 @@ void doPtrReg(void)
     word15 offset = GET_OFFSET(IWB_IRODD);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
+#if 0 // Now done in doAppendCycle
     cpu . TPR.TSR = cpu . PAR[n].SNR;
     cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+IF1 sim_printf ("doPtrReg max3 (PR%o.RNR %o TPR.TRR %o PPR.PRR %o) -> TRR %o\n", n, cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR, cpu . TPR.TRR);
+#endif
     
     cpu . TPR.CA = (cpu . PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
     cpu . TPR.TBR = GET_PR_BITNO (n);
@@ -319,12 +322,13 @@ sim_printf ("CAMS cleared it\n");
 static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
+
+    setAPUStatus (apuStatus_DSPTW);
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
         
-    setAPUStatus (apuStatus_DSPTW);
-
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
 
@@ -347,11 +351,11 @@ static void fetchDSPTW(word15 segno)
 // CANFAULT
 static void modifyDSPTW(word15 segno)
 {
+    setAPUStatus (apuStatus_MDSPTW); 
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
-
-    setAPUStatus (apuStatus_MDSPTW); 
 
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -957,6 +961,16 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", cpu . TPR.TRR, cpu . TPR.TSR);
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
+    if (instructionFetch)
+      {
+IF1 { if (cpu.PPR.IC == 0101347) sim_printf ("call6 ins fetch\n"); }
+         cpu.cu.APUCycleBits |= apuStatus_PI_AP;
+      }
+    else
+      {
+         cpu.cu.APUCycleBits &= ~apuStatus_PI_AP;
+      }
+IF6 sim_printf ("call6 doAppendCycle APUWasIndOperand %o APUWasRTCDOperand %o APUWasSeqIns %o\n", cpu.APUWasIndOperand, cpu.APUWasRTCDOperand, cpu.APUWasSeqIns);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
     cpu . RSDWH_R1 = 0;
@@ -967,13 +981,54 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     word24 finalAddress = (word24) -1;  // not everything requires a final address
     
 //
+// START_APPEND:
+//
+
+    // Was the last cycle an indirect word fetch?
+    if (cpu.APUWasIndOperand)
+      {
+        goto A;
+      }
+
+    // Was the last ccycle an RTCD operand fetch?
+    if (cpu.APUWasRTCDOperand)   
+      {
+        goto A;
+      }
+
+    // Was it a sequential instruction fetch?
+    if (! cpu.APUWasSeqIns)
+      { // No
+        // Is bit 29 on?
+        if (i -> a)
+          {
+            // n = C(IWB)0,2
+            uint n = getbits36_3 (cpu.cu.IWB, 0);
+            // C(PRn.RNR) > C(PPR.PRR)?
+            if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+              { // Yes
+                cpu.TPR.TRR = cpu.PAR[n].RNR;
+              }
+            else
+              { // No
+                cpu.TPR.TRR = cpu.PPR.PRR;
+              }
+            cpu.TPR.TSR = cpu.PAR[n].SNR;
+            goto A;
+          }
+      }
+
+    cpu.TPR.TRR = cpu.PPR.PRR;
+    cpu.TPR.TSR = cpu.PPR.PSR;
+    goto A; 
+
+//
 //  A:
 //    Get SDW
-#ifndef QUIET_UNUSED
 A:;
-#endif
 
     cpu . TPR . CA = address;
+
 //
 // Phase 1:
 //
@@ -1210,10 +1265,12 @@ E:;
 // E: CALL6
 //
 
+IF1 sim_printf ("appendCycle CALL6\n");
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): CALL6\n");
 
     //SDW .E set ON?
     if (!cpu . SDW->E) {
+IF1 sim_printf ("appendCycle CALL6 E off\n");
         // Set fault ACV2 = E-OFF
         acvFaults |= ACV2;
         acvFaultsMsg = "acvFaults(E) SDW .E set OFF";
@@ -1221,26 +1278,41 @@ E:;
     
     //SDW .G set ON?
     if (cpu . SDW->G)
+      {
+IF1 sim_printf ("appendCycle CALL6 G on\n");
         goto E1;
-    
+      }
+
     // C(PPR.PSR) = C(TPR.TSR)?
     if (cpu . PPR.PSR == cpu . TPR.TSR)
+      {
+IF1 sim_printf ("appendCycle CALL6 PSR == TSR\n");
         goto E1;
+      }
     
+
+IF1 sim_printf ("appendCycle CALL6 address & 0037777 %06o CL %06o\n", address & 0037777, cpu.SDW->CL);
+
+// ISOLTS tests call 6 gate with an B29 instruction; the CA is 101234; the
+// masking specified in AL39 defeats this test. Disabling the masking.
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= cpu . SDW->CL) {
+    //if ((address & 0037777) >= cpu.SDW->CL)
+    if ((address & 0777777) >= cpu.SDW->CL)
+      {
         // Set fault ACV7 = NO GA
         acvFaults |= ACV7;
         acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
-    }
+      }
     
 E1:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 (cont'd)\n");
 
+IF1 sim_printf ("appendCycle CALL6 TRR %o R3 %o\n", cpu.TPR.TRR, cpu.SDW->R3);
+
     // C(TPR.TRR) > SDW.R3?
-    if (cpu . TPR.TRR > cpu . SDW->R3) {
+    if (cpu.TPR.TRR > cpu.SDW->R3) {
         //Set fault ACV8 = OCB
         acvFaults |= ACV8;
         acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
@@ -1428,10 +1500,9 @@ HI:
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");
     
-    //if (thisCycle == INSTRUCTION_FETCH)
     if (thisCycle == INDIRECT_WORD_FETCH)
         goto Exit;
-    
+
     if (thisCycle == RTCD_OPERAND_FETCH)
         goto KL;
     

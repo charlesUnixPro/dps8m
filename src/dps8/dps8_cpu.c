@@ -2171,11 +2171,14 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
     // too late. Special case it here my noticing that this is an RTCD
     // instruction
-    if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
+    //if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
+    if (i->info->flags & RTCD_INS)
     {
+        cpu.cu.pon = 1;
         addr &= 0777776;   // make even
         Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH, b29);
         Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        cpu.cu.pon = 0;
         return SCPE_OK;
     }
 

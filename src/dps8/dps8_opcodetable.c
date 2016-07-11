@@ -426,7 +426,7 @@ struct opCode NonEISopcodes[01000] = {
     {"tpl", /* READ_OPERAND | */ PREPARE_CA | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
     {"ttf", /* READ_OPERAND | */ PREPARE_CA | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
-    {"rtcd", READ_YPAIR | TRANSFER_INS | NO_RPT, NO_DDCSS, 0},
+    {"rtcd", READ_YPAIR | TRANSFER_INS | RTCD_INS | NO_RPT, NO_DDCSS, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {"rcu", READ_YBLOCK8 | PRIV_INS | NO_RPT, NO_DDCSS, 0},
