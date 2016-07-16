@@ -1,4 +1,4 @@
- //
+//
 //  dps8_faults.c
 //  dps8
 //
@@ -10,6 +10,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
@@ -208,18 +209,6 @@ static int fault2prio[32] = {
     18, 19,  0,  0,  0,  0,  0,  3
 };
 #endif
-#ifndef QUIET_UNUSED
-// Fault conditions as stored in the "FR" Fault Register
-// C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
-typedef enum {
-    // Values are bit masks
-    fr_ill_op = 1, // illegal opcode
-    fr_ill_mod = 1 << 1, // illegal address modifier
-    // fr_ill_slv = 1 << 2, // illegal BAR mode procedure
-    fr_ill_proc = 1 << 3 // illegal procedure other than the above three
-    // fr_ill_dig = 1 << 6 // illegal decimal digit
-} fault_cond_t;
-#endif
 
 /*
  * fault handler(s).
@@ -235,7 +224,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %d (%o)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  subfault number %llu (%llo)\n", cpu.subFault.bits, cpu.subFault.bits);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -328,9 +317,15 @@ bit-28 tp inhibit interrupts
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
+//if (currentRunningCPUnum)
+    //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
+               //faultNumber, faultNumber, subFault, subFault, 
+               //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+//if (currentRunningCPUnum)
+    //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
-               "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", 
-               faultNumber, faultNumber, subFault, subFault, 
+               "Fault %d(0%0o), sub %llu(0%llo), dfc %c, '%s'\n", 
+               faultNumber, faultNumber, subFault.bits, subFault.bits, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
     hdbgFault (faultNumber, subFault, faultMsg);
@@ -348,8 +343,8 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?
     {
-        sim_printf ("fault(out-of-range): %d %d '%s'\n", 
-                    faultNumber, subFault, faultMsg ? faultMsg : "?");
+        sim_printf ("fault(out-of-range): %d %llo '%s'\n", 
+                    faultNumber, subFault.bits, faultMsg ? faultMsg : "?");
         sim_warn ("fault out-of-range\n");
         faultNumber = FAULT_TRB;
     }
@@ -358,41 +353,59 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     cpu.subFault = subFault;
     sys_stats.total_faults [faultNumber] ++;
 
+    // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
+    cpu.CMR.csh_reg = 0;   
+
+    // Increment FCT
+
+    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    FCT = (FCT + 1) & MASK3;
+    cpu.cu.APUCycleBits = (cpu.cu.APUCycleBits & 07770) | FCT;
+
     // Set fault register bits
 
     if (faultNumber == FAULT_IPR)
       {
-        if (subFault == ill_op)
+#if 0
+        if (subFault == flt_ipr_ill_op)
           cpu . faultRegister [0] |= FR_ILL_OP;
-        else if (subFault == ill_mod)
+        else if (subFault == flt_ipr_ill_mod)
           cpu . faultRegister [0] |= FR_ILL_MOD;
-        else if (subFault == ill_dig)
+        else if (subFault == flt_ipr_ill_dig)
           cpu . faultRegister [0] |= FR_ILL_DIG;
-        else /* if (subFault == ill_proc) */ // and all others
+        else /* if (subFault == flt_ipr_ill_proc) */ // and all others
           cpu . faultRegister [0] |= FR_ILL_PROC;
+#else
+        cpu . faultRegister [0] |= subFault.bits;
+#endif
       }
-    else if (faultNumber == FAULT_ONC && subFault == nem)
+    else if (faultNumber == FAULT_ONC && subFault.fault_onc_subtype == flt_onc_nem)
       {
         cpu . faultRegister [0] |= FR_NEM;
       }
-    else if (faultNumber == FAULT_STR && subFault == oob)
+    else if (faultNumber == FAULT_STR)
       {
-        cpu . faultRegister [0] |= FR_OOB;
+        if (subFault.fault_str_subtype == flt_str_oob)
+          cpu . faultRegister [0] |= FR_OOB;
+        //else if (subFault.fault_str_subtype == flt_str_ill_ptr)
+          //cpu . faultRegister [0] |= ?;    // XXX
+        //else if (subFault.fault_str_subtype == flt_str_nea)
+          //cpu . faultRegister [0] |= ?;    // XXX
       }
     else if (faultNumber == FAULT_CON)
       {
-        switch (subFault)
+        switch (subFault.fault_con_subtype)
           {
-            case 0:
+            case con_a:
               cpu . faultRegister [0] |= FR_CON_A;
               break;
-            case 1:
+            case con_b:
               cpu . faultRegister [0] |= FR_CON_B;
               break;
-            case 2:
+            case con_c:
               cpu . faultRegister [0] |= FR_CON_C;
               break;
-            case 3:
+            case con_d:
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
@@ -440,9 +453,14 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 // EIS instructions are not used in fault/interrupt pairs, so the
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
+#if 1
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
         cpu . currentInstruction . info -> ndes > 0);
+#endif
 
+#ifdef ISOLTS
+//if (currentRunningCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
+#endif
     if (faultNumber == FAULT_ACV)
       {
         // This is annoyingly inefficent since the subFault value 
@@ -450,81 +468,108 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         // if the upperhalf were not broken out, then this would be
         // cpu . cu . word1_upper_half = subFault.
 
-        if (subFault & ACV0)
+        if (subFault.fault_acv_subtype & ACV0)
           cpu . cu . IRO_ISN = 1;
-        if (subFault & ACV1)
+        if (subFault.fault_acv_subtype & ACV1)
           cpu . cu . OEB_IOC = 1;
-        if (subFault & ACV2)
+        if (subFault.fault_acv_subtype & ACV2)
           cpu . cu . EOFF_IAIM = 1;
-        if (subFault & ACV3)
+        if (subFault.fault_acv_subtype & ACV3)
           cpu . cu . ORB_ISP = 1;
-        if (subFault & ACV4)
+        if (subFault.fault_acv_subtype & ACV4)
           cpu . cu . ROFF_IPR = 1;
-        if (subFault & ACV5)
+        if (subFault.fault_acv_subtype & ACV5)
           cpu . cu . OWB_NEA = 1;
-        if (subFault & ACV6)
+        if (subFault.fault_acv_subtype & ACV6)
           cpu . cu . WOFF_OOB = 1;
-        if (subFault & ACV7)
+        if (subFault.fault_acv_subtype & ACV7)
           cpu . cu . NO_GA = 1;
-        if (subFault & ACV8)
+        if (subFault.fault_acv_subtype & ACV8)
           cpu . cu . OCB = 1;
-        if (subFault & ACV9)
+        if (subFault.fault_acv_subtype & ACV9)
           cpu . cu . OCALL = 1;
-        if (subFault & ACV10)
+        if (subFault.fault_acv_subtype & ACV10)
           cpu . cu . BOC = 1;
-        if (subFault & ACV11)
+        if (subFault.fault_acv_subtype & ACV11)
           cpu . cu . PTWAM_ER = 1;
-        if (subFault & ACV12)
+        if (subFault.fault_acv_subtype & ACV12)
           cpu . cu . CRT = 1;
-        if (subFault & ACV13)
+        if (subFault.fault_acv_subtype & ACV13)
           cpu . cu . RALR = 1;
-        if (subFault & ACV14)
+        if (subFault.fault_acv_subtype & ACV14)
           cpu . cu . SWWAM_ER = 1;
-        if (subFault & ACV15)
+        if (subFault.fault_acv_subtype & ACV15)
           cpu . cu . OOSB = 1;
       }
     else if (faultNumber == FAULT_STR)
       {
-        if (subFault == oob)
+        if (subFault.fault_str_subtype == flt_str_oob)
           cpu . cu . WOFF_OOB = 1;
-        else if (subFault == ill_ptr)
-          cpu . cu . WOFF_OOB = 1;
-        // Not used by SCU 4MW
-        // else if (subFault == not_control)
-          // cpu . cu . WOFF_OOB;
+        //else if (subFault.fault_str_subtype == flt_str_ill_ptr)
+          //cpu . cu . ??? = 1; // XXX
+        else if (subFault.fault_str_subtype == flt_str_nea)
+          cpu . cu . OWB_NEA = 1;
       }
     else if (faultNumber == FAULT_IPR)
       {
-        if (subFault == ill_op)
+        if (subFault.fault_ipr_subtype & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault == ill_mod)
+        else if (subFault.fault_ipr_subtype & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault == ill_slv)
+        else if (subFault.fault_ipr_subtype & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault == ill_dig)
+        else if (subFault.fault_ipr_subtype & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
-        // else if (subFault == ill_proc)
-          // cpu . cu . ? = 1;
       }
     else if (faultNumber == FAULT_CMD)
       {
-        if (subFault == lprpn_bits)
+        if (subFault.fault_cmd_subtype == flt_cmd_lprpn_bits)
           cpu . cu . IA = 0;
-        else if (subFault == not_control)
+        else if (subFault.fault_cmd_subtype == flt_cmd_not_control)
           cpu . cu . IA = 010;
+      }
+
+    // History registers
+    // IHRRS; AL39 pg 49
+    // Additional resetting of bit 30. If bit 31 = 1, the following faults also
+    // reset bit 30:
+    //   Lock Up
+    //   Parity
+    //   Command
+    //   Store
+    //   Illegal Procedure
+    //   Shutdown
+    if (cpu.MR.ihrrs)
+      {
+        if (faultNumber == FAULT_LUF ||
+            faultNumber == FAULT_PAR ||
+            faultNumber == FAULT_CMD ||
+            faultNumber == FAULT_STR ||
+            faultNumber == FAULT_IPR ||
+            faultNumber == FAULT_SDF)
+          {
+            cpu.MR.ihr = 0;
+          }
+      }
+    // Enable History Registers.  This bit will be reset by ... an Op Not
+    // Complete fault. It may be reset by other faults (see bit 31). 
+    if (faultNumber == FAULT_ONC)
+      {
+        cpu.MR.ihr = 0;
       }
 
     // If already in a FAULT CYCLE then signal trouble fault
 
-    if (cpu . cycle == FAULT_EXEC_cycle ||
-        cpu . cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle ||
+        cpu.cycle == FAULT_EXEC2_cycle)
       {
-        cpu . faultNumber = FAULT_TRB;
-        cpu . cu . FI_ADDR = FAULT_TRB;
-        cpu . subFault = 0; // XXX ???
+        cpu.faultNumber = FAULT_TRB;
+        cpu.cu.FI_ADDR = FAULT_TRB;
+        cpu.subFault.bits = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
+#ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
                                      // break this logic
@@ -533,8 +578,9 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
-                longjmp (jmpMain, JMP_STOP);
+                longjmp (cpu.jmpMain, JMP_STOP);
               }
+#endif
           }
         else
           {
@@ -554,8 +600,17 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     cpu . cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
-    longjmp (jmpMain, JMP_REENTRY);
+    longjmp (cpu.jmpMain, JMP_REENTRY);
 }
+
+void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 
+                const char * faultMsg)
+  {
+    cpu.dlyFlt = true;
+    cpu.dlyFltNum = faultNumber;
+    cpu.dlySubFltNum = subFault;
+    cpu.dlyCtx = faultMsg;
+  }
 
 //
 // return true if group 7 faults are pending ...
@@ -574,12 +629,19 @@ bool bG7PendingNoTRO (void)
     return (cpu . g7Faults & (~ (1u << FAULT_TRO))) != 0;
   }
 
-void setG7fault (_fault faultNo, _fault_subtype subFault)
+void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
-    // sim_printf ("setG7fault %d %d [%lld]\n", faultNo, subFault, sim_timell ());
-    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault %d %d\n", faultNo, subFault);
-    cpu . g7Faults |= (1u << faultNo);
-    cpu . g7SubFaults [faultNo] = subFault;
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %lld %llo\n", 
+               cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
+#ifdef ROUND_ROBIN
+    uint save = setCPUnum (cpuNo);
+    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7SubFaults [faultNo] = subFault;
+    setCPUnum (save);
+#else
+    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7SubFaults [faultNo] = subFault;
+#endif
   }
 
 void clearTROFault (void)
@@ -598,15 +660,15 @@ void doG7Fault (void)
        {
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
-         doFault (FAULT_TRO, 0, "Timer runout"); 
+         doFault (FAULT_TRO, (_fault_subtype) {.bits=0}, "Timer runout"); 
        }
 
-     if (cpu . g7Faults & (1u << FAULT_CON))
+     if (cpu.g7Faults & (1u << FAULT_CON))
        {
-         cpu . g7Faults &= ~(1u << FAULT_CON);
+         cpu.g7Faults &= ~(1u << FAULT_CON);
 
-         cpu . cu . CNCHN = cpu . g7SubFaults [FAULT_CON] & MASK3;
-         doFault (FAULT_CON, cpu . g7SubFaults [FAULT_CON], "Connect"); 
+         cpu.cu.CNCHN = cpu.g7SubFaults[FAULT_CON].fault_con_subtype & MASK3;
+         doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
@@ -616,8 +678,8 @@ void doG7Fault (void)
        {
          cpu . g7Faults &= ~(1u << FAULT_EXF);
 
-         doFault (FAULT_EXF, 0, "Execute fault");
+         doFault (FAULT_EXF, (_fault_subtype) {.bits=0}, "Execute fault");
        }
 
-     doFault (FAULT_TRB, (_fault_subtype) cpu . g7Faults, "Dazed and confused in doG7Fault");
+     doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.g7Faults}, "Dazed and confused in doG7Fault");
   }

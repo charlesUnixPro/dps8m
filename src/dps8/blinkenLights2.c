@@ -14,7 +14,6 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
-#include "dps8_faults.h"
 #include "dps8_cpu.h"
 
 #include "dps8_mp.h"
@@ -22,7 +21,8 @@
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 
-multipassStats * multipassStatsPtr;
+cpu_state_t * cpus;
+cpu_state_t * cpun;
 
 static GdkRGBA lightOn, lightOff;
 
@@ -220,11 +220,8 @@ static GtkWidget * cachefault_display;
 static GtkWidget * ACVfault_display;
 static GtkWidget * intrpair_display;
 
-static struct multipassStats previous;
-//static struct _ppr previous_PPR;
-//static word36 previous_inst = ~0llu;
+static cpu_state_t previous;
 
-//static pid_t ppid;
 static pid_t sid;
 
 static gboolean time_handler (GtkWidget * widget)
@@ -234,46 +231,46 @@ static gboolean time_handler (GtkWidget * widget)
 
     bool update = false;
 
-    if (memcmp (& multipassStatsPtr -> PPR, & previous . PPR, sizeof (previous . PPR)))
+    if (memcmp (& cpun -> PPR, & previous . PPR, sizeof (previous . PPR)))
       {
         update = true;
         for (int i = 0; i < 3; i ++)
-          PRR_state [2 - i] = ((1llu << i) & multipassStatsPtr -> PPR . PRR) ? 1 : 0;
+          PRR_state [2 - i] = ((1llu << i) & cpun -> PPR . PRR) ? 1 : 0;
         for (int i = 0; i < 15; i ++)
-          PSR_state [14 - i] = ((1llu << i) & multipassStatsPtr -> PPR . PSR) ? 1 : 0;
+          PSR_state [14 - i] = ((1llu << i) & cpun -> PPR . PSR) ? 1 : 0;
         for (int i = 0; i < 1; i ++)
-          P_state [0 - i] = ((1llu << i) & multipassStatsPtr -> PPR . P) ? 1 : 0;
+          P_state [0 - i] = ((1llu << i) & cpun -> PPR . P) ? 1 : 0;
         for (int i = 0; i < 18; i ++)
-          IC_state  [17 - i] = ((1llu << (i +  9)) & multipassStatsPtr -> PPR . IC) ? 1 : 0;
+          IC_state  [17 - i] = ((1llu << (i +  9)) & cpun -> PPR . IC) ? 1 : 0;
         //gtk_widget_queue_draw (PPR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> inst, & previous . inst, sizeof (previous . inst)))
+    if (memcmp (& cpun -> cu.IWB, & previous . cu.IWB, sizeof (previous . cu.IWB)))
       {
         update = true;
         for (int i = 0; i < 36; i ++)
           {
-            inst_state [35 - i] = ((1llu << i) & multipassStatsPtr -> inst) ? 1 : 0;
+            inst_state [35 - i] = ((1llu << i) & cpun -> cu.IWB) ? 1 : 0;
           }
         //gtk_widget_queue_draw (inst_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> A, & previous . A, sizeof (previous . A)))
+    if (memcmp (& cpun -> rA, & previous . rA, sizeof (previous . rA)))
       {
         update = true;
         for (int i = 0; i < 36; i ++)
           {
-            A_state [35 - i] = ((1llu << i) & multipassStatsPtr -> A) ? 1 : 0;
+            A_state [35 - i] = ((1llu << i) & cpun -> rA) ? 1 : 0;
           }
         //gtk_widget_queue_draw (A_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> Q, & previous . Q, sizeof (previous . Q)))
+    if (memcmp (& cpun -> rQ, & previous . rQ, sizeof (previous . rQ)))
       {
         update = true;
         for (int i = 0; i < 36; i ++)
           {
-            Q_state [35 - i] = ((1llu << i) & multipassStatsPtr -> Q) ? 1 : 0;
+            Q_state [35 - i] = ((1llu << i) & cpun -> rQ) ? 1 : 0;
           }
         //gtk_widget_queue_draw (Q_display);
 //printf ("Q ");
@@ -282,23 +279,23 @@ static gboolean time_handler (GtkWidget * widget)
 
       }
 
-    if (memcmp (& multipassStatsPtr -> E, & previous . E, sizeof (previous . E)))
+    if (memcmp (& cpun -> rE, & previous . rE, sizeof (previous . rE)))
       {
         update = true;
         for (int i = 0; i < 8; i ++)
           {
-            E_state [7 - i] = ((1llu << i) & multipassStatsPtr -> E) ? 1 : 0;
+            E_state [7 - i] = ((1llu << i) & cpun -> rE) ? 1 : 0;
           }
         //gtk_widget_queue_draw (E_display);
       }
     
     for(int nreg = 0; nreg < 8; nreg ++) {
-      if (memcmp (& multipassStatsPtr -> X[nreg], & previous . X[nreg], sizeof (previous . X[nreg])))
+      if (memcmp (& cpun -> rX[nreg], & previous . rX[nreg], sizeof (previous . rX[nreg])))
         {
           update = true;
           for (int i = 0; i < 18; i ++)
             {
-              X_state [nreg][17 - i] = ((1llu << i) & multipassStatsPtr -> X[nreg]) ? 1 : 0;
+              X_state [nreg][17 - i] = ((1llu << i) & cpun -> rX[nreg]) ? 1 : 0;
             }
           //gtk_widget_queue_draw (X_display[nreg]);
         }
@@ -306,150 +303,150 @@ static gboolean time_handler (GtkWidget * widget)
 
 
 
-    if (memcmp (& multipassStatsPtr -> IR, & previous . IR, sizeof (previous . IR)))
+    if (memcmp (& cpun -> cu.IR, & previous . cu.IR, sizeof (previous . cu.IR)))
       {
         update = true;
         for (int i = 0; i < 18; i ++)
           {
-            IR_state [17 - i] = ((1llu << i) & multipassStatsPtr -> IR) ? 1 : 0;
+            IR_state [17 - i] = ((1llu << i) & cpun -> cu.IR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (IR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> TR, & previous . TR, sizeof (previous . TR)))
+    if (memcmp (& cpun -> rTR, & previous . rTR, sizeof (previous . rTR)))
       {
         update = true;
         for (int i = 0; i < 26; i ++)
           {
-            TR_state [26 - i] = ((1llu << i) & multipassStatsPtr -> TR) ? 1 : 0;
+            TR_state [26 - i] = ((1llu << i) & cpun -> rTR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (TR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> RALR, & previous . RALR, sizeof (previous . RALR)))
+    if (memcmp (& cpun -> rRALR, & previous . rRALR, sizeof (previous . rRALR)))
       {
         update = true;
         for (int i = 0; i < 3; i ++)
           {
-            RALR_state [2 - i] = ((1llu << i) & multipassStatsPtr -> RALR) ? 1 : 0;
+            RALR_state [2 - i] = ((1llu << i) & cpun -> rRALR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (RALR_display);
       }
 
     for(int nreg = 0; nreg < 8; nreg ++) {
-      if (memcmp (& multipassStatsPtr -> PAR[nreg], & previous . PAR[nreg], sizeof (previous . PAR[nreg])))
+      if (memcmp (& cpun -> PAR[nreg], & previous . PAR[nreg], sizeof (previous . PAR[nreg])))
         {
           update = true;
           for (int i = 0; i < 15; i ++)
-              SNR_state [nreg][14 - i] = ((1llu << i) & multipassStatsPtr -> PAR[nreg] . SNR) ? 1 : 0;
+              SNR_state [nreg][14 - i] = ((1llu << i) & cpun -> PAR[nreg] . SNR) ? 1 : 0;
           for (int i = 0; i < 3; i ++)
-              RNR_state [nreg][2 - i] = ((1llu << i) & multipassStatsPtr -> PAR[nreg] . RNR) ? 1 : 0;
+              RNR_state [nreg][2 - i] = ((1llu << i) & cpun -> PAR[nreg] . RNR) ? 1 : 0;
           for (int i = 0; i < 6; i ++)
-              BITNO_state [nreg][5 - i] = ((1llu << i) & multipassStatsPtr -> PAR[nreg] . BITNO) ? 1 : 0;
+              BITNO_state [nreg][5 - i] = ((1llu << i) & cpun -> PAR[nreg] . BITNO) ? 1 : 0;
           for (int i = 0; i < 18; i ++)
-              WORDNO_state [nreg][17 - i] = ((1llu << i) & multipassStatsPtr -> PAR[nreg] . WORDNO) ? 1 : 0;
+              WORDNO_state [nreg][17 - i] = ((1llu << i) & cpun -> PAR[nreg] . WORDNO) ? 1 : 0;
           //gtk_widget_queue_draw (PAR_display[nreg]);
         }
     }
 
 
 
-//    if (memcmp (& multipassStatsPtr -> BAR, & previous . BAR, sizeof (previous . BAR)))
+//    if (memcmp (& cpun -> BAR, & previous . BAR, sizeof (previous . BAR)))
 //      {
 //        update = true;
 //        for (int i = 0; i < 9; i ++)
-//            BASE_state [8 - i] = ((1llu << i) & multipassStatsPtr -> BAR . BASE) ? 1 : 0;
+//            BASE_state [8 - i] = ((1llu << i) & cpun -> BAR . BASE) ? 1 : 0;
 //        for (int i = 0; i < 9; i ++)
-//            BOUND_state [8 - i] = ((1llu << i) & multipassStatsPtr -> BAR . BOUND) ? 1 : 0;
+//            BOUND_state [8 - i] = ((1llu << i) & cpun -> BAR . BOUND) ? 1 : 0;
 //        //gtk_widget_queue_draw (BAR_STRfault_display);
 //      }
 
 
-    if (memcmp (& multipassStatsPtr -> TRR, & previous . TRR, sizeof (previous . TRR)))
+    if (memcmp (& cpun -> TPR.TRR, & previous . TPR.TRR, sizeof (previous . TPR.TRR)))
       {
         update = true;
         for (int i = 0; i < 3; i ++)
           {
-            TRR_state [2 - i] = ((1llu << i) & multipassStatsPtr -> TRR) ? 1 : 0;
+            TRR_state [2 - i] = ((1llu << i) & cpun -> TPR.TRR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (TPR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> TSR, & previous . TSR, sizeof (previous . TSR)))
+    if (memcmp (& cpun -> TPR.TSR, & previous . TPR.TSR, sizeof (previous . TPR.TSR)))
       {
         update = true;
         for (int i = 0; i < 15; i ++)
           {
-            TSR_state [14 - i] = ((1llu << i) & multipassStatsPtr -> TSR) ? 1 : 0;
+            TSR_state [14 - i] = ((1llu << i) & cpun -> TPR.TSR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (TPR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> TBR, & previous . TBR, sizeof (previous . TBR)))
+    if (memcmp (& cpun -> TPR.TBR, & previous . TPR.TBR, sizeof (previous . TPR.TBR)))
       {
         update = true;
         for (int i = 0; i < 6; i ++)
           {
-            TBR_state [5 - i] = ((1llu << i) & multipassStatsPtr -> TBR) ? 1 : 0;
+            TBR_state [5 - i] = ((1llu << i) & cpun -> TPR.TBR) ? 1 : 0;
           }
         //gtk_widget_queue_draw (TPR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> CA, & previous . CA, sizeof (previous . CA)))
+    if (memcmp (& cpun -> TPR.CA, & previous . TPR.CA, sizeof (previous . TPR.CA)))
       {
         update = true;
         for (int i = 0; i < 18; i ++)
           {
-            CA_state [17 - i] = ((1llu << i) & multipassStatsPtr -> CA) ? 1 : 0;
+            CA_state [17 - i] = ((1llu << i) & cpun -> TPR.CA) ? 1 : 0;
           }
         //gtk_widget_queue_draw (TPR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> DSBR, & previous . DSBR, sizeof (previous . DSBR)))
+    if (memcmp (& cpun -> DSBR, & previous . DSBR, sizeof (previous . DSBR)))
       {
         update = true;
         for (int i = 0; i < 24; i ++)
-            ADDR_state [23 - i] = ((1llu << i) & multipassStatsPtr -> DSBR . ADDR) ? 1 : 0;
+            ADDR_state [23 - i] = ((1llu << i) & cpun -> DSBR . ADDR) ? 1 : 0;
         for (int i = 0; i < 14; i ++)
-            BND_state [13 - i] = ((1llu << i) & multipassStatsPtr -> DSBR . BND) ? 1 : 0;
+            BND_state [13 - i] = ((1llu << i) & cpun -> DSBR . BND) ? 1 : 0;
         for (int i = 0; i < 1; i ++)
-            U_state [0 - i] = ((1llu << i) & multipassStatsPtr -> DSBR . U) ? 1 : 0;
+            U_state [0 - i] = ((1llu << i) & cpun -> DSBR . U) ? 1 : 0;
         for (int i = 0; i < 12; i ++)
-            STACK_state [11 - i] = ((1llu << i) & multipassStatsPtr -> DSBR . STACK) ? 1 : 0;
+            STACK_state [11 - i] = ((1llu << i) & cpun -> DSBR . STACK) ? 1 : 0;
         //gtk_widget_queue_draw (DSBR_display);
       }
 
-    if (memcmp (& multipassStatsPtr -> faultNumber, & previous . faultNumber, sizeof (previous . faultNumber)))
+    if (memcmp (& cpun -> faultNumber, & previous . faultNumber, sizeof (previous . faultNumber)))
       {
         update = true;
-        FAULT_SDF_state = (FAULT_SDF == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_STR_state = (FAULT_STR == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_MME_state = (FAULT_MME == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_F1_state = (FAULT_F1 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_TRO_state = (FAULT_TRO == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_CMD_state = (FAULT_CMD == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DRL_state = (FAULT_DRL == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_LUF_state = (FAULT_LUF == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_CON_state = (FAULT_CON == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_PAR_state = (FAULT_PAR == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_IPR_state = (FAULT_IPR == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_ONC_state = (FAULT_ONC == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_SUF_state = (FAULT_SUF == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_OFL_state = (FAULT_OFL == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DIV_state = (FAULT_DIV == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_EXF_state = (FAULT_EXF == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DF0_state = (FAULT_DF0 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DF1_state = (FAULT_DF1 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DF2_state = (FAULT_DF2 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_DF3_state = (FAULT_DF3 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_ACV_state = (FAULT_ACV == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_MME2_state = (FAULT_MME2 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_MME3_state = (FAULT_MME3 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_MME4_state = (FAULT_MME4 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_F2_state = (FAULT_F2 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_F3_state = (FAULT_F3 == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        FAULT_TRB_state = (FAULT_TRB == multipassStatsPtr -> faultNumber) ? 1 : 0;
-        //FAULT_oob_state = (oob_fault == multipassStatsPtr -> faultNumber) ? 1 : 0;
+        FAULT_SDF_state = (FAULT_SDF == cpun -> faultNumber) ? 1 : 0;
+        FAULT_STR_state = (FAULT_STR == cpun -> faultNumber) ? 1 : 0;
+        FAULT_MME_state = (FAULT_MME == cpun -> faultNumber) ? 1 : 0;
+        FAULT_F1_state = (FAULT_F1 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_TRO_state = (FAULT_TRO == cpun -> faultNumber) ? 1 : 0;
+        FAULT_CMD_state = (FAULT_CMD == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DRL_state = (FAULT_DRL == cpun -> faultNumber) ? 1 : 0;
+        FAULT_LUF_state = (FAULT_LUF == cpun -> faultNumber) ? 1 : 0;
+        FAULT_CON_state = (FAULT_CON == cpun -> faultNumber) ? 1 : 0;
+        FAULT_PAR_state = (FAULT_PAR == cpun -> faultNumber) ? 1 : 0;
+        FAULT_IPR_state = (FAULT_IPR == cpun -> faultNumber) ? 1 : 0;
+        FAULT_ONC_state = (FAULT_ONC == cpun -> faultNumber) ? 1 : 0;
+        FAULT_SUF_state = (FAULT_SUF == cpun -> faultNumber) ? 1 : 0;
+        FAULT_OFL_state = (FAULT_OFL == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DIV_state = (FAULT_DIV == cpun -> faultNumber) ? 1 : 0;
+        FAULT_EXF_state = (FAULT_EXF == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DF0_state = (FAULT_DF0 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DF1_state = (FAULT_DF1 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DF2_state = (FAULT_DF2 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_DF3_state = (FAULT_DF3 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_ACV_state = (FAULT_ACV == cpun -> faultNumber) ? 1 : 0;
+        FAULT_MME2_state = (FAULT_MME2 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_MME3_state = (FAULT_MME3 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_MME4_state = (FAULT_MME4 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_F2_state = (FAULT_F2 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_F3_state = (FAULT_F3 == cpun -> faultNumber) ? 1 : 0;
+        FAULT_TRB_state = (FAULT_TRB == cpun -> faultNumber) ? 1 : 0;
+        //FAULT_oob_state = (oob_fault == cpun -> faultNumber) ? 1 : 0;
 
         //gtk_widget_queue_draw (fault_display[0]);
         //gtk_widget_queue_draw (fault_display[1]);
@@ -458,7 +455,7 @@ static gboolean time_handler (GtkWidget * widget)
 
     if (update)
       gtk_widget_queue_draw (widget);
-    previous = * multipassStatsPtr;
+    previous = * cpun;
     return TRUE;
 
   }
@@ -471,59 +468,42 @@ int main (int argc, char * argv [])
     quit_action . sa_flags = SA_RESTART;
     sigaction (SIGQUIT, & quit_action, NULL);
 
-#if 0
-    //printf ("Session %d\n", getsid (0));
-    int fd = shm_open ("/multipass", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (fd == -1)
+    sid = getsid (0);
+    if (argc > 1 && strlen (argv [1]))
       {
-        printf ("multipass shm_open fail %d\n", errno);
+        char * end;
+        long p = strtol (argv [1], & end, 0);
+        if (* end == 0)
+          {
+            sid = p;
+            argv [1] [0] = 0;
+          }
+      }
+
+    int cpunum = 0;
+    if (argc > 2 && strlen (argv [2]))
+      {
+        char * end;
+        long p = strtol (argv [2], & end, 0);
+        if (* end == 0)
+          {
+            cpunum = p;
+            argv [1] [0] = 0;
+          }
+      }
+    if (cpunum < 0 || cpunum > N_CPU_UNITS_MAX - 1)
+      {
+        printf ("invalid cpu number %d\n", cpunum);
         return 1;
       }
 
-    if (ftruncate (fd, sizeof (multipassStats)) == -1)
+    cpus = (cpu_state_t *) open_shm ("cpus", sid, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
+    if (! cpus)
       {
-        printf ("multipass ftruncate  fail %d\n", errno);
+        perror ("cpus open_shm");
         return 1;
       }
-
-    multipassStatsPtr = (multipassStats *) mmap (NULL, sizeof (multipassStats),
-                                                 PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (multipassStatsPtr == MAP_FAILED)
-      {
-        printf ("multipass mmap  fail %d\n", errno);
-        return 1;
-      }
-#else
-    //ppid = getppid ();
-     sid = getsid (0);
-     if (argc > 1 && strlen (argv [1]))
-       {
-         char * end;
-         long p = strtol (argv [1], & end, 0);
-         if (* end == 0)
-           {
-             sid = p;
-             argv [1] [0] = 0;
-           }
-       }
-
-    multipassStatsPtr = (multipassStats *) open_shm ("multipass", sid, sizeof (multipassStats));
-    if (! multipassStatsPtr)
-      {
-        perror ("multipass open_shm");
-        return 1;
-      }
-
-#endif
-#if 0
-    for (;;)
-      {
-        printf ("%06lo:%06lo\n", 
-                (multipassStatsPtr -> PPR_PSR_IC >> 18) & 0777777,
-                (multipassStatsPtr -> PPR_PSR_IC >>  0) & 0777777);
-        sleep (1);
-      }
-#endif
+    cpun = cpus + cpunum;
 
     gdk_rgba_parse (& lightOn, "white");
     gdk_rgba_parse (& lightOff, "black");
@@ -709,7 +689,7 @@ int main (int argc, char * argv [])
 
       SNR_lights[nreg] = createLightArray (15, SNR_state[nreg]);
       RNR_lights[nreg] = createLightArray (3, RNR_state[nreg]);
-      BITNO_lights[nreg] = createLightArray (1, BITNO_state[nreg]);
+      BITNO_lights[nreg] = createLightArray (6, BITNO_state[nreg]);
       WORDNO_lights[nreg] = createLightArray (18, WORDNO_state[nreg]);
 
       snprintf(PAR_text, sizeof(PAR_text), "PAR%d ", nreg);

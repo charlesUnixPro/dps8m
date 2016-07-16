@@ -21,6 +21,7 @@
 #include "dps8_clk.h"
 #endif
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_iom.h"
@@ -31,17 +32,15 @@
 #include "dps8_disk.h"
 #include "dps8_utils.h"
 #include "dps8_append.h"
-#include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
 #include "dps8_urp.h"
 #include "dps8_cable.h"
+#include "dps8_absi.h"
 #include "utlist.h"
-#ifdef HDBG
 #include "hdbg.h"
-#endif
 
 #ifdef MULTIPASS
 #include "dps8_mp.h"
@@ -83,6 +82,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
 
 stats_t sys_stats;
 
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf);
 static t_stat dps_debug_skip (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat dps_debug_stop (int32 arg, char * buf);
@@ -123,6 +123,7 @@ static CTAB dps8_cmds[] =
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
+    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL},
     {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
     {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
@@ -131,9 +132,7 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL},
-#ifdef HDBG
     {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL},
-#endif
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
     {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
@@ -196,7 +195,8 @@ static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
-    setG7fault (FAULT_EXF, 0);
+    // Assume the bootload CPU
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
 
@@ -206,6 +206,15 @@ static void dps8_init(void)
 {
 #include "dps8.sha1.txt"
     sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
+#ifdef TESTING
+    sim_printf ("#### TESTING BUILD ####\n");
+#else
+    sim_printf ("Production build\n");
+#endif
+#ifdef ISOLTS
+    sim_printf ("#### ISOLTS BUILD ####\n");
+#endif
+
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
     // These are part of the simh interface
@@ -239,6 +248,7 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
+    absi_init ();
 #ifdef MULTIPASS
     multipassInit (dps8m_sid);
 #endif
@@ -252,7 +262,16 @@ uint64 sim_deb_segno = NO_SUCH_SEGNO;
 uint64 sim_deb_ringno = NO_SUCH_RINGNO;
 uint64 sim_deb_skip_limit = 0;
 uint64 sim_deb_skip_cnt = 0;
+uint64 sim_deb_mme_cntdwn = 0;
+
 bool sim_deb_bar = false;
+
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf)
+  {
+    sim_deb_mme_cntdwn = strtoull (buf, NULL, 0);
+    sim_printf ("Debug MME countdown set to %lld\n", sim_deb_mme_cntdwn);
+    return SCPE_OK;
+  }
 
 static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
   {
@@ -311,7 +330,7 @@ static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
 #define bookSegmentsMax 1024
 #define bookComponentsMax 4096
 #define bookSegmentNameLen 33
-struct bookSegment
+static struct bookSegment
   {
     char * segname;
     int segno;
@@ -497,7 +516,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
  }
 
 // Warning: returns ptr to static buffer
-int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
+static int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
   {
     int i;
     for (i = 0; i < nBookSegments; i ++)
@@ -551,7 +570,7 @@ static t_stat listSourceAt (UNUSED int32 arg, UNUSED char *  buf)
       return SCPE_ARG;
     char * compname;
     word18 compoffset;
-    char * where = lookupAddress (segno, offset,
+    char * where = lookupAddress ((word18) segno, offset,
                                   & compname, & compoffset);
     if (where)
       {
@@ -994,7 +1013,7 @@ static t_stat absAddrN (int segno, uint offset)
     word24 res;
 
     //t_stat rc = computeAbsAddrN (& res, segno, offset);
-    if (dbgLookupAddress (segno, offset, & res, NULL))
+    if (dbgLookupAddress ((word18) segno, offset, & res, NULL))
       return SCPE_ARG;
 
     sim_printf ("Address is %08o\n", res);
@@ -1005,16 +1024,19 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (FAULT_EXF, 0);
+    // Assume bootload CPU
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return SCPE_OK;
   }
 
 // STK 
 
+#if 0
 t_stat dbgStackTrace (void)
   {
     return stackTrace (0, "");
   }
+#endif 
 
 static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
   {
@@ -1044,7 +1066,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
     //  pr7/sb stack base
 
     word15 fpSegno = cpu . PR [6] . SNR;
-    word15 fpOffset = cpu . PR [6] . WORDNO;
+    word18 fpOffset = cpu . PR [6] . WORDNO;
 
     for (uint frameNo = 1; ; frameNo ++)
       {
@@ -1351,7 +1373,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupAddress (segno, offset, NULL, NULL);
+        char * ans = lookupAddress ((word18) segno, (word18) offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
@@ -1373,7 +1395,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
             return SCPE_OK;
           }
         sim_printf ("0%o:0%o\n", (uint) segno, (uint) (comp_offset + offset));
-        absAddrN  (segno, comp_offset + offset);
+        absAddrN  ((int) segno, (uint) (comp_offset + offset));
       }
 /*
     if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
@@ -1401,11 +1423,11 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
                 & symbol_start, & symbol_length) != 9)
       return SCPE_ARG;
 
-    int idx = addBookSegment (segname, segno);
+    int idx = addBookSegment (segname, (int) segno);
     if (idx < 0)
       return SCPE_ARG;
 
-    if (addBookComponent (idx, compname, txt_start, txt_len, intstat_start, intstat_length, symbol_start, symbol_length) < 0)
+    if (addBookComponent (idx, compname, txt_start, txt_len, (int) intstat_start, (int) intstat_length, (int) symbol_start, (int) symbol_length) < 0)
       return SCPE_ARG;
 
     return SCPE_OK;
@@ -1744,10 +1766,10 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
             
             // XXX Need to complete MW EIS support in disAssemble()
             
-            for(int n = 0 ; n < p->info->ndes; n += 1)
+            for(uint n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
-            return -p->info->ndes;
+            return (t_stat) -p->info->ndes;
         }
         
         return SCPE_OK;
@@ -2166,6 +2188,7 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+    & absi_dev,
     NULL
   };
 
@@ -2285,7 +2308,7 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the simh code.
 
-pthread_mutex_t scpMQlock;
+static pthread_mutex_t scpMQlock;
 typedef struct scpQueueElement scpQueueElement;
 struct scpQueueElement
   {
@@ -2293,7 +2316,7 @@ struct scpQueueElement
     scpQueueElement * prev, * next;
   };
 
-scpQueueElement * scpQueue = NULL;
+static scpQueueElement * scpQueue = NULL;
 
 static void scpQueueMsg (char * msg)
   {

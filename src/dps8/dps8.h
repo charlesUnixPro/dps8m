@@ -22,14 +22,13 @@
 #include <libgen.h> // needed for OS/X and Android
 #endif
 
-#ifndef EMULATOR_ONLY
 //#define EMULATOR_ONLY 1
-#endif
 
 #ifndef USE_INT64
 #define USE_INT64
 #endif
 
+#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
@@ -50,11 +49,17 @@
 // Enable Real time Timer Register
 //#define REAL_TR
 
+//#define CAST_BITNO
+
+
+#ifdef TESTING
+#else
 // Enable speed over debuggibility
 #define SPEED
+#endif
 
 // Enable history debugger
-#define HDBG
+//#define HDBG
 
 // XXX FixMe
 // history debugger wont build under XCode just yet.
@@ -64,6 +69,13 @@
 
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
+
+// Enable ISOLTS support
+//#define ISOLTS
+
+#define OSCAR
+
+#define OVERFLOW_WRITE_THROUGH
 
 #include "sim_defs.h"                                   /* simulator defns */
 
@@ -91,15 +103,21 @@ typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
 typedef uint16      word10;
 typedef uint16      word12;
+typedef uint16      word13;
 typedef uint16      word14;
 typedef uint16      word15;
 typedef uint16      word16;
+typedef uint32      word17;
 typedef uint32      word18;
 typedef uint32      word19;
 typedef int32       word18s;
 typedef uint32      word20;
+typedef uint32      word21;
+typedef uint32      word22;
+typedef uint32      word23;
 typedef uint32      word24;
 typedef uint32      word27;
+typedef uint32      word28;
 typedef uint32      word32;
 typedef uint64      word36;
 typedef uint64      word37;
@@ -126,7 +144,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETF(flags, x)         flags = ((flags) |  (x))
 #define CLRF(flags, x)         flags = ((flags) & ~(x))
-#define TSTF(flags, x)         ((flags) & (x))
+#define TSTF(flags, x)         (((flags) & (x)) ? 1 : 0)
 #define SCF(cond, flags, x)    { if ((cond)) SETF((flags), x); else CLRF((flags), x); }
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))
@@ -191,8 +209,8 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
-#define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
-#define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
+#define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
+#define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
 #define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
 
@@ -300,7 +318,7 @@ struct opCode {
     const char *mne;    ///< mnemonic
     opc_flag flags;        ///< various and sundry flags
     opc_mod mods;         ///< disallowed addr mods
-    int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+    uint ndes;         ///< number of operand descriptor words for instruction (mw EIS)
 };
 typedef struct opCode opCode;
 

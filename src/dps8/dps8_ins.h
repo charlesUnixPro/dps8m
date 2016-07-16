@@ -17,3 +17,4 @@ word27 getTR (bool * runout);
 void ackTR (void);
 #endif
 
+bool chkOVF (void);

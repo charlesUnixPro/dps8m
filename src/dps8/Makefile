@@ -1,8 +1,28 @@
+#
+# Condition builds
+#
+#  TESTING=1    Enables sim_debug and additional runtime checks
+#
+
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
 
 
 include ../Makefile.mk
+
+ifneq (,$(wildcard Makefile.local))
+$(warning ####)
+$(warning #### Using Makefile.local)
+$(warning ####)
+include Makefile.local
+endif
+
+ifdef TESTING
+$(warning ####)
+$(warning #### TESTING mode)
+$(warning ####)
+CFLAGS += -DTESTING
+endif
 
 CFLAGS += -Wall 
 
@@ -182,9 +202,6 @@ zzzCFLAGS += \
 
 # Configuration switches
 
-# Enable M[] as shared memory segment
-#LDFLAGS += -lrt
-
 LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
 
 # simh requires -ldl
@@ -198,6 +215,9 @@ else
   endif
   ifeq ($(OSTYPE),Linux)
     LIBS = $(LOCALLIBS)  -lm -ldl
+    M_SHARED = 1
+    CFLAGS += -DM_SHARED
+    LDFLAGS += -lrt
   endif
 endif
 LIBS ?= $(LOCALLIBS) -lm -ldl
@@ -210,7 +230,8 @@ LIBS ?= $(LOCALLIBS) -lm -ldl
 
 #LIBS = -lrt -lpthread 
 
-C_SRCS  = ./dps8_addrmods.c 
+C_SRCS  = ./dps8_absi.c
+C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
 C_SRCS += ./dps8_bar.c
 C_SRCS += ./dps8_cable.c
@@ -229,6 +250,7 @@ C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
 C_SRCS += ./dps8_loader.c
 C_SRCS += ./dps8_math.c
+C_SRCS += ./dps8_math128.c
 C_SRCS += ./dps8_mt.c
 C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
@@ -245,11 +267,15 @@ C_SRCS += ./fnp_mux.c
 #C_SRCS += ./fnpp.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./hdbg.c
-#C_SRCS += ./shm.c
+ifeq ($(M_SHARED),1)
+C_SRCS += ./shm.c
+endif
+C_SRCS += ./udplib.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
-H_SRCS  = dps8_addrmods.h
+H_SRCS  = dps8_absi.h
+H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
 H_SRCS += dps8_bar.h
 H_SRCS += dps8_cable.h
@@ -274,6 +300,7 @@ H_SRCS += dps8_math.h
 H_SRCS += dps8_mp.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
+H_SRCS += dps8_prt.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
@@ -288,8 +315,12 @@ H_SRCS += fnp_mux.h
 #H_SRCS += fnpp.h
 H_SRCS += fnp_rev.h
 H_SRCS += fnp_utils.h
+H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
+ifeq ($(M_SHARED),1)
 H_SRCS += shm.h
+endif
+H_SRCS += udplib.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
@@ -315,6 +346,12 @@ blinkenLights : blinkenLights.c shm.o
 	@echo LD blinkenLights
 	@$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
 
+blinkenLights2 : blinkenLights2.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights2.c -o blinkenLights2 shm.o `pkg-config --cflags --libs gtk+-3.0` -lrt
+
+blinkenLightsPi : blinkenLightsPi.c shm.o
+	$(CC) $(CFLAGS) $(LDFLAGS) blinkenLightsPi.c -o blinkenLightsPi shm.o 
+
 #all : blinkenLights
 
 blinkenLightsCurses : blinkenLightsCurses.c shm.o
@@ -329,22 +366,34 @@ dps8 : tags $(OBJS) $(LOCALLIBS)
 	
 .PHONY: FORCE
 
-dps8_sha1_txt : FORCE
-	@echo GIT dps8.sha1.txt
-	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt 
-	-@git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt 
+dps8.sha1.txt : FORCE
+	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
+	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
+	@if [ -e dps8.sha1.txt ] ; then \
+	    if diff dps8.sha1.txt dps8.sha1.txt~ >/dev/null ; then \
+	        rm dps8.sha1.txt~ ; \
+	    else \
+	        mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
+	    fi \
+	else \
+	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
+	fi
 
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 : 
-	@(cd ../simhv40-beta; $(MAKE))
-	@(cd ../decNumber; $(MAKE))
-	@$(MAKE) dps8_sha1_txt
-	@$(MAKE) dps8
+	(cd ../simhv40-beta; $(MAKE))
+	(cd ../decNumber; $(MAKE))
+	#$(MAKE) zmq
+	$(MAKE) dps8.sha1.txt
+	$(MAKE) dps8
 
 
 # Other Targets
+
+udplib : udplib.c udplib.h
+	clang udplib.c -o udplib -DTEST=1
 
 .PHONY: zeromq czmq zyre 
 
@@ -368,8 +417,8 @@ zyre : ../lib/libzyre.so
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
-tags : $(C_SRCS) $(H_SRCS) 
-	@echo CTAGS dps8
+tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
+	@echo TAGS
 	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
@@ -388,16 +437,16 @@ clean:
 	@$(MAKE) -C ../simhv40-beta clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
+	@$(MAKE) clean_dps8
+
+.PHONY: clean_dps8
+
+clean_dps8:
 	@echo CLEAN dps8
 	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 
-.PHONY : clean_dps8
-
-clean_dps8:
-	@echo CLEAN_DPS8
-	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
-
-dps8_sys.c : dps8_sha1_txt
+dps8_sys.o : dps8.sha1.txt
+dps8_sys.d : dps8.sha1.txt
 
 
 %.d: %.c

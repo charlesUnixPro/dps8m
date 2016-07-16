@@ -202,6 +202,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_iom.h"
@@ -411,6 +412,8 @@ typedef struct
     //   alarm disable
     //   test/normal
     iomStat_t iomStatus;
+
+    uint invokingScuUnitNum; // the unit number of the SCU that did the connect.
   } iomUnitData_t;
 
 static iomUnitData_t iomUnitData [N_IOM_UNITS_MAX];
@@ -533,8 +536,9 @@ static void setupIOMScbankMap (void)
             uint store_size = p -> configSwPortStoresize [port_num];
             uint sz = 1 << (store_size + 16);
     
-            // Calculate the base address of the memor in wordsy
-            uint assignment = cpu . switches . assignment [port_num];
+            // Calculate the base address of the memory in words
+            uint assignment = p -> configSwPortAddress [port_num];
+            //uint assignment = cpu.switches.assignment [port_num];
             uint base = assignment * sz;
     
             // Now convert to SCBANKs
@@ -559,7 +563,8 @@ static void setupIOMScbankMap (void)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
             __func__, pg, iomScbankMap [iomUnitIdx] [pg]);
   }
-   
+
+#if 0   
 static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
   {
     uint scpg = addr / SCBANK;
@@ -567,6 +572,7 @@ static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
       return iomScbankMap [iomUnitIdx] [scpg];
     return -1;
   }
+#endif
 
 static uint mbxLoc (uint iomUnitIdx, uint chan)
   {
@@ -657,7 +663,7 @@ static uint mbxLoc (uint iomUnitIdx, uint chan)
 // represent the next absoulute address (bits 6-23) of data prior to
 // the application of the Page Table Word"
 
-int status_service (uint iomUnitIdx, uint chan, bool marker)
+static int status_service (uint iomUnitIdx, uint chan, bool marker)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     // See page 33 and AN87 for format of y-pair of status info
@@ -666,31 +672,31 @@ int status_service (uint iomUnitIdx, uint chan, bool marker)
     
     word36 word1, word2;
     word1 = 0;
-    putbits36 (& word1, 0, 12, p -> stati);
+    putbits36_12 (& word1, 0, p -> stati);
     // isOdd can be set to zero; see 
     //   http://ringzero.wikidot.com/wiki:cac-2015-10-22
-    //putbits36 (& word1, 12, 1, p -> isOdd ? 0 : 1);
-    putbits36 (& word1, 13, 1, marker ? 1 : 0);
-    putbits36 (& word1, 14, 2, 0); // software status
-    putbits36 (& word1, 16, 1, p -> initiate ? 1 : 0);
-    putbits36 (& word1, 17, 1, 0); // software abort bit
-    putbits36 (& word1, 18, 3, p -> chanStatus);
-    putbits36 (& word1, 21, 3, iomUnitData [iomUnitIdx] . iomStatus);
+    //putbits36_1 (& word1, 12, p -> isOdd ? 0 : 1);
+    putbits36_1 (& word1, 13, marker ? 1 : 0);
+    putbits36_2 (& word1, 14, 0); // software status
+    putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
+    putbits36_1 (& word1, 17, 0); // software abort bit
+    putbits36_3 (& word1, 18, p -> chanStatus);
+    putbits36_3 (& word1, 21, iomUnitData [iomUnitIdx] . iomStatus);
 #if 0
     // BUG: Unimplemented status bits:
-    putbits36 (& word1, 24, 6, chan_status.addr_ext);
+    putbits36_6 (& word1, 24, chan_status.addr_ext);
 #endif
-    putbits36 (& word1, 30, 6, p -> recordResidue);
+    putbits36_6 (& word1, 30, p -> recordResidue);
     
     word2 = 0;
 #if 0
     // BUG: Unimplemented status bits:
-    putbits36 (& word2, 0, 18, chan_status.addr);
-    putbits36 (& word2, 22, 2, chan_status.type);
+    putbits36_18 (& word2, 0, chan_status.addr);
+    putbits36_2 (& word2, 22, chan_status.type);
 #endif
-    putbits36 (& word2, 18, 3, p -> charPos);
-    putbits36 (& word2, 21, 1, p -> isRead ? 1 : 0);
-    putbits36 (& word2, 24, 12, p -> tallyResidue);
+    putbits36_3 (& word2, 18, p -> charPos);
+    putbits36_1 (& word2, 21, p -> isRead ? 1 : 0);
+    putbits36_12 (& word2, 24, p -> tallyResidue);
     
     // BUG: need to write to mailbox queue
     
@@ -703,9 +709,9 @@ int status_service (uint iomUnitIdx, uint chan, bool marker)
     core_read (scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
                "SCW chan %02o %012llo\n", chan, scw);
-    word18 addr = getbits36 (scw, 0, 18);   // absolute
-    uint lq = getbits36 (scw, 18, 2);
-    uint tally = getbits36 (scw, 24, 12);
+    word18 addr = getbits36_18 (scw, 0);   // absolute
+    uint lq = getbits36_2 (scw, 18);
+    uint tally = getbits36_12 (scw, 24);
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: Status tally %d (%o) lq %o\n",
                __func__, tally, tally, lq);
@@ -771,8 +777,8 @@ int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Updating SCW from: %012llo\n",
                    __func__, scw);
-        putbits36 (& scw, 24, 12, tally);
-        putbits36 (& scw, 0, 18, addr);
+        putbits36_12 (& scw, 24, (word12) tally);
+        putbits36_18 (& scw, 0, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                to: %012llo\n",
                    __func__, scw);
@@ -799,7 +805,7 @@ static word24 UNUSED buildAUXPTWaddress (uint iomUnitIdx, int chan)
 
     word12 IOMBaseAddress = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     word24 addr = (((word24) IOMBaseAddress) & MASK12) << 6;
-    addr |= (chan & MASK6) << 2;
+    addr |= ((uint) chan & MASK6) << 2;
     addr |= 03;
     return addr;
   }
@@ -914,7 +920,7 @@ void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
         case cm1e:
         case cm2e:
         case cm1:
-          daddr |= p -> ADDR_EXT << 18;
+          daddr |= (uint) p -> ADDR_EXT << 18;
           break;
 
         case cm2:
@@ -929,8 +935,8 @@ sim_warn ("iomDirectDataService DCW paged\n");
         case cm5:
           {
 //sim_printf ("iomDirectDataService DCW segmented\n");
-            fetchDDSPTW (iomUnitIdx, chan, daddr);
-            daddr = (getbits36 (p -> PTW_DCW, 4, 14) << 10) | (daddr & MASK8);
+            fetchDDSPTW (iomUnitIdx, (int) chan, daddr);
+            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK8);
           }
           break;
       }
@@ -959,7 +965,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                    __func__);
         tally = 4096;
       }
-    p -> tallyResidue = tally;
+    p -> tallyResidue = (word12) tally;
 
     if (write)
       {
@@ -971,8 +977,8 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
    
             if (p -> PCW_63_PTP)
               {
-                fetchIDSPTW (iomUnitIdx, chan, daddr);
-                word24 addr = (getbits36 (p -> PTW_DCW, 4, 14) << 10) | (daddr & MASK10);
+                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
                 core_write (addr, * data, __func__);
 //sim_printf (" %o %08o %08o %012llo %012llo\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
@@ -985,7 +991,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                   }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
-                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
                 core_write (daddr2, * data, __func__);
               }
             daddr ++;
@@ -1007,15 +1013,15 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               }
             if (p -> PCW_63_PTP)
               {
-                fetchIDSPTW (iomUnitIdx, chan, daddr);
-                word24 addr = (getbits36 (p -> PTW_DCW, 4, 14) << 10) | (daddr & MASK10);
+                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
                 core_read (addr, data, __func__);
               }
             else
               {
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
-                uint daddr2 = daddr | p -> ADDR_EXT << 18;
+                uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
                 core_read (daddr2, data, __func__);
               }
             daddr ++;
@@ -1173,14 +1179,14 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     core_read (chanLoc, & p -> LPW, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012llo\n", p -> LPW);
 
-    p -> LPW_DCW_PTR = getbits36 (p -> LPW,  0, 18);
-    p -> LPW_18_RES =  getbits36 (p -> LPW, 18,  1);
-    p -> LPW_19_REL =  getbits36 (p -> LPW, 19,  1);
-    p -> LPW_20_AE =   getbits36 (p -> LPW, 20,  1);
-    p -> LPW_21_NC =   getbits36 (p -> LPW, 21,  1);
-    p -> LPW_22_TAL =  getbits36 (p -> LPW, 22,  1);
-    p -> LPW_23_REL =  getbits36 (p -> LPW, 23,  1);
-    p -> LPW_TALLY =   getbits36 (p -> LPW, 24, 12);
+    p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
+    p -> LPW_18_RES =  getbits36_1 (p -> LPW, 18);
+    p -> LPW_19_REL =  getbits36_1 (p -> LPW, 19);
+    p -> LPW_20_AE =   getbits36_1 (p -> LPW, 20);
+    p -> LPW_21_NC =   getbits36_1 (p -> LPW, 21);
+    p -> LPW_22_TAL =  getbits36_1 (p -> LPW, 22);
+    p -> LPW_23_REL =  getbits36_1 (p -> LPW, 23);
+    p -> LPW_TALLY =   getbits36_12 (p -> LPW, 24);
 
 
     if (chan == IOM_CONNECT_CHAN)
@@ -1192,8 +1198,8 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     else
       {
         core_read (chanLoc + 1, & p -> LPWX, __func__);
-        p -> LPWX_BOUND = getbits36 (p -> LPWX, 0, 18);
-        p -> LPWX_SIZE = getbits36 (p -> LPWX, 18, 18);
+        p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
+        p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
       }   
     updateChanMode (iomUnitIdx, chan, false);
 
@@ -1226,35 +1232,35 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
 static void unpackDCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    p -> DCW_18_20_CP =      getbits36 (p -> DCW, 18,  3);
+    p -> DCW_18_20_CP =      getbits36_3 (p -> DCW, 18);
 
     if (p -> DCW_18_20_CP == 07) // IDCW
       { 
-        p -> IDCW_DEV_CMD =      getbits36 (p -> DCW,  0,  6);
-        p -> IDCW_DEV_CODE =     getbits36 (p -> DCW,  6,  6);
+        p -> IDCW_DEV_CMD =      getbits36_6 (p -> DCW,  0);
+        p -> IDCW_DEV_CODE =     getbits36_6 (p -> DCW,  6);
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
-          p -> IDCW_EC =         getbits36 (p -> DCW, 21,  1);
+          p -> IDCW_EC =         getbits36_1 (p -> DCW, 21);
         if (p -> IDCW_EC)
           p -> SEG = 1; // pat. step 45
-        p -> IDCW_CONTROL =      getbits36 (p -> DCW, 22,  2);
-        p -> IDCW_CHAN_CMD =     getbits36 (p -> DCW, 24,  6);
-        p -> IDCW_COUNT =        getbits36 (p -> DCW, 30,  6);
+        p -> IDCW_CONTROL =      getbits36_2 (p -> DCW, 22);
+        p -> IDCW_CHAN_CMD =     getbits36_6 (p -> DCW, 24);
+        p -> IDCW_COUNT =        getbits36_6 (p -> DCW, 30);
       }
     else // TDCW or DDCW
       {
-        p -> TDCW_DATA_ADDRESS = getbits36 (p -> DCW,  0, 18);
-        p -> TDCW_31_SEG =       getbits36 (p -> DCW, 31,  1);
-        p -> TDCW_32_PDTA =      getbits36 (p -> DCW, 32,  1);
-        p -> TDCW_33_PDCW =      getbits36 (p -> DCW, 33,  1);
-        p -> TDCW_33_EC =        getbits36 (p -> DCW, 33,  1);
-        p -> TDCW_34_RES =       getbits36 (p -> DCW, 34,  1);
-        p -> TDCW_35_REL =       getbits36 (p -> DCW, 35,  1);
+        p -> TDCW_DATA_ADDRESS = getbits36_18 (p -> DCW,  0);
+        p -> TDCW_31_SEG =       getbits36_1 (p -> DCW, 31);
+        p -> TDCW_32_PDTA =      getbits36_1 (p -> DCW, 32);
+        p -> TDCW_33_PDCW =      getbits36_1 (p -> DCW, 33);
+        p -> TDCW_33_EC =        getbits36_1 (p -> DCW, 33);
+        p -> TDCW_34_RES =       getbits36_1 (p -> DCW, 34);
+        p -> TDCW_35_REL =       getbits36_1 (p -> DCW, 35);
 
-        p -> DDCW_TALLY =        getbits36 (p -> DCW, 24, 12);
-        p -> DDCW_ADDR =         getbits36 (p -> DCW,  0, 18);
-        p -> DDCW_22_23_TYPE =   getbits36 (p -> DCW, 22,  2);
+        p -> DDCW_TALLY =        getbits36_12 (p -> DCW, 24);
+        p -> DDCW_ADDR =         getbits36_18 (p -> DCW,  0);
+        p -> DDCW_22_23_TYPE =   getbits36_2 (p -> DCW, 22);
       }
   }
 
@@ -1262,20 +1268,20 @@ static void packDCW (uint iomUnitIdx, uint chan)
   {
     // DCW_18_20_CP is the only field ever changed.
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36 (& p -> DCW, 18, 3, p -> DCW_18_20_CP);
+    putbits36_3 (& p -> DCW, 18, p -> DCW_18_20_CP);
   }
 
 static void packLPW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36 (& p-> LPW,  0, 18, p -> LPW_DCW_PTR);
-    putbits36 (& p-> LPW, 18,  1, p -> LPW_18_RES);
-    putbits36 (& p-> LPW, 19,  1, p -> LPW_19_REL);
-    putbits36 (& p-> LPW, 20,  1, p -> LPW_20_AE);
-    putbits36 (& p-> LPW, 21,  1, p -> LPW_21_NC);
-    putbits36 (& p-> LPW, 22,  1, p -> LPW_22_TAL);
-    putbits36 (& p-> LPW, 23,  1, p -> LPW_23_REL);
-    putbits36 (& p-> LPW, 24, 12, p -> LPW_TALLY);
+    putbits36_18 (& p-> LPW,  0, p -> LPW_DCW_PTR);
+    putbits36_1 (& p-> LPW, 18, p -> LPW_18_RES);
+    putbits36_1 (& p-> LPW, 19, p -> LPW_19_REL);
+    putbits36_1 (& p-> LPW, 20, p -> LPW_20_AE);
+    putbits36_1 (& p-> LPW, 21, p -> LPW_21_NC);
+    putbits36_1 (& p-> LPW, 22, p -> LPW_22_TAL);
+    putbits36_1 (& p-> LPW, 23, p -> LPW_23_REL);
+    putbits36_12 (& p-> LPW, 24, p -> LPW_TALLY);
   }
 
 static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
@@ -1283,15 +1289,15 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
 //sim_printf ("%012llo %012llo\n", p -> PCW0, p ->  PCW1);
-    p -> PCW_CHAN = getbits36 (p -> PCW1, 3, 6);
-    p -> PCW_AE = getbits36 (p -> PCW0, 12, 6);
-    p -> PCW_21_MSK = getbits36 (p -> PCW0, 21, 1);
-    p -> PCW_PAGE_TABLE_PTR = getbits36 (p -> PCW1, 9, 18);
-    p -> PCW_63_PTP = getbits36 (p -> PCW1, 27, 1);
-    p -> PCW_64_PGE = getbits36 (p -> PCW1, 28, 1);
+    p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
+    p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
+    p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
+    p -> PCW_PAGE_TABLE_PTR = getbits36_18 (p -> PCW1, 9);
+    p -> PCW_63_PTP = getbits36_1 (p -> PCW1, 27);
+    p -> PCW_64_PGE = getbits36_1 (p -> PCW1, 28);
 //sim_printf ("PCW_64_PGE %u\n", p -> PCW_64_PGE);
 //sim_printf ("%d %p\n", chan, p);
-    p -> PCW_65_AUX = getbits36 (p -> PCW1, 29, 1);
+    p -> PCW_65_AUX = getbits36_1 (p -> PCW1, 29);
     if (p -> PCW_65_AUX)
       sim_warn ("PCW_65_AUX\n");
     p -> DCW = p -> PCW0;
@@ -1366,9 +1372,9 @@ sim_err ("unhandled fetchAndParseDCW\n");
 //sim_printf ("PTW %012llo\n", p -> PTW_LPW);
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
-            word24 addr = (getbits36 (p -> PTW_LPW, 4, 14) << 10) | ((p -> LPW_DCW_PTR) & MASK10);
-//sim_printf ("addr now %08o\n", addr);
-            core_read (addr, & p -> DCW, __func__);
+            word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
+//sim_printf ("addr now %08o\n", addr_);
+            core_read (addr_, & p -> DCW, __func__);
 //sim_printf ("dcw now %012llo\n", p -> DCW);
           }
           break;
@@ -1407,10 +1413,10 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     //
 
     word36 faultWord = 0;
-    putbits36 (& faultWord, 9, 9, chan);
-    putbits36 (& faultWord, 18, 5, req);
+    putbits36_9 (& faultWord, 9, (word9) chan);
+    putbits36_5 (& faultWord, 18, req);
     // IAC, bits 26..29
-    putbits36 (& faultWord, 30, 6, signal);
+    putbits36_6 (& faultWord, 30, signal);
 
     uint mbx = mbxLoc (iomUnitIdx, chan);
 
@@ -1429,9 +1435,9 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     word36 ddcw;
     core_read (mbx, & ddcw, __func__);
     // incr addr
-    putbits36 (& ddcw, 0, 18, (getbits36 (ddcw, 0, 18) + 1) & MASK18);
+    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1) & MASK18);
     // decr tally
-    putbits36 (& ddcw, 24, 12, (getbits36 (ddcw, 24, 12) - 1) & MASK12);
+    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1) & MASK12);
     core_write (mbx, ddcw, __func__);
   }
 
@@ -1946,7 +1952,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       {
 // 04501 : COMMAND REJECTED, invalid command
         p -> stati = 04501;
-        p -> dev_code = getbits36 (p -> DCW, 6, 6);
+        p -> dev_code = getbits36_6 (p -> DCW, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
         sim_warn ("doPayloadChan handler error\n");
         goto done;
@@ -1968,8 +1974,8 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
     do
       {
-        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
-        if (rc < 0)
+        int rc2 = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        if (rc2 < 0)
           {
 // XXX set status flags
             sim_warn ("doPayloadChan list service failed\n");
@@ -1989,7 +1995,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
           {
 // 04501 : COMMAND REJECTED, invalid command
             p -> stati = 04501;
-            p -> dev_code = getbits36 (p -> DCW, 6, 6);
+            p -> dev_code = getbits36_6 (p -> DCW, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
             sim_warn ("doPayloadChan expected IDCW %d (%o)\n", chan, chan);
             goto done;
@@ -2001,7 +2007,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //          if LPW bit 23 = 1.
 
         if (p -> LPW_23_REL == 0 && p -> IDCW_EC == 1)
-          p -> ADDR_EXT = getbits36 (p -> DCW, 12,  6);
+          p -> ADDR_EXT = getbits36_6 (p -> DCW, 12);
 
         p -> recordResidue = 0;
         p -> tallyResidue = 0;
@@ -2020,16 +2026,16 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
           }
 // Send the DCW list's DCW
 
-        rc = d -> iomCmd (iomUnitIdx, chan);
+        rc2 = d -> iomCmd (iomUnitIdx, chan);
 
-        if (rc == 3) // handler still processing command, don't set
+        if (rc2 == 3) // handler still processing command, don't set
                      // terminate intrrupt.
           {
             sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
             return 0;
           }
 
-        if (rc || p -> IDCW_CONTROL == 0) 
+        if (rc2 || p -> IDCW_CONTROL == 0) 
           ptro = true; 
       } while (! ptro);
  
@@ -2136,19 +2142,24 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     sim_debug (DBG_DEBUG, & iom_dev, 
                "%s: IMW at %#o was %012llo; setting bit %d\n", 
                __func__, imw_addr, imw, chan_in_group);
-    putbits36 (& imw, chan_in_group, 1, 1);
+    putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012llo\n", __func__, imw_addr, imw);
     (void) core_write (imw_addr, imw, __func__);
     
 // XXX this should call scu_svc
 
+// XXX shouldn't it interrupt the SCU that invoked the connect?
+#if 1
+    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
+#else
     uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     uint base_addr = base << 6; // 01400
     // XXX this is wrong; I believe that the SCU unit number should be
     // calculated from the Port Configuration Address Assignment switches
     // For now, however, the same information is in the CPU config. switches, so
     // this should result in the same values.
+
     int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
     int scuUnitNum;
     if (cpu_port_num >= 0)
@@ -2159,6 +2170,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     if (scuUnitNum < 0)
       scuUnitNum = 0;
     return scu_set_interrupt ((uint)scuUnitNum, interrupt_num);
+#endif
   }
 
 /*
@@ -2173,8 +2185,8 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
 
 int send_marker_interrupt (uint iomUnitIdx, int chan)
 {
-    status_service (iomUnitIdx, chan, true);
-    return send_general_interrupt (iomUnitIdx, chan, imwMarkerPic);
+    status_service (iomUnitIdx, (uint) chan, true);
+    return send_general_interrupt (iomUnitIdx, (uint) chan, imwMarkerPic);
 }
 
 /*
@@ -2232,8 +2244,8 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 
 static t_stat termIntrSvc (UNIT * unitp)
   {
-    uint iomUnitIdx = unitp -> u3;
-    uint chan = unitp -> u4;
+    uint iomUnitIdx = (uint) unitp -> u3;
+    uint chan = (uint) unitp -> u4;
     status_service (iomUnitIdx, chan, false);
     send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
     return SCPE_OK;
@@ -2246,10 +2258,12 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-void iom_interrupt (uint iomUnitIdx)
+void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
   {
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
                __func__, 'A' + iomUnitIdx);
+
+    iomUnitData [iomUnitIdx] . invokingScuUnitNum = scuUnitNum;
 
     int ret = doConnectChan (iomUnitIdx);
 
@@ -2533,7 +2547,7 @@ static void initMemoryIOM (uint iomUnitIdx)
 
 static t_stat bootSvc (UNIT * unitp)
   {
-    uint iomUnitIdx = unitp - bootChannelUnit;
+    uint iomUnitIdx = (uint) (unitp - bootChannelUnit);
     // the docs say press sysinit, then boot; simh doesn't have an
     // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
     // The docs don't say what the behavior is is you dont press sysinit
@@ -2545,8 +2559,12 @@ static t_stat bootSvc (UNIT * unitp)
     // initialize memory with boot program
     initMemoryIOM (iomUnitIdx);
 
+    // This is needed to reset the interrupt mask registers; Multics tampers
+    // with runtime values, and mucks up rebooting on multi-CPU systems.
+    scu_reset (NULL);
+
     // simulate $CON
-    iom_interrupt (iomUnitIdx);
+    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
 
@@ -2561,13 +2579,13 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
         sim_printf ("iomBoot: Invalid unit number %d\n", unitNum);
         return SCPE_ARG;
       }
-    uint iomUnitIdx = unitNum;
+    uint iomUnitIdx = (uint) unitNum;
 #if 0
     // initialize memory with boot program
     initMemoryIOM ((uint)iomUnitIdx);
 
     // simulate $CON
-    iom_interrupt (iomUnitIdx);
+    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
 
 #else
     sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
@@ -2604,7 +2622,7 @@ static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, char * cptr, UN
 static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                              UNUSED void * desc)
   {
-    uint iomUnitIdx = IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
@@ -2764,7 +2782,7 @@ static config_list_t iom_config_list [] =
 
 static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
   {
-    uint iomUnitIdx = IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
@@ -2791,35 +2809,35 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
               break;
 
             case 0: // OS
-              p -> configSwOS = v;
+              p -> configSwOS = (enum configSwOs_t) v;
               break;
 
             case 1: // BOOT
-              p -> configSwBootloadCardTape = v;
+              p -> configSwBootloadCardTape = (enum configSwBlCT_t) v;
               break;
 
             case 2: // IOM_BASE
-              p -> configSwIomBaseAddress = v;
+              p -> configSwIomBaseAddress = (word12) v;
               break;
 
             case 3: // MULTIPLEX_BASE
-              p -> configSwMultiplexBaseAddress = v;
+              p -> configSwMultiplexBaseAddress = (word9) v;
               break;
 
             case 4: // TAPECHAN
-              p -> configSwBootloadMagtapeChan = v;
+              p -> configSwBootloadMagtapeChan = (word6) v;
               break;
 
             case 5: // CARDCHAN
-              p -> configSwBootloadCardrdrChan = v;
+              p -> configSwBootloadCardrdrChan = (word6) v;
               break;
 
             case 6: // SCUPORT
-              p -> configSwBootloadPort = v;
+              p -> configSwBootloadPort = (word3) v;
               break;
 
             case 7: // PORT
-              port_num = v;
+              port_num = (uint) v;
               break;
 
 #if 0
@@ -2831,27 +2849,27 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
                   } 
 #endif
             case 8: // ADDR
-              p -> configSwPortAddress [port_num] = v;
+              p -> configSwPortAddress [port_num] = (uint) v;
               break;
 
             case 9: // INTERLACE
-              p -> configSwPortInterface [port_num] = v;
+              p -> configSwPortInterface [port_num] = (uint) v;
               break;
 
             case 10: // ENABLE
-              p -> configSwPortEnable [port_num] = v;
+              p -> configSwPortEnable [port_num] = (uint) v;
               break;
 
             case 11: // INITENABLE
-              p -> configSwPortSysinitEnable [port_num] = v;
+              p -> configSwPortSysinitEnable [port_num] = (uint) v;
               break;
 
             case 12: // HALFSIZE
-              p -> configSwPortHalfsize [port_num] = v;
+              p -> configSwPortHalfsize [port_num] = (uint) v;
               break;
 
             case 13: // STORE_SIZE
-              p -> configSwPortStoresize [port_num] = v;
+              p -> configSwPortStoresize [port_num] = (uint) v;
               break;
 
             default:

@@ -11,12 +11,12 @@
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
-#include "dps8_faults.h"
 #include "dps8_opcodetable.h"
 
 // Computed Address Formation Flowcharts
@@ -289,7 +289,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
            (ISITP(indword) || ISITS(indword))))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP: faulting\n");
-        doFault (FAULT_IPR, ill_mod, "Incorrect address modifier");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "Incorrect address modifier");
       }
 
     // Whenever the processor is forming a virtual address two special address
@@ -339,9 +339,9 @@ static void updateIWB (word18 addr, word6 tag)
                cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
                extMods [GET_TAG (cpu . cu  . IWB)] . mod);
 
-    putbits36 (& cpu . cu  . IWB,  0, 18, addr);
-    putbits36 (& cpu . cu  . IWB, 30,  6, tag);
-    putbits36 (& cpu . cu  . IWB, 29,  1, 0);
+    putbits36_18 (& cpu . cu  . IWB,  0, addr);
+    putbits36_6 (& cpu . cu  . IWB, 30, tag);
+    putbits36_1 (& cpu . cu  . IWB, 29,  0);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012llo %06o %s\n",
@@ -383,7 +383,7 @@ t_stat doComputedAddressFormation (void)
     word6 Tm = 0;
     word6 Td = 0;
 
-    int iTAG;   // tag of word preceeding an indirect fetch
+    word6 iTAG;   // tag of word preceeding an indirect fetch
 
     directOperandFlag = false;
 
@@ -399,7 +399,7 @@ startCA:;
 
     if (++ lockupCnt > lockupLimit)
       {
-        doFault (FAULT_LUF, 0,
+        doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
                  "Lockup in addrmod");
       }
 
@@ -465,13 +465,13 @@ startCA:;
 
         // For the case of RPT/RPD, the instruction decoder has
         // verified that Tm is R or RI, and Td is X1..X7.
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
-                cpu . TPR . CA = (Cr & MASK15) + cpu . PR [PRn] . WORDNO;
-                cpu . TPR . CA &= AMASK;
+                cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
+                cpu.TPR.CA &= AMASK;
               }
             else
               {
@@ -488,8 +488,8 @@ startCA:;
         // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (! (cpu . cu  . rpt || cpu . cu  . rd))
-          updateIWB (cpu . TPR . CA, 0); // Known to be 0 or ,n
+        if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
+          updateIWB (cpu.TPR.CA, 0); // Known to be 0 or ,n
         return SCPE_OK;
       } // R_MOD
 
@@ -500,7 +500,7 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "RI_MOD: Td=%o\n", Td);
 
         if (Td == TD_DU || Td == TD_DL)
-          doFault (FAULT_IPR, ill_mod,
+          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
         word18 tmpCA = cpu . TPR . CA;
@@ -515,10 +515,10 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
-            if (cpu . cu  . rpt || cpu . cu  . rd)
+            if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
-                 word6 Td = GET_TD (i -> tag);
-                 uint Xn = X (Td);  // Get Xn of next instruction
+                 word6 Td_ = GET_TD (i -> tag);
+                 uint Xn = X (Td_);  // Get Xn of next instruction
                  tmpCA = cpu . rX [Xn];
               }
             else
@@ -547,7 +547,7 @@ startCA:;
         // interpreted.  The indirect word is treated as though it had R
         // modification with R = N."
 
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           {
              indword &= ~ INST_M_TAG;
              indword |= TM_R | GET_TD (iTAG);
@@ -562,12 +562,12 @@ startCA:;
             if (GET_TD (GET_TAG(indword)) == IT_F2)
               {
                 cpu . TPR . CA = tmpCA;
-                doFault (FAULT_F2, 0, "RI_MOD: IT_F2 (0)");
+                doFault (FAULT_F2, (_fault_subtype) {.bits=0}, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG(indword)) == IT_F3)
               {
                 cpu . TPR . CA = tmpCA;
-                doFault (FAULT_F3, 0, "RI_MOD: IT_F3");
+                doFault (FAULT_F3, (_fault_subtype) {.bits=0}, "RI_MOD: IT_F3");
               }
           }
 
@@ -588,7 +588,7 @@ startCA:;
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
-        if (cpu . cu  . rpt || cpu . cu  . rd)
+        if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           return SCPE_OK;
 
         updateIWB (cpu . TPR . CA, cpu . rTAG);
@@ -607,7 +607,7 @@ startCA:;
 
         if (++ lockupCnt > lockupLimit)
           {
-            doFault (FAULT_LUF, 0,
+            doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
                      "Lockup in addrmod IR mode");
           }
 
@@ -655,11 +655,11 @@ startCA:;
                     {
                         case IT_F2:
                             cpu . TPR . CA = saveCA;
-                            doFault (FAULT_F2, 0, "TM_IT: IT_F2 (1)");
+                            doFault (FAULT_F2, (_fault_subtype) {.bits=0}, "TM_IT: IT_F2 (1)");
 
                         case IT_F3:
                             cpu . TPR . CA = saveCA;
-                            doFault( FAULT_F3, 0, "TM_IT: IT_F3");
+                            doFault( FAULT_F3, (_fault_subtype) {.bits=0}, "TM_IT: IT_F3");
                     }
                 }
                 // fall through to TM_R
@@ -674,17 +674,19 @@ startCA:;
 
                 if (directOperandFlag)
                   {
-                    //cpu . TPR . CA += directOperand;
-                    //cpu . TPR . CA = directOperand;
-                    //cpu . TPR . CA &= MASK18;   // keep to 18-bits
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "IR_MOD(TM_R): CT_HOLD DO %012llo\n", directOperand);
+                    //cpu.TPR.CA += directOperand;
+                    //cpu.TPR.CA = directOperand;
+                    //cpu.TPR.CA &= MASK18;   // keep to 18-bits
 
                     //sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               //"IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu . TPR . CA);
+                               //"IR_MOD(TM_R): DO TPR.CA=%06o\n", cpu.TPR.CA);
 
-                    //updateIWB (cpu . TPR . CA, cpu . cu  . CT_HOLD); // Known to be DL or DU
                     // CT_HOLD has *DU or *DL; convert to DU or DL
                     word6 tag = TM_R | GET_TD (cpu.cu.CT_HOLD);
-                    updateIWB (cpu . TPR . CA, tag);
+         
+                    updateIWB (cpu . TPR . CA, tag); // Known to be DL or DU
                   }
                 else
                   {
@@ -711,8 +713,7 @@ startCA:;
                 if (directOperandFlag)
                   {
                     //cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA = directOperand;
-                    cpu . TPR . CA &= MASK18;   // keep to 18-bits
+                    cpu . TPR . CA = (word18) directOperand & MASK18; // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
@@ -761,7 +762,7 @@ startCA:;
         //    IT_IDC        = 017
         word12 tally;
         word6 idwtag, delta;
-        word24 Yi = -1;
+        word24 Yi = (word24) -1;
 
         switch (Td)
           {
@@ -769,7 +770,7 @@ startCA:;
             case SPEC_ITP:
             case SPEC_ITS:
               {
-                doFault(FAULT_IPR, ill_mod, "ITx in IT_MOD)");
+                doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "ITx in IT_MOD)");
               }
 
             case 2:
@@ -777,24 +778,24 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(): illegal procedure, illegal modifier, "
                            "fault Td=%o\n", Td);
-                doFault (FAULT_IPR, ill_mod,
+                doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                          "IT_MOD(): illegal procedure, illegal modifier, "
                          "fault");
               }
 
             case IT_F1:
               {
-                doFault(FAULT_F1, 0, "IT_MOD: IT_F1");
+                doFault(FAULT_F1, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F1");
               }
 
             case IT_F2:
               {
-                doFault(FAULT_F2, 0, "IT_MOD: IT_F2 (2)");
+                doFault(FAULT_F2, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F2 (2)");
               }
 
             case IT_F3:
               {
-                doFault(FAULT_F3, 0, "IT_MOD: IT_F3");
+                doFault(FAULT_F3, (_fault_subtype) {.bits=0}, "IT_MOD: IT_F3");
               }
 
 #if 0
@@ -821,15 +822,11 @@ startCA:;
             case IT_SC:  // Sequence character (Td = 12)
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-                // There is difficulty with managing page faults and tracking the indirect
-                // word address and the operand address.
-                // To alleviate this, we force those pages in during PREPARE_CA, so that they won't fault
-                // during operand read/write.
-
-//                // If there was a page fault during the data word fetch, CA has the data word address, not
-//                // the indirect word address
-
-//                cpu . TPR . CA = GET_ADDR (IWB_IRODD);
+	      // There is complexity with managing page faults and tracking
+	      // the indirect word address and the operand address.
+                //
+	      // To address this, we force those pages in during PREPARE_CA,
+	      // so that they won't fault during operand read/write.
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR reading indirect word from %06o\n",
@@ -840,7 +837,7 @@ startCA:;
                 //
 
                 word36 indword;
-                word36 indwordAddress = cpu . TPR . CA;
+                word18 indwordAddress = cpu . TPR . CA;
                 Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -850,43 +847,47 @@ startCA:;
                 // Parse and validate the indirect word
                 //
 
-                word18 Yi = GET_ADDR (indword);
+                word18 Yi_ = GET_ADDR (indword);
                 word6 characterOperandSize = GET_TB (GET_TAG (indword));
                 word6 characterOperandOffset = GET_CF (GET_TAG (indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
                            characterOperandSize, characterOperandOffset,
-                           Yi);
+                           Yi_);
 
                 if (characterOperandSize == TB6 && characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR, ill_mod,
+                  doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB6 && offset > 5");
 
                 if (characterOperandSize == TB9 && characterOperandOffset > 3)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR, ill_mod,
+                  doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB9 && offset > 3");
 
                 // CI uses the address, and SC uses the pre-increment address;
                 // but SCR use the post-decrement address
                 if (Td == IT_SCR)
                   {
-                    // For each reference to the indirect word, the character
-                    // counter, cf, is reduced by 1 and the TALLY field is
-                    // increased by 1 before the computed address is formed.
-                    // Character count arithmetic is modulo 6 for 6-bit characters
-                    // and modulo 4 for 9-bit bytes. If the character count, cf,
-                    // underflows to -1, it is reset to 5 for 6-bit characters or
-                    // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-                    // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-                    // If the TALLY field overflows to 0, the tally runout
-                    // indicator is set ON, otherwise it is set OFF. The computed
-                    // address is the (possibly) decremented value of the ADDRESS
-                    // field of the indirect word. The effective character/byte
-                    // number is the decremented value of the character position
-                    // count, cf, field of the indirect word.
+		// For each reference to the indirect word, the character
+		// counter, cf, is reduced by 1 and the TALLY field is
+		// increased by 1 before the computed address is formed.
+                    //
+		// Character count arithmetic is modulo 6 for 6-bit
+		// characters and modulo 4 for 9-bit bytes. If the
+		// character count, cf, underflows to -1, it is reset to 5
+		// for 6-bit characters or to 3 for 9-bit bytes and ADDRESS
+		// is reduced by 1. ADDRESS arithmetic is modulo 2^18.
+		// TALLY arithmetic is modulo 4096.
+                    //
+		// If the TALLY field overflows to 0, the tally runout
+		// indicator is set ON, otherwise it is set OFF. The
+		// computed address is the (possibly) decremented value of
+		// the ADDRESS field of the indirect word. The effective
+		// character/byte number is the decremented value of the
+		// character position count, cf, field of the indirect
+		// word.
 
                     if (characterOperandOffset == 0)
                       {
@@ -894,8 +895,8 @@ startCA:;
                             characterOperandOffset = 5;
                         else
                             characterOperandOffset = 3;
-                        Yi -= 1;
-                        Yi &= MASK18;
+                        Yi_ -= 1;
+                        Yi_ &= MASK18;
                       }
                         else
                       {
@@ -910,7 +911,7 @@ startCA:;
                 cpu . cu  . pot = 1;
 
                 word36 data;
-                Read (Yi, & data, OPERAND_READ, i -> a);
+                Read (Yi_, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012llo\n", data);
 
@@ -984,7 +985,13 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
+#if 1
                 SC_I_TALLY (tally == 0);
+#else
+// This breaks emacs
+                if (tally == 0)
+                  SET_I_TALLY;
+#endif
 
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
@@ -1038,7 +1045,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1093,7 +1102,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
 
@@ -1150,6 +1161,10 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
+
+                // XXX Breaks boot?
+                //if (tally == 0)
+                  //SET_I_TALLY;
                 SC_I_TALLY (tally == 0);
 
                 // write back out indword
@@ -1182,6 +1197,17 @@ startCA:;
                 // register is forced to "null" before the next computed
                 // address is formed .
 
+                // a:RJ78/idc1
+	      // The address and tally fields are used as described under the
+	      // ID variation. The tag field uses the set of variations for
+	      // instruction address modification under the following
+	      // restrictions: no variation is permitted that requires an
+	      // indexing modification in the DIC cycle since the indexing
+	      // adder is being used by the tally phase of the operation.
+	      // Thus, permissible variations are any allowable form of IT or
+	      // IR, but if RI or R is used, R must equal N (RI and R forced
+	      // to N).
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): fetching indirect word from %06o\n",
                            cpu . TPR . CA);
@@ -1208,7 +1234,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1219,7 +1247,7 @@ startCA:;
                            "addr %06o\n", indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
-
+#if 0
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
@@ -1234,6 +1262,22 @@ startCA:;
                   {
                     cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
+#else
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
+                cpu . TPR.CA = YiSafe2;
+
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
+                if (Tm == TM_RI || Tm == TM_R)
+                  {
+                     if (GET_TD (cpu.rTAG) != 0)
+                       {
+                         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "DIC Incorrect address modifier");
+                       }
+                  }
+#endif
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
@@ -1249,6 +1293,17 @@ startCA:;
                 // r, ri, or ir modification, the effective Td value for the
                 // register is forced to "null" before the next computed
                 // address is formed.
+
+                // a:RJ78/idc1
+	      // The address and tally fields are used as described under the
+	      // ID variation. The tag field uses the set of variations for
+	      // instruction address modification under the following
+	      // restrictions: no variation is permitted that requires an
+	      // indexing modification in the IDC cycle since the indexing
+	      // adder is being used by the tally phase of the operation.
+	      // Thus, permissible variations are any allowable form of IT or
+	      // IR, but if RI or R is used, R must equal N (RI and R forced
+	      // to N).
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_IDC): fetching indirect word from %06o\n",
@@ -1274,7 +1329,9 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (tally == 0);
+                if (tally == 0)
+                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1288,6 +1345,7 @@ startCA:;
 
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
+#if 0
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
@@ -1304,6 +1362,22 @@ startCA:;
                   {
                     cpu . rTAG = idwtag & 0x70; // force R to 0
                   }
+#else
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
+                cpu . TPR.CA = YiSafe;
+
+                cpu . rTAG = idwtag;
+                Tm = GET_TM(cpu . rTAG);
+                if (Tm == TM_RI || Tm == TM_R)
+                  {
+                     if (GET_TD (cpu.rTAG) != 0)
+                       {
+                         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "IDC Incorrect address modifier");
+                       }
+                  }
+#endif
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC

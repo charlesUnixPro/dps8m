@@ -10,6 +10,12 @@
 enum { MEMSIZE = MEM_SIZE_MAX };
 
 //
+// ABSI
+//
+
+enum { N_ABSI_UNITS_MAX = 1 };
+
+//
 // Unit record processor
 //
 

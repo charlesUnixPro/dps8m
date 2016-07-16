@@ -4,6 +4,7 @@
 #include "dps8_mt.h"
 #include "dps8_scu.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
@@ -12,6 +13,7 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#include "dps8_absi.h"
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 #ifdef M_SHARED
@@ -112,6 +114,7 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
     p -> scu_unit_num = scu_unit_num;
     p -> devp = & scu_dev;
 
+    // Taking this out breaks the unit test segment loader.
     setup_scbank_map ();
 
     return SCPE_OK;
@@ -139,8 +142,8 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CRDRDR, 
-                              chanTypePSI, crdrdr_unit_num, & crdrdr_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CRDRDR, 
+                              chanTypePSI, (uint) crdrdr_unit_num, & crdrdr_dev, 
                               & crdrdr_unit [crdrdr_unit_num], crdrdr_iom_cmd);
     if (rc)
       {
@@ -172,8 +175,8 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CRDPUN, 
-                              chanTypePSI, crdpun_unit_num, & crdpun_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CRDPUN, 
+                              chanTypePSI, (uint) crdpun_unit_num, & crdpun_dev, 
                               & crdpun_unit [crdpun_unit_num], crdpun_iom_cmd);
     if (rc)
       {
@@ -205,15 +208,14 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_PRT, 
-                              chanTypePSI, prt_unit_num, & prt_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_PRT, 
+                              chanTypePSI, (uint) prt_unit_num, & prt_dev, 
                               & prt_unit [prt_unit_num], prt_iom_cmd);
     if (rc)
       {
         sim_printf ("cable_prt: IOM socket error; uncabling Printer unit number %d. (%o)\n", prt_unit_num, prt_unit_num);
         return rc;
       }
-      return rc;
 
     cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToPrt [prt_unit_num] . chan_num = chan_num;
@@ -239,8 +241,8 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_URP, 
-                              chanTypePSI, urp_unit_num, & urp_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_URP, 
+                              chanTypePSI, (uint) urp_unit_num, & urp_dev, 
                               & urp_unit [urp_unit_num], urp_iom_cmd);
     if (rc)
       {
@@ -271,8 +273,8 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_DN355, 
-                              chanTypeDirect, fnpUnitNum, & fnpDev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_DN355, 
+                              chanTypeDirect, (uint) fnpUnitNum, & fnpDev, 
                               & fnp_unit [fnpUnitNum], fnpIOMCmd);
     if (rc)
       {
@@ -305,8 +307,8 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_DISK, 
-                              chanTypePSI, disk_unit_num, & disk_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_DISK, 
+                              chanTypePSI, (uint) disk_unit_num, & disk_dev, 
                               & disk_unit [disk_unit_num], disk_iom_cmd);
     if (rc)
       {
@@ -338,8 +340,8 @@ static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_CON, 
-                              chanTypeCPI, con_unit_num, & opcon_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_CON, 
+                              chanTypeCPI, (uint) con_unit_num, & opcon_dev, 
                               & opcon_unit [con_unit_num], con_iom_cmd);
     if (rc)
       {
@@ -375,7 +377,7 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return SCPE_ARG;
       }
 
-    if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
+    if (cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
         sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_num, scu_unit_num);
         return SCPE_ARG;
@@ -390,9 +392,9 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return rc;
       }
 
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_unit_num = 
       cpu_unit_num;
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] . cpu_port_num = 
       cpu_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
@@ -463,7 +465,7 @@ static t_stat cable_iom (uint iomUnitIdx, int iomPortNum, int scuUnitNum,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, iomUnitIdx, iomPortNum);
+    t_stat rc = cable_to_scu (scuUnitNum, scuPortNum, (int) iomUnitIdx, iomPortNum);
     if (rc)
       {
         sim_printf ("cable_iom: SCU socket error; uncabling IOM unit number %d. (%o), port number %d. (%o)\n", iomUnitIdx, iomUnitIdx, iomPortNum, iomPortNum);
@@ -500,8 +502,8 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
-                              chanTypePSI, mt_unit_num, & tape_dev, 
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
+                              chanTypePSI, (uint) mt_unit_num, & tape_dev, 
                               & mt_unit [mt_unit_num], mt_iom_cmd);
     if (rc)
       {
@@ -512,6 +514,45 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     cables -> cablesFromIomToTap [mt_unit_num] . iomUnitIdx = iomUnitIdx;
     cables -> cablesFromIomToTap [mt_unit_num] . chan_num = chan_num;
     cables -> cablesFromIomToTap [mt_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+ 
+//
+// String a cable from a ABSI to an IOM
+//
+// This end: asbi_unit_num
+// That end: iomUnitIdx, chan_num, dev_code
+// 
+
+static t_stat cable_absi (int absi_unit_num, int iomUnitIdx, int chan_num, 
+                          int dev_code)
+  {
+    if (absi_unit_num < 0 || absi_unit_num >= (int) absi_dev . numunits)
+      {
+        sim_printf ("cable_absi: absi_unit_num out of range <%d>\n", absi_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToAbsi [absi_unit_num] . iomUnitIdx != -1)
+      {
+        sim_printf ("cable_absi: ABSI socket in use; unit number %d. (%o); uncabling.\n", absi_unit_num, absi_unit_num);
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_TAPE, 
+                              chanTypePSI, (uint) absi_unit_num, & tape_dev, 
+                              & absi_unit [absi_unit_num], absi_iom_cmd);
+    if (rc)
+      {
+        sim_printf ("cable_absi: IOM socket error; uncabling ABSI unit number %d. (%o)\n", absi_unit_num, absi_unit_num);
+        return rc;
+      }
+
+    cables -> cablesFromIomToAbsi [absi_unit_num] . iomUnitIdx = iomUnitIdx;
+    cables -> cablesFromIomToAbsi [absi_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToAbsi [absi_unit_num] . dev_code = dev_code;
 
     return SCPE_OK;
   }
@@ -605,7 +646,7 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       }
     else if (strcasecmp (name, "IOM") == 0)
       {
-        rc = cable_iom (n1, n2, n3, n4);
+        rc = cable_iom ((uint) n1, n2, n3, n4);
       }
     else if (strcasecmp (name, "SCU") == 0)
       {
@@ -630,6 +671,10 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
     else if (strcasecmp (name, "URP") == 0)
       {
         rc = cable_urp (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "ABSI") == 0)
+      {
+        rc = cable_absi (n1, n2, n3, n4);
       }
     else
       {
@@ -659,6 +704,7 @@ void sysCableInit (void)
           }
       }
 
+    // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (cables, 0, sizeof (struct cables_t));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
       {
@@ -666,7 +712,7 @@ void sysCableInit (void)
       }
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
-        cables -> cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
+        cables -> cablesFromCpus [u] [p] . cpu_unit_num = -1; // not connected
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
       cables -> cablesFromIomToCon [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
@@ -679,5 +725,6 @@ void sysCableInit (void)
       cables -> cablesFromIomToPrt [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_URP_UNITS_MAX; i ++)
       cables -> cablesFromIomToUrp [i] . iomUnitIdx = -1;
-    // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
+    for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
+      cables -> cablesFromIomToAbsi [i] . iomUnitIdx = -1;
   }

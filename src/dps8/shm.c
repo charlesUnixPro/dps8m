@@ -117,6 +117,6 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
         //printf ("open_shm mmap  fail %d\n", errno);
         return NULL;
       }
-    addseg (buf);
+    //addseg (buf);
     return p;
   }

@@ -11,6 +11,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_loader.h"
 #include "dps8_utils.h"
@@ -89,7 +90,7 @@ static segment *newSegment(char *name, int size, bool bDeferred)
     if (name && strlen(name) > 0)
         s->name = strdup(name);
     if (bDeferred && size > 0)
-        s->M = calloc(1, sizeof(word36) * size);
+        s->M = calloc(1, sizeof(word36) * (unsigned long) size);
     else
         s->M = NULL;
     s->size = size;
@@ -328,7 +329,8 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
 {
     word36 even = 0, odd = 0;
     
-    word36 segoff = (bitfieldExtract36(Ypair[1], 18, 18) + offset) & AMASK;
+    //word36 segoff = (bitfieldExtract36(Ypair[1], 18, 18) + offset) & AMASK;
+    word36 segoff = (getbits36_18 (Ypair[1], 0) + (word18) offset) & AMASK;
     
     even = ((word36)segno << 18) | 043;
   //odd = (word36)(offset << 18) | (tag & 077);
@@ -376,9 +378,9 @@ int getAddress(int segno, int offset)
     
     
     // get address of in-core segment descriptor word from DSBR
-    _sdw0 *s = fetchSDW(segno);
+    _sdw0 *s = fetchSDW ((word15) segno);
     
-    return (s->ADDR + offset) & 0xffffff; // keep to 24-bits
+    return (s->ADDR + (word18) offset) & 0xffffff; // keep to 24-bits
 }
 
 /*
@@ -392,8 +394,8 @@ bool getSegmentAddressString(int addr, char *msg)
     {
         int segno = s->segno;       // get segment number from list of known "deferred" segments
         
-        _sdw0 *s0 = fetchSDW(segno);
-        int startAddr = s0->ADDR;   // get start address
+        _sdw0 *s0 = fetchSDW ((word15) segno);
+        int startAddr = (int) s0->ADDR;   // get start address
         //if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
         if (addr >= startAddr && addr <= startAddr + s->size)
             {
@@ -532,13 +534,13 @@ static int loadDeferredSegment(segment *sg, int addr24)
         
     int segno = sg->segno;
         
-    word18 segwords = sg->size;
+    word18 segwords = (word18) sg->size;
     
-    memcpy(M + addr24, sg->M, sg->size * sizeof(word36));
+    memcpy(M + addr24, sg->M, (unsigned long) sg->size * sizeof(word36));
     
     cpu . DSBR.BND = 037777;  // temporary max bound ...
     
-    if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
+    if (loadUnpagedSegment(segno, (word24) addr24, segwords) == SCPE_OK)
     {
         if (!sim_quiet) sim_printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
     }
@@ -577,7 +579,7 @@ int loadDeferredSegments(bool bVerbose)
 
     if (bVerbose) sim_printf("Loading deferred segments ...\n");
     
-    int ldaddr = cpu . DSBR.ADDR + 65536;     // load segments *after* SDW table
+    int ldaddr = (int) cpu.DSBR.ADDR + 65536;     // load segments *after* SDW table
     if (ldaddr % 16)
         ldaddr += 16 - (ldaddr % 16);   // adjust to 16-word boundary
     
@@ -601,24 +603,25 @@ int loadDeferredSegments(bool bVerbose)
         // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
-            cpu . PR[4].BITNO = 0;
-            // PR[4].CHAR = 0; // Covered by the BITNO above
-            cpu . PR[4].SNR = segno;
-            cpu . PR[4].WORDNO = 0;
+            //cpu.PR[4].BITNO = 0;
+            //cpu.PR[4].CHAR = 0;
+            SET_PR_BITNO (4, 0);
+            cpu.PR[4].SNR = (word15) segno;
+            cpu.PR[4].WORDNO = 0;
             
-            cpu . PR[5] = cpu . PR[4];
+            cpu.PR[5] = cpu . PR[4];
             
             int n = 4;
-            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, GET_PR_BITNO (n));
             n = 5;
-            if (bVerbose) sim_printf("LOT => cpu . PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, cpu . PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => cpu . PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, cpu . PR[n].SNR, cpu . PR[n].RNR, cpu . PR[n].WORDNO, GET_PR_BITNO(n));
 
         }
         
         // bump next load address to a 16-word boundary
         //if (sg->ldaddr == -1)
         //{
-            word18 segwords = sg->size;
+            word18 segwords = (word18) sg->size;
             ldaddr += segwords;
             if (ldaddr % 16)
                 ldaddr += 16 - (ldaddr % 16);
@@ -627,7 +630,7 @@ int loadDeferredSegments(bool bVerbose)
     }
 
     // adjust DSBR.BND to reflect highest segment address
-    cpu . DSBR.BND = (2 * maxSegno) / 16;
+    cpu.DSBR.BND = (word14) ((2 * maxSegno) / 16);
 
     return 0;
 }
@@ -733,9 +736,10 @@ t_stat snapLOT(bool bVerbose)
             // C(PRn.SNR)3,14 → C(Y)6,17
             // C(PRn.WORDNO) → C(Y)18,35
             
-            pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
-            pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
-            
+            //pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
+            //pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
+            putbits36_18 (& pp, 18, (word18) s->linkOffset);
+            putbits36_15 (& pp, 3, (word15) s->segno);
             //lot->M[lot->ldaddr + s->segno] = pp & DMASK;
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
@@ -797,7 +801,7 @@ t_stat createStack(int n, bool bVerbose)
     if ((stk->segno % 8) != n)
         stk->segno += 8 - (stk->segno % 8) + n;
     
-    cpu . DSBR.STACK = stk->segno >> 3;
+    cpu.DSBR.STACK = (word12) stk->segno >> 3;
     
     DL_APPEND(segments, stk);
     
@@ -1102,7 +1106,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
                 if (maddr > MEMSIZE)
                     return SCPE_NXM;
                 else
-                    M[maddr+ldaddr] = data & DMASK;
+                    M[maddr+(unsigned int) ldaddr] = data & DMASK;
                 words++;
             }
         }
@@ -1132,7 +1136,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
                 if (maddr > MEMSIZE)
                     return SCPE_NXM;
                 else
-                    M[ldaddr + maddr] = data & DMASK;
+                    M[(unsigned int) ldaddr + maddr] = data & DMASK;
                 //sim_printf ("laddr:%d maddr:%d\n", maddr, maddr);
                 words++;
                 maxaddr = max(maddr, maxaddr);
@@ -1140,7 +1144,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
         }
         word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
         //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
-        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+        if (loadUnpagedSegment(segno, (word24) ldaddr, segwords) == SCPE_OK)
         {
             if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
         }
@@ -1210,10 +1214,10 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             if (maddr > MEMSIZE)
               return SCPE_NXM;
 
-            M [maddr + ldaddr] = w1 & DMASK;
+            M [maddr + (unsigned int) ldaddr] = w1 & DMASK;
             maddr ++;
             words++;
-            M [maddr + ldaddr] = w2 & DMASK;
+            M [maddr + (unsigned int) ldaddr] = w2 & DMASK;
             maddr ++;
             words++;
           }
@@ -1235,17 +1239,17 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             if (maddr > MEMSIZE)
               return SCPE_NXM;
 
-            M [maddr + ldaddr] = w1 & DMASK;
+            M [maddr + (unsigned int) ldaddr] = w1 & DMASK;
             maddr ++;
             words++;
-            M [maddr + ldaddr] = w2 & DMASK;
+            M [maddr + (unsigned int) ldaddr] = w2 & DMASK;
             maxaddr = maddr;
             maddr ++;
             words++;
           }
         word18 segwords = (objSize == -1) ? maxaddr + 1 : (word18) objSize;  // words in segment
         //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
-        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+        if (loadUnpagedSegment(segno, (word24) ldaddr, segwords) == SCPE_OK)
         {
             if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
         }
@@ -1295,9 +1299,9 @@ static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
 {
     word36 even, odd;
     
-    even = (word36) p->ADDR << 12 | p->R1 << 9 | p->R2 << 6 | p->R3 << 3 | p->F << 2 | p->FC;
+    even = (word36) p->ADDR << 12 | (word36) p->R1 << 9 | (word36) p->R2 << 6 | (word36) p->R3 << 3 | (word36) p->F << 2 | (word36) p->FC;
     
-    odd = (word36) p->BOUND << 21 | p->R << 20 | p->E << 19 | p->W << 18 | p->P << 17 | p->U << 16 | p->G << 15 | p->C << 14 | p->EB;
+    odd = (word36) p->BOUND << 21 | (word36) p->R << 20 | (word36) p->E << 19 | (word36) p->W << 18 | (word36) p->P << 17 | (word36) p->U << 16 | (word36) p->G << 15 | (word36) p->C << 14 | (word36) p->EB;
     
     yPair[0] = even;
     yPair[1] = odd;
@@ -1316,7 +1320,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
         if (get_yn (msg, TRUE) == 0)    // No, don't adjust
             return SCPE_MEM;
         
-        cpu . DSBR.BND = (2 * (segno)) >> 4;
+        cpu . DSBR.BND = (word14) (2 * (segno)) >> 4;
         //sim_printf ("DSBR.BND set to %o\n", cpu . DSBR.BND);
     }
     
@@ -1335,7 +1339,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     const word1 U = true;   ///< segment is unpaged
     const word1 G = true;   ///< any legal segment offset may be called
     const word1 C = true;   ///< allow caching (who cares?)
-    const word14 EB = count;    ///< Any call into this segment must be to an offset less than EB if G=0
+    const word14 EB = (word14) count;    ///< Any call into this segment must be to an offset less than EB if G=0
     
     //sim_printf ("B:%d count:%d\n", BOUND, count);
     
@@ -1343,7 +1347,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     word36 yPair[2];
     writeSDW0toYPair(s, yPair);
     
-    word24 sdwaddress = cpu . DSBR.ADDR + (2 * segno);
+    word24 sdwaddress = cpu.DSBR.ADDR + (word24) (2 * segno);
     if (!sim_quiet) sim_printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1], __func__);
@@ -1371,13 +1375,13 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     return NULL;
 }
 
-t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam, 
+static t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam, 
                  UNUSED int flag)
 {
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)
     {
-        sim_printf ("fwrite returned %ld; expected %d\n", rc, MEMSIZE);
+        sim_printf ("fwrite returned %ld; expected %d\n", (long) rc, MEMSIZE);
         return SCPE_IOERR;  
     }
     return SCPE_OK;
@@ -1397,7 +1401,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     bool bDeferred = false; // a deferred load
 
     fmt = 0;                                                /* no fmt */
-    if (sim_switches & SWMASK ('O'))                        /* -o? */
+    if (sim_switches & (int32) SWMASK ('O'))                        /* -o? */
         fmt = FMT_O;
     else if (match_ext (fnam, "OCT"))                       /* .OCT? */
         fmt = FMT_O;
@@ -1415,7 +1419,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     }
 
     bool bVerbose = false;
-    if (sim_switches & SWMASK ('V'))                        /* -v? */
+    if (sim_switches & (int32) SWMASK ('V'))                        /* -v? */
         bVerbose = true;
 
    /*
@@ -1441,7 +1445,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         strcpy(sDef, "");
         
         /* long n = */ sscanf(cptr, "%*s %s", s);
-        ldaddr = (word24)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
+        ldaddr = (int32)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
         
         if (end_ptr == s)
         {
@@ -1475,7 +1479,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
             return SCPE_FMT;
         }
         
-        ldaddr = (word24)strtol(s2, &end_ptr, 0); // allows for octal, decimal and hex
+        ldaddr = (int32)strtol(s2, &end_ptr, 0); // allows for octal, decimal and hex
         
         if (end_ptr == s2)
         {

@@ -1,23 +1,22 @@
 //
-//  dps8_prt.c
-//  dps8
-//
-//  Created by Harry Reed on 6/16/13.
-//  Copyright (c) 2013 Harry Reed. All rights reserved.
+//  dps8_absi.c
 //
 
 #include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
-#include "dps8_prt.h"
+#include "dps8_absi.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
+
+#include "udplib.h"
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -33,39 +32,24 @@
  */
 
 
-#define N_PRT_UNITS 1 // default
+#define N_ABSI_UNITS 1 // default
 
-static t_stat prt_reset (DEVICE * dptr);
-static t_stat prt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat prt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat prt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat prt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat absi_reset (DEVICE * dptr);
+static t_stat absi_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat absi_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat absiAttach (UNIT *uptr, char *cptr);
+static t_stat absiDetach (UNIT *uptr);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
-UNIT prt_unit [N_PRT_UNITS_MAX] =
+UNIT absi_unit [N_ABSI_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
-#define PRT_UNIT_NUM(uptr) ((uptr) - prt_unit)
+#define ABSIUNIT_NUM(uptr) ((uptr) - absi_unit)
 
-static DEBTAB prt_dt [] =
+static DEBTAB absi_dt [] =
   {
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
@@ -78,7 +62,7 @@ static DEBTAB prt_dt [] =
 
 #define UNIT_WATCH UNIT_V_UF
 
-static MTAB prt_mod [] =
+static MTAB absi_mod [] =
   {
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
@@ -87,32 +71,22 @@ static MTAB prt_mod [] =
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      prt_set_nunits, /* validation routine */
-      prt_show_nunits, /* display routine */
-      "Number of PRT units in the system", /* value descriptor */
+      absi_set_nunits, /* validation routine */
+      absi_show_nunits, /* display routine */
+      "Number of ABSIunits in the system", /* value descriptor */
       NULL // Help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
-      0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
-      prt_set_device_name, /* validation routine */
-      prt_show_device_name, /* display routine */
-      "Select the boot drive", /* value descriptor */
-      NULL          // help
     },
 
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
 
 
-DEVICE prt_dev = {
-    "PRT",       /*  name */
-    prt_unit,    /* units */
+DEVICE absi_dev = {
+    "ABSI",       /*  name */
+    absi_unit,    /* units */
     NULL,         /* registers */
-    prt_mod,     /* modifiers */
-    N_PRT_UNITS, /* #units */
+    absi_mod,     /* modifiers */
+    N_ABSI_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */
@@ -120,14 +94,14 @@ DEVICE prt_dev = {
     36,           /* data width */
     NULL,         /* examine */
     NULL,         /* deposit */ 
-    prt_reset,   /* reset */
+    absi_reset,   /* reset */
     NULL,         /* boot */
-    NULL,         /* attach */
-    NULL,         /* detach */
+    absiAttach,         /* attach */
+    absiDetach,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
-    prt_dt,      /* debug flag names */
+    absi_dt,      /* debug flag names */
     NULL,         /* memory size change */
     NULL,         /* logical name */
     NULL,         // help
@@ -136,181 +110,119 @@ DEVICE prt_dev = {
     NULL          // description
 };
 
-#define MAX_DEV_NAME_LEN 64
-static struct prt_state
+static struct absi_state
   {
-    char device_name [MAX_DEV_NAME_LEN];
-    int prtfile; // fd
-    //bool last;
-    bool cachedFF;
-  } prt_state [N_PRT_UNITS_MAX];
+    int link;
+  } absi_state [N_ABSI_UNITS_MAX];
 
 /*
- * prt_init()
+ * absi_init()
  *
  */
 
 // Once-only initialization
 
-void prt_init (void)
+void absi_init (void)
   {
-    memset (prt_state, 0, sizeof (prt_state));
-    for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
-      prt_state [i] . prtfile = -1;
+    memset (absi_state, 0, sizeof (absi_state));
+    for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
+      absi_state [i] . link = NOLINK;
   }
 
-static t_stat prt_reset (DEVICE * dptr)
+static t_stat absi_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_prt_reset (& prt_unit [i]);
-        sim_cancel (& prt_unit [i]);
-      }
+    //absiResetRX (0);
+    //absiResetTX (0);
+
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //sim_cancel (& absi_unit [i]);
+      //}
+    // if ((uptr->flags & UNIT_ATT) != 0) sim_activate(uptr, uptr->wait);
     return SCPE_OK;
   }
 
-// Given an array of word36 and a 9bit char offset, return the char
-
-static word9 gc (word36 * b, uint os)
-  {
-    uint wordno = os / 4;
-    uint charno = os % 4;
-    return (word9) getbits36_9 (b [wordno], charno * 9);
-  }
-
-// Don't know what the longest user id is...
-#define LONGEST 128
-
-// looking for space/space/5 digit number/\037/\005/name/\037
-// qno will get 5 chars + null;
-
-//  040040061060 060060062037 005101156164 150157156171 056123171163 101144155151 156056141037 145061060060 060062013002
-// <  10002\037\005Anthony.SysAdmin.a\037e10002\013\002>
-//  01234567   8   9
-static int parseID (word36 * b, uint tally, char * qno, char * name)
-  {
-    if (tally < 3)
-      return 0;
-    if (gc (b, 0) != 040)
-      return 0;
-    if (gc (b, 1) != 040)
-      return 0;
-    uint i;
-    for (i = 0; i < 5; i ++)
-      {
-        word9 ch = gc (b, 2 + i);
-        if (ch < '0' || ch > '9')
-          return 0;
-        qno [i] = (char) ch;
-      }
-    qno [5] = 0;
-    if (gc (b, 7) != 037)
-      return 0;
-    //if (gc (b, 8) != 005)
-      //return 0;
-    for (i = 0; i < LONGEST; i ++)
-      {
-        word9 ch = gc (b, 9 + i);
-        if (ch == 037)
-          break;
-        if (! isprint (ch))
-          return 0;
-        name [i] = (char) ch;
-      }
-    name [i] = 0;
-    return 1;
-  }
-
-
-static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
-  {
-//sim_printf ("openPrtFile\n");
-    if (prt_state [prt_unit_num] . prtfile != -1)
-      return;
-
-// The first (spooled) write is a formfeed; special case it and delay opening until
-// the next line
-
-//sim_printf ("openPrtFile 2 %012llo\n", buffer [0]);
-    if (tally == 1 && buffer [0] == 0014013000000llu)
-      {
-        prt_state [prt_unit_num] . cachedFF = true;
-        return;
-      }
-
-    char qno [5], name [LONGEST + 1];
-    int rc = parseID (buffer, tally, qno, name);
-    char template [129 + LONGEST];
-    if (rc == 0)
-      sprintf (template, "prt%c.spool.XXXXXX.prt", 'a' + prt_unit_num);
-    else
-      sprintf (template, "prt%c.spool.%s.%s.XXXXXX.prt", 'a' + prt_unit_num, qno, name);
-    prt_state [prt_unit_num] . prtfile = mkstemps (template, 4);
-    if (prt_state [prt_unit_num] . cachedFF)
-      {
-        // 014 013 is slew to 013 (top of odd page?); just do a ff
-        //char cache [2] = {014, 013};
-        //write (prt_state [prt_unit_num] . prtfile, & cache, 2);
-        char cache = '\f';
-        write (prt_state [prt_unit_num] . prtfile, & cache, 1);
-        prt_state [prt_unit_num] . cachedFF = false;
-      }
-  }
-
-// looking for lines "\037\014%%%%%\037\005"
-static int eoj (word36 * buffer, uint tally)
-  {
-    if (tally < 3)
-      return 0;
-    if (getbits36_9 (buffer [0], 0) != 037)
-      return 0;
-    if (getbits36_9 (buffer [0], 9) != 014)
-      return 0;
-    word9 ch = getbits36_9 (buffer [0], 18);
-    if (ch < '0' || ch > '9')
-      return 0;
-    ch = getbits36_9 (buffer [0], 27);
-    if (ch < '0' || ch > '9')
-      return 0;
-    ch = getbits36_9 (buffer [1], 0);
-    if (ch < '0' || ch > '9')
-      return 0;
-    ch = getbits36_9 (buffer [1], 9);
-    if (ch < '0' || ch > '9')
-      return 0;
-    ch = getbits36_9 (buffer [1], 18);
-    if (ch < '0' || ch > '9')
-      return 0;
-    if (getbits36_9 (buffer [1], 27) != 037)
-      return 0;
-    if (getbits36_9 (buffer [2], 0) != 005)
-      return 0;
-    return 1;
-  }
-
-static int prt_cmd (uint iomUnitIdx, uint chan)
+static int absi_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
-    UNIT * unitp = & prt_unit [devUnitIdx];
-    int prt_unit_num = (int) PRT_UNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
+    //struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+    //                  devices [chan] [p -> IDCW_DEV_CODE];
+    //uint devUnitIdx = d -> devUnitIdx;
+    //UNIT * unitp = & absi_unit [devUnitIdx];
+    //int absi_unit_num = ABSIUNIT_NUM (unitp);
+
+sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
+    sim_debug (DBG_TRACE, & absi_dev, "absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
+
 
     switch (p -> IDCW_DEV_CMD)
       {
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & prt_dev, "Request status %d\n", prt_unit_num);
+sim_printf ("absi request status\n");
+          }
+          break;
+
+        case 001: // CMD 01 Read
+          {
+            p -> stati = 04000;
+sim_printf ("absi read\n");
+          }
+          break;
+
+        case 011: // CMD 11 Write
+          {
+            p -> stati = 04000;
+sim_printf ("absi write\n");
+          }
+          break;
+
+        case 020: // CMD 20 Host switch down
+          {
+            p -> stati = 04000;
+sim_printf ("absi host switch down\n");
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+sim_printf ("absi reset status\n");
+          }
+          break;
+
+        case 060: // CMD 60 Host switch up
+          {
+            p -> stati = 04000;
+sim_printf ("absi host switch up\n");
+          }
+          break;
+
+        default:
+          {
+            sim_warn ("absi daze %o\n", p -> IDCW_DEV_CMD);
+            p -> stati = 04501; // cmd reject, invalid opcode
+            p -> chanStatus = chanStatIncorrectDCW;
+          }
+          break;
+      }
+
+#if 0
+    switch (p -> IDCW_DEV_CMD)
+      {
+#if 0
+        case 000: // CMD 00 Request status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & absi_dev, "Request status %d\n", absi_unit_num);
           }
           break;
 
 
         case 001: // CMD 001 -- load image buffer
           {
-            sim_debug (DBG_NOTIFY, & prt_dev, "load image buffer\n");
+            sim_debug (DBG_NOTIFY, & absi_dev, "load image buffer\n");
             p -> isRead = false;
             // Get the DDCW
 
@@ -374,7 +286,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
         case 005: // CMD 001 -- load vfc image
           {
-            sim_debug (DBG_NOTIFY, & prt_dev, "load vfc image\n");
+            sim_debug (DBG_NOTIFY, & absi_dev, "load vfc image\n");
             p -> isRead = false;
 
             // Get the DDCW
@@ -451,7 +363,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
                   }
 
                 uint tally = p -> DDCW_TALLY;
-                sim_debug (DBG_DEBUG, & prt_dev,
+                sim_debug (DBG_DEBUG, & absi_dev,
                            "%s: Tally %d (%o)\n", __func__, tally, tally);
 
                 if (tally == 0)
@@ -484,15 +396,15 @@ sim_printf ("\n");
                 sim_printf (">\n");
 #endif
 
-                if (prt_state [prt_unit_num] . prtfile == -1)
-                  openPrtFile (prt_unit_num, buffer, tally);
+                if (absi_state [absi_unit_num] . urpfile == -1)
+                  openPunFile (absi_unit_num, buffer, tally);
 
                 uint8 bytes [tally * 4];
                 for (uint i = 0; i < tally * 4; i ++)
                   {
                     uint wordno = i / 4;
                     uint charno = i % 4;
-                    bytes [i] = (uint8) (buffer [wordno] >> ((3 - charno) * 9)) & 0377;
+                    bytes [i] = (buffer [wordno] >> ((3 - charno) * 9)) & 0777;
                   }
 
                 for (uint i = 0; i < tally * 4; i ++)
@@ -503,7 +415,7 @@ sim_printf ("\n");
                         const uint8 spaces [128] = "                                                                                                                                ";
                         i ++;
                         uint8 n = bytes [i] & 0177;
-                        write (prt_state [prt_unit_num] . prtfile, spaces, n);
+                        write (absi_state [absi_unit_num] . urpfile, spaces, n);
                       }
                     else if (ch == 013) // insert n new lines
                       {
@@ -511,41 +423,41 @@ sim_printf ("\n");
                         i ++;
                         uint8 n = bytes [i] & 0177;
                         if (n)
-                          write (prt_state [prt_unit_num] . prtfile, newlines, n);
+                          write (absi_state [absi_unit_num] . urpfile, newlines, n);
                         else
                           {
                             const uint cr = '\r';
-                            write (prt_state [prt_unit_num] . prtfile, & cr, 1);
+                            write (absi_state [absi_unit_num] . urpfile, & cr, 1);
                           }
                       }
                     else if (ch == 014) // slew
                       {
                         const uint8 ff = '\f';
                         i ++;
-                        write (prt_state [prt_unit_num] . prtfile, & ff, 1);
+                        write (absi_state [absi_unit_num] . urpfile, & ff, 1);
                       }
                     else if (ch)
                       {
-                        write (prt_state [prt_unit_num] . prtfile, & ch, 1);
+                        write (absi_state [absi_unit_num] . urpfile, & ch, 1);
                       }
                   }
 
 #if 0
-                if (prt_state [prt_unit_num] . last)
+                if (absi_state [absi_unit_num] . last)
                   {
-                    close (prt_state [prt_unit_num] . prtfile);
-                    prt_state [prt_unit_num] . prtfile = -1;
-                    prt_state [prt_unit_num] . last = false;
+                    close (absi_state [absi_unit_num] . urpfile);
+                    absi_state [absi_unit_num] . urpfile = -1;
+                    absi_state [absi_unit_num] . last = false;
                   }
                 // Check for slew to bottom of page
-                prt_state [prt_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
+                absi_state [absi_unit_num] . last = tally == 1 && buffer [0] == 0014011000000;
 #else
                 if (eoj (buffer, tally))
                   {
-                    //sim_printf ("prt end of job\n");
-                    close (prt_state [prt_unit_num] . prtfile);
-                    prt_state [prt_unit_num] . prtfile = -1;
-                    //prt_state [prt_unit_num] . last = false;
+                    //sim_printf ("urp end of job\n");
+                    close (absi_state [absi_unit_num] . urpfile);
+                    absi_state [absi_unit_num] . urpfile = -1;
+                    //absi_state [absi_unit_num] . last = false;
                   }
 #endif
             } // for (ddcwIdx)
@@ -554,90 +466,245 @@ sim_printf ("\n");
             p -> stati = 04000; 
           }
           break;
-
-        case 040: // CMD 40 Reset status
+#endif
+        case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
+            sim_debug (DBG_NOTIFY, & absi_dev, "Request status %d\n", absi_unit_num);
+          }
+          break;
+
+        case 006: // CMD 005 Initiate read data xfer (load_mpc.pl1)
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & absi_dev, "Initiate read data xfer %d\n", absi_unit_num);
+
+            // Get the DDCW
+
+            bool ptro, send, uff;
+
+            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                sim_printf ("%s list service failed\n", __func__);
+                break;
+              }
+            if (uff)
+              {
+                sim_printf ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_printf ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_printf ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            // We don't use the DDCW, so just pretend we do.
+            p -> stati = 04000; 
           }
           break;
 
 
+// 011 punch binary
+// 031 set diagnostic mode
+
+        case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & absi_dev, "Set Diagnostic Mode %d\n", absi_unit_num);
+
+            // Get the DDCW
+
+            bool ptro, send, uff;
+
+            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                sim_printf ("%s list service failed\n", __func__);
+                break;
+              }
+            if (uff)
+              {
+                sim_printf ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_printf ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_printf ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            // We don't use the DDCW, so just pretend we do.
+            p -> stati = 04000; 
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_NOTIFY, & absi_dev, "Reset status %d\n", absi_unit_num);
+          }
+          break;
+
         default:
           {
-            sim_warn ("prt daze %o\n", p -> IDCW_DEV_CMD);
+            sim_warn ("urp daze %o\n", p -> IDCW_DEV_CMD);
             p -> stati = 04501; // cmd reject, invalid opcode
             p -> chanStatus = chanStatIncorrectDCW;
           }
           break;
         }   
+#endif
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
+sim_printf ("absi marker\n");
         send_marker_interrupt (iomUnitIdx, (int) chan);
       }
+
+    if (p -> IDCW_CHAN_CMD == 0)
+      return 2; // don't do DCW list
     return 0;
   }
 
 // 1 ignored command
 // 0 ok
 // -1 problem
-int prt_iom_cmd (uint iomUnitIdx, uint chan)
+int absi_iom_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
       {
-        prt_cmd (iomUnitIdx, chan);
+        return absi_cmd (iomUnitIdx, chan);
       }
-    else // DDCW/TDCW
-      {
-        sim_printf ("%s expected IDCW\n", __func__);
-        return -1;
-      }
-    return 0;
+    sim_printf ("%s expected IDCW\n", __func__);
+    return -1;
   }
 
-static t_stat prt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+void absiProcessEvent (void)
   {
-    sim_printf("Number of PRT units in system is %d\n", prt_dev . numunits);
+#define psz 17000
+    uint16_t pkt [psz];
+    for (uint32 unit = 0; unit < absi_dev.numunits; unit ++)
+      {
+        if (absi_state[unit].link == NOLINK)
+          continue;
+        int sz = udp_receive ((int) unit, pkt, psz);
+        if (sz < 0)
+          {
+            printf ("udp_receive failed\n");
+          }
+        else if (sz == 0)
+          {
+            //printf ("udp_receive 0\n");
+          }
+        else
+          {
+            for (int i = 0; i < sz; i ++)
+              {
+                printf ("  %06o  %04x  ", pkt [i], pkt [i]);
+                for (int b = 0; b < 16; b ++)
+                  printf ("%c", pkt [i] & (1 << (16 - b)) ? '1' : '0');
+                printf ("\n");
+              }
+            // Send a NOP reply
+            //int16_t reply [2] = 0x0040
+            int rc = udp_send (absi_state[unit].link, pkt, (uint16_t) sz, PFLG_FINAL);
+            if (rc < 0)
+              {
+                printf ("udp_send failed\n");
+              }
+          }
+      }
+  }
+
+static t_stat absi_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+  {
+    sim_printf("Number of ABSIunits in system is %d\n", absi_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_PRT_UNITS_MAX)
+    if (n < 1 || n > N_ABSI_UNITS_MAX)
       return SCPE_ARG;
-    prt_dev . numunits = (uint) n;
+    absi_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
-static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED void * desc)
+t_stat absiAttach (UNIT * uptr, char * cptr)
   {
-    int n = (int) PRT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_PRT_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Printer device name is %s\n", prt_state [n] . device_name);
-    return SCPE_OK;
-  }
+    int unitno = (int) (uptr - absi_unit);
 
-static t_stat prt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED char * cptr, UNUSED void * desc)
-  {
-    int n = (int) PRT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_PRT_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
+    //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
+
+    t_stat ret;
+    char * pfn;
+    //uint16 imp = 0; // we only support a single attachment to a single IMP
+
+    // If we're already attached, then detach ...
+    if ((uptr -> flags & UNIT_ATT) != 0)
+      detach_unit (uptr);
+
+    //   Make a copy of the "file name" argument.  udp_create() actually modifies
+    // the string buffer we give it, so we make a copy now so we'll have something
+    // to display in the "SHOW HIn ..." command.
+    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
+    if (pfn == NULL)
+      return SCPE_MEM;
+    strncpy (pfn, cptr, CBUFSIZE);
+
+    // Create the UDP connection.
+    ret = udp_create (cptr, & absi_state [unitno] . link);
+    if (ret != SCPE_OK)
       {
-        strncpy (prt_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        prt_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+        free (pfn);
+        return ret;
       }
-    else
-      prt_state [n] . device_name [0] = 0;
+
+    uptr -> flags |= UNIT_ATT;
+    uptr -> filename = pfn;
     return SCPE_OK;
   }
+
+// Detach (connect) ...
+t_stat absiDetach (UNIT * uptr)
+  {
+    int unitno = (int) (uptr - absi_unit);
+    t_stat ret;
+    if ((uptr -> flags & UNIT_ATT) == 0)
+      return SCPE_OK;
+    if (absi_state [unitno] . link == NOLINK)
+      return SCPE_OK;
+
+    ret = udp_release (absi_state [unitno] . link);
+    if (ret != SCPE_OK)
+      return ret;
+    absi_state [unitno] . link = NOLINK;
+    uptr -> flags &= ~(unsigned int) UNIT_ATT;
+    free (uptr -> filename);
+    uptr -> filename = NULL;
+    return SCPE_OK;
+  }
+
+
 
 

@@ -16,6 +16,7 @@
 #include "dps8_console.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_mt.h"  // attachTape
 #include "dps8_disk.h"  // attachDisk
@@ -139,12 +140,12 @@ typedef struct con_state_t
     // SIMH console library has only putc and getc; the SIMH terminal
     // library has more features including line buffering.
 #define bufsize 81
-    char buf[bufsize];
-    char *tailp;
-    char *readp;
+    unsigned char buf[bufsize];
+    unsigned char *tailp;
+    unsigned char *readp;
     bool have_eol;
-    char *auto_input;
-    char *autop;
+    unsigned char *auto_input;
+    unsigned char *autop;
     bool once_per_boot;
     
     // stuff saved from the Read ASCII command
@@ -210,14 +211,14 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cp
   {
     if (cptr)
       {
-        char * new = strdupesc (cptr);
+        unsigned char * new =(unsigned char *) strdupesc (cptr);
         if (console_state . auto_input)
           {
-            size_t nl = strlen (new);
-            size_t ol = strlen (console_state . auto_input);
+            size_t nl = strlen ((char *) new);
+            size_t ol = strlen ((char *) console_state . auto_input);
 
-            char * old = realloc (console_state . auto_input, nl + ol + 1);
-            strcpy (old + ol, new);
+            unsigned char * old = realloc (console_state . auto_input, nl + ol + 1);
+            strcpy ((char *) old + ol, (char *) new);
             console_state . auto_input = old;
             free (new);
           }
@@ -241,14 +242,14 @@ int opconAutoinput (int32 flag, char *  cptr)
   {
     if (! flag)
       {
-        char * new = strdupesc (cptr);
+        unsigned char * new = (unsigned char *) strdupesc (cptr);
         if (console_state . auto_input)
           {
-            size_t nl = strlen (new);
-            size_t ol = strlen (console_state . auto_input);
+            size_t nl = strlen ((char *) new);
+            size_t ol = strlen ((char *) console_state . auto_input);
 
-            char * old = realloc (console_state . auto_input, nl + ol + 1);
-            strcpy (old + ol, new);
+            unsigned char * old = realloc (console_state . auto_input, nl + ol + 1);
+            strcpy ((char *) old + ol, (char *) new);
             console_state . auto_input = old;
             free (new);
           }
@@ -273,7 +274,7 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
   {
     sim_debug (DBG_NOTIFY, & opcon_dev,
                "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
-               __func__, st, uptr, val, desc);
+               __func__, (void *) st, (void *) uptr, val, desc);
 
     if (console_state . auto_input == NULL)
       sim_debug (DBG_NOTIFY, & opcon_dev,
@@ -287,8 +288,8 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr,
  
 t_stat console_attn (UNUSED UNIT * uptr)
   {
-    send_special_interrupt (cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
-                            cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
+    send_special_interrupt ((uint) cables -> cablesFromIomToCon [ASSUME0] . iomUnitIdx,
+                            (uint) cables -> cablesFromIomToCon [ASSUME0] . chan_num, 
                             ASSUME0, 0, 0);
     return SCPE_OK;
   }
@@ -312,7 +313,7 @@ static void newlineOff (void)
       }
     struct termios runtty;
     runtty = ttyTermios;
-    runtty . c_oflag &= ~OPOST; /* no output edit */
+    runtty . c_oflag &= (unsigned int) ~OPOST; /* no output edit */
     tcsetattr (0, TCSAFLUSH, & runtty);
   }
 
@@ -426,26 +427,66 @@ sim_printf ("<%s>\n", labelDotDsk);
 #endif
   }
 
+#ifdef OSCAR
+static void oscar (char * text)
+  {
+    char prefix [] = "log oscar ";
+    if (strncmp (text, prefix, strlen (prefix)))
+      return;
+    //sim_printf ("<%s>\n", text);
+    //do_cmd (0, text + strlen (prefix));
+    char * cptr = text + strlen (prefix);
+    char gbuf [257];
+    cptr = get_glyph (cptr, gbuf, 0);                   /* get command glyph */
+    CTAB *cmdp;
+    if ((cmdp = find_cmd (gbuf)))                       /* lookup command */
+      {
+        t_stat stat = cmdp->action (cmdp->arg, cptr);          /* if found, exec */
+        if (stat == SCPE_OK)
+          sim_printf ("oscar thinks that's ok.\n");
+        else
+          sim_printf ("oscar thinks %d\n", stat);
+      }
+    else
+      sim_printf ("oscar says huh?\n");
+  }
+#endif
+
 static void sendConsole (uint stati)
   {
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
-    int con_unit_num = OPCON_UNIT_NUM (console_state . unitp);
+    int con_unit_num = (int) OPCON_UNIT_NUM (console_state . unitp);
     int iomUnitIdx = cables -> cablesFromIomToCon [con_unit_num] . iomUnitIdx;
     
     int chan = console_state . chan;
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // XXX this should be iomIndirectDataService
     p -> charPos = tally % 4;
+
+#ifdef OSCAR
+    char text [257];
+    int ntext;
+    for (ntext = 0; ntext < 256; ntext ++)
+      {
+        if (console_state . readp + ntext >= console_state . tailp)
+          break;
+        text [ntext] = * (console_state . readp + ntext);
+      }
+    text [ntext] = 0;
+    //sim_printf ("<%s>\n", text);
+    oscar (text);
+#endif
+
     while (tally && console_state . readp < console_state . tailp)
       {
-        int charno;
+        uint charno;
         for (charno = 0; charno < 4; ++ charno)
           {
             if (console_state . readp >= console_state . tailp)
               break;
-            unsigned char c = * console_state . readp ++;
-            putbits36 (& M [daddr], charno * 9, 9, c);
+            unsigned char c = (unsigned char) (* console_state . readp ++);
+            putbits36_9 (& M [daddr], charno * 9, c);
           }
         // cp = charno % 4;
 
@@ -454,14 +495,14 @@ static void sendConsole (uint stati)
       }
     if (console_state . readp < console_state . tailp)
       {
-        sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %ld characters from end of line\n", console_state . tailp - console_state . readp);
+        sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %d characters from end of line\n", (int) (console_state . tailp - console_state . readp));
       }
     console_state . readp = console_state . buf;
     console_state . tailp = console_state . buf;
     console_state . io_mode = no_mode;
 
     p -> stati = stati;
-    send_terminate_interrupt (iomUnitIdx, chan);
+    send_terminate_interrupt ((uint) iomUnitIdx, (uint) chan);
   }
 
 
@@ -568,7 +609,7 @@ sim_printf ("uncomfortable with this\n");
             console_state . tally = tally;
             console_state . daddr = daddr;
             console_state . unitp = unitp;
-            console_state . chan = chan;
+            console_state . chan = (int) chan;
 
           }
           //break;
@@ -794,7 +835,7 @@ void consoleProcess (void)
                 sendConsole (04000); // Normal status
                 return;
               }
-            int c = * (console_state . autop);
+            unsigned char c = * (console_state . autop);
             if (c == 4) // eot
               {
                 free(console_state . auto_input);
@@ -824,7 +865,7 @@ void consoleProcess (void)
               }
             console_state . autop ++;
 
-            if (isprint (c))
+            if (isprint ((char) c))
               sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '%c'\n", c);
             else
               sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '\\%03o'\n", c);
@@ -866,7 +907,10 @@ eol:
 // XXX replace attn key signal with escape char check here
 // XXX check for escape to scpe (^E?)
     if (stop_cpu)
-      return;
+      {
+        sim_printf ("Got <sim stop>\n");
+        return;
+      }
     if (c == SCPE_OK)
         return; // no input
     if (c == SCPE_STOP)
@@ -915,8 +959,8 @@ eol:
         sim_putchar ('R');
         //sim_putchar ('\r');
         sim_putchar ('\n');
-        for (char * p = console_state . buf; p < console_state . tailp; p ++)
-          sim_putchar (*p);
+        for (unsigned char * p = console_state . buf; p < console_state . tailp; p ++)
+          sim_putchar ((int32) (*p));
         return;
       }
 
@@ -958,7 +1002,7 @@ eol:
         if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
           return;
 
-        * console_state . tailp ++ = c;
+        * console_state . tailp ++ = (unsigned char) c;
         sim_putchar (c);
         return;
       }
@@ -992,10 +1036,10 @@ int con_iom_cmd (uint iomUnitIdx, uint chan)
 
 static t_stat opcon_svc (UNIT * unitp)
   {
-    int conUnitNum = OPCON_UNIT_NUM (unitp);
+    int conUnitNum = (int) OPCON_UNIT_NUM (unitp);
     int iomUnitIdx = cables -> cablesFromIomToCon [conUnitNum] . iomUnitIdx;
     int chan = cables -> cablesFromIomToCon [conUnitNum] . chan_num;
-    con_iom_cmd (iomUnitIdx, chan);
+    con_iom_cmd ((uint) iomUnitIdx, (uint) chan);
     return SCPE_OK;
   }
 
@@ -1010,7 +1054,7 @@ static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, char * c
     int n = atoi (cptr);
     if (n < 1 || n > N_OPCON_UNITS_MAX)
       return SCPE_ARG;
-    opcon_dev . numunits = n;
+    opcon_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
@@ -1051,7 +1095,7 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
               break;
 
             case  0: // attn_hack
-              attn_hack = v;
+              attn_hack = (int) v;
               break;
     
             default:
