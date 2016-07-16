@@ -145,7 +145,7 @@ t_stat dequeue_fnp_command (void)
     arg3 = rv -> arg3;
 
     //sim_printf("fnp_command(\"%s\", \"%s\", \"%s\")\n", nodename, id, arg3);
-//sim_printf ("FNP CMD '%s'\n", arg3);
+//sim_printf ("FNP CMD %d '%s'\n", fnpUnitNum, arg3);
     sim_debug (DBG_TRACE, & fnpDev, "FNP CMD '%s'\n", arg3);
     size_t arg3_len = strlen (arg3);
     char keyword [arg3_len];
