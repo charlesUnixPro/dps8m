@@ -27,7 +27,7 @@ getDevList();
  */
 t_stat OnMuxConnect(TMLN *tmln, int line)
 {
-    sim_printf("%s CONNECT %d\n", Now(), line);
+    sim_printf("%s CONNECT %d from IP %s\n", Now(), line, tmln->ipad);
     connectPrompt (tmln);
  
     ttys[line].state = eInput;      // waiting for user input
@@ -139,7 +139,7 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
                         
                         tmxr_linemsgf (tmln, "%s", strFMTI(q, line));
                         
-                        sim_printf("%s LINE %d CONNECTED AS %s\n", Now(), line, q->multics.name);
+                        sim_printf("%s LINE %d CONNECTED AS %s from IP %s\n", Now(), line, q->multics.name, tmln->ipad);
                         if (! MState.accept_calls)
                         {
                             tmxr_linemsg_stall (tmln, "Multics is not accepting calls\r\n");
