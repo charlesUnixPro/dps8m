@@ -20,11 +20,12 @@
 #include "fnp_2.h"
 #include "fnp_mux.h"
 #include "utlist.h"
+#include "udplib.h"
 
 void tellCPU (int fnpUnitNum, char * msg)
   {
 //sim_printf ("tellCPU %d %s\n", fnpUnitNum, msg);
-    fnpQueueMsg (fnpUnitNum, msg);
+    fnpToCpuQueueMsg (fnpUnitNum, msg);
   }
 
 t_MState MState;
@@ -92,20 +93,20 @@ fail:
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the fnp code.
 
-static pthread_mutex_t fnpMQlock;
-typedef struct fnpQueueElement fnpQueueElement;
-struct fnpQueueElement
+static pthread_mutex_t cpuToFnpMQlock;
+typedef struct cpuToFnpQueueElement cpuToFnpQueueElement;
+struct cpuToFnpQueueElement
   {
     int fnpUnitNum;
     char * arg3;
-    fnpQueueElement * prev, * next;
+    cpuToFnpQueueElement * prev, * next;
   };
 
-static fnpQueueElement * fnpQueue = NULL;
+static cpuToFnpQueueElement * cpuToFnpQueue = NULL;
 
-void fnpQueueInit (void)
+void cpuToFnpQueueInit (void)
   {
-    if (pthread_mutex_init (& fnpMQlock, NULL) != 0)
+    if (pthread_mutex_init (& cpuToFnpMQlock, NULL) != 0)
       {
         sim_printf ("n mutex init failed\n");
       }
@@ -113,32 +114,45 @@ void fnpQueueInit (void)
 
 t_stat fnp_command (int fnpUnitNum, char *arg3)
   {
-    pthread_mutex_lock (& fnpMQlock);
-    fnpQueueElement * element = malloc (sizeof (fnpQueueElement));
+#if 0
+    int link = lookupFnpLink (fnpUnitNum);
+    if (link != NOLINK)
+      {
+        int rc = udp_send (link, arg3, (uint16_t) strlen (arg3), 0);
+        if (rc < 0)
+          {
+            sim_warn ("fnp_command udp_send failed %d\n", rc);
+          }
+
+        return SCPE_OK;
+      }
+#endif
+    pthread_mutex_lock (& cpuToFnpMQlock);
+    cpuToFnpQueueElement * element = malloc (sizeof (cpuToFnpQueueElement));
     if (! element)
       {
-         sim_printf ("couldn't malloc fnpQueueElement\n");
+         sim_printf ("couldn't malloc cpuToFnpQueueElement\n");
       }
     else
       {
         element -> fnpUnitNum = fnpUnitNum;
         element -> arg3 = strdup (arg3);
-        DL_APPEND (fnpQueue, element);
+        DL_APPEND (cpuToFnpQueue, element);
       }
-    pthread_mutex_unlock (& fnpMQlock);
-      return SCPE_OK;
+    pthread_mutex_unlock (& cpuToFnpMQlock);
+    return SCPE_OK;
   }
 
 t_stat dequeue_fnp_command (void)
 {
-    if (! fnpQueue)
+    if (! cpuToFnpQueue)
       return SCPE_OK;
     char * arg3 = NULL;
-    pthread_mutex_lock (& fnpMQlock);
-    fnpQueueElement * rv = fnpQueue;
+    pthread_mutex_lock (& cpuToFnpMQlock);
+    cpuToFnpQueueElement * rv = cpuToFnpQueue;
     if (rv)
-      DL_DELETE (fnpQueue, rv);
-    pthread_mutex_unlock (& fnpMQlock);
+      DL_DELETE (cpuToFnpQueue, rv);
+    pthread_mutex_unlock (& cpuToFnpMQlock);
     if (! rv)
       return SCPE_OK;
     int fnpUnitNum = rv -> fnpUnitNum;
@@ -911,7 +925,7 @@ t_stat dequeue_fnp_command (void)
     if (arg3)
       free (arg3);
 #endif
-// } // while fnpQueue
+// } // while cpuToFnpQueue
     return SCPE_OK;
 
 scpe_arg:

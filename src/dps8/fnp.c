@@ -36,7 +36,7 @@ void fnp_init(void)
       ttys [i] . mux_line = -1;
       MState . line [i] . muxLineNum = -1;
     }
-    fnpQueueInit ();
+    cpuToFnpQueueInit ();
 }
 
 t_stat fnpLoad (UNUSED int32 arg, char * buf)

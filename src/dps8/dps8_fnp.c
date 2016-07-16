@@ -21,6 +21,7 @@
 #include "dps8_cable.h"
 #include "utlist.h"
 #include "uthash.h"
+#include "udplib.h"
 //#include "fnpp.h"
 
 #include "sim_defs.h"
@@ -33,6 +34,8 @@ static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat fnpSetIPCname (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat fnpAttach (UNIT * uptr, char * cptr);
+static t_stat fnpDetach (UNIT *uptr);
 
 static int findMbx (uint fnpUnitIdx);
 
@@ -125,8 +128,8 @@ DEVICE fnpDev = {
     NULL,             /* deposit routine */
     fnpReset,         /* reset routine */
     NULL,             /* boot routine */
-    NULL,             /* attach routine */
-    NULL,             /* detach routine */
+    fnpAttach,             /* attach routine */
+    fnpDetach,             /* detach routine */
     NULL,             /* context */
     DEV_DEBUG,        /* flags */
     0,                /* debug control flags */
@@ -154,6 +157,7 @@ static struct fnpUnitData
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
     char ipcName [MAX_DEV_NAME_LEN];
+    int link; // UDP socket
   } fnpUnitData [N_FNP_UNITS_MAX];
 
 
@@ -187,26 +191,26 @@ struct mailbox
     struct fnp_submailbox fnp_sub_mbxes [4];
   };
 
-// FNP message queue; when IPC messages come in, they are append to this
+// FNP to CPU message queue; when IPC messages come in, they are append to this
 // queue. The sim_instr loop will poll the queue for messages for delivery 
 // to the DIA code.
 
-static pthread_mutex_t fnpMQlock;
-typedef struct fnpQueueElement fnpQueueElement;
-struct fnpQueueElement
+static pthread_mutex_t fnpToCpuMQlock;
+typedef struct fnpToCpuQueueElement fnpToCpuQueueElement;
+struct fnpToCpuQueueElement
   {
     char * msg;
-    fnpQueueElement * prev, * next;
+    fnpToCpuQueueElement * prev, * next;
   };
 
-static fnpQueueElement * fnpQueue [N_FNP_UNITS_MAX] = 
+static fnpToCpuQueueElement * fnpToCpuQueue [N_FNP_UNITS_MAX] = 
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-void fnpQueueMsg (int fnpUnitIdx, char * msg)
+void fnpToCpuQueueMsg (int fnpUnitIdx, char * msg)
   {
 //sim_printf ("tellCPU %d %s\n", fnpUnitIdx, msg);
-    pthread_mutex_lock (& fnpMQlock);
-    fnpQueueElement * q = fnpQueue [fnpUnitIdx];
+    pthread_mutex_lock (& fnpToCpuMQlock);
+    fnpToCpuQueueElement * q = fnpToCpuQueue [fnpUnitIdx];
     // Compress multiple send_output commands
     if (strncmp ("send_output ", msg, strlen ("send_output ")) == 0)
       {
@@ -216,36 +220,36 @@ void fnpQueueMsg (int fnpUnitIdx, char * msg)
             goto skip;
           }
       }
-    fnpQueueElement * element = malloc (sizeof (fnpQueueElement));
+    fnpToCpuQueueElement * element = malloc (sizeof (fnpToCpuQueueElement));
     if (! element)
       {
-         sim_debug (DBG_ERR, & fnpDev, "couldn't malloc fnpQueueElement\n");
+         sim_debug (DBG_ERR, & fnpDev, "couldn't malloc fnpToCpuQueueElement\n");
       }
     else
       {
         element -> msg = strdup (msg);
-        DL_APPEND (fnpQueue[fnpUnitIdx], element);
+        DL_APPEND (fnpToCpuQueue[fnpUnitIdx], element);
       }
 skip:;
-    pthread_mutex_unlock (& fnpMQlock);
+    pthread_mutex_unlock (& fnpToCpuMQlock);
   }
 
 static bool fnpPollQueue (int fnpUnitIdx)
   {
-    return !! fnpQueue [fnpUnitIdx];
+    return !! fnpToCpuQueue [fnpUnitIdx];
   }
 
 static char * fnpDequeueMsg (int fnpUnitIdx)
   {
-    pthread_mutex_lock (& fnpMQlock);
-    if (! fnpQueue [fnpUnitIdx])
+    pthread_mutex_lock (& fnpToCpuMQlock);
+    if (! fnpToCpuQueue [fnpUnitIdx])
       {
-        pthread_mutex_unlock (& fnpMQlock);
+        pthread_mutex_unlock (& fnpToCpuMQlock);
         return NULL;
       }
-    fnpQueueElement * rv = fnpQueue [fnpUnitIdx];
-    DL_DELETE (fnpQueue [fnpUnitIdx], rv);
-    pthread_mutex_unlock (& fnpMQlock);
+    fnpToCpuQueueElement * rv = fnpToCpuQueue [fnpUnitIdx];
+    DL_DELETE (fnpToCpuQueue [fnpUnitIdx], rv);
+    pthread_mutex_unlock (& fnpToCpuMQlock);
     char * msg = rv -> msg;
     free (rv);
 //sim_printf ("fnpDequeueMsg %d %s\n", fnpUnitIdx, msg);
@@ -254,7 +258,7 @@ static char * fnpDequeueMsg (int fnpUnitIdx)
 
 t_stat diaCommand (int fnpUnitIdx, char *arg3)
   {
-    fnpQueueMsg (fnpUnitIdx, arg3);
+    fnpToCpuQueueMsg (fnpUnitIdx, arg3);
     return SCPE_OK;
   }
 
@@ -670,13 +674,21 @@ int lookupFnpsIomUnitNumber (int fnpUnitIdx)
     return cables -> cablesFromIomToFnp [fnpUnitIdx] . iomUnitIdx;
   }
 
+int lookupFnpLink (int fnpUnitIdx)
+  {
+    return fnpUnitData [fnpUnitIdx].link;
+  }
+
 void fnpInit(void)
   {
     memset(fnpUnitData, 0, sizeof(fnpUnitData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
-      cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
+      {
+        cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
+        fnpUnitData [i] . link = NOLINK;
+      }
     //fnppInit ();
-    if (pthread_mutex_init (& fnpMQlock, NULL) != 0)
+    if (pthread_mutex_init (& fnpToCpuMQlock, NULL) != 0)
       {
         sim_debug (DBG_ERR, & fnpDev, "n mutex init failed\n");
       }
@@ -1898,6 +1910,61 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
     //return fnppSetNunits (uptr, value, cptr, desc);
     return SCPE_OK;
   }
+
+//    ATTACH FNPn llll:w.x.y.z:rrrr - connect via UDP to an external FNP
+
+static t_stat fnpAttach (UNIT * uptr, char * cptr)
+  {
+    int unitno = (int) FNP_UNIT_IDX (uptr);
+
+    t_stat ret;
+    char * pfn;
+
+    // If we're already attached, then detach ...
+    if ((uptr -> flags & UNIT_ATT) != 0)
+      detach_unit (uptr);
+
+    // Make a copy of the "file name" argument.  udp_create() actually modifies
+    // the string buffer we give it, so we make a copy now so we'll have
+    // something to display in the "SHOW FNPn ..." command.
+    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
+    if (pfn == NULL)
+      return SCPE_MEM;
+    strncpy (pfn, cptr, CBUFSIZE);
+
+    // Create the UDP connection.
+    ret = udp_create (cptr, & fnpUnitData [unitno] . link);
+    if (ret != SCPE_OK)
+      {
+        free (pfn);
+        return ret;
+      }
+
+    uptr -> flags |= UNIT_ATT;
+    uptr -> filename = pfn;
+    return SCPE_OK;
+  }
+
+// Detach (connect) ...
+static t_stat fnpDetach (UNIT * uptr)
+  {
+    int unitno = FNP_UNIT_IDX (uptr);
+    t_stat ret;
+    if ((uptr -> flags & UNIT_ATT) == 0)
+      return SCPE_OK;
+    if (fnpUnitData [unitno] . link == NOLINK)
+      return SCPE_OK;
+
+    ret = udp_release (fnpUnitData [unitno] . link);
+    if (ret != SCPE_OK)
+      return ret;
+    fnpUnitData [unitno] . link = NOLINK;
+    uptr -> flags &= ~(unsigned int) UNIT_ATT;
+    free (uptr -> filename);
+    uptr -> filename = NULL;
+    return SCPE_OK;
+  }
+
 
 static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
                               UNUSED int val, UNUSED void * desc)
