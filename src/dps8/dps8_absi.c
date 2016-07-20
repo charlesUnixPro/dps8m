@@ -606,7 +606,8 @@ void absiProcessEvent (void)
       {
         if (absi_state[unit].link == NOLINK)
           continue;
-        int sz = udp_receive ((int) unit, pkt, psz);
+        //int sz = udp_receive ((int) unit, pkt, psz);
+        int sz = udp_receive (absi_state[unit].link, pkt, psz);
         if (sz < 0)
           {
             printf ("udp_receive failed\n");
