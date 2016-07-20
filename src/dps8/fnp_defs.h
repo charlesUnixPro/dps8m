@@ -20,6 +20,7 @@
 #define STR(s) #s
 
 #define MAX_LINES     64                                /*  max number of FNP lines - hardware  */
+#define MAX_FNPS       8                                /*  Max numbe of FNPs - Multics limit */
 
 #define SCP_QUIT        SCPC_OK + 1
 
@@ -198,6 +199,10 @@ extern int32 mux_tmxr_poll;                                /* tmxr poll */
 extern int32 mux_int_req, mux_busy, mux_done, mux_disable;
 extern int32 mux_chars_Rx;   //saved_PC;
 
+//
+// MState_t state of an FNP
+// 
+
 typedef struct
   {
     t_bool accept_calls;
@@ -243,8 +248,9 @@ typedef struct
         int frame_begin;
         int frame_end;
         bool echnego [256];
+        uint echnego_len;
       } line [MAX_LINES];
   } t_MState;
-extern t_MState MState;
+extern t_MState MState [MAX_FNPS];
 
 #endif

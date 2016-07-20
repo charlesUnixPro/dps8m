@@ -223,7 +223,8 @@ getDevList()
     while (t)
     {
         if (t->inUse == false &&
-            t->multics.hsla_line_num != -1)
+            t->multics.hsla_line_num != -1 &&
+            t->multics.service == service_login)
         {
             if (strlen(buf) > 0)
                 strcat(buf, ",");
@@ -242,7 +243,7 @@ FMTI *searchForDevice(char *name)
         
     while (t)
     {
-        if (t->inUse == false)
+        if (t->inUse == false && t->multics.service == service_login)
         {
             if (strlen (name) == 0)
               return t;
@@ -426,7 +427,38 @@ FMTI * readDevInfo(FILE *src)
             if (fnpUnitNum < 0 || fnpUnitNum >= N_FNP_UNITS_MAX)
                 sim_err ("bad unit name in Devices.txt: %s", current->multics.name);
             current->multics.fnpUnitNum = fnpUnitNum;
+            current->multics.service = service_login; // default service type
         //sim_printf ("%s %d\n", current->multics.name, current->multics.hsla_line_num);
+        }
+        else if (current && second && strcmp(first, "service") == 0)
+        {
+            trim (second);
+            if (strcmp (second, "login") == 0)
+                current->multics.service = service_login;
+            else if (strcmp (second, "autocall") == 0)
+                current->multics.service = service_autocall;
+            else if (strcmp (second, "slave") == 0)
+                current->multics.service = service_slave;
+            else
+               sim_printf ("service type '%s' not regcognized; ignored\n", second);
+//sim_printf ("%s service %d\n", current->multics.name, current->multics.service);
+        }
+// This is not part of the CMF language, but I need away to communicate which MUX line has
+// been reserved for an autocall
+        else if (current && second && strcmp(first, "mux_line") == 0)
+        {
+            trim (second);
+            char * end;
+            long line = strtol (second, & end, 0);
+            if (* end || line < 0 || line >= MAX_LINES)
+              {
+                sim_printf ("can't parse mux line '%s'; ignored\n", second);
+              }
+            else
+              {
+                current->multics.mux_line = (int) line;
+              }
+//sim_printf ("%s mux_line %d\n", current->multics.name, current->multics.mux_line);
         }
         else if (current && second && strcmp(first, "regex") == 0)
         {
@@ -475,21 +507,21 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     int hsla_line_num = tty->fmti->multics.hsla_line_num;
     int fnpUnitNum = tty->fmti->multics.fnpUnitNum;
 
-    if (MState . line [hsla_line_num] .echoPlex)
+    if (MState[fnpUnitNum].line [hsla_line_num] .echoPlex)
     {
         // echo \r, \n & \t
-        if (MState . line [hsla_line_num] .crecho && kar == '\n')   // echo a CR when a LF is typed
+        if (MState[fnpUnitNum].line [hsla_line_num] .crecho && kar == '\n')   // echo a CR when a LF is typed
         {
             MuxWrite(line, '\r');
             MuxWrite(line, '\n');
         }
-        else if (MState . line [hsla_line_num] .lfecho && kar == '\r')  // echoes and inserts a LF in the users input stream when a CR is typed
+        else if (MState[fnpUnitNum].line [hsla_line_num] .lfecho && kar == '\r')  // echoes and inserts a LF in the users input stream when a CR is typed
         {
             MuxWrite(line, '\r');
             MuxWrite(line, '\n');
             //kar = '\n';
         }
-        else if (MState . line [hsla_line_num] .tabecho && kar == '\t') // echos the appropriate number of spaces when a TAB is typed
+        else if (MState[fnpUnitNum].line [hsla_line_num] .tabecho && kar == '\t') // echos the appropriate number of spaces when a TAB is typed
         {
             int nCol = tty->nPos;        // since nPos starts at 0 this'll work well with % operator
             // for now we use tabstops of 1,11,21,31,41,51, etc...
@@ -516,7 +548,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     } // if echoPlex
 
     // send of each and every character
-    if (MState . line [hsla_line_num] .breakAll)
+    if (MState[fnpUnitNum].line [hsla_line_num] .breakAll)
     {
         ttys [line] . buffer [ttys [line] . nPos ++] = (char) kar;
         ttys [line] . buffer [ttys [line] . nPos] = 0;
@@ -534,7 +566,7 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
     // nothing after here tested (yet)
     
     // buffer too full for anything more or we reach our buffer threshold?
-    //int inputBufferSize =  MState . line [hsla_line_num].inputBufferSize;
+    //int inputBufferSize =  MState[fnpUnitNum].line [hsla_line_num].inputBufferSize;
     
     //if (tty->nPos >= sizeof(tty->buffer) || tty->nPos >= inputBufferSize)
     // 2 --> the current char plus a '\0'
@@ -547,10 +579,10 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         return;
     }
     
-    if ((MState . line [hsla_line_num] . frame_begin != 0 &&
-         MState . line [hsla_line_num] . frame_begin == kar) ||
-        (MState . line [hsla_line_num] . frame_end != 0 &&
-         MState . line [hsla_line_num] . frame_end == kar))
+    if ((MState[fnpUnitNum].line [hsla_line_num] . frame_begin != 0 &&
+         MState[fnpUnitNum].line [hsla_line_num] . frame_begin == kar) ||
+        (MState[fnpUnitNum].line [hsla_line_num] . frame_end != 0 &&
+         MState[fnpUnitNum].line [hsla_line_num] . frame_end == kar))
       {
         if (tty -> nPos != 0)
           {
@@ -610,7 +642,7 @@ sim_printf ("sending out of frame\n");
 
         case '\b':  // backspace
         case 127:   // delete
-            //if (MState . line [hsla_line_num].erkl)
+            //if (MState[fnpUnitNum].line [hsla_line_num].erkl)
             {
                 if (tty->nPos > 0)
                 {
@@ -623,7 +655,7 @@ sim_printf ("sending out of frame\n");
             return;
             
         case 21:    // ^U kill
-            //if (MState . line [hsla_line_num].erkl)
+            //if (MState[fnpUnitNum].line [hsla_line_num].erkl)
             {
                 tty->nPos = 0;
                 tty->buffer[tty->nPos] = 0;
@@ -642,7 +674,7 @@ sim_printf ("sending out of frame\n");
     }
     
     //// if half duplex, echo back to MUX line
-    //if (!(MState . line [hsla_line_num] .fullDuplex))
+    //if (!(MState[fnpUnitNum].line [hsla_line_num] .fullDuplex))
         //MuxWrite(line, kar);
     
     tty->buffer[tty->nPos++] = (char) kar;

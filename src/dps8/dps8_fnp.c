@@ -21,7 +21,7 @@
 #include "dps8_cable.h"
 #include "utlist.h"
 #include "uthash.h"
-#include "udplib.h"
+#include "fnp_udplib.h"
 //#include "fnpp.h"
 
 #include "sim_defs.h"
@@ -685,7 +685,7 @@ void fnpInit(void)
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       {
         cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
-        fnpUnitData [i] . link = NOLINK;
+        fnpUnitData [i] . link = FNP_NOLINK;
       }
     //fnppInit ();
     if (pthread_mutex_init (& fnpToCpuMQlock, NULL) != 0)
@@ -885,12 +885,24 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                       }
                       break;
 
+                    case 12: // dial out
+                      {
+                        word36 command_data0 = smbxp -> command_data [0];
+                        word36 command_data1 = smbxp -> command_data [1];
+                        word36 command_data2 = smbxp -> command_data [2];
+                        char cmd [256];
+                        sprintf (cmd, "dial_out %d %012llo %012llo %012llo", slot_no, command_data0, command_data1, command_data2);
+                        tellFNP (devUnitIdx, cmd);          
+                      }
+                      break;
+
                     case 22: // line_control
                       {
                         word36 command_data0 = smbxp -> command_data [0];
                         word36 command_data1 = smbxp -> command_data [1];
+                        word36 command_data2 = smbxp -> command_data [2];
                         char cmd [256];
-                        sprintf (cmd, "line_control %d %012llo %012llo", slot_no, command_data0, command_data1);
+                        sprintf (cmd, "line_control %d %012llo %012llo %012llo", slot_no, command_data0, command_data1, command_data2);
                         tellFNP (devUnitIdx, cmd);          
                       }
 
@@ -904,9 +916,9 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
                         //sim_printf ("set_echnego_break_table %d addr %06o len %d\n", slot_no, data_addr, data_len);
 #define echoTableLen 8
-                        if (data_len != echoTableLen)
+                        if (data_len != echoTableLen && data_len != 0)
                           {
-                            sim_printf ("set_echnego_break_table data_len !=8 (%d); bailing\n", data_len);
+                            sim_printf ("set_echnego_break_table data_len !=8 (%d)\n", data_len);
                             break;
                           }
                         //set_echnego_break_table 0 addr 203340 len 8
@@ -924,8 +936,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             //sim_printf ("   %012llo\n", echoTable [i]);
                           }
                         char cmd [256];
-                        sprintf (cmd, "set_echnego_break_table %d %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o",
-                                 slot_no,
+                        sprintf (cmd, "set_echnego_break_table %d %u %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o %06o",
+                                 slot_no, data_len,
                                  (uint) (echoTable [0] >> 20) & MASK16,
                                  (uint) (echoTable [0] >>  2) & MASK16,
                                  (uint) (echoTable [1] >> 20) & MASK16,
@@ -1188,6 +1200,19 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                               }
                               break;
 
+                            case 26: // Set_buffer_size
+                              {
+                                // Word 2: Bit 17 is "1"b.
+                                uint mb1 = getbits36_1  (smbxp -> command_data [0], 17);
+                                // Bits 18...35 contain the size, in characters,
+                                // of input buffers to be allocated for the 
+                                // channel.
+                                uint sz =  getbits36_18 (smbxp -> command_data [0], 18);
+                                char cmd [256];
+                                sprintf (cmd, "set_buffer_size %d %d %d", slot_no, mb1, sz);
+                                tellFNP ((int) devUnitIdx, cmd);          
+                              }
+
                             case 27: // Breakall
                               {
                                 //sim_printf ("fnp break_all\n");
@@ -1262,7 +1287,6 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
                             case 12: // Upstate
                             case 15: // Setbusy
                             case 21: // Xmit_hold
-                            case 26: // Set_buffer_size
                               {
                                 sim_printf ("fnp unimplemented subtype %d (%o)\n", subtype, subtype);
                                 // doFNPfault (...) // XXX
@@ -1393,7 +1417,6 @@ word36 pad;
                     case  9: // blast
                     case 10: // accept_direct_output
                     case 11: // accept_last_output
-                    case 12: // dial
                     //case 13: // ???
                     case 14: // reject_request_temp
                     //case 15: // ???
@@ -1924,7 +1947,7 @@ static t_stat fnpAttach (UNIT * uptr, char * cptr)
     if ((uptr -> flags & UNIT_ATT) != 0)
       detach_unit (uptr);
 
-    // Make a copy of the "file name" argument.  udp_create() actually modifies
+    // Make a copy of the "file name" argument.  fnp_udp_create() actually modifies
     // the string buffer we give it, so we make a copy now so we'll have
     // something to display in the "SHOW FNPn ..." command.
     pfn = (char *) calloc (CBUFSIZE, sizeof (char));
@@ -1933,8 +1956,8 @@ static t_stat fnpAttach (UNIT * uptr, char * cptr)
     strncpy (pfn, cptr, CBUFSIZE);
 
     // Create the UDP connection.
-    ret = udp_create (cptr, & fnpUnitData [unitno] . link);
-    if (ret != SCPE_OK)
+    ret = fnp_udp_create (cptr, & fnpUnitData [unitno] . link);
+    if (ret)
       {
         free (pfn);
         return ret;
@@ -1952,13 +1975,13 @@ static t_stat fnpDetach (UNIT * uptr)
     t_stat ret;
     if ((uptr -> flags & UNIT_ATT) == 0)
       return SCPE_OK;
-    if (fnpUnitData [unitno] . link == NOLINK)
+    if (fnpUnitData [unitno] . link == FNP_NOLINK)
       return SCPE_OK;
 
-    ret = udp_release (fnpUnitData [unitno] . link);
+    ret = fnp_udp_release (fnpUnitData [unitno] . link);
     if (ret != SCPE_OK)
       return ret;
-    fnpUnitData [unitno] . link = NOLINK;
+    fnpUnitData [unitno] . link = FNP_NOLINK;
     uptr -> flags &= ~(unsigned int) UNIT_ATT;
     free (uptr -> filename);
     uptr -> filename = NULL;

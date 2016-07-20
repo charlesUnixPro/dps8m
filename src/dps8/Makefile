@@ -265,6 +265,7 @@ C_SRCS += ./fnp_cmds.c
 #C_SRCS += ./fnp_ipc.c
 C_SRCS += ./fnp_mux.c
 #C_SRCS += ./fnpp.c
+C_SRCS += ./fnp_udplib.c
 C_SRCS += ./fnp_utils.c
 C_SRCS += ./hdbg.c
 ifeq ($(M_SHARED),1)
@@ -314,6 +315,7 @@ H_SRCS += fnp.h
 H_SRCS += fnp_mux.h
 #H_SRCS += fnpp.h
 H_SRCS += fnp_rev.h
+H_SRCS += fnp_udplib.h
 H_SRCS += fnp_utils.h
 H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
@@ -327,7 +329,13 @@ H_SRCS += utlist.h
 
 
 
-all: locallibs_then_dps8 
+all: locallibs_then_dps8
+
+#fnpx : fnpx.c fnp_udplib.o
+#	$(CC) fnpx.c -o fnpx fnp_udplib.o
+
+#remote : remote.c fnp_udplib.o
+#	$(CC) remote.c -o remote fnp_udplib.o
 
 install: all
 	cp dps8 $(INSTALL_BIN)/dps8

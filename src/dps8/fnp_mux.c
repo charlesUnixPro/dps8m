@@ -381,6 +381,11 @@ static t_stat mux_attach(UNIT *unitp, char *cptr)
     return ( SCPE_OK ) ;
 }
 
+t_stat do_mux_attach (char * attstr)
+  {
+    return mux_attach (& mux_unit, attstr);
+  }
+
 static t_stat mux_detach( UNIT * unitp )
 {
     //int muxU1 = muxWhatUnitAttached();              // what is attached
