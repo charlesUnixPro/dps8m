@@ -1,5 +1,4 @@
-//
-//  fnp.c
+// //  fnp.c
 //  fnp
 //
 //  Created by Harry Reed on 11/26/14.
@@ -16,6 +15,7 @@
 #include "fnp.h"
 #include "fnp_cmds.h"
 
+#include "fnp_udplib.h"
 
 
 FMTI *readAndParse(char *file);
@@ -39,6 +39,7 @@ void fnp_init(void)
       for (int i = 0; i < MAX_LINES; i ++)
         {
           MState[f].line[i].muxLineNum = -1;
+          MState[f].line[i].muxLineNum = FNP_NOLINK;
         }
     cpuToFnpQueueInit ();
 }

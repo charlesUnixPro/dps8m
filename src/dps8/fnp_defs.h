@@ -249,6 +249,9 @@ typedef struct
         int frame_end;
         bool echnego [256];
         uint echnego_len;
+
+        // fnp_udplib
+        int link;
       } line [MAX_LINES];
   } t_MState;
 extern t_MState MState [MAX_FNPS];

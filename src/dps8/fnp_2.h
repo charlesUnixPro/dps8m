@@ -49,6 +49,7 @@ struct fauxMulticsTerminalInfo
         char    *regex;    // text of optional regex
         enum service_types service;
         int     mux_line;
+        int     fromport;
         ATTRIBUTE   *attrs;
     } multics;
 

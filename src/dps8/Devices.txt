@@ -1,5 +1,6 @@
 name: a.h000;
    service: autocall;
+   fromport: 5600;
 name: a.h002;
    service: slave;
    mux_line: 63;

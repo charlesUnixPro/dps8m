@@ -460,6 +460,23 @@ FMTI * readDevInfo(FILE *src)
               }
 //sim_printf ("%s mux_line %d\n", current->multics.name, current->multics.mux_line);
         }
+// This is not part of the CMF language, but I need away to configure the 
+// from port on an autocall line
+        else if (current && second && strcmp(first, "fromport") == 0)
+        {
+            trim (second);
+            char * end;
+            long port = strtol (second, & end, 0);
+            if (* end || port < 0 || port >= 65535)
+              {
+                sim_printf ("can't parse fromport '%s'; ignored\n", second);
+              }
+            else
+              {
+                current->multics.fromport = (int) port;
+              }
+//sim_printf ("%s fromport %d\n", current->multics.name, current->multics.fromport);
+        }
         else if (current && second && strcmp(first, "regex") == 0)
         {
             char *regx = stripquotes(second);

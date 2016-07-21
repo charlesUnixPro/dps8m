@@ -989,6 +989,7 @@ t_stat dequeue_fnp_command (void)
             goto dialout_die;
           }
        
+#if 0
         // Find an available mux line
         int line;
         for (line = 0; line < MAX_LINES; line ++)
@@ -1008,14 +1009,31 @@ t_stat dequeue_fnp_command (void)
         ttys[line].fmti = t;
         // Set by the connect code?
         //ttys[line].mux_line = ;
-        ttys[line].state = ePassThrough;
-        
+        //ttys[line].state = ePassThrough;
 
         char attstr [256];
         sprintf (attstr, "Line=%d,Connect=%d.%d.%d.%d:%d", line, oct1, oct2, oct3, oct4, port);
-        printf ("calling %s\n", attstr);
-        int ret = do_mux_attach (attstr);
+        sim_printf ("calling %s\n", attstr);
+        //int ret = do_mux_attach (attstr);
+        int ret = tmxr_attach (& mux_desc, & mux_unit, attstr);
         sim_printf ("ret %d\n", ret);
+#endif
+
+
+#if 0
+        char connect_string [256];
+        sprintf (connect_string, "%d:%d.%d.%d.%d:%d", t->multics.fromport, oct1, oct2, oct3, oct4, port);
+        printf ("calling %s\n", connect_string);
+        //int ret = do_mux_attach (attstr);
+        //sim_printf ("ret %d\n", ret);
+        int ret = fnp_udp_create (connect_string, & MState[fnpUnitNum].line[p1].link);
+        if (ret)
+          {
+            sim_printf ("dial_out fnp_udp_create returns %d\n". ret);
+            goto dialout_die;
+          }
+#endif
+        
 
 dialout_die:;
 
