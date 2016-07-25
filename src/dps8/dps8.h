@@ -77,6 +77,9 @@
 
 #define OVERFLOW_WRITE_THROUGH
 
+// Instruction profiler
+// #define MATRIX
+
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
