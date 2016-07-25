@@ -3257,7 +3257,7 @@ void processLineInput (void * client, char * buf, ssize_t nread)
         fnpuv_start_writestr (client, "Multics is not listening to this line\n");
         return;
       }
-    printf ("assoc. %d %d<%*s>\n", fnpno, lineno, (int) nread, buf);
+    sim_printf ("assoc. %d %d<%*s>\n", fnpno, lineno, (int) nread, buf);
   }
 
 void processUserInput (void * client, char * buf, ssize_t nread)
@@ -3275,14 +3275,14 @@ void processUserInput (void * client, char * buf, ssize_t nread)
     if (strlen (cpy))
       {
         char fnpcode;
-        uint lineno;
         int cnt = sscanf (cpy, "%c.h%u", & fnpcode, & lineno);
+sim_printf ("cnt %d fnpcode %c lineno %d\n", cnt, fnpcode, lineno);
         if (cnt != 2 || fnpcode < 'a' || fnpcode > 'h' || lineno >= MAX_LINES)
           {
              fnpuv_start_writestr (client, "can't parse\n");
              return;
           }
-        int fnpno = fnpcode - 'a';
+        fnpno = fnpcode - 'a';
         if (fnpUnitData[fnpno].MState.line[lineno].service != service_login ||
             fnpUnitData[fnpno].MState.line[lineno].client)
           {
@@ -3311,6 +3311,7 @@ void processUserInput (void * client, char * buf, ssize_t nread)
 associate:;
 
     fnpUnitData[fnpno].MState.line[lineno].client = client;
+sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
     ((uv_stream_t *) client)->data = (void *) (unsigned long) encodeline (fnpno, lineno);
     // Only enable read when Multics can accept it.
     uv_read_stop ((uv_stream_t *) client);
@@ -3320,5 +3321,4 @@ associate:;
     else if (! fnpUnitData[fnpno].MState.line[lineno].listen)
       fnpuv_start_writestr (client, "Multics is not listening to this line\n");
 
-//sim_printf ("associated %c.%03d\n", fnpno + 'a', lineno);
   }
