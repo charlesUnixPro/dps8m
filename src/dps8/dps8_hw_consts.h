@@ -1,6 +1,7 @@
 #ifndef DPS8_HW_CONSTS_H
 #define DPS8_HW_CONSTS_H
 
+/////////////////////////////////////
 //
 // SCU/Memory
 //
@@ -34,6 +35,7 @@ enum { N_CELL_INTERRUPTS = 32 };
 #define SEGSIZE         (1U << VASIZE)           // size of segment in words
 
 
+/////////////////////////////////////
 //
 // IOM
 //
@@ -44,6 +46,7 @@ enum { N_IOM_PORTS = 8 };
 // The number of devices that a dev_code can address (6 bit number)
 enum { N_DEV_CODES = 64 };
 
+/////////////////////////////////////
 //
 // Words
 //
@@ -300,6 +303,7 @@ static inline word72 SIGNEXT36_72 (word36 w)
 #define CLRS36(x)       ((x) & ~SIGN36)
 #define TSTS36(x)       ((x) & SIGN36)
 
+/////////////////////////////////////
 //
 // Instruction format
 //
@@ -406,6 +410,7 @@ enum {
 #define TB6            000U // 6-bit characters
 #define TB9            040U // 9-bit characters
 
+/////////////////////////////////////
 //
 // ITS/ITP
 //
@@ -423,6 +428,7 @@ enum {
 #define GET_ITS_BITNO(Ypair)    ((word6)  (((Ypair)[1] >>  9) & 077))
 #define GET_ITS_MOD(Ypair)      (GET_TAG((Ypair)[1]))
 
+/////////////////////////////////////
 //
 // Indicator register bits
 //
@@ -529,6 +535,10 @@ enum {
 #define SC_I_PERR(v)  SCF (v, cpu.cu.IR, I_PERR);
 #define SC_I_PMASK(v) SCF (v, cpu.cu.IR, I_PMASK);
 #define SC_I_TRUNC(v) SCF (v, cpu.cu.IR, I_TRUNC);
+
+
+
+/////////////////////////////////////
 //
 //  floating-point constants
 //
@@ -539,6 +549,7 @@ enum {
 // XXX beware the 72's are not what they seem!
 
 
+/////////////////////////////////////
 //
 // Faults
 //
@@ -777,12 +788,14 @@ enum _systemControllerIllegalActionCodes
   };
 
 
+/////////////////////////////////////
 //
 // Interrupts
 //
 
 #define N_INTERRUPTS 32
 
+/////////////////////////////////////
 //
 // Memory map
 //
@@ -792,6 +805,7 @@ enum _systemControllerIllegalActionCodes
 #define DN355_MBX_LOW 03400
 #define DN355_MBX_LEN 03000
 
+/////////////////////////////////////
 //
 // Opcodes
 //
@@ -1353,7 +1367,10 @@ typedef enum {
         opcode1_lra    = 0774U  // (508 decimal)
 } opcode1_t;
 
+/////////////////////////////////////
+//
 // History registers
+//
 
 enum { N_HIST_SETS = 4 };
 enum { N_HIST_SIZE = 64 };
@@ -1472,5 +1489,6 @@ enum
 
 
 enum { CU_HIST_REG = 0, DU_OU_HIST_REG = 1, APU_HIST_REG = 2, EAPU_HIST_REG = 3 };
+
 
 #endif // DPS8_HW_CONSTS_H

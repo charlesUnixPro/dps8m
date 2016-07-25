@@ -32,7 +32,11 @@
 #include "dps8_disk.h"
 #include "dps8_utils.h"
 #include "dps8_append.h"
+#ifdef FNP2
+#include "dps8_fnp2.h"
+#else
 #include "dps8_fnp.h"
+#endif
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
@@ -171,7 +175,9 @@ static CTAB dps8_cmds[] =
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
 
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
-
+#ifdef FNP2
+    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL},
+#endif
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫
     {"ET", eisTest, 0, "invoke EIS test jig\n", NULL}, 
@@ -2183,7 +2189,9 @@ DEVICE * sim_devices [] =
     & opcon_dev,
     & sys_dev,
     // & ipc_dev,  // for fnp IPC
+#ifndef FNP2
     & mux_dev,
+#endif
     & urp_dev,
     & crdrdr_dev,
     & crdpun_dev,

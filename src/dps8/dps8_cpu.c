@@ -21,7 +21,11 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_console.h"
+#ifdef FNP2
+#include "dps8_fnp2.h"
+#else
 #include "dps8_fnp.h"
+#endif
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
@@ -36,8 +40,11 @@
 #include "hdbg.h"
 #endif
 
+#ifdef FNP2
+#else
 #include "fnp_defs.h"
 #include "fnp_cmds.h"
+#endif
 
 #include "sim_defs.h"
 
@@ -1366,12 +1373,15 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
       
+#ifdef FNP2
+#else
     mux(SLS, 0, 0);
 
     UNIT *u = &mux_unit;
     if (u->filename == NULL || strlen(u->filename) == 0)
         sim_printf("Warning: MUX not attached.\n");
-      
+#endif
+ 
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Copy the placeholder in so the IC can be set by simh.
@@ -1476,7 +1486,10 @@ setCPU:;
             fnpProcessEvent (); 
             consoleProcess ();
             //AIO_CHECK_EVENT;
+#ifdef FNP2
+#else
             dequeue_fnp_command ();
+#endif
             absiProcessEvent ();
           }
 #if 0

@@ -1,9 +1,9 @@
 name: a.h000;
    service: autocall;
-   fromport: 5600;
+#   fromport: 5600;
 name: a.h002;
    service: slave;
-   mux_line: 63;
+#   mux_line: 63;
 name: a.h001;
 name: d.h000;
 name: d.h001;
