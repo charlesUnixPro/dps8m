@@ -1486,10 +1486,16 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
           }
         else
           {
+//sim_printf ("scu_cioc: Queuing an IOM in %d cycles "
+//"(for the connect channel) %u %d\n", 
+//sys_opts . iom_times . connect, scu_unit_num, iomUnitNum);
             sim_debug (DBG_INFO, & scu_dev, 
                        "scu_cioc: Queuing an IOM in %d cycles "
                        "(for the connect channel)\n", 
                        sys_opts . iom_times . connect);
+            // Stash the iom_interrupt call parameters
+            iom_dev.units[iomUnitNum].u3 = scu_unit_num;
+            iom_dev.units[iomUnitNum].u4 = iomUnitNum;
             int rc;
             if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 

@@ -216,12 +216,14 @@
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
 
+static t_stat iom_action (struct sim_unit *up);
+
 static UNIT iomUnit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, void * desc);
@@ -2884,3 +2886,14 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
     return SCPE_OK;
   }
 
+// Used by scu_cioc() to schedule connects
+
+static t_stat iom_action (struct sim_unit *up)
+  {
+    // Recover the stash parameters
+    uint scuUnitNum = up -> u3;
+    uint iomUnitIdx = up -> u4;
+//sim_printf ("int %u %u\n", scuUnitNum, iomUnitIdx);
+    iom_interrupt (scuUnitNum, iomUnitIdx);
+    return SCPE_OK;
+  }

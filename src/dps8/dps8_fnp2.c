@@ -1447,6 +1447,7 @@ sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx,decoded.slot_no,clean);
 
 static int wtx (void)
   {
+//sim_printf ("wtx op_code %o (%d.) %c.h%03d\n", decoded.op_code, decoded.op_code, decoded.devUnitIdx+'a', decoded.slot_no);
     if (decoded.op_code != 012 && decoded.op_code != 014)
       {
         sim_debug (DBG_ERR, & fnpDev, "fnp wtx unimplemented opcode %d (%o)\n", decoded.op_code, decoded.op_code);
@@ -1456,7 +1457,7 @@ static int wtx (void)
       }
 // op_code is 012
     uint dcwAddr = getbits36_18 (decoded.smbxp -> word6, 0);
-    uint dcwCnt = getbits36_18 (decoded.smbxp -> word6, 18);
+    uint dcwCnt = getbits36_9 (decoded.smbxp -> word6, 27);
 //sim_printf ("dcwAddr %08o\n", dcwAddr);
 //sim_printf ("dcwCnt %d\n", dcwCnt);
 
@@ -1470,6 +1471,7 @@ static int wtx (void)
         //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw = M [dcwAddrPhys];
         //sim_printf ("  %012llo\n", dcw);
+//sim_printf("dcw address %08o contents %012llo\n", dcwAddrPhys, dcw);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1509,6 +1511,9 @@ dmpmbx (fudp -> mailboxAddress);
     // Set the TIMW
 
     putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, decoded.cell, 1);
+
+//sim_printf ("send_output set on %c.h%03d\n", decoded.devUnitIdx+'a', decoded.slot_no);
+    decoded.fudp->MState.line[decoded.slot_no].send_output = true;
 
     return 0;
   }
@@ -2559,6 +2564,7 @@ word36 pad;
                     pack (cmd, tally, 0, p -> PCW_PAGE_TABLE_PTR, dataAddr);
 
                     tellFNP (devUnitIdx, cmd);
+                    
                   } // for each dcw
 #if 0
                 uint dcwCnt = getbits36_18 (smbxp -> command_data [0], 18);
