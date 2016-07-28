@@ -950,6 +950,8 @@ static bool _illmod[] = {
 
 //=============================================================================
 
+#ifdef MATRIX
+
 static long long theMatrix [1024] // 1024 opcodes (2^10)
                            [2]    // opcode extension
                            [2]    // bit 29
@@ -969,9 +971,11 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
     int _tag = tag & 077;
     theMatrix [_opcode] [_opcodeX] [_a] [_tag] ++;
 }
+#endif
 
 t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
 {
+#ifdef MATRIX
     long long count;
     for (int opcode = 0; opcode < 01000; opcode ++)
     for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
@@ -1019,6 +1023,9 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
         else
             sim_printf ("%20lld: %s\n", count, result);
     }
+#else
+    sim_printf ("matrix code not enabled\n");
+#endif
     return SCPE_OK;
 }
 
@@ -1343,9 +1350,11 @@ t_stat executeInstruction (void)
     decodeInstruction(IWB_IRODD, ci);
 
     const opCode *info = ci->info;       // opCode *
+    const word18 address = ci->address;  // bits 0-17 of instruction
+
+#ifdef MATRIX
     const uint32  opcode = ci->opcode;   // opcode
     const bool   opcodeX = ci->opcodeX;  // opcode extension
-    const word18 address = ci->address;  // bits 0-17 of instruction
                                          // XXX replace with rY
     const bool   a = ci->a;              // bit-29 - addressing via pointer
                                          // register
@@ -1354,6 +1363,7 @@ t_stat executeInstruction (void)
 
 
     addToTheMatrix (opcode, opcodeX, a, tag);
+#endif
 
 ///
 /// executeInstruction: Non-restart processing

@@ -449,7 +449,11 @@ typedef struct EISaddr
 
     bool cacheValid;
     bool cacheDirty;
-    word36 cachedWord;
+    //word36 cachedWord;
+#define paragraphSz 8
+#define paragraphMask 077777770
+#define paragraphOffsetMask 07
+    word36 cachedParagraph [paragraphSz];
     word18 cachedAddr;
 
 } EISaddr;
@@ -1126,6 +1130,7 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1136,11 +1141,13 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
           }
         addr = os + addr % SCBANK;
       }
+#endif
     *data = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1151,11 +1158,13 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
           }
         addr = os + addr % SCBANK;
       }
+#endif
     M[addr] = data & DMASK;
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1166,12 +1175,14 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
           }
         addr = os + addr % SCBANK;
       }
+#endif
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
     if (cpu.switches.useMap)
       {
         uint pgnum = addr / SCBANK;
@@ -1182,6 +1193,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
           }
         addr = os + addr % SCBANK;
       }
+#endif
     M[addr++] = even;
     M[addr] = odd;
     return 0;
@@ -1191,10 +1203,18 @@ int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
-int core_readN (word24 addr, word36 *data, int n, const char * ctx);
-int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
 int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
+static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+  {
+    for (uint i = 0; i < n; i ++)
+      core_read (addr + i, data + i, ctx);
+  }
+static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+  {
+    for (uint i = 0; i < n; i ++)
+      core_write (addr + i, data [i], ctx);
+  }
 
 int is_priv_mode (void);
 void set_went_appending (void);

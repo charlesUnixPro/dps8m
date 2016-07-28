@@ -473,6 +473,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowN)
 
 static void EISWriteCache (EISaddr * p)
   {
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISWriteCache addr %06o\n", p->cachedAddr);
     word3 saveTRR = cpu . TPR . TRR;
 
     if (p -> cacheValid && p -> cacheDirty)
@@ -482,10 +483,14 @@ static void EISWriteCache (EISaddr * p)
             cpu . TPR . TRR = p -> RNR;
             cpu . TPR . TSR = p -> SNR;
         
-            sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                       "%s: writeCache (PR) %012llo@%o:%06o\n", 
-                       __func__, p -> cachedWord, p -> SNR, p -> cachedAddr);
-            Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, true);
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+              {
+                for (int i = 0; i < 8; i ++)
+                  sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                             "%s: writeCache (PR) %012llo@%o:%06o\n", 
+                             __func__, p -> cachedParagraph [i], p -> SNR, p -> cachedAddr + i);
+              }
+            Write8 (p->cachedAddr, p -> cachedParagraph, EIS_OPERAND_STORE, true);
           }
         else
           {
@@ -495,109 +500,236 @@ static void EISWriteCache (EISaddr * p)
                 cpu . TPR . TSR = cpu . PPR . PSR;
               }
         
-            sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                       "%s: writeCache %012llo@%o:%06o\n", 
-                       __func__, p -> cachedWord, cpu . TPR . TSR, p -> cachedAddr);
-            Write (p->cachedAddr, p -> cachedWord, EIS_OPERAND_STORE, false);
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+              {
+                for (int i = 0; i < 8; i ++)
+                  sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                             "%s: writeCache %012llo@%o:%06o\n", 
+                             __func__, p -> cachedParagraph [i], cpu . TPR . TSR, p -> cachedAddr + i);
+              }
+            Write8 (p->cachedAddr, p -> cachedParagraph, EIS_OPERAND_STORE, false);
           }
       }
     p -> cacheDirty = false;
     cpu . TPR . TRR = saveTRR;
   }
 
-static void EISWriteIdx (EISaddr *p, uint n, word36 data)
-{
-    word3 saveTRR = cpu . TPR . TRR;
-    word18 addressN = p -> address + n;
-    addressN &= AMASK;
-    if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != addressN)
+static void EISReadCache (EISaddr * p, word18 address)
+  {
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadCache addr %06o\n", address);
+    word3 saveTRR = cpu.TPR.TRR;
+
+    address &= AMASK;
+
+    word18 paragraphAddress = address & paragraphMask;
+    //word3 paragraphOffset = address & paragraphOffsetMask;
+
+    if (p -> cacheValid && p -> cachedAddr == paragraphAddress)
+      {
+        return;
+      }
+
+    if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != paragraphAddress)
       {
         EISWriteCache (p);
       }
+
+    if (p -> mat == viaPR)
+      {
+        cpu.TPR.TRR = p -> RNR;
+        cpu.TPR.TSR = p -> SNR;
+        Read8 (paragraphAddress, p -> cachedParagraph, EIS_OPERAND_READ, true);
+
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < 8; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: readCache (PR) %012llo@%o:%06o\n", 
+                           __func__, p -> cachedParagraph [i], p -> SNR, paragraphAddress + i);
+          }
+      }
+    else
+      {
+        if (get_addr_mode() == APPEND_mode)
+          {
+            cpu.TPR.TRR = cpu.PPR.PRR;
+            cpu.TPR.TSR = cpu.PPR.PSR;
+          }
+        
+        Read8 (paragraphAddress, p -> cachedParagraph, EIS_OPERAND_READ, false);
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < 8; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: readCache %012llo@%o:%06o\n", 
+                         __func__, p -> cachedParagraph [i], cpu . TPR . TSR, paragraphAddress + i);
+          }
+      }
     p -> cacheValid = true;
+    p -> cacheDirty = false;
+    p -> cachedAddr = paragraphAddress;
+    cpu . TPR . TRR = saveTRR;
+  }
+
+static void EISWriteIdx (EISaddr *p, uint n, word36 data)
+{
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISWriteIdx addr %06o n %u\n", p->address, n);
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
+
+    word18 paragraphAddress = addressN & paragraphMask;
+    word3 paragraphOffset = addressN & paragraphOffsetMask;
+
+    if (p -> cacheValid && p -> cacheDirty && p -> cachedAddr != paragraphAddress)
+      {
+        EISWriteCache (p);
+      }
+    if ((! p -> cacheValid) || p -> cachedAddr != paragraphAddress)
+      {
+        EISReadCache (p, paragraphAddress);
+      }
     p -> cacheDirty = true;
-    p -> cachedAddr = addressN;
-    p -> cachedWord = data;
+    p -> cachedParagraph [paragraphOffset] = data;
+    p -> cachedAddr = paragraphAddress;
 // XXX ticket #31
 // This a little brute force; it we fault on the next read, the cached value
 // is lost. There might be a way to logic it up so that when the next read
 // word offset changes, then we write the cache before doing the read. For
 // right now, be pessimistic. Sadly, since this is a bit loop, it is very.
     EISWriteCache (p);
-
-    cpu . TPR . TRR = saveTRR;
+    p -> cacheDirty = false;
 }
 
-static word36 EISRead (EISaddr * p)
+static word36 EISReadIdx (EISaddr * p, uint n)
   {
-    word36 data;
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadIdx addr %06o n %u\n", p->address, n);
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
 
-    word3 saveTRR = cpu . TPR . TRR;
+    word18 paragraphAddress = addressN & paragraphMask;
+    word3 paragraphOffset = addressN & paragraphOffsetMask;
 
-    if (p -> cacheValid && p -> cachedAddr == p -> address)
+    if (p -> cacheValid && p -> cachedAddr == paragraphAddress)
       {
-        return p -> cachedWord;
+        return p -> cachedParagraph [paragraphOffset];
       }
     if (p -> cacheValid && p -> cacheDirty)
       {
         EISWriteCache (p);
       }
-    p -> cacheDirty = false;
+    EISReadCache (p, paragraphAddress);
+    return p -> cachedParagraph [paragraphOffset];
+  }
+
+static word36 EISRead (EISaddr * p)
+  {
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISRead addr %06o\n", p->address);
+    return EISReadIdx (p, 0);
+  }
+
+static void EISReadN (EISaddr * p, uint N, word36 *dst)
+  {
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadN addr %06o N %u\n", p->address, N);
+    for (uint n = 0; n < N; n ++)
+      {
+        * dst ++ = EISReadIdx (p, n);
+      }
+  }
+
+static void EISReadPage (EISaddr * p, uint n, word36 * data)
+  {
+    word18 addressN = p -> address + n;
+    addressN &= AMASK;
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "%s addr %06o\n", __func__, addressN);
+    if ((addressN & PGMK) != 0)
+      {
+        sim_err ("EISReadPage not aligned %06o\n", addressN);
+        addressN &= ~PGMK;
+      }
+
+    word3 saveTRR = cpu.TPR.TRR;
 
     if (p -> mat == viaPR)
-    {
-        cpu . TPR . TRR = p -> RNR;
-        cpu . TPR . TSR = p -> SNR;
-        
-        sim_debug (DBG_TRACEEXT, & cpu_dev,
-                   "%s: read %o:%06o\n", __func__, cpu . TPR . TSR, p -> address);
-        // read data via AR/PR. TPR.{TRR,TSR} already set up
-        Read (p -> address, & data, EIS_OPERAND_READ, true);
-        sim_debug (DBG_TRACEEXT, & cpu_dev,
-                   "%s: read* %012llo@%o:%06o\n", __func__,
-                   data, cpu . TPR . TSR, p -> address);
+      {
+        cpu.TPR.TRR = p -> RNR;
+        cpu.TPR.TSR = p -> SNR;
+        ReadPage (addressN, data, EIS_OPERAND_READ, true);
+
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < PGSZ; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: (PR) %012llo@%o:%06o\n", 
+                           __func__, data [i], p -> SNR, addressN + i);
+          }
       }
     else
       {
         if (get_addr_mode() == APPEND_mode)
           {
-            cpu . TPR . TRR = cpu . PPR . PRR;
-            cpu . TPR . TSR = cpu . PPR . PSR;
+            cpu.TPR.TRR = cpu.PPR.PRR;
+            cpu.TPR.TSR = cpu.PPR.PSR;
           }
         
-        Read (p -> address, & data, EIS_OPERAND_READ, false);  // read operand
-        sim_debug (DBG_TRACEEXT, & cpu_dev,
-                   "%s: read %012llo@%o:%06o\n", 
-                   __func__, data, cpu . TPR . TSR, p -> address);
-    }
-    p -> cacheValid = true;
-    p -> cachedAddr = p -> address;
-    p -> cachedWord = data;
+        ReadPage (addressN, data, EIS_OPERAND_READ, false);
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < PGSZ; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: %012llo@%o:%06o\n", 
+                         __func__, data [i], cpu . TPR . TSR, addressN + i);
+          }
+      }
     cpu . TPR . TRR = saveTRR;
-    return data;
   }
 
-static word36 EISReadIdx (EISaddr * p, uint n)
+static void EISWritePage (EISaddr * p, uint n, word36 * data)
   {
-    word18 saveAddr = p -> address;
     word18 addressN = p -> address + n;
     addressN &= AMASK;
-    p -> address = addressN;
-    word36 data = EISRead (p);
-    p -> address = saveAddr;
-    return data;
-  }
 
-static void EISReadN (EISaddr * p, uint N, word36 *dst)
-  {
-    word18 saveAddr = p -> address;
-    for (uint n = 0; n < N; n ++)
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "%s addr %06o\n", __func__, addressN);
+    if ((addressN & PGMK) != 0)
       {
-        * dst ++ = EISRead (p);
-        p -> address ++;
-        p -> address &= AMASK;
+        sim_err ("EISWritePage not aligned %06o\n", addressN);
+        addressN &= ~PGMK;
       }
-    p -> address = saveAddr;
+
+    word3 saveTRR = cpu.TPR.TRR;
+
+    if (p -> mat == viaPR)
+      {
+        cpu.TPR.TRR = p -> RNR;
+        cpu.TPR.TSR = p -> SNR;
+        WritePage (addressN, data, EIS_OPERAND_STORE, true);
+
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < PGSZ; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: (PR) %012llo@%o:%06o\n", 
+                           __func__, data [i], p -> SNR, addressN + i);
+          }
+      }
+    else
+      {
+        if (get_addr_mode() == APPEND_mode)
+          {
+            cpu.TPR.TRR = cpu.PPR.PRR;
+            cpu.TPR.TSR = cpu.PPR.PSR;
+          }
+        
+        WritePage (addressN, data, EIS_OPERAND_STORE, false);
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+          {
+            for (int i = 0; i < PGSZ; i ++)
+              sim_debug (DBG_TRACEEXT, & cpu_dev, 
+                         "%s: %012llo@%o:%06o\n", 
+                         __func__, data [i], cpu . TPR . TSR, addressN + i);
+          }
+      }
+    cpu . TPR . TRR = saveTRR;
   }
 
 static word9 EISget469 (int k, uint i)
@@ -881,7 +1013,6 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
         // need to be fetched via segments given in PR registers.
 
         bool a = opDesc & (1 << 6); 
-        
         if (a)
           {
             // A 3-bit pointer register number (n) and a 15-bit offset relative
@@ -917,6 +1048,10 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
         
         // read EIS operand .. this should be an indirectread
         e -> op [k - 1] = EISRead (& e -> addr [k - 1]); 
+    }
+    else
+    {
+          e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
     }
     setupOperandDescriptorCache (k);
 }
@@ -3635,7 +3770,7 @@ void mlr (void)
 #ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
-    setupOperandDescriptorCache (3);
+    //setupOperandDescriptorCache (3);
 #endif
     
     parseAlphanumericOperandDescriptor(1, 1, false);
@@ -3731,6 +3866,7 @@ IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0],
                         // found @ N1-1 
 
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
     
 //
@@ -3740,6 +3876,76 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
 // The MLR implementation is correct, not efficent. Copy invokes 12 append
 // cycles per word, and fill 8.
 //
+
+
+//
+// Page copy
+//
+
+    if ((cpu.du.CHTALLY % PGSZ) == 0 &&
+        e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        (e -> N1 % (PGSZ * 4)) == 0 &&  // a page
+        e -> N2 == e -> N1 && // the src is the same size as the dest.
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0 &&
+        (e -> ADDR1.address & PGMK) == 0 &&
+        (e -> ADDR2.address & PGMK) == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #3\n");
+        while (cpu.du.CHTALLY < e -> N1)
+          {
+            word36 pg [PGSZ];
+            EISReadPage (& e -> ADDR1, cpu.du.CHTALLY / 4, pg);
+            EISWritePage (& e -> ADDR2, cpu.du.CHTALLY / 4, pg);
+            cpu.du.CHTALLY += PGSZ * 4;
+          }
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
+        CLR_I_TRUNC;
+        return;
+      }
+
+//
+// Page zero
+//
+
+    if ((cpu.du.CHTALLY % PGSZ) == 0 &&
+        e -> TA1 == CTA9 &&  // src and dst are both char 9
+        e -> TA2 == CTA9 &&
+        e -> N1 == 0 && // the source is entirely fill
+        (e -> N2 % (PGSZ * 4)) == 0 &&  // a page
+        e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
+        e -> CN2 == 0 &&
+        (e -> ADDR1.address & PGMK) == 0 &&
+        (e -> ADDR2.address & PGMK) == 0)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #4\n");
+        word36 pg [PGSZ];
+        if (fill)
+          {
+            word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
+            for (int i = 0; i < PGSZ; i ++)
+              pg [i] = w;
+          }
+        else
+          {
+           memset (pg, 0, sizeof (pg));
+          }
+        while (cpu.du.CHTALLY < e -> N2)
+          {
+            EISWritePage (& e -> ADDR2, cpu.du.CHTALLY / 4, pg);
+            cpu.du.CHTALLY += PGSZ * 4;
+          }
+        cleanupOperandDescriptor (1);
+        cleanupOperandDescriptor (2);
+        // truncation fault check does need to be checked for here since 
+        // it is known that N1 == N2
+        CLR_I_TRUNC;
+        return;
+      }
 
 // Test for the case of aligned word move; and do things a word at a time,
 // instead of a byte at a time...
