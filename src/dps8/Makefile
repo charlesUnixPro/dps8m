@@ -29,7 +29,7 @@ $(warning ####)
 $(warning #### FNP2 mode)
 $(warning ####)
 CFLAGS += -DFNP2
-LDFLAGS += -luv
+LDFLAGS += -luv -ltelnet
 endif
 
 CFLAGS += -Wall 
@@ -272,6 +272,7 @@ C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
 ifdef FNP2
 C_SRCS += ./fnpuv.c
+C_SRCS += ./fnptelnet.c
 else
 C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
@@ -329,6 +330,7 @@ H_SRCS += dps8_urp.h
 H_SRCS += dps8_utils.h
 ifdef FNP2
 H_SRCS += fnpuv.h
+H_SRCS += fnptelnet.h
 else
 H_SRCS += fnp_1.h
 H_SRCS += fnp_2.h

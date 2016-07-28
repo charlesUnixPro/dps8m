@@ -1,3 +1,4 @@
+// XXX Remember to free client->data when closing connection
 // XXX There is a lurking bug in fnpProcessEvent(). A second 'input' messages
 // XXX from a particular line could be placed in mailbox beforme the first is
 // XXX processed. This could lead to the messages being picked up by MCS in
@@ -8,7 +9,6 @@
 
 #include <stdio.h>
 #include <ctype.h>
-#include <uv.h>
 
 #include "dps8.h"
 #include "dps8_fnp2.h"
@@ -18,6 +18,7 @@
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "fnptelnet.h"
 #include "fnpuv.h"
 #include "utlist.h"
 #include "uthash.h"
@@ -139,96 +140,6 @@ DEVICE fnpDev = {
     NULL,             // help context
     NULL,             // device description
 };
-
-#define MAX_DEV_NAME_LEN 64
-
-#define MAX_LINES  64  /*  max number of FNP lines - hardware  */
-
-
-//
-// MState_t state of an FNP
-// 
-
-// memset(0) sets service to serivce_undefined (0)
-enum service_types {service_undefined = 0, service_login, service_autocall, service_slave};
-
-typedef struct
-  {
-    t_bool accept_calls;
-    struct t_line
-      {
-        // From the CMF database
-        enum service_types service;
-
-        // libuv hook
-        void * client;
-
-        // State as set by FNP commands
-        t_bool listen;
-        int inputBufferSize;
-        int ctrlStrIdx;
-        t_bool breakAll;
-        t_bool can;         // performs standard canonicalization when on (default on)
-        t_bool capo;        // outputs all lowercase chars in uppercase
-        t_bool ctl_char;    // specifies that ASCII control characters that do not cause carriage or paper motion are to be accepted as input
-        t_bool _default;    // same as saying erkl, can, ^rawi, *rawc, ^Wake_tbl, and esc
-        t_bool handleQuit;
-        t_bool fullDuplex;
-        t_bool echoPlex;    // echoes all characters types on the terminal
-        t_bool erkl;        // performs "erase" and "kill" processing
-        t_bool esc;         // performs escape processing
-        t_bool crecho;      // echos a CR when a LF is typed
-        t_bool lfecho;      // echos and inserts  a LF in the users input stream when a CR is typed
-        t_bool tabecho;     // echos the appropriate number of spaces when a TAB is typed
-        t_bool tabs;        // inserts tabs in output in place of spaces when appropriate. If tabs mode is off, all tab characters are mapped into the appropriate number of spaces
-        t_bool replay;
-        t_bool polite;
-        t_bool prefixnl;
-        t_bool eight_bit_out;
-        t_bool eight_bit_in;
-        t_bool odd_parity;
-        t_bool output_flow_control;
-        t_bool input_flow_control;
-        int block_xfer_in_frame, block_xfer_out_of_frame;
-        int delay_table [6];
-#define FC_STR_SZ 4
-        int inputSuspendLen;
-        char inputSuspendStr [4];
-        int inputResumeLen;
-        char inputResumeStr [4];
-        int outputSuspendLen;
-        char outputSuspendStr [4];
-        int outputResumeLen;
-        char outputResumeStr [4];
-        int frame_begin;
-        int frame_end;
-        bool echnego [256];
-        uint echnego_len;
-
-        // Pending requests
-        bool send_output;
-        bool accept_new_terminal;
-        bool wru_timeout;
-
-
-      } line [MAX_LINES];
-  } t_MState;
-
-// Indexed by sim unit number
-static struct fnpUnitData
-  {
-//-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
-//-    uint8 * bufp;
-//-    t_mtrlnt tbc; // Number of bytes read into buffer
-//-    uint words_processed; // Number of Word36 processed from the buffer
-//-    int rec_num; // track tape position
-    uint mailboxAddress;
-    bool fnpIsRunning;
-    bool fnpMBXinUse [4];  // 4 FNP submailboxes
-    char ipcName [MAX_DEV_NAME_LEN];
-
-    t_MState MState;
-  } fnpUnitData [N_FNP_UNITS_MAX];
 
 static int telnet_port = 6180;
 
@@ -679,6 +590,7 @@ void fnpInit(void)
         cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
       }
     fnpuvInit (telnet_port);
+    fnpTelnetInit ();
   }
 
 static t_stat fnpReset (DEVICE * dptr)
@@ -3240,18 +3152,15 @@ void fnpConnectPrompt (void * client)
 
 void processLineInput (void * client, char * buf, ssize_t nread)
   {
-    if ((int) (((uv_stream_t *) client)->data) < 0)
-      {
-        sim_printf ("bogus client data\n");
-        return;
-      }
-    uint fnpno = decodefnp ((uint) (((uv_stream_t *) client) -> data));
-    uint lineno = decodeline ((uint) (((uv_stream_t *) client) -> data));
+    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    uint fnpno = p -> fnpno;
+    uint lineno = p -> lineno;
     if (fnpno >= N_FNP_UNITS_MAX || lineno >= MAX_LINES)
       {
         sim_printf ("bogus client data\n");
         return;
       }
+sim_printf ("assoc. %d %d<%*s>\n", fnpno, lineno, (int) nread, buf);
     if (! fnpUnitData[fnpno].MState.accept_calls)
       {
         fnpuv_start_writestr (client, "Multics is not accepting calls\n");
@@ -3263,7 +3172,6 @@ void processLineInput (void * client, char * buf, ssize_t nread)
         fnpuv_start_writestr (client, "Multics is not listening to this line\n");
         return;
       }
-    sim_printf ("assoc. %d %d<%*s>\n", fnpno, lineno, (int) nread, buf);
   }
 
 void processUserInput (void * client, char * buf, ssize_t nread)
@@ -3318,7 +3226,10 @@ associate:;
 
     fnpUnitData[fnpno].MState.line[lineno].client = client;
 sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
-    ((uv_stream_t *) client)->data = (void *) (unsigned long) encodeline (fnpno, lineno);
+    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    p -> assoc = true;
+    p -> fnpno = fnpno;
+    p -> lineno = lineno;
     // Only enable read when Multics can accept it.
     uv_read_stop ((uv_stream_t *) client);
 
@@ -3326,5 +3237,4 @@ sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
       fnpuv_start_writestr (client, "Multics is not accepting calls\n");
     else if (! fnpUnitData[fnpno].MState.line[lineno].listen)
       fnpuv_start_writestr (client, "Multics is not listening to this line\n");
-
   }

@@ -6,6 +6,8 @@
 #include "dps8.h"
 #include "dps8_utils.h"
 #include "dps8_fnp2.h"
+#include "fnpuv.h"
+#include "fnptelnet.h"
 
 //#define TEST
 
@@ -51,7 +53,9 @@ static void readcb (uv_stream_t* stream,
       }
     else if (nread > 0)
      {
-        if (stream->data != (void *) noassoc)
+        //if (stream->data != (void *) noassoc)
+        uvClientData * p = (uvClientData *) stream->data;
+        if (p -> assoc)
           {
             associated_readcb (stream, nread, buf);
           }
@@ -92,7 +96,7 @@ static void writecb (uv_write_t * req, int status)
     free (req);
   }
 
-void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
+void fnpuv_start_write_actual (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
   {
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
@@ -102,6 +106,11 @@ void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t data
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, writecb);
   }
 
+void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
+  {
+    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    telnet_send (p->telnetp, data, datalen);
+  }
 void fnpuv_start_writestr (/* uv_tcp_t */ void  * client, char * data)
   {
     fnpuv_start_write (client, data, strlen (data));
@@ -120,9 +129,21 @@ static void on_new_connection (uv_stream_t * server, int status)
     uv_tcp_init (loop, client);
     if (uv_accept (server, (uv_stream_t *) client) == 0)
       {
+        uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
+        if (! p)
+          {
+             sim_warn ("uvClientData malloc failed\n");
+             return;
+          }
+        p -> assoc = false;
+        p -> telnetp = ltnConnect (client);
+        if (! p)
+          {
+             sim_warn ("ltnConnect failed\n");
+             return;
+          }
+        client->data = p;
         uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
-        // Mark client as not connected to an HSLA line
-        client->data = (void *) noassoc;
         fnpConnectPrompt (client);
       }
     else
