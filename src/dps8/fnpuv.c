@@ -24,26 +24,27 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
     * buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
   }
 
-static void associated_readcb (uv_stream_t* stream,
+void fnpuv_associated_readcb (uv_stream_t* stream,
                            ssize_t nread,
-                           const uv_buf_t* buf)
+                           char * buf)
   {
     //printf ("assoc. <%*s>\n", (int) nread, buf->base);
-    processLineInput (stream, buf->base, nread);
+    processLineInput (stream, buf, nread);
   }
 
-static void unassociated_readcb (uv_stream_t* stream,
+void fnpuv_unassociated_readcb (uv_stream_t* stream,
                            ssize_t nread,
-                           const uv_buf_t* buf)
+                           char * buf)
   {
     //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
-    processUserInput (stream, buf->base, nread);
+    processUserInput (stream, buf, nread);
   } 
 
 static void readcb (uv_stream_t* stream,
                            ssize_t nread,
                            const uv_buf_t* buf)
   {
+sim_printf ("readcb\n");
     if (nread < 0)
       {
         if (nread == UV_EOF)
@@ -55,6 +56,9 @@ static void readcb (uv_stream_t* stream,
      {
         //if (stream->data != (void *) noassoc)
         uvClientData * p = (uvClientData *) stream->data;
+#if 1
+        telnet_recv (p->telnetp, buf->base, buf->len);
+#else
         if (p -> assoc)
           {
             associated_readcb (stream, nread, buf);
@@ -63,18 +67,12 @@ static void readcb (uv_stream_t* stream,
           {
             unassociated_readcb (stream, nread, buf);
           }
+#endif
       }
 
     if (buf->base)
         free (buf->base);
   }
-
-/* create a write_request type which contains a buffer and a write request */
-typedef struct
-  {
-    uv_buf_t buffer;
-    uv_write_t request;
-  } write_req_t;
 
 static void writecb (uv_write_t * req, int status)
   {
@@ -82,17 +80,21 @@ static void writecb (uv_write_t * req, int status)
       {
         sim_printf ("writecb status %d\n", status);
       }
-// XXX free req, buf, buf -> base
-    uv_buf_t * bufp = (uv_buf_t *) req->data;
-//sim_printf ("bufp->base %p\n", bufp->base);
-// If I comment out the sim_printf in fnpuv_start_write, this crashes with 
-// ElectricFence Aborting: free(60001d34b): address not from malloc().
-
-    //if (bufp && bufp -> base)
-      //free (bufp -> base);
+    unsigned int nbufs = req->nbufs;
+    uv_buf_t * bufs = req->bufs;
+    //if (! bufs)
+    if (nbufs > ARRAY_SIZE(req->bufsml))
+      bufs = req->bufsml;
+//sim_printf ("writecb req %p req->data %p bufs %p nbufs %u\n", req, req->data, bufs, nbufs); 
+    for (unsigned int i = 0; i < nbufs; i ++)
+      {
+        if (bufs && bufs[i].base)
+          {
+            free (bufs[i].base);
+            //bufp -> base = NULL;
+          }
+      }
     // the buf structure is copied; do not free.
-    //if (req->data)
-      //free (req->data);
     free (req);
   }
 
@@ -101,9 +103,10 @@ void fnpuv_start_write_actual (/* uv_tcp_t */ void  * client, char * data, ssize
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
     req->data = & buf;
-//sim_printf ("buf.base %p\n", buf.base);
+//sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, datalen);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, writecb);
+//sim_printf ("uv_write returns %d\n", ret);
   }
 
 void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
@@ -111,6 +114,7 @@ void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t data
     uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
     telnet_send (p->telnetp, data, datalen);
   }
+
 void fnpuv_start_writestr (/* uv_tcp_t */ void  * client, char * data)
   {
     fnpuv_start_write (client, data, strlen (data));

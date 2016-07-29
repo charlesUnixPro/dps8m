@@ -76,10 +76,13 @@ typedef struct
         uint echnego_len;
 
         // Pending requests
+        bool send_line_break;
         bool send_output;
         bool accept_new_terminal;
         bool wru_timeout;
 
+        char        buffer[1024];   // line buffer for initial device selection and line discipline
+        int32       nPos;           // position where *next* user input is to be stored
 
       } line [MAX_LINES];
   } t_MState;

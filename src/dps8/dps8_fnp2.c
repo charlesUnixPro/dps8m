@@ -1240,6 +1240,27 @@ word36 pad;
     return 0;
   }
 
+static void fnp_rcd_send_line_break (int mbx, int fnpno, int lineno)
+  {
+sim_printf ("line_break %d %d %d\n", mbx, fnpno, lineno);
+    struct fnp_submailbox * smbxp = & (decoded.mbxp -> fnp_sub_mbxes [mbx]);
+
+    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
+    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
+    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
+
+    putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
+    putbits36_9 (& smbxp -> word2, 18, 0113); // op_code line_break
+    putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+
+    decoded.fudp -> fnpMBXinUse [mbx] = true;
+    // Set the TIMW
+    putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
+    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+  }
+
 static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
   {
 sim_printf ("send_output %d %d %d\n", mbx, fnpno, lineno);
@@ -1342,7 +1363,8 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
          data [i] = byte & 0377;
        }
     // delete NULs
-    unsigned char * clean = malloc (tally + 1);
+    //unsigned char * clean = malloc (tally + 1);
+    unsigned char clean [tally + 1];
     unsigned char * p = data;
     unsigned char * q = clean;
     for (uint i = 0; i < tally; i ++)
@@ -1703,6 +1725,11 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_send_output (mbx, fnpno, lineno);
                 linep -> send_output = false;
+              }
+            else if (linep -> send_line_break)
+              {
+                fnp_rcd_send_line_break (mbx, fnpno, lineno);
+                linep -> send_line_break = false;
               }
             else if (linep -> accept_new_terminal)
               {
@@ -3150,6 +3177,140 @@ void fnpConnectPrompt (void * client)
     fnpuv_start_writestr (client, ")? ");
   }
 
+static inline void processInputCharacter (uint fnpno, uint lineno, char kar)
+  {
+    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+    if (linep->echoPlex)
+    {
+        // echo \r, \n & \t
+        if (linep->crecho && kar == '\n')   // echo a CR when a LF is typed
+        {
+            fnpuv_start_writestr (linep->client, "\r\n");
+        }
+        else if (linep->lfecho && kar == '\r')  // echoes and inserts a LF in the users input stream when a CR is typed
+        {
+            fnpuv_start_writestr (linep->client, "\r\n");
+        }
+        else if (linep->tabecho && kar == '\t') // echos the appropriate number of spaces when a TAB is typed
+        {
+            int nCol = linep->nPos;        // since nPos starts at 0 this'll work well with % operator
+            // for now we use tabstops of 1,11,21,31,41,51, etc...
+            nCol += 10;                  // 10 spaces/tab
+            int nSpaces = 10 - (nCol % 10);
+            for(int i = 0 ; i < nSpaces ; i += 1)
+              fnpuv_start_writestr (linep->client, " ");
+        }
+
+        // XXX slightly bogus logic here..
+        // ^R ^U ^H DEL LF CR FF ETX 
+        else if (kar == '\022'  || kar == '\025' || kar == '\b' ||
+                 kar == 127     || kar == '\n'   || kar == '\r' ||
+                 kar == '\f'    || kar == '\003')
+        {
+          // handled below
+        }
+
+        // echo character
+        else
+        {
+            fnpuv_start_write (linep->client, & kar, 1);
+        }
+    } // if echoPlex
+
+    // send of each and every character
+    if (linep->breakAll)
+    {
+        linep->buffer[linep->nPos ++] = (char) kar;
+        linep->buffer[linep->nPos] = 0;
+        //sendInputLine (fnpno, hsla_line_num_2, ttys [line] . buffer, ttys [line] . nPos, true);
+        linep->nPos = 0;
+        return;
+    }
+
+    // Multics seems to want CR changed to LF
+    if (kar == '\r')
+      kar = '\n';
+
+    // 2 --> the current char plus a '\0'
+    if ((size_t) linep->nPos >= sizeof(linep->buffer) - 2)
+    {
+        //sendInputLine (fnpno, lineno, ttys [line] . buffer, ttys [line] . nPos, false);
+        linep->nPos = 0;
+        linep->buffer [linep->nPos ++] = (char) kar;
+        linep->nPos = 0;
+        return;
+    }
+
+    if ((linep-> frame_begin != 0 &&
+         linep-> frame_begin == kar) ||
+        (linep-> frame_end != 0 &&
+         linep-> frame_end == kar))
+      {
+        if (linep->nPos != 0)
+          {
+            //sendInputLine (fnpno, lineno, ttys [line] . buffer, ttys [line] . nPos, true);
+            linep->nPos = 0;
+            linep->buffer[linep->nPos] = 0;
+          }
+        return;
+      }
+
+    switch (kar)
+    {
+        case '\n':          // NL
+        case '\r':          // CR
+        case '\f':          // FF
+            kar = '\n';     // translate to NL
+            linep->buffer[linep->nPos++] = (char) kar;
+            linep->buffer[linep->nPos] = 0;
+            //sendInputLine (fnpno, lineno, ttys [line] . buffer, ttys [line] . nPos, true);
+            linep->nPos = 0;
+            linep->buffer[linep->nPos] = 0;
+            return;
+
+        case 0x03:          // ETX (^C) // line break
+            {
+                linep->send_line_break=true;
+            }
+            return;
+
+        case '\b':  // backspace
+        case 127:   // delete
+            {
+                if (linep->nPos > 0)
+                {
+                    fnpuv_start_writestr (linep->client, "\b \b");    // remove char from line
+                    linep->nPos -= 1;                 // back up buffer pointer
+                    linep->buffer[linep->nPos] = 0;     // remove char from buffer
+                } else {
+                    fnpuv_start_writestr (linep->client, "\a");    // remove char from line
+               }
+            }
+            return;
+
+        case 21:    // ^U kill
+            {
+                linep->nPos = 0;
+                linep->buffer[linep->nPos] = 0;
+                fnpuv_start_writestr (linep->client, "^U\r\n");
+            }
+            return;
+
+        case 0x12:  // ^R
+            fnpuv_start_writestr (linep->client, "^R\r\n");       // echo ^R
+            fnpuv_start_writestr (linep->client, linep->buffer);
+            return;
+
+        default:
+            break;
+    }
+
+    linep->buffer[linep->nPos++] = (char) kar;
+    linep->buffer[linep->nPos] = 0;
+
+    return; 
+  }
+
 void processLineInput (void * client, char * buf, ssize_t nread)
   {
     uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
@@ -3172,6 +3333,8 @@ sim_printf ("assoc. %d %d<%*s>\n", fnpno, lineno, (int) nread, buf);
         fnpuv_start_writestr (client, "Multics is not listening to this line\n");
         return;
       }
+    for (uint i = 0; i < nread; i ++)
+      processInputCharacter (fnpno, lineno, buf [i]);
   }
 
 void processUserInput (void * client, char * buf, ssize_t nread)
