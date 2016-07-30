@@ -547,7 +547,7 @@ static int wcd (void)
                             "Multics is now listening to this line\r\n":
                             "Multics is no longer listening to this line\r\n");
                       }
-                    linep -> accept_new_terminal = true;
+                    //linep -> accept_new_terminal = true;
                   }
                   break;
 
@@ -1157,7 +1157,8 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     * q ++ = 0;
 #endif
 //sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx,decoded.slot_no,clean);
-    if (strlen ((char *) clean) && linep->client)
+    //if (strlen ((char *) clean) && linep->client)
+    if (tally > 0 && linep->client)
       fnpuv_start_write (linep->client, (char *) clean, tally);
   }
 
@@ -1401,6 +1402,12 @@ static int interruptL66_FNP_to_CS (void)
                   }
                   break;
 
+                case  1: // disconnect_this_line
+                  {
+                    //sim_printf ("disconnect_this_line ack.\n");
+                  }
+                  break;
+
                 case 14: // reject_request_temp
                   {
                     sim_printf ("fnp reject_request_temp\n");
@@ -1409,7 +1416,6 @@ static int interruptL66_FNP_to_CS (void)
                   }
                   break;
 
-                case  1: // disconnect_this_line
                 case  2: // disconnect_all_lines
                 case  3: // dont_accept_calls
                 case  4: // accept_calls
@@ -1810,10 +1816,10 @@ void fnpProcessEvent (void)
 
             // Need to send an 'accept_new_terminal' command to CS?
 
-            else if (linep -> accept_new_terminal)
+            else if (linep->listen && linep->accept_new_terminal)
               {
                 fnp_rcd_accept_new_terminal (mbx, fnpno, lineno);
-                linep -> accept_new_terminal = false;
+                linep->accept_new_terminal = false;
               }
 
             // Need to send an 'ack_echnego_init' command to CS?
@@ -1822,6 +1828,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_ack_echnego_init (mbx, fnpno, lineno);
                 linep -> ack_echnego_init = false;
+                linep -> send_output = true;
               }
 
             // Need to send an 'line_disconnected' command to CS?
@@ -2509,5 +2516,6 @@ associate:;
     else if (! fnpUnitData[fnpno].MState.line[lineno].listen)
       fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
 
+    fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
     ltnRaw (p->telnetp);
   }
