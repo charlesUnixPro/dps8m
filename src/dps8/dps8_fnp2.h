@@ -79,6 +79,8 @@ typedef struct
         bool line_break;
         bool send_output;
         bool accept_new_terminal;
+        bool line_disconnected;
+        bool ack_echnego_init;
         bool wru_timeout;
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is

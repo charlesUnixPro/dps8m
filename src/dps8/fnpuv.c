@@ -44,7 +44,6 @@ static void readcb (uv_stream_t* stream,
                            ssize_t nread,
                            const uv_buf_t* buf)
   {
-sim_printf ("readcb\n");
     if (nread < 0)
       {
         if (nread == UV_EOF)
@@ -54,20 +53,8 @@ sim_printf ("readcb\n");
       }
     else if (nread > 0)
      {
-        //if (stream->data != (void *) noassoc)
         uvClientData * p = (uvClientData *) stream->data;
-#if 1
         telnet_recv (p->telnetp, buf->base, nread);
-#else
-        if (p -> assoc)
-          {
-            associated_readcb (stream, nread, buf);
-          }
-        else
-          {
-            unassociated_readcb (stream, nread, buf);
-          }
-#endif
       }
 
     if (buf->base)
@@ -143,6 +130,19 @@ static void on_new_connection (uv_stream_t * server, int status)
     uv_tcp_init (loop, client);
     if (uv_accept (server, (uv_stream_t *) client) == 0)
       {
+        struct sockaddr name;
+        int namelen = sizeof (name);
+        int ret = uv_tcp_getpeername (client, & name, & namelen);
+        if (ret < 0)
+          {
+            sim_printf ("CONNECT; addr err %d\n", ret);
+          }
+        else
+          {
+            struct sockaddr_in * p = (struct sockaddr_in *) & name;
+            sim_printf ("CONNECT %s\n", inet_ntoa (p -> sin_addr));
+          }
+
         uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
         if (! p)
           {

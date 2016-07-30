@@ -9,9 +9,12 @@
 #include "fnptelnet.h"
 
 static const telnet_telopt_t my_telopts[] = {
-    { TELNET_TELOPT_SGA,       TELNET_WILL, TELNET_DO   },
-    { TELNET_TELOPT_TTYPE,     TELNET_WONT, TELNET_DONT },
-    { TELNET_TELOPT_ECHO,      TELNET_WILL, TELNET_DONT },
+    // THe initail HSLA port dialog is in line mode; switch
+    // to character mode after association is done.
+    //{ TELNET_TELOPT_SGA,       TELNET_WILL, TELNET_DO   },
+    //{ TELNET_TELOPT_ECHO,      TELNET_WILL, TELNET_DONT },
+
+    //{ TELNET_TELOPT_TTYPE,     TELNET_WONT, TELNET_DONT },
     //{ TELNET_TELOPT_COMPRESS2, TELNET_WONT, TELNET_DO   },
     //{ TELNET_TELOPT_ZMP,       TELNET_WONT, TELNET_DO   },
     //{ TELNET_TELOPT_MSSP,      TELNET_WONT, TELNET_DO   },
@@ -57,6 +60,10 @@ static void evHandler (telnet_t *telnet, telnet_event_t *event, void *user_data)
               {
                 // DO Suppress Go Ahead
               }
+            else if (event->neg.telopt == TELNET_TELOPT_ECHO)
+              {
+                // DO Suppress Echo
+              }
             else
               {
                 sim_printf ("evHandler DO %d\n", event->neg.telopt);
@@ -97,6 +104,12 @@ void * ltnConnect (/* uv_tcp_t */ void * client)
         q ++;
       }
     return p;
+  }
+
+void ltnRaw (void * client)
+  {
+    telnet_negotiate (client, TELNET_WILL, TELNET_TELOPT_SGA);
+    telnet_negotiate (client, TELNET_WILL, TELNET_TELOPT_ECHO);
   }
 
 void fnpTelnetInit (void)
