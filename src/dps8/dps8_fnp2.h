@@ -76,13 +76,25 @@ typedef struct
         uint echnego_len;
 
         // Pending requests
-        bool send_line_break;
+        bool line_break;
         bool send_output;
         bool accept_new_terminal;
         bool wru_timeout;
+        uint accept_input; // If non-zero, the number of centiseconds until
+                          // an accept_input message should be sent; this is
+                          // deal with 'reject_request' retries.
+        bool input_reply_pending;
+        // Part of 'accent_input'
+        bool input_break;
 
-        char        buffer[1024];   // line buffer for initial device selection and line discipline
-        int32       nPos;           // position where *next* user input is to be stored
+        // Buffer being assembled for sending to Multics
+        char buffer[1024];   // line buffer for initial device selection and line discipline
+        int nPos;           // position where *next* user input is to be stored
+
+        // Incoming data from the connection
+        char * inBuffer;
+        int inSize; // Number of bytes in inBuffer
+        int inUsed; // Number of consumed bytes in buffer
 
       } line [MAX_LINES];
   } t_MState;
@@ -100,6 +112,7 @@ static struct fnpUnitData
     uint mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
+    int fnpMBXlineno [4]; // Which HSLA line is using the mbx
     char ipcName [MAX_DEV_NAME_LEN];
 
     t_MState MState;

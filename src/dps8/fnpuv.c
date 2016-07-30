@@ -57,7 +57,7 @@ sim_printf ("readcb\n");
         //if (stream->data != (void *) noassoc)
         uvClientData * p = (uvClientData *) stream->data;
 #if 1
-        telnet_recv (p->telnetp, buf->base, buf->len);
+        telnet_recv (p->telnetp, buf->base, nread);
 #else
         if (p -> assoc)
           {
@@ -120,6 +120,16 @@ void fnpuv_start_writestr (/* uv_tcp_t */ void  * client, char * data)
     fnpuv_start_write (client, data, strlen (data));
   }
 
+void fnpuv_read_start (void * client)
+  {
+    uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
+  }
+
+void fnpuv_read_stop (void * client)
+  {
+    uv_read_stop ((uv_stream_t *) client);
+  }
+
 static void on_new_connection (uv_stream_t * server, int status)
   {
     if (status < 0)
@@ -147,7 +157,7 @@ static void on_new_connection (uv_stream_t * server, int status)
              return;
           }
         client->data = p;
-        uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
+        fnpuv_read_start ((uv_stream_t *) client);
         fnpConnectPrompt (client);
       }
     else

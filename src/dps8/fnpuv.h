@@ -15,5 +15,7 @@ void fnpuv_start_writestr (void * client, char * data);
 void fnpuv_start_write_actual (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen);
 void fnpuv_unassociated_readcb (uv_stream_t* stream, ssize_t nread, char * buf);
 void fnpuv_associated_readcb (uv_stream_t* stream, ssize_t nread, char * buf);
+void fnpuv_read_start (void * client);
+void fnpuv_read_stop (void * client);
 
 
