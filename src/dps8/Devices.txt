@@ -3,6 +3,7 @@ name: a.h000;
 #   fromport: 5600;
 name: a.h002;
    service: slave;
+   port: 6182
 #   mux_line: 63;
 name: a.h001;
 name: d.h000;

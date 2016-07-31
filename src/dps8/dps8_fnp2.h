@@ -81,6 +81,7 @@ typedef struct
         bool accept_new_terminal;
         bool line_disconnected;
         bool ack_echnego_init;
+        bool acu_dial_failure;
         bool wru_timeout;
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
@@ -97,6 +98,14 @@ typedef struct
         char * inBuffer;
         int inSize; // Number of bytes in inBuffer
         int inUsed; // Number of consumed bytes in buffer
+
+
+        // Dialout/slave hooks
+        uv_tcp_t doSocket;
+        uv_connect_t doConnect; 
+
+        // Slave hooks
+        int port;
 
       } line [MAX_LINES];
   } t_MState;

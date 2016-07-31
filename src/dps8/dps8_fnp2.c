@@ -295,6 +295,8 @@ static struct
 static int wcd (void)
   {
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
+bool foo = decoded.devUnitIdx == 0 && decoded.slot_no == 2;
+if(foo) sim_printf ("wcd %d\n", decoded.op_code);
     switch (decoded.op_code)
       {
         case  1: // disconnect_this_line
@@ -338,7 +340,8 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX dial_out %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            //sim_printf ("XXX dial_out %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            fnpuv_dial_out (decoded.devUnitIdx, decoded.slot_no, command_data0, command_data1, command_data2);
           }
           break;
 
@@ -495,6 +498,7 @@ static int wcd (void)
             uint subtype = getbits36_9 (decoded.smbxp -> command_data [0], 0);
             uint flag = getbits36_1 (decoded.smbxp -> command_data [0], 17);
             //sim_printf ("  subtype %d\n", subtype);
+if (foo) sim_printf ("  subtype %d\n", subtype);
             switch (subtype)
               {
                 case  3: // Fullduplex
@@ -540,14 +544,15 @@ static int wcd (void)
                     linep->listen = !! flag;
                     linep->inputBufferSize = bufsz;
 
-                    if (linep -> client)
+                    if (linep->service == service_login && linep -> client)
                       {
                         fnpuv_start_writestr (linep->client,
                           linep->listen ?
                             "Multics is now listening to this line\r\n":
                             "Multics is no longer listening to this line\r\n");
                       }
-                    //linep -> accept_new_terminal = true;
+                    if (linep->service == service_slave && ! linep -> client)
+                      fnpuv_open_slave (decoded.devUnitIdx, decoded.slot_no);
                   }
                   break;
 
@@ -1051,9 +1056,32 @@ static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
     send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
   }
 
+static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
+  {
+    //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnpno, lineno);
+    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    //struct t_line * linep = & fudp->MState.line[lineno];
+    struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+
+    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
+    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
+    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+
+    putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
+    putbits36_9 (& smbxp -> word2, 18, 82); // op_code acu_dial_failure
+    putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+
+    fudp -> fnpMBXinUse [mbx] = true;
+    // Set the TIMW
+    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
+    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+  }
+
 static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
   {
-    //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
+    sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
@@ -1156,7 +1184,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
       }
     * q ++ = 0;
 #endif
-//sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx,decoded.slot_no,clean);
+//sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx, decoded.slot_no, clean);
     //if (strlen ((char *) clean) && linep->client)
     if (tally > 0 && linep->client)
       fnpuv_start_write (linep->client, (char *) clean, tally);
@@ -1798,6 +1826,7 @@ void fnpProcessEvent (void)
           {
             struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
+if (lineno == 0 && fnpno == 0 && linep->accept_new_terminal) sim_printf ("it's set\n");
             // Need to send a 'send_output' command to CS?
 
             if (linep -> send_output)
@@ -1814,7 +1843,21 @@ void fnpProcessEvent (void)
                 linep -> line_break = false;
               }
 
+            // Need to send an 'acu_dial_failure' command to CS?
+
+            else if (linep->acu_dial_failure)
+              {
+                fnp_rcd_acu_dial_failure (mbx, fnpno, lineno);
+                linep->acu_dial_failure = false;
+              }
+
             // Need to send an 'accept_new_terminal' command to CS?
+
+// linep->listen is check here for the case of a connection that was
+// made before Multics was booted to the point of setting listen.
+// If the accept_new_terminal call is made then, Multics rejects
+// the connection and sends a disconnect order. By checking 'listen',
+// the accept requests hangs around until Multics is ready.
 
             else if (linep->listen && linep->accept_new_terminal)
               {
@@ -2333,6 +2376,24 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
             else
               sim_printf ("service type '%s' not recognized; skipping\n", second);
           }
+// This is not part of the CMF language, but I need away to set some addition
+// parameters
+        else if (havename && second && strcmp(first, "port") == 0)
+        {
+            trim (second);
+            char * end;
+            long port = strtol (second, & end, 0);
+            if (* end || port < 0 || port >= 65535)
+              {
+                sim_printf ("can't parse fromport '%s'; ignored\n", second);
+              }
+            else
+              {
+                fnpUnitData[devnum].MState.line[linenum].port = (int) port;
+              }
+//sim_printf ("%s fromport %d\n", current->multics.name, current->multics.fromport);
+        }
+
         else if (strcmp (first, "end;") == 0)
           {
             break;

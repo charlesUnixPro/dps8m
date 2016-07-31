@@ -24,7 +24,7 @@ static const telnet_telopt_t my_telopts[] = {
   };
 
 
-static void evHandler (telnet_t *telnet, telnet_event_t *event, void *user_data)
+static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *user_data)
   {
     uv_tcp_t * client = (uv_tcp_t *) user_data;
     switch (event->type)

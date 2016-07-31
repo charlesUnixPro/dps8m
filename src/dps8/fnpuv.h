@@ -17,5 +17,6 @@ void fnpuv_unassociated_readcb (uv_stream_t* stream, ssize_t nread, char * buf);
 void fnpuv_associated_readcb (uv_stream_t* stream, ssize_t nread, char * buf);
 void fnpuv_read_start (void * client);
 void fnpuv_read_stop (void * client);
-
+void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3);
+void fnpuv_open_slave (uint fnpno, uint lineno);
 
