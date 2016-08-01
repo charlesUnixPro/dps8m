@@ -49,7 +49,6 @@ static void readcb (uv_stream_t* stream,
         if (nread == UV_EOF)
           {
             uvClientData * p = (uvClientData *) stream->data;
-sim_printf ("close sees stream %p data %p\n", stream, stream->data);
             // If stream->data, the stream is from the dialin server
             // Tear down that association
             if (p)
@@ -135,7 +134,11 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, datalen);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, writecb);
-    if (ret < 0)
+// There seems to be a race condition when Mulitcs signals a disconnect_line;
+// We close the socket, but Mulitcs is still writing its goodbye text trailing
+// NULs.
+// If the socket has been closed, write will return BADF; just ignore it.
+    if (ret < 0 && ret != -EBADF)
       sim_printf ("uv_write returns %d\n", ret);
   }
 
@@ -420,6 +423,11 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
   {
     sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+
+    // Do we already have a listening port (ie not first time)?
+    if (linep->server.data)
+      return;
+
     uv_tcp_init (loop, & linep->server);
 
     // Mark this server has being a slave server

@@ -305,6 +305,8 @@ static int wcd (void)
             if (linep->client)
               fnpuv_start_writestr (linep->client, "Multics has disconnected you\r\n");
             linep -> line_disconnected = true;
+            uv_close ((uv_handle_t *) linep->client, NULL);
+            
           }
           break;
 
