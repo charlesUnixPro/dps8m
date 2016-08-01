@@ -48,6 +48,45 @@ static void readcb (uv_stream_t* stream,
       {
         if (nread == UV_EOF)
           {
+            uvClientData * p = (uvClientData *) stream->data;
+sim_printf ("close sees stream %p data %p\n", stream, stream->data);
+            // If stream->data, the stream is from the dialin server
+            // Tear down that association
+            if (p)
+              {
+                if (p->assoc)
+                  {
+                    sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
+                    struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+                    linep -> line_disconnected = true;
+                  }
+                else
+                  {
+                    sim_printf ("DISCONNECT\n");
+                  }
+
+                // Clean up allocated data
+                if (p->telnetp)
+                  {
+                    telnet_free (p->telnetp);
+                    // telnet_free frees self
+                    //free (p->telnetp);
+                    p->telnetp = NULL;
+                  }
+                if (p->assoc)
+                  {
+                    struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+                    if (linep->client)
+                      {
+// This is a long winded way to free (stream->data)
+
+                        //free (linep->client);
+                        linep->client = NULL;
+                      }
+                  }
+                free (stream->data);
+                stream->data = NULL;
+              }
             uv_close ((uv_handle_t *) stream, NULL);
           }
       }
@@ -103,6 +142,8 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
   {
     uvClientData * p = (uvClientData *) client->data;
+    if (! p)
+      return;
     if (p->telnetp)
       {
         telnet_send (p->telnetp, data, datalen);
@@ -188,11 +229,18 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
             uvClientData * q = (uvClientData *) server->data;
             p->fnpno = q->fnpno;
             p->lineno = q->lineno;
+            p->assoc = true;
           }
         client->data = p;
         fnpuv_read_start (client);
         if (! server->data)
           fnpConnectPrompt (client);
+        else
+          {
+            uvClientData * p = (uvClientData *) server->data;
+            struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+            linep->accept_new_terminal = true;
+          }
       }
     else
       {
@@ -202,12 +250,18 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
 
 void fnpuvInit (int telnet_port)
   {
-    loop = uv_default_loop ();
 
+    // Initialize the server socket
+    loop = uv_default_loop ();
     uv_tcp_init (loop, & server);
+
+// XXX to do clean shutdown
+// uv_loop_close (loop);
 
     // Flag the this server as being the dialup server
     server.data = NULL;
+
+    // Bind and listen
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
     uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
@@ -229,6 +283,7 @@ void fnpuvProcessEvent (void)
     /* int ret = */ uv_run (loop, UV_RUN_NOWAIT);
   }
 
+#if 0
 static void do_readcb (uv_stream_t* stream,
                            ssize_t nread,
                            const uv_buf_t* buf)
@@ -264,6 +319,7 @@ static void do_readcb (uv_stream_t* stream,
     if (buf->base)
       free (buf->base);
   }
+#endif
 
 static void on_do_connect (uv_connect_t * server, int status)
   {
@@ -279,13 +335,9 @@ static void on_do_connect (uv_connect_t * server, int status)
         return;
       }
 
-sim_printf ("setting accept on %d.%d\n", p->fnpno, p->lineno);
-    uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, do_readcb);
+    uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, readcb);
     linep->listen = true;
     linep->accept_new_terminal = true;
-sim_printf ("%p:%d\n", & linep->accept_new_terminal, linep->accept_new_terminal);
-sim_printf ("%d %d %p %p\n", p->fnpno, p->lineno, linep, & fnpUnitData[p->fnpno].MState.line[p->lineno]);
-sim_printf ("%p %p\n", &(linep->accept_new_terminal), &(fnpUnitData[0].MState.line[0].accept_new_terminal));
   }
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
