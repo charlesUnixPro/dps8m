@@ -113,7 +113,7 @@ typedef struct
 #define MAX_DEV_NAME_LEN 64
 
 // Indexed by sim unit number
-static struct fnpUnitData
+struct fnpUnitData
   {
 //-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
 //-    uint8 * bufp;
@@ -127,7 +127,9 @@ static struct fnpUnitData
     char ipcName [MAX_DEV_NAME_LEN];
 
     t_MState MState;
-  } fnpUnitData [N_FNP_UNITS_MAX];
+  };
+
+extern struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);

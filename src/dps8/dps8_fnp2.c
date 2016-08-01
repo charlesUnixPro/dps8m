@@ -143,6 +143,8 @@ DEVICE fnpDev = {
 
 static int telnet_port = 6180;
 
+struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+
 
 //
 // The FNP communicates with Multics with in-memory mailboxes
