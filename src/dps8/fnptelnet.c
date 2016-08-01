@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_fnp2.h"
@@ -34,11 +35,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
             uvClientData * p = (uvClientData *) client->data;
             if (p -> assoc)
               {
-                fnpuv_associated_readcb ((uv_stream_t *)client, event->data.size, (char *)event->data.buffer);
+                fnpuv_associated_readcb (client, event->data.size, (char *)event->data.buffer);
               }
             else
               {
-                fnpuv_unassociated_readcb ((uv_stream_t *)client, event->data.size, (char *)event->data.buffer);
+                fnpuv_unassociated_readcb (client, event->data.size, (char *)event->data.buffer);
               }
           }
           break;
@@ -90,7 +91,7 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
 
   }
 
-void * ltnConnect (/* uv_tcp_t */ void * client)
+void * ltnConnect (uv_tcp_t * client)
   {
     void * p = (void *) telnet_init (my_telopts, evHandler, 0, client);
     if (! p)
@@ -106,10 +107,10 @@ void * ltnConnect (/* uv_tcp_t */ void * client)
     return p;
   }
 
-void ltnRaw (void * client)
+void ltnRaw (telnet_t * tclient)
   {
-    telnet_negotiate (client, TELNET_WILL, TELNET_TELOPT_SGA);
-    telnet_negotiate (client, TELNET_WILL, TELNET_TELOPT_ECHO);
+    telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
+    telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_ECHO);
   }
 
 void fnpTelnetInit (void)
