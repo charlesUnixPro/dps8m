@@ -101,7 +101,7 @@ typedef struct
 
 
         // Dialout/slave hooks
-        //uv_tcp_t doSocket;
+        uv_tcp_t server;
         uv_connect_t doConnect; 
 
         // Slave hooks

@@ -54,7 +54,10 @@ static void readcb (uv_stream_t* stream,
     else if (nread > 0)
      {
         uvClientData * p = (uvClientData *) stream->data;
-        telnet_recv (p->telnetp, buf->base, nread);
+        if (p->telnetp)
+          telnet_recv (p->telnetp, buf->base, nread);
+        else
+          fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, buf->base);
       }
 
     if (buf->base)
@@ -135,6 +138,15 @@ static void on_new_connection (uv_stream_t * server, int status)
       }
 
     uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+    // if server->data is non-null, this is a slave server; else a dialup
+    // server
+    if (server->data)
+      {
+        uvClientData * p = (uvClientData *) server->data;
+        struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno); 
+        linep->client = client;
+      }
     uv_tcp_init (loop, client);
     if (uv_accept (server, (uv_stream_t *) client) == 0)
       {
@@ -158,15 +170,29 @@ static void on_new_connection (uv_stream_t * server, int status)
              return;
           }
         p -> assoc = false;
-        p -> telnetp = ltnConnect (client);
-        if (! p)
+
+        // dialup connections are routed through libtelent
+        if (! server->data)
           {
-             sim_warn ("ltnConnect failed\n");
-             return;
+            p->telnetp = ltnConnect (client);
+
+            if (! p->telnetp)
+              {
+                 sim_warn ("ltnConnect failed\n");
+                 return;
+              }
+          }
+        else
+          {
+            p->telnetp = NULL;
+            uvClientData * q = (uvClientData *) server->data;
+            p->fnpno = q->fnpno;
+            p->lineno = q->lineno;
           }
         client->data = p;
         fnpuv_read_start (client);
-        fnpConnectPrompt (client);
+        if (! server->data)
+          fnpConnectPrompt (client);
       }
     else
       {
@@ -180,6 +206,8 @@ void fnpuvInit (int telnet_port)
 
     uv_tcp_init (loop, & server);
 
+    // Flag the this server as being the dialup server
+    server.data = NULL;
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
     uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
@@ -335,13 +363,41 @@ static void on_slave_connect (uv_stream_t * server, int status)
   }
 #endif
 
+
 void fnpuv_open_slave (uint fnpno, uint lineno)
   {
     sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
-#if 0
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
-    uv_tcp_init (loop, & linep->client);
+    uv_tcp_init (loop, & linep->server);
 
+    // Mark this server has being a slave server
+    uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
+    if (! p)
+      {
+         sim_warn ("uvClientData malloc failed\n");
+         return;
+      }
+    p->fnpno = fnpno;
+    p->lineno = lineno;
+    linep->server.data = p;
+
+    struct sockaddr_in addr;
+    uv_ip4_addr ("0.0.0.0", linep->port, & addr);
+    uv_tcp_bind (& linep->server, (const struct sockaddr *) & addr, 0);
+sim_printf ("listening on port %d\n", linep->port);
+    int r = uv_listen ((uv_stream_t *) & linep->server, 0, 
+                       on_new_connection);
+    if (r)
+     {
+        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
+      }
+
+// It should be possible to run a peer-to-peer TCP instead of client server,
+// but it's not clear to me.
+
+#if 0
+    linep->client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+    uv_tcp_init (loop, linep->client);
 
     uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
     if (! p)
@@ -354,12 +410,13 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     p->fnpno = fnpno;
     p->lineno = lineno;
 
-    linep->doConnect.data = p;
+    linep->client->data = p;
 
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
-    uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
-    int r = uv_listen ((uv_stream_t *) & server, DEFAULT_BACKLOG, 
+    uv_tcp_bind (linep->client, (const struct sockaddr *) & addr, 0);
+sim_printf ("listening on port %d\n", linep->port);
+    int r = uv_listen ((uv_stream_t *) linep->client, 0, 
                        on_slave_connect);
     if (r)
      {

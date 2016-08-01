@@ -192,11 +192,8 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
 
     word36 ptw;
     core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
-    //sim_printf ("ptw %012llo\n", ptw);
     uint page = getbits36_14 (ptw, 4);
-    //sim_printf ("page %o\n", page);
     uint addr = page * 1024u + l66Address % 1024u;
-    //sim_printf ("addr %o\n", addr);
     return addr;
   }
 
@@ -297,8 +294,6 @@ static struct
 static int wcd (void)
   {
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
-bool foo = decoded.devUnitIdx == 0 && decoded.slot_no == 2;
-if(foo) sim_printf ("wcd %d\n", decoded.op_code);
     switch (decoded.op_code)
       {
         case  1: // disconnect_this_line
@@ -500,7 +495,6 @@ if(foo) sim_printf ("wcd %d\n", decoded.op_code);
             uint subtype = getbits36_9 (decoded.smbxp -> command_data [0], 0);
             uint flag = getbits36_1 (decoded.smbxp -> command_data [0], 17);
             //sim_printf ("  subtype %d\n", subtype);
-if (foo) sim_printf ("  subtype %d\n", subtype);
             switch (subtype)
               {
                 case  3: // Fullduplex
@@ -976,7 +970,7 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
-sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
+    //sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
 
     putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
@@ -1083,7 +1077,7 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
   {
-    sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
+    //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
@@ -1828,7 +1822,6 @@ void fnpProcessEvent (void)
           {
             struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
-if (lineno == 0 && fnpno == 0 && linep->accept_new_terminal) sim_printf ("it's set\n");
             // Need to send a 'send_output' command to CS?
 
             if (linep -> send_output)
