@@ -1,3 +1,3 @@
 void fnpTelnetInit (void);
-void * ltnConnect (void * client);
-void ltnRaw (void * client);
+void * ltnConnect (uv_tcp_t * client);
+void ltnRaw (telnet_t * client);

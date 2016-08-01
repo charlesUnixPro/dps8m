@@ -2417,7 +2417,7 @@ t_stat fnpServerPort (UNUSED int32 arg, char * buf)
 
 #define PROMPT  "HSLA Port ("
 
-void fnpConnectPrompt (void * client)
+void fnpConnectPrompt (uv_tcp_t * client)
   {
     fnpuv_start_writestr (client, PROMPT);
     bool first = true;
@@ -2440,9 +2440,9 @@ void fnpConnectPrompt (void * client)
     fnpuv_start_writestr (client, ")? ");
   }
 
-void processLineInput (void * client, char * buf, ssize_t nread)
+void processLineInput (uv_tcp_t * client, char * buf, ssize_t nread)
   {
-    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
     if (fnpno >= N_FNP_UNITS_MAX || lineno >= MAX_LINES)
@@ -2491,7 +2491,7 @@ done:;
     fnpuv_read_stop (client);
   }
 
-void processUserInput (void * client, char * buf, ssize_t nread)
+void processUserInput (uv_tcp_t * client, char * buf, ssize_t nread)
   {
     char cpy [nread + 1];
     memcpy (cpy, buf, nread);
@@ -2547,7 +2547,7 @@ associate:;
 
     fnpUnitData[fnpno].MState.line[lineno].client = client;
 //sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
-    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    uvClientData * p = (uvClientData *) client->data;
     p -> assoc = true;
     p -> fnpno = fnpno;
     p -> lineno = lineno;

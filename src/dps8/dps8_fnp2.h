@@ -28,10 +28,10 @@ typedef struct
         enum service_types service;
 
         // libuv hook
-        void * client;
+        uv_tcp_t * client;
 
         // libtelnet hook
-        void * telnetp; // telnet_t *
+        telnet_t * telnetp; // telnet_t *
 
         // State as set by FNP commands
         t_bool listen;
@@ -137,6 +137,6 @@ t_stat diaCommand (int fnpUnitNum, char *arg3);
 void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
 int fnpIOMCmd (uint iomUnitIdx, uint chan);
 t_stat fnpServerPort (int32 arg, char * buf);
-void fnpConnectPrompt (void * client);
-void processUserInput (void * client, char * buf, ssize_t nread);
-void processLineInput (void * client, char * buf, ssize_t nread);
+void fnpConnectPrompt (uv_tcp_t * client);
+void processUserInput (uv_tcp_t * client, char * buf, ssize_t nread);
+void processLineInput (uv_tcp_t * client, char * buf, ssize_t nread);

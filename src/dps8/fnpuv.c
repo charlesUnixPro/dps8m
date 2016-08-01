@@ -24,20 +24,20 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
     * buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
   }
 
-void fnpuv_associated_readcb (uv_stream_t* stream,
+void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            char * buf)
   {
     //printf ("assoc. <%*s>\n", (int) nread, buf->base);
-    processLineInput (stream, buf, nread);
+    processLineInput (client, buf, nread);
   }
 
-void fnpuv_unassociated_readcb (uv_stream_t* stream,
+void fnpuv_unassociated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            char * buf)
   {
     //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
-    processUserInput (stream, buf, nread);
+    processUserInput (client, buf, nread);
   } 
 
 static void readcb (uv_stream_t* stream,
@@ -85,7 +85,7 @@ static void writecb (uv_write_t * req, int status)
     free (req);
   }
 
-void fnpuv_start_write_actual (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
+void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
   {
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
@@ -97,23 +97,23 @@ void fnpuv_start_write_actual (/* uv_tcp_t */ void  * client, char * data, ssize
       sim_printf ("uv_write returns %d\n", ret);
   }
 
-void fnpuv_start_write (/* uv_tcp_t */ void  * client, char * data, ssize_t datalen)
+void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
   {
-    uvClientData * p = (uvClientData *) ((uv_stream_t *) client)->data;
+    uvClientData * p = (uvClientData *) client->data;
     telnet_send (p->telnetp, data, datalen);
   }
 
-void fnpuv_start_writestr (/* uv_tcp_t */ void  * client, char * data)
+void fnpuv_start_writestr (uv_tcp_t * client, char * data)
   {
     fnpuv_start_write (client, data, strlen (data));
   }
 
-void fnpuv_read_start (void * client)
+void fnpuv_read_start (uv_tcp_t * client)
   {
     uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
   }
 
-void fnpuv_read_stop (void * client)
+void fnpuv_read_stop (uv_tcp_t * client)
   {
     uv_read_stop ((uv_stream_t *) client);
   }
@@ -158,7 +158,7 @@ static void on_new_connection (uv_stream_t * server, int status)
              return;
           }
         client->data = p;
-        fnpuv_read_start ((uv_stream_t *) client);
+        fnpuv_read_start (client);
         fnpConnectPrompt (client);
       }
     else
@@ -223,7 +223,7 @@ static void do_readcb (uv_stream_t* stream,
         linep->nPos += nread;
 #endif
 
-        processLineInput (stream, buf->base, nread);
+        processLineInput ((uv_tcp_t*) stream, buf->base, nread);
       }
 
     if (buf->base)
@@ -248,6 +248,9 @@ sim_printf ("setting accept on %d.%d\n", p->fnpno, p->lineno);
     uv_read_start ((uv_stream_t *) & linep->doSocket, alloc_buffer, do_readcb);
     linep->listen = true;
     linep->accept_new_terminal = true;
+sim_printf ("%p:%d\n", & linep->accept_new_terminal, linep->accept_new_terminal);
+sim_printf ("%d %d %p %p\n", p->fnpno, p->lineno, linep, & fnpUnitData[p->fnpno].MState.line[p->lineno]);
+sim_printf ("%p %p\n", &(linep->accept_new_terminal), &(fnpUnitData[0].MState.line[0].accept_new_terminal));
   }
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
@@ -306,6 +309,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     uv_tcp_connect (& linep->doConnect, & linep->doSocket, (const struct sockaddr *) & dest, on_do_connect);
   }
 
+#if 0
 static void on_slave_connect (uv_stream_t * server, int status)
   {
     sim_printf ("slave connect\n");
@@ -321,12 +325,13 @@ static void on_slave_connect (uv_stream_t * server, int status)
     uv_read_start ((uv_stream_t *) & linep->doSocket, alloc_buffer, do_readcb);
     linep->accept_new_terminal = true;
   }
+#endif
 
 void fnpuv_open_slave (uint fnpno, uint lineno)
   {
-    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
 #if 0
+    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uv_tcp_init (loop, & linep->doSocket);
 
 
