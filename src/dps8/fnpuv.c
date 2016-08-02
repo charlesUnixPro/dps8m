@@ -11,6 +11,7 @@
 
 //#define TEST
 
+#define USE_REQ_DATA
 
 // Making it up...
 #define DEFAULT_BACKLOG 16
@@ -108,29 +109,53 @@ static void writecb (uv_write_t * req, int status)
       {
         sim_printf ("writecb status %d\n", status);
       }
+#ifdef USE_REQ_DATA
+sim_printf ("freeing bufs %p\n", req->data);
+    free (req->data);
+#else
     unsigned int nbufs = req->nbufs;
     uv_buf_t * bufs = req->bufs;
     //if (! bufs)
+#if 0
     if (nbufs > ARRAY_SIZE(req->bufsml))
       bufs = req->bufsml;
+#endif
 //sim_printf ("writecb req %p req->data %p bufs %p nbufs %u\n", req, req->data, bufs, nbufs); 
     for (unsigned int i = 0; i < nbufs; i ++)
       {
         if (bufs && bufs[i].base)
           {
+//sim_printf ("freeing bufs%d %p\n", i, bufs[i].base);
             free (bufs[i].base);
             //bufp -> base = NULL;
           }
+        if (req->bufsml[i].base)
+          {
+//sim_printf ("freeing bufsml%d %p@%p\n", i, req->bufsml[i].base, & req->bufsml[i].base);
+if ((long) (req->bufsml[i].base) & 1) {
+sim_warn ("odd ptr %p@%p; demangling\n", req->bufsml[i].base, & req->bufsml[i].base);
+req->bufsml[i].base --;
+}
+            free (req->bufsml[i].base);
+          }
       }
+#endif
+
     // the buf structure is copied; do not free.
+sim_printf ("freeing req %p\n", req);
     free (req);
   }
 
 void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
   {
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
+    // This makes sure that bufs*.base and bufsml*.base are NULL
+    memset (req, 0, sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
-    req->data = & buf;
+sim_printf ("allocated req %p data %p\n", req, buf.base);
+#ifdef USE_REQ_DATA
+    req->data = buf.base;
+#endif
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, datalen);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, writecb);
@@ -182,6 +207,9 @@ static void on_new_connection (uv_stream_t * server, int status)
       }
 
     uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+
+
+#if 0
     // if server->data is non-null, this is a slave server; else a dialup
     // server
     if (server->data)
@@ -191,9 +219,29 @@ static void on_new_connection (uv_stream_t * server, int status)
 sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno); 
         linep->client = client;
       }
+#endif
     uv_tcp_init (loop, client);
     if (uv_accept (server, (uv_stream_t *) client) == 0)
       {
+
+        // if server->data is non-null, this is a slave server; else a dialup
+        // server
+        if (server->data)
+          {
+            uvClientData * p = (uvClientData *) server->data;
+            struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+#if 0
+            // Slave servers only handle a single connection at a time
+            if (linep->client)
+              {
+                uv_close ((uv_handle_t *) client, NULL);
+sim_printf ("dropping 2nd slave\n");
+                return;
+              }
+#endif
+            linep->client = client;
+          }
+        
         struct sockaddr name;
         int namelen = sizeof (name);
         int ret = uv_tcp_getpeername (client, & name, & namelen);
@@ -440,6 +488,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     p->fnpno = fnpno;
     p->lineno = lineno;
     linep->server.data = p;
+    linep->client = NULL;
 
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
