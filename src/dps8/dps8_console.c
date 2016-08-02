@@ -203,6 +203,7 @@ void console_init()
     struct sigaction quit_action;
     quit_action . sa_handler = quit_sig_hndlr;
     quit_action . sa_flags = SA_RESTART;
+    sigemptyset (& quit_action . sa_mask);
     sigaction (SIGQUIT, & quit_action, NULL);
 
 }
