@@ -27,7 +27,7 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
 
 void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
-                           char * buf)
+                           unsigned char * buf)
   {
     //printf ("assoc. <%*s>\n", (int) nread, buf->base);
     processLineInput (client, buf, nread);
@@ -35,7 +35,7 @@ void fnpuv_associated_readcb (uv_tcp_t * client,
 
 void fnpuv_unassociated_readcb (uv_tcp_t * client,
                            ssize_t nread,
-                           char * buf)
+                           unsigned char * buf)
   {
     //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
     processUserInput (client, buf, nread);
@@ -96,7 +96,7 @@ static void readcb (uv_stream_t* stream,
         if (p->telnetp)
           telnet_recv (p->telnetp, buf->base, nread);
         else
-          fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, buf->base);
+          fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
       }
 
     if (buf->base)
@@ -110,7 +110,7 @@ static void writecb (uv_write_t * req, int status)
         sim_printf ("writecb status %d\n", status);
       }
 #ifdef USE_REQ_DATA
-sim_printf ("freeing bufs %p\n", req->data);
+//sim_printf ("freeing bufs %p\n", req->data);
     free (req->data);
 #else
     unsigned int nbufs = req->nbufs;
@@ -142,17 +142,19 @@ req->bufsml[i].base --;
 #endif
 
     // the buf structure is copied; do not free.
-sim_printf ("freeing req %p\n", req);
+//sim_printf ("freeing req %p\n", req);
     free (req);
   }
 
 void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
   {
+    if (! client)
+      return;
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     // This makes sure that bufs*.base and bufsml*.base are NULL
     memset (req, 0, sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
-sim_printf ("allocated req %p data %p\n", req, buf.base);
+//sim_printf ("allocated req %p data %p\n", req, buf.base);
 #ifdef USE_REQ_DATA
     req->data = buf.base;
 #endif
@@ -169,6 +171,8 @@ sim_printf ("allocated req %p data %p\n", req, buf.base);
 
 void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
   {
+    if (! client)
+      return;
     uvClientData * p = (uvClientData *) client->data;
     if (! p)
       return;
@@ -189,11 +193,15 @@ void fnpuv_start_writestr (uv_tcp_t * client, char * data)
 
 void fnpuv_read_start (uv_tcp_t * client)
   {
+    if (! client)
+      return;
     uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
   }
 
 void fnpuv_read_stop (uv_tcp_t * client)
   {
+    if (! client)
+      return;
     uv_read_stop ((uv_stream_t *) client);
   }
 
@@ -395,24 +403,24 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
     sim_printf ("received dial_out %c.h%03d %012llo %012llo %012llo\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
-    uint d01 = (d1 >> 30) & 07;
-    uint d02 = (d1 >> 24) & 07;
-    uint d03 = (d1 >> 18) & 07;
-    uint d04 = (d1 >> 12) & 07;
-    uint d05 = (d1 >>  6) & 07;
-    uint d06 = (d1 >>  0) & 07;
-    uint d07 = (d2 >> 30) & 07;
-    uint d08 = (d2 >> 24) & 07;
-    uint d09 = (d2 >> 18) & 07;
-    uint d10 = (d2 >> 12) & 07;
-    uint d11 = (d2 >>  6) & 07;
-    uint d12 = (d2 >>  0) & 07;
-    uint p1 = (d3 >> 30) & 07;
-    uint p2 = (d3 >> 24) & 07;
-    uint p3 = (d3 >> 18) & 07;
-    uint p4 = (d3 >> 12) & 07;
-    uint p5 = (d3 >>  6) & 07;
-    uint p6 = (d3 >>  0) & 07;
+    uint d01 = (d1 >> 30) & 017;
+    uint d02 = (d1 >> 24) & 017;
+    uint d03 = (d1 >> 18) & 017;
+    uint d04 = (d1 >> 12) & 017;
+    uint d05 = (d1 >>  6) & 017;
+    uint d06 = (d1 >>  0) & 017;
+    uint d07 = (d2 >> 30) & 017;
+    uint d08 = (d2 >> 24) & 017;
+    uint d09 = (d2 >> 18) & 017;
+    uint d10 = (d2 >> 12) & 017;
+    uint d11 = (d2 >>  6) & 017;
+    uint d12 = (d2 >>  0) & 017;
+    uint p1 = (d3 >> 30) & 017;
+    uint p2 = (d3 >> 24) & 017;
+    uint p3 = (d3 >> 18) & 017;
+    uint p4 = (d3 >> 12) & 017;
+    uint p5 = (d3 >>  6) & 017;
+    uint p6 = (d3 >>  0) & 017;
 
     uint oct1 = d01 * 100 + d02 * 10 + d03;
     uint oct2 = d04 * 100 + d05 * 10 + d06;

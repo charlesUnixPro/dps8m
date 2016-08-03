@@ -63,13 +63,13 @@ typedef struct
         int delay_table [6];
 #define FC_STR_SZ 4
         int inputSuspendLen;
-        char inputSuspendStr [4];
+        unsigned char inputSuspendStr [4];
         int inputResumeLen;
-        char inputResumeStr [4];
+        unsigned char inputResumeStr [4];
         int outputSuspendLen;
-        char outputSuspendStr [4];
+        unsigned char outputSuspendStr [4];
         int outputResumeLen;
-        char outputResumeStr [4];
+        unsigned char outputResumeStr [4];
         int frame_begin;
         int frame_end;
         bool echnego [256];
@@ -91,11 +91,11 @@ typedef struct
         bool input_break;
 
         // Buffer being assembled for sending to Multics
-        char buffer[1024];   // line buffer for initial device selection and line discipline
+        unsigned char buffer[1024];   // line buffer for initial device selection and line discipline
         int nPos;           // position where *next* user input is to be stored
 
         // Incoming data from the connection
-        char * inBuffer;
+        unsigned char * inBuffer;
         int inSize; // Number of bytes in inBuffer
         int inUsed; // Number of consumed bytes in buffer
 
@@ -140,5 +140,5 @@ void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
 int fnpIOMCmd (uint iomUnitIdx, uint chan);
 t_stat fnpServerPort (int32 arg, char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
-void processUserInput (uv_tcp_t * client, char * buf, ssize_t nread);
-void processLineInput (uv_tcp_t * client, char * buf, ssize_t nread);
+void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
+void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);

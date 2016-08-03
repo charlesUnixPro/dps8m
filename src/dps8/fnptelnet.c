@@ -35,11 +35,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
             uvClientData * p = (uvClientData *) client->data;
             if (p -> assoc)
               {
-                fnpuv_associated_readcb (client, event->data.size, (char *)event->data.buffer);
+                fnpuv_associated_readcb (client, event->data.size, (unsigned char *)event->data.buffer);
               }
             else
               {
-                fnpuv_unassociated_readcb (client, event->data.size, (char *)event->data.buffer);
+                fnpuv_unassociated_readcb (client, event->data.size, (unsigned char *)event->data.buffer);
               }
           }
           break;

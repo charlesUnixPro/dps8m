@@ -306,7 +306,10 @@ static int wcd (void)
               fnpuv_start_writestr (linep->client, "Multics has disconnected you\r\n");
             linep -> line_disconnected = true;
             if (linep->client)
-              uv_close ((uv_handle_t *) linep->client, NULL);
+              {
+                uv_close ((uv_handle_t *) linep->client, NULL);
+                linep->client = false;
+              }
             
           }
           break;
@@ -494,7 +497,6 @@ static int wcd (void)
             //sim_printf ("fnp alter parameters\n");
             // The docs insist the subype is in word2, but I think
             // it is in command data...
-            //uint subtype = getbits36_9 (word2, 0);
             uint subtype = getbits36_9 (decoded.smbxp -> command_data [0], 0);
             uint flag = getbits36_1 (decoded.smbxp -> command_data [0], 17);
             //sim_printf ("  subtype %d\n", subtype);
@@ -930,6 +932,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
 
 // data goes in mystery [0..24]
 
+//sim_printf ("short in; line %d tally %d\n", lineno, linep->nPos);
     int j = 0;
     for (int i = 0; i < linep->nPos + 3; i += 4)
       {
@@ -942,6 +945,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
           putbits36_9 (& v, 18, linep->buffer [i + 2]);
         if (i + 3 < linep->nPos)
           putbits36_9 (& v, 27, linep->buffer [i + 3]);
+//sim_printf ("%012llo\n", v);
         smbxp -> mystery [j ++] = v;
       }
 
@@ -1139,7 +1143,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     uint ptPtr = decoded.p -> PCW_PAGE_TABLE_PTR;
 
 #if 0
-{ sim_printf ("tally %d\n", tally);
+{ sim_printf ("line %d tally %d\n", decoded.slot_no, tally);
   uint nw = (tally + 3) / 4;
   for (uint i = 0; i < nw; i ++)
     {
@@ -1149,7 +1153,72 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     }
 }
 #endif
+#if 0
+{
+  uint bcnt = 0;
+  word36 hi = 0, lo = 0;
+  uint ndws = (tally + 8) / 9;
 
+  for (uint i = 0; i < ndws * 8; i ++)
+    {
+      uint wordAddr = virtToPhys (ptPtr, dataAddr + i/4);
+      word = M [wordAddr];
+      uint os = (i%4) * 9 + 1;
+      uint d = 0;
+      if (i < tally)
+        d = getbits36_8 (word, os);
+      d &= MASK8;
+      uint carry = getbits36_8 (lo, 8);
+      carry &= MASK8;
+      hi <<= 8;
+      hi |= carry;
+      lo <<= 8;
+      lo |= d;
+      bcnt ++;
+      if (bcnt == 9)
+        {
+          sim_printf ("%012llo\n%012llo\n", hi, lo);
+          hi = lo = bcnt = 0;
+        }
+    }
+ }
+#endif
+#if 0
+{ sim_printf ("line %d tally %d\n", decoded.slot_no, tally);
+  uint bcnt = 0;
+  word72 ac;
+  uint ndws = (tally + 8) / 9;
+
+  for (uint i = 0; i < ndws * 8; i ++)
+    {
+      uint wordAddr = virtToPhys (ptPtr, dataAddr + i/4);
+      word = M [wordAddr];
+      uint os = (i%4) * 9 + 1;
+      uint d = 0;
+      if (i < tally)
+        d = getbits36_8 (word, os);
+      d &= MASK8;
+      ac <<= 8;
+      ac |= d;
+      bcnt ++;
+      if (bcnt == 9)
+        {
+          sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+          ac = bcnt = 0;
+        }
+    }
+  if (bcnt)
+    {
+      while (bcnt < 9)
+        {
+          ac <<= 8;
+          bcnt ++;
+        }
+      sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+    }
+ }
+#endif
+ 
     for (uint i = 0; i < tally; i ++)
        {
          uint byteOff = i % 4;
@@ -1264,8 +1333,9 @@ static void fnp_rtx_input_accepted (void)
     
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
-    char * data = linep -> buffer;
+    unsigned char * data = linep -> buffer;
 
+//sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
     for (int i = 0; i < tally0 + 3; i += 4)
       {
         word36 v = 0;
@@ -1277,6 +1347,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
+//sim_printf ("%012llo\n", v);
         M [addr0 ++] = v;
       }
 
@@ -1291,6 +1362,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [tally0 + i + 2]);
         if (i + 3 < tally1)
           putbits36_9 (& v, 27, data [tally0 + i + 3]);
+//sim_printf ("%012llo\n", v);
         M [addr1 ++] = v;
       }
 
@@ -1604,140 +1676,144 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 // Process an input character according to the line discipline.
 // Return true if buffer should be shipped to the CS
 
-static inline bool processInputCharacter (struct t_line * linep, char kar)
+static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
-    if (linep->echoPlex)
+    if (linep->service == service_login)
       {
-        // echo \r, \n & \t
-
-        // echo a CR when a LF is typed
-        if (linep->crecho && kar == '\n')
+        if (linep->echoPlex)
           {
-            fnpuv_start_writestr (linep->client, "\r\n");
-          }
-
-        // echo and inserts a LF in the users input stream when a CR is typed
-        else if (linep->lfecho && kar == '\r')
-          {
-            fnpuv_start_writestr (linep->client, "\r\n");
-          }
-
-        // echo the appropriate number of spaces when a TAB is typed
-        else if (linep->tabecho && kar == '\t')
-          {
-            // since nPos starts at 0 this'll work well with % operator
-            int nCol = linep->nPos;
-            // for now we use tabstops of 1,11,21,31,41,51, etc...
-            nCol += 10;                  // 10 spaces/tab
-            int nSpaces = 10 - (nCol % 10);
-            for(int i = 0 ; i < nSpaces ; i += 1)
-              fnpuv_start_writestr (linep->client, " ");
-          }
-
-        // XXX slightly bogus logic here..
-        // ^R ^U ^H DEL LF CR FF ETX 
-        else if (kar == '\022'  || kar == '\025' || kar == '\b' ||
-                 kar == 127     || kar == '\n'   || kar == '\r' ||
-                 kar == '\f'    || kar == '\003')
-        {
-          // handled below
-        }
-
-        // echo character
-        else
-        {
-            fnpuv_start_write (linep->client, & kar, 1);
-        }
-    } // if echoPlex
-
-    // send of each and every character
-    if (linep->breakAll)
-      {
-        linep->buffer[linep->nPos ++] = kar;
-        linep->buffer[linep->nPos] = 0;
-        linep->input_break = true;
-        linep->accept_input = 1;
-        return true;
-      }
-
-    // Multics seems to want CR changed to LF
-    if (kar == '\r')
-      kar = '\n';
-
-    if ((linep-> frame_begin != 0 &&
-         linep-> frame_begin == kar) ||
-        (linep-> frame_end != 0 &&
-         linep-> frame_end == kar))
-      {
-        // Framing chars are dropped. Is that right?.
-        if (linep->nPos != 0)
-          {
-            linep->accept_input = 1;
-            linep->input_break = true;
-            return true;
-          }
-        // Frame character on an empty frame; keep going.
-        return false;
-      }
-
-    switch (kar)
-      {
-        case '\n':          // NL
-        case '\r':          // CR
-        case '\f':          // FF
-          {
-            kar = '\n';     // translate to NL
-            linep->buffer[linep->nPos++] = kar;
-            linep->buffer[linep->nPos] = 0;
-            linep->accept_input = 1;
-            linep->input_break = true;
-            return true;
-          }
-
-        case 0x03:          // ETX (^C) // line break
-          {
-            linep->line_break=true;
-            // Treating line break as out of band, but pausing
-            // buffer processing. Not sure this makes any difference
-            // as the processing will resume on the next processing loop
-            return true;
-          }
-
-        case '\b':  // backspace
-        case 127:   // delete
-          {
-            if (linep->nPos > 0)
+            // echo \r, \n & \t
+    
+            // echo a CR when a LF is typed
+            if (linep->crecho && kar == '\n')
               {
-                fnpuv_start_writestr (linep->client, "\b \b");    // remove char from line
-                linep->nPos -= 1;                 // back up buffer pointer
-                linep->buffer[linep->nPos] = 0;     // remove char from buffer
+                fnpuv_start_writestr (linep->client, "\r\n");
               }
-            else 
-             {
-                // remove char from line
-                fnpuv_start_writestr (linep->client, "\a");
+    
+            // echo and inserts a LF in the users input stream when a CR is typed
+            else if (linep->lfecho && kar == '\r')
+              {
+                fnpuv_start_writestr (linep->client, "\r\n");
               }
-            return false;
-          }
-
-        case 21:    // ^U kill
+    
+            // echo the appropriate number of spaces when a TAB is typed
+            else if (linep->tabecho && kar == '\t')
+              {
+                // since nPos starts at 0 this'll work well with % operator
+                int nCol = linep->nPos;
+                // for now we use tabstops of 1,11,21,31,41,51, etc...
+                nCol += 10;                  // 10 spaces/tab
+                int nSpaces = 10 - (nCol % 10);
+                for(int i = 0 ; i < nSpaces ; i += 1)
+                  fnpuv_start_writestr (linep->client, " ");
+              }
+    
+            // XXX slightly bogus logic here..
+            // ^R ^U ^H DEL LF CR FF ETX 
+            else if (kar == '\022'  || kar == '\025' || kar == '\b' ||
+                     kar == 127     || kar == '\n'   || kar == '\r' ||
+                     kar == '\f'    || kar == '\003')
+            {
+              // handled below
+            }
+    
+            // echo character
+            else
+            {
+                fnpuv_start_write (linep->client, (char *) & kar, 1);
+            }
+        } // if echoPlex
+    
+        // send of each and every character
+        if (linep->breakAll)
           {
-            linep->nPos = 0;
+            linep->buffer[linep->nPos ++] = kar;
             linep->buffer[linep->nPos] = 0;
-            fnpuv_start_writestr (linep->client, "^U\r\n");
-            return false;
+            linep->input_break = true;
+            linep->accept_input = 1;
+            return true;
           }
-
-        case 0x12:  // ^R
+    
+        // Multics seems to want CR changed to LF
+        if (kar == '\r')
+          kar = '\n';
+    
+        if ((linep-> frame_begin != 0 &&
+             linep-> frame_begin == kar) ||
+            (linep-> frame_end != 0 &&
+             linep-> frame_end == kar))
           {
-            fnpuv_start_writestr (linep->client, "^R\r\n");       // echo ^R
-            fnpuv_start_write (linep->client, linep->buffer, linep->nPos);
+            // Framing chars are dropped. Is that right?.
+            if (linep->nPos != 0)
+              {
+                linep->accept_input = 1;
+                linep->input_break = true;
+                return true;
+              }
+            // Frame character on an empty frame; keep going.
             return false;
           }
+    
+        switch (kar)
+          {
+            case '\n':          // NL
+            case '\r':          // CR
+            case '\f':          // FF
+              {
+                kar = '\n';     // translate to NL
+                linep->buffer[linep->nPos++] = kar;
+                linep->buffer[linep->nPos] = 0;
+                linep->accept_input = 1;
+                linep->input_break = true;
+                return true;
+              }
+    
+            case 0x03:          // ETX (^C) // line break
+              {
+                linep->line_break=true;
+                // Treating line break as out of band, but pausing
+                // buffer processing. Not sure this makes any difference
+                // as the processing will resume on the next processing loop
+                return true;
+              }
+    
+            case '\b':  // backspace
+            case 127:   // delete
+              {
+                if (linep->nPos > 0)
+                  {
+                    fnpuv_start_writestr (linep->client, "\b \b");    // remove char from line
+                    linep->nPos -= 1;                 // back up buffer pointer
+                    linep->buffer[linep->nPos] = 0;     // remove char from buffer
+                  }
+                else 
+                 {
+                    // remove char from line
+                    fnpuv_start_writestr (linep->client, "\a");
+                  }
+                return false;
+              }
+    
+            case 21:    // ^U kill
+              {
+                linep->nPos = 0;
+                linep->buffer[linep->nPos] = 0;
+                fnpuv_start_writestr (linep->client, "^U\r\n");
+                return false;
+              }
+    
+            case 0x12:  // ^R
+              {
+                fnpuv_start_writestr (linep->client, "^R\r\n");       // echo ^R
+                fnpuv_start_write (linep->client, (char *) linep->buffer, linep->nPos);
+                return false;
+              }
+    
+            default:
+                break;
+          }
 
-        default:
-            break;
-      }
+       }
 
     // Just a character in cooked mode; append it to the buffer
     linep->buffer[linep->nPos++] = kar;
@@ -1745,10 +1821,14 @@ static inline bool processInputCharacter (struct t_line * linep, char kar)
 
     // If we filled the buffer, move it along
 
-    if ((size_t) linep->nPos >= sizeof (linep->buffer))
+    if (linep->service != service_login ||
+        (size_t) linep->nPos >= sizeof (linep->buffer))
       {
         linep->accept_input = 1;
         linep->input_break = false;
+        if (linep->service != service_login)
+          linep->input_break = true;
+
         return true;
       }
     return false; 
@@ -1759,7 +1839,7 @@ static void fnpProcessBuffer (struct t_line * linep)
   {
     while (linep->inBuffer && linep->inUsed < linep->inSize)
        {
-         char c = linep->inBuffer [linep->inUsed ++];
+         unsigned char c = linep->inBuffer [linep->inUsed ++];
 //sim_printf ("processing %d/%d %o '%c'\n", linep->inUsed-1, linep->inSize, c, isprint (c) ? c : '?');
 
          if (linep->inUsed >= linep->inSize)
@@ -1768,7 +1848,9 @@ static void fnpProcessBuffer (struct t_line * linep)
              linep->inBuffer = NULL;
              linep->inSize = 0;
              linep->inUsed = 0;
-             fnpuv_read_start (linep->client);
+             // The connection could have been closed when we weren't looking
+             if (linep->client)
+               fnpuv_read_start (linep->client);
            }
          if (processInputCharacter (linep, c))
            break;
@@ -2438,7 +2520,7 @@ void fnpConnectPrompt (uv_tcp_t * client)
     fnpuv_start_writestr (client, ")? ");
   }
 
-void processLineInput (uv_tcp_t * client, char * buf, ssize_t nread)
+void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p -> fnpno;
@@ -2489,7 +2571,7 @@ done:;
     fnpuv_read_stop (client);
   }
 
-void processUserInput (uv_tcp_t * client, char * buf, ssize_t nread)
+void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
     char cpy [nread + 1];
     memcpy (cpy, buf, nread);
