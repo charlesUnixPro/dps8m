@@ -219,7 +219,7 @@ void fnpInit(void)
       {
         cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
       }
-    fnpuvInit (telnet_port);
+    //fnpuvInit (telnet_port);
     fnpTelnetInit ();
   }
 
@@ -307,7 +307,8 @@ static int wcd (void)
             linep -> line_disconnected = true;
             if (linep->client)
               {
-                uv_close ((uv_handle_t *) linep->client, NULL);
+                if (! uv_is_closing ((uv_handle_t *) linep->client))
+                  uv_close ((uv_handle_t *) linep->client, NULL);
                 linep->client = false;
               }
             
@@ -2492,6 +2493,7 @@ t_stat fnpServerPort (UNUSED int32 arg, char * buf)
       return SCPE_ARG;
     telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
+    fnpuvInit (telnet_port);
     return SCPE_OK;
   }
 

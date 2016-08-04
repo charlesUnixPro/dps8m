@@ -50,7 +50,7 @@ static void readcb (uv_stream_t* stream,
         if (nread == UV_EOF)
           {
             uvClientData * p = (uvClientData *) stream->data;
-            // If stream->data, the stream is from the dialin server
+            // If stream->data, the stream is associated with a Multics line.
             // Tear down that association
             if (p)
               {
@@ -93,10 +93,13 @@ static void readcb (uv_stream_t* stream,
     else if (nread > 0)
      {
         uvClientData * p = (uvClientData *) stream->data;
-        if (p->telnetp)
-          telnet_recv (p->telnetp, buf->base, nread);
-        else
-          fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
+        if (p)
+          {
+            if (p->telnetp)
+              telnet_recv (p->telnetp, buf->base, nread);
+            else
+              fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
+          }
       }
 
     if (buf->base)
@@ -322,6 +325,7 @@ void fnpuvInit (int telnet_port)
 
     // Bind and listen
     struct sockaddr_in addr;
+sim_printf ("listening to %d\n", telnet_port);
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
     uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & server, DEFAULT_BACKLOG, 
@@ -397,6 +401,7 @@ static void on_do_connect (uv_connect_t * server, int status)
     uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, readcb);
     linep->listen = true;
     linep->accept_new_terminal = true;
+    linep->client->data = p;
   }
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
@@ -550,7 +555,7 @@ int main (int argc, char * argv [])
     uv_tcp_init (loop, & server);
 
     struct sockaddr_in addr;
-    uv_ip4_addr ("0.0.0.0", 6180, & addr);
+    uv_ip4_addr ("0.0.0.0", get_dialin_telnet_port (), & addr);
 
     uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & server, DEFAULT_BACKLOG, 
