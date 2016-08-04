@@ -87,7 +87,8 @@ static void readcb (uv_stream_t* stream,
                 free (stream->data);
                 stream->data = NULL;
               }
-            uv_close ((uv_handle_t *) stream, NULL);
+            if (! uv_is_closing ((uv_handle_t *) stream))
+              uv_close ((uv_handle_t *) stream, NULL);
           }
       }
     else if (nread > 0)
@@ -151,7 +152,7 @@ req->bufsml[i].base --;
 
 void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
   {
-    if (! client)
+    if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     // This makes sure that bufs*.base and bufsml*.base are NULL
@@ -174,7 +175,7 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 
 void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
   {
-    if (! client)
+    if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uvClientData * p = (uvClientData *) client->data;
     if (! p)
@@ -196,14 +197,14 @@ void fnpuv_start_writestr (uv_tcp_t * client, char * data)
 
 void fnpuv_read_start (uv_tcp_t * client)
   {
-    if (! client)
+    if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
   }
 
 void fnpuv_read_stop (uv_tcp_t * client)
   {
-    if (! client)
+    if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uv_read_stop ((uv_stream_t *) client);
   }
