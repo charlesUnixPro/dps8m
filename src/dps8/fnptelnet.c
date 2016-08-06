@@ -10,10 +10,8 @@
 #include "fnptelnet.h"
 
 static const telnet_telopt_t my_telopts[] = {
-    // THe initail HSLA port dialog is in line mode; switch
-    // to character mode after association is done.
-    //{ TELNET_TELOPT_SGA,       TELNET_WILL, TELNET_DO   },
-    //{ TELNET_TELOPT_ECHO,      TELNET_WILL, TELNET_DONT },
+    { TELNET_TELOPT_SGA,       TELNET_WILL, TELNET_DO   },
+    { TELNET_TELOPT_ECHO,      TELNET_WILL, TELNET_DONT },
 
     //{ TELNET_TELOPT_TTYPE,     TELNET_WONT, TELNET_DONT },
     //{ TELNET_TELOPT_COMPRESS2, TELNET_WONT, TELNET_DO   },
@@ -78,6 +76,18 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
           }
           break;
 
+        case TELNET_EV_WILL:
+          {
+            sim_printf ("evHandler WILL %d\n", event->neg.telopt);
+          }
+          break;
+
+        case TELNET_EV_WONT:
+          {
+            sim_printf ("evHandler WONT %d\n", event->neg.telopt);
+          }
+          break;
+
         case TELNET_EV_ERROR:
           {
             sim_warn ("libtelnet evHandler error <%s>\n", event->error.msg);
@@ -109,8 +119,14 @@ void * ltnConnect (uv_tcp_t * client)
 
 void ltnRaw (telnet_t * tclient)
   {
-    telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
-    telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_ECHO);
+    //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
+    //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_ECHO);
+  }
+
+void ltnDialout (telnet_t * tclient)
+  {
+    // dialout telnet: We are a teletype. What settings should we be doing?
+    //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
   }
 
 void fnpTelnetInit (void)

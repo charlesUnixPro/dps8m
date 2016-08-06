@@ -4,6 +4,9 @@ struct uvClientData
     uint fnpno;
     uint lineno;
     /* telnet_t */ void * telnetp;
+    // Work buffet for processLineInput
+    char buffer [1024];
+    size_t nPos;
   };
 
 typedef struct uvClientData uvClientData;
@@ -19,4 +22,5 @@ void fnpuv_read_start (uv_tcp_t * client);
 void fnpuv_read_stop (uv_tcp_t * client);
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3);
 void fnpuv_open_slave (uint fnpno, uint lineno);
+void close_connection (uv_stream_t* stream);
 

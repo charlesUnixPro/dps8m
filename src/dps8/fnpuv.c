@@ -41,6 +41,50 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
     processUserInput (client, buf, nread);
   } 
 
+void close_connection (uv_stream_t* stream)
+  {
+    uvClientData * p = (uvClientData *) stream->data;
+    // If stream->data, the stream is associated with a Multics line.
+    // Tear down that association
+    if (p)
+      {
+        if (p->assoc)
+          {
+            sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
+            struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+            linep -> line_disconnected = true;
+          }
+        else
+          {
+            sim_printf ("DISCONNECT\n");
+          }
+
+        // Clean up allocated data
+        if (p->telnetp)
+          {
+            telnet_free (p->telnetp);
+            // telnet_free frees self
+            //free (p->telnetp);
+            p->telnetp = NULL;
+          }
+        if (p->assoc)
+          {
+            struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+            if (linep->client)
+              {
+// This is a long winded way to free (stream->data)
+
+                //free (linep->client);
+                linep->client = NULL;
+              }
+          }
+        free (stream->data);
+        stream->data = NULL;
+      }
+    if (! uv_is_closing ((uv_handle_t *) stream))
+      uv_close ((uv_handle_t *) stream, NULL);
+  }
+
 static void readcb (uv_stream_t* stream,
                            ssize_t nread,
                            const uv_buf_t* buf)
@@ -49,6 +93,44 @@ static void readcb (uv_stream_t* stream,
       {
         if (nread == UV_EOF)
           {
+            close_connection (stream);
+          }
+      }
+    else if (nread > 0)
+      {
+        uvClientData * p = (uvClientData *) stream->data;
+        if (p)
+          {
+            if (p->telnetp)
+              {
+                telnet_recv (p->telnetp, buf->base, nread);
+              }
+            else
+              {
+                if (p -> assoc)
+                  {
+                    fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
+                  }
+                else
+                  {
+                    fnpuv_unassociated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
+                  }
+              }
+          }
+      }
+
+    if (buf->base)
+        free (buf->base);
+  }
+
+static void writecb (uv_write_t * req, int status)
+  {
+    if (status < 0)
+      {
+        if (status == -ECONNRESET)
+          {
+            // connection reset by peer
+            uv_stream_t * stream = req->handle;
             uvClientData * p = (uvClientData *) stream->data;
             // If stream->data, the stream is associated with a Multics line.
             // Tear down that association
@@ -90,28 +172,10 @@ static void readcb (uv_stream_t* stream,
             if (! uv_is_closing ((uv_handle_t *) stream))
               uv_close ((uv_handle_t *) stream, NULL);
           }
-      }
-    else if (nread > 0)
-     {
-        uvClientData * p = (uvClientData *) stream->data;
-        if (p)
+        else
           {
-            if (p->telnetp)
-              telnet_recv (p->telnetp, buf->base, nread);
-            else
-              fnpuv_associated_readcb ((uv_tcp_t *) stream, nread, (unsigned char *) buf->base);
+            sim_printf ("writecb status %d\n", status);
           }
-      }
-
-    if (buf->base)
-        free (buf->base);
-  }
-
-static void writecb (uv_write_t * req, int status)
-  {
-    if (status < 0)
-      {
-        sim_printf ("writecb status %d\n", status);
       }
 #ifdef USE_REQ_DATA
 //sim_printf ("freeing bufs %p\n", req->data);
@@ -274,6 +338,7 @@ sim_printf ("dropping 2nd slave\n");
              return;
           }
         p -> assoc = false;
+        p -> nPos = 0;
 
         // dialup connections are routed through libtelent
         if (! server->data)
@@ -403,6 +468,10 @@ static void on_do_connect (uv_connect_t * server, int status)
     linep->listen = true;
     linep->accept_new_terminal = true;
     linep->client->data = p;
+    if (linep->telnetp)
+      {
+        ltnDialout (linep->telnetp);
+      }
   }
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
@@ -421,19 +490,24 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     uint d10 = (d2 >> 12) & 017;
     uint d11 = (d2 >>  6) & 017;
     uint d12 = (d2 >>  0) & 017;
-    uint p1 = (d3 >> 30) & 017;
-    uint p2 = (d3 >> 24) & 017;
-    uint p3 = (d3 >> 18) & 017;
-    uint p4 = (d3 >> 12) & 017;
-    uint p5 = (d3 >>  6) & 017;
-    uint p6 = (d3 >>  0) & 017;
+    uint flags = (d3 >> 30) & 017;
+    uint p1 = (d3 >> 24) & 017;
+    uint p2 = (d3 >> 18) & 017;
+    uint p3 = (d3 >> 12) & 017;
+    uint p4 = (d3 >>  6) & 017;
+    uint p5 = (d3 >>  0) & 017;
 
     uint oct1 = d01 * 100 + d02 * 10 + d03;
     uint oct2 = d04 * 100 + d05 * 10 + d06;
     uint oct3 = d07 * 100 + d08 * 10 + d09;
     uint oct4 = d10 * 100 + d11 * 10 + d12;
 
-    uint port = (((((p1 * 10) + p2) * 10 + p3) * 10 + p4) * 10 + p5) * 10 + p6;
+    uint port = ((((p1 * 10) + p2) * 10 + p3) * 10 + p4) * 10 + p5;
+
+// Flags
+//   1    Use Telnet
+//   2    ?
+//   4
 
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
@@ -452,8 +526,21 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
          sim_warn ("uvClientData malloc failed\n");
          return;
       }
-    p->assoc = false;
-    p->telnetp = NULL; // Mark this line as 'not a telnet connection'
+    p->assoc = true;
+    p->nPos = 0;
+    if (flags & 1)
+      {
+        p->telnetp = ltnConnect (linep->client);
+
+        if (! p->telnetp)
+          {
+              sim_warn ("ltnConnect failed\n");
+          }
+      }
+    else
+      {
+        p->telnetp = NULL; // Mark this line as 'not a telnet connection'
+      }
     p->fnpno = fnpno;
     p->lineno = lineno;
 
@@ -499,6 +586,8 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
          sim_warn ("uvClientData malloc failed\n");
          return;
       }
+    p->assoc = false;
+    p->nPos = 0;
     p->fnpno = fnpno;
     p->lineno = lineno;
     linep->server.data = p;
