@@ -1,5 +1,4 @@
- /**
- * \file dps8_cpu.c
+ /** * \file dps8_cpu.c
  * \project dps8
  * \date 9/17/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
@@ -77,6 +76,11 @@ static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 #endif
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+
+#ifdef EV_POLL
+static uv_loop_t * ev_poll_loop;
+static uv_timer_t ev_poll_handle;
+#endif
 
 static MTAB cpu_mod[] = {
     {
@@ -815,7 +819,26 @@ static void getSerialNumber (void)
   }
 
 
+// The 100Hz timer as expired; poll I/O
 
+void ev_poll_cb (uv_timer_t * UNUSED handle)
+  {
+
+    // Call the one hertz stuff every 100 loops
+    static uint oneHz = 0;
+    if (oneHz ++ >= 100) // ~ 1Hz
+      {
+        oneHz = 0;
+        rdrProcessEvent (); 
+      }
+    scpProcessEvent (); 
+    fnpProcessEvent (); 
+    consoleProcess ();
+#ifndef FNP2
+    dequeue_fnp_command ();
+#endif
+    absiProcessEvent ();
+  }
 
     
 // called once initialization
@@ -873,6 +896,12 @@ void cpu_init (void)
 
     getSerialNumber ();
 
+#ifdef EV_POLL
+    ev_poll_loop = uv_default_loop ();
+    uv_timer_init (ev_poll_loop, & ev_poll_handle);
+    // 10 ms == 100Hz
+    uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+#endif
   }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
@@ -1469,6 +1498,9 @@ setCPU:;
             break;
           }
 
+#ifdef EV_POLL
+        uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#else
         static uint slowQueueSubsample = 0;
         if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
           {
@@ -1482,13 +1514,14 @@ setCPU:;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            //AIO_CHECK_EVENT;
 #ifdef FNP2
 #else
             dequeue_fnp_command ();
 #endif
             absiProcessEvent ();
           }
+#endif
+
 #if 0
         if (sim_gtime () % 1024 == 0)
           {
@@ -1898,10 +1931,12 @@ setCPU:;
                     // in uSec;
                     usleep (10000);
 
+#ifndef EV_POLL
                     // this ignores the amount of time since the last poll;
                     // worst case is the poll delay of 1/50th of a second.
                     slowQueueSubsample += 10240; // ~ 1Hz
                     queueSubsample += 10240; // ~100Hz
+#endif
 
                     sim_interval = 0;
                     // Timer register runs at 512 KHz
