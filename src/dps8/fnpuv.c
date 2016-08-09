@@ -594,9 +594,6 @@ sim_printf ("listening to %d\n", telnet_port);
   }
 
 // Make a single pass through the libev event queue.
-//
-// XXX This should be 'run until no events'?
-//
 
 void fnpuvProcessEvent (void)
   {
@@ -605,6 +602,9 @@ void fnpuvProcessEvent (void)
     // requests left), or non-zero if more callbacks are expected (meaning
     // you should run the event loop again sometime in the future).
 
+    // Note that uv_run returns non-zero if that are any active_handles 
+    // (e.g. TCP connection listener open); that means a non-zero
+    // return does not mean i/o is pending.
     /* int ret = */ uv_run (loop, UV_RUN_NOWAIT);
   }
 
