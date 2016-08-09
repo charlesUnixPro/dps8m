@@ -1923,8 +1923,10 @@ setCPU:;
 //
 
 
-// For some reason, ISOLTS hangs in 'pft 02a' if ...
-#ifndef ISOLTS
+// The usleep logic is not smart enough w.r.t. ROUND_ROBIN/ISOLTS.
+// The sleep should only happen if all running processors are in
+// DIS mode.
+#ifndef ROUND_ROBIN
                     // 1/100 is .01 secs.
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
