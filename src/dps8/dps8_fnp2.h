@@ -100,11 +100,11 @@ typedef struct
         int inUsed; // Number of consumed bytes in buffer
 
 
-        // Dialout/slave hooks
-        uv_tcp_t server;
+        // Dialout hooks
         uv_connect_t doConnect; 
 
         // Slave hooks
+        uv_tcp_t server;
         int port;
 
       } line [MAX_LINES];

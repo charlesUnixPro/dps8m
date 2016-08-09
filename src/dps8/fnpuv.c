@@ -1,3 +1,144 @@
+// The FNP <--> libuv interface
+//
+// Every libuv TCP connection has a uv_tcp_t object.
+// 
+// The uv_tcp_t object has a 'user data' field defined as "void * data".
+//
+// This code stores a pointer to a "struct uvClientData" in 'data'; this
+// structure allows this code to determine which HSLA line the connection
+// has been made with.
+//
+// The uvClientData structure contains:
+//
+//    bool assoc
+//    uint fnpno;
+//    uint lineno;
+//
+//       If 'assoc' is true, the TCP connection is associated with a particular
+//       HSLA line as specified by 'fnpno' and 'lineno'. A dialup line is 
+//       associated by the user entering the FNP name and line number in the
+//       multiplexor dial in dialog. For slave and dialout lines, 'assoc'
+//       is always true as the assoication is predetermined by the FNP
+//       configuration.
+//
+//    char buffer [1024];
+//    size_t nPos;
+//
+//      Line canonicalization buffer used by the multiplexor dial in dialog.
+//
+// Each HSLA line is identified by a 'fnpno', 'lineno' pair. 'fnpno' indexes
+// into the 'fnpUnitData' data structure and 'lineno' into 
+// 'fnpUnitData[fnpno].MState.line[]'.
+//
+// The 'line' structure contains:
+//
+//   enum service_types service;
+//
+//     This tracks the Multics' line configuration of 'dialup', 'dialout', and
+//     'slave'.
+//
+//   uv_tcp_t * client;
+//
+//     If this is non-null, the HSLA has a TCP connection.
+//
+//   telnet_t * telnetp;
+//
+//     If this is non-null, Telnet is enabled on the connection.
+//
+//   uv_tcp_t server;
+//
+//     This is used by the 'slave' logic and holds the handle of the
+//     TCP server port for the slave line.
+//
+//     The data field of 'server' points to a uvClientData structure; this
+//     field is used by the incoming connection handler to distinguish the 
+//     slave and dialup server ports. (If null, dialup; else slave.)
+//
+//   uv_connect_t doConnect;
+//
+//     libuv uses a uv_connect_t object to create outbound connections; 
+//     the dialout code uses 'doConnect' for this.
+//
+//   int port;
+//
+//     The port number that a slave line listens on, as set by Devices.txt.
+//
+
+
+// Dialup logic.
+//
+// The code assumes a single port number for all dialup lines, even for the 
+// case of multiple FNPs.
+//
+// 'fnpuvInit()' is called when by the 'fnpserverport' command logic. It
+// creates a TCP server listen port, assigning 'on_new_connection()' as
+// the connection callback handler.
+//
+// When a connection is made to the listen port, libuv invokes the 
+// 'on_new_connection()' callback handler.
+//
+// The handler creates a 'uv_tcp_t' object 'client' and accepts the 
+// connection. 
+//
+// It then checks the 'data' field on the listener object to see if this
+// is a dialup or slave listener. For the case of dialup, a 'uvClientData'
+// object is created and its 'assoc' field is set to false to flag the
+// the connection as not yet being associated with an HSLA line; the
+// libtelnet data structure is intialized and the initial Telnet negotiations
+// are started. 'client->data' is set the the 'uvClientData' object, 
+// reading is enabled on 'client', and the HSLA line selection dialog
+// prompt is sent down the dialup connection.
+//
+// When input data is ready on the connection (user input), libuv allocates
+// a buffer, fills it with the data calls the 'fuv_read_cb()' callback handler.
+//
+// The handler looks at the 'data' field of the connection to access the 
+// 'uvClientData' structure; if the sturcture indicates that Telnet 
+// processing is to be done, it passes the data to libtelent handler.
+// Otherwise, it checks the 'assoc' field; if true the data is passed to the 
+// FNP incoming data handler; if false, to the multiplexor line selection
+// dialog handler. The libtelnet handler, after stripping and processing
+// Telnet overhead passes any remaining data on in the same manner.
+// The data buffer is then freed, and the callback returns.
+//
+// Since the FNP incoming data handler is dependent on Multics accepting
+// the input data before it can safely dispose of the data, it disables
+// reading on the connection, and reenables it when Multics has accepted the
+// data.
+
+// Data are written to the TCP connections with 'fnpuv_start_write()'. The
+// 'uvClientData' is inspected for telnet usage; if so, the data is passed
+// to libtelnet for telnet packaging and is sent on to 
+// 'fnpuv_start_write_actual'. If telnet is not in play, the data is sent
+// directly on to 'fnpuv_start_write_actual()' There, a buffer is allocated
+// and the data copied and a 'uv_write_t' request object is created and
+// initalized data the buffer address and length, and a write request
+// is send to libuv.
+//
+// When the write is complete, libuv calls the write callback 'fuv_write_cb()',
+// which frees the data buffers and destroys the write request object.
+
+// Dialout logic
+//
+// When the FNP receives a 'dial_out' command, it calls 'fnpuv_dial_out()'.
+// The dial string is parsed for IP address, port number and telnet flag.
+// An 'uv_tcp_t' object constructed and its address stored in the HSLA
+// 'client' field. An 'uvClientData' object is created, associated with
+// the dialout line HSLA, and if the Telnet flag is set, the Telnet processor
+// is initialized. The TCP connect is initiated and the procedure returns.
+//
+// When the connection succeeds or times out, the 'on_do_connect()' callback 
+// is called. on_do_connect retrieves the 'uvClientData'. If the connection
+// succeeded, the connection data field is set to the 'uvClientData'; read is
+// enabled on the connection, and the 'accept_new_terminal' flag is set which
+// will cause an 'accept_new_terminal' command to be send to Multics.
+//
+
+
+
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -17,13 +158,21 @@
 #define DEFAULT_BACKLOG 16
 
 static uv_loop_t * loop;
-static uv_tcp_t server;
+static uv_tcp_t du_server;
+
+//
+// alloc_buffer: libuv callback handler to allocate buffers for incomingd data.
+//
 
 static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size, 
                           uv_buf_t * buf)
   {
     * buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
   }
+
+
+// read callback for connections that are associated with an HSLA line;
+// forward the data to the FNP input handler
 
 void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
@@ -33,6 +182,9 @@ void fnpuv_associated_readcb (uv_tcp_t * client,
     processLineInput (client, buf, nread);
   }
 
+// read callback for connections that are no tassociated with an HSLA line;
+// forward the data to the line selection dialog handler
+
 void fnpuv_unassociated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
@@ -40,6 +192,8 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
     //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
     processUserInput (client, buf, nread);
   } 
+
+// teardown a connection
 
 void close_connection (uv_stream_t* stream)
   {
@@ -85,9 +239,15 @@ void close_connection (uv_stream_t* stream)
       uv_close ((uv_handle_t *) stream, NULL);
   }
 
-static void readcb (uv_stream_t* stream,
-                           ssize_t nread,
-                           const uv_buf_t* buf)
+//
+// fuv_read_cb: libuv read complete callback
+//
+//   Cleanup on read error.
+//   Forward data to appropriate handler.
+
+static void fuv_read_cb (uv_stream_t* stream,
+                         ssize_t nread,
+                         const uv_buf_t* buf)
   {
     if (nread < 0)
       {
@@ -123,7 +283,14 @@ static void readcb (uv_stream_t* stream,
         free (buf->base);
   }
 
-static void writecb (uv_write_t * req, int status)
+//
+// fuv_write_cb: libuv write complete callback
+//
+//   Cleanup on error
+//   Free buffers
+//
+
+static void fuv_write_cb (uv_write_t * req, int status)
   {
     if (status < 0)
       {
@@ -174,7 +341,7 @@ static void writecb (uv_write_t * req, int status)
           }
         else
           {
-            sim_printf ("writecb status %d\n", status);
+            sim_printf ("fuv_write_cb status %d\n", status);
           }
       }
 #ifdef USE_REQ_DATA
@@ -188,7 +355,7 @@ static void writecb (uv_write_t * req, int status)
     if (nbufs > ARRAY_SIZE(req->bufsml))
       bufs = req->bufsml;
 #endif
-//sim_printf ("writecb req %p req->data %p bufs %p nbufs %u\n", req, req->data, bufs, nbufs); 
+//sim_printf ("fuv_write_cb req %p req->data %p bufs %p nbufs %u\n", req, req->data, bufs, nbufs); 
     for (unsigned int i = 0; i < nbufs; i ++)
       {
         if (bufs && bufs[i].base)
@@ -214,6 +381,8 @@ req->bufsml[i].base --;
     free (req);
   }
 
+// Create and start a write request
+
 void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
   {
     if (! client || uv_is_closing ((uv_handle_t *) client))
@@ -228,7 +397,7 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 #endif
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, datalen);
-    int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, writecb);
+    int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, fuv_write_cb);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;
 // We close the socket, but Mulitcs is still writing its goodbye text trailing
 // NULs.
@@ -236,6 +405,10 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
     if (ret < 0 && ret != -EBADF)
       sim_printf ("uv_write returns %d\n", ret);
   }
+
+//
+// Write data to a connection, doing Telnet if needed.
+//
 
 void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
   {
@@ -254,17 +427,27 @@ void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
       }
   }
 
+// C-string wrapper for fnpuv_start_write
+
 void fnpuv_start_writestr (uv_tcp_t * client, char * data)
   {
     fnpuv_start_write (client, data, strlen (data));
   }
 
+//
+// Enable reading on connection
+//
+
 void fnpuv_read_start (uv_tcp_t * client)
   {
     if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
-    uv_read_start ((uv_stream_t *) client, alloc_buffer, readcb);
+    uv_read_start ((uv_stream_t *) client, alloc_buffer, fuv_read_cb);
   }
+
+//
+// Disable reading on connection
+//
 
 void fnpuv_read_stop (uv_tcp_t * client)
   {
@@ -272,6 +455,10 @@ void fnpuv_read_stop (uv_tcp_t * client)
       return;
     uv_read_stop ((uv_stream_t *) client);
   }
+
+//
+// Connection callback handler for dialup connections
+//
 
 static void on_new_connection (uv_stream_t * server, int status)
   {
@@ -376,31 +563,40 @@ sim_printf ("dropping 2nd slave\n");
       }
   }
 
+//
+// Setup the dialup listener
+//
+
 void fnpuvInit (int telnet_port)
   {
 
     // Initialize the server socket
     loop = uv_default_loop ();
-    uv_tcp_init (loop, & server);
+    uv_tcp_init (loop, & du_server);
 
 // XXX to do clean shutdown
 // uv_loop_close (loop);
 
     // Flag the this server as being the dialup server
-    server.data = NULL;
+    du_server.data = NULL;
 
     // Bind and listen
     struct sockaddr_in addr;
 sim_printf ("listening to %d\n", telnet_port);
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
-    uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
-    int r = uv_listen ((uv_stream_t *) & server, DEFAULT_BACKLOG, 
+    uv_tcp_bind (& du_server, (const struct sockaddr *) & addr, 0);
+    int r = uv_listen ((uv_stream_t *) & du_server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
         fprintf (stderr, "Listen error %s\n", uv_strerror (r));
       }
   }
+
+// Make a single pass through the libev event queue.
+//
+// XXX This should be 'run until no events'?
+//
 
 void fnpuvProcessEvent (void)
   {
@@ -450,6 +646,10 @@ static void do_readcb (uv_stream_t* stream,
   }
 #endif
 
+//
+// dialout line connection callback
+//
+
 static void on_do_connect (uv_connect_t * server, int status)
   {
     sim_printf ("dialout connect\n");
@@ -464,7 +664,7 @@ static void on_do_connect (uv_connect_t * server, int status)
         return;
       }
 
-    uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, readcb);
+    uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, fuv_read_cb);
     linep->listen = true;
     linep->accept_new_terminal = true;
     linep->client->data = p;
@@ -473,6 +673,10 @@ static void on_do_connect (uv_connect_t * server, int status)
         ltnDialout (linep->telnetp);
       }
   }
+
+//
+// Perform a dialout 
+//
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
@@ -567,6 +771,10 @@ static void on_slave_connect (uv_stream_t * server, int status)
   }
 #endif
 
+
+//
+// Start a slave line connection listener.
+//
 
 void fnpuv_open_slave (uint fnpno, uint lineno)
   {
