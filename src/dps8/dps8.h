@@ -43,9 +43,6 @@
 // Enable IPC
 #define VM_DPS8
 
-// Enable Real time Timer Register
-//#define REAL_TR
-
 // Use evlib to manage i/o polling
 #define EV_POLL
 

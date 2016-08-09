@@ -931,11 +931,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         cpu.PPR.PSR = 0;
         cpu.PPR.P = 1;
         cpu.RSDWH_R1 = 0;
-#ifdef REAL_TR
-        setTR (0);
-#else
         cpu.rTR = 0;
-#endif
  
         set_addr_mode(ABSOLUTE_mode);
         SET_I_NBAR;
@@ -1544,21 +1540,6 @@ setCPU:;
              // Acutally have FETCH jump to EXECUTE
              // instead of breaking.
 
-#ifdef REAL_TR
-        if (cpu.trSubsample ++ > 1024)
-          {
-            cpu.trSubsample = 0;
-            bool overrun;
-            UNUSED word27 rTR = getTR (& overrun);
-            if (overrun)
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-                ackTR ();
-                if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, 0);
-              }
-          }
-#else
         // Sync. the TR with the emulator clock.
         cpu.rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
@@ -1575,7 +1556,6 @@ setCPU:;
                   setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
               }
           }
-#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));

@@ -1014,9 +1014,7 @@ typedef struct
     word8    rE;     // exponent [map: rE, 28 0's]
 
     word18   rX [8]; // index
-#ifndef REAL_TR
     word27   rTR;    // timer [map: TR, 9 0's]
-#endif
     word24   rY;     // address operand
     word8    rTAG;   // instruction tag
     word8    tCF;    // character position field [3b]
@@ -1054,13 +1052,7 @@ typedef struct
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
     word36 scu_data[8];    // For SCU instruction
-#ifdef REAL_TR
-    uint timerRegVal;
-    struct timeval timerRegT0;
-    uint trSubsample;
-#else
     uint rTRlsb;
-#endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
     word36 instr_buf [2];
     uint64 lufCounter;

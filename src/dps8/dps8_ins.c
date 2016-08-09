@@ -2545,11 +2545,7 @@ static t_stat DoBasicInstruction (void)
             cpu.Yblock8[4] = cpu.rA;
             cpu.Yblock8[5] = cpu.rQ;
             cpu.Yblock8[6] = SETHI(cpu.Yblock8[7], (word18)cpu.rE << 10);
-#ifdef REAL_TR
-            cpu.Yblock8[7] = ((getTR (NULL) & MASK27) << 9) | (cpu.rRALR & 07);
-#else
             cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
-#endif
             break;
 
         case 0755:  // sta
@@ -2673,11 +2669,7 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0454:  // stt
-#ifdef REAL_TR
-             cpu.CY = (getTR (NULL) & MASK27) << 9;
-#else
              cpu.CY = (cpu.rTR & MASK27) << 9;
-#endif
              break;
 
 
@@ -6181,14 +6173,8 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 
         case 0637:  // ldt
             {
-#ifdef REAL_TR
-              word27 val = (cpu.CY >> 9) & MASK27;
-              sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n", val, val);
-              setTR (val);
-#else
               cpu.rTR = (cpu.CY >> 9) & MASK27;
               sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n", cpu.rTR, cpu.rTR);
-#endif
               // Undocumented feature. return to bce has been observed to
               // experience TRO while masked, setting the TR to -1, and
               // experiencing an unexpected TRo interrupt when unmasking.
@@ -8694,67 +8680,4 @@ void doRCU (void)
     doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.cu.FI_ADDR}, "doRCU dies with unhandled fault number");
   }
 
-#ifdef REAL_TR
-//static bool overrunAck;
-
-void setTR (word27 val)
-  {
-    val &= MASK27;
-    if (val)
-      {
-        cpu.timerRegVal = val & MASK27;
-      }
-    else
-      {
-        // Special case
-        cpu.timerRegVal = -1 & MASK27;
-      }
-    gettimeofday (& cpu.timerRegT0, NULL);
-    //overrunAck = false;
-
-//sim_printf ("tr set %10u %09o %10lu%06lu\n",
-//  val, cpu.timerRegVal, cpu.timerRegT0.tv_sec, cpu.timerRegT0.tv_usec);
-  }
-
-word27 getTR (bool * runout)
-  {
-#if 0
-    struct timeval tnow, tdelta;
-    gettimeofday (& tnow, NULL);
-    timersub (& tnow, & cpu.timerRegT0, & tdelta);
-    // 1000000 can be represented in 20 bits; so in a 64 bit word, we have 
-    // room for 44 bits of seconds, way more then enough.
-    // Do 64 bit math; much faster.
-    //
-    //delta = (tnowus - t0us) / 1.953125
-    uint64 delta;
-    delta = ((uint64) tdelta.tv_sec) * 1000000 + ((uint64) tdelta.tv_usec);
-    // 1M * 1M ~= 40 bits; still leaves 24bits of seconds.
-    delta = (delta * 1000000) / 1953125;
-#else
-    uint128 t0us, tnowus, delta;
-    struct timeval tnow;
-    gettimeofday (& tnow, NULL);
-    t0us = cpu.timerRegT0.tv_sec * 1000000 + cpu.timerRegT0.tv_usec;
-    tnowus = tnow.tv_sec * 1000000 + tnow.tv_usec;
-    //delta = (tnowus - t0us) / 1.953125
-    delta = ((tnowus - t0us) * 1000000) / 1953125;
-#endif
-    if (runout)
-     //* runout = (! overrunAck) && delta > cpu.timerRegVal;
-     * runout = delta > cpu.timerRegVal;
-    word27 val = (cpu.timerRegVal - delta) & MASK27;
-//if (val % 100000 == 0)
-// sim_printf ("tr get %10u %09o %8llu %s\n",
-// val, val, (unsigned long long) delta,
-//  runout ? * runout ? "runout" : "" : "");
-    return val;
-  }
-
-void ackTR (void)
-  {
-    //overrunAck = true;
-    setTR (0);
-  }
-#endif
 
