@@ -622,12 +622,13 @@ static int wcd (void)
                 case 26: // Set_buffer_size
                   {
                     // Word 2: Bit 17 is "1"b.
-                    // uint mb1 = getbits36_1  (decoded.smbxp -> command_data [0], 17);
+                    //uint mb1 = getbits36_1  (decoded.smbxp -> command_data [0], 17);
                     // Bits 18...35 contain the size, in characters,
                     // of input buffers to be allocated for the 
                     // channel.
-                    // uint sz =  getbits36_18 (decoded.smbxp -> command_data [0], 18);
-                    // ignored
+                    uint sz =  getbits36_18 (decoded.smbxp -> command_data [0], 18);
+                    linep->inputBufferSize = sz;
+sim_printf ("Set_buffer_size %u\n", sz);
                   }
 
                 case 27: // Breakall
