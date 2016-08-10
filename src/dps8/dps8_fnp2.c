@@ -611,11 +611,11 @@ static int wcd (void)
 
                 case 25: // Block_xfer
                   {
-                    //sim_printf ("fnp block_xfer\n");
                     uint bufsiz1 = getbits36_18 (decoded.smbxp -> command_data [0], 18);
                     uint bufsiz2 = getbits36_18 (decoded.smbxp -> command_data [1], 0);
                     linep->block_xfer_out_of_frame = bufsiz1;
                     linep->block_xfer_in_frame = bufsiz2;
+                    //sim_printf ("fnp block_xfer %d %d\n", bufsiz1, bufsiz2);
                   }
                   break;
 
@@ -1506,7 +1506,7 @@ static int interruptL66_FNP_to_CS (void)
 
                 case 14: // reject_request_temp
                   {
-                    sim_printf ("fnp reject_request_temp\n");
+                    //sim_printf ("fnp reject_request_temp\n");
                     // Retry in one second;
                     decoded.fudp->MState.line[decoded.slot_no].accept_input = 100;
                   }
@@ -1774,6 +1774,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                 return true;
               }
     
+#if 1
             case '\b':  // backspace
             case 127:   // delete
               {
@@ -1805,7 +1806,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                 fnpuv_start_write (linep->client, (char *) linep->buffer, linep->nPos);
                 return false;
               }
-    
+#endif 
             default:
                 break;
           }
@@ -1818,12 +1819,23 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 
     // If we filled the buffer, move it along
 
-    if (linep->service != service_login ||
-        (size_t) linep->nPos >= sizeof (linep->buffer))
+    if (
+        // Dialup or slave and inBuffer exhausted
+        (linep->service != service_login && linep->inUsed >= linep->inSize) ||
+
+        // Internal buffer full
+        (size_t) linep->nPos >= sizeof (linep->buffer) ||
+
+        // block xfer buffer size met
+        (linep->block_xfer_out_of_frame != 0 && linep->nPos >= linep->block_xfer_out_of_frame) ||
+
+        // 'listen' command buffer size met
+        (linep->inputBufferSize != 0 && linep->nPos >= linep->inputBufferSize))
       {
         linep->accept_input = 1;
         linep->input_break = false;
-        if (linep->service != service_login)
+        // To make IMFT work...
+        if (linep->service == service_slave || linep->service == service_autocall)
           linep->input_break = true;
 
         return true;
@@ -2545,24 +2557,37 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
         return;
       }
 
-#if 0
-    for (uint i = 0; i < nread; i ++)
-      processInputCharacter (fnpno, lineno, buf [i]);
-#endif
+// By design, inBuffer overun shouldn't happen, but it has been seen in IMFT.
+// (When the TCP backs up, the buffers are merged so that larger and larger 
+// reads occur. When the backedup buffer exceeds 65536, libev calls the read
+// callback twice in a row, once with the first 65536, and the next with the
+// remaining.
+// Cope with it my realloc'ing the buffer and appending the new data. Ugh.
     if (linep->inBuffer)
       {
-        sim_warn ("inBuffer overrun; dropping data\n");
-        goto done;
+        sim_warn ("inBuffer overrun\n");
+        unsigned char * new = realloc (linep->inBuffer, linep->inSize + nread);
+        if (! new)
+          {
+            sim_warn ("inBuffer realloc fail; dropping data\n");
+            goto done;
+          }
+        memcpy (new + linep->inSize, buf, nread);
+        linep->inSize += nread;
+        linep->inBuffer = new;
       }
-    linep->inBuffer = malloc (nread);
-    if (! linep->inBuffer)
+    else
       {
-        sim_warn ("inBuffer malloc fail;  dropping data\n");
-        goto done;
+        linep->inBuffer = malloc (nread);
+        if (! linep->inBuffer)
+          {
+            sim_warn ("inBuffer malloc fail;  dropping data\n");
+            goto done;
+          }
+        memcpy (linep->inBuffer, buf, nread);
+        linep->inSize = nread;
+        linep->inUsed = 0;
       }
-    memcpy (linep->inBuffer, buf, nread);
-    linep->inSize = nread;
-    linep->inUsed = 0;
 
 done:;
     // Prevent further reading until this buffer is consumed
