@@ -556,7 +556,7 @@ static int wcd (void)
 
                 case 17: // Hndlquit
                   {
-                    sim_printf ("fnp handle_quit %d\n", flag);
+                    //sim_printf ("fnp handle_quit %d\n", flag);
                     linep->handleQuit = !! flag;
                   }
                   break;
