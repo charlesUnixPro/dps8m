@@ -628,7 +628,7 @@ static int wcd (void)
                     // channel.
                     uint sz =  getbits36_18 (decoded.smbxp -> command_data [0], 18);
                     linep->inputBufferSize = sz;
-sim_printf ("Set_buffer_size %u\n", sz);
+//sim_printf ("Set_buffer_size %u\n", sz);
                   }
 
                 case 27: // Breakall
