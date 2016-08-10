@@ -819,6 +819,7 @@ static void getSerialNumber (void)
   }
 
 
+#ifdef EV_POLL
 // The 100Hz timer as expired; poll I/O
 
 void ev_poll_cb (uv_timer_t * UNUSED handle)
@@ -838,7 +839,25 @@ void ev_poll_cb (uv_timer_t * UNUSED handle)
     dequeue_fnp_command ();
 #endif
     absiProcessEvent ();
+
+// Update the TR
+
+// The Timer register runs at 512Khz; in 1/100 of a second it
+// decrements 5120.
+
+// Will it pass through zero?
+
+    if (cpu.rTR <= 5120)
+      {
+        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+        if (cpu.switches.tro_enable)
+        setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+      }
+    cpu.rTR -= 5120;
+    cpu.rTR &= MASK27;
   }
+#endif
+
 
     
 // called once initialization
@@ -885,12 +904,9 @@ void cpu_init (void)
 #ifdef ROUND_ROBIN
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
-    for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
-      cpus [c].switches.trlsb = 12; // 6 MIP processor
 #else
     memset (& cpu, 0, sizeof (cpu));
     cpu.switches.FLT_BASE = 2; // Some of the UnitTests assume this
-    cpu.switches.trlsb = 12; // 6 MIP processor
 #endif
     cpu_init_array ();
 
@@ -1534,6 +1550,7 @@ setCPU:;
           console_attn (NULL);
 #endif
 
+#ifndef EV_POLL
         // Manage the timer register
              // XXX this should be sync to the EXECUTE cycle, not the
              // simh clock cycle; move down...
@@ -1556,6 +1573,7 @@ setCPU:;
                   setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
               }
           }
+#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -2807,7 +2825,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     //sim_printf("Y2K enabled:              %01o(8)\n", cpu.switches.y2k);
     sim_printf("Y2K enabled:              %01o(8)\n", scu [0].y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
-    sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
+    //sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
     return SCPE_OK;
 }
@@ -3146,7 +3164,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 29: // TRLSB
-              cpu.switches.trlsb = (uint) v;
+              //cpu.switches.trlsb = (uint) v;
+              sim_printf ("TRLSB deprecated\n");
               break;
 
             case 30: // USEMAP
