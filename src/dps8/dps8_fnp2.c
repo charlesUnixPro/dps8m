@@ -556,7 +556,7 @@ static int wcd (void)
 
                 case 17: // Hndlquit
                   {
-                    //sim_printf ("fnp handle_quit\n");
+                    sim_printf ("fnp handle_quit %d\n", flag);
                     linep->handleQuit = !! flag;
                   }
                   break;
@@ -1767,14 +1767,17 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
     
             case 0x03:          // ETX (^C) // line break
               {
-                linep->line_break=true;
-                // Treating line break as out of band, but pausing
-                // buffer processing. Not sure this makes any difference
-                // as the processing will resume on the next processing loop
-                return true;
+                if (linep->handleQuit)
+                  {
+                    linep->line_break=true;
+                    // Treating line break as out of band, but pausing
+                    // buffer processing. Not sure this makes any difference
+                    // as the processing will resume on the next processing loop
+                    return true;
+                  }
               }
+              break;
     
-#if 1
             case '\b':  // backspace
             case 127:   // delete
               {
@@ -1806,7 +1809,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                 fnpuv_start_write (linep->client, (char *) linep->buffer, linep->nPos);
                 return false;
               }
-#endif 
+
             default:
                 break;
           }
