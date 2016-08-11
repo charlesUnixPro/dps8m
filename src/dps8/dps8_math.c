@@ -8,6 +8,12 @@
  *        * fixed-point routines (eventually)
 */
 
+#ifdef ISOLTS
+#define IF1 if (currentRunningCPUnum)
+#else
+#define IF1 if (0)
+#endif
+
 #include <stdio.h>
 #include <math.h>
 
@@ -669,8 +675,7 @@ sim_printf ("UFA e3 now %d\n", e3);
       cpu . rE = 0200U; /*-128*/
     }
 #endif
-if(currentRunningCPUnum)
-sim_printf ("UFA returning %03o %012llo %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+IF1 sim_printf ("UFA returning %03o %012llo %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 #else
 void ufa (bool sub)
@@ -692,14 +697,10 @@ void ufa (bool sub)
     // * C(E) is increased by one.
 
 static int testno = 1;
-if (currentRunningCPUnum)
-sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
-if (currentRunningCPUnum)
-sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
-if (currentRunningCPUnum)
-sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
+IF1 sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
+IF1 sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
+IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
@@ -709,10 +710,8 @@ sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
     
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("UFA e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e3 = -1;
 
@@ -730,8 +729,7 @@ sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, 
     else if (e1 < e2)
     {
         shift_count = abs(e2 - e1);
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
+IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -742,22 +740,19 @@ sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
             if (sign)
                 m1 |= SIGN72;
         }
-if (currentRunningCPUnum)
-sim_printf ("UFA m1 shifted %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("UFA m1 shifted %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
 if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
   m1 = 0;
         m1 &= MASK72;
         e3 = e2;
-if (currentRunningCPUnum)
-sim_printf ("UFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("UFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
     }
     else
     {
         // e2 < e1;
         shift_count = abs(e1 - e2);
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
+IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -768,8 +763,7 @@ sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             if (sign)
                 m2 |= SIGN72;
         }
-if (currentRunningCPUnum)
-sim_printf ("UFA m2 shifted %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("UFA m2 shifted %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
         //if (allones)
         //if (sign == (allones != 1))
           //m2 ++;
@@ -789,15 +783,12 @@ if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
 }
         m2 &= MASK72;
         e3 = e1;
-if (currentRunningCPUnum)
-sim_printf ("UFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("UFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     }
     //sim_printf ("shift_count = %d\n", shift_count);
     
-if (currentRunningCPUnum)
-sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
-if (currentRunningCPUnum)
-sim_printf ("UFA e3 %d\n", e3);
+IF1 sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
+IF1 sim_printf ("UFA e3 %d\n", e3);
 
     //m3 = m1 + m2;
     bool ovf;
@@ -807,20 +798,17 @@ sim_printf ("UFA e3 %d\n", e3);
     else
       m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
 
-if (currentRunningCPUnum)
-sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
+IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
 
     if (ovf)
     {
-if (currentRunningCPUnum)
-sim_printf ("UFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("UFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
         word72 signbit = m3 & SIGN72;
         m3 >>= 1;
         m3 = (m3 & MASK71) | signbit;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
-if (currentRunningCPUnum)
-sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
     }
 
     cpu . rA = (m3 >> 36) & MASK36;
@@ -855,8 +843,7 @@ sim_printf ("UFA now e3 %03o m3 now %012llo %012llo\n", e3, (word36) (m3 >> 36) 
             doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
     }
 
-if(currentRunningCPUnum)
-sim_printf ("UFA returning E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+IF1 sim_printf ("UFA returning E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 #endif
 
@@ -1522,8 +1509,7 @@ void frd (void)
     // So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in
     // later models.) I'll assume AL39 is wrong.
     
-if (currentRunningCPUnum)
-sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 
     word72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
     if (m == 0)
@@ -1547,8 +1533,7 @@ sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.r
       carry = 1;
     }
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
-if (currentRunningCPUnum)
-sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+IF1 sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
 
 #if 0 // according to AL39
@@ -1582,22 +1567,19 @@ sim_printf ("FRD add carry E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word
                 dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "frd exp overflow fault");
         }
         cpu.rE ++;
-if (currentRunningCPUnum)
-sim_printf ("FRD overflow E %03o m %012llo %012llo\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
+IF1 sim_printf ("FRD overflow E %03o m %012llo %012llo\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
     }
 
     cpu.rA = (m >> 36) & MASK36;
     cpu.rQ = m & MASK36;
 
-if (currentRunningCPUnum)
-sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+IF1 sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
     // If overflow does not occur, C(EAQ) is normalized.
     if (! ((flags1 | flags2) & I_OFLOW))
     {
         if (cpu.rA != 0 || cpu.rQ != 0)
           fno ();
-if (currentRunningCPUnum)
-sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+IF1 sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
     }
 
     // 0 → C(AQ)28,71  (per. RJ78)
@@ -1614,8 +1596,7 @@ sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.r
       CLR_I_ZERO;
     }
     SC_I_NEG (cpu.rA & SIGN36);
-if (currentRunningCPUnum)
-sim_printf ("FRD final E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
+IF1 sim_printf ("FRD final E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 
 void fstr(word36 *Y)
@@ -1792,22 +1773,19 @@ void fcmg ()
    // The fcmg instruction is identical to the fcmp instruction except that the
    // magnitudes of the mantissas are compared instead of the algebraic values.
 
-if (currentRunningCPUnum)
-sim_printf ("FCMG E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("FCMG E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
     // C(AQ)0,27
     word36 m1 = cpu . rA & 0777777777400LL;
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
-if (currentRunningCPUnum)
-sim_printf ("FCMG e1 %d m1 %012llo\n", e1, m1);
+IF1 sim_printf ("FCMG e1 %d m1 %012llo\n", e1, m1);
 
    // C(Y)0,7
     //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
     word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;      ///< 28-bit mantissa (incl sign)
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
-if (currentRunningCPUnum)
-sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
+IF1 sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
 
     int e3 = -1;
 
@@ -1848,19 +1826,14 @@ sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
         e3 = e1;
     }
     
-if (currentRunningCPUnum)
-sim_printf ("FCMG m1 %012llo\n", m1);
-if (currentRunningCPUnum)
-sim_printf ("FCMG m2 %012llo\n", m2);
+IF1 sim_printf ("FCMG m1 %012llo\n", m1);
+IF1 sim_printf ("FCMG m2 %012llo\n", m2);
     SC_I_ZERO (m1 == m2);
     t_int64 sm1 = llabs (SIGNEXT36_64 (m1));
     t_int64 sm2 = llabs (SIGNEXT36_64 (m2));
-if (currentRunningCPUnum)
-sim_printf ("FCMG sm1 %lld\n", sm1);
-if (currentRunningCPUnum)
-sim_printf ("FCMG sm2 %lld\n", sm2);
-if (currentRunningCPUnum)
-sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
+IF1 sim_printf ("FCMG sm1 %lld\n", sm1);
+IF1 sim_printf ("FCMG sm2 %lld\n", sm2);
+IF1 sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
     SC_I_NEG (sm1 < sm2);
 }
 
@@ -1922,10 +1895,8 @@ void dufa (bool subtract)
            m2 |= (word72) cpu.Ypair[1] << 8;
     
     int e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
-if (currentRunningCPUnum)
-sim_printf ("DUFA e1 %03o m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("DUFA e1 %03o m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     if (subtract)
     {
@@ -1965,8 +1936,7 @@ sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK3
     else if (e1 < e2)
     {
         shift_count = abs(e2 - e1);
-if (currentRunningCPUnum)
-sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
+IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -1977,15 +1947,13 @@ sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         
         m1 &= MASK72;
         e3 = e2;
-if (currentRunningCPUnum)
-sim_printf ("DUFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DUFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
     }
     else
     {
         // e2 < e1;
         shift_count = abs(e1 - e2);
-if (currentRunningCPUnum)
-sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
+IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -1995,32 +1963,26 @@ sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         }
         m2 &= MASK72;
         e3 = e1;
-if (currentRunningCPUnum)
-sim_printf ("DUFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("DUFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     }
     //sim_printf ("shift_count = %d\n", shift_count);
     
-if (currentRunningCPUnum)
-sim_printf ("DUFA e3 %d\n", e3);
+IF1 sim_printf ("DUFA e3 %d\n", e3);
 
     bool ovf;
     word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
-if (currentRunningCPUnum)
-sim_printf ("DUFA m3 %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("DUFA m3 %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 
     if (ovf)
     {
-if (currentRunningCPUnum)
-sim_printf ("DUFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("DUFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
         word72 signbit = m3 & SIGN72;
         m3 >>= 1;
         m3 = (m3 & MASK71) | signbit;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
-if (currentRunningCPUnum)
-sim_printf ("DUFA m3 now %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("DUFA e3 now %d\n", e3);
+IF1 sim_printf ("DUFA m3 now %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("DUFA e3 now %d\n", e3);
     }
 
     cpu . rA = (m3 >> 36) & MASK36;
@@ -2506,8 +2468,7 @@ void dvf (void)
 // canonial code
 #ifdef DVF_FRACTIONAL
 
-if (currentRunningCPUnum)
-sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 
 // http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
 // slide 10: sequential algorithim
@@ -2559,10 +2520,8 @@ sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
     dFrac &= MASK35;
 #endif
 //sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
-if (currentRunningCPUnum)
-sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
+IF1 sim_printf ("zFrac %012llo %02llo\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+IF1 sim_printf ("dFrac %012llo %02llo\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
 
     if (dFrac == 0)
       {
@@ -2601,10 +2560,8 @@ sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-if (currentRunningCPUnum)
-sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+IF1 sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+IF1 sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 
     // I am surmising that the "If | dividend | >= | divisor |" is an
     // overflow prediction; implement it by checking that the calculated
@@ -2612,8 +2569,7 @@ sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word
 
     if (quot & ~MASK35)
       {
-if (currentRunningCPUnum)
-sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         //cpu . rA = (zFrac >> 35) & MASK35;
         //cpu . rQ = (zFrac & MASK35) << 1;
 
@@ -3153,8 +3109,7 @@ void dfcmg (void)
     m2 |= cpu.Ypair[1] << 8;
     int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e3 = -1;
 
@@ -3176,8 +3131,7 @@ sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36
             m1 >>= 1;
             if (s)
                 m1 |= SIGN72;
-if (currentRunningCPUnum)
-sim_printf ("DFCMG >>1 e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         }
         
         m1 &= MASK72;
@@ -3198,10 +3152,8 @@ sim_printf ("DFCMG >>1 e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MA
         e3 = e1;
     }
     
-if (currentRunningCPUnum)
-sim_printf ("DFCMG shifted e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("DFCMG shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+IF1 sim_printf ("DFCMG shifted e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DFCMG shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
     //int128 sm1 = llabs (SIGNEXT72_128 (m1));
     //int128 sm2 = llabs (SIGNEXT72_128 (m2));

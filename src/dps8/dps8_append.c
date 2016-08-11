@@ -292,8 +292,10 @@ void do_cams (UNUSED word36 Y)
       {
         cpu.SDWAM[i].F = 0;
         cpu.SDWAM[i].USE = i;
+#ifdef ISOSLTS
 if (currentRunningCPUnum)
 sim_printf ("CAMS cleared it\n");
+#endif
       }
 #else
     cpu.SDWAM0.F = 0;

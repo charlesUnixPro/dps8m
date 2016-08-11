@@ -1501,8 +1501,7 @@ IF1 sim_printf ("RPx_fault RPx not Xn\n");
 
     if (RPx_fault)
       {
-if (currentRunningCPUnum)
-sim_printf ("RPx_fault %012llo\n", (word36) RPx_fault);
+IF1 sim_printf ("RPx_fault %012llo\n", (word36) RPx_fault);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=RPx_fault}, "RPx test fail");
       }
 

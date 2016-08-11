@@ -1713,9 +1713,8 @@ void s4bd (void)
 void axbd (uint sz)
   {
 static int testno = 0;
-if (currentRunningCPUnum)
-sim_printf ("axbd test no %d\n", ++testno);
-if (currentRunningCPUnum)
+IF1 sim_printf ("axbd test no %d\n", ++testno);
+IF1
 {
 if (GET_A (cpu . cu . IWB))
 sim_printf ("axbd AxBD\n");
@@ -1731,8 +1730,7 @@ sim_printf ("axbd AxBDX\n");
     word36 rcnt = getCrAR (reg);
     int32_t r;
 
-if (currentRunningCPUnum)
-sim_printf ("axbd rcnt 0%llo %lld.\n", rcnt, rcnt);
+IF1 sim_printf ("axbd rcnt 0%llo %lld.\n", rcnt, rcnt);
     if (sz == 1)
       r = SIGNEXT24_32 ((word24) rcnt);
     else if (sz == 4)
@@ -1744,29 +1742,25 @@ sim_printf ("axbd rcnt 0%llo %lld.\n", rcnt, rcnt);
     else // if (sz == 36)
       r = SIGNEXT18_32 ((word18) rcnt);
 
-if (currentRunningCPUnum)
-sim_printf ("axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
+IF1 sim_printf ("axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
   
     uint augend = 0;
     if (GET_A (cpu . cu . IWB))
       {
-if (currentRunningCPUnum)
-sim_printf ("axbd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("axbd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
        augend = cpu . AR [ARn] . WORDNO * 36 + GET_AR_CHAR (ARn) * 9 + GET_AR_BITNO (ARn);
       }
-if (currentRunningCPUnum)
-sim_printf ("axbd augend 0%o\n", augend);
+IF1 sim_printf ("axbd augend 0%o\n", augend);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o\n", augend);
     // force to character boundary
     //if (sz == 9 || sz == 36 || GET_A (cpu . cu . IWB))
     if (sz == 9 || GET_A (cpu . cu . IWB))
       {
         augend = (augend / sz) * sz;
-if (currentRunningCPUnum)
-sim_printf ("axbd force augend 0%o\n", augend);
+IF1 sim_printf ("axbd force augend 0%o\n", augend);
         sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd force augend 0%o\n", augend);
       }
 // If sz == 9, this is an a9bd instruction; ISOLTS says that r is in characters, not bits.
@@ -1786,15 +1780,13 @@ sim_printf ("axbd force augend 0%o\n", augend);
       sum += nxbits;
     sum = sum % nxbits;
 
-if (currentRunningCPUnum)
-sim_printf ("axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+IF1 sim_printf ("axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     cpu . AR [ARn] . WORDNO = (word18) (sum / 36) & AMASK;
     //SET_PR_BITNO (ARn, sum % 36);
     SET_AR_CHAR_BITNO (ARn, (sum % 36) / 9, sum % 9);
-if (currentRunningCPUnum)
-sim_printf ("axbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("axbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
   }
 
 #if 1
@@ -2065,22 +2057,18 @@ void awd (void)
 void sbd (void)
   {
 static int testno = 0;
-if (currentRunningCPUnum)
-sim_printf ("sbd test no %d\n", ++testno);
+IF1 sim_printf ("sbd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
 
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
-if (currentRunningCPUnum)
-sim_printf ("address %o\n", address);
+IF1 sim_printf ("address %o\n", address);
     uint reg = GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR (reg) & MASK24;
-if (currentRunningCPUnum)
-sim_printf ("r 0%o %d.  /36 0%o %d. %%36 0%o %d.\n", r, r, r/36, r/36, r%36, r%36);
-if (currentRunningCPUnum)
-//sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
-sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("r 0%o %d.  /36 0%o %d. %%36 0%o %d.\n", r, r, r/36, r/36, r%36, r%36);
+//IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
+IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
     //if (cpu.AR[ARn].BITNO > 8)
       //cpu.AR[ARn].BITNO = 8;
@@ -2089,12 +2077,10 @@ sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cp
 
     if (GET_A (cpu.cu.IWB))
       {
-if (currentRunningCPUnum)
-sim_printf ("A 1\n");
+IF1 sim_printf ("A 1\n");
         //word24 bits = 9 * cpu.AR[ARn].CHAR + cpu.AR[ARn].BITNO - r;
         word24 bits = 9 * GET_AR_CHAR (ARn) + GET_AR_BITNO (ARn) - r;
-if (currentRunningCPUnum)
-sim_printf ("bits 0%o %d.\n", bits, bits);
+IF1 sim_printf ("bits 0%o %d.\n", bits, bits);
         cpu.AR[ARn].WORDNO = (cpu.AR[ARn].WORDNO - 
                              address + bits / 36) & MASK18;
         if (r % 36)
@@ -2107,8 +2093,7 @@ sim_printf ("bits 0%o %d.\n", bits, bits);
       }
     else
       {
-if (currentRunningCPUnum)
-sim_printf ("A 0\n");
+IF1 sim_printf ("A 0\n");
         cpu.AR[ARn].WORDNO = (- (address + r / 36)) & MASK18;
         if (r % 36)
           {
@@ -2119,16 +2104,14 @@ sim_printf ("A 0\n");
           }
       }
  
-if (currentRunningCPUnum)
-//sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
-sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+//IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
+IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
   }
 
 void swd (void)
   {
 static int testno = 0;
-if (currentRunningCPUnum)
-sim_printf ("awd test no %d\n", ++testno);
+IF1 sim_printf ("awd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
@@ -2138,22 +2121,19 @@ sim_printf ("awd test no %d\n", ++testno);
     // r is the count of characters
     int32_t r = getCrAR (reg);
 
-if (currentRunningCPUnum)
-sim_printf ("swd r 0%o %d.\n", r, r);
+IF1 sim_printf ("swd r 0%o %d.\n", r, r);
 
     r = SIGNEXT18_32 (r);
 
-if (currentRunningCPUnum)
-sim_printf ("swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
+IF1 sim_printf ("swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
 
   
     uint minued = 0;
     if (GET_A (cpu . cu . IWB))
       {
-if (currentRunningCPUnum)
-//sim_printf ("swd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
-sim_printf ("swd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+//IF1 sim_printf ("swd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+IF1 sim_printf ("swd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
        //sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
@@ -2162,25 +2142,22 @@ sim_printf ("swd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WO
        minued = cpu . AR [ARn] . WORDNO;
       }
 
-if (currentRunningCPUnum)
-sim_printf ("swd minued 0%o\n", minued);
+IF1 sim_printf ("swd minued 0%o\n", minued);
 
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd minued 0%o\n", minued);
 
     int32_t subtractend = address + r;
     int32_t difference = minued - subtractend;
 
-if (currentRunningCPUnum)
-sim_printf ("swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtractend, difference);
+IF1 sim_printf ("swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtractend, difference);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtractend, difference);
 
     cpu . AR [ARn] . WORDNO = difference & AMASK;
     //SET_PR_BITNO (ARn, 0);
     SET_AR_CHAR_BITNO (ARn, 0, 0);
 
-if (currentRunningCPUnum)
-//sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
-sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+//IF1 sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+IF1 sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
   }
 
@@ -6590,8 +6567,7 @@ static void EISwrite49(EISaddr *p, int *pos, int tn, word9 c49)
 void mvn (void)
 {
 static int testno = 0;
-if (currentRunningCPUnum)
-sim_printf ("mvn test no %d\n", ++testno);
+IF1 sim_printf ("mvn test no %d\n", ++testno);
     /*
      * EXPLANATION:
      * Starting at location YC1, the decimal number of data type TN1 and sign
