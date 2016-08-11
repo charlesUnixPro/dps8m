@@ -24,6 +24,7 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
+FNP2=1
 ifdef FNP2
 $(warning ####)
 $(warning #### FNP2 mode)
