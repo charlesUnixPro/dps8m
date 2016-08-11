@@ -718,8 +718,8 @@ void setup_scbank_map (void)
           continue;
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
-        uint scu_unit_num = cables ->
-          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
+        uint scu_unit_num = (uint) (cables ->
+          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num);
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
@@ -749,7 +749,7 @@ void setup_scbank_map (void)
                 else
                   {
                     cpu.scbank_map [scpg] = port_num;
-                    cpu.scbank_pg_os [scpg] = scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK;
+                    cpu.scbank_pg_os [scpg] = (int) (scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK);
                   }
               }
             else
@@ -822,7 +822,7 @@ static void getSerialNumber (void)
 #ifdef EV_POLL
 // The 100Hz timer as expired; poll I/O
 
-void ev_poll_cb (uv_timer_t * UNUSED handle)
+static void ev_poll_cb (uv_timer_t * UNUSED handle)
   {
 
     // Call the one hertz stuff every 100 loops

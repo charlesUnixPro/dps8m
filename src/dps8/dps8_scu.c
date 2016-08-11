@@ -1302,12 +1302,12 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
 // (data, starting bit position, number of bits, value)
             putbits36_9 (& a,  0,  maskab [0]);
             putbits36_3 (& a,  9,  (word3) up -> lower_store_size);
-            putbits36_4 (& a, 12,  up -> onl); // A, A1, B, B1 online
+            putbits36_4 (& a, 12,  (word4) up -> onl); // A, A1, B, B1 online
             putbits36_4 (& a, 16,  (word4) scu_port_num);
             putbits36_1 (& a, 21,  (word1) config_switches[scu_unit_num].mode);
             putbits36_8 (& a, 22,  (word8) up -> nea);
-            putbits36_1 (& a, 30,  up -> interlace);
-            putbits36_1 (& a, 31,  up -> lwr);
+            putbits36_1 (& a, 30,  (word1) up -> interlace);
+            putbits36_1 (& a, 31,  (word1) up -> lwr);
             // XXX INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             // interlace <- 0
             // lower <- 0
@@ -1494,8 +1494,8 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
                        "(for the connect channel)\n", 
                        sys_opts . iom_times . connect);
             // Stash the iom_interrupt call parameters
-            iom_dev.units[iomUnitNum].u3 = scu_unit_num;
-            iom_dev.units[iomUnitNum].u4 = iomUnitNum;
+            iom_dev.units[iomUnitNum].u3 = (int32) scu_unit_num;
+            iom_dev.units[iomUnitNum].u4 = (int32) iomUnitNum;
             int rc;
             if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
@@ -1508,7 +1508,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
       }
     else if (portp -> type == ADEV_CPU)
       {
-        setG7fault (cables -> 
+        setG7fault ((uint) cables -> 
                     cablesFromCpus[scu_unit_num][scu_port_num].cpu_unit_num,
                     FAULT_CON, (_fault_subtype) {.bits=0});
         return 1;
@@ -1576,7 +1576,7 @@ static void deliverInterrupts (uint scu_unit_num)
               continue;
             if ((mask & (1 << (31 - inum))) != 0)
               {
-                uint cpu_unit_num = cables -> cablesFromCpus [scu_unit_num] [port] . cpu_unit_num;
+                uint cpu_unit_num = (uint) cables -> cablesFromCpus [scu_unit_num] [port] . cpu_unit_num;
                 //sim_debug (DBG_DEBUG, & scu_dev, "mask set; cpu_unit_num %u\n", cpu_unit_num);
                 if (cpu_unit_num >= cpu_dev . numunits)
                   {
@@ -1987,7 +1987,7 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
 t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED char * cptr, 
                        UNUSED void * desc)
   {
-    uint scu_unit_num = uptr - scu_unit;
+    uint scu_unit_num = (uint) (uptr - scu_unit);
     scu_t * up = scu + scu_unit_num;
     struct config_switches * sw = config_switches + scu_unit_num;
 
@@ -2094,17 +2094,17 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega,
 
     * rega = 0;
     putbits36_16 (rega,  0, (maskContents >> 16) & MASK16);
-    putbits36_1 (rega, 32,  up -> port_enable [0]);
-    putbits36_1 (rega, 33,  up -> port_enable [1]);
-    putbits36_1 (rega, 34,  up -> port_enable [2]);
-    putbits36_1 (rega, 35,  up -> port_enable [3]);
+    putbits36_1 (rega, 32,  (word1) up -> port_enable [0]);
+    putbits36_1 (rega, 33,  (word1) up -> port_enable [1]);
+    putbits36_1 (rega, 34,  (word1) up -> port_enable [2]);
+    putbits36_1 (rega, 35,  (word1) up -> port_enable [3]);
 
     * regq = 0;
     putbits36_16 (regq,  0, (maskContents >>  0) & MASK16);
-    putbits36_1 (regq, 32,  up -> port_enable [4]);
-    putbits36_1 (regq, 33,  up -> port_enable [5]);
-    putbits36_1 (regq, 34,  up -> port_enable [6]);
-    putbits36_1 (regq, 35,  up -> port_enable [7]);
+    putbits36_1 (regq, 32,  (word1) up -> port_enable [4]);
+    putbits36_1 (regq, 33,  (word1) up -> port_enable [5]);
+    putbits36_1 (regq, 34,  (word1) up -> port_enable [6]);
+    putbits36_1 (regq, 35,  (word1) up -> port_enable [7]);
 
     sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012llo %012llo\n", 
                * rega, * regq);

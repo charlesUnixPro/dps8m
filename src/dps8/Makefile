@@ -44,6 +44,13 @@ CFLAGS += -Wunused-argument \
 -Wextra \
 -Wno-parentheses-equality -Wno-array-bounds
 
+CFLAGS += \
+-Wsign-conversion \
+-Wconversion \
+-Wshorten-64-to-32 \
+-Wmissing-prototypes \
+-Wmissing-variable-declarations 
+
 #CFLAGS += -Wunreachable-code
 
 #CFLAGS += -Wsign-conversion

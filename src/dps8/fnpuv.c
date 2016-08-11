@@ -167,7 +167,7 @@ static uv_tcp_t du_server;
 static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size, 
                           uv_buf_t * buf)
   {
-    * buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
+    * buf = uv_buf_init ((char *) malloc (suggested_size), (uint) suggested_size);
   }
 
 
@@ -268,7 +268,7 @@ static void fuv_read_cb (uv_stream_t* stream,
           {
             if (p->telnetp)
               {
-                telnet_recv (p->telnetp, buf->base, nread);
+                telnet_recv (p->telnetp, buf->base, (size_t) nread);
               }
             else
               {
@@ -354,13 +354,13 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
     uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
     // This makes sure that bufs*.base and bufsml*.base are NULL
     memset (req, 0, sizeof (uv_write_t));
-    uv_buf_t buf = uv_buf_init ((char *) malloc (datalen), datalen);
+    uv_buf_t buf = uv_buf_init ((char *) malloc ((unsigned long) datalen), (uint) datalen);
 //sim_printf ("allocated req %p data %p\n", req, buf.base);
 #ifdef USE_REQ_DATA
     req->data = buf.base;
 #endif
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
-    memcpy (buf.base, data, datalen);
+    memcpy (buf.base, data, (unsigned long) datalen);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, fuv_write_cb);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;
 // We close the socket, but Mulitcs is still writing its goodbye text trailing
@@ -383,7 +383,7 @@ void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
       return;
     if (p->telnetp)
       {
-        telnet_send (p->telnetp, data, datalen);
+        telnet_send (p->telnetp, data, (size_t) datalen);
       }
     else
       {
@@ -395,7 +395,7 @@ void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t datalen)
 
 void fnpuv_start_writestr (uv_tcp_t * client, char * data)
   {
-    fnpuv_start_write (client, data, strlen (data));
+    fnpuv_start_write (client, data, (ssize_t) strlen (data));
   }
 
 //
@@ -681,7 +681,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     printf ("calling %s:%d\n", ipaddr,port);
 
     struct sockaddr_in dest;
-    uv_ip4_addr(ipaddr, port, &dest);
+    uv_ip4_addr(ipaddr, (int) port, &dest);
 
     linep->client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
     uv_tcp_init (loop, linep->client);

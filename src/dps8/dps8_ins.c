@@ -562,7 +562,7 @@ static void words2scu (word36 * words)
     cpu.cu.FANP         = getbits36_1  (words[0], 31);
     cpu.cu.FABS         = getbits36_1  (words[0], 32);
 #else
-    cpu.cu.APUCycleBits = getbits36 (words [0], 24, 12);
+    cpu.cu.APUCycleBits = getbits36_12 (words [0], 24);
 #endif
 
     // words[1]
@@ -618,12 +618,12 @@ static void words2scu (word36 * words)
 
     // words [5]
 
-    cpu.TPR.CA          = getbits36(words[5], 0, 18);
-    cpu.cu.repeat_first = getbits36(words[5], 18, 1);
-    cpu.cu.rpt          = getbits36(words[5], 19, 1);
-    cpu.cu.rd           = getbits36(words[5], 20, 1);
-    cpu.cu.rl           = getbits36(words[5], 21, 1);
-    cpu.cu.pot          = getbits36(words[5], 22, 1);
+    cpu.TPR.CA          = getbits36_18 (words[5], 0);
+    cpu.cu.repeat_first = getbits36_1 (words[5], 18);
+    cpu.cu.rpt          = getbits36_1 (words[5], 19);
+    cpu.cu.rd           = getbits36_1 (words[5], 20);
+    cpu.cu.rl           = getbits36_1 (words[5], 21);
+    cpu.cu.pot          = getbits36_1 (words[5], 22);
     // 23 PON
     cpu.cu.xde          = getbits36_1  (words[5], 24);
     cpu.cu.xdo          = getbits36_1  (words[5], 25);
@@ -1984,7 +1984,7 @@ restart_1:
 
             if (cpu.cu.rpt) // rpt
               {
-                uint Xn = getbits36 (cpu.cu.IWB, 36 - 3, 3);
+                uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -1997,7 +1997,7 @@ restart_1:
             if (cpu.cu.rd && icOdd && rptA) // rpd, even instruction
               {
                 // a:RJ78/rpd7
-                uint Xn = getbits36 (cpu.cu.IWB, 36 - 3, 3);
+                uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -2006,7 +2006,7 @@ restart_1:
             if (cpu.cu.rd && icOdd && rptB) // rpdb, odd instruction
               {
                 // a:RJ78/rpd8
-                uint Xn = getbits36 (cpu.cu.IRODD, 36 - 3, 3);
+                uint Xn = getbits36_3 (cpu.cu.IRODD, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -2016,7 +2016,7 @@ restart_1:
         else if (cpu.cu.rl)
           {
             // C(Xn) -> y
-            uint Xn = getbits36 (cpu.cu.IWB, 36 - 3, 3);
+            uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
             putbits36 (& cpu . cu  . IWB,  0, 18, cpu.rX[Xn]);
           }
 
@@ -5430,7 +5430,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
                 cpu.PR[n].WORDNO = GETHI(cpu.Ypair[1]);
                 //cpu.PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
-                uint bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
+                word6 bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
 IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 // According to ISOLTS, loading a 077 into bitno results in 037
 // pa851    test-04b    lpri test       bar-100176
@@ -5821,7 +5821,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
               // init_processor.alm systematically steps through the SCUs,
               // using addresses 000000 100000 200000 300000.
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
               sim_debug (DBG_TRACE, & cpu_dev, "rccl CA %08o cpu port %o scu unit %d\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
               if (scu_unit_num < 0)
                 {
@@ -5829,7 +5829,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   doFault (FAULT_ONC, (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}, "(rccl)"); // XXX nem?
                 }
 
-              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum, 040, & cpu.rA, & cpu.rQ);
+              t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum, 040, & cpu.rA, & cpu.rQ);
               if (rc > 0)
                 return rc;
 #ifndef SPEED
@@ -6110,8 +6110,8 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                      uint csh2_on = GETBITS (cpu.CY, 1, 72 - 55);
                      //bool clear = (cpu.CMR.csh1_on == 0 && csh1_on != 0) ||
                                   //(cpu.CMR.csh1_on == 0 && csh1_on != 0);
-                     cpu.CMR.csh1_on = csh1_on;
-                     cpu.CMR.csh2_on = csh2_on;
+                     cpu.CMR.csh1_on = (word1) csh1_on;
+                     cpu.CMR.csh2_on = (word1) csh2_on;
                      //if (clear) // a:AL39/cmr2
                        //{
                        //}
@@ -6358,14 +6358,14 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, 
-                                                       cpu_port_num);
+                                                       (int) cpu_port_num);
                 if (scu_unit_num < 0)
                   {
                     sim_warn ("rmcm to non-existent controller on cpu %d port %d\n", currentRunningCPUnum, cpu_port_num);
                     break;
                   }
 //sim_printf ("calling scu_rmcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", cpu.cu . IWB, cpu.TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
-                t_stat rc = scu_rmcm (scu_unit_num, currentRunningCPUnum, & cpu.rA, & cpu.rQ);
+                t_stat rc = scu_rmcm ((uint) scu_unit_num, currentRunningCPUnum, & cpu.rA, & cpu.rQ);
                 if (rc)
                     return rc;
                 SC_I_ZERO (cpu.rA == 0);
@@ -6394,7 +6394,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 
 // Looking at privileged_mode_ut.alm, shift 10 bits...
               uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
-              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
 
               if (scu_unit_num < 0)
                 {
@@ -6409,7 +6409,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   doFault (FAULT_CMD, (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control}, "(rscr)");
                 }
 
-              t_stat rc = scu_rscr (scu_unit_num, currentRunningCPUnum,
+              t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum,
                                     cpu.iefpFinalAddress & MASK15, & cpu.rA, & cpu.rQ);
               if (rc)
                 return rc;
@@ -6596,25 +6596,24 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 // C(Processor number switches) -> C(A) 33,35
 
                   cpu.rA = 0;
-                  cpu.rA |= (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35- 0);
-                  cpu.rA |= (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1);
-                  cpu.rA |= (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2);
-                  cpu.rA |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
-                  cpu.rA |= (0b01L)  /* DPS8M */                          << (35- 5);
-                  cpu.rA |= (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
-                  cpu.rA |= (0b1L)                                        << (35-13);
-                  cpu.rA |= (0b0000L)                                     << (35-17);
-                  //cpu.rA |= (0b111L)                                    << (35-20);
-                  cpu.rA |= (0b1L)                                        << (35-18);  //BCD option
-                  cpu.rA |= (0b1L)                                        << (35-19);  //DPS option
-                  cpu.rA |= (0b1L)                                        << (35-20);  //8K cache installed
-                  cpu.rA |= (0b00L)                                       << (35-22);
-                  cpu.rA |= (0b1L)  /* DPS8M */                           << (35-23);
-                  cpu.rA |= (cpu.switches.proc_mode & 01LL)               << (35-24);
-                  cpu.rA |= (0b0L)                                        << (35-25); // new product line (CPL/NPL)
-                  cpu.rA |= (0b000L)                                      << (35-28);
-                  cpu.rA |= (cpu.switches.proc_speed & 017LL)             << (35-32);
-                  cpu.rA |= (cpu.switches.cpu_num & 07LL)                 << (35-35);
+                  cpu.rA |= (word36) ((cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35- 0));
+                  cpu.rA |= (word36) ((cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1));
+                  cpu.rA |= (word36) ((cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2));
+                  cpu.rA |= (word36) ((cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3));
+                  cpu.rA |= (word36) ((0b01L)  /* DPS8M */                          << (35- 5));
+                  cpu.rA |= (word36) ((cpu.switches.FLT_BASE & 0177LL)              << (35-12));
+                  cpu.rA |= (word36) ((0b1L)                                        << (35-13));
+                  cpu.rA |= (word36) ((0b0000L)                                     << (35-17));
+                  cpu.rA |= (word36) ((0b1L)                                        << (35-18));  //BCD option
+                  cpu.rA |= (word36) ((0b1L)                                        << (35-19));  //DPS option
+                  cpu.rA |= (word36) ((0b1L)                                        << (35-20));  //8K cache installed
+                  cpu.rA |= (word36) ((0b00L)                                       << (35-22));
+                  cpu.rA |= (word36) ((0b1L)  /* DPS8M */                           << (35-23));
+                  cpu.rA |= (word36) ((cpu.switches.proc_mode & 01LL)               << (35-24));
+                  cpu.rA |= (word36) ((0b0L)                                        << (35-25)); // new product line (CPL/NPL)
+                  cpu.rA |= (word36) ((0b000L)                                      << (35-28));
+                  cpu.rA |= (word36) ((cpu.switches.proc_speed & 017LL)             << (35-32));
+                  cpu.rA |= (word36) ((cpu.switches.cpu_num & 07LL)                 << (35-35));
                   break;
 
                 case 3: // configuration switches for ports E-H, which
@@ -6687,7 +6686,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (currentRunningCPUnum,
-                                                       cpu_port_num);
+                                                       (int) cpu_port_num);
 #if 0 // not on 4MW
                 if (scu_unit_num < 0)
                   {
@@ -6708,7 +6707,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                     break;
                   }
 //sim_printf ("calling scu_smcm iwb %012llo CA %08o cpu port num %d scu num %d cpu num %d\n", cpu.cu . IWB, cpu.TPR.CA, cpu_port_num, scu_unit_num, currentRunningCPUnum);
-                t_stat rc = scu_smcm (scu_unit_num, currentRunningCPUnum, cpu.rA, cpu.rQ);
+                t_stat rc = scu_smcm ((uint) scu_unit_num, currentRunningCPUnum, cpu.rA, cpu.rQ);
                 if (rc)
                     return rc;
             }
@@ -6725,7 +6724,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
             // specify which processor port (i.e., which system
             // controller) is used.
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -6739,7 +6738,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control}, "(smic)");
               }
-            t_stat rc = scu_smic (scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.rA);
+            t_stat rc = scu_smic ((uint) scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.rA);
             if (rc)
               return rc;
           }
@@ -6751,7 +6750,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
             //uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
             // Looking at privileged_mode_ut.alm, shift 10 bits...
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
-            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
 //sim_printf ("sscr CA %08o cpu port %o scu unit %o\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
             if (scu_unit_num < 0)
               {
@@ -6765,7 +6764,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
                 doFault (FAULT_CMD, (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control}, "(sscr)");
               }
-            t_stat rc = scu_sscr (scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.iefpFinalAddress & MASK15, cpu.rA, cpu.rQ);
+            t_stat rc = scu_sscr ((uint) scu_unit_num, currentRunningCPUnum, cpu_port_num, cpu.iefpFinalAddress & MASK15, cpu.rA, cpu.rQ);
 
             if (rc)
               return rc;
@@ -7472,7 +7471,7 @@ static t_stat DoEISInstruction (void)
             {
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
-                if (getbits36 (cpu.CY, 23, 1) != 0)
+                if (getbits36_1 (cpu.CY, 23) != 0)
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "aarn C(Y)23 != 0");
 
                 uint32 n = opcode & 07;  // get
@@ -7514,7 +7513,7 @@ static t_stat DoEISInstruction (void)
                         //   5      2    5
                         //   6      3    0
                         //   7      3    5
-                        SET_AR_CHAR_BITNO (n, CN/2, (CN % 2) ? 5 : 0);
+                        SET_AR_CHAR_BITNO (n, (word2) (CN/2), (CN % 2) ? 5 : 0);
                         
                         break;
 
@@ -7531,7 +7530,7 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (6 * C(Y)18,20) / 9 -> C(ARn.CHAR)
                         //   (6 * C(Y)18,20)mod9 -> C(ARn.BITNO)
-                        SET_AR_CHAR_BITNO (n, (6 * CN) / 9, (6 * CN) % 9);
+                        SET_AR_CHAR_BITNO (n, (word2) ((6 * CN) / 9), (6 * CN) % 9);
                         break;
 
                     case CTA9:  // 0
@@ -7539,7 +7538,7 @@ static t_stat DoEISInstruction (void)
                         //   C(Y)18,19 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
                         // remember, 9-bit CN's are funky
-                        SET_AR_CHAR_BITNO (n, (CN >> 1), 0);
+                        SET_AR_CHAR_BITNO (n, (word2) (CN >> 1), 0);
                         break;
 
                     case CTAILL: // 3
@@ -7567,10 +7566,10 @@ static t_stat DoEISInstruction (void)
                 uint32 n = opcode & 07;  // get n
                 cpu.AR[n].WORDNO = GETHI(cpu.CY);
 // AL-38 implies CHAR/BITNO, but ISOLTS requires PR.BITNO.
-                //cpu.AR[n].CHAR = getbits36 (cpu.CY, 18, 2);
-                //cpu.AR[n].BITNO = getbits36 (cpu.CY, 20, 4);
-                //SET_PR_BITNO (n, getbits36 (cpu.CY, 18, 6));
-                SET_AR_CHAR_BITNO (n,  getbits36 (cpu.CY, 18, 2),  getbits36 (cpu.CY, 20, 4));
+                //cpu.AR[n].CHAR = getbits36_2 (cpu.CY, 18);
+                //cpu.AR[n].BITNO = getbits36_4 (cpu.CY, 20);
+                //SET_PR_BITNO (n, getbits36_6 (cpu.CY, 18));
+                SET_AR_CHAR_BITNO (n,  getbits36_2 (cpu.CY, 18),  getbits36_4 (cpu.CY, 20));
             }
             break;
 
@@ -7579,9 +7578,9 @@ static t_stat DoEISInstruction (void)
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 tmp36 = cpu.Yblock8[n];
-                cpu.AR[n].WORDNO = getbits36 (tmp36, 0, 18);
-                //SET_PR_BITNO (n, getbits36 (tmp36, 18, 6));
-                SET_AR_CHAR_BITNO (n,  getbits36 (tmp36, 18, 2),  getbits36 (tmp36, 20, 4));
+                cpu.AR[n].WORDNO = getbits36_18 (tmp36, 0);
+                //SET_PR_BITNO (n, getbits36_6 (tmp36, 18));
+                SET_AR_CHAR_BITNO (n,  getbits36_2 (tmp36, 18),  getbits36_4 (tmp36, 20));
             }
             break;
 
@@ -7639,7 +7638,7 @@ static t_stat DoEISInstruction (void)
                         //   5      2    5
                         //   6      3    0
                         //   7      3    5
-                        SET_AR_CHAR_BITNO (n, CN/2, (CN % 2) ? 5 : 0);
+                        SET_AR_CHAR_BITNO (n, (word2) (CN/2), (CN % 2) ? 5 : 0);
                         
                         break;
 
@@ -7653,7 +7652,7 @@ static t_stat DoEISInstruction (void)
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 -> C(ARn.CHAR)
                         //   0000 -> C(ARn.BITNO)
-                        SET_AR_CHAR_BITNO (n, CN, 0);
+                        SET_AR_CHAR_BITNO (n, (word2) CN, 0);
                         break;
                 }
             }
@@ -7680,7 +7679,7 @@ static t_stat DoEISInstruction (void)
                 // an illegal procedure fault occurs.
                 if (TA == 03)
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ARAn tag == 3");
-                if (getbits36 (cpu.CY, 23, 1) != 0)
+                if (getbits36_1 (cpu.CY, 23) != 0)
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get

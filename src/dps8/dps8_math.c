@@ -707,7 +707,7 @@ sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
-    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
 if (currentRunningCPUnum)
 sim_printf ("UFA e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -1921,7 +1921,7 @@ void dufa (bool subtract)
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; ///< 28-bit mantissa (incl sign)
            m2 |= (word72) cpu.Ypair[1] << 8;
     
-    int e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 if (currentRunningCPUnum)
 sim_printf ("DUFA e1 %03o m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 if (currentRunningCPUnum)
@@ -3061,9 +3061,9 @@ void dfcmp (void)
 //sim_printf ("DFCMP e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
-    word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  
+    word72 m2 = (uint128) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMP e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
@@ -3149,9 +3149,9 @@ void dfcmg (void)
 //sim_printf ("DFCMG e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
-    word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  
+    word72 m2 = (uint128) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
 if (currentRunningCPUnum)
 sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);

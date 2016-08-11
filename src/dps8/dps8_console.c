@@ -472,7 +472,7 @@ static void sendConsole (uint stati)
       {
         if (console_state . readp + ntext >= console_state . tailp)
           break;
-        text [ntext] = * (console_state . readp + ntext);
+        text [ntext] = (char) (* (console_state . readp + ntext));
       }
     text [ntext] = 0;
     //sim_printf ("<%s>\n", text);
@@ -502,7 +502,7 @@ static void sendConsole (uint stati)
     console_state . tailp = console_state . buf;
     console_state . io_mode = no_mode;
 
-    p -> stati = stati;
+    p -> stati = (word12) stati;
     send_terminate_interrupt ((uint) iomUnitIdx, (uint) chan);
   }
 

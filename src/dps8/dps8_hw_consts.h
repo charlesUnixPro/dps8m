@@ -40,8 +40,8 @@ enum { N_CELL_INTERRUPTS = 32 };
 // Append unit memory paging
 //
 
-#define PGSZ 1024
-#define PGMK 1023
+#define PGSZ 1024u
+#define PGMK 1023u
 
 //
 // IOM

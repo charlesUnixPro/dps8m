@@ -46,7 +46,7 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    word3 FCT = cpu.cu.APUCycleBits & MASK3;
     cpu.cu.APUCycleBits = (status & 07770) | FCT;
 #else
     cpu . cu . PI_AP = 0;

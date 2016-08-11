@@ -2891,8 +2891,8 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
 static t_stat iom_action (struct sim_unit *up)
   {
     // Recover the stash parameters
-    uint scuUnitNum = up -> u3;
-    uint iomUnitIdx = up -> u4;
+    uint scuUnitNum = (uint) (up -> u3);
+    uint iomUnitIdx = (uint) (up -> u4);
 //sim_printf ("int %u %u\n", scuUnitNum, iomUnitIdx);
     iom_interrupt (scuUnitNum, iomUnitIdx);
     return SCPE_OK;

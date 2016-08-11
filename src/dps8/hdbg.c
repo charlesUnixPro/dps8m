@@ -5,15 +5,12 @@
 #include <fcntl.h>
 
 #include "dps8.h"
-
-#ifdef HDBG
-
-#include "dps8_utils.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "hdbg.h"
 
+#ifdef HDBG
 enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault };
 
 struct hevt

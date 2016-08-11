@@ -265,7 +265,7 @@ static int findMbx (uint fnpUnitIdx)
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitIdx];
     for (uint i = 0; i < 4; i ++)
       if (! fudp -> fnpMBXinUse [i])
-        return i;
+        return (int) i;
     return -1;
   }
 
@@ -867,10 +867,10 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -891,10 +891,10 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -915,13 +915,13 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
-    putbits36_9 (& smbxp -> word2, 9, linep->nPos); // n_chars
+    putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
     putbits36_9 (& smbxp -> word2, 18, 0102); // op_code input_in_mailbox
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
@@ -950,7 +950,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     // temporary until the logic is in place XXX
     int outputChainPresent = 0;
 
-    putbits36_1 (& smbxp -> mystery [25], 16, outputChainPresent);
+    putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
     putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
 
 #if 0
@@ -975,13 +975,13 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     //sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
-    putbits36_18 (& smbxp -> word2, 0, linep->nPos); // cmd_data_len XXX
+    putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0112); // op_code accept_input
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
@@ -993,13 +993,13 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
 
     // DCW for buffer
     smbxp -> mystery [1] = 0;
-    putbits36_12 (& smbxp -> mystery [1], 24, linep->nPos);
+    putbits36_12 (& smbxp -> mystery [1], 24, (word12) linep->nPos);
 
     // Command_data after n_buffers and 24 dcws
     // temporary until the logic is in place XXX
     int outputChainPresent = 0;
 
-    putbits36_1 (& smbxp -> mystery [25], 16, outputChainPresent);
+    putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
     putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
 
     fudp -> fnpMBXinUse [mbx] = true;
@@ -1016,10 +1016,10 @@ static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
@@ -1039,10 +1039,10 @@ static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
@@ -1063,10 +1063,10 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 82); // op_code acu_dial_failure
@@ -1086,10 +1086,10 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 64); // op_code accept_new_terminal
@@ -1112,10 +1112,10 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, fnpno); // dn355_no XXX
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
     putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
     putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, lineno); // slot_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0114); // op_code wru_timeout
@@ -1367,7 +1367,7 @@ static void fnp_rtx_input_accepted (void)
     // temporary until the logic is in place XXX
     int outputChainPresent = 0;
 
-    putbits36_1 (& decoded.fsmbxp->mystery[25], 16, outputChainPresent);
+    putbits36_1 (& decoded.fsmbxp->mystery[25], 16, (word1) outputChainPresent);
     putbits36_1 (& decoded.fsmbxp->mystery[25], 17, linep->input_break ? 1 : 0);
 
     // Mark the line as ready to receive more data
@@ -1829,10 +1829,10 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
 
         // block xfer buffer size met
-        (linep->block_xfer_out_of_frame != 0 && linep->nPos >= linep->block_xfer_out_of_frame) ||
+        (linep->block_xfer_out_of_frame != 0 && linep->nPos >= (int) linep->block_xfer_out_of_frame) ||
 
         // 'listen' command buffer size met
-        (linep->inputBufferSize != 0 && linep->nPos >= linep->inputBufferSize))
+        (linep->inputBufferSize != 0 && linep->nPos >= (int) linep->inputBufferSize))
       {
         linep->accept_input = 1;
         linep->input_break = false;
@@ -1911,7 +1911,7 @@ void fnpProcessEvent (void)
     // Look for posted requests
     for (int fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
       {
-        int mbx = findMbx (fnpno);
+        int mbx = findMbx ((uint) fnpno);
         if (mbx == -1)
           continue;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
@@ -2018,7 +2018,7 @@ void fnpProcessEvent (void)
             // One of the request processes may have consumed the
             // mailbox; make sure one is still available
 
-            mbx = findMbx (fnpno);
+            mbx = findMbx ((uint) fnpno);
             if (mbx == -1)
               goto nombx;
           } // for lineno
@@ -2377,7 +2377,7 @@ static config_list_t fnp_config_list [] =
 
 static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
   {
-    uint fnpUnitIdx = FNP_UNIT_IDX (uptr);
+    uint fnpUnitIdx = (uint) FNP_UNIT_IDX (uptr);
     if (fnpUnitIdx >= fnpDev . numunits)
       {
         sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitIdx);
@@ -2451,7 +2451,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
                 sim_printf ("fnpLoad skipping '%s'; n %d dev %c, linenum %u\n", buff, n, dev, linenum);
                 continue;
               }
-            devnum = dev - 'a';
+            devnum = (uint) (dev - 'a');
             havename = true;
             // CMF format sets the default service to login
             fnpUnitData[devnum].MState.line[linenum].service = service_login;                    
@@ -2568,26 +2568,26 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
     if (linep->inBuffer)
       {
         sim_warn ("inBuffer overrun\n");
-        unsigned char * new = realloc (linep->inBuffer, linep->inSize + nread);
+        unsigned char * new = realloc (linep->inBuffer, (unsigned long) (linep->inSize + nread));
         if (! new)
           {
             sim_warn ("inBuffer realloc fail; dropping data\n");
             goto done;
           }
-        memcpy (new + linep->inSize, buf, nread);
+        memcpy (new + linep->inSize, buf, (unsigned long) nread);
         linep->inSize += nread;
         linep->inBuffer = new;
       }
     else
       {
-        linep->inBuffer = malloc (nread);
+        linep->inBuffer = malloc ((unsigned long) nread);
         if (! linep->inBuffer)
           {
             sim_warn ("inBuffer malloc fail;  dropping data\n");
             goto done;
           }
-        memcpy (linep->inBuffer, buf, nread);
-        linep->inSize = nread;
+        memcpy (linep->inBuffer, buf, (unsigned long) nread);
+        linep->inSize = (uint) nread;
         linep->inUsed = 0;
       }
 
@@ -2647,8 +2647,8 @@ void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
 
         if (isprint (kar))   // printable?
           {
-            fnpuv_start_write (client, ( char *) & kar, 1);
-            p->buffer[p->nPos++] = kar;
+            fnpuv_start_write (client, (char *) & kar, 1);
+            p->buffer[p->nPos++] = (char) kar;
           }
         else
           {
@@ -2708,7 +2708,7 @@ check:;
             fnpuv_start_writestr (client, "can't parse\r\n");
             goto reprompt;
           }
-        fnpno = fnpcode - 'a';
+        fnpno = (uint) (fnpcode - 'a');
         if (fnpUnitData[fnpno].MState.line[lineno].service != service_login ||
             fnpUnitData[fnpno].MState.line[lineno].client)
           {

@@ -33,11 +33,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
             uvClientData * p = (uvClientData *) client->data;
             if (p -> assoc)
               {
-                fnpuv_associated_readcb (client, event->data.size, (unsigned char *)event->data.buffer);
+                fnpuv_associated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
               }
             else
               {
-                fnpuv_unassociated_readcb (client, event->data.size, (unsigned char *)event->data.buffer);
+                fnpuv_unassociated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
               }
           }
           break;
@@ -45,7 +45,7 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
         case TELNET_EV_SEND:
           {
             //sim_printf ("evHandler: send %zu <%s>\n", event->data.size, event->data.buffer);
-            fnpuv_start_write_actual (client, (char *) event->data.buffer, event->data.size);
+            fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
           }
           break;
 
@@ -111,7 +111,7 @@ void * ltnConnect (uv_tcp_t * client)
     const telnet_telopt_t * q = my_telopts;
     while (q->telopt != -1)
       {
-        telnet_negotiate (p, q->us, q->telopt);
+        telnet_negotiate (p, q->us, (unsigned char) q->telopt);
         q ++;
       }
     return p;

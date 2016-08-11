@@ -1232,3 +1232,5 @@ void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
 void addHist (uint hset, word36 w0, word36 w1);
+uint getCPUnum (void);
+
