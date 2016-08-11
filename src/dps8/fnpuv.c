@@ -296,54 +296,57 @@ static void fuv_write_cb (uv_write_t * req, int status)
       {
         if (status == -ECONNRESET)
           {
-            // connection reset by peer
-            uv_stream_t * stream = req->handle;
-            uvClientData * p = (uvClientData *) stream->data;
-            // If stream->data, the stream is associated with a Multics line.
-            // Tear down that association
-            if (p)
-              {
-                if (p->assoc)
-                  {
-                    sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
-                    struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-                    linep -> line_disconnected = true;
-                  }
-                else
-                  {
-                    sim_printf ("DISCONNECT\n");
-                  }
-
-                // Clean up allocated data
-                if (p->telnetp)
-                  {
-                    telnet_free (p->telnetp);
-                    // telnet_free frees self
-                    //free (p->telnetp);
-                    p->telnetp = NULL;
-                  }
-                if (p->assoc)
-                  {
-                    struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-                    if (linep->client)
-                      {
-// This is a long winded way to free (stream->data)
-
-                        //free (linep->client);
-                        linep->client = NULL;
-                      }
-                  }
-                free (stream->data);
-                stream->data = NULL;
-              }
-            if (! uv_is_closing ((uv_handle_t *) stream))
-              uv_close ((uv_handle_t *) stream, NULL);
+            // This occurs when the other end disconnects; not an "error"
           }
         else
           {
-            sim_printf ("fuv_write_cb status %d\n", status);
+            sim_warn ("fuv_write_cb status %d (%s)\n", -status, strerror (-status));
           }
+
+        // connection reset by peer
+        uv_stream_t * stream = req->handle;
+        uvClientData * p = (uvClientData *) stream->data;
+        // If stream->data, the stream is associated with a Multics line.
+        // Tear down that association
+        if (p)
+          {
+            if (p->assoc)
+              {
+                sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
+                struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+                linep -> line_disconnected = true;
+              }
+            else
+              {
+                sim_printf ("DISCONNECT\n");
+              }
+
+            // Clean up allocated data
+            if (p->telnetp)
+              {
+                telnet_free (p->telnetp);
+                // telnet_free frees self
+                //free (p->telnetp);
+                p->telnetp = NULL;
+              }
+            if (p->assoc)
+              {
+                struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+                if (linep->client)
+                  {
+// This is a long winded way to free (stream->data)
+
+                    //free (linep->client);
+                    linep->client = NULL;
+                  }
+              }
+            free (stream->data);
+            stream->data = NULL;
+          }
+        if (! uv_is_closing ((uv_handle_t *) stream))
+          uv_close ((uv_handle_t *) stream, NULL);
       }
+
 #ifdef USE_REQ_DATA
 //sim_printf ("freeing bufs %p\n", req->data);
     free (req->data);
