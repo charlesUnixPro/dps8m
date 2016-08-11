@@ -193,6 +193,12 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
     processUserInput (client, buf, nread);
   } 
 
+static void fuv_close_cb (uv_handle_t * stream)
+  {
+sim_printf ("fuv_close_cb stream %p\n", stream);
+    free (stream);
+  }
+
 // teardown a connection
 
 void close_connection (uv_stream_t* stream)
@@ -236,7 +242,7 @@ void close_connection (uv_stream_t* stream)
         stream->data = NULL;
       }
     if (! uv_is_closing ((uv_handle_t *) stream))
-      uv_close ((uv_handle_t *) stream, NULL);
+      uv_close ((uv_handle_t *) stream, fuv_close_cb);
   }
 
 //
@@ -304,47 +310,7 @@ static void fuv_write_cb (uv_write_t * req, int status)
           }
 
         // connection reset by peer
-        uv_stream_t * stream = req->handle;
-        uvClientData * p = (uvClientData *) stream->data;
-        // If stream->data, the stream is associated with a Multics line.
-        // Tear down that association
-        if (p)
-          {
-            if (p->assoc)
-              {
-                sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
-                struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-                linep -> line_disconnected = true;
-              }
-            else
-              {
-                sim_printf ("DISCONNECT\n");
-              }
-
-            // Clean up allocated data
-            if (p->telnetp)
-              {
-                telnet_free (p->telnetp);
-                // telnet_free frees self
-                //free (p->telnetp);
-                p->telnetp = NULL;
-              }
-            if (p->assoc)
-              {
-                struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-                if (linep->client)
-                  {
-// This is a long winded way to free (stream->data)
-
-                    //free (linep->client);
-                    linep->client = NULL;
-                  }
-              }
-            free (stream->data);
-            stream->data = NULL;
-          }
-        if (! uv_is_closing ((uv_handle_t *) stream))
-          uv_close ((uv_handle_t *) stream, NULL);
+        close_connection (req->handle);
       }
 
 #ifdef USE_REQ_DATA
@@ -473,7 +439,7 @@ static void on_new_connection (uv_stream_t * server, int status)
       }
 
     uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-
+sim_printf ("on_new_connection client %p\n", client);
 
 #if 0
     // if server->data is non-null, this is a slave server; else a dialup
@@ -500,7 +466,7 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
             // Slave servers only handle a single connection at a time
             if (linep->client)
               {
-                uv_close ((uv_handle_t *) client, NULL);
+                uv_close ((uv_handle_t *) client, fuv_close_cb);
 sim_printf ("dropping 2nd slave\n");
                 return;
               }
@@ -562,7 +528,7 @@ sim_printf ("dropping 2nd slave\n");
       }
     else
       {
-        uv_close ((uv_handle_t *) client, NULL);
+        uv_close ((uv_handle_t *) client, fuv_close_cb);
       }
   }
 
@@ -620,7 +586,7 @@ static void do_readcb (uv_stream_t* stream,
       {
         if (nread == UV_EOF)
           {
-            uv_close ((uv_handle_t *) stream, NULL);
+            uv_close ((uv_handle_t *) stream, fuv_close_cb);
           }
       }
     else if (nread > 0)

@@ -303,9 +303,7 @@ static int wcd (void)
             linep -> line_disconnected = true;
             if (linep->client)
               {
-                if (! uv_is_closing ((uv_handle_t *) linep->client))
-                  uv_close ((uv_handle_t *) linep->client, NULL);
-                linep->client = false;
+                close_connection ((uv_stream_t *) linep->client);
               }
             
           }
