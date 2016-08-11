@@ -195,7 +195,6 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
 
 static void fuv_close_cb (uv_handle_t * stream)
   {
-sim_printf ("fuv_close_cb stream %p\n", stream);
     free (stream);
   }
 
@@ -336,10 +335,6 @@ static void fuv_write_cb (uv_write_t * req, int status)
         if (req->bufsml[i].base)
           {
 //sim_printf ("freeing bufsml%d %p@%p\n", i, req->bufsml[i].base, & req->bufsml[i].base);
-if ((long) (req->bufsml[i].base) & 1) {
-sim_warn ("odd ptr %p@%p; demangling\n", req->bufsml[i].base, & req->bufsml[i].base);
-req->bufsml[i].base --;
-}
             free (req->bufsml[i].base);
           }
       }
@@ -439,7 +434,6 @@ static void on_new_connection (uv_stream_t * server, int status)
       }
 
     uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-sim_printf ("on_new_connection client %p\n", client);
 
 #if 0
     // if server->data is non-null, this is a slave server; else a dialup
@@ -462,7 +456,7 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
           {
             uvClientData * p = (uvClientData *) server->data;
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-#if 0
+#if 1
             // Slave servers only handle a single connection at a time
             if (linep->client)
               {
@@ -757,6 +751,10 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     uv_tcp_init (loop, & linep->server);
 
     // Mark this server has being a slave server
+    // XXX This does not get freed during a normal shutdown, as Multics
+    // XXX doesn't tell idle slave lines anything. The emulator shutdown
+    // XXX needs to call an FNP cleanup routine that frees this.
+
     uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
     if (! p)
       {
