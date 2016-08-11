@@ -117,13 +117,13 @@ void * ltnConnect (uv_tcp_t * client)
     return p;
   }
 
-void ltnRaw (telnet_t * tclient)
+void ltnRaw (telnet_t * UNUSED tclient)
   {
     //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
     //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_ECHO);
   }
 
-void ltnDialout (telnet_t * tclient)
+void ltnDialout (telnet_t * UNUSED tclient)
   {
     // dialout telnet: We are a teletype. What settings should we be doing?
     //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
