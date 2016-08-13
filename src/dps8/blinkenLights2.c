@@ -342,7 +342,7 @@ static gboolean time_handler (GtkWidget * widget)
           for (int i = 0; i < 3; i ++)
               RNR_state [nreg][2 - i] = ((1llu << i) & cpun -> PAR[nreg] . RNR) ? 1 : 0;
           for (int i = 0; i < 6; i ++)
-              BITNO_state [nreg][5 - i] = ((1llu << i) & cpun -> PAR[nreg] . BITNO) ? 1 : 0;
+              BITNO_state [nreg][5 - i] = ((1llu << i) & cpun -> PAR[nreg] . PR_BITNO) ? 1 : 0;
           for (int i = 0; i < 18; i ++)
               WORDNO_state [nreg][17 - i] = ((1llu << i) & cpun -> PAR[nreg] . WORDNO) ? 1 : 0;
           //gtk_widget_queue_draw (PAR_display[nreg]);
