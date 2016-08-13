@@ -5,8 +5,10 @@
 // SCU/Memory
 //
 
+#define XXX_TEMP_SCU_SUBPORT 0
 
 enum { N_SCU_PORTS = 8 };
+enum { N_SCU_SUBPORTS = 4 };
 enum { N_ASSIGNMENTS = 2 };
 // Number of interrupts in an interrupt cell register
 enum { N_CELL_INTERRUPTS = 32 };

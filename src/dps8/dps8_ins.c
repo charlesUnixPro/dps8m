@@ -6677,7 +6677,6 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
             // the word at Y) sends a connect signal to the port specified
             // by C(Y) 33,35.
             int cpu_port_num = query_scbank_map (cpu.iefpFinalAddress);
-
             // If the there is no port to that memory location, fault
             if (cpu_port_num < 0)
               {
@@ -6688,8 +6687,22 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
               {
                 doFault (FAULT_ONC, (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}, "(cioc)");
               }
-            uint scu_port_num = cpu.CY & MASK3;
-            scu_cioc ((uint) scu_unit_num, scu_port_num);
+
+// expander word
+// dcl  1 scs$reconfig_general_cow aligned external, /* Used during reconfig ops. */
+//   2 pad bit (36) aligned,
+//   2 cow,                        /* Connect operand word, in odd location. */
+//   3 sub_mask bit (8) unaligned, /* Expander sub-port mask */
+//   3 mbz1 bit (13) unaligned,
+//   3 expander_command bit (3) unaligned,   /* Expander command. */
+//   3 mbz2 bit (9) unaligned,
+//   3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+
+            word8 sub_mask = getbits36_8 (cpu.CY, 0);
+            word3 expander_command = getbits36_3 (cpu.CY, 21);
+            uint scu_port_num = (uint) getbits36_3 (cpu.CY, 33);
+//sim_printf ("scu_unit_num %o scu_port_num %o expander_command %03o sub_mask %o\n", scu_unit_num, scu_port_num, sub_mask, expander_command);
+            scu_cioc (currentRunningCPUnum, (uint) scu_unit_num, scu_port_num, expander_command, sub_mask);
           }
           break;
 

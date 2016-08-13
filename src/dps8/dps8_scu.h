@@ -44,7 +44,14 @@ typedef struct
         //bool is_enabled;
         enum active_dev type; // type of connected device
         int idnum; // id # of connected dev, 0..7
-        int dev_port; // which port on the connected device?
+        bool is_exp;
+        // which port on the connected device?
+        // if is_exp is false, then only [0] is used.
+        // if true, one connection for each sub-port; -1 if not connected
+        int dev_port [N_SCU_SUBPORTS];
+        bool subport_enables [N_SCU_SUBPORTS]; 
+        bool xipmask [N_SCU_SUBPORTS]; 
+        int xipmaskval;
     } ports[N_SCU_PORTS];
 
     // system controller mode regsister    
@@ -68,7 +75,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, uint cpu_port_num,
                  word36 rega, word36 regq);
 t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint cpu_port_num, word36 rega);
 t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * rega, word36 * regq);
-int scu_cioc (uint scu_unit_num, uint scu_port_num);
+int scu_cioc (uint cpu_num, uint scu_unit_num, uint scu_port_num, uint expander_command, uint sub_mask);
 t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * regq);
 t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq);
 void scu_clear_interrupt (uint scu_unit_num, uint inum);
