@@ -263,7 +263,11 @@ static void dmpmbx (uint mailboxAddress)
 static int findMbx (uint fnpUnitIdx)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitIdx];
+#ifdef ISOLTS
     for (uint i = 0; i < 4; i ++)
+#else
+    for (uint i = 0; i < 1; i ++)
+#endif
       if (! fudp -> fnpMBXinUse [i])
         return (int) i;
     return -1;
@@ -929,6 +933,13 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
 // data goes in mystery [0..24]
 
 //sim_printf ("short in; line %d tally %d\n", lineno, linep->nPos);
+#if 0
+{ sim_printf ("IN:  ");
+for (int i = 0; i < linep->nPos; i ++)
+sim_printf ("%c", isgraph (linep->buffer [i]) ? linep->buffer [i] : '.');
+sim_printf ("\n");
+}
+#endif
     int j = 0;
     for (int i = 0; i < linep->nPos + 3; i += 4)
       {
@@ -952,6 +963,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
 
     putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
     putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
+
 
 #if 0
     sim_printf ("    %012llo\n", smbxp -> word1);
@@ -1227,11 +1239,20 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
              lastWordOff = wordOff;
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
              word = M [wordAddr];
-             // sim_printf ("   %012llo\n", M [wordAddr]);
+//sim_printf ("   %012llo\n", M [wordAddr]);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
+//sim_printf ("   %03o %c\n", data [i], isgraph (data [i]) ? data [i] : '.');
        }
+#if 0
+{ sim_printf ("OUT: ");
+for (uint i = 0; i < tally; i ++)
+sim_printf ("%c", isgraph (data [i]) ? data [i] : '.');
+sim_printf ("\n");
+}
+#endif
+
 #if 1
     unsigned char * clean = data;
 #else
@@ -1369,9 +1390,11 @@ static void fnp_rtx_input_accepted (void)
 
     putbits36_1 (& decoded.fsmbxp->mystery[25], 16, (word1) outputChainPresent);
     putbits36_1 (& decoded.fsmbxp->mystery[25], 17, linep->input_break ? 1 : 0);
+//sim_printf ("fnp_rtx_input_accepted input_break %d\n", linep->input_break ? 1 : 0);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;
+    linep->input_break = false;
     linep->nPos = 0;
 
     // Set the TIMW
@@ -1674,6 +1697,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
+//sim_printf ("%03o %c\n", kar, isgraph (kar) ? kar : '.');
     if (linep->service == service_login)
       {
         if (linep->echoPlex)
@@ -1761,6 +1785,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                 linep->buffer[linep->nPos] = 0;
                 linep->accept_input = 1;
                 linep->input_break = true;
+//sim_printf ("processInputCharacter sees NL; sets input_break\n");
                 return true;
               }
     
@@ -1993,10 +2018,16 @@ void fnpProcessEvent (void)
 // command; otherwise use the 'accept_input/input_accepted'
 // sequence.
 
+#if 0
+                    fnp_rcd_accept_input (mbx, fnpno, lineno);
+                    //linep->input_break = false;
+                    linep->input_reply_pending = true;
+                    // accept_input cleared below
+#else
                     if (linep->nPos > 100)
                       {
                         fnp_rcd_accept_input (mbx, fnpno, lineno);
-                        linep->input_break = false;
+                        //linep->input_break = false;
                         linep->input_reply_pending = true;
                         // accept_input cleared below
                       }
@@ -2006,6 +2037,7 @@ void fnpProcessEvent (void)
                         linep->nPos = 0;
                         // accept_input cleared below
                       }
+#endif
                   }
                 linep->accept_input --;
               }
