@@ -73,6 +73,10 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+#ifdef ISOLTS
+#define ROUND_ROBIN
+#endif
+
 #define OSCAR
 
 #define OVERFLOW_WRITE_THROUGH
