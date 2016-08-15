@@ -117,7 +117,7 @@ t_stat Read8 (word18 address, word36 * result, _processor_cycle_type cyctyp, boo
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
                     for (int i = 0; i < 8; i ++)
-                      sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address + i, result [i]);
+                      sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address+i, result [i]);
                   }
 #ifdef HDBG
                 for (int i = 0; i < 8; i ++)
@@ -132,7 +132,7 @@ t_stat Read8 (word18 address, word36 * result, _processor_cycle_type cyctyp, boo
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
                     for (int i = 0; i < 8; i ++)
-                      sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       abs address=%08o  readData=%012llo\n", address, *result);
+                      sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       abs address=%08o  readData=%012llo\n", address+i, result[i]);
                   }
 #ifdef HDBG
                 for (int i = 0; i < 8; i ++)
@@ -232,7 +232,7 @@ t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, 
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
                     for (int i = 0; i < PGSZ; i ++)
-                      sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       abs address=%08o  readData=%012llo\n", address, *result);
+                      sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       abs address=%08o  readData=%012llo\n", address+i, result[i]);
                   }
 #ifdef HDBG
                 for (int i = 0; i < PGSZ; i ++)
