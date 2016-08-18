@@ -1684,6 +1684,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    // ISOLTS does this....
                     sim_warn ("DIS in interrupt cycle\n");
                     break;
                   }
@@ -2119,6 +2120,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    // ISOLTS does this....
                     sim_warn ("DIS in fault cycle\n");
                     break;
                   }
