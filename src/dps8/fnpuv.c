@@ -157,7 +157,7 @@
 // Making it up...
 #define DEFAULT_BACKLOG 16
 
-static uv_loop_t * loop;
+static uv_loop_t * loop = NULL;
 static uv_tcp_t du_server;
 
 //
@@ -568,6 +568,8 @@ void fnpuvProcessEvent (void)
     // Note that uv_run returns non-zero if that are any active_handles 
     // (e.g. TCP connection listener open); that means a non-zero
     // return does not mean i/o is pending.
+    if (! loop)
+      return;
     /* int ret = */ uv_run (loop, UV_RUN_NOWAIT);
   }
 
@@ -643,6 +645,8 @@ static void on_do_connect (uv_connect_t * server, int status)
 
 void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
+    if (! loop)
+      return;
     sim_printf ("received dial_out %c.h%03d %012llo %012llo %012llo\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uint d01 = (d1 >> 30) & 017;
@@ -741,6 +745,8 @@ static void on_slave_connect (uv_stream_t * server, int status)
 
 void fnpuv_open_slave (uint fnpno, uint lineno)
   {
+    if (! loop)
+      return;
     sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
