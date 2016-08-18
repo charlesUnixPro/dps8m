@@ -6473,13 +6473,47 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 //           Bits 6-7 Reserved for later use.
 //       50: Operating System Use
 #if 1
-                static unsigned char PROM [1024];
-                memset (PROM, ' ', sizeof (PROM));
+                unsigned char PROM [1024];
+                memset (PROM, 0, sizeof (PROM));
                 sprintf ((char *) PROM, "%13s%13d%8s",
                   "DPS8/70M Emul",  //  0-12 CPU Model number
                   cpu.switches.serno, // 13-25 CPU Serial number
                   "20160304");      // 26-33 Ship date (YYMMDD)
-
+                word36 tmp = 0;
+                tmp |= (cpu.switches.interlace [0] == 2 ? 1LL : 0LL) << (35- 0);
+                tmp |= (cpu.switches.interlace [1] == 2 ? 1LL : 0LL) << (35- 1);
+                tmp |= (cpu.switches.interlace [2] == 2 ? 1LL : 0LL) << (35- 2);
+                tmp |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
+                tmp |= (0b01L)  /* DPS8M */                          << (35- 5);
+                tmp |= (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
+                tmp |= (0b1L) /* ID_PROM installed */                << (35-13);
+                tmp |= (0b0000L)                                     << (35-17);
+                //tmp |= (0b111L)                                    << (35-20);
+                // According to rsw.incl.pl1, Multics ignores this bit.
+                tmp |= (0b0L)                                        << (35-18);  //BCD option off
+                tmp |= (0b1L)                                        << (35-19);  //DPS option
+                tmp |= (0b0L)                                        << (35-20);  //8K cache not installed
+                tmp |= (0b00L)                                       << (35-22);
+                tmp |= (0b1L)  /* DPS8M */                           << (35-23);
+                tmp |= (cpu.switches.proc_mode & 01LL)               << (35-24);
+                tmp |= (0b0L)                                        << (35-25); // new product line (CPL/NPL)
+                tmp |= (0b000L)                                      << (35-28);
+                tmp |= (cpu.switches.proc_speed & 017LL)             << (35-32);
+                tmp |= (cpu.switches.cpu_num & 07LL)                 << (35-35);
+                // 36: bits 00-07
+                PROM [36] = getbits36_8 (tmp, 0);
+                // 37: bits 08-15
+                PROM [37] = getbits36_8 (tmp, 8);
+                // 38: bits 16-23
+                PROM [38] = getbits36_8 (tmp, 16);
+                // 39: bits 24-31
+                PROM [39] = getbits36_8 (tmp, 24);
+                // 40: bits 32-35
+                PROM [40] = ((unsigned char) (tmp & 017) << 4) 
+                   // | 0100  // hex option
+                   // | 0040  // clock is slave
+                  ;
+                            
 #else
                 static unsigned char PROM [1024] =
                   "DPS8/70M Emul" //  0-12 CPU Model number
@@ -6615,12 +6649,13 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   cpu.rA |= (cpu.switches.interlace [3] == 2 ? 1LL : 0LL) << (35- 3);
                   cpu.rA |= (0b01L)  /* DPS8M */                          << (35- 5);
                   cpu.rA |= (cpu.switches.FLT_BASE & 0177LL)              << (35-12);
-                  cpu.rA |= (0b1L)                                        << (35-13);
+                  cpu.rA |= (0b1L) /* ID_PROM installed */                << (35-13);
                   cpu.rA |= (0b0000L)                                     << (35-17);
                   //cpu.rA |= (0b111L)                                    << (35-20);
-                  cpu.rA |= (0b1L)                                        << (35-18);  //BCD option
+                  // According to rsw.incl.pl1, Multics ignores this bit.
+                  cpu.rA |= (0b0L)                                        << (35-18);  //BCD option off
                   cpu.rA |= (0b1L)                                        << (35-19);  //DPS option
-                  cpu.rA |= (0b1L)                                        << (35-20);  //8K cache installed
+                  cpu.rA |= (0b0L)                                        << (35-20);  //8K cache not installed
                   cpu.rA |= (0b00L)                                       << (35-22);
                   cpu.rA |= (0b1L)  /* DPS8M */                           << (35-23);
                   cpu.rA |= (cpu.switches.proc_mode & 01LL)               << (35-24);
