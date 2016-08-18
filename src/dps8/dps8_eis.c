@@ -1031,6 +1031,8 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
                 
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
               }
+            else
+              sim_warn ("AR set in non-append mode.\n");
           }
         else
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
@@ -1107,6 +1109,8 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
 
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
           }
+        else
+          sim_warn ("AR set in non-append mode.\n");
       }
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
@@ -1281,6 +1285,8 @@ static void parseArgOperandDescriptor (uint k)
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
             e -> addr [k - 1] . mat = viaPR;
           }
+        else
+          sim_warn ("AR set in non-append mode.\n");
       }
     
     y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
@@ -1320,6 +1326,8 @@ static void parseNumericOperandDescriptor (int k)
 
             e->addr[k-1].mat = viaPR;   // ARs involved
         }
+        else
+          sim_warn ("AR set in non-append mode.\n");
     }
 
     //word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
@@ -1497,6 +1505,8 @@ static void parseBitstringOperandDescriptor (int k)
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
             e->addr[k-1].mat = viaPR;   // ARs involved
         }
+        else
+          sim_warn ("AR set in non-append mode.\n");
     }
     
     //Operand length. If MFk.RL = 0, this field contains the string length of
@@ -2733,11 +2743,14 @@ IF1 sim_printf ("CMPC instr %012llo op1 %012llo op2 %012llo\n", IWB_IRODD, e -> 
 // ISOLTS ps846    test-07a    dec add test
 // Sets TA2 to the same as TA1. AL39 says TA2 ignored.
 // Try only check bit 23.
+// ISOLTS 880 test-04c sets bit 23.
+#if 0
     // // Bits 21-23 of OP2 MBZ
     // if (e -> op [1]  & 0000000070000)
     // Bit 23 of OP2 MBZ
     if (e -> op [1]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op2 23 MBZ");
+#endif
 
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
     
@@ -3734,6 +3747,17 @@ static bool isOvp2 (uint c, bool * isNeg)
     return false;
   }
 
+// Applies to both MLR and MRL
+// 
+// If L1 is greater than L2, the least significant (L1-L2) characters are not moved and
+// the Truncation indicator is set. If L1 is less than L2, bits 0-8, 3-8, or 5-8 of the FILL
+// character (depending on TA2) are inserted as the least significant (L2-L1)
+// characters. If L1 is less than L2, bit 0 of C(FILL) = 1, TA1 = 01, and TA2 = 10
+// (6-4 move); the hardware looks for a 6-bit overpunched sign. If a negative
+// overpunch sign is found, a negative sign (octal 15) is inserted as the last FILL
+// character. If a negative overpunch sign is not found, a positive sign (octal 14) is
+// inserted as the last FILL character
+
 void mlr (void)
   {
     EISstruct * e = & cpu . currentEISinstruction;
@@ -3848,7 +3872,7 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
     
 //
 // Multics frequently uses certain code sequences which are easily detected
-// and optimized; eg. it uses the MLR instruction to copy or zeros segments.
+// and optimized; eg. it uses the MLR instruction to copy or zero segments.
 //
 // The MLR implementation is correct, not efficent. Copy invokes 12 append
 // cycles per word, and fill 8.
@@ -4084,7 +4108,7 @@ void mrl (void)
 #ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
-    setupOperandDescriptorCache (3);
+    //setupOperandDescriptorCache (3);
 #endif
     
     parseAlphanumericOperandDescriptor(1, 1, false);
@@ -4284,7 +4308,10 @@ void mrl (void)
 	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
 	  // is placed in C(Y-charn2)N2-1.
             
-            if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
+// ISOLTS ps838    test-01f subtest loop point 001762 seems to indicate that
+// the rightmost digit is examined for overpunch.
+            //if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
+            if (ovp && (cpu.du.CHTALLY == 0))
               {
 	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
 	      // there *is* an overpunch char here.
@@ -4309,13 +4336,13 @@ void mrl (void)
           {
             // if there's an overpunch then the sign will be the last of the 
             // fill
-            //if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
-            if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
+            if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
+            //if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
                 if (isNeg)   // is c an GEBCD negative overpunch? and of what?
-                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal +
+                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal -
                 else
-                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal -
+                  EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal +
               }
             else
               EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
@@ -4730,6 +4757,8 @@ static int mopENF (void)
 static int mopIGN (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
+// AL-39 dosen't specify the == 0 test, but NovaScale does;
+// also ISOLTS ps830 test-04a seems to rely on it.
     if (e->mopIF == 0)
         e->mopIF = 16;
 
@@ -5797,11 +5826,18 @@ IF1 sim_printf ("mopExecutor EISgetMop forced break\n");
 IF1 sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
 
+//"The micro-operation sequence is terminated normally when the receiving string
+// length is exhausted. The micro-operation sequence is terminated abnormally (with
+// an IPR fault) if an attempt is made to move from an exhausted sending string or to
+// use an exhausted MOP string.
+
 // ISOLTS ps841
 // testing for ipr fault when micro-op tally runs out
 // prior to the sending or receiving field tally.
-
-    if (e->mopTally < e->srcTally || e->mopTally < e->dstTally)
+// ISOLTS ps830 test-04a
+//  mopTally 0 srcTally 32 dstTally 0 is not a fault
+    //if (e->mopTally < e->srcTally || e->mopTally < e->dstTally)
+    if (e->mopTally < e->dstTally)
       {
 IF1 sim_printf ("mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
@@ -6087,13 +6123,24 @@ void mvt (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 2, false);
     parseArgOperandDescriptor (3);
-    
+
+// ISOLTS 808 test-03b sets bit 0, 1    
+// ISOLTS 808 test-03b sets bit 0, 1, 9
+#if 1
+    // Bits 10 MBZ 
+    if (IWB_IRODD & 0000200000000)
+      {
+        //sim_printf ("mvt %012llo\n", IWB_IRODD);
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 10 MBZ");
+      }
+#else
     // Bits 0,1,9,10 MBZ 
     if (IWB_IRODD & 0600600000000)
       {
         //sim_printf ("mvt %012llo\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 0,1,9,10 MBZ");
       }
+#endif
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
