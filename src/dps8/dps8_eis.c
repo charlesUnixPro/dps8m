@@ -2009,58 +2009,52 @@ sim_printf ("abd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cp
 
 void awd (void)
   {
-//static int testno = 0;
-//if (currentRunningCPUnum)
-//sim_printf ("awd test no %d\n", ++testno);
+static int testno = 0;
+IF1 sim_printf ("awd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
+IF1 sim_printf ("-----> OS %o  SIGNEXT %o\n", GET_OFFSET (cpu . cu . IWB), SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB)));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
     uint reg = GET_TD (cpu.cu.IWB);
     // r is the count of characters
     int32_t r = getCrAR (reg);
 
-//if (currentRunningCPUnum)
-//sim_printf ("awd r 0%o %d.\n", r, r);
+IF1 sim_printf ("awd r 0%o %d.\n", r, r);
 
     r = SIGNEXT18_32 (r);
 
-//if (currentRunningCPUnum)
-//sim_printf ("awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
+IF1 sim_printf ("awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
 
   
     uint augend = 0;
     if (GET_A (cpu . cu . IWB))
       {
-//if (currentRunningCPUnum)
-//sim_printf ("awd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+IF1 sim_printf ("awd ARn %d WORDNO %o CHAR %d BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].AR_CHAR, cpu.PAR[ARn].AR_BITNO, cpu.PAR[ARn].AR_BITNO);
 
-       //sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+       //sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, cpu.PAR[ARn].AR_CHAR, cpu.PAR[ARn].AR_BITNO, cpu.PAR[ARn].AR_BITNO);
        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
        //augend = cpu . AR [ARn] . WORDNO * 36 + GET_AR_CHAR (ARn) * 9 + GET_AR_BITNO (ARn);
        augend = cpu . AR [ARn] . WORDNO;
       }
 
-//if (currentRunningCPUnum)
-//sim_printf ("awd augend 0%o\n", augend);
+IF1 sim_printf ("awd augend 0%o\n", augend);
 
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o\n", augend);
 
     int32_t addend = address + r;
     int32_t sum = augend + addend;
 
-//if (currentRunningCPUnum)
-//sim_printf ("awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+IF1 sim_printf ("awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     cpu . AR [ARn] . WORDNO = sum & AMASK;
     SET_AR_CHAR_BITNO (ARn, 0, 0);
 
-//if (currentRunningCPUnum)
-//sim_printf ("awd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
+IF1 sim_printf ("awd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].AR_CHAR, cpu.PAR[ARn].AR_BITNO, cpu.PAR[ARn].AR_BITNO);
 
   }
 
@@ -2471,7 +2465,7 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
 //
 
     uint ARn = GET_ARN (cpu . cu . IWB);
-    uint address = GET_OFFSET (cpu . cu . IWB);
+    uint address = SIGNEXT15_18 (GET_OFFSET (cpu . cu . IWB));
     word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
 
@@ -4519,6 +4513,12 @@ static void EISloadInputBufferNumeric (int k)
                 break;
         }
     }
+IF1 {
+  sim_printf ("inBuffer:");
+  for (word9 *q = e->inBuffer; q < p; q ++)
+     sim_printf (" %02o", * q);
+  sim_printf ("\n");
+}
     if_sim_debug (DBG_TRACEEXT, & cpu_dev)
       {
         sim_debug (DBG_TRACEEXT, & cpu_dev, "inBuffer:");
@@ -4680,7 +4680,7 @@ IF1 sim_printf ("mopCHT 0\n");
         }
         word9 entry = EISget49(e->mopAddress, &e->mopPos, CTN9);  // get mop table entries
         e->editInsertionTable[i] = entry & 0777;            // keep to 9-bits
-        
+IF1 sim_printf ("cht %o\n", e->editInsertionTable[i]);        
         e->mopTally -= 1;
     }
     return 0;
@@ -4793,6 +4793,42 @@ IF1 sim_printf ("mopNSA 9/15\n");
         return -1;
     }
     
+#if 1
+    // If ES is OFF, then edit insertion table entry 1 is moved to the
+    // receiving field. If IF = 0, then the next 9 bits are also skipped. If IF
+    // is not 0, the next 9 bits are treated as a MOP.
+
+    if (!e->mopES)
+      {
+IF1 sim_printf ("!ES write %o\n", e->editInsertionTable[1]);
+        writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+           
+        if (e->mopIF == 0)
+          {
+            EISget49(e->mopAddress, &e->mopPos, CTN9);
+            e->mopTally -= 1;
+          }
+      }
+
+    // If ES is ON and IF = 0, then the 9-bit character immediately following
+    // the INSB micro-instruction is moved to the receiving field
+    else
+      {
+        if (e->mopIF == 0)
+          {
+            word9 c = EISget49(e->mopAddress, &e->mopPos, CTN9);
+IF1 sim_printf ("ES write %o\n", c);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, c);
+            e->mopTally -= 1;
+          }
+    // If ES is ON and IF<>0, then IF specifies which edit insertion table
+    // entry (1-8) is to be moved to the receiving field.
+        else
+          {
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF-1]);
+          }
+      }
+#else
     // If IF = 0, the 9 bits immediately following the INSB micro operation are
     // treated as a 9-bit character (not a MOP) and are moved or skipped
     // according to ES.
@@ -4803,6 +4839,7 @@ IF1 sim_printf ("mopNSA 9/15\n");
         // If IF is not 0, the next 9 bits are treated as a MOP.
         if (!e->mopES)
         {
+IF1 sim_printf ("!ES write %o\n", e->editInsertionTable[1]);
             writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[1]);
            
             EISget49(e->mopAddress, &e->mopPos, CTN9);
@@ -4811,7 +4848,13 @@ IF1 sim_printf ("mopNSA 9/15\n");
             // If ES is ON and IF = 0, then the 9-bit character immediately
             // following the INSB micro-instruction is moved to the receiving
             // field.
+#if 1
+            word9 c = EISget49(e->mopAddress, &e->mopPos, CTN9);
+IF1 sim_printf ("ES write %o\n", c);
+            writeToOutputBuffer(&e->out, 9, e->dstSZ, c);
+#else
             writeToOutputBuffer(&e->out, 9, e->dstSZ, EISget49(e->mopAddress, &e->mopPos, CTN9));
+#endif
             e->mopTally -= 1;
         }
         
@@ -4823,6 +4866,7 @@ IF1 sim_printf ("mopNSA 9/15\n");
             writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[e->mopIF-1]);
         }
     }
+#endif
     return 0;
 }
 
@@ -4905,8 +4949,11 @@ IF1 sim_printf ("mopNSB 9/15\n");
 static int mopINSM (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
+    if (e->mopIF == 0)
+        e->mopIF = 16;
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
+IF1 sim_printf ("INSM %o\n", e->editInsertionTable[0]);
         writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
     }
     return 0;
@@ -5038,6 +5085,7 @@ IF1 sim_printf ("mopLTE 9/15\n");
     
     e->editInsertionTable[e->mopIF - 1] = next;
     sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
+IF1 sim_printf ("LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
     return 0;
 }
 
@@ -5387,6 +5435,7 @@ IF1 sim_printf ("MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstT
 #endif
         }
         
+IF1 sim_printf ("MVC write to output buffer %o\n", *e->in);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC write to output buffer %o\n", *e->in);
         writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
         e->in += 1;
@@ -5812,6 +5861,7 @@ IF1 sim_printf ("mopExecutor EISgetMop forced break\n");
             e->_faults |= FAULT_IPR;   // XXX ill proc fault
             break;        
           } 
+IF1 sim_printf ("mop %s %d\n", m->mopName, e->mopIF);
         int mres = m->f();    // execute mop
         if (mres)
           {
@@ -5831,6 +5881,8 @@ IF1 sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally,
 // an IPR fault) if an attempt is made to move from an exhausted sending string or to
 // use an exhausted MOP string.
 
+// ISOLTS 845 is happy with no check at all
+#if 0
 // ISOLTS ps841
 // testing for ipr fault when micro-op tally runs out
 // prior to the sending or receiving field tally.
@@ -5843,6 +5895,7 @@ IF1 sim_printf ("mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n",
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mop executor IPR fault; mopTally %d srcTally %d dstTally %d\n", e->mopTally, e->srcTally, e->dstTally);
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
       }
+#endif
 #if 0
     // dst string not exhausted?
     if (e->dstTally != 0)
@@ -5965,6 +6018,8 @@ void mve (void)
 
 void mvne (void)
   {
+static int testno = 0;
+IF1 sim_printf ("mvne test no %d\n", ++testno);
     EISstruct * e = & cpu . currentEISinstruction;
 
 #ifndef EIS_SETUP
@@ -9402,9 +9457,9 @@ void mp2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    // Bits 0-8 MBZ
-    if (IWB_IRODD & 0777000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 0-8 MBZ");
+    // Bits 1-8 MBZ
+    if (IWB_IRODD & 0377000000000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 1-8 MBZ");
 
     if (e->N1 == 1 && e->S1 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=0");
@@ -10670,10 +10725,10 @@ void dv2d (void)
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
     
-    // Bits 0-8 MBZ
+    // Bits 1-8 MBZ
     // ISOLTS test 840 says bit 9 (T) MBZ as well
-    if (IWB_IRODD & 0777400000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 0-9 MBZ");
+    if (IWB_IRODD & 0377400000000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 1-9 MBZ");
 
     if (e->N1 == 1 && e->S1 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d N1=1 S1=0");
