@@ -1760,8 +1760,19 @@ restart_1:
               cpu.TPR.CA &= MASK15;
           }
 
+#define REORDER
+#ifdef REORDER
+        if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
+          {
+            doComputedAddressFormation ();
+            cpu.iefpFinalAddress = cpu.TPR.CA;
+          }
 
-
+        if (READOP (ci))
+          {
+            readOperands ();
+          }
+#else
         if (ci->info->flags & PREPARE_CA)
           {
             doComputedAddressFormation ();
@@ -1773,6 +1784,7 @@ restart_1:
             cpu.iefpFinalAddress = cpu.TPR.CA;
             readOperands ();
           }
+#endif
       }
 
 ///
@@ -1787,11 +1799,13 @@ restart_1:
 
     if (WRITEOP (ci))
       {
+#ifndef REORDER
         if (! READOP (ci))
           {
             doComputedAddressFormation ();
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
+#endif
         writeOperands ();
       }
 
