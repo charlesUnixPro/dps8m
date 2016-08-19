@@ -704,6 +704,7 @@ typedef enum fault_ipr_subtype_
     FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
     FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
     FR_ILL_PROC  = 0040000000000llu, //  3 d ILL PROC
+      FR_ILL_PROC_MOD  = 0240000000000llu, //  1,3 d ILL PROC | ILL MOD
     FR_NEM       = 0020000000000llu, //  4 e NEM
     FR_OOB       = 0010000000000llu, //  5 f OOB
     FR_ILL_DIG   = 0004000000000llu, //  6 g ILL DIG
