@@ -26,7 +26,10 @@ struct cableFromScuToCpu
     struct cpuPort
       {
         bool inuse;
-        int scu_unit_num; // 
+        int scu_unit_num; 
+        int scu_port_num; 
+        int scu_subport_num; 
+      
         DEVICE * devp;
       } ports [N_CPU_PORTS];
 
@@ -55,7 +58,7 @@ struct cableFromCpu
 struct cables_t
   {
     // CPU -> SCU
-    struct cableFromCpu cablesFomCpu [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+    struct cableFromCpu cablesFromCpus [N_SCU_UNITS_MAX] [N_SCU_PORTS] [N_SCU_SUBPORTS];
 
     // IOM -> SCU
     struct cablesFromScu cablesFromScus [N_IOM_UNITS_MAX] [N_IOM_PORTS];

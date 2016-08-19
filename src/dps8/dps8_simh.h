@@ -1,3 +1,11 @@
+extern DEVICE scu_dev;
+
+#ifdef ISOLTS
+#define isISOLTS 1
+#else
+#define isISOLTS 0
+#endif
+
 #ifdef SPEED
 #define if_sim_debug(dbits, dptr) if ((0))
 
@@ -5,12 +13,14 @@
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
+      (isISOLTS == 0 || currentRunningCPUnum != 0) && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \
       ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TST_I_NBAR)) && \
       sim_timell () >= sim_deb_start && \
       (sim_deb_stop == 0 || sim_timell () < sim_deb_stop) && \
+      (sim_deb_mme_cntdwn == 0) && \
       ((dptr != & cpu_dev) | (((dbits) & DBG_TRACE) ? (sim_deb_skip_cnt ++ >= sim_deb_skip_limit) : (sim_deb_skip_cnt >= sim_deb_skip_limit))) \
     ) 
 #endif
@@ -65,7 +75,7 @@
 // XXX above is not entirely correct (anymore).
 
 
-#define STOP_UNK    0
+//#define SCPE_OK    0
 #define STOP_UNIMP  1
 #define STOP_DIS    2
 #define STOP_BKPT   3
@@ -77,9 +87,8 @@
 
 
 // not really STOP codes, but get returned from instruction loops
-#define CONT_TRA    -1  ///< encountered a transfer instruction dont bump PPR.IC
-#define CONT_FAULT  -2  ///< instruction encountered some kind of fault
-#define CONT_INTR   -3  ///< instruction saw interrupt go up
+#define CONT_TRA    -1  // encountered a transfer instruction; don't bump PPR.IC
+#define CONT_DIS    -2  // instruction was a DIS 
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
@@ -89,4 +98,4 @@ void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
 #endif
 ;
 #define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
-#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (jmpMain, JMP_STOP); }
+#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (cpu.jmpMain, JMP_STOP); }

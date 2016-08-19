@@ -21,6 +21,7 @@
 #include "dps8_clk.h"
 #endif
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_iom.h"
@@ -31,7 +32,6 @@
 #include "dps8_disk.h"
 #include "dps8_utils.h"
 #include "dps8_append.h"
-#include "dps8_faults.h"
 #include "dps8_fnp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
@@ -82,6 +82,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
 
 stats_t sys_stats;
 
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf);
 static t_stat dps_debug_skip (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat dps_debug_stop (int32 arg, char * buf);
@@ -122,6 +123,7 @@ static CTAB dps8_cmds[] =
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
+    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL},
     {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
     {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
@@ -193,7 +195,8 @@ static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
-    setG7fault (FAULT_EXF, 0);
+    // Assume the bootload CPU
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
 
@@ -203,6 +206,15 @@ static void dps8_init(void)
 {
 #include "dps8.sha1.txt"
     sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
+#ifdef TESTING
+    sim_printf ("#### TESTING BUILD ####\n");
+#else
+    sim_printf ("Production build\n");
+#endif
+#ifdef ISOLTS
+    sim_printf ("#### ISOLTS BUILD ####\n");
+#endif
+
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
     // These are part of the simh interface
@@ -250,7 +262,16 @@ uint64 sim_deb_segno = NO_SUCH_SEGNO;
 uint64 sim_deb_ringno = NO_SUCH_RINGNO;
 uint64 sim_deb_skip_limit = 0;
 uint64 sim_deb_skip_cnt = 0;
+uint64 sim_deb_mme_cntdwn = 0;
+
 bool sim_deb_bar = false;
+
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf)
+  {
+    sim_deb_mme_cntdwn = strtoull (buf, NULL, 0);
+    sim_printf ("Debug MME countdown set to %lld\n", sim_deb_mme_cntdwn);
+    return SCPE_OK;
+  }
 
 static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
   {
@@ -1003,7 +1024,8 @@ static t_stat absAddrN (int segno, uint offset)
 
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
   {
-    setG7fault (FAULT_EXF, 0);
+    // Assume bootload CPU
+    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return SCPE_OK;
   }
 

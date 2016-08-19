@@ -10,6 +10,7 @@
 
 #include "dps8_utils.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "hdbg.h"
 
@@ -73,6 +74,10 @@ void hdbgTrace (void)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtTrace;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . trace . addrMode = get_addr_mode ();
@@ -87,6 +92,10 @@ void hdbgMRead (word24 addr, word36 data)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtMRead;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . memref . addr = addr;
@@ -98,6 +107,10 @@ void hdbgMWrite (word24 addr, word36 data)
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtMWrite;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . memref . addr = addr;
@@ -111,6 +124,10 @@ void hdbgFault (_fault faultNumber, _fault_subtype subFault,
   {
     if (! hevents)
       return;
+#ifdef ISOLTS
+if (currentRunningCPUnum == 0)
+  return;
+#endif
     hevents [hevtPtr] . type = hevtFault;
     hevents [hevtPtr] . time = sim_timell ();
     hevents [hevtPtr] . fault . faultNumber = faultNumber;
@@ -156,11 +173,11 @@ static void printTrace (struct hevt * p)
 
 static void printFault (struct hevt * p)
   {
-    fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %d(0%o), '%s'\n",
+    fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %lld(0%llo), '%s'\n",
                 p -> time, 
-                p -> fault . faultNumber, p -> fault . faultNumber,
-                p -> fault . subFault, p -> fault . subFault,
-                p -> fault . faultMsg);
+                p -> fault.faultNumber, p -> fault.faultNumber,
+                p -> fault.subFault.bits, p -> fault.subFault.bits,
+                p -> fault.faultMsg);
   }
 
 void hdbgPrint (void)
@@ -173,6 +190,10 @@ void hdbgPrint (void)
         sim_printf ("can't open hdbg.list\n");
         return;
       }
+    time_t curtime;
+    time (& curtime);
+    fprintf (hdbgOut, "%s\n", ctime (& curtime));
+
     for (unsigned long p = 0; p < hdbgSize; p ++)
       {
         unsigned long q = (hevtPtr + p) % hdbgSize;
@@ -204,7 +225,7 @@ void hdbgPrint (void)
           }
       }
     fclose (hdbgOut);
-    int fd = open ("M.dump", O_WRONLY | O_CREAT);
+    int fd = open ("M.dump", O_WRONLY | O_CREAT, 0660);
     if (fd == -1)
       {
         sim_printf ("can't open M.dump\n");

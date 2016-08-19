@@ -4,6 +4,7 @@
 #include "dps8_mt.h"
 #include "dps8_scu.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
@@ -80,11 +81,12 @@ static t_stat cable_to_iom (uint iomUnitIdx, int chanNum, int dev_code,
 
 // A scu is trying to attach a cable to a cpu.
 //  cpu port cpu_unit_num, cpu_port_num
-//  from  scu_unit_num, scu_port_num
+//  from  scu_unit_num, scu_port_num, scu_subport_num
 //
 
 static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, 
-                            int scu_unit_num, UNUSED int scu_port_num)
+                            int scu_unit_num, int scu_port_num,
+                            int scu_subport_num)
   {
     if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
@@ -100,6 +102,13 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
         return SCPE_ARG;
       }
 
+    if (scu_subport_num < 0 || scu_subport_num >= N_SCU_SUBPORTS)
+      {
+        sim_printf ("cable_to_cpu: scu_subport_num out of range <%d>\n", 
+                    scu_subport_num);
+        return SCPE_ARG;
+      }
+
     if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
       {
         sim_printf ("cable_to_cpu: CPU socket in use; unit number %d, port number %d\n", cpu_unit_num, cpu_port_num);
@@ -111,8 +120,11 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
 
     p -> inuse = true;
     p -> scu_unit_num = scu_unit_num;
+    p -> scu_port_num = scu_port_num;
+    p -> scu_subport_num = scu_subport_num;
     p -> devp = & scu_dev;
 
+    // Taking this out breaks the unit test segment loader.
     setup_scbank_map ();
 
     return SCPE_OK;
@@ -368,14 +380,37 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
         return SCPE_ARG;
       }
 
+// Encoding expansion port info into port number:
+//   [0-7]: port number
+//   [1-7][0-3]:  port number, sub port number.
+// This won't let me put an expansion port on port 0, but documents
+// say to put the CPUs on the high ports and the IOMs on the low, so
+// there is no reason to put an expander on port 0.
+//
+
+    int scu_subport_num = 0;
+    bool is_exp = false;
+    int exp_port = scu_port_num / 10;
+    if (exp_port)
+      {
+        scu_subport_num = scu_port_num % 10;
+        if (scu_subport_num < 0 || scu_subport_num >= N_SCU_SUBPORTS)
+          {
+            sim_printf ("cable_scu: scu_subport_num out of range <%d>\n", 
+                        scu_subport_num);
+            return SCPE_ARG;
+          }
+        scu_port_num /= 10;
+        is_exp = true;
+      }
     if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
       {
         sim_printf ("cable_scu: scu_port_num out of range <%d>\n", 
-                    scu_unit_num);
+                    scu_port_num);
         return SCPE_ARG;
       }
 
-    if (cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
+    if (cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_unit_num != -1)
       {
         sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_num, scu_unit_num);
         return SCPE_ARG;
@@ -383,21 +418,23 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
 
     // Plug the other end of the cable in
     t_stat rc = cable_to_cpu (cpu_unit_num, cpu_port_num, scu_unit_num, 
-                              scu_port_num);
+                              scu_port_num, scu_subport_num);
     if (rc)
       {
         sim_printf ("cable_scu: IOM socket error; uncabling SCU unit number %d. (%o)\n", scu_unit_num, scu_unit_num);
         return rc;
       }
 
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_unit_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_unit_num = 
       cpu_unit_num;
-    cables -> cablesFomCpu [scu_unit_num] [scu_port_num] . cpu_port_num = 
+    cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_port_num = 
       cpu_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
     scu [scu_unit_num] . ports [scu_port_num] . idnum = cpu_unit_num;
-    scu [scu_unit_num] . ports [scu_port_num] . dev_port = cpu_port_num;
+    scu [scu_unit_num] . ports [scu_port_num] . is_exp |= is_exp;
+    scu [scu_unit_num] . ports [scu_port_num] . dev_port [scu_subport_num] = cpu_port_num;
+//if (scu [scu_unit_num] . ports [scu_port_num] . is_exp) sim_printf ("%o.%o is expanded\n", scu_unit_num, scu_port_num);
     return SCPE_OK;
   }
 
@@ -436,7 +473,8 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
 
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_IOM;
     scu [scu_unit_num] . ports [scu_port_num] . idnum = iomUnitIdx;
-    scu [scu_unit_num] . ports [scu_port_num] . dev_port = iom_port_num;
+    scu [scu_unit_num] . ports [scu_port_num] . dev_port [0] = iom_port_num;
+    scu [scu_unit_num] . ports [scu_port_num] . is_exp = false;
 
     return SCPE_OK;
   }
@@ -710,7 +748,8 @@ void sysCableInit (void)
       }
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
-        cables -> cablesFomCpu [u] [p] . cpu_unit_num = -1; // not connected
+        for (int s = 0; s < N_SCU_SUBPORTS; s ++)
+          cables -> cablesFromCpus [u] [p] [s] . cpu_unit_num = -1; // not connected
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
       cables -> cablesFromIomToCon [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)

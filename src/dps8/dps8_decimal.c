@@ -15,11 +15,11 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_decimal.h"
 #include "dps8_eis.h"
 #include "dps8_utils.h"
-#include "dps8_faults.h"
 
 /* ------------------------------------------------------------------ */
 /* HWR 6/28/14 18:54 derived from ......                              */
@@ -40,6 +40,47 @@ decContext * decContextDefaultDPS8(decContext *context)
     
     return context;
 }
+#if 1
+/* ------------------------------------------------------------------ */
+/* HWR 3/21/16 19:54 derived from ......                              */
+/* decContextDefault(...)                                         */
+/* */
+/* decContextDefaultDPS8 -- initialize a context structure            */
+/* */
+/* Similar to decContextDefault EXCEPT digits are set to 126 for our  */
+/* dps8 simulators mpXd instructions                                  */
+/* */
+/* ------------------------------------------------------------------ */
+decContext * decContextDefaultDPS8_80(decContext *context)
+{
+    decContextDefault(context, DEC_INIT_BASE);
+    context->traps=0;
+
+    context->digits = 63 + 63;   // worse case for multiply
+
+    return context;
+}
+#else
+/* ------------------------------------------------------------------ */
+/* HWR 6/28/14 18:54 derived from ......                              */
+/*     decContextDefault(...)                                         */
+/*                                                                    */
+/* decContextDefaultDPS8 -- initialize a context structure            */
+/*                                                                    */
+/* Similar to decContextDefault EXCEPT digits are set to 80 for our   */
+/* dps8 simulator (add additional features as required                */
+/*                                                                    */
+/* ------------------------------------------------------------------ */
+decContext * decContextDefaultDPS8_80(decContext *context)
+{
+    decContextDefault(context, DEC_INIT_BASE);
+    context->traps=0;
+    
+    context->digits = 80;   //63 * 63;  // worse case for multiply
+    
+    return context;
+}
+#endif
 
 
 decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn)
@@ -61,42 +102,62 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
     //for (first=bcd; *first==0;) first++;
     
     //Also, a bug in decBCD9ToNumber; in the input is all zeros, the skip leading zeros code wanders off the end of the input buffer....
-    for (first=bcd; *first==0 && first <= last;) first++;
+    for (first=bcd; *first==0 && first <= last;)
+        first++;
     
     digits=(Int)(last-first)+1;              // calculate digits ..
     //if ((*first & 0xf0)==0) digits--;     // adjust for leading zero nibble
-    if (digits!=0) dn->digits=digits;     // count of actual digits [if 0,
+    if (digits!=0) 
+       dn->digits=digits;     // count of actual digits [if 0,
     // leave as 1]
     
     // check the adjusted exponent; note that scale could be unbounded
     dn->exponent=-scale;                 // set the exponent
-    if (scale>=0) {                      // usual case
-        if ((dn->digits-scale-1)<-DECNUMMAXE) {      // underflow
+    if (scale>=0)                        // usual case
+    {
+        if ((dn->digits-scale-1)<-DECNUMMAXE)        // underflow
+        {
             decNumberZero(dn);
-            return NULL;}
+            //return NULL;
+            // XXX check subfault
+            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "decBCD9ToNumber underflow");
+        }
     }
-    else { // -ve scale; +ve exponent
+    else  // -ve scale; +ve exponent
+    {
         // need to be careful to avoid wrap, here, also BADINT case
         if ((scale<-DECNUMMAXE)            // overflow even without digits
-            || ((dn->digits-scale-1)>DECNUMMAXE)) { // overflow
+            || ((dn->digits-scale-1)>DECNUMMAXE))   // overflow
+        {
             decNumberZero(dn);
-            return NULL;}
+            //return NULL;
+            // XXX check subfault
+            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "decBCD9ToNumber overflow");
+        }
     }
-    if (digits==0) return dn;             // result was zero
+    if (digits==0)
+      return dn;             // result was zero
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;last >= bcd;) {                            // forever
+    for (;last >= bcd;)                             // forever
+    {
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
-        if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
+        //if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
+        if (nib > 9)
+          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "decBCD9ToNumber ill digit");
         
-        if (cut==0) *up=(Unit)nib;
-        else *up=(Unit)(*up+nib*DECPOWERS[cut]);
+        if (cut==0)
+          *up=(Unit)nib;
+        else
+          *up=(Unit)(*up+nib*DECPOWERS[cut]);
         digits--;
-        if (digits==0) break;               // got them all
+        if (digits==0)
+          break;               // got them all
         cut++;
-        if (cut==DECDPUN) {
+        if (cut==DECDPUN)
+        {
             up++;
             cut=0;
         }
@@ -240,6 +301,93 @@ static const char *CTN[] = {"CTN9", "CTN4"};
 
 char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
+#if 1
+   /*
+     * this is for mp3d ISOLTS error (and perhaps others)
+     */
+    if (r->digits > 63 || r->digits > n)
+    {
+        static char out1 [132];
+        bzero(out1, sizeof(out1));
+        
+        static char out2 [132];
+        bzero(out2, sizeof(out2));
+        
+        int scale, adjLen = n;
+        
+        switch (s)
+        {
+            case CSFL:              // we have a leading sign and a trailing exponent.
+                if (tn == CTN9)
+                    adjLen -= 2;    // a sign and an 1 9-bit exponent
+                else
+                    adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away
+            case CSLS:
+            case CSTS:              // take sign into assount. One less char to play with
+                adjLen -= 1;
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away (again)
+            case CSNS:              // no sign to worry about. Use everything
+                decBCDFromNumber((uint8_t *)out1, r->digits, &scale, r);
+                for(int i = 0 ; i < r->digits ; i += 1)
+                    out1[i] += '0';
+                // now copy the lower n chars to out2
+//                for(int i = 0 ; i < n ; i += 1)
+//                {
+//                    out2[i] = out1[i + r->digits - n];
+//                }
+                // memcpy
+                memcpy(out2, out1 + r->digits - n, n);
+                
+                *OVR = true;
+                return (char *) out2;
+        }
+    }
+#else
+    /*
+     * this is for mp3d ISOLTS error (and perhaps others)
+     */
+    if (r->digits > 63 || r->digits > n)
+    {
+        static char out1 [132];
+        bzero(out1, sizeof(out1));
+        
+        static char out2 [132];
+        bzero(out2, sizeof(out2));
+        
+        int scale, adjLen = n;
+        
+        switch (s)
+        {
+            case CSFL:              // we have a leading sign and a trailing exponent.
+                if (tn == CTN9)
+                    adjLen -= 2;    // a sign and an 1 9-bit exponent
+                else
+                    adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away
+            case CSLS:
+            case CSTS:              // take sign into assount. One less char to play with
+                adjLen -= 1;
+                break;              // until we have an example of what to do here, let's just ignore it and hope it goes away (again)
+            case CSNS:              // no sign to worry about. Use everything
+                decBCDFromNumber((uint8_t *)out1, r->digits, &scale, r);
+                for(int i = 0 ; i < r->digits ; i += 1)
+                    out1[i] += '0';
+                // now copy the lower n chars to out2
+//                for(int i = 0 ; i < n ; i += 1)
+//                {
+//                    out2[i] = out1[i + r->digits - n];
+//                    sim_printf("out2[%d]:%s\n", i, out2);
+//                }
+                // memcpy
+                memcpy(out2, out1 + r->digits - n, n);
+                
+                *OVR = true;
+        }
+        return (char *) out2;
+    }
+#endif
+
     
     if (s == CSFL)
         sf = 0;

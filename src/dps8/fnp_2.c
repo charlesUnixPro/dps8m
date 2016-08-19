@@ -547,12 +547,31 @@ void processInputCharacter(UNUSED TMXR *mp, TMLN *tmln, MUXTERMIO *tty, int32 li
         if (tty -> nPos != 0)
           {
             sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+            tty->nPos = 0;
+            tty->buffer[tty->nPos] = 0;
           }
-        tty->nPos = 0;
-        tty->buffer[tty->nPos] = 0;
         return;
       }
 
+// Dosen't help. Also, breaks ^C
+#if 0
+    // Partial support of framing to get kermit working
+    if (MState.line[hsla_line_num].block_xfer_out_of_frame)
+      {
+        if (kar == '\r')
+          kar = '\n';     // translate to NL
+        tty->buffer[tty->nPos++] = kar;
+        tty->buffer[tty->nPos] = 0;
+        if (kar == '\n' || tty->nPos >= MState.line[hsla_line_num].block_xfer_out_of_frame)
+          {
+sim_printf ("sending out of frame\n");
+            sendInputLine (hsla_line_num, ttys [line] . buffer, ttys [line] . nPos, true);
+            tty->nPos = 0;
+            tty->buffer[tty->nPos] = 0;
+          }
+        return;
+      }
+#endif 
     switch (kar)
     {
 //            case '\b':  // backspace

@@ -49,6 +49,9 @@
 // Enable Real time Timer Register
 //#define REAL_TR
 
+//#define CAST_BITNO
+
+
 #ifdef TESTING
 #else
 // Enable speed over debuggibility
@@ -66,6 +69,20 @@
 
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
+
+// Enable ISOLTS support
+//#define ISOLTS
+
+#ifdef ISOLTS
+#define ROUND_ROBIN
+#endif
+
+#define OSCAR
+
+#define OVERFLOW_WRITE_THROUGH
+
+// Instruction profiler
+// #define MATRIX
 
 #include "sim_defs.h"                                   /* simulator defns */
 
@@ -134,7 +151,7 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETF(flags, x)         flags = ((flags) |  (x))
 #define CLRF(flags, x)         flags = ((flags) & ~(x))
-#define TSTF(flags, x)         ((flags) & (x))
+#define TSTF(flags, x)         (((flags) & (x)) ? 1 : 0)
 #define SCF(cond, flags, x)    { if ((cond)) SETF((flags), x); else CLRF((flags), x); }
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))

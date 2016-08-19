@@ -194,7 +194,7 @@ typedef int iomCmd (uint iomUnitIdx, uint chan);
 int iomListService (uint iomUnitIdx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
 int send_terminate_interrupt (uint iomUnitIdx, uint chanNum);
-void iom_interrupt (uint iomUnitIdx);
+void iom_interrupt (uint scuUnitNum, uint iomUnitIdx);
 void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                            bool write);
 void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,

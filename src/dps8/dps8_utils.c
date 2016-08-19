@@ -11,10 +11,11 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
+#include "dps8_ins.h"
 #include "dps8_utils.h"
 #include "dps8_opcodetable.h"
-#include "dps8_faults.h"
 
 /*
  * misc utility routines used by simulator
@@ -180,6 +181,7 @@ char *getModString(word6 tag)
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012llo op2 %012llo carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
 // In general, any two N-bit numbers may be added without overflow, by first
@@ -231,7 +233,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -253,6 +255,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012llo flags %06o ovf %o\n", res, * flags, * ovf); 
     return res;
   }
 
@@ -308,7 +311,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -387,7 +390,7 @@ word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -464,7 +467,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -543,7 +546,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -571,6 +574,13 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+#ifdef ISOLTS
+if (currentRunningCPUnum)
+sim_printf ("Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+ (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
+#endif
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+ (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -613,6 +623,15 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     // Check for carry 
     bool cry = r74;
 
+#ifdef ISOLTS
+if (currentRunningCPUnum)
+{
+//char buf [1024];
+//print_int128 (res, buf);
+sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
+}
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry) // Note inverted logic for subtraction
@@ -621,7 +640,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           SETF (* flags, I_CARRY);
       }
  
-    if (flagsToSet & I_OFLOW)
+    if (chkOVF () && (flagsToSet & I_OFLOW))
       {
         if (* ovf)
           SETF (* flags, I_OFLOW);      // overflow
@@ -643,6 +662,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
     return res;
   }
 
@@ -657,7 +677,7 @@ word36 compl36(word36 op1, word18 *flags, bool * ovf)
     
     * ovf = op1 == MAXNEG;
 
-    if (* ovf)
+    if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
 
     if (res & SIGN36)
@@ -683,7 +703,7 @@ word18 compl18(word18 op1, word18 *flags, bool * ovf)
     word18 res = -op1 & MASK18;
     
     * ovf = op1 == MAX18NEG;
-    if (* ovf)
+    if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
     if (res & SIGN18)
         SETF(*flags, I_NEG);
@@ -1776,25 +1796,6 @@ void sim_puts (char * str)
     while (* p)
       sim_putchar (* (p ++));
   }
-
-#if 0
-void sim_warn (const char * format, ...)
-  {
-    va_list arglist;
-    va_start (arglist, format);
-    _sim_err (format, arglist);
-    va_end (arglist);
-  }
-
-void sim_err (const char * format, ...)
-  {
-    va_list arglist;
-    va_start (arglist, format);
-    _sim_err (format, arglist);
-    va_end (arglist);
-    longjmp (jmpMain, JMP_STOP);
-  }
-#endif
 
 // XXX what about config=addr7=123, where clist has a "addr%"?
 

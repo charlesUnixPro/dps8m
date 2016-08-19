@@ -202,6 +202,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_iom.h"
@@ -411,6 +412,8 @@ typedef struct
     //   alarm disable
     //   test/normal
     iomStat_t iomStatus;
+
+    uint invokingScuUnitNum; // the unit number of the SCU that did the connect.
   } iomUnitData_t;
 
 static iomUnitData_t iomUnitData [N_IOM_UNITS_MAX];
@@ -533,8 +536,9 @@ static void setupIOMScbankMap (void)
             uint store_size = p -> configSwPortStoresize [port_num];
             uint sz = 1 << (store_size + 16);
     
-            // Calculate the base address of the memor in wordsy
-            uint assignment = cpu . switches . assignment [port_num];
+            // Calculate the base address of the memory in words
+            uint assignment = p -> configSwPortAddress [port_num];
+            //uint assignment = cpu.switches.assignment [port_num];
             uint base = assignment * sz;
     
             // Now convert to SCBANKs
@@ -559,7 +563,8 @@ static void setupIOMScbankMap (void)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
             __func__, pg, iomScbankMap [iomUnitIdx] [pg]);
   }
-   
+
+#if 0   
 static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
   {
     uint scpg = addr / SCBANK;
@@ -567,6 +572,7 @@ static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
       return iomScbankMap [iomUnitIdx] [scpg];
     return -1;
   }
+#endif
 
 static uint mbxLoc (uint iomUnitIdx, uint chan)
   {
@@ -2143,12 +2149,17 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     
 // XXX this should call scu_svc
 
+// XXX shouldn't it interrupt the SCU that invoked the connect?
+#if 1
+    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
+#else
     uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     uint base_addr = base << 6; // 01400
     // XXX this is wrong; I believe that the SCU unit number should be
     // calculated from the Port Configuration Address Assignment switches
     // For now, however, the same information is in the CPU config. switches, so
     // this should result in the same values.
+
     int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
     int scuUnitNum;
     if (cpu_port_num >= 0)
@@ -2159,6 +2170,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     if (scuUnitNum < 0)
       scuUnitNum = 0;
     return scu_set_interrupt ((uint)scuUnitNum, interrupt_num);
+#endif
   }
 
 /*
@@ -2246,10 +2258,12 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-void iom_interrupt (uint iomUnitIdx)
+void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
   {
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
                __func__, 'A' + iomUnitIdx);
+
+    iomUnitData [iomUnitIdx] . invokingScuUnitNum = scuUnitNum;
 
     int ret = doConnectChan (iomUnitIdx);
 
@@ -2545,8 +2559,12 @@ static t_stat bootSvc (UNIT * unitp)
     // initialize memory with boot program
     initMemoryIOM (iomUnitIdx);
 
+    // This is needed to reset the interrupt mask registers; Multics tampers
+    // with runtime values, and mucks up rebooting on multi-CPU systems.
+    scu_reset (NULL);
+
     // simulate $CON
-    iom_interrupt (iomUnitIdx);
+    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
 
@@ -2567,7 +2585,7 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
     initMemoryIOM ((uint)iomUnitIdx);
 
     // simulate $CON
-    iom_interrupt (iomUnitIdx);
+    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
 
 #else
     sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );

@@ -1,7 +1,9 @@
 void tidy_cu (void);
 void cu_safe_store(void);
+#ifdef MATRIX
 void initializeTheMatrix (void);
 void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
+#endif
 t_stat displayTheMatrix (int32 arg, char * buf);
 t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
@@ -17,3 +19,4 @@ word27 getTR (bool * runout);
 void ackTR (void);
 #endif
 
+bool chkOVF (void);

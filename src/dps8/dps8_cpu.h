@@ -143,23 +143,13 @@ struct _par
     word3   RNR;    // The final effective ring number value calculated during
                     // execution of the instruction that last loaded the PR.
 
-    // To get the correct behavior, the ARn . BITNO and CHAR need to be kept in
-    // sync. BITNO is the canonical value; access routines for AR [n] . BITNO
-    // and . CHAR are provided
-
-    // AL-39 defines the AR format (by implication of the "data as stored by 
-    // SARn" as:
-    //  18/WORDNO, 2/CHAR, 4/BITNO, 12/0
-    //
-    // and define the PR register ("odd word of ITS pointer pair") as:
-    //  18/WORDNO, 6/BITNO
-    //
-    // We use this to deduce the BITNO <-> CHAR/BITNO mapping.
-
-    word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
+    word6  PR_BITNO;  // The number of the bit within PRn . WORDNO that is the 
                     // first bit of the data item. Data items aligned on word 
                     // boundaries always have the value 0. Unaligned data
                     //  items may have any value in the range [1,35].
+    word2   AR_CHAR;
+    word4   AR_BITNO;
+
     word18  WORDNO; // The offset in words from the base or origin of the 
                     // segment to the data item.
   };
@@ -168,14 +158,6 @@ struct _par
 
 #define AR    PAR
 #define PR    PAR
-
-// Support code to access ARn . BITNO and CHAR
-
-#define GET_AR_BITNO(n) (cpu . PAR [n] . BITNO % 9)
-#define GET_AR_CHAR(n) (cpu . PAR [n] . BITNO / 9)
-#define SET_AR_BITNO(n, b) cpu . PAR [n] . BITNO = (GET_AR_CHAR [n] * 9 + ((b) & 017))
-#define SET_AR_CHAR(n, c) cpu . PAR [n] . BITNO = (GET_AR_BITNO [n] + ((c) & 03) * 9)
-#define SET_AR_CHAR_BIT(n, c, b) cpu . PAR [n] . BITNO = (((c) & 03) * 9 + ((b) & 017))
 
 struct _bar
   {
@@ -380,10 +362,14 @@ struct _cache_mode_register
     word15   cache_dir_address;
     word1    par_bit;
     word1    lev_ful;
-    word1    csh1_on;
-    word1    csh2_on;
-    word1    opnd_on; // DPS8, but not DPS8M
-    word1    inst_on;
+    word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
+    word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
+    //word1    opnd_on; // DPS8, but not DPS8M
+    word1    inst_on; // 1: The cache memory (if active) is used for instructions.
+    // When the cache-to-register mode flag (bit 59 of the cache mode register) is set ON, the
+    // processor is forced to fetch the operands of all double-precision operations unit load operations
+    // from the cache memory. Y0,12 are ignored, Y15,21 select a column, and Y13,14 select a level. All
+    // other operations (e.g., instruction fetches, single-precision operands, etc.) are treated normally.
     word1    csh_reg;
     word1    str_asd;
     word1    col_ful;
@@ -417,8 +403,6 @@ typedef struct mode_registr
   } _mode_register;
 
 extern DEVICE cpu_dev;
-extern jmp_buf jmpMain;   // This is where we should return to from a fault to 
-                          // retry an instruction
 
 typedef struct MOPstruct MOPstruct;
 
@@ -465,7 +449,11 @@ typedef struct EISaddr
 
     bool cacheValid;
     bool cacheDirty;
-    word36 cachedWord;
+    //word36 cachedWord;
+#define paragraphSz 8
+#define paragraphMask 077777770
+#define paragraphOffsetMask 07
+    word36 cachedParagraph [paragraphSz];
     word18 cachedAddr;
 
 } EISaddr;
@@ -651,7 +639,6 @@ typedef struct
     uint lprp_highonly;   // If non-zero lprp only sets the high bits
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after;
-    uint super_user;
     uint epp_hack;
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
@@ -663,6 +650,7 @@ typedef struct
     uint trlsb; // Timer Register least significent bits: the number of 
                 // instructions that make a timer quantum.
     uint serno;
+    bool useMap;
   } switches_t;
 
 // Control unit data (288 bits) 
@@ -712,11 +700,10 @@ typedef struct
     word1 FAP;     // 30    FAP   Fetch final address - paged
     word1 FANP;    // 31    FANP  Fetch final address - nonpaged
     word1 FABS;    // 32    FABS  Fetch final address - absolute
+                   // 33-35 FCT   Fault counter - counts retries
 #else
     word12 APUCycleBits;
 #endif
-
-                   // 33-35 FCT   Fault counter - counts retries
 
     /* word 1 */
                    //               AVF Access Violation Fault
@@ -815,7 +802,7 @@ typedef struct
                    // 18    RF  First cycle of all repeat instructions
     word1 rpt;     // 19    RPT Execute an Repeat (rpt) instruction
     word1 rd;      // 20    RD  Execute an Repeat Double (rpd) instruction
-                   // 21    RL  Execute a Repeat Link (rpl) instruction
+    word1 rl;      // 21    RL  Execute a Repeat Link (rpl) instruction
     word1 pot;     // 22    POT Prepare operand tally
                    // 23    PON Prepare operand no tally
     //xde xdo
@@ -977,36 +964,26 @@ typedef struct du_unit_data_t
     // These values must be restored on instruction restart
     word7 MF [3]; // Modifier fields for each instruction.
 
+    // Image of LPL/SPL for ISOLTS compliance
+    word36 image [8];
+
   } du_unit_data_t;
 
-// XXX when multiple cpus are supported, make the cpu  data structure
-// an array and merge the unit state info into here; coding convention
-// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
-// is taken. It should probably be merged into here, and then this
-// should then be renamed.
+// History registers
+
+// CU History register flag2 field bit
+
+enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
+       CUH_MSTO = 04, CUH_PIB = 02 };
 
 #define N_CPU_UNITS_MAX 8
 
 typedef struct
   {
+    jmp_buf jmpMain; // This is the entry to the CPU state machine
     cycles_t cycle;
-    uint IC_abs; // translation of odd IC to an absolute address; see
-                 // ADDRESS of cu history
-    bool irodd_invalid;
-                // cached odd instr invalid due to memory write by even instr
 
     // The following are all from the control unit history register:
-
-    bool trgo;               // most recent instruction caused a transfer?
-    bool ic_odd;             // executing odd pair?
-    bool poa;                // prepare operand address
-    uint opcode;             // currently executing opcode
-    struct
-      {
-        bool fhld; // An access violation or directed fault is waiting.
-                   // AL39 mentions that the APU has this flag, but not
-                   // where scpr stores it
-      } apu_state;
 
     bool interrupt_flag;     // an interrupt is pending in this cycle
     bool g7_flag;            // a g7 fault is pending in this cycle;
@@ -1017,6 +994,11 @@ typedef struct
 
     bool wasInhibited; // One or both of the previous instruction 
                        // pair was interrupr inhibited.
+
+    bool isExec;  // The instruction being executed is the target of
+                  // an XEC or XED instruction
+    bool isXED; // The instruction being executed is the target of an
+                // XEC instruction
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
@@ -1084,20 +1066,61 @@ typedef struct
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....
+#ifdef ROUND_ROBIN
+    bool isRunning;
+#endif
+    // Map memory to port
+    int scbank_map [N_SCBANKS];
+    int scbank_pg_os [N_SCBANKS];
+
+    uint history_cyclic [N_HIST_SETS]; // 0..63
+    word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];
+
+    // If the instruction wants overflow thrown after operand write
+    bool dlyFlt;
+
+    // Arguments for delayed overflow fault
+
+    _fault dlyFltNum;
+    _fault_subtype dlySubFltNum;
+    const char * dlyCtx;
+
   } cpu_state_t;
 
-#ifdef ROUND_ROBIN
+#ifdef M_SHARED
+extern cpu_state_t * cpus;
+#else
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
-extern uint currentRunningCPUnum;
+#endif
 extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
+
+uint setCPUnum (uint cpuNum);
+#ifdef ROUND_ROBIN
+extern uint currentRunningCPUnum;
 #else
-extern cpu_state_t cpu;
 #define currentRunningCPUnum 0
 #endif
 
-//extern int stop_reason;     // sim_instr return value for JMP_STOP
-//void cancel_run (t_stat reason);
+// Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
+
+#define GET_PR_BITNO(n) (cpu.PAR[n].PR_BITNO)
+#define GET_AR_BITNO(n) (cpu.PAR[n].AR_BITNO)
+#define GET_AR_CHAR(n) (cpu.PAR[n].AR_CHAR)
+static inline void SET_PR_BITNO (uint n, word6 b)
+  {
+     cpu.PAR[n].PR_BITNO = b;
+     cpu.PAR[n].AR_BITNO = (b % 9) & MASK4;
+     cpu.PAR[n].AR_CHAR = (b / 9) & MASK2;
+  }
+static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
+  {
+     cpu.PAR[n].PR_BITNO = c * 9 + b;
+     cpu.PAR[n].AR_BITNO = b & MASK4;
+     cpu.PAR[n].AR_CHAR = c & MASK2;
+  }
+
+
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);
@@ -1107,22 +1130,70 @@ t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+#endif
     *data = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+#endif
     M[addr] = data & DMASK;
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+#endif
     *even = M[addr++] & DMASK;
     *odd = M[addr] & DMASK;
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+          }
+        addr = os + addr % SCBANK;
+      }
+#endif
     M[addr++] = even;
     M[addr] = odd;
     return 0;
@@ -1132,10 +1203,18 @@ int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
-int core_readN (word24 addr, word36 *data, int n, const char * ctx);
-int core_writeN (word24 addr, word36 *data, int n, const char * ctx);
 int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
+static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+  {
+    for (uint i = 0; i < n; i ++)
+      core_read (addr + i, data + i, ctx);
+  }
+static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+  {
+    for (uint i = 0; i < n; i ++)
+      core_write (addr + i, data [i], ctx);
+  }
 
 int is_priv_mode (void);
 void set_went_appending (void);
@@ -1158,3 +1237,8 @@ char *strSDW0 (_sdw0 *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
+void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
+void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
+void addEAPUhist (word18 ZCA, word18 opcode);
+void addHist (uint hset, word36 w0, word36 w1);

@@ -100,7 +100,6 @@ void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-void acvFault(_fault_subtype acvfault, char * msg) NO_RETURN;
 word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
