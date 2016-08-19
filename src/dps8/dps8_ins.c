@@ -5849,7 +5849,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   big -= MulticsuSecs;
 
                   unsigned long uSecs = big % 1000000u;
-                  unsigned long secs = big / 1000000u;
+                  unsigned long secs = (unsigned long) (big / 1000000u);
                   sim_debug (DBG_TRACE, & cpu_dev,
                              "Clock time since boot %4lu.%06lu seconds\n",
                              secs, uSecs);
@@ -7361,7 +7361,7 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock16 [j] = 0;
 #ifndef SPEED
-                putbits36_13 (& cpu.Yblock16 [j], 0, cpu.PTWAM [toffset + j].ADDR);
+                putbits36_18 (& cpu.Yblock16 [j], 0, cpu.PTWAM [toffset + j].ADDR);
                 putbits36_1 (& cpu.Yblock16 [j], 29, cpu.PTWAM [toffset + j].M);
 #endif
               }

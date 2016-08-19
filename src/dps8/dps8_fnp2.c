@@ -936,7 +936,12 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
 #if 0
 { sim_printf ("IN:  ");
 for (int i = 0; i < linep->nPos; i ++)
-sim_printf ("%c", isgraph (linep->buffer [i]) ? linep->buffer [i] : '.');
+//sim_printf ("%c", isgraph (linep->buffer [i]) ? linep->buffer [i] : '.');
+if (isgraph (linep->buffer [i]))
+  sim_printf ("%c", linep->buffer [i]);
+else
+  sim_printf ("\\%03o", linep->buffer [i]);
+
 sim_printf ("\n");
 }
 #endif
@@ -1697,6 +1702,19 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
+
+// telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
+    uvClientData * p = linep->client->data;
+    //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
+    if (p && p->telnetp && linep->was_CR && kar == 0)
+      {
+        //sim_printf ("dropping nul\n");
+        linep->was_CR = false;
+        return false;
+      }
+    linep->was_CR = kar == 015;
+    //sim_printf ("was CR %d\n", linep->was_CR);
+
 //sim_printf ("%03o %c\n", kar, isgraph (kar) ? kar : '.');
     if (linep->service == service_login)
       {
@@ -2803,5 +2821,6 @@ associate:;
       fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
 
     fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
+    fnpUnitData[fnpno].MState.line[lineno].was_CR = false;
     ltnRaw (p->telnetp);
   }

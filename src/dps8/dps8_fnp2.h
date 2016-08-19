@@ -31,7 +31,7 @@ typedef struct
         uv_tcp_t * client;
 
         // libtelnet hook
-        telnet_t * telnetp; // telnet_t *
+        bool was_CR;
 
         // State as set by FNP commands
         t_bool listen;

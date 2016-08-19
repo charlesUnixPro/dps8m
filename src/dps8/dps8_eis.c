@@ -1360,8 +1360,8 @@ static void parseNumericOperandDescriptor (int k)
     }
 
 #ifdef ISOLTS
-    int TN = e->TN[k-1];
-    int S = e->S[k-1];  // This is where MVNE gets really nasty.
+    int TN = (int) e->TN[k-1];
+    int S = (int) e->S[k-1];  // This is where MVNE gets really nasty.
 #endif
     int N = (int) (e->N[k-1]);  // number of chars in string
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
