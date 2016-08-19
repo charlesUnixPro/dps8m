@@ -242,7 +242,6 @@ t_stat hdbg_size (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 #else
-#include "dps8_utils.h"
 t_stat hdbg_size (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("hdbg not enabled; ignoring\n");
