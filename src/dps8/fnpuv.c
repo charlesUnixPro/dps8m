@@ -518,6 +518,7 @@ sim_printf ("dropping 2nd slave\n");
             uvClientData * p = (uvClientData *) server->data;
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
             linep->accept_new_terminal = true;
+            linep->was_CR = false;
           }
       }
     else
@@ -630,10 +631,11 @@ static void on_do_connect (uv_connect_t * server, int status)
     uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, fuv_read_cb);
     linep->listen = true;
     linep->accept_new_terminal = true;
+    linep->was_CR = false;
     linep->client->data = p;
-    if (linep->telnetp)
+    if (p->telnetp)
       {
-        ltnDialout (linep->telnetp);
+        ltnDialout (p->telnetp);
       }
   }
 
@@ -698,7 +700,6 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     if (flags & 1)
       {
         p->telnetp = ltnConnect (linep->client);
-
         if (! p->telnetp)
           {
               sim_warn ("ltnConnect failed\n");
