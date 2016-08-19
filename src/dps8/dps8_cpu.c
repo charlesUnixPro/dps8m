@@ -2367,7 +2367,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2403,7 +2403,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2428,7 +2428,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
-        addr &= ~1; /* make it an even address */
+        addr &= ~1u; /* make it an even address */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2440,7 +2440,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2498,7 +2498,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
-        addr &= ~1; /* make it even a dress, or iron a skirt ;) */
+        addr &= ~1u; /* make it even a dress, or iron a skirt ;) */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2509,7 +2509,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -3197,9 +3197,9 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
       {
         return 1;
       }
-    prp->SNR = getbits36(word1, 3, 15);
-    prp->WORDNO = getbits36(word2, 0, 18);
-    prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
+    prp->SNR = getbits36_15 (word1, 3);
+    prp->WORDNO = getbits36_18 (word2, 0);
+    prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
     //prp->BITNO = getbits36(word2, 57 - 36, 6);
 #ifdef CAST_BITNO
     prp->bitno = getbits36(word2, 57 - 36, 6);
@@ -3231,7 +3231,7 @@ static void print_frame (
 
     struct _par  entry_pr;
     sim_printf ("stack trace: ");
-    if (stack_to_entry (addr, & entry_pr) == 0)
+    if (stack_to_entry ((uint) addr, & entry_pr) == 0)
       {
          sim_printf ("\t<TODO> entry %o|%o  ", entry_pr.SNR, entry_pr.WORDNO);
 
@@ -3436,7 +3436,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
     uint curr_frame;
     char * msg;
     //t_stat rc = computeAbsAddrN (& curr_frame, seg, cpu.PAR [6].WORDNO);
-    int rc = dbgLookupAddress (seg, cpu.PAR [6].WORDNO, & curr_frame, & msg);
+    int rc = dbgLookupAddress ((word18) seg, cpu.PAR [6].WORDNO, & curr_frame, & msg);
     if (rc)
       {
         sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
@@ -3448,7 +3448,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
     int offset = 0;
     word24 hdr_addr;  // 24bit main memory address
     //if (computeAbsAddrN (& hdr_addr, seg, offset))
-    if (dbgLookupAddress (seg, offset, & hdr_addr, & msg))
+    if (dbgLookupAddress ((word18) seg, (word18) offset, & hdr_addr, & msg))
       {
         sim_printf ("%s: Cannot convert %03o|0 to absolute memory address becuase %s.\n", __func__, seg, msg);
         return 1;
@@ -3502,7 +3502,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
         // BUG: We assume a stack frame doesn't cross page boundries
         uint addr;
         //if (computeAbsAddrN (& addr, seg, framep))
-        if (dbgLookupAddress (seg, offset, & addr, & msg))
+        if (dbgLookupAddress ((word18) seg, (word18) offset, & addr, & msg))
           {
             if (finished)
               break;
@@ -3537,7 +3537,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
         }
 #endif
         if (output)
-          print_frame (seg, framep, addr);
+          print_frame (seg, (int) framep, (int) addr);
 //---        if (frame_listp)
 //---            (*frame_listp).push_back(seg_addr_t(seg, framep));
 
@@ -3583,12 +3583,12 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
             if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
               {
 //---                 where_t where;
-                int offset = return_pr.WORDNO;
+                int offset = (int) return_pr.WORDNO;
                 if (offset > 0)
                     -- offset;      // call was from an instr prior to the return point
                 char * compname;
                 word18 compoffset;
-                char * where = lookupAddress (return_pr.SNR, offset, & compname, & compoffset);
+                char * where = lookupAddress (return_pr.SNR, (word18) offset, & compname, & compoffset);
                 if (where)
                   {
                     sim_printf ("%s\n", where);
