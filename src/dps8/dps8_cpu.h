@@ -1050,7 +1050,9 @@ typedef struct
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
     word36 scu_data[8];    // For SCU instruction
+#ifndef EVPOLL
     uint rTRlsb;
+#endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
     word36 instr_buf [2];
     uint64 lufCounter;
