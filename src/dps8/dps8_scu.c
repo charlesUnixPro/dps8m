@@ -1585,7 +1585,7 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
 if (cpu_num != 0 || cpu_unit_num != 0)
 sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpu_num, cpu_unit_num, scu_port_num, sn);
 #endif
-                    setG7fault (cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
+                    setG7fault ((uint) cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
                   }
               }
           }
@@ -1603,7 +1603,7 @@ sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpu_num, cpu_unit_num, scu_po
 if (cpu_num != 0 || cpu_unit_num != 0)
 sim_printf ("cpu %o interrupts cpu %d on %d\n", cpu_num, cpu_unit_num, scu_port_num);
 #endif
-            setG7fault (cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
+            setG7fault ((uint) cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
           }
 #else
 // by xipmaskval
