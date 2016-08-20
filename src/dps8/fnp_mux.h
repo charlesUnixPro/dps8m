@@ -23,4 +23,5 @@ extern TMXR    mux_desc;
 extern char fnpName[32];        // IPC node name
 extern char fnpGroup[32];       // IPC group name
 
+t_stat do_mux_attach (char * attstr);
 #endif /* defined(__fnp__fnp_mux__) */

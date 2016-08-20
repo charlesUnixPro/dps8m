@@ -203,6 +203,7 @@ void console_init()
     struct sigaction quit_action;
     quit_action . sa_handler = quit_sig_hndlr;
     quit_action . sa_flags = SA_RESTART;
+    sigemptyset (& quit_action . sa_mask);
     sigaction (SIGQUIT, & quit_action, NULL);
 
 }
@@ -471,7 +472,7 @@ static void sendConsole (uint stati)
       {
         if (console_state . readp + ntext >= console_state . tailp)
           break;
-        text [ntext] = * (console_state . readp + ntext);
+        text [ntext] = (char) (* (console_state . readp + ntext));
       }
     text [ntext] = 0;
     //sim_printf ("<%s>\n", text);
@@ -501,7 +502,7 @@ static void sendConsole (uint stati)
     console_state . tailp = console_state . buf;
     console_state . io_mode = no_mode;
 
-    p -> stati = stati;
+    p -> stati = (word12) stati;
     send_terminate_interrupt ((uint) iomUnitIdx, (uint) chan);
   }
 

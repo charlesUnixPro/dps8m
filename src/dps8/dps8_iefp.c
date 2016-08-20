@@ -116,11 +116,11 @@ t_stat Read8 (word18 address, word36 * result, _processor_cycle_type cyctyp, boo
                 core_readN (cpu.iefpFinalAddress, result, 8, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       bar address=%08o  readData=%012llo\n", address+i, result [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
                 return SCPE_OK;
@@ -135,7 +135,7 @@ t_stat Read8 (word18 address, word36 * result, _processor_cycle_type cyctyp, boo
                       sim_debug (DBG_FINAL, & cpu_dev, "Read (Actual) Read:       abs address=%08o  readData=%012llo\n", address+i, result[i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMRead (address + i, result [i]);
 #endif
                 return SCPE_OK;
@@ -152,11 +152,11 @@ B29:;
                 core_readN (cpu.iefpFinalAddress, result, 8, __func__);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                      sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
 
@@ -171,11 +171,11 @@ B29:;
                   {
                     if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                       {
-                        for (int i = 0; i < 8; i ++)
+                        for (uint i = 0; i < 8; i ++)
                           sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Read (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
                       }
 #ifdef HDBG
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
                   }
@@ -216,11 +216,11 @@ t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, 
                 core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       bar address=%08o  readData=%012llo\n", address + i, result [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
                 return SCPE_OK;
@@ -235,7 +235,7 @@ t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, 
                       sim_debug (DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:       abs address=%08o  readData=%012llo\n", address+i, result[i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMRead (address + i, result [i]);
 #endif
                 return SCPE_OK;
@@ -252,11 +252,11 @@ B29:;
                 core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                      sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "ReadPage (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
 
@@ -271,11 +271,11 @@ B29:;
                   {
                     if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                       {
-                        for (int i = 0; i < PGSZ; i ++)
+                        for (uint i = 0; i < PGSZ; i ++)
                           sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "ReadPage (Actual) Read:  iefpFinalAddress=%08o  readData=%012llo\n", cpu.iefpFinalAddress + i, result [i]);
                       }
 #ifdef HDBG
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
                   }
@@ -385,11 +385,11 @@ t_stat Write8 (word18 address, word36 * data, _processor_cycle_type cyctyp, bool
                 core_writeN (cpu.iefpFinalAddress, data, 8, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "Write8(Actual) Write:      bar address=%08o writeData=%012llo\n", address + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
                 return SCPE_OK;
@@ -400,11 +400,11 @@ t_stat Write8 (word18 address, word36 * data, _processor_cycle_type cyctyp, bool
                 core_writeN (address, data, 8, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "Write(Actual) Write:      abs address=%08o writeData=%012llo\n", address + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMWrite (address + i, data [i]);
 #endif
                 return SCPE_OK;
@@ -422,11 +422,11 @@ B29:
         
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Write8(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
@@ -439,11 +439,11 @@ B29:
         
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < 8; i ++)
+                    for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
@@ -482,11 +482,11 @@ t_stat WritePage (word18 address, word36 * data, _processor_cycle_type cyctyp, b
                 core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "WritePage(Actual) Write:      bar address=%08o writeData=%012llo\n", address + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
                 return SCPE_OK;
@@ -497,11 +497,11 @@ t_stat WritePage (word18 address, word36 * data, _processor_cycle_type cyctyp, b
                 core_writeN (address, data, PGSZ, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev, "WritePage(Actual) Write:      abs address=%08o writeData=%012llo\n", address + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMWrite (address + i, data [i]);
 #endif
                 return SCPE_OK;
@@ -519,11 +519,11 @@ B29:
         
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "WritePage(Actual) Write: bar iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
@@ -536,11 +536,11 @@ B29:
         
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
-                    for (int i = 0; i < PGSZ; i ++)
+                    for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "WritePage(Actual) Write: iefpFinalAddress=%08o writeData=%012llo\n", cpu.iefpFinalAddress + i, data [i]);
                   }
 #ifdef HDBG
-                for (int i = 0; i < PGSZ; i ++)
+                for (uint i = 0; i < PGSZ; i ++)
                   hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         

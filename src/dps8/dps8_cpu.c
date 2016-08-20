@@ -1,5 +1,4 @@
- /**
- * \file dps8_cpu.c
+ /** * \file dps8_cpu.c
  * \project dps8
  * \date 9/17/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
@@ -21,14 +20,15 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_console.h"
+#ifdef FNP2
+#include "dps8_fnp2.h"
+#else
 #include "dps8_fnp.h"
+#endif
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
-#ifdef MULTIPASS
-#include "dps8_mp.h"
-#endif
 #ifdef M_SHARED
 #include "shm.h"
 #endif
@@ -36,8 +36,11 @@
 #include "hdbg.h"
 #endif
 
+#ifdef FNP2
+#else
 #include "fnp_defs.h"
 #include "fnp_cmds.h"
+#endif
 
 #include "sim_defs.h"
 
@@ -73,6 +76,11 @@ static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 #endif
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+
+#ifdef EV_POLL
+static uv_loop_t * ev_poll_loop;
+static uv_timer_t ev_poll_handle;
+#endif
 
 static MTAB cpu_mod[] = {
     {
@@ -710,8 +718,8 @@ void setup_scbank_map (void)
           continue;
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
-        uint scu_unit_num = cables ->
-          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
+        uint scu_unit_num = (uint) (cables ->
+          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num);
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
@@ -741,7 +749,7 @@ void setup_scbank_map (void)
                 else
                   {
                     cpu.scbank_map [scpg] = port_num;
-                    cpu.scbank_pg_os [scpg] = scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK;
+                    cpu.scbank_pg_os [scpg] = (int) (scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK);
                   }
               }
             else
@@ -811,6 +819,44 @@ static void getSerialNumber (void)
   }
 
 
+#ifdef EV_POLL
+// The 100Hz timer as expired; poll I/O
+
+static void ev_poll_cb (uv_timer_t * UNUSED handle)
+  {
+
+    // Call the one hertz stuff every 100 loops
+    static uint oneHz = 0;
+    if (oneHz ++ >= 100) // ~ 1Hz
+      {
+        oneHz = 0;
+        rdrProcessEvent (); 
+      }
+    scpProcessEvent (); 
+    fnpProcessEvent (); 
+    consoleProcess ();
+#ifndef FNP2
+    dequeue_fnp_command ();
+#endif
+    absiProcessEvent ();
+
+// Update the TR
+
+// The Timer register runs at 512Khz; in 1/100 of a second it
+// decrements 5120.
+
+// Will it pass through zero?
+
+    if (cpu.rTR <= 5120)
+      {
+        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+        if (cpu.switches.tro_enable)
+        setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+      }
+    cpu.rTR -= 5120;
+    cpu.rTR &= MASK27;
+  }
+#endif
 
 
     
@@ -858,17 +904,20 @@ void cpu_init (void)
 #ifdef ROUND_ROBIN
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
-    for (int c = 0; c < N_CPU_UNITS_MAX; c ++)
-      cpus [c].switches.trlsb = 12; // 6 MIP processor
 #else
     memset (& cpu, 0, sizeof (cpu));
     cpu.switches.FLT_BASE = 2; // Some of the UnitTests assume this
-    cpu.switches.trlsb = 12; // 6 MIP processor
 #endif
     cpu_init_array ();
 
     getSerialNumber ();
 
+#ifdef EV_POLL
+    ev_poll_loop = uv_default_loop ();
+    uv_timer_init (ev_poll_loop, & ev_poll_handle);
+    // 10 ms == 100Hz
+    uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+#endif
   }
 
 // DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
@@ -898,11 +947,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         cpu.PPR.PSR = 0;
         cpu.PPR.P = 1;
         cpu.RSDWH_R1 = 0;
-#ifdef REAL_TR
-        setTR (0);
-#else
         cpu.rTR = 0;
-#endif
  
         set_addr_mode(ABSOLUTE_mode);
         SET_I_NBAR;
@@ -1366,12 +1411,15 @@ t_stat sim_instr (void)
     sim_rtcn_init (0, 0);
 #endif
       
+#ifdef FNP2
+#else
     mux(SLS, 0, 0);
 
     UNIT *u = &mux_unit;
     if (u->filename == NULL || strlen(u->filename) == 0)
         sim_printf("Warning: MUX not attached.\n");
-      
+#endif
+ 
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Copy the placeholder in so the IC can be set by simh.
@@ -1462,6 +1510,9 @@ setCPU:;
             break;
           }
 
+#ifdef EV_POLL
+        uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#else
         static uint slowQueueSubsample = 0;
         if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
           {
@@ -1475,10 +1526,14 @@ setCPU:;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            //AIO_CHECK_EVENT;
+#ifdef FNP2
+#else
             dequeue_fnp_command ();
+#endif
             absiProcessEvent ();
           }
+#endif
+
 #if 0
         if (sim_gtime () % 1024 == 0)
           {
@@ -1495,48 +1550,13 @@ setCPU:;
           console_attn (NULL);
 #endif
 
-#ifdef MULTIPASS
-        if (multipassStatsPtr) 
-          {
-            multipassStatsPtr -> A = cpu.rA;
-            multipassStatsPtr -> Q = cpu.rQ;
-            multipassStatsPtr -> E = cpy.rE;
-            for (int i = 0; i < 8; i ++)
-              {
-                multipassStatsPtr -> X [i] = cpu.rX [i];
-                multipassStatsPtr -> PAR [i] = cpu.PAR [i];
-              }
-            multipassStatsPtr -> IR = cpu.cu.IR;
-#ifdef REAL_TR
-            multipassStatsPtr -> TR = getTR (NULL);
-#else
-            multipassStatsPtr -> TR = cpu.rTR;
-#endif
-            multipassStatsPtr -> RALR = cpu.rRALR;
-          }
-#endif
-
+#ifndef EV_POLL
         // Manage the timer register
              // XXX this should be sync to the EXECUTE cycle, not the
              // simh clock cycle; move down...
              // Acutally have FETCH jump to EXECUTE
              // instead of breaking.
 
-#ifdef REAL_TR
-        if (cpu.trSubsample ++ > 1024)
-          {
-            cpu.trSubsample = 0;
-            bool overrun;
-            UNUSED word27 rTR = getTR (& overrun);
-            if (overrun)
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
-                ackTR ();
-                if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, 0);
-              }
-          }
-#else
         // Sync. the TR with the emulator clock.
         cpu.rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
@@ -1603,12 +1623,6 @@ setCPU:;
                           traceInstruction (DBG_INTR);
 #endif
 
-#ifdef MULTIPASS
-                        if (multipassStatsPtr)
-                          {
-                            multipassStatsPtr -> intr_pair_addr = intr_pair_addr;
-                          }
-#endif
                         // get interrupt pair
                         core_read2 (intr_pair_addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
@@ -1818,12 +1832,6 @@ setCPU:;
                   }
 
 
-#ifdef MULTIPASS
-                if (multipassStatsPtr)
-                  {
-                    multipassStatsPtr -> PPR = cpu.PPR;
-                  }
-#endif
 #if 0
                 // XXX The conditions are more rigorous: see AL39, pg 327
            // ci is not set up yet; check the inhibit bit in the IWB!
@@ -1924,10 +1932,12 @@ setCPU:;
                     // in uSec;
                     usleep (10000);
 
+#ifndef EV_POLL
                     // this ignores the amount of time since the last poll;
                     // worst case is the poll delay of 1/50th of a second.
                     slowQueueSubsample += 10240; // ~ 1Hz
                     queueSubsample += 10240; // ~100Hz
+#endif
 
                     sim_interval = 0;
                     // Timer register runs at 512 KHz
@@ -2052,12 +2062,6 @@ setCPU:;
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * cpu.faultNumber;
   
-#ifdef MULTIPASS
-                if (multipassStatsPtr)
-                  {
-                    multipassStatsPtr -> faultNumber = cpu.faultNumber;
-                  }
-#endif
                 core_read2 (addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
                 setCpuCycle (FAULT_EXEC_cycle);
@@ -2365,7 +2369,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2401,7 +2405,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2426,7 +2430,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
-        addr &= ~1; /* make it an even address */
+        addr &= ~1u; /* make it an even address */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2438,7 +2442,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2496,7 +2500,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
-        addr &= ~1; /* make it even a dress, or iron a skirt ;) */
+        addr &= ~1u; /* make it even a dress, or iron a skirt ;) */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2507,7 +2511,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
     else
 #endif
@@ -2624,11 +2628,6 @@ void decodeInstruction (word36 inst, DCDstruct * p)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
       }
-
-#ifdef MULTIPASS
-    if (multipassStatsPtr)
-      multipassStatsPtr -> inst = inst;
-#endif
 }
 
 // MM stuff ...
@@ -2828,7 +2827,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     //sim_printf("Y2K enabled:              %01o(8)\n", cpu.switches.y2k);
     sim_printf("Y2K enabled:              %01o(8)\n", scu [0].y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
-    sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
+    //sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
     return SCPE_OK;
 }
@@ -3167,7 +3166,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
               break;
 
             case 29: // TRLSB
-              cpu.switches.trlsb = (uint) v;
+              //cpu.switches.trlsb = (uint) v;
+              sim_printf ("TRLSB deprecated\n");
               break;
 
             case 30: // USEMAP
@@ -3199,9 +3199,9 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
       {
         return 1;
       }
-    prp->SNR = getbits36(word1, 3, 15);
-    prp->WORDNO = getbits36(word2, 0, 18);
-    prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
+    prp->SNR = getbits36_15 (word1, 3);
+    prp->WORDNO = getbits36_18 (word2, 0);
+    prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
     //prp->BITNO = getbits36(word2, 57 - 36, 6);
 #ifdef CAST_BITNO
     prp->bitno = getbits36(word2, 57 - 36, 6);
@@ -3233,7 +3233,7 @@ static void print_frame (
 
     struct _par  entry_pr;
     sim_printf ("stack trace: ");
-    if (stack_to_entry (addr, & entry_pr) == 0)
+    if (stack_to_entry ((uint) addr, & entry_pr) == 0)
       {
          sim_printf ("\t<TODO> entry %o|%o  ", entry_pr.SNR, entry_pr.WORDNO);
 
@@ -3438,7 +3438,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
     uint curr_frame;
     char * msg;
     //t_stat rc = computeAbsAddrN (& curr_frame, seg, cpu.PAR [6].WORDNO);
-    int rc = dbgLookupAddress (seg, cpu.PAR [6].WORDNO, & curr_frame, & msg);
+    int rc = dbgLookupAddress ((word18) seg, cpu.PAR [6].WORDNO, & curr_frame, & msg);
     if (rc)
       {
         sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
@@ -3450,7 +3450,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
     int offset = 0;
     word24 hdr_addr;  // 24bit main memory address
     //if (computeAbsAddrN (& hdr_addr, seg, offset))
-    if (dbgLookupAddress (seg, offset, & hdr_addr, & msg))
+    if (dbgLookupAddress ((word18) seg, (word18) offset, & hdr_addr, & msg))
       {
         sim_printf ("%s: Cannot convert %03o|0 to absolute memory address becuase %s.\n", __func__, seg, msg);
         return 1;
@@ -3504,7 +3504,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
         // BUG: We assume a stack frame doesn't cross page boundries
         uint addr;
         //if (computeAbsAddrN (& addr, seg, framep))
-        if (dbgLookupAddress (seg, offset, & addr, & msg))
+        if (dbgLookupAddress ((word18) seg, (word18) offset, & addr, & msg))
           {
             if (finished)
               break;
@@ -3539,7 +3539,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
         }
 #endif
         if (output)
-          print_frame (seg, framep, addr);
+          print_frame (seg, (int) framep, (int) addr);
 //---        if (frame_listp)
 //---            (*frame_listp).push_back(seg_addr_t(seg, framep));
 
@@ -3585,12 +3585,12 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
             if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
               {
 //---                 where_t where;
-                int offset = return_pr.WORDNO;
+                int offset = (int) return_pr.WORDNO;
                 if (offset > 0)
                     -- offset;      // call was from an instr prior to the return point
                 char * compname;
                 word18 compoffset;
-                char * where = lookupAddress (return_pr.SNR, offset, & compname, & compoffset);
+                char * where = lookupAddress (return_pr.SNR, (word18) offset, & compname, & compoffset);
                 if (where)
                   {
                     sim_printf ("%s\n", where);

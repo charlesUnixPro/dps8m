@@ -46,7 +46,7 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    word3 FCT = cpu.cu.APUCycleBits & MASK3;
     cpu.cu.APUCycleBits = (status & 07770) | FCT;
 #else
     cpu . cu . PI_AP = 0;
@@ -177,7 +177,7 @@ void do_ldbr (word36 * Ypair)
     for (int i = 0; i < 64; i ++)
       {
         cpu . SDWAM [i] . F = 0;
-        cpu . SDWAM [i] . USE = i;
+        cpu . SDWAM [i] . USE = (word6) i;
       }
 
     // If PTWAM is enabled, then
@@ -186,7 +186,7 @@ void do_ldbr (word36 * Ypair)
     for (int i = 0; i < 64; i ++)
       {
         cpu . PTWAM [i] . F = 0;
-        cpu . PTWAM [i] . USE = i;
+        cpu . PTWAM [i] . USE = (word6) i;
       }
 #ifdef do_selftestPTWAM
     selftestPTWAM ();
@@ -255,7 +255,7 @@ void do_camp (UNUSED word36 Y)
     for (int i = 0; i < 64; i ++)
       {
         cpu.PTWAM[i].F = 0;
-        cpu.PTWAM[i].USE = i;
+        cpu.PTWAM[i].USE = (word6) i;
       }
 #else
     cpu.PTWAM0.F = 0;
@@ -291,7 +291,7 @@ void do_cams (UNUSED word36 Y)
     for (int i = 0; i < 64; i ++)
       {
         cpu.SDWAM[i].F = 0;
-        cpu.SDWAM[i].USE = i;
+        cpu.SDWAM[i].USE = (word6) i;
 #ifdef ISOSLTS
 if (currentRunningCPUnum)
 sim_printf ("CAMS cleared it\n");

@@ -34,10 +34,10 @@
    This module provides a simplified UDP socket interface.  These functions are
    implemented -
 
-        udp_create      define a connection to the remote IMP
-        udp_release     release a connection
-        udp_send        send an IMP message to the other end
-        udp_receive     receive (w/o blocking!) a message if available
+        fnp_udp_create      define a connection to the remote FNP
+        fnp_udp_release     release a connection
+        fnp_udp_send        send an FNP message to the other end
+        fnp_udp_receive     receive (w/o blocking!) a message if available
 
    Note that each connection is assigned a unique "handle", a small integer,
    which is used as an index into our internal connection data table.  There
@@ -62,26 +62,18 @@
 #include <errno.h>
 
 
-#include "udplib.h"
-#include "h316_imp.h"
+#include "fnp_udplib.h"
 
 // Local constants ...
 #define MAXLINKS        10      // maximum number of simultaneous connections
-//   This constant determines the longest possible IMP data payload that can be
-// sent. Most IMP messages are trivially small - 68 words or so - but, when one
-// IMP asks for a reload the neighbor IMP sends the entire memory image in a
-// single message!  That message is about 14K words long.
-//   The next thing you should worry about is whether the underlying IP network
-// can actually send a UDP packet of this size.  It turns out that there's no
-// simple answer to that - it'll be fragmented for sure, but as long as all
-// the fragments arrive intact then the destination should reassemble them.
-#define MAXDATA      16384      // longest possible IMP packet (in H316 words)
+//   This constant determines the longest possible FNP data payload that can be
+// sent.
 
 // UDP connection data structure ...
 //   One of these blocks is allocated for every simulated modem link. 
-struct _UDP_LINK
+struct _FNP_UDP_LINK
   {
-    bool  used;                 // TRUE if this UDP_LINK is in use
+    bool  used;                 // TRUE if this FNP_UDP_LINK is in use
     char    rhost [64];
     char    rport [64];        // Remote host:port
     char    lport [64];            // Local port 
@@ -92,34 +84,35 @@ struct _UDP_LINK
     uint32_t  txsequence;           // next message sequence number for transmit
   };
 
-typedef struct _UDP_LINK UDP_LINK;
+typedef struct _FNP_UDP_LINK FNP_UDP_LINK;
 
 //   This magic number is stored at the beginning of every UDP message and is
 // checked on receive.  It's hardly foolproof, but its a simple attempt to
 // guard against other applications dumping unsolicited UDP messages into our
 // receiver socket...
-#define MAGIC   ((uint32_t) (((((('H' << 8) | '3') << 8) | '1') << 8) | '6'))
+// 'FNPx'
+#define MAGIC   ((uint32_t) (((((('F' << 8) | 'N') << 8) | 'P') << 8) | 'x'))
 
 // UDP wrapper data structure ...
 //   This is the UDP packet which is actually transmitted or received.  It
-// contains the actual IMP packet, plus whatever additional information we
-// need to keep track of things.  NOTE THAT ALL DATA IN THIS PACKET, INCLUDING
-// THE H316 MEMORY WORDS, ARE SENT AND RECEIVED WITH NETWORK BYTE ORDER!
-struct _UDP_PACKET {
+// contains the actual FNP  packet, plus whatever additional information we
+// need to keep track of things.  NOTE THAT ALL DATA IN THIS PACKET
+// ARE SENT AND RECEIVED WITH NETWORK BYTE ORDER!
+struct _FNP_UDP_PACKET {
   uint32_t  magic;                // UDP "magic number" (see above)
   uint32_t  sequence;             // UDP packet sequence number
-  uint16_t  count;                // number of H316 words to follow
-  uint16_t  flags;                // number of H316 words to follow
-  uint16_t  data[MAXDATA];        // and the actual H316 data words/IMP packet
+  uint16_t  count;                // number of bytes to follow (flags * data)
+  uint16_t  flags;                // 
+  char      data[FNP_MAXDATA];        // and the actual FNP packet
 };
-typedef struct _UDP_PACKET UDP_PACKET;
-#define UDP_HEADER_LEN  (2*sizeof(uint32_t) + sizeof(uint16_t))
+typedef struct _FNP_UDP_PACKET FNP_UDP_PACKET;
+#define FNP_UDP_HEADER_LEN  (2*sizeof(uint32_t) + sizeof(uint16_t))
 
-static UDP_LINK udp_links [MAXLINKS];
+static FNP_UDP_LINK fnp_udp_links [MAXLINKS];
 
 int sim_parse_addr (const char * cptr, char * host, size_t hostlen, const char * default_host, char * port, size_t port_len, const char * default_port, const char * validate_addr);
 
-static int udp_parse_remote (int link, char * premote)
+static int fnp_udp_parse_remote (int link, char * premote)
   {
     // This routine will parse a remote address string in any of these forms -
     //
@@ -132,7 +125,7 @@ static int udp_parse_remote (int link, char * premote)
     // In all examples, "llll" is the local port number that we use for listening,
     // and "rrrr" is the remote port number that we use for transmitting.  The
     // local port is optional and may be omitted, in which case it defaults to the
-    // same as the remote port.  This works fine if the other IMP is actually on
+    // same as the remote port.  This works fine if the other end is actually on
     // a different host, but don't try that with localhost - you'll be talking to
     // yourself!!  In both cases, "w.x.y.z" is a dotted IP for the remote machine
     // and "name.domain.com" is its name (which will be looked up to get the IP).
@@ -143,19 +136,19 @@ static int udp_parse_remote (int link, char * premote)
     char host [64], port [16];
     if (* premote == '\0')
       return -1;
-    memset (udp_links [link] . lport, 0, sizeof (udp_links [link] . lport));
-    memset (udp_links [link] . rhost, 0, sizeof (udp_links [link] . rhost));
-    memset (udp_links [link] . rport, 0, sizeof (udp_links [link] . rport));
+    memset (fnp_udp_links [link] . lport, 0, sizeof (fnp_udp_links [link] . lport));
+    memset (fnp_udp_links [link] . rhost, 0, sizeof (fnp_udp_links [link] . rhost));
+    memset (fnp_udp_links [link] . rport, 0, sizeof (fnp_udp_links [link] . rport));
     // Handle the llll::rrrr case first
     if (2 == sscanf (premote, "%d::%d", & lportno, & rport))
       {
         if ((lportno < 1) || (lportno >65535) || (rport < 1) || (rport >65535))
          return -1;
-        sprintf (udp_links [link] . lport, "%d", lportno);
-        udp_links [link] . lportno =  lportno;
-        sprintf (udp_links [link] . rhost, "localhost");
-        sprintf (udp_links [link] . rport, "%d", rport);
-        udp_links [link] . rportno = rport;
+        sprintf (fnp_udp_links [link] . lport, "%d", lportno);
+        fnp_udp_links [link] . lportno =  lportno;
+        sprintf (fnp_udp_links [link] . rhost, "localhost");
+        sprintf (fnp_udp_links [link] . rport, "%d", rport);
+        fnp_udp_links [link] . rportno = rport;
         return 0;
       }
 
@@ -163,49 +156,49 @@ static int udp_parse_remote (int link, char * premote)
     lportno = (int) strtoul (premote, & end, 10);
     if ((* end == ':') && (lportno > 0))
       {
-        sprintf (udp_links [link] . lport, "%d", lportno);
-        udp_links [link] . lportno =  lportno;
+        sprintf (fnp_udp_links [link] . lport, "%d", lportno);
+        fnp_udp_links [link] . lportno =  lportno;
         premote = end + 1;
       }
   
-    if (sim_parse_addr (premote, host, sizeof (host), "localhost", port, sizeof (port), NULL, NULL) != -1 /* SCPE_OK */)
+    if (sim_parse_addr (premote, host, sizeof (host), "localhost", port, sizeof (port), NULL, NULL) != -1 /*SCPE_OK*/)
       return -1;
-    sprintf (udp_links [link] . rhost, "%s", host);
-    sprintf (udp_links [link] . rport, "%s", port);
-    udp_links [link] . rportno = atoi (port);
-    if (udp_links [link] . lport [0] == '\0')
+    sprintf (fnp_udp_links [link] . rhost, "%s", host);
+    sprintf (fnp_udp_links [link] . rport, "%s", port);
+    fnp_udp_links [link] . rportno = atoi (port);
+    if (fnp_udp_links [link] . lport [0] == '\0')
       {
-        strcpy (udp_links [link] . lport, port);
-        udp_links [link] . lportno =  atoi (port);
+        strcpy (fnp_udp_links [link] . lport, port);
+        fnp_udp_links [link] . lportno =  atoi (port);
       }
-    if ((strcmp (udp_links [link] . lport, port) == 0) &&
+    if ((strcmp (fnp_udp_links [link] . lport, port) == 0) &&
         (strcmp ("localhost", host) == 0))
       fprintf (stderr, "WARNING - use different transmit and receive ports!\n");
   
     return 0;
   }
 
-static int udp_find_free_link (void)
+static int fnp_udp_find_free_link (void)
 {
-  //   Find a free UDP_LINK block, initialize it and return its index.  If none
+  //   Find a free FNP_UDP_LINK block, initialize it and return its index.  If none
   // are free, then return -1 ...
   int i;
   for (i = 0;  i < MAXLINKS; i ++)
     {
-      if (udp_links [i] . used == 0)
+      if (fnp_udp_links [i] . used == 0)
         {
-          memset (& udp_links [i], 0, sizeof (UDP_LINK));
+          memset (& fnp_udp_links [i], 0, sizeof (FNP_UDP_LINK));
           return i;
         }
      }
-  return NOLINK;
+  return FNP_NOLINK;
 }
 
 // return values
 // 0: ok
 // -1: out of links
 
-int udp_create (char * premote, int * pln)
+int fnp_udp_create (char * premote, int * pln)
   {
     int rc;
     //   Create a logical UDP link to the specified remote system.  The "remote"
@@ -218,22 +211,16 @@ int udp_create (char * premote, int * pln)
     //
     //   We return SCPE_OK if we're successful and an error code if we aren't. If
     // we are successful, then the ln parameter is assigned the link number,
-    // which is a handle used to identify this connection to all future udp_xyz()
+    // which is a handle used to identify this connection to all future fnp_udp_xyz()
     //  calls.
 
-    int link = udp_find_free_link ();
+    int link = fnp_udp_find_free_link ();
     if (link < 0)
       return -1; // out of links
 
     // Parse the remote name and set up the ipaddr and port ...
-    if (udp_parse_remote (link, premote) != 0)
+    if (fnp_udp_parse_remote (link, premote))
       return -2;
-#if 0
-  // Create the socket connection to the destination ...
-  sprintf(linkinfo, "Buffer=%d,Line=%d,%s,UDP,Connect=%s", (int)(sizeof(UDP_PACKET)+sizeof(int32_t)), link, udp_links[link].lport, udp_links[link].rhostport);
-  ret = tmxr_open_master (&udp_tmxr, linkinfo);
-  if (ret != SCPE_OK) return ret;
-#endif
 
     int sock = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock == -1)
@@ -247,7 +234,7 @@ int udp_create (char * premote, int * pln)
     memset ((char *) & si_me, 0, sizeof (si_me));
  
     si_me . sin_family = AF_INET;
-    si_me . sin_port = htons (udp_links [link] . lportno);
+    si_me . sin_port = htons (fnp_udp_links [link] . lportno);
     si_me . sin_addr . s_addr = htonl (INADDR_ANY);
      
     rc = bind (sock, (struct sockaddr *) & si_me, sizeof (si_me));
@@ -256,97 +243,89 @@ int udp_create (char * premote, int * pln)
 
 // As I understand it, a connect on UDP sets the send address and limits
 // recieving to the specifed address; creating a 'connection'; I am not
-// sure the udplib wants that. The alternative is to use sendto().
+// sure the fnp_udplib wants that. The alternative is to use sendto().
 
+printf ("rhost %s rport %s\n", fnp_udp_links [link] . rhost, fnp_udp_links [link] . rport);
     struct addrinfo * ai;
-    rc = getaddrinfo (udp_links [link] . rhost, udp_links [link] . rport, NULL,
+    rc = getaddrinfo (fnp_udp_links [link] . rhost, fnp_udp_links [link] . rport, NULL,
       & ai);
     if (rc == -1)
       return -6;
 
     rc = connect (sock, ai -> ai_addr, sizeof (struct sockaddr));
     if (rc == -1)
-      return -7;
+      {
+        perror ("connect");
+        return -7;
+      }
 
     freeaddrinfo (ai);
 
-    udp_links [link] . sock = sock;
+    fnp_udp_links [link] . sock = sock;
 
     // All done - mark the TCP_LINK data as "used" and return the index.
-     udp_links [link] . used = true;
+     fnp_udp_links [link] . used = true;
      * pln = link;
-     //udp_lines[link].dptr = udp_links[link].dptr = dptr;      // save device
-     //udp_tmxr.uptr = dptr->units;
-     //udp_tmxr.last_poll_time = 1;          // h316'a use of TMXR doesn't poll periodically for connects
-     //tmxr_poll_conn (&udp_tmxr);           // force connection initialization now
-     //udp_tmxr.last_poll_time = 1;          // h316'a use of TMXR doesn't poll periodically for connects
-     //sim_debug(IMP_DBG_UDP, dptr, "link %d - listening on port %s and sending to %s\n", link, udp_links[link].lport, udp_links[link].rhostport);
-printf ("link %d - listening on port %s and sending to %s:%s\n", link, udp_links [link] . lport, udp_links [link] . rhost, udp_links [link] . rport);
+printf ("link %d - listening on port %s and sending to %s:%s\n", link, fnp_udp_links [link] . lport, fnp_udp_links [link] . rhost, fnp_udp_links [link] . rport);
 
     return 0;
   }
 
-int udp_release (int link)
+int fnp_udp_release (int link)
   {
-    //   Close a link that was created by udp_create() and release any resources
+    //   Close a link that was created by fnp_udp_create() and release any resources
     // allocated to it.  We always return SCPE_OK unless the link specified is
     // already unused.
     if ((link < 0) || (link >= MAXLINKS))
       return -1;
-    if (! udp_links [link] . used)
+    if (! fnp_udp_links [link] . used)
       return -1;
-    //if (dptr != udp_links [link] . dptr)
+    //if (dptr != fnp_udp_links [link] . dptr)
       //return -1;
 
-    //tmxr_detach_ln (&udp_lines[link]);
-    close (udp_links [link] . sock);
-    udp_links [link] . used = false;
+    //tmxr_detach_ln (&fnp_udp_lines[link]);
+    close (fnp_udp_links [link] . sock);
+    fnp_udp_links [link] . used = false;
     //sim_debug(IMP_DBG_UDP, dptr, "link %d - closed\n", link);
 printf("link %d - closed\n", link);
 
     return 0;
   }
 
-int udp_send (int link, uint16_t * pdata, uint16_t count, uint16_t flags)
+int fnp_udp_send (int link, char * pdata, uint16_t count, uint16_t flags)
   {
-    //   This routine does all the work of sending an IMP data packet.  pdata
-    // is a pointer (usually into H316 simulated memory) to the IMP packet data,
-    // count is the length of the data (in H316 words, not bytes!), and pdest is
+//sim_printf ("fnp_udp_send link %d\n", link);
+    //   This routine does all the work of sending an FNP data packet.  pdata
+    // is a pointer the FNP packet data,
+    // count is the length of the data bytes, and pdest is
     // the destination socket.  There are two things worthy of note here - first,
-    // notice that the H316 words are sent in network order, so the remote simh
+    // notice that the datawords are sent in network order, so the remote simh
     // doesn't necessarily need to have the same endian-ness as this machine.
     // Second, notice that transmitting sockets are NOT set to non blocking so
     // this routine might wait, but we assume the wait will never be too long.
 
-    UDP_PACKET pkt;
+    FNP_UDP_PACKET pkt;
     int pktlen;
     uint16_t i;
 
     if ((link < 0) || (link >= MAXLINKS))
       return -1;
-    if (! udp_links [link] . used)
+    if (! fnp_udp_links [link] . used)
       return -1;
-    if ((pdata == NULL) || (count == 0) || (count > MAXDATA))
+    if ((pdata == NULL) || (count == 0) || (count > FNP_MAXDATA))
       return -1;
-    //if (dptr != udp_links [link].dptr) return SCPE_IERR;
   
     //   Build the UDP packet, filling in our own header information and copying
     // the H316 words from memory.  REMEMBER THAT EVERYTHING IS IN NETWORK ORDER!
     pkt . magic = htonl (MAGIC);
-    pkt . sequence = htonl (udp_links [link] . txsequence ++);
+    pkt . sequence = htonl (fnp_udp_links [link] . txsequence ++);
     pkt . count = htons (count);
     pkt . flags = htons (flags);
     for (i = 0; i < count; i ++)
-      pkt . data [i] = htons (* pdata ++);
-    pktlen = UDP_HEADER_LEN + count * sizeof (uint16_t);
+      pkt . data [i] = (* pdata ++);
+    pktlen = FNP_UDP_HEADER_LEN + count * sizeof (uint16_t);
 
-#if 0
-    // Send it and we're outta here ...
-    iret = tmxr_put_packet_ln (&udp_lines[link], (const uint8 *)&pkt, (size_t)pktlen);
-    if (iret != SCPE_OK) return udp_error(link, "tmxr_put_packet_ln()");
-#endif
-
-    ssize_t rc = send (udp_links [link] . sock, & pkt, (size_t) pktlen, 0);
+    ssize_t rc = send (fnp_udp_links [link] . sock, & pkt, (size_t) pktlen, 0);
     if (rc == -1)
       {
         return -2;
@@ -356,7 +335,7 @@ printf ("link %d - packet sent (sequence=%d, length=%d)\n", link, ntohl (pkt . s
     return 0;
   }
 
-static int udp_receive_packet (int link, UDP_PACKET * ppkt, size_t pktsiz)
+static int fnp_udp_receive_packet (int link, FNP_UDP_PACKET * ppkt, size_t pktsiz)
   {
     //   This routine will do the hard part of receiving a UDP packet.  If it's
     // successful the packet length, in bytes, is returned.  The receiver socket
@@ -367,36 +346,18 @@ static int udp_receive_packet (int link, UDP_PACKET * ppkt, size_t pktsiz)
     // of the checking for valid packets, unexpected packets, duplicate or out of
     // sequence packets.  That's strictly the caller's problem!
 
-#if 0
-    ssize_t pktsiz;
-    const uint8 * pbuf;
-    int ret;
-  
-    udp_lines [link] . rcve = true;          // Enable receiver
-    tmxr_poll_rx (&udp_tmxr);
-    ret = tmxr_get_packet_ln (&udp_lines[link], &pbuf, &pktsiz);
-    udp_lines[link].rcve = FALSE;          // Disable receiver
-    if (ret != SCPE_OK) {
-      udp_error(link, "tmxr_get_packet_ln()");
-      return NOLINK;
-    }
-    if (pbuf == NULL) return 0;
-    // Got a packet, so copy it to the packet buffer
-    memcpy (ppkt, pbuf, pktsiz);
-#endif
-
-    ssize_t n = read (udp_links [link] . sock, ppkt, pktsiz);
+    ssize_t n = read (fnp_udp_links [link] . sock, ppkt, pktsiz);
     if (n < 0)
       {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
           return 0;
         return -1;
       }
-//printf ("udp_receive_packet returns %ld\n", n);
+//printf ("fnp_udp_receive_packet returns %ld\n", n);
     return (int) n;
   }
 
-int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
+int fnp_udp_receive (int link, char * pdata, uint16_t maxbuf, uint16_t * flags)
   {
     //   Receive an IMP packet from the virtual modem. pdata is a pointer usually
     // directly into H316 simulated memory) to where the IMP packet data should
@@ -413,20 +374,20 @@ int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
     //   One final note - it's explicitly allowed for pdata to be null and/or
     // maxbuf to be zero.  In either case the received package is discarded, but
     // the actual length of the discarded package is still returned.
-    UDP_PACKET pkt;
+    FNP_UDP_PACKET pkt;
     int32_t pktlen, explen, implen, i;
     uint32_t magic, pktseq;
     if ((link < 0) || (link >= MAXLINKS))
       return -1;
-    if (!udp_links [link] . used)
+    if (!fnp_udp_links [link] . used)
       return -1;
-    //if (dptr != udp_links [link] . dptr)
+    //if (dptr != fnp_udp_links [link] . dptr)
       //return SCPE_IERR;
   
-    while ((pktlen = udp_receive_packet (link, & pkt, sizeof (pkt))) > 0)
+    while ((pktlen = fnp_udp_receive_packet (link, & pkt, sizeof (pkt))) > 0)
       {
         // First do some header checks for a valid UDP packet ...
-        if (((size_t) pktlen) < UDP_HEADER_LEN)
+        if (((size_t) pktlen) < FNP_UDP_HEADER_LEN)
           {
             //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet w/o header (length=%d)\n", link, pktlen);
             continue;
@@ -438,7 +399,7 @@ int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
             continue;
           }
         implen = ntohs (pkt . count);
-        explen = (int32_t) UDP_HEADER_LEN + implen * (int32_t) sizeof (uint16_t);
+        explen = (int32_t) FNP_UDP_HEADER_LEN + implen * (int32_t) sizeof (uint16_t);
         if (explen != pktlen)
           {
             //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet length wrong (expected=%d received=%d)\n", link, explen, pktlen);
@@ -465,20 +426,20 @@ int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
         // an exercise for later.
 
         pktseq = ntohl (pkt . sequence);
-        if ((pktseq == 0) && (udp_links [link] . rxsequence != 0))
+        if ((pktseq == 0) && (fnp_udp_links [link] . rxsequence != 0))
           {
             //sim_debug(IMP_DBG_UDP, dptr, "link %d - remote modem restarted\n", link);
           }
-        else if (pktseq < udp_links [link] . rxsequence)
+        else if (pktseq < fnp_udp_links [link] . rxsequence)
           {
-            //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet out of sequence 1 (expected=%d received=%d\n", link, udp_links[link].rxsequence, pktseq);
+            //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet out of sequence 1 (expected=%d received=%d\n", link, fnp_udp_links[link].rxsequence, pktseq);
             continue;  // discard this packet!
           }
-        else if (pktseq != udp_links [link] . rxsequence)
+        else if (pktseq != fnp_udp_links [link] . rxsequence)
           {
-            //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet out of sequence 2 (expected=%d received=%d\n", link, udp_links[link].rxsequence, pktseq);
+            //sim_debug(IMP_DBG_UDP, dptr, "link %d - received packet out of sequence 2 (expected=%d received=%d\n", link, fnp_udp_links[link].rxsequence, pktseq);
           }
-        udp_links [link] . rxsequence = pktseq + 1;
+        fnp_udp_links [link] . rxsequence = pktseq + 1;
     
         // It's a valid packet - if there's no buffer then just discard it.
         if ((pdata == NULL) || (maxbuf == 0))
@@ -489,9 +450,10 @@ int udp_receive (int link, uint16_t * pdata, uint16_t maxbuf)
   
         // Copy the data to the H316 memory and we're done!
         //sim_debug (IMP_DBG_UDP, dptr, "link %d - packet received (sequence=%d, length=%d)\n", link, pktseq, pktlen);
-printf ("link %d - packet received (sequence=%d, length=%d)\n", link, pktseq, pktlen);
+printf ("link %d - packet received (sequence=%d, pktlen=%d)\n", link, pktseq, pktlen);
         for (i = 0;  i < (implen < maxbuf ? implen : maxbuf);  ++ i)
-          * pdata ++ = ntohs (pkt . data [i]);
+          * pdata ++ = pkt . data [i];
+        * flags = ntohs (pkt . flags);
         return implen;
       }
   
@@ -635,10 +597,10 @@ int main (int argc, char * argv [])
   {
     int rc;
     int linkno;
-    rc = udp_create ("4500::4426", & linkno);
+    rc = fnp_udp_create ("4500::4426", & linkno);
     if (rc < 0)
       {
-        printf ("udp_create failed\n");
+        printf ("fnp_udp_create failed\n");
         exit (1);
       }
 
@@ -646,15 +608,15 @@ int main (int argc, char * argv [])
       {
 #define psz 17000
         uint16_t pkt [psz];
-        rc = udp_receive (linkno, pkt, psz);
+        rc = fnp_udp_receive (linkno, pkt, psz);
         if (rc < 0)
           {
-            printf ("udp_receive failed\n");
+            printf ("fnp_udp_receive failed\n");
             exit (1);
           }
         else if (rc == 0)
           {
-            printf ("udp_receive 0\n");
+            printf ("fnp_udp_receive 0\n");
             sleep (1);
           }
         else

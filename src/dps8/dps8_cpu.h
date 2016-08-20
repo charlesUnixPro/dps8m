@@ -647,8 +647,6 @@ typedef struct
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint drl_fatal;
-    uint trlsb; // Timer Register least significent bits: the number of 
-                // instructions that make a timer quantum.
     uint serno;
     bool useMap;
   } switches_t;
@@ -1014,9 +1012,7 @@ typedef struct
     word8    rE;     // exponent [map: rE, 28 0's]
 
     word18   rX [8]; // index
-#ifndef REAL_TR
     word27   rTR;    // timer [map: TR, 9 0's]
-#endif
     word24   rY;     // address operand
     word8    rTAG;   // instruction tag
     word8    tCF;    // character position field [3b]
@@ -1054,11 +1050,7 @@ typedef struct
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
     word36 scu_data[8];    // For SCU instruction
-#ifdef REAL_TR
-    uint timerRegVal;
-    struct timeval timerRegT0;
-    uint trSubsample;
-#else
+#ifndef EVPOLL
     uint rTRlsb;
 #endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
@@ -1242,3 +1234,5 @@ void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
 void addHist (uint hset, word36 w0, word36 w1);
+uint getCPUnum (void);
+

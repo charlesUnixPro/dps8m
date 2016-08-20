@@ -35,16 +35,21 @@ struct  deviceAttribute {
 };
 typedef struct deviceAttribute ATTRIBUTE;
 
+enum service_types {service_login, service_autocall, service_slave};
+
 struct fauxMulticsTerminalInfo
 {
     char *raw;
     struct
     {
         char    *name;     // Multics device name
+        int     fnpUnitNum;
         int     hsla_line_num; // Multiplexor slot number associated with name
         regex_t r;         // optional regex to match name
         char    *regex;    // text of optional regex
-        
+        enum service_types service;
+        int     mux_line;
+        int     fromport;
         ATTRIBUTE   *attrs;
     } multics;
 
@@ -63,8 +68,6 @@ struct muxtermio
     char        buffer[1024];   // line buffer for initial device selection and line discipline
     int32       nPos;           // position where *next* user input is to be stored
     MUXTERMSTATE state;         // state of tty (eDisconnected, eInput ePassThrough)
-    
-    //t_MState    MState;         // RFU
 };
 
 typedef struct muxtermio MUXTERMIO;

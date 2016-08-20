@@ -8,7 +8,11 @@
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
+#ifdef FNP2
+#include "dps8_fnp2.h"
+#else
 #include "dps8_fnp.h"
+#endif
 #include "dps8_urp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"

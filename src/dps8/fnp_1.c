@@ -83,12 +83,12 @@ t_stat OnMuxDisconnect(int line, int why)
         tty->fmti->inUse = false;   // multics device no longer in use
 
         int hsla_line_num = tty->fmti->multics.hsla_line_num;
-        MState.line[hsla_line_num].muxLineNum = -1;
+        MState[tty->fmti->multics.fnpUnitNum].line[hsla_line_num].muxLineNum = -1;
         
         // TODO for CAC: send a "line_disconnected" to Multics
         char msg [256];
         sprintf (msg, "line_disconnected %d", hsla_line_num);
-        tellCPU (0, msg);
+        tellCPU (tty->fmti->multics.fnpUnitNum, msg);
     }
     tty->fmti = NULL;               // line no longer connected to a multics device
     
@@ -133,20 +133,20 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
                     {
                         tty->fmti = q;              // associate line with Multics device
                         q->inUse = true;            // device is being used
-                        MState . line [q->multics.hsla_line_num] . muxLineNum = line;
+                        MState[q->multics.fnpUnitNum].line[q->multics.hsla_line_num].muxLineNum = line;
                         // XXX the accept_terminal command should set this
                         tty->state = ePassThrough;  // device attached to tty line. Go into passthrough mode
                         
                         tmxr_linemsgf (tmln, "%s", strFMTI(q, line));
                         
                         sim_printf("%s LINE %d CONNECTED AS %s from IP %s\n", Now(), line, q->multics.name, tmln->ipad);
-                        if (! MState.accept_calls)
+                        if (! MState[q->multics.fnpUnitNum].accept_calls)
                         {
                             tmxr_linemsg_stall (tmln, "Multics is not accepting calls\r\n");
                             break;
                         } else {
                             int hsla_line_num = tty->fmti->multics.hsla_line_num; 
-                            if (! MState.line[hsla_line_num] . listen)
+                            if (! MState[q->multics.fnpUnitNum].line[hsla_line_num] . listen)
                             {
                                 tmxr_linemsg_stall (tmln, "Multics is not listening to this line\r\n");
                                 break;
@@ -154,7 +154,7 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
                         }
                         char buf [256];
                         sprintf (buf, "accept_new_terminal %d 1 0", q->multics.hsla_line_num);
-                        tellCPU (0, buf);
+                        tellCPU (q->multics.fnpUnitNum, buf);
                     }
                     else
                     {
@@ -174,13 +174,13 @@ t_stat OnMuxRx(TMXR *mp, TMLN *tmln, int line, int kar)
             }
             break;
         case ePassThrough:
-            if (! MState.accept_calls)
+            if (! MState[tty->fmti->multics.fnpUnitNum].accept_calls)
             {
                 tmxr_linemsg_stall (tmln, "Multics is not accepting calls\r\n");
                 break;
             }
             int hsla_line_num = tty->fmti->multics.hsla_line_num; 
-            if (! MState.line[hsla_line_num] . listen)
+            if (! MState[tty->fmti->multics.fnpUnitNum].line[hsla_line_num] . listen)
             {
                 tmxr_linemsg_stall (tmln, "Multics is not listening to this line\r\n");
                 break;
@@ -207,7 +207,7 @@ t_stat OnMuxRxBreak(int line, UNUSED int kar)
     int hsla_line_num = tty->fmti->multics.hsla_line_num;
     char buf [256];
     sprintf (buf, "line_break %d 1 0", hsla_line_num);
-    tellCPU (0, buf);
+    tellCPU (tty->fmti->multics.fnpUnitNum, buf);
     
     return SCPE_OK;
 }

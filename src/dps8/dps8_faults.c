@@ -358,7 +358,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     // Increment FCT
 
-    uint FCT = cpu.cu.APUCycleBits & MASK3;
+    word3 FCT = cpu.cu.APUCycleBits & MASK3;
     FCT = (FCT + 1) & MASK3;
     cpu.cu.APUCycleBits = (cpu.cu.APUCycleBits & 07770) | FCT;
 

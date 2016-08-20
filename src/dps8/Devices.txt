@@ -1,18 +1,4 @@
-Service: login;
-Charge: none;
-Terminal_type: none;
-Line_type: none;
-Baud: 9600;
-FNP_required_up_time: 5;
-FNP:      D;
-   type:            DN6670;
-   memory:          64;
-   lsla:            0;
-   hsla:            1;
-   image:           >system_library_unbundled>site_mcs;
-   service:         active;
 name: d.h000;
-attributes: hardwired;
 name: d.h001;
 name: d.h002;
 name: d.h003;
@@ -42,7 +28,15 @@ name: d.h026;
 name: d.h027;
 name: d.h028;
 name: d.h029;
+
+# Auto call line
 name: d.h030;
+   service: autocall;
+
+# Slave line
 name: d.h031;
+   service: slave;
+   port: 6131
+
 end;
 
