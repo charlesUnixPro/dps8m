@@ -263,11 +263,7 @@ static void dmpmbx (uint mailboxAddress)
 static int findMbx (uint fnpUnitIdx)
   {
     struct fnpUnitData * fudp = & fnpUnitData [fnpUnitIdx];
-#ifdef ISOLTS
     for (uint i = 0; i < 4; i ++)
-#else
-    for (uint i = 0; i < 1; i ++)
-#endif
       if (! fudp -> fnpMBXinUse [i])
         return (int) i;
     return -1;
@@ -980,6 +976,9 @@ sim_printf ("\n");
 #endif
 
     fudp->fnpMBXinUse [mbx] = true;
+    fudp->lineWaiting [mbx] = true;
+    fudp->fnpMBXlineno [mbx] = lineno;
+    linep->waitForMbxDone=true;
     // Set the TIMW
     putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
     send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
@@ -1626,6 +1625,12 @@ static int interruptL66_CS_done (void)
       {
         decoded.fudp -> fnpMBXinUse [mbx] = false;
         //sim_printf ("Multics marked cell %d (mbx %d) as unused\n", decoded.cell, mbx);
+        if (decoded.fudp->lineWaiting[mbx])
+          {
+            struct t_line * linep = & fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
+            sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
+            linep->waitForMbxDone = false;
+          }
         //sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpMBXinUse [1], decoded.fudp->fnpMBXinUse [2], decoded.fudp->fnpMBXinUse [3]);
       }
     return 0;
@@ -2026,9 +2031,9 @@ void fnpProcessEvent (void)
                 linep -> wru_timeout = false;
               }
 
-            // Need to send an 'accept_input' command to CS?
+            // Need to send an 'accept_input' or 'input_in_mailbox' command to CS?
 
-            else if (linep->accept_input)
+            else if (linep->accept_input && ! linep->waitForMbxDone)
               {
                 if (linep->accept_input == 1)
                   {
