@@ -1628,7 +1628,7 @@ static int interruptL66_CS_done (void)
         if (decoded.fudp->lineWaiting[mbx])
           {
             struct t_line * linep = & fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
-            sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
+            //sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
             linep->waitForMbxDone = false;
           }
         //sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpMBXinUse [1], decoded.fudp->fnpMBXinUse [2], decoded.fudp->fnpMBXinUse [3]);
