@@ -212,6 +212,7 @@ void close_connection (uv_stream_t* stream)
             sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
             linep -> line_disconnected = true;
+            linep -> listen = false;
           }
         else
           {
