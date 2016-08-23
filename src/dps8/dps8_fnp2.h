@@ -78,6 +78,11 @@ typedef struct
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
                           // deal with 'reject_request' retries.
+        bool waitForMbxDone; // If set, the line has sent input to the CS, 
+                             // but the CS has not completed the mbx transaction;
+                             // in order to prevent input data reordering, serialize
+                             // the commands by waiting for this to clear before
+                             // sending the next input.
         bool input_reply_pending;
         // Part of 'accent_input'
         bool input_break;
@@ -115,6 +120,7 @@ struct fnpUnitData
     uint mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
+    bool lineWaiting [4]; // If set, fnpMBXlineno is waiting for the mailbox to be marked clear.
     int fnpMBXlineno [4]; // Which HSLA line is using the mbx
     char ipcName [MAX_DEV_NAME_LEN];
 
