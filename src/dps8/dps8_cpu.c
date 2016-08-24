@@ -3680,6 +3680,16 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
 
 void addHist (uint hset, word36 w0, word36 w1)
   {
+    if (cpu.MR.emr)
+      {
+        cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
+        cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;
+        cpu.history_cyclic[hset] = (cpu.history_cyclic[hset] + 1) % N_HIST_SIZE;
+      }
+  }
+
+void addHistForce (uint hset, word36 w0, word36 w1)
+  {
     cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
     cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;
     cpu.history_cyclic[hset] = (cpu.history_cyclic[hset] + 1) % N_HIST_SIZE;
