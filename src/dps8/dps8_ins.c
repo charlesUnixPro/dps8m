@@ -1934,10 +1934,12 @@ restart_1:
 /// executeInstruction: Delayed overflow fault
 ///
 
+#if 0
     if (cpu.dlyFlt)
       {
         doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
       }
+#endif
 
 ///
 /// executeInstruction: XEC/XED processing
@@ -2127,6 +2129,10 @@ restart_1:
           } // if (cpu.cu.rpt || cpu.cu.rd & (cpu.PPR.IC & 1))
       } // (! rf) && (cpu.cu.rpt || cpu.cu.rd)
 
+    if (cpu.dlyFlt)
+      {
+        doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
+      }
 ///
 /// executeInstruction: simh hooks
 ///
@@ -3785,7 +3791,11 @@ static t_stat DoBasicInstruction (void)
                 // no division takes place
                 SC_I_ZERO (cpu.CY == 0);
                 SC_I_NEG (cpu.rQ & SIGN36);
-                doFault(FAULT_DIV, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "div divide check");
+
+                if (cpu.rQ & SIGN36)
+                  cpu.rQ = (- cpu.rQ) & MASK36;
+
+                dlyDoFault(FAULT_DIV, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "div divide check");
             }
             else
             {
