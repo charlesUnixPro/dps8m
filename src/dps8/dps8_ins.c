@@ -2229,10 +2229,20 @@ static t_stat doInstruction (void)
     if (i -> info -> ndes > 0)
       CLR_I_MIF;
 
+#if 1
+    t_stat ret =  i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
+    if (cpu.MR.hrxfr == 0 || ret == CONT_TRA)
+      {
+        addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
+      }
+    return ret;
+#else
     // Simple CU history hack
     addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
 
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
+#endif
+
 }
 
 // CANFAULT
@@ -6177,6 +6187,16 @@ IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
                         {
                           for (uint hset = 0; hset < N_HIST_SETS; hset ++)
                              cpu.history_cyclic[hset] = 0;
+                        }
+
+                      if (cpu.MR.sdpap)
+                        {
+                          sim_warn ("LCPR set SDPAP\n");
+                        }
+
+                      if (cpu.MR.separ)
+                        {
+                          sim_warn ("LCPR set SEPAR\n");
                         }
                     }
                   break;
