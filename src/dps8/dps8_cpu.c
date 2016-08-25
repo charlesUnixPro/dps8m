@@ -1989,7 +1989,7 @@ setCPU:;
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (cpu.cu.IWB, & cpu.currentInstruction);
+                decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
                 cpu.PPR.IC += ci->info->ndes;
                 cpu.PPR.IC ++;
@@ -2143,7 +2143,7 @@ setCPU:;
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (cpu.cu.IWB, & cpu.currentInstruction);
+                decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
                 cpu.PPR.IC += ci->info->ndes;
                 cpu.PPR.IC ++;
