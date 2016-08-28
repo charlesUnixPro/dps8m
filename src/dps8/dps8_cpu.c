@@ -1662,7 +1662,7 @@ setCPU:;
                                 //get_went_appending () ? 1 : 0);
 
 // BAR mode:  [NBAR] is set ON (taking the processor
-// out of BAR node) by the execution of any transfer instruction
+// out of BAR mode) by the execution of any transfer instruction
 // other than tss during a fault or interrupt trap.
 
                     if (! (cpu.currentInstruction.opcode == 0715 &&
