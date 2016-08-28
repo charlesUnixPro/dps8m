@@ -908,8 +908,10 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         SET_I_NBAR;
     
         cpu.CMR.luf = 3;    // default of 16 mS
-        cpu.cu.SD_ON = 1;
-        cpu.cu.PT_ON = 1;
+        cpu.cu.SD_ON = 0;
+        cpu.cu.PT_ON = 0;
+        //cpu.cu.SD_ON = 1;
+        //cpu.cu.PT_ON = 1;
  
         setCpuCycle (FETCH_cycle);
 
