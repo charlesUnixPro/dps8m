@@ -826,7 +826,8 @@ typedef struct
     
  } ctl_unit_data_t;
 
-#define IWB_IRODD ((cpu . cu . rd && ((cpu . PPR.IC & 1) != 0)) ? cpu . cu . IRODD : cpu . cu . IWB)
+#define USE_IRODD (cpu.cu.rd && ((cpu. PPR.IC & 1) != 0)) 
+#define IWB_IRODD (USE_IRODD ? cpu.cu.IRODD : cpu.cu.IWB)
 
 // Control unit data (288 bits) 
 
@@ -1235,4 +1236,4 @@ void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2)
 void addEAPUhist (word18 ZCA, word18 opcode);
 void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
-
+void addHistForce (uint hset, word36 w0, word36 w1);

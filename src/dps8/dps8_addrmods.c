@@ -334,21 +334,26 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
 
 static void updateIWB (word18 addr, word6 tag)
   {
+    word36 * wb;
+    if (USE_IRODD)
+      wb = & cpu.cu.IRODD;
+    else
+      wb = & cpu.cu.IWB;
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB was %012llo %06o %s\n",
-               cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
-               extMods [GET_TAG (cpu . cu  . IWB)] . mod);
+               * wb, GET_ADDR (* wb),
+               extMods [GET_TAG (* wb)] . mod);
 
-    putbits36_18 (& cpu . cu  . IWB,  0, addr);
-    putbits36_6 (& cpu . cu  . IWB, 30, tag);
-    putbits36_1 (& cpu . cu  . IWB, 29,  0);
+    putbits36_18 (wb,  0, addr);
+    putbits36_6 (wb, 30, tag);
+    putbits36_1 (wb, 29,  0);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012llo %06o %s\n",
-               cpu . cu  . IWB, GET_ADDR (cpu . cu  . IWB),
-               extMods [GET_TAG (cpu . cu  . IWB)] . mod);
+               * wb, GET_ADDR (* wb),
+               extMods [GET_TAG (* wb)] . mod);
 
-    decodeInstruction (cpu . cu  . IWB, & cpu . currentInstruction);
+    decodeInstruction (IWB_IRODD, & cpu . currentInstruction);
   }
 
 //

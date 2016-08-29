@@ -1934,10 +1934,12 @@ restart_1:
 /// executeInstruction: Delayed overflow fault
 ///
 
+#if 0
     if (cpu.dlyFlt)
       {
         doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
       }
+#endif
 
 ///
 /// executeInstruction: XEC/XED processing
@@ -2127,6 +2129,10 @@ restart_1:
           } // if (cpu.cu.rpt || cpu.cu.rd & (cpu.PPR.IC & 1))
       } // (! rf) && (cpu.cu.rpt || cpu.cu.rd)
 
+    if (cpu.dlyFlt)
+      {
+        doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
+      }
 ///
 /// executeInstruction: simh hooks
 ///
@@ -2229,10 +2235,20 @@ static t_stat doInstruction (void)
     if (i -> info -> ndes > 0)
       CLR_I_MIF;
 
+#if 1
+    t_stat ret =  i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
+    if (cpu.MR.hrxfr == 0 || ret == CONT_TRA)
+      {
+        addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
+      }
+    return ret;
+#else
     // Simple CU history hack
     addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
 
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
+#endif
+
 }
 
 // CANFAULT
@@ -3767,7 +3783,11 @@ static t_stat DoBasicInstruction (void)
                 // no division takes place
                 SC_I_ZERO (cpu.CY == 0);
                 SC_I_NEG (cpu.rQ & SIGN36);
-                doFault(FAULT_DIV, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "div divide check");
+
+                if (cpu.rQ & SIGN36)
+                  cpu.rQ = (- cpu.rQ) & MASK36;
+
+                dlyDoFault(FAULT_DIV, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "div divide check");
             }
             else
             {
@@ -6101,6 +6121,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 
         case 0674:  // lcpr
             // DPS8M interpratation
+IF1 sim_printf ("lcpr %d\n", i->tag);
             switch (i->tag)
               {
                // Extract bits from 'from' under 'mask' shifted to where (where
@@ -6142,35 +6163,59 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   break;
 
                 case 04: // mode register
-                  if (GETBITS (cpu.CY, 1, 35))
+                  //if (GETBITS (cpu.CY, 1, 35))
                     {
-                      cpu.MR.cuolin = GETBITS (cpu.CY, 1, 18);
-                      cpu.MR.solin = GETBITS (cpu.CY, 1, 19);
-                      cpu.MR.sdpap = GETBITS (cpu.CY, 1, 20);
-                      cpu.MR.separ = GETBITS (cpu.CY, 1, 21);
-                      cpu.MR.tm = GETBITS (cpu.CY, 3, 23);
-                      cpu.MR.vm = GETBITS (cpu.CY, 3, 26);
-                      cpu.MR.hrhlt = GETBITS (cpu.CY, 1, 28);
-                      cpu.MR.hrxfr = GETBITS (cpu.CY, 1, 29);
-                      cpu.MR.ihr = GETBITS (cpu.CY, 1, 30);
-                      cpu.MR.ihrrs = GETBITS (cpu.CY, 1, 31);
-                      cpu.MR.mrgctl = GETBITS (cpu.CY, 1, 32);
-                      cpu.MR.hexfp = GETBITS (cpu.CY, 1, 33);
-                      //cpu.MR.emr = GETBITS (cpu.CY, 1, 35);
+IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
+                      cpu.MR.cuolin = getbits36_1 (cpu.CY, 18);
+                      cpu.MR.solin = getbits36_1 (cpu.CY, 19);
+                      cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
+                      cpu.MR.separ = getbits36_1 (cpu.CY, 21);
+                      cpu.MR.tm = getbits36_3 (cpu.CY, 23);
+                      cpu.MR.vm = getbits36_3 (cpu.CY, 26);
+                      cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
+                      cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
+                      cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
+                      cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
+                      cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
+                      cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
+                      cpu.MR.emr = getbits36_1 (cpu.CY, 35);
+
+
+		  // Stop HR Strobe on HR Counter Overflow. (Setting bit 28
+		  // shall cause the HR counter to be reset to zero.)
+                      // CAC: It is unclear if bit 28 is edge or level 
+                      // triggered; assuming level for simplicity.
+                      if (cpu.MR.hrhlt)
+                        {
+                          for (uint hset = 0; hset < N_HIST_SETS; hset ++)
+                             cpu.history_cyclic[hset] = 0;
+                        }
+
+                      if (cpu.MR.sdpap)
+                        {
+                          sim_warn ("LCPR set SDPAP\n");
+                        }
+
+                      if (cpu.MR.separ)
+                        {
+                          sim_warn ("LCPR set SEPAR\n");
+                        }
                     }
                   break;
 
                 case 03: // DPS 8m 0's -> history
                   {
+IF1 sim_printf ("set history to 0\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
-                      addHist (i, 0, 0);
+                      addHistForce (i, 0, 0);
                   }
                   break;
 
                 case 07: // DPS 8m 1's -> history
                   {
+IF1 sim_printf ("set history to 1\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
-                      addHist (i, MASK36, MASK36);
+                      addHistForce (i, MASK36, MASK36);
                   }
                   break;
 
@@ -6209,6 +6254,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
         case 0452:  // scpr
           {
             uint tag = (i -> tag) & MASK6;
+IF1 sim_printf ("scpr %d\n", i->tag);
             switch (tag)
               {
                 case 000: // C(APU history register#1) -> C(Y-pair)
@@ -6246,7 +6292,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                     putbits36_1 (& cpu.Ypair [0], 32, cpu.MR.mrgctl);
                     putbits36_1 (& cpu.Ypair [0], 33, cpu.MR.hexfp);
                     putbits36_1 (& cpu.Ypair [0], 35, cpu.MR.emr);
-//if (currentRunningCPUnum) sim_printf ("mode register %012llo\n", cpu.Ypair[0]);
+IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair [1] = 0;
                     putbits36_15 (& cpu.Ypair [1], 36 - 36,
                                cpu.CMR.cache_dir_address);
@@ -6261,6 +6307,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                     putbits36_2 (& cpu.Ypair [1], 62 - 36, cpu.CMR.rro_AB);
                     putbits36_1 (& cpu.Ypair [1], 68 - 36, cpu.CMR.bypass_cache);
                     putbits36_2 (& cpu.Ypair [1], 70 - 36, cpu.CMR.luf);
+IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
                   }
                   break;
 
@@ -6276,6 +6323,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                   {
                     cpu.Ypair [0] = cpu.history [CU_HIST_REG] [cpu.history_cyclic[CU_HIST_REG]] [0];
                     cpu.Ypair [1] = cpu.history [CU_HIST_REG] [cpu.history_cyclic[CU_HIST_REG]] [1];
+IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic[CU_HIST_REG] = (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
                   break;

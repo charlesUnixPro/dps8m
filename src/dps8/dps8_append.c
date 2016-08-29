@@ -1380,9 +1380,22 @@ G:;
     
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
+#if 1
     appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
-
+#else
+    // ISOLTS pa865 test-01a 101232
+    if (get_bar_mode ())
+      {
+        appendingUnitCycleType = apuCycle_FANP;
+        setAPUStatus (apuStatus_FABS);
+      }
+    else
+      {
+        appendingUnitCycleType = apuCycle_FANP;
+        setAPUStatus (apuStatus_FANP);
+      }
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", cpu . SDW->ADDR, address);
 
     finalAddress = cpu . SDW->ADDR + address;

@@ -953,8 +953,10 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         SET_I_NBAR;
     
         cpu.CMR.luf = 3;    // default of 16 mS
-        cpu.cu.SD_ON = 1;
-        cpu.cu.PT_ON = 1;
+        cpu.cu.SD_ON = 0;
+        cpu.cu.PT_ON = 0;
+        //cpu.cu.SD_ON = 1;
+        //cpu.cu.PT_ON = 1;
  
         setCpuCycle (FETCH_cycle);
 
@@ -1676,7 +1678,7 @@ setCPU:;
                                 //get_went_appending () ? 1 : 0);
 
 // BAR mode:  [NBAR] is set ON (taking the processor
-// out of BAR node) by the execution of any transfer instruction
+// out of BAR mode) by the execution of any transfer instruction
 // other than tss during a fault or interrupt trap.
 
                     if (! (cpu.currentInstruction.opcode == 0715 &&
@@ -1999,7 +2001,7 @@ setCPU:;
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (cpu.cu.IWB, & cpu.currentInstruction);
+                decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
                 cpu.PPR.IC += ci->info->ndes;
                 cpu.PPR.IC ++;
@@ -2147,7 +2149,7 @@ setCPU:;
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (cpu.cu.IWB, & cpu.currentInstruction);
+                decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
                 cpu.PPR.IC += ci->info->ndes;
                 cpu.PPR.IC ++;
@@ -3679,6 +3681,16 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
   }
 
 void addHist (uint hset, word36 w0, word36 w1)
+  {
+    if (cpu.MR.emr)
+      {
+        cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
+        cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;
+        cpu.history_cyclic[hset] = (cpu.history_cyclic[hset] + 1) % N_HIST_SIZE;
+      }
+  }
+
+void addHistForce (uint hset, word36 w0, word36 w1)
   {
     cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
     cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;

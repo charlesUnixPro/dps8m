@@ -195,9 +195,15 @@ t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, 
     address &= ~PGMK; // Round to page boundary
     cpu.iefpFinalAddress = address;
 
-    // We don't need get_bar_mode here as this code won't be
-    // used when reading fault pairs
-    bool isBAR = TST_I_NBAR ? false : true;
+    // The following is wrong; we do need get_bar_mode for when the SCU 
+    // instruction in the fault pair does writeOperands(); 
+
+    //--- // We don't need get_bar_mode here as this code won't be
+    //--- // used when reading fault pairs
+    //--- bool isBAR = TST_I_NBAR ? false : true;
+
+    // Correct version
+    bool isBAR = get_bar_mode ();
 
     if (b29 || get_went_appending ())
       {
@@ -291,9 +297,15 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
     //word24 finalAddress;
     cpu . iefpFinalAddress = address;
 
-    // We don't need get_bar_mode here as this code won't be
-    // used when reading fault pairs
-    bool isBAR = TST_I_NBAR ? false : true;
+    // The following is wrong; we do need get_bar_mode for when the SCU 
+    // instruction in the fault pair does writeOperands(); 
+
+    //--- // We don't need get_bar_mode here as this code won't be
+    //--- // used when reading fault pairs
+    //--- bool isBAR = TST_I_NBAR ? false : true;
+
+    // Correct version
+    bool isBAR = get_bar_mode ();
 
     if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>
@@ -366,9 +378,18 @@ t_stat Write8 (word18 address, word36 * data, _processor_cycle_type cyctyp, bool
     address &= paragraphMask; // Round to 8 word boundarryt
     cpu.iefpFinalAddress = address;
 
-    // We don't need get_bar_mode here as this code won't be
-    // used when reading fault pairs
-    bool isBAR = TST_I_NBAR ? false : true;
+    // The following is wrong; we do need get_bar_mode for when the SCU 
+    // instruction in the fault pair does writeOperands(); 
+
+    // The following is wrong; we do need get_bar_mode for when the SCU 
+    // instruction in the fault pair does writeOperands(); 
+
+    //--- // We don't need get_bar_mode here as this code won't be
+    //--- // used when reading fault pairs
+    //--- bool isBAR = TST_I_NBAR ? false : true;
+
+    // Correct version
+    bool isBAR = get_bar_mode ();
 
     if (b29 || get_went_appending ())
       goto B29;
@@ -463,9 +484,15 @@ t_stat WritePage (word18 address, word36 * data, _processor_cycle_type cyctyp, b
     address &= ~PGMK; // Round to page boundary
     cpu.iefpFinalAddress = address;
 
-    // We don't need get_bar_mode here as this code won't be
-    // used when reading fault pairs
-    bool isBAR = TST_I_NBAR ? false : true;
+    // The following is wrong; we do need get_bar_mode for when the SCU 
+    // instruction in the fault pair does writeOperands(); 
+
+    //--- // We don't need get_bar_mode here as this code won't be
+    //--- // used when reading fault pairs
+    //--- bool isBAR = TST_I_NBAR ? false : true;
+
+    // Correct version
+    bool isBAR = get_bar_mode ();
 
     if (b29 || get_went_appending ())
       goto B29;
