@@ -6916,6 +6916,13 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
                 return STOP_DIS;
               }
 
+            // XXX This is subtle; g7Pending below won't see the queued
+            // g7Fault. I don't understand how the real hardware dealt 
+            // with this, but this seems to work. (I would hazard a guess
+            // that DIS was doing a continuous FETCH/EXECUTE cycle 
+            // ('if !interrupt goto .'))
+            advanceG7Faults();
+
             if ((! cpu.switches.tro_enable) &&
                 (! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will

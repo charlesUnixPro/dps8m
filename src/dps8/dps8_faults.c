@@ -635,11 +635,13 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
                cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpuNo);
-    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7FaultsPreset |= (1u << faultNo);
+    //cpu.g7SubFaultsPreset [faultNo] = subFault;
     cpu.g7SubFaults [faultNo] = subFault;
     setCPUnum (save);
 #else
-    cpu.g7Faults |= (1u << faultNo);
+    cpu.g7FaultsPreset |= (1u << faultNo);
+    //cpu.g7SubFaultsPreset [faultNo] = subFault;
     cpu.g7SubFaults [faultNo] = subFault;
 #endif
   }
@@ -683,3 +685,11 @@ void doG7Fault (void)
 
      doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.g7Faults}, "Dazed and confused in doG7Fault");
   }
+
+void advanceG7Faults (void)
+  {
+    cpu.g7Faults |= cpu.g7FaultsPreset;
+    cpu.g7FaultsPreset = 0;
+    //memcpy (cpu.g7SubFaults, cpu.g7SubFaultsPreset, sizeof (cpu.g7SubFaults));
+  }
+

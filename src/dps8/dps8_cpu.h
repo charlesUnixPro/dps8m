@@ -1046,7 +1046,9 @@ typedef struct
     _cache_mode_register CMR;
     _mode_register MR;
     bool bTroubleFaultCycle;
+    uint g7FaultsPreset;
     uint g7Faults;
+    //_fault_subtype  g7SubFaultsPreset [N_FAULTS];
     _fault_subtype  g7SubFaults [N_FAULTS];
     word24 iefpFinalAddress;
     word36 CY;              // C(Y) operand data from memory
