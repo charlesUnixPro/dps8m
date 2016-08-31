@@ -100,6 +100,7 @@ static t_stat mdfx3entry (int32 arg, char * buf);
 static t_stat smfx1entry (int32 arg, char * buf);
 #endif
 static t_stat searchMemory (UNUSED int32 arg, char * buf);
+static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf);
 
 static CTAB dps8_cmds[] =
 {
@@ -163,7 +164,7 @@ static CTAB dps8_cmds[] =
     // invoke EIS test jig.......∫
     {"ET", eisTest, 0, "invoke EIS test jig\n", NULL}, 
 #endif
-    
+    {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
@@ -2326,4 +2327,9 @@ t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
     return SCPE_OK;
   }
 
+static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf)
+  {
+    uint32 skipped;
+    return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
+  }
   
