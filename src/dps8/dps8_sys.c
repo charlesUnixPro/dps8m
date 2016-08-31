@@ -42,17 +42,6 @@
 #include "utlist.h"
 #include "hdbg.h"
 
-#ifdef MULTIPASS
-#include "dps8_mp.h"
-#include "shm.h"
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/mman.h>
-#include <fcntl.h>           /* For O_* constants */
-#endif
-
 //#include "fnp_ipc.h"        /*  for fnp IPC stuff */
 #include "fnp.h"
 
@@ -71,11 +60,6 @@ char sim_name[] = "dps-8/m";
 int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
-
-
-#ifdef MULTIPASS
-static pid_t dps8m_sid; // Session id
-#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
@@ -103,9 +87,6 @@ static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
 static t_stat launch (int32 arg, char * buf);
-#ifdef MULTIPASS
-static void multipassInit (pid_t sid);
-#endif
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
 static t_stat dfx1exit (int32 arg, char * buf);
@@ -223,14 +204,6 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
-#ifdef MULTIPASS
-    // Create a session for this dps8m system instance.
-    dps8m_sid = setsid ();
-    if (dps8m_sid == (pid_t) -1)
-      dps8m_sid = getsid (0);
-    sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
-#endif
-
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);
 
@@ -249,10 +222,6 @@ static void dps8_init(void)
     prt_init ();
     urp_init ();
     absi_init ();
-#ifdef MULTIPASS
-    multipassInit (dps8m_sid);
-#endif
-     
 }
 
 uint64 sim_deb_start = 0;
@@ -2191,66 +2160,6 @@ DEVICE * sim_devices [] =
     & absi_dev,
     NULL
   };
-
-#ifdef MULTIPASS
-
-multipassStats * multipassStatsPtr;
-
-// Once only initialization
-static void multipassInit (pid_t sid)
-  {
-#if 0
-    //sim_printf ("Session %d\n", getsid (0));
-    pid_t pid = getpid ();
-    char buf [256];
-    sprintf (buf, "/dps8m.%u.multipass", pid);
-    int fd = shm_open (buf, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (fd == -1)
-      {
-        sim_printf ("multipass shm_open fail %d\n", errno);
-        return;
-      }
-
-    if (ftruncate (fd, sizeof (multipassStats)) == -1)
-      {
-        sim_printf ("multipass ftruncate  fail %d\n", errno);
-        return;
-      }
-
-    multipassStatsPtr = (multipassStats *) mmap (NULL, sizeof (multipassStats),
-                                                 PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (multipassStatsPtr == MAP_FAILED)
-      {
-        sim_printf ("multipass mmap  fail %d\n", errno);
-        return;
-      }
-#if 0
-    multipassStatsPtr = NULL;
-    mpStatsSegID = shmget (0x6180 + switches . cpu_num, sizeof (multipassStats),
-                         IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
-    if (mpStatsSegID == -1)
-      {
-        perror ("multipassInit shmget");
-        return;
-      }
-    multipassStatsPtr = (multipassStats *) shmat (mpStatsSegID, 0, 0);
-    if (multipassStatsPtr == (void *) -1)
-      {
-        perror ("multipassInit shmat");
-        return;
-      }
-    shmctl (mpStatsSegID, IPC_RMID, 0);
-#endif
-#endif
-    multipassStatsPtr = (multipassStats *) create_shm ("multipass", sid,
-      sizeof (multipassStats));
-    if (! multipassStatsPtr)
-      {
-        sim_printf ("create_shm multipass failed\n");
-        sim_err ("create_shm multipass failed\n");
-      }
-  }
-#endif
 
 #define MAX_CHILDREN 256
 static int nChildren = 0;

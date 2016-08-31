@@ -26,9 +26,6 @@
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
-#ifdef MULTIPASS
-#include "dps8_mp.h"
-#endif
 #ifdef M_SHARED
 #include "shm.h"
 #endif
@@ -1497,27 +1494,6 @@ setCPU:;
           console_attn (NULL);
 #endif
 
-#ifdef MULTIPASS
-        if (multipassStatsPtr) 
-          {
-            multipassStatsPtr -> A = cpu.rA;
-            multipassStatsPtr -> Q = cpu.rQ;
-            multipassStatsPtr -> E = cpy.rE;
-            for (int i = 0; i < 8; i ++)
-              {
-                multipassStatsPtr -> X [i] = cpu.rX [i];
-                multipassStatsPtr -> PAR [i] = cpu.PAR [i];
-              }
-            multipassStatsPtr -> IR = cpu.cu.IR;
-#ifdef REAL_TR
-            multipassStatsPtr -> TR = getTR (NULL);
-#else
-            multipassStatsPtr -> TR = cpu.rTR;
-#endif
-            multipassStatsPtr -> RALR = cpu.rRALR;
-          }
-#endif
-
         // Manage the timer register
              // XXX this should be sync to the EXECUTE cycle, not the
              // simh clock cycle; move down...
@@ -1605,12 +1581,6 @@ setCPU:;
                           traceInstruction (DBG_INTR);
 #endif
 
-#ifdef MULTIPASS
-                        if (multipassStatsPtr)
-                          {
-                            multipassStatsPtr -> intr_pair_addr = intr_pair_addr;
-                          }
-#endif
                         // get interrupt pair
                         core_read2 (intr_pair_addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
@@ -1820,12 +1790,6 @@ setCPU:;
                   }
 
 
-#ifdef MULTIPASS
-                if (multipassStatsPtr)
-                  {
-                    multipassStatsPtr -> PPR = cpu.PPR;
-                  }
-#endif
 #if 0
                 // XXX The conditions are more rigorous: see AL39, pg 327
            // ci is not set up yet; check the inhibit bit in the IWB!
@@ -2054,12 +2018,6 @@ setCPU:;
                 // absolute address of fault YPair
                 word24 addr = fltAddress +  2 * cpu.faultNumber;
   
-#ifdef MULTIPASS
-                if (multipassStatsPtr)
-                  {
-                    multipassStatsPtr -> faultNumber = cpu.faultNumber;
-                  }
-#endif
                 core_read2 (addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
                 setCpuCycle (FAULT_EXEC_cycle);
@@ -2626,11 +2584,6 @@ void decodeInstruction (word36 inst, DCDstruct * p)
       {
         sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
       }
-
-#ifdef MULTIPASS
-    if (multipassStatsPtr)
-      multipassStatsPtr -> inst = inst;
-#endif
 }
 
 // MM stuff ...

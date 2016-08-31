@@ -338,10 +338,6 @@ cscope:
 android : 
 	ndk-build APP_BUILD_SCRIPT=./Android.mk APP_ABI=arm64-v8a APP_PLATFORM=android-21
 
-# # Multipass stuff
-# CFLAGS += -DMULTIPASS
-#LDFLAGS += -lrt -L../lib/ -lzyre -lczmq -lzmq -Wl,-rpath=/usr/local/lib/
-
 blinkenLights : blinkenLights.c shm.o
 	@echo LD blinkenLights
 	@$(CC) $(CFLAGS) $(LDFLAGS) blinkenLights.c -o blinkenLights shm.o `pkg-config --cflags --libs gtk+-3.0`
