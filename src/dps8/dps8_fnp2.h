@@ -104,6 +104,12 @@ typedef struct
         uv_tcp_t server;
         int port;
 
+#ifdef TUN
+        // TUN hook
+        bool is_tun;
+        int tun_fd;
+#endif
+
       } line [MAX_LINES];
   } t_MState;
 

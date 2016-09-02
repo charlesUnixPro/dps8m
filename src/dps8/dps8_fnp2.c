@@ -2081,6 +2081,10 @@ void fnpProcessEvent (void)
           } // for lineno
 nombx:;
       } // for fnpno
+
+#ifdef TUN
+    fnpTUNProcessEvent ();
+#endif
   }
 
 static void fnpcmdBootload (uint devUnitIdx)

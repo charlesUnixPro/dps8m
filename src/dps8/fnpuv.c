@@ -135,6 +135,30 @@
 //
 
 
+#ifdef TUN
+// TUN interface
+
+// If makes more sense to me to have the emulator on an endpoint, but
+// that's not really the way ethernet works; for the nonce, we will
+// create a subnet and route to it with a tun device; the emulator
+// will listen on the device and do the whole ARP rigamorole.
+//
+// It's not clear to me what happens if multiple emulators are listening
+// on the same tun device, do they each get a copy of the message (i.e. 
+// are we wired as point-to-point)?
+//
+// Create device node:
+//   mkdir /dev/net (if it doesn't exist already)
+//   mknod /dev/net/tun c 10 200
+//   chmod 0666 /dev/net/tun
+//   modprobe tun
+//
+// The subnet gateway device is 'dps8m' at address 192.168.8.0
+//
+//   sudo ip tuntap add mode tun dps8m
+//   sudo ip link set dps8m up
+//   sudo ip addr add 192.168.8.1/24 dev dps8m
+#endif
 
 
 
@@ -143,6 +167,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <uv.h>
+#ifdef TUN
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
+#endif
 
 #include "dps8.h"
 #include "dps8_utils.h"
@@ -680,9 +716,40 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
 
 // Flags
 //   1    Use Telnet
-//   2    ?
+#ifdef TUN
+//   2    Use TUN device (in which case 'port' is the netmask
+#endif
 //   4
 
+#ifdef TUN
+    linep->is_tun = false;
+    if (flags & 2)
+      {
+        char a_name [IFNAMSIZ] = "dps8m";
+        linep->tun_fd = tun_alloc (a_name);
+        if (linep->tun_fd < 0)
+          {
+            sim_printf ("dialout TUN tun_alloc returned %d errno %d\n", linep->tun_fd, error);
+            return;
+         }
+        int flags = fcntl (linep->tun_fd, F_GETFL, 0);
+        if (flags < 0)
+          {
+            sim_printf ("dialout TUN F_GETFL returned < 0\n");
+            return;
+          }
+        flags |= O_NONBLOCK;
+        int ret = fcntl (linep->tun_df, F_SETFL, flags);
+        if (ret)
+          {
+            sim_printf ("dialout TUN F_SETFL returned %d\n", ret);
+            return;
+          }
+        linep->is_tun = true;
+        return;
+      }
+      }
+#endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
     printf ("calling %s:%d\n", ipaddr,port);
@@ -820,30 +887,96 @@ sim_printf ("listening on port %d\n", linep->port);
 #endif
   }
 
-#ifdef TEST
-int main (int argc, char * argv [])
+#ifdef TUN
+static void fnoTUNProcessLine (struct t_line * linep)
   {
-    loop = uv_default_loop ();
-
-    uv_tcp_init (loop, & server);
-
-    struct sockaddr_in addr;
-    uv_ip4_addr ("0.0.0.0", get_dialin_telnet_port (), & addr);
-
-    uv_tcp_bind (& server, (const struct sockaddr *) & addr, 0);
-    int r = uv_listen ((uv_stream_t *) & server, DEFAULT_BACKLOG, 
-                       on_new_connection);
-    if (r)
-     {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
-        return 1;
-      }
-    //return uv_run (loop, UV_RUN_DEFAULT);
-    while (1)
+/* Note that "buffer" should be at least the MTU size of the interface, eg 1500 bytes */
+    unsigned char buffer [1500 + 16];
+    ssize_t nread = read (linep->tun_fd, buffer, sizeof (buffer));
+    if (nread < 0)
       {
-        int ret = uv_run (loop, UV_RUN_NOWAIT);
-        printf ("ping %d\n", ret);
-        sleep (1);
+        //perror ("Reading from interface");
+        //close (linep->tun_fd);
+        //exit (1);
+        if (errno == EAGAIN)
+          return;
+        printf ("%ld %d\n", nread, errno);
+        return;
+      }
+
+// 4 bytes of metadata
+#define ip 4 
+    /* Do whatever with the data */
+    printf("Read %ld bytes\n", nread);
+    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+      buffer [0], buffer [1], buffer [2], buffer [3], 
+      buffer [4], buffer [5], buffer [6], buffer [7]);
+    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+      buffer [8], buffer [9], buffer [10], buffer [11], 
+      buffer [12], buffer [13], buffer [14], buffer [15]);
+    uint version =                            (buffer [ip + 0] >> 4) & 0xf;
+    uint ihl =                                (buffer [ip + 0]) & 0xf;
+    uint payload_offset = ip + ihl * 4;
+    uint tos =                                 buffer [ip + 1];
+    uint tl = ((uint)                 (buffer [ip + 2]) << 8) + 
+                                                       buffer [ip + 3];
+    uint id = ((uint)                 (buffer [ip + 4]) << 8) + 
+                                                       buffer [ip + 5];
+
+    uint df =                                 (buffer [ip + 6] & 0x40) ? 1 : 0;
+    uint mf =                                 (buffer [ip + 6] & 0x20) ? 1 : 0;
+    uint fragment_offset = ((uint)    (buffer [ip + 6] & 0x1f) << 8) + 
+                                                       buffer [ip + 7];
+    uint ttl =                                 buffer [ip + 8];
+    uint protocol =                            buffer [ip + 9];
+    uint header_checksum =    (((uint) buffer [ip + 10]) << 8) + 
+                                                       buffer [ip + 11];
+    uint source_address =     (((uint) buffer [ip + 12]) << 24) + 
+                                      (((uint) buffer [ip + 13]) << 16) + 
+                                      (((uint) buffer [ip + 14]) << 8) + 
+                                                       buffer [ip + 15];
+    uint dest_address =       (((uint) buffer [ip + 16]) << 24) + 
+                                      (((uint) buffer [ip + 17]) << 16) + 
+                                      (((uint) buffer [ip + 18]) << 8) + 
+                                                       buffer [ip + 19];
+    if (protocol == 1)
+      {
+        uint type = buffer [payload_offset + 0];
+        if (type == 0x08)
+          {
+            printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
+              buffer [ip + 12], buffer [ip + 13], buffer [ip + 14], buffer [ip + 15],
+              buffer [ip + 16], buffer [ip + 17], buffer [ip + 18], buffer [ip + 19]);
+          }
+        else
+          {
+            printf ("ICMP 0x%02x\n", type);
+            printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+              buffer [payload_offset + 0], buffer [payload_offset + 1], buffer [payload_offset + 2], buffer [payload_offset + 3], 
+              buffer [payload_offset + 4], buffer [payload_offset + 5], buffer [payload_offset + 6], buffer [payload_offset + 7]);
+          }
+      }
+    if (protocol == 0x11)
+      {
+        printf ("UDP\n");
+       
+      }
+    else
+      {
+        printf ("protocol %02x\n", protocol);
+      }
+  }
+
+void fnpTUNProcessEvent (void)
+  {
+    for (int fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
+      {
+        for (int lineno = 0; lineno < MAX_LINES; lineno ++)
+          {
+            struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+            if (linep->is_tun)
+              fnoTUNProcessLine (linep);
+          }
       }
   }
 #endif
