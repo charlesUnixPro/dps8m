@@ -5854,7 +5854,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
               // init_processor.alm systematically steps through the SCUs,
               // using addresses 000000 100000 200000 300000.
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
+              int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, (int) cpu_port_num);
               sim_debug (DBG_TRACE, & cpu_dev, "rccl CA %08o cpu port %o scu unit %d\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
               if (scu_unit_num < 0)
                 {
@@ -6418,7 +6418,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
                 // specify which processor port (i.e., which system
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, 
+                int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, 
                                                        (int) cpu_port_num);
                 if (scu_unit_num < 0)
                   {
@@ -6455,7 +6455,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
 
 // Looking at privileged_mode_ut.alm, shift 10 bits...
               uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
-              int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
+              int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, (int) cpu_port_num);
 
               if (scu_unit_num < 0)
                 {
@@ -6765,7 +6765,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
               {
                 doFault (FAULT_ONC, (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}, "(cioc)");
               }
-            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, cpu_port_num);
+            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, cpu_port_num);
             if (scu_unit_num < 0)
               {
                 doFault (FAULT_ONC, (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}, "(cioc)");
@@ -6795,7 +6795,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
                 // specify which processor port (i.e., which system
                 // controller) is used.
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (currentRunningCPUnum,
+                int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
                                                        (int) cpu_port_num);
 #if 0 // not on 4MW
                 if (scu_unit_num < 0)
@@ -6834,7 +6834,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
             // specify which processor port (i.e., which system
             // controller) is used.
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
-            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
+            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, (int) cpu_port_num);
 
             if (scu_unit_num < 0)
               {
@@ -6860,7 +6860,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
             //uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
             // Looking at privileged_mode_ut.alm, shift 10 bits...
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
-            int scu_unit_num = query_scu_unit_num (currentRunningCPUnum, (int) cpu_port_num);
+            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum, (int) cpu_port_num);
 //sim_printf ("sscr CA %08o cpu port %o scu unit %o\n", cpu.TPR.CA, cpu_port_num, scu_unit_num);
             if (scu_unit_num < 0)
               {

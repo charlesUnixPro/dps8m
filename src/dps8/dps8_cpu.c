@@ -282,7 +282,7 @@ static t_stat dpsCmd_InitSDWAM ()
   {
 #ifdef ROUND_ROBIN
     uint save = currentRunningCPUnum;
-    for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
+    for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
         setCPUnum (i);
         memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
@@ -3031,7 +3031,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
       }
 
 #ifdef ROUND_ROBIN
-    uint save = setCPUnum (cpu_unit_num);
+    uint save = setCPUnum ((uint) cpu_unit_num);
 #endif
 
     static int port_num = 0;
