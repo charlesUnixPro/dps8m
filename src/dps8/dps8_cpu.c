@@ -1860,6 +1860,7 @@ setCPU:;
                   }
 #endif
 
+                advanceG7Faults ();
                 setCpuCycle (EXEC_cycle);
               }
               break;

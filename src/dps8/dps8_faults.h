@@ -77,5 +77,6 @@ bool bG7Pending (void);
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault);
 void doG7Fault (void);
 void clearTROFault (void);
+void advanceG7Faults (void);
 
 

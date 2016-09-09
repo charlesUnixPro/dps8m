@@ -1022,17 +1022,17 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
             address = (cpu . AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
             e -> addr [k - 1] . address = address;
-            if (get_addr_mode () == APPEND_mode)
-              {
+//            if (get_addr_mode () == APPEND_mode)
+              //{
                 e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
                 e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
                                                 cpu . TPR . TRR,
                                                 cpu . PPR . PRR);
                 
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
-              }
-            else
-              sim_warn ("AR set in non-append mode.\n");
+              //}
+            //else
+              //sim_warn ("AR set in non-append mode.\n");
           }
         else
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
@@ -1102,15 +1102,15 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
 IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
-        if (get_addr_mode() == APPEND_mode)
-          {
+        //if (get_addr_mode() == APPEND_mode)
+          //{
             e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
 
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
-          }
-        else
-          sim_warn ("AR set in non-append mode.\n");
+          //}
+        //else
+          //sim_warn ("AR set in non-append mode.\n");
       }
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
@@ -1279,14 +1279,14 @@ static void parseArgOperandDescriptor (uint k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_mode)
-          {
+        //if (get_addr_mode() == APPEND_mode)
+          //{
             e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
             e -> addr [k - 1] . mat = viaPR;
-          }
-        else
-          sim_warn ("AR set in non-append mode.\n");
+        //  }
+        //else
+          //sim_warn ("AR set in non-append mode.\n");
       }
     
     y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
@@ -1319,15 +1319,15 @@ static void parseNumericOperandDescriptor (int k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
-        if (get_addr_mode() == APPEND_mode)
-        {
+        //if (get_addr_mode() == APPEND_mode)
+        //{
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
 
             e->addr[k-1].mat = viaPR;   // ARs involved
-        }
-        else
-          sim_warn ("AR set in non-append mode.\n");
+        //}
+        //else
+          //sim_warn ("AR set in non-append mode.\n");
     }
 
     //word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
@@ -1499,14 +1499,14 @@ static void parseBitstringOperandDescriptor (int k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_mode)
-        {
+        //if (get_addr_mode() == APPEND_mode)
+        //{
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
             e->addr[k-1].mat = viaPR;   // ARs involved
-        }
-        else
-          sim_warn ("AR set in non-append mode.\n");
+        //}
+        //else
+          //sim_warn ("AR set in non-append mode.\n");
     }
     
     //Operand length. If MFk.RL = 0, this field contains the string length of
