@@ -9,8 +9,7 @@ float36 IEEEdoubleTofloat36(double f);
 #endif
 void ufa (bool sub);
 void ufs (void);
-void fno (void);
-void fnoEAQ(word8 *E, word36 *A, word36 *Q);
+void fno (word8 * E, word36 * A, word36 * Q);
 
 void fneg (void);
 void ufm (void);

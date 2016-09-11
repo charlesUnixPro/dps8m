@@ -4631,7 +4631,7 @@ static t_stat DoBasicInstruction (void)
             // followed by a fno instruction.
 
             dufa (false);
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
             break;
 
         case 0437:  // dufa
@@ -4644,7 +4644,7 @@ static t_stat DoBasicInstruction (void)
             // (Heh, heh. We'll see....)
 
             ufa(false);
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
             break;
 
@@ -4663,7 +4663,7 @@ static t_stat DoBasicInstruction (void)
 
             //dufs ();
             dufa (true);
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
             break;
 
         case 0537:  // dufs
@@ -4676,7 +4676,7 @@ static t_stat DoBasicInstruction (void)
             // followed by a fno instruction.
             //ufs ();
             ufa (true);
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
             break;
 
@@ -4694,7 +4694,7 @@ static t_stat DoBasicInstruction (void)
             // followed by a fno instruction.
 
             dufm ();
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
             break;
 
@@ -4708,7 +4708,7 @@ static t_stat DoBasicInstruction (void)
             // followed by a fno instruction.
 
             ufm ();
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
             break;
 
@@ -4765,7 +4765,7 @@ static t_stat DoBasicInstruction (void)
             ///true story y'all
             //you should get me darksisers 2 for christmas
 
-            fno ();
+            fno (&cpu.rE, &cpu.rA, &cpu.rQ);
             break;
 
         /// Floating-Point Round
