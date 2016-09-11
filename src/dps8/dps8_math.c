@@ -929,7 +929,7 @@ sim_printf ("UFS overflow\n");
  * floating normalize ...
  */
 
-void fno (void)
+void fno (word8 * E, word36 * A, word36 * Q)
 {
     // The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the
     // overflow indicator is OFF.
@@ -949,9 +949,9 @@ void fno (void)
     //
     // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
-    cpu . rA &= DMASK;
-    cpu . rQ &= DMASK;
-    float72 m = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    *A &= DMASK;
+    *Q &= DMASK;
+    float72 m = ((word72)(*A) << 36) | (word72)(*Q);
     if (TST_I_OFLOW)
     {
         CLR_I_OFLOW;
@@ -963,25 +963,25 @@ void fno (void)
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
         {
-            cpu . rE = 0200U; /*-128*/
+            *E = 0200U; /*-128*/
             SET_I_ZERO;
         }
         else
         {
             CLR_I_ZERO;
-            if (cpu . rE == 127)
+            if (*E == 127)
             {
                 SET_I_EOFL;
                 if (tstOVFfault ())
                     doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
             }
-            cpu . rE ++;
-            cpu . rE &= MASK8;
+            (*E) ++;
+            *E &= MASK8;
         }
 
-        cpu . rA = (m >> 36) & MASK36;
-        cpu . rQ = m & MASK36;
-        SC_I_NEG (cpu . rA & SIGN36);
+        *A = (m >> 36) & MASK36;
+        *Q = m & MASK36;
+        SC_I_NEG ((*A) & SIGN36);
 
         return;
     }
@@ -989,15 +989,15 @@ void fno (void)
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
     if (m == 0) // C(AQ) == 0.
     {
-        //cpu . rA = (m >> 36) & MASK36;
-        //cpu . rQ = m & MASK36;
-        cpu . rE = 0200U; /*-128*/
+        //*A = (m >> 36) & MASK36;
+        //*Q = m & MASK36;
+        *E = 0200U; /*-128*/
         SET_I_ZERO;
         CLR_I_NEG;
         return;
     }
 
-    int e = SIGNEXT8_int (cpu . rE & MASK8);
+    int e = SIGNEXT8_int ((*E) & MASK8);
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
 
     //while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
@@ -1021,19 +1021,19 @@ void fno (void)
             dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp underflow fault");
     }
 
-    cpu . rE = (word8) e & MASK8;
-    cpu . rA = (m >> 36) & MASK36;
-    cpu . rQ = m & MASK36;
+    *E = (word8) e & MASK8;
+    *A = (m >> 36) & MASK36;
+    *Q = m & MASK36;
 
     // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
-    if (cpu . rA == 0)    // set to normalized 0
-        cpu . rE = 0200U; /*-128*/
+    if (*A == 0)    // set to normalized 0
+        *E = 0200U; /*-128*/
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
+    SC_I_ZERO (*A == 0 && *Q == 0);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SC_I_NEG (cpu . rA & SIGN36);
+    SC_I_NEG ((*A) & SIGN36);
 }
 
 #if 0
@@ -1216,7 +1216,7 @@ void fneg (void)
     cpu . rA = (m >> 36) & MASK36;
     cpu . rQ = m & MASK36;
 #endif
-    fno ();  // normalize
+    fno (&cpu.rE, &cpu.rA, &cpu.rQ);  // normalize
 }
 
 /*!
@@ -1312,7 +1312,7 @@ void ufm (void)
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
     //if ((cpu . rE == -128 && cpu . rA == 0 && cpu . rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno ();
+        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
     
     SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu . rA & SIGN36);
@@ -1578,7 +1578,7 @@ IF1 sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
     if (! ((flags1 | flags2) & I_OFLOW))
     {
         if (cpu.rA != 0 || cpu.rQ != 0)
-          fno ();
+          fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 IF1 sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
     }
 
@@ -1668,8 +1668,9 @@ void fstr(word36 *Y)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        
-        fno();
+        word8 E8 = E & MASK8;   
+        fno(&E8, &A, &Q);
+        E = SIGNEXT8_int (E8 & MASK8);
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -2198,7 +2199,7 @@ void dufm (void)
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
     //if ((cpu . rE == -128 && cpu . rA == 0 && cpu . rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno ();
+        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
     
     SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu . rA & SIGN36);
@@ -2832,7 +2833,7 @@ void dfrd (void)
         cpu . rA = (m >> 36) & MASK36;
         cpu . rQ = m & MASK36;
         
-        fno ();
+        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -2923,8 +2924,9 @@ void dfstr (word36 *Ypair)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        
-        fno();
+        word8 E8 = E & MASK8;   
+        fno(&E8, &A, &Q);
+        E = SIGNEXT8_int (E8 & MASK8);
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
