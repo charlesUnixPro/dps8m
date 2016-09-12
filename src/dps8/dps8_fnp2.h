@@ -22,6 +22,13 @@ enum service_types {service_undefined = 0, service_login, service_autocall, serv
 typedef struct
   {
     t_bool accept_calls;
+    // 60132445 FEP Coupler Spec Nov77 - Unknown.pdf
+    // pg 59 (sheet 56):
+    //   bit       0: CS BAR
+    //             1: BT INH
+    //        2 -  7: RFU
+    //        8 - 15: Special L6 Intpr Level
+    word16 configRegA;
     struct t_line
       {
         // From the CMF database
