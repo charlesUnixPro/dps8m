@@ -2132,11 +2132,17 @@ static void processMBX (uint iomUnitIdx, uint chan)
 //  27-29 D Channel #
 //  30-35 C Command
 //
-// Operation       C         A        B        D
-// Interrupt L6   071       ---      Int.     Level
-// Bootload L6    072    L66 Addr  L66 Addr  L66 Addr
-//                       A6-A23    A0-A2     A3-A5
-// Interrupt L66  073      ---      ---     Intr Cell
+//                          A6-A23    A0-A2     A3-A5
+// Operation          C         A        B        D
+// Interrupt L6      071       ---      Int.     Level
+// Bootload L6       072    L66 Addr  L66 Addr  L66 Addr
+//                           A6-A23    A0-A2     A3-A5
+// Interrupt L66     073      ---      ---     Intr Cell
+// Data Xfer to L66  075    L66 Addr  L66 Addr  L66 Addr
+//                           A6-A23    A0-A2     A3-A5
+// Data Xfer to L6   076    L66 Addr  L66 Addr  L66 Addr
+//                           A6-A23    A0-A2     A3-A5
+
 // 
 // fnp_util.pl1:
 //    075 tandd read
@@ -2221,7 +2227,10 @@ static void processMBX (uint iomUnitIdx, uint chan)
     uint command = getbits36_6 (dia_pcw, 30);
     word36 bootloadStatus = 0;
 
-    if (command == 072) // bootload
+    if (command == 000) // reset
+      {
+      }
+    else if (command == 072) // bootload
       {
         fnpcmdBootload (devUnitIdx);
         fudp -> fnpIsRunning = true;
@@ -2230,11 +2239,84 @@ static void processMBX (uint iomUnitIdx, uint chan)
       {
         ok = interruptL66 (iomUnitIdx, chan) == 0;
       }
+    else if (command == 075) // data xfer from L6 to L66
+      {
+        // Build the L66 address from the PCW
+        //   0-17 A
+        //  24-26 B
+        //  27-29 D Channel #
+        // Operation          C         A        B        D
+        // Data Xfer to L66  075    L66 Addr  L66 Addr  L66 Addr
+        //                           A6-A23    A0-A2     A3-A5
+        // These don't seem to be right; M[L66Add] is always 0.
+        //word24 A = (word24) getbits36_18 (dia_pcw,  0);
+        //word24 B = (word24) getbits36_3  (dia_pcw, 24);
+        //word24 D = (word24) getbits36_3  (dia_pcw, 29);
+        //word24 L66Addr = (B << (24 - 3)) | (D << (24 - 3 - 3)) | A;
+
+
+        // According to fnp_util:
+        //  dcl  1 a_dia_pcw aligned based (mbxp),                      /* better declaration than the one used when MCS is running */
+        //         2 address fixed bin (18) unsigned unaligned,
+        //         2 error bit (1) unaligned,
+        //         2 pad1 bit (3) unaligned,
+        //         2 parity bit (1) unaligned,
+        //         2 pad2 bit (1) unaligned,
+        //         2 pad3 bit (3) unaligned,                            /* if we used address extension this would be important */
+        //         2 interrupt_level fixed bin (3) unsigned unaligned,
+        //         2 command bit (6) unaligned;
+        //
+        //   a_dia_pcw.address = address;
+        //
+
+
+        //word24 L66Addr = (word24) getbits36_18 (dia_pcw, 0);
+        //sim_printf ("L66 xfer\n");
+        //sim_printf ("PCW  %012llo\n", dia_pcw);
+        //sim_printf ("L66Addr %08o\n", L66Addr);
+        //sim_printf ("M[] %012llo\n", M[L66Addr]);
+
+        // 'dump_mpx d'
+        //L66 xfer
+        //PCW  022002000075
+        //L66Addr 00022002
+        //M[] 000000401775
+        //L66 xfer
+        //PCW  022002000075
+        //L66Addr 00022002
+        //M[] 003772401775
+        //L66 xfer
+        //PCW  022002000075
+        //L66Addr 00022002
+        //M[] 007764401775
+        //
+        // The contents of M seem much more reasonable, bit still don't match
+        // fnp_util$setup_dump_ctl_word. The left octet should be '1', not '0';
+        // bit 18 should be 0 not 1. But the offsets and tallies match exactly.
+        // Huh... Looking at 'dump_6670_control' control instead, it matches 
+        // correctly. Apparently fnp_util thinks the FNP is a 6670, not a 335.
+        // I can't decipher the call path, so I don't know why; but looking at
+        // multiplexer_types.incl.pl1, I would guess that by MR12.x, all FNPs 
+        // were 6670s.
+        //
+        // So:
+        //
+        //   dcl  1 dump_6670_control aligned based (data_ptr),          /* word used to supply DN6670 address and tally for fdump */
+        //          2 fnp_address fixed bin (18) unsigned unaligned,
+        //          2 unpaged bit (1) unaligned,
+        //          2 mbz bit (5) unaligned,
+        //          2 tally fixed bin (12) unsigned unaligned;
+
+        // Since the data is marked 'paged', and I don't understand the
+        // the paging mechanism or parameters, I'm going to punt here and
+        // not actually transfer any data.
+
+      }
     else
-     {
-       sim_warn ("bogus fnp command %d (%o)\n", command, command);
-       ok = false;
-     }
+      {
+        sim_warn ("bogus fnp command %d (%o)\n", command, command);
+        ok = false;
+      }
 
     if (ok)
       {
@@ -2247,9 +2329,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
       }
     else
       {
-// We know that for some reason Multics sends command zeros; don't dump the mbx for the common case
-        if (command != 0)
-          dmpmbx (fudp -> mailboxAddress);
+        dmpmbx (fudp->mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
         core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
