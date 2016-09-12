@@ -455,9 +455,11 @@ zyre : ../lib/libzyre.so
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
-tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
-	@echo TAGS
-	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+#tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
+#	@echo TAGS
+#	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+
+tags :
 
 .PHONY : tapes
 
