@@ -26,8 +26,9 @@ CFLAGS += -std=c99 -U__STRICT_ANSI__
 CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
 CFLAGS += -DUSE_INT64
 #CFLAGS += -DMULTIPASS
-
-LDFLAGS = -g
+# Clang generates warning messages for code it generates itself...
+CFLAGS += -Wno-array-bounds
+LDFLAGS += -g
 #CFLAGS += -pg
 #LDFLAGS += -pg
 
