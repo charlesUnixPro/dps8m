@@ -1,0 +1,66 @@
+### Enables sim_debug
+
+#TESTING=1
+
+
+### Enable round-robin multiple CPUs
+
+#CFLAGS += -DROUND_ROBIN
+
+
+### Enable history debug tool
+
+#CFLAGS += -DHDBG
+
+
+### Enable ISOLTS compatibility
+
+#$(warning "####")
+#$(warning "#### Setting ISOLTS")
+#$(warning "####")
+#CFLAGS += -DISOLTS 
+
+
+### Electric Fence malloc debugger
+
+#LDFLAGS += -lefence
+
+
+### Add tags
+
+all :
+
+tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
+	@echo TAGS
+	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+
+
+### Enable shared memory
+
+M_SHARED = 1
+CFLAGS += -DM_SHARED
+LDFLAGS += -lrt
+
+
+### Turn on complier warnings
+
+CFLAGS += -Wall 
+
+CFLAGS += -Wunused-argument \
+-Wunused-function \
+-Wunused-label \
+-Wunused-parameter \
+-Wunused-value \
+-Wunused-variable \
+-Wunused \
+-Wextra \
+-Wno-parentheses-equality -Wno-array-bounds
+
+CFLAGS += \
+-Wsign-conversion \
+-Wconversion \
+-Wshorten-64-to-32 \
+-Wmissing-prototypes \
+-Wmissing-variable-declarations 
+
+
