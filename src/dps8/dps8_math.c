@@ -1668,7 +1668,7 @@ void fstr(word36 *Y)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        word8 E8 = (word8) (E & MASK8);   
+        word8 E8 = (word8) E & MASK8;   
         fno(&E8, &A, &Q);
         E = SIGNEXT8_int (E8 & MASK8);
     }
@@ -2924,7 +2924,7 @@ void dfstr (word36 *Ypair)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        word8 E8 = (word8) (E & MASK8);   
+        word8 E8 = (word8) E & MASK8;   
         fno(&E8, &A, &Q);
         E = SIGNEXT8_int (E8 & MASK8);
     }
