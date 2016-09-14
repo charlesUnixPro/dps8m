@@ -1868,6 +1868,8 @@ static void ExpMantToYpair(word72 mant, int exp, word36 *yPair)
  */
 void dufa (bool subtract)
 {
+static int testno = 1;
+IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     // Except for the precision of the mantissa of the operand from main
     // memory, the dufa instruction is identical to the ufa instruction.
     
