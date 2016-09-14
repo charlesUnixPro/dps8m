@@ -485,7 +485,7 @@ static void EISWriteCache (EISaddr * p)
         
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
                              "%s: writeCache (PR) %012llo@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], p -> SNR, p -> cachedAddr + i);
@@ -502,7 +502,7 @@ static void EISWriteCache (EISaddr * p)
         
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
-                for (int i = 0; i < 8; i ++)
+                for (uint i = 0; i < 8; i ++)
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
                              "%s: writeCache %012llo@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], cpu . TPR . TSR, p -> cachedAddr + i);
@@ -542,7 +542,7 @@ static void EISReadCache (EISaddr * p, word18 address)
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < 8; i ++)
+            for (uint i = 0; i < 8; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: readCache (PR) %012llo@%o:%06o\n", 
                            __func__, p -> cachedParagraph [i], p -> SNR, paragraphAddress + i);
@@ -559,7 +559,7 @@ static void EISReadCache (EISaddr * p, word18 address)
         Read8 (paragraphAddress, p -> cachedParagraph, EIS_OPERAND_READ, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < 8; i ++)
+            for (uint i = 0; i < 8; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: readCache %012llo@%o:%06o\n", 
                          __func__, p -> cachedParagraph [i], cpu . TPR . TSR, paragraphAddress + i);
@@ -645,7 +645,7 @@ static void EISReadPage (EISaddr * p, uint n, word36 * data)
     if ((addressN & PGMK) != 0)
       {
         sim_err ("EISReadPage not aligned %06o\n", addressN);
-        addressN &= ~PGMK;
+        addressN &= (word18) ~PGMK;
       }
 
     word3 saveTRR = cpu.TPR.TRR;
@@ -658,7 +658,7 @@ static void EISReadPage (EISaddr * p, uint n, word36 * data)
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < PGSZ; i ++)
+            for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: (PR) %012llo@%o:%06o\n", 
                            __func__, data [i], p -> SNR, addressN + i);
@@ -675,7 +675,7 @@ static void EISReadPage (EISaddr * p, uint n, word36 * data)
         ReadPage (addressN, data, EIS_OPERAND_READ, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < PGSZ; i ++)
+            for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: %012llo@%o:%06o\n", 
                          __func__, data [i], cpu . TPR . TSR, addressN + i);
@@ -693,7 +693,7 @@ static void EISWritePage (EISaddr * p, uint n, word36 * data)
     if ((addressN & PGMK) != 0)
       {
         sim_err ("EISWritePage not aligned %06o\n", addressN);
-        addressN &= ~PGMK;
+        addressN &= (uint) ~PGMK;
       }
 
     word3 saveTRR = cpu.TPR.TRR;
@@ -706,7 +706,7 @@ static void EISWritePage (EISaddr * p, uint n, word36 * data)
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < PGSZ; i ++)
+            for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: (PR) %012llo@%o:%06o\n", 
                            __func__, data [i], p -> SNR, addressN + i);
@@ -723,7 +723,7 @@ static void EISWritePage (EISaddr * p, uint n, word36 * data)
         WritePage (addressN, data, EIS_OPERAND_STORE, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
-            for (int i = 0; i < PGSZ; i ++)
+            for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: %012llo@%o:%06o\n", 
                          __func__, data [i], cpu . TPR . TSR, addressN + i);
@@ -1121,7 +1121,8 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e -> N [k - 1] = getMFReg36 (reg, false, false);
+// XXX Handle N too big intelligently....
+        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false);
         switch (e -> TA [k - 1])
           {
             case CTA4:
@@ -1145,7 +1146,7 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
     //if (e->N [k - 1] == 0)
       //doFault (FAULT_IPR, FR_ILL_PROC, "parseAlphanumericOperandDescriptor N 0");
 
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %o\n", k, e->N[k-1]);
 
     word36 r = getMFReg36 (MFk & 017, allowDU, true);
     
@@ -1176,7 +1177,8 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
             uint arn_char4 = bitoffset * 2 / 9; // / 4.5
             // 8 chars per word plus the number of chars in r, plus the 
             // number of chars in ARn CHAR/BITNO plus the CN from the operand
-            uint nchars = address * 8 + r + arn_char4 + CN;
+// XXX Handle 'r' too big intelligently...
+            uint nchars = address * 8 + (uint) r + arn_char4 + CN;
 
             effWORDNO = nchars / 8; // 8 chars/word
             effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not 
@@ -1354,7 +1356,7 @@ static void parseNumericOperandDescriptor (int k)
     else
         e->N[k-1] = opDesc & 077;
 
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %u\n", k, e->N[k-1]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %0o\n", k, e->N[k-1]);
 
     word36 r = getMFReg36(MFk & 017, false, true);
     if ((MFk & 017) == 4)   // reg == IC ?
@@ -1368,10 +1370,10 @@ static void parseNumericOperandDescriptor (int k)
     }
 
 #ifdef ISOLTS
-    int TN = e->TN[k-1];
-    int S = e->S[k-1];  // This is where MVNE gets really nasty.
+    uint TN = e->TN[k-1];
+    uint S = e->S[k-1];  // This is where MVNE gets really nasty.
 #endif
-    int N = e->N[k-1];  // number of chars in string
+    uint N = e->N[k-1];  // number of chars in string
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
 
     if (N == 0)
@@ -1432,7 +1434,8 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
             //if (bitoffset & 1) // if odd
             //  arn_char4 ++;
             // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
-            uint nchars = address * 8 + r + arn_char4 + CN;
+// XXX Handle 'r' too big intelligently...
+            uint nchars = (uint) (address * 8 + r + arn_char4 + CN);
 
             effWORDNO = nchars / 8; // 8 chars/word
             effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
@@ -1636,7 +1639,7 @@ void a4bd (void)
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd addend %o %d.\n", addend, addend);
 
-    int32_t sum = augend + addend;
+    int32_t sum = (int32_t) augend + addend;
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd sum %o %d.\n", sum, sum);
 
@@ -1669,7 +1672,7 @@ void a4bd (void)
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd char4no %d.\n", char4no);
 
-    SET_AR_CHAR_BITNO (ARn, char4no / 2, (char4no % 2) ? 5 : 0);
+    SET_AR_CHAR_BITNO (ARn, (word2) (char4no / 2), (char4no % 2) ? 5 : 0);
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd CHAR %o %d.\n", cpu.AR[ARn].CHAR, cpu.AR[ARn].CHAR);
 //if (currentRunningCPUnum)
@@ -1782,8 +1785,8 @@ IF1 sim_printf ("axbd force augend 0%o\n", augend);
 //sim_printf ("axbd force chars 0%o %d. bits\n", r, r);
 //      }
 
-    int32_t addend = address * 36 + r * sz;
-    int32_t sum = augend + addend;
+    int32_t addend = address * 36 + r * (int32_t) sz;
+    int32_t sum = (int32_t) augend + addend;
 
     // Handle over/under flow
     while (sum < 0)
@@ -1811,7 +1814,7 @@ void abd (void)
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 //if (currentRunningCPUnum)
 //sim_printf ("address %o\n", address);
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR (reg) & MASK24;
 //if (currentRunningCPUnum)
@@ -2017,13 +2020,15 @@ IF1 sim_printf ("awd test no %d\n", ++testno);
 IF1 sim_printf ("-----> OS %o  SIGNEXT %o\n", GET_OFFSET (cpu . cu . IWB), SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB)));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of characters
-    int32_t r = getCrAR (reg);
+// XXX This code is assuming that 'r' has 18 bits of data....
+    int32_t r = (int32_t) (getCrAR (reg) & MASK18);
 
 IF1 sim_printf ("awd r 0%o %d.\n", r, r);
 
-    r = SIGNEXT18_32 (r);
+
+    r = SIGNEXT18_32 ((word18) r);
 
 IF1 sim_printf ("awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
@@ -2046,12 +2051,12 @@ IF1 sim_printf ("awd augend 0%o\n", augend);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o\n", augend);
 
     int32_t addend = address + r;
-    int32_t sum = augend + addend;
+    int32_t sum = (int32_t) augend + addend;
 
 IF1 sim_printf ("awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
-    cpu . AR [ARn] . WORDNO = sum & AMASK;
+    cpu . AR [ARn] . WORDNO = (word18) sum & AMASK;
     SET_AR_CHAR_BITNO (ARn, 0, 0);
 
 IF1 sim_printf ("awd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].AR_CHAR, cpu.PAR[ARn].AR_BITNO, cpu.PAR[ARn].AR_BITNO);
@@ -2067,7 +2072,7 @@ IF1 sim_printf ("sbd test no %d\n", ++testno);
 
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 IF1 sim_printf ("address %o\n", address);
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR (reg) & MASK24;
 IF1 sim_printf ("r 0%o %d.  /36 0%o %d. %%36 0%o %d.\n", r, r, r/36, r/36, r%36, r%36);
@@ -2121,13 +2126,14 @@ IF1 sim_printf ("awd test no %d\n", ++testno);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of characters
-    int32_t r = getCrAR (reg);
+// XXX This code is assuming that 'r' has 18 bits of data....
+    int32_t r = (int32_t) (getCrAR (reg) & MASK18);
 
 IF1 sim_printf ("swd r 0%o %d.\n", r, r);
 
-    r = SIGNEXT18_32 (r);
+    r = SIGNEXT18_32 ((word18) r);
 
 IF1 sim_printf ("swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
@@ -2151,12 +2157,12 @@ IF1 sim_printf ("swd minued 0%o\n", minued);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd minued 0%o\n", minued);
 
     int32_t subtractend = address + r;
-    int32_t difference = minued - subtractend;
+    int32_t difference = (int32_t) minued - subtractend;
 
 IF1 sim_printf ("swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtractend, difference);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtractend, difference);
 
-    cpu . AR [ARn] . WORDNO = difference & AMASK;
+    cpu . AR [ARn] . WORDNO = (word18) difference & AMASK;
     //SET_PR_BITNO (ARn, 0);
     SET_AR_CHAR_BITNO (ARn, 0, 0);
 
@@ -2177,7 +2183,7 @@ void s9bd (void)
 //sim_printf ("address %o\n", address);
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
 
     // r is the count of 9-bit characters
     word21 r = getCrAR (reg) & MASK21;;
@@ -2466,7 +2472,7 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu . cu . IWB);
     uint address = SIGNEXT15_18 (GET_OFFSET (cpu . cu . IWB));
-    word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
+    word4 reg = (word4) GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
 
 //
@@ -2666,13 +2672,13 @@ IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
               };
             uint charno = tab [sum % 36u] [0];
             uint bitno = tab [sum % 36u] [1];
-            SET_AR_CHAR_BITNO (ARn, charno, bitno);
+            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) bitno);
           }
         else
           {
             uint charno = (sum % 36u) / 9;
             uint bitno = sum % 9;
-            SET_AR_CHAR_BITNO (ARn, charno, sum % 9);
+            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) (sum % 9));
 
 IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / 36u) & AMASK, (sum / 36u) & AMASK);
 IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
@@ -8299,7 +8305,7 @@ void dtb (void)
     parseNumericOperandDescriptor(2);
    
     // Bits 0 to 10 of the instruction Must Be Zero. So Say We ISOLTS.
-    uint mbz = getbits36 (IWB_IRODD, 0, 11);
+    uint mbz = (uint) getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");

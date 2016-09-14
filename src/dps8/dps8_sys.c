@@ -1454,7 +1454,7 @@ static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
                 if (strstr (name, "fw.") || strstr (name, ".ec"))
                   continue;
                 //sim_printf ("A: %s %d\n", name, segno);
-                int rc = addBookSegment (name, c3 ++);
+                int rc = addBookSegment (name, (int) c3 ++);
                 if (rc < 0)
                   {
                     sim_printf ("error adding segment name\n");

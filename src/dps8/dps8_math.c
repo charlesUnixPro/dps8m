@@ -248,7 +248,7 @@ void IEEElongdoubleToEAQ(long double f0)
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
-double float36ToIEEEdouble(word36 f36)
+static double float36ToIEEEdouble(word36 f36)
 {
     unsigned char E;    ///< exponent
     uint64 Mant;         ///< mantissa
@@ -708,7 +708,7 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
-    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
 IF1 sim_printf ("UFA e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
@@ -1668,7 +1668,7 @@ void fstr(word36 *Y)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        word8 E8 = E & MASK8;   
+        word8 E8 = (word8) E & MASK8;   
         fno(&E8, &A, &Q);
         E = SIGNEXT8_int (E8 & MASK8);
     }
@@ -1895,7 +1895,7 @@ void dufa (bool subtract)
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; ///< 28-bit mantissa (incl sign)
            m2 |= (word72) cpu.Ypair[1] << 8;
     
-    int e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 IF1 sim_printf ("DUFA e1 %03o m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
@@ -2924,7 +2924,7 @@ void dfstr (word36 *Ypair)
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
-        word8 E8 = E & MASK8;   
+        word8 E8 = (word8) E & MASK8;   
         fno(&E8, &A, &Q);
         E = SIGNEXT8_int (E8 & MASK8);
     }
@@ -3021,7 +3021,7 @@ void dfcmp (void)
     // C(Y-pair)8,71
     word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMP e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
@@ -3109,7 +3109,7 @@ void dfcmg (void)
     // C(Y-pair)8,71
     word72 m2 = (uint128) getbits36 (cpu.Ypair[0], 8, 28) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
-    int   e2 = SIGNEXT8_int (getbits36 (cpu.Ypair[0], 0, 8));
+    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
 IF1 sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 

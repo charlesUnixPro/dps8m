@@ -337,7 +337,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
 //                    out2[i] = out1[i + r->digits - n];
 //                }
                 // memcpy
-                memcpy(out2, out1 + r->digits - n, n);
+                memcpy(out2, out1 + r->digits - n, (unsigned long) n);
                 
                 *OVR = true;
                 return (char *) out2;

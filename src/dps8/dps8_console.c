@@ -452,7 +452,7 @@ static void oscar (char * text)
   }
 #endif
 
-static void sendConsole (uint stati)
+static void sendConsole (word12 stati)
   {
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;
@@ -471,7 +471,7 @@ static void sendConsole (uint stati)
       {
         if (console_state . readp + ntext >= console_state . tailp)
           break;
-        text [ntext] = * (console_state . readp + ntext);
+        text [ntext] = (char) (* (console_state . readp + ntext));
       }
     text [ntext] = 0;
     //sim_printf ("<%s>\n", text);

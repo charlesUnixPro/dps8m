@@ -12,6 +12,7 @@
 
 //#include "dps8.h"
 //#include "dps8_utils.h"
+#include "shm.h"
 
 #define MAX_SEGS 256
 static int nsegs = 0;
@@ -62,7 +63,7 @@ void * create_shm (char * key, pid_t system_pid, size_t size)
 #endif
       }
 
-    if (ftruncate (fd, size) == -1)
+    if (ftruncate (fd, (off_t) size) == -1)
       {
         //sim_printf ("create_shm  ftruncate  fail %d\n", errno);
         return NULL;
@@ -103,7 +104,7 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
         return NULL;
       }
 
-    if (ftruncate (fd, size) == -1)
+    if (ftruncate (fd, (off_t) size) == -1)
       {
         //printf ("open_shm ftruncate  fail %d\n", errno);
         close (fd);

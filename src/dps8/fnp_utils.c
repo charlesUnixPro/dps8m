@@ -561,7 +561,7 @@ char *Strsep(char **stringp, const char *delim)
 
 #define TIMEFORMAT "%Y/%m/%d %T"
 
-char *Now()
+char *Now (void)
 {
     static char outstr[200];
     time_t t;
