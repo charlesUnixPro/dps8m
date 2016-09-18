@@ -193,6 +193,37 @@
 // Making it up...
 #define DEFAULT_BACKLOG 16
 
+#ifdef TUN
+static int tun_alloc (char * dev)
+  {
+    struct ifreq ifr;
+    int fd, err;
+
+    if ((fd = open ("/dev/net/tun", O_RDWR)) < 0)
+      //return tun_alloc_old (dev);
+      return fd;
+
+    memset (& ifr, 0,  sizeof (ifr));
+
+    /* Flags: IFF_TUN   - TUN device (no Ethernet headers) 
+     *        IFF_TAP   - TAP device  
+     *
+     *        IFF_NO_PI - Do not provide packet information  
+     */ 
+    ifr.ifr_flags = IFF_TUN; 
+    if (* dev)
+      strncpy (ifr.ifr_name, dev, IFNAMSIZ);
+
+    if ((err = ioctl (fd, TUNSETIFF, (void *) & ifr)) < 0)
+      {
+        close (fd);
+        return err;
+      }
+    strcpy (dev, ifr.ifr_name);
+    return fd;
+  }              
+#endif
+
 static uv_loop_t * loop = NULL;
 static uv_tcp_t du_server;
 
@@ -725,30 +756,32 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     linep->is_tun = false;
     if (flags & 2)
       {
-        char a_name [IFNAMSIZ] = "dps8m";
-        linep->tun_fd = tun_alloc (a_name);
-        if (linep->tun_fd < 0)
+        if (linep->tun_fd <= 0)
           {
-            sim_printf ("dialout TUN tun_alloc returned %d errno %d\n", linep->tun_fd, error);
-            return;
-         }
-        int flags = fcntl (linep->tun_fd, F_GETFL, 0);
-        if (flags < 0)
-          {
-            sim_printf ("dialout TUN F_GETFL returned < 0\n");
-            return;
+            char a_name [IFNAMSIZ] = "dps8m";
+            linep->tun_fd = tun_alloc (a_name);
+            if (linep->tun_fd < 0)
+              {
+                sim_printf ("dialout TUN tun_alloc returned %d errno %d\n", linep->tun_fd, errno);
+                return;
+             }
+            int flags = fcntl (linep->tun_fd, F_GETFL, 0);
+            if (flags < 0)
+              {
+                sim_printf ("dialout TUN F_GETFL returned < 0\n");
+                return;
+              }
+            flags |= O_NONBLOCK;
+            int ret = fcntl (linep->tun_fd, F_SETFL, flags);
+            if (ret)
+              {
+                sim_printf ("dialout TUN F_SETFL returned %d\n", ret);
+                return;
+              }
           }
-        flags |= O_NONBLOCK;
-        int ret = fcntl (linep->tun_df, F_SETFL, flags);
-        if (ret)
-          {
-            sim_printf ("dialout TUN F_SETFL returned %d\n", ret);
-            return;
-          }
-        linep->is_tun = true;
-        return;
-      }
-      }
+          linep->is_tun = true;
+          return;
+        }
 #endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
@@ -888,7 +921,65 @@ sim_printf ("listening on port %d\n", linep->port);
   }
 
 #ifdef TUN
-static void fnoTUNProcessLine (struct t_line * linep)
+static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssize_t nread)
+  {
+    //uvClientData * p = (uvClientData *) client->data;
+    //uint fnpno = p -> fnpno;
+    //uint lineno = p -> lineno;
+    if (fnpno >= N_FNP_UNITS_MAX || lineno >= MAX_LINES)
+      {
+        sim_printf ("bogus client data\n");
+        return;
+      }
+//sim_printf ("assoc. %d.%d nread %ld <%*s>\n", fnpno, lineno, nread, (int) nread, buf);
+//{for (int i = 0; i < nread; i ++) sim_printf (" %03o", buf[i]);
+ //sim_printf ("\n");
+//}
+
+    if (! fnpUnitData[fnpno].MState.accept_calls)
+      {
+        //fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
+        sim_printf ("TUN traffic, but Multics is not accepting calls\n");
+        return;
+      }
+    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+#if 0
+    if (! linep->listen)
+      {
+        //fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
+        sim_printf ("TUN traffic, but Multics is not listening to the line\n");
+        return;
+      }
+#endif
+    if (linep->inBuffer)
+      {
+        unsigned char * new = realloc (linep->inBuffer, (unsigned long) (linep->inSize + nread));
+        if (! new)
+          {
+            sim_warn ("inBuffer realloc fail; dropping data\n");
+            goto done;
+          }
+        memcpy (new + linep->inSize, buf, (unsigned long) nread);
+        linep->inSize += nread;
+        linep->inBuffer = new;
+      }
+    else
+      {
+        linep->inBuffer = malloc ((unsigned long) nread);
+        if (! linep->inBuffer)
+          {
+            sim_warn ("inBuffer malloc fail;  dropping data\n");
+            goto done;
+          }
+        memcpy (linep->inBuffer, buf, (unsigned long) nread);
+        linep->inSize = (uint) nread;
+        linep->inUsed = 0;
+      }
+
+done:;
+  }
+
+static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
   {
 /* Note that "buffer" should be at least the MTU size of the interface, eg 1500 bytes */
     unsigned char buffer [1500 + 16];
@@ -904,6 +995,20 @@ static void fnoTUNProcessLine (struct t_line * linep)
         return;
       }
 
+// To make debugging easier, return data as a hex string rather than binary.
+// When the stack interface is debugged, switch to binary.
+    unsigned char xbufr [2 * (1500 + 16)];
+    unsigned char bin2hex [16] = "0123456789ABCDEF";
+
+    for (uint i = 0; i > nread; i ++)
+      {
+        xbufr [i * 2 + 0] = bin2hex [(buffer [i] >> 4) & 0xf];
+        xbufr [i * 2 + 1] = bin2hex [(buffer [i] >> 0) & 0xf];
+      }
+     xbufr [nread * 2] = 0;
+     processPacketInput (fnpno, lineno, xbufr, nread * 2 + 1);
+
+// Debugging
 // 4 bytes of metadata
 #define ip 4 
     /* Do whatever with the data */
@@ -975,7 +1080,7 @@ void fnpTUNProcessEvent (void)
           {
             struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
             if (linep->is_tun)
-              fnoTUNProcessLine (linep);
+              fnoTUNProcessLine (fnpno, lineno, linep);
           }
       }
   }
