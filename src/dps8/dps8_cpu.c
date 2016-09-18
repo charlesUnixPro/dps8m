@@ -1513,7 +1513,17 @@ setCPU:;
           }
 
 #ifdef EV_POLL
-        uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+// The event poll is consuming 40% of the CPU according to pprof.
+// We only want to process at 100Hz; yet we are testing at ~1MHz.
+// If we only test every 1000 cycles, we shouldn't miss by more then
+// 10%...
+
+        static uint fastQueueSubsample = 0;
+        if (fastQueueSubsample ++ > 1024) // ~ 1KHz
+          {
+            fastQueueSubsample = 0;
+            uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+          }
 #else
         static uint slowQueueSubsample = 0;
         if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
