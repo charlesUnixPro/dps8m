@@ -1,10 +1,3 @@
-//#define ISOLTS_BITNO
-
-#ifdef ISOLTS
-#define IF1 if (currentRunningCPUnum)
-#else
-#define IF1 if (0)
-#endif
 /**
  * \file dps8_ins.c
  * \project dps8

@@ -8,12 +8,6 @@
  *        * fixed-point routines (eventually)
 */
 
-#ifdef ISOLTS
-#define IF1 if (currentRunningCPUnum)
-#else
-#define IF1 if (0)
-#endif
-
 #include <stdio.h>
 #include <math.h>
 

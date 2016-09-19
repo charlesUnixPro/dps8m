@@ -1150,7 +1150,7 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
           {
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
 #endif
     *data = M[addr] & DMASK;
@@ -1167,7 +1167,7 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
           {
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
 #endif
     M[addr] = data & DMASK;
@@ -1184,7 +1184,7 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
           {
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
 #endif
     *even = M[addr++] & DMASK;
@@ -1202,7 +1202,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
           {
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
-        addr = os + addr % SCBANK;
+        addr = (uint) os + addr % SCBANK;
       }
 #endif
     M[addr++] = even;
