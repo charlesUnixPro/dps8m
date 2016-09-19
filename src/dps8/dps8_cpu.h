@@ -230,12 +230,17 @@ struct _sdw
     word1   C;       // Cache control bit. If this bit is set ON, data and/or
                      //  instructions from the segment may be placed in the
                      //  cache memory.
-    word14  CL;      // Call limiter (entry bound) value. If SDWAM . G is set
+    word14  EB;      // Call limiter (entry bound) value. If SDWAM . G is set
                      //  OFF, transfers of control into the segment must be to
                      //  segment addresses no greater than this value.
     word15  POINTER; // The effective segment number used to fetch this SDW
                      //  from main memory.
-    word1   F;       // Full/empty bit. If this bit is set ON, the SDW in the
+    word1   DF;      // Directed fault flag (called F in AL39).
+                     //  * 0 = page not in main memory; execute directed fault
+                     //        FC
+                     //  * 1 = page is in main memory
+    word2   FC;      // Directed fault number for page fault.
+    word1   FE;      // Full/empty bit. If this bit is set ON, the SDW in the
                      //  register is valid. If this bit is set OFF, a hit is
                      //  not possible. All SDWAM . F bits are set OFF by the
                      //  instructions that clear the SDWAM.
@@ -249,7 +254,9 @@ struct _sdw
   };
 
 typedef struct _sdw _sdw;
+typedef struct _sdw _sdw0;
 
+#if 0
 // in-core SDW (i.e. not cached, or in SDWAM)
 
 struct _sdw0
@@ -262,7 +269,7 @@ struct _sdw0
     word3   R1;      // Upper limit of read/write ring bracket
     word3   R2;      // Upper limit of read/execute ring bracket
     word3   R3;      // Upper limit of call ring bracket
-    word1   F;       // Directed fault flag
+    word1   DF;      // Directed fault flag (called F in AL39).
                      //  * 0 = page not in main memory; execute directed fault
                      //        FC
                      //  * 1 = page is in main memory
@@ -301,6 +308,7 @@ struct _sdw0
 };
 
 typedef struct _sdw0 _sdw0;
+#endif
 
 
 // PTW as used by APU
@@ -309,17 +317,22 @@ struct _ptw
  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
-    word1   M;       // Page modified flag bit. This bit is set ON whenever
-                     //  the PTW is used for a store type instruction. When
-                     //  the bit changes value from 0 to 1, a special
-                     //  extra cycle is generated to write it back into the
-                     //  PTW in the page table in main memory.
+    word1   U;      // * 1 = page has been used (referenced)
+    word1   M;      // Page modified flag bit. This bit is set ON whenever
+                    //  the PTW is used for a store type instruction. When
+                    //  the bit changes value from 0 to 1, a special
+                    //  extra cycle is generated to write it back into the
+                    //  PTW in the page table in main memory.
+    word1   DF;     // Directed fault flag
+                    // * 0 = page not in main memory; execute directed fault FC
+                    // * 1 = page is in main memory
+    word2   FC;     // Directed fault number for page fault.
     word15  POINTER; // The effective segment number used to fetch this PTW
                      //  from main memory.
     word12  PAGENO;  // The 12 high-order bits of the 18-bit computed
                      //  address (TPR . CA) used to fetch this PTW from main
                      //  memory.
-    word1   F;       // Full/empty bit. If this bit is set ON, the PTW in
+    word1   FE;      // Full/empty bit. If this bit is set ON, the PTW in
                      //  the register is valid. If this bit is set OFF, a
                      //  hit is not possible. All PTWAM . F bits are set OFF
                      //  by the instructions that clear the PTWAM.
@@ -335,7 +348,9 @@ struct _ptw
   };
 
 typedef struct _ptw _ptw;
+typedef struct _ptw _ptw0;
 
+#if 0
 // in-core PTW
 
 struct _ptw0
@@ -344,7 +359,7 @@ struct _ptw0
                     //  memory address of the page.
     word1   U;      // * 1 = page has been used (referenced)
     word1   M;      // * 1 = page has been modified
-    word1   F;      // Directed fault flag
+    word1   DF;     // Directed fault flag
                     // * 0 = page not in main memory; execute directed fault FC
                     // * 1 = page is in main memory
     word2   FC;     // Directed fault number for page fault.
@@ -352,6 +367,7 @@ struct _ptw0
   };
 
 typedef struct _ptw0 _ptw0;
+#endif
 
 //
 // Cache Mode Regsiter
@@ -1025,20 +1041,20 @@ typedef struct
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
 #ifdef SPEED
-    struct _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+    _sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
-    struct _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+    _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
 #endif
-    struct _sdw * SDW; // working SDW
-    struct _sdw0 SDW0; // a SDW not in SDWAM
-    struct _sdw0 _s;
+    _sdw * SDW; // working SDW
+    _sdw SDW0; // a SDW not in SDWAM
+    _sdw _s;
 #ifdef SPEED
-    struct _ptw PTWAM0;
+    _ptw PTWAM0;
 #else
-    struct _ptw PTWAM [64];
+    _ptw PTWAM [64];
 #endif
-    struct _ptw * PTW;
-    struct _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
+    _ptw * PTW;
+    _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
     _cache_mode_register CMR;
     _mode_register MR;
     bool bTroubleFaultCycle;
@@ -1227,8 +1243,10 @@ t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
 //t_stat dumpKST (int32 arg, char * buf);
 t_stat memWatch (int32 arg, char * buf);
-_sdw0 *fetchSDW (word15 segno);
-char *strSDW0 (_sdw0 *SDW);
+//_sdw0 *fetchSDW (word15 segno);
+_sdw *fetchSDW (word15 segno);
+//char *strSDW0 (_sdw0 *SDW);
+char *strSDW0 (_sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);

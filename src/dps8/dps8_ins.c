@@ -6385,7 +6385,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
                 putbits36_15 (& cpu.Yblock16 [j], 0,
                            cpu.SDWAM [toffset + j].POINTER);
                 putbits36_1 (& cpu.Yblock16 [j], 27,
-                           cpu.SDWAM [toffset + j].F);
+                           cpu.SDWAM [toffset + j].DF);
                 putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.SDWAM [toffset + j].USE);
 #endif
@@ -6396,7 +6396,7 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", cpu.history_cyclic[CU_H
                 putbits36 (& cpu.Yblock16 [0], 0, 15,
                            cpu.SDWAM0.POINTER);
                 putbits36 (& cpu.Yblock16 [0], 27, 1,
-                           cpu.SDWAM0.F);
+                           cpu.SDWAM0.FE);
                 putbits36 (& cpu.Yblock16 [0], 30, 6,
                            cpu.SDWAM0.USE);
               }
@@ -7443,7 +7443,7 @@ static t_stat DoEISInstruction (void)
                 putbits36_12 (& cpu.Yblock16 [j], 15,
                            cpu.PTWAM [toffset + j].PAGENO);
                 putbits36_1 (& cpu.Yblock16 [j], 27, 
-                           cpu.PTWAM [toffset + j].F);
+                           cpu.PTWAM [toffset + j].FE);
                 putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.PTWAM [toffset + j].USE);
 #endif
@@ -7456,7 +7456,7 @@ static t_stat DoEISInstruction (void)
                 putbits36 (& cpu.Yblock16 [0], 15, 12,
                            cpu.PTWAM0.PAGENO);
                 putbits36 (& cpu.Yblock16 [0], 27,  1,
-                           cpu.PTWAM0.F);
+                           cpu.PTWAM0.FE);
                 putbits36 (& cpu.Yblock16 [0], 30,  6,
                            cpu.PTWAM0.USE);
               }
@@ -7531,7 +7531,7 @@ static t_stat DoEISInstruction (void)
                 putbits36_1 (& cpu.Yblock32 [j * 2 + 1], 57 - 36,
                            cpu.SDWAM [toffset + j].C);
                 putbits36_14 (& cpu.Yblock32 [j * 2 + 1], 58 - 36,
-                           cpu.SDWAM [toffset + j].CL);
+                           cpu.SDWAM [toffset + j].EB);
 #endif
               }
 #ifdef SPEED
@@ -7562,7 +7562,7 @@ static t_stat DoEISInstruction (void)
                 putbits36 (& cpu.Yblock32 [1], 57 - 36,  1,
                            cpu.SDWAM0.C);
                 putbits36 (& cpu.Yblock32 [1], 58 - 36, 14,
-                           cpu.SDWAM0.CL);
+                           cpu.SDWAM0.EB);
 
               }
 #endif
@@ -8471,23 +8471,23 @@ static int doABSA (word36 * result)
         word36 PTWx1;
         core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-        struct _ptw0 PTW1;
+        _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);
         PTW1.U = TSTBIT(PTWx1, 9);
         PTW1.M = TSTBIT(PTWx1, 6);
-        PTW1.F = TSTBIT(PTWx1, 2);
+        PTW1.DF = TSTBIT(PTWx1, 2);
         PTW1.FC = PTWx1 & 3;
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa PTW1 ADDR %08o U %o M %o F %o FC %o\n",
-          PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+          PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
 
         // 4. If PTW(x1).F = 0, then generate directed fault n where n is
         // given in PTW(x1).FC. The value of n used here is the value
         // assigned to define a missing page fault or, simply, a
         // page fault.
 
-        if (!PTW1.F)
+        if (!PTW1.DF)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
             // initiate a directed fault
@@ -8505,13 +8505,13 @@ static int doABSA (word36 * result)
         core_read2(((PTW1.ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd,
                      __func__);
 
-        struct _sdw0 SDW0;
+        _sdw0 SDW0;
         // even word
         SDW0.ADDR = (SDWeven >> 12) & PAMASK;
         SDW0.R1 = (SDWeven >> 9) & 7;
         SDW0.R2 = (SDWeven >> 6) & 7;
         SDW0.R3 = (SDWeven >> 3) & 7;
-        SDW0.F = TSTBIT(SDWeven, 2);
+        SDW0.DF = TSTBIT(SDWeven, 2);
         SDW0.FC = SDWeven & 3;
 
         // odd word
@@ -8527,7 +8527,7 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa SDW0 ADDR %08o R1 %o R1 %o R3 %o F %o FC %o\n",
-          SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F,
+          SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF,
           SDW0.FC);
 
         sim_debug (DBG_APPENDING, & cpu_dev,
@@ -8541,7 +8541,7 @@ static int doABSA (word36 * result)
         // n is given in SDW(segno).FC.
         // This is a segment fault as discussed earlier in this section.
 
-        if (!SDW0.F)
+        if (!SDW0.DF)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
             doFault(FAULT_DF0 + SDW0.FC, (_fault_subtype) {.bits=0}, "ABSA !SDW0.F");
@@ -8591,16 +8591,16 @@ static int doABSA (word36 * result)
             word36 PTWx2;
             core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
 
-            struct _ptw0 PTW_2;
+            _ptw0 PTW_2;
             PTW_2.ADDR = GETHI(PTWx2);
             PTW_2.U = TSTBIT(PTWx2, 9);
             PTW_2.M = TSTBIT(PTWx2, 6);
-            PTW_2.F = TSTBIT(PTWx2, 2);
+            PTW_2.DF = TSTBIT(PTWx2, 2);
             PTW_2.FC = PTWx2 & 3;
 
             sim_debug (DBG_APPENDING, & cpu_dev,
               "absa PTW_2 ADDR %08o U %o M %o F %o FC %o\n",
-              PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.F, PTW_2.FC);
+              PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.DF, PTW_2.FC);
 
             // 11.If PTW(x2).F = 0, then generate directed fault n where n is
             // given in PTW(x2).FC. This is a page fault as in Step 4 above.

@@ -864,7 +864,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         word36 PTWx1;
         core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-        struct _ptw0 PTW1;
+        _ptw0 PTW1;
         PTW1.ADDR = GETHI(PTWx1);
         PTW1.U = TSTBIT(PTWx1, 9);
         PTW1.M = TSTBIT(PTWx1, 6);
@@ -888,7 +888,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         word36 SDWeven, SDWodd;
         core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
 
-        struct _sdw0 SDW0; 
+        _sdw0 SDW0; 
         // even word
         SDW0.ADDR = (SDWeven >> 12) & PAMASK;
         SDW0.R1 = (SDWeven >> 9) & 7;
@@ -948,7 +948,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             word36 PTWx2;
             core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
     
-            struct _ptw0 PTW2;
+            _ptw0 PTW2;
             PTW2.ADDR = GETHI(PTWx2);
             PTW2.U = TSTBIT(PTWx2, 9);
             PTW2.M = TSTBIT(PTWx2, 6);
@@ -1231,14 +1231,14 @@ t_stat virtAddrN (uint address)
             word36 PTWx1;
             core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-            struct _ptw0 PTW1;
+            _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
             PTW1.U = TSTBIT(PTWx1, 9);
             PTW1.M = TSTBIT(PTWx1, 6);
-            PTW1.F = TSTBIT(PTWx1, 2);
+            PTW1.DF = TSTBIT(PTWx1, 2);
             PTW1.FC = PTWx1 & 3;
            
-            if (PTW1.F == 0)
+            if (PTW1.DF == 0)
                 continue;
             //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
             //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
@@ -1247,13 +1247,13 @@ t_stat virtAddrN (uint address)
             {
                 word36 SDWeven, SDWodd;
                 core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
-                struct _sdw0 SDW0;
+                _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
                 SDW0.R1 = (SDWeven >> 9) & 7;
                 SDW0.R2 = (SDWeven >> 6) & 7;
                 SDW0.R3 = (SDWeven >> 3) & 7;
-                SDW0.F = TSTBIT(SDWeven, 2);
+                SDW0.DF = TSTBIT(SDWeven, 2);
                 SDW0.FC = SDWeven & 3;
 
                 // odd word
@@ -1267,7 +1267,7 @@ t_stat virtAddrN (uint address)
                 SDW0.C = TSTBIT(SDWodd, 14);
                 SDW0.EB = SDWodd & 037777;
 
-                if (SDW0.F == 0)
+                if (SDW0.DF == 0)
                     continue;
                 //sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
                 //          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
@@ -1283,11 +1283,11 @@ t_stat virtAddrN (uint address)
                         word36 PTWx2;
                         core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2, __func__);
 
-                        struct _ptw0 PTW2;
+                        _ptw0 PTW2;
                         PTW2.ADDR = GETHI(PTWx2);
                         PTW2.U = TSTBIT(PTWx2, 9);
                         PTW2.M = TSTBIT(PTWx2, 6);
-                        PTW2.F = TSTBIT(PTWx2, 2);
+                        PTW2.DF = TSTBIT(PTWx2, 2);
                         PTW2.FC = PTWx2 & 3;
 
                         //sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 

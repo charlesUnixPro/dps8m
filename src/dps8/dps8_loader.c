@@ -1278,7 +1278,7 @@ static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, wor
     SDW0.R1   = R1 & 7;
     SDW0.R2   = R2 & 7;
     SDW0.R3   = R3 & 7;
-    SDW0.F    =  F & 1;
+    SDW0.DF   =  F & 1;
     SDW0.FC   = FC & 3;
     
     // odd word
@@ -1299,7 +1299,7 @@ static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
 {
     word36 even, odd;
     
-    even = (word36) p->ADDR << 12 | (word36) p->R1 << 9 | (word36) p->R2 << 6 | (word36) p->R3 << 3 | (word36) p->F << 2 | (word36) p->FC;
+    even = (word36) p->ADDR << 12 | (word36) p->R1 << 9 | (word36) p->R2 << 6 | (word36) p->R3 << 3 | (word36) p->DF << 2 | (word36) p->FC;
     
     odd = (word36) p->BOUND << 21 | (word36) p->R << 20 | (word36) p->E << 19 | (word36) p->W << 18 | (word36) p->P << 17 | (word36) p->U << 16 | (word36) p->G << 15 | (word36) p->C << 14 | (word36) p->EB;
     

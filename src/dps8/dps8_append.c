@@ -176,7 +176,7 @@ void do_ldbr (word36 * Ypair)
     //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
     for (int i = 0; i < 64; i ++)
       {
-        cpu . SDWAM [i] . F = 0;
+        cpu . SDWAM [i] . DF = 0;
         cpu . SDWAM [i] . USE = (word6) i;
       }
 
@@ -185,16 +185,16 @@ void do_ldbr (word36 * Ypair)
     //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
     for (int i = 0; i < 64; i ++)
       {
-        cpu . PTWAM [i] . F = 0;
+        cpu . PTWAM [i] . FE = 0;
         cpu . PTWAM [i] . USE = (word6) i;
       }
 #ifdef do_selftestPTWAM
     selftestPTWAM ();
 #endif
 #else
-    cpu.SDWAM0.F = 0;
+    cpu.SDWAM0.FE = 0;
     cpu.SDWAM0.USE = 0;
-    cpu.PTWAM0.F = 0;
+    cpu.PTWAM0.FE = 0;
     cpu.PTWAM0.USE = 0;
 #endif // SPEED
 
@@ -254,11 +254,11 @@ void do_camp (UNUSED word36 Y)
 #ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
-        cpu.PTWAM[i].F = 0;
+        cpu.PTWAM[i].FE = 0;
         cpu.PTWAM[i].USE = (word6) i;
       }
 #else
-    cpu.PTWAM0.F = 0;
+    cpu.PTWAM0.FE = 0;
     cpu.PTWAM0.USE = 0;
 #endif
 // 8009997-040 A level of the associative memory is disabled if
@@ -290,7 +290,7 @@ void do_cams (UNUSED word36 Y)
 #ifndef SPEED
     for (int i = 0; i < 64; i ++)
       {
-        cpu.SDWAM[i].F = 0;
+        cpu.SDWAM[i].DF = 0;
         cpu.SDWAM[i].USE = (word6) i;
 #ifdef ISOSLTS
 if (currentRunningCPUnum)
@@ -298,7 +298,7 @@ sim_printf ("CAMS cleared it\n");
 #endif
       }
 #else
-    cpu.SDWAM0.F = 0;
+    cpu.SDWAM0.FE = 0;
     cpu.SDWAM0.USE = 0;
 #endif
 // 8009997-040 A level of the associative memory is disabled if
@@ -336,10 +336,10 @@ static void fetchDSPTW(word15 segno)
     cpu . PTW0.ADDR = GETHI(PTWx1);
     cpu . PTW0.U = TSTBIT(PTWx1, 9);
     cpu . PTW0.M = TSTBIT(PTWx1, 6);
-    cpu . PTW0.F = TSTBIT(PTWx1, 2);
+    cpu . PTW0.DF = TSTBIT(PTWx1, 2);
     cpu . PTW0.FC = PTWx1 & 3;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.F, cpu . PTW0.FC);
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 
@@ -385,7 +385,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     {
         // make certain we initialize SDWAM prior to use!!!
         //if (SDWAM[_n]._initialized && segno == SDWAM[_n].POINTER)
-        if (cpu . SDWAM[_n].F && segno == cpu . SDWAM[_n].POINTER)
+        if (cpu . SDWAM[_n].DF && segno == cpu . SDWAM[_n].POINTER)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
@@ -429,7 +429,7 @@ static void fetchPSDW(word15 segno)
     cpu . SDW0.R1 = (SDWeven >> 9) & 7;
     cpu . SDW0.R2 = (SDWeven >> 6) & 7;
     cpu . SDW0.R3 = (SDWeven >> 3) & 7;
-    cpu . SDW0.F = TSTBIT(SDWeven, 2);
+    cpu . SDW0.DF = TSTBIT(SDWeven, 2);
     cpu . SDW0.FC = SDWeven & 3;
     
     // odd word
@@ -446,7 +446,7 @@ static void fetchPSDW(word15 segno)
     //cpu . PPR.P = (cpu . SDW0.P && cpu . PPR.PRR == 0);   // set priv bit (if OK)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
- y1, cpu . PTW0.ADDR, SDWeven, SDWodd, cpu . SDW0.ADDR, cpu . SDW0.BOUND, cpu . SDW0.U, cpu . SDW0.F);
+ y1, cpu . PTW0.ADDR, SDWeven, SDWodd, cpu . SDW0.ADDR, cpu . SDW0.BOUND, cpu . SDW0.U, cpu . SDW0.DF);
 }
 
 /// \brief Nonpaged SDW Fetch
@@ -474,7 +474,7 @@ static void fetchNSDW(word15 segno)
     cpu . SDW0.R1 = (SDWeven >> 9) & 7;
     cpu . SDW0.R2 = (SDWeven >> 6) & 7;
     cpu . SDW0.R3 = (SDWeven >> 3) & 7;
-    cpu . SDW0.F = TSTBIT(SDWeven, 2);
+    cpu . SDW0.DF = TSTBIT(SDWeven, 2);
     cpu . SDW0.FC = SDWeven & 3;
     
     // odd word
@@ -500,7 +500,7 @@ static char *strSDW(_sdw *SDW)
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
     //if (!SDW->_initialized)
-    if (!SDW->F)
+    if (!SDW->DF)
         sprintf(buff, "*** SDW Uninitialized ***");
     else
         sprintf(buff, "ADDR:%06o R1:%o R2:%o R3:%o BOUND:%o R:%o E:%o W:%o P:%o U:%o G:%o C:%o CL:%o POINTER=%o USE=%d",
@@ -516,7 +516,7 @@ static char *strSDW(_sdw *SDW)
                 SDW->U,
                 SDW->G,
                 SDW->C,
-                SDW->CL,
+                SDW->EB,
                 SDW->POINTER,
                 SDW->USE);
     return buff;
@@ -534,7 +534,7 @@ t_stat dumpSDWAM (void)
         _sdw *p = &cpu . SDWAM[_n];
         
         //if (p->_initialized)
-        if (p->F)
+        if (p->DF)
             sim_printf("SDWAM n:%d %s\n", _n, strSDW(p));
     }
     return SCPE_OK;
@@ -548,6 +548,7 @@ t_stat dumpSDWAM (void)
 static void loadSDWAM(word15 segno)
 {
 #ifdef SPEED
+#if 0
     cpu . SDWAM0 . ADDR = cpu . SDW0.ADDR;
     cpu . SDWAM0 . R1 = cpu . SDW0.R1;
     cpu . SDWAM0 . R2 = cpu . SDW0.R2;
@@ -560,11 +561,14 @@ static void loadSDWAM(word15 segno)
     cpu . SDWAM0 . U = cpu . SDW0.U;
     cpu . SDWAM0 . G = cpu . SDW0.G;
     cpu . SDWAM0 . C = cpu . SDW0.C;
-    cpu . SDWAM0 . CL = cpu . SDW0.EB;
+    cpu . SDWAM0 . EB = cpu . SDW0.EB;
+#else
+    cpu.SDWAM0 = cpu.SDW0;
+#endif
     cpu . SDWAM0 . POINTER = segno;
     cpu . SDWAM0 . USE = 0;
             
-    cpu . SDWAM0 . F = true;     // in use by SDWAM
+    cpu . SDWAM0 . FE = true;     // in use by SDWAM
             
     cpu . SDW = & cpu . SDWAM0;
             
@@ -573,6 +577,7 @@ static void loadSDWAM(word15 segno)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
         _sdw *p = &cpu . SDWAM[0];
+#if 0
         p->ADDR = cpu . SDW0.ADDR;
         p->R1 = cpu . SDW0.R1;
         p->R2 = cpu . SDW0.R2;
@@ -585,12 +590,15 @@ static void loadSDWAM(word15 segno)
         p->U = cpu . SDW0.U;
         p->G = cpu . SDW0.G;
         p->C = cpu . SDW0.C;
-        p->CL = cpu . SDW0.EB;
+        p->EB = cpu . SDW0.EB;
+#else
+        * p = cpu.SDW0;
+#endif
         p->POINTER = segno;
         p->USE = 0;
             
         //p->_initialized = true;     // in use by SDWAM
-        p->F = true;     // in use by SDWAM
+        p->DF = true;     // in use by SDWAM
             
         cpu . SDW = p;
             
@@ -603,10 +611,11 @@ static void loadSDWAM(word15 segno)
     {
         _sdw *p = &cpu . SDWAM[_n];
         //if (!p->_initialized || p->USE == 0)
-        if (!p->F || p->USE == 0)
+        if (!p->DF || p->USE == 0)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] p->USE=0\n", _n);
             
+#if 0
             p->ADDR = cpu . SDW0.ADDR;
             p->R1 = cpu . SDW0.R1;
             p->R2 = cpu . SDW0.R2;
@@ -619,18 +628,21 @@ static void loadSDWAM(word15 segno)
             p->U = cpu . SDW0.U;
             p->G = cpu . SDW0.G;
             p->C = cpu . SDW0.C;
-            p->CL = cpu . SDW0.EB;
+            p->EB = cpu . SDW0.EB;
+#else
+            *p = cpu.SDW0;
+#endif
             p->POINTER = segno;
             p->USE = 0;
             
             //p->_initialized = true;     // in use by SDWAM
-            p->F = true;     // in use by SDWAM
+            p->DF = true;     // in use by SDWAM
             
             for(int _h = 0 ; _h < 64 ; _h++)
             {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
-                if (!q->F)
+                if (!q->DF)
                     continue;
                 
                 q->USE -= 1;
@@ -664,7 +676,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     
     for(int _n = 0 ; _n < nwam ; _n++)
     {
-        if (((CA >> 10) & 0377) == ((cpu . PTWAM[_n].PAGENO >> 4) & 0377) && cpu . PTWAM[_n].POINTER == segno && cpu . PTWAM[_n].F)   //_initialized)
+        if (((CA >> 10) & 0377) == ((cpu . PTWAM[_n].PAGENO >> 4) & 0377) && cpu . PTWAM[_n].POINTER == segno && cpu . PTWAM[_n].FE)   //_initialized)
         {
             cpu . PTW = &cpu . PTWAM[_n];
             
@@ -704,37 +716,42 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     cpu . PTW0.ADDR = GETHI(PTWx2);
     cpu . PTW0.U = TSTBIT(PTWx2, 9);
     cpu . PTW0.M = TSTBIT(PTWx2, 6);
-    cpu . PTW0.F = TSTBIT(PTWx2, 2);
+    cpu . PTW0.DF = TSTBIT(PTWx2, 2);
     cpu . PTW0.FC = PTWx2 & 3;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.F, cpu . PTW0.FC);
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 static void loadPTWAM(word15 segno, word18 offset)
 {
 #ifdef SPEED
+#if 0
     cpu . PTWAM0 . ADDR = cpu . PTW0.ADDR;
     cpu . PTWAM0 . M = cpu . PTW0.M;
-    cpu . PTWAM0 . PAGENO = (offset >> 6) & 07777;
-    cpu . PTWAM0 . POINTER = segno;
-    cpu . PTWAM0 . USE = 0;
+#else
+    cpu.PTWAM0 = cpu.PTW0;
+#endif
+    cpu.PTWAM0.PAGENO = (offset >> 6) & 07777;
+    cpu.PTWAM0.POINTER = segno;
+    cpu.PTWAM0.USE = 0;
+    cpu.PTWAM0.FE = true;
             
-    cpu . PTWAM0 . F = true;
-            
-    cpu . PTW = & cpu . PTWAM0;
+    cpu.PTW = & cpu.PTWAM0;
 #else
     if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
         _ptw *p = &cpu . PTWAM[0];
+#if 0
         p->ADDR = cpu . PTW0.ADDR;
         p->M = cpu . PTW0.M;
+#else
+        *p = cpu.PTW0;
+#endif
         p->PAGENO = (offset >> 6) & 07777;
         p->POINTER = segno;
         p->USE = 0;
-            
-            //p->_initialized = true;
-        p->F = true;
+        p->FE = true;
             
         cpu . PTW = p;
         return;
@@ -747,16 +764,18 @@ static void loadPTWAM(word15 segno, word18 offset)
     {
         _ptw *p = &cpu . PTWAM[_n];
         //if (!p->_initialized || p->USE == 0)
-        if (!p->F || p->USE == 0)
+        if (!p->FE || p->USE == 0)
         {
+#if 0
             p->ADDR = cpu . PTW0.ADDR;
             p->M = cpu . PTW0.M;
+#else
+            *p = cpu.PTW0;
+#endif
             p->PAGENO = (offset >> 6) & 07777;
             p->POINTER = segno;
             p->USE = 0;
-            
-            //p->_initialized = true;
-            p->F = true;
+            p->FE = true;
             
             for(int _h = 0 ; _h < 64 ; _h++)
             {
@@ -915,7 +934,7 @@ _sdw0 * getSDW (word15 segno)
       {
         fetchDSPTW (segno);
             
-        if (! cpu . PTW0 . F)
+        if (! cpu . PTW0 . DF)
           doFault (FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "getSDW PTW0.F == 0");
             
         if (! cpu . PTW0 . U)
@@ -926,7 +945,7 @@ _sdw0 * getSDW (word15 segno)
     else
       fetchNSDW (segno);
         
-    if (cpu . SDW0 . F == 0)
+    if (cpu . SDW0 . DF == 0)
       {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "getSDW SDW0.F == 0! Initiating directed fault\n");
@@ -1049,7 +1068,7 @@ A:;
     {
         fetchDSPTW(cpu . TPR.TSR);
         
-        if (!cpu . PTW0.F)
+        if (!cpu . PTW0.DF)
             doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
         
         if (!cpu . PTW0.U)
@@ -1060,7 +1079,7 @@ A:;
     else
         fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
     
-    if (cpu . SDW0.F == 0)
+    if (cpu . SDW0.DF == 0)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
         // initiate a directed fault ...
@@ -1080,7 +1099,7 @@ A:;
         {
             fetchDSPTW(cpu . TPR.TSR);
             
-            if (!cpu . PTW0.F)
+            if (!cpu . PTW0.DF)
                 doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
             
             if (!cpu . PTW0.U)
@@ -1091,7 +1110,7 @@ A:;
         else
             fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
         
-        if (cpu . SDW0.F == 0)
+        if (cpu . SDW0.DF == 0)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
             // initiate a directed fault ...
@@ -1232,7 +1251,7 @@ E:;
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= cpu . SDW->CL) {
+    if ((address & 0037777) >= cpu . SDW->EB) {
         // Set fault ACV7 = NO GA
         acvFaults |= ACV7;
         acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
@@ -1335,7 +1354,7 @@ G:;
     
 #ifdef SPEED
     fetchPTW(cpu . SDW, address);
-    if (!cpu . PTW0.F)
+    if (!cpu . PTW0.DF)
     {
         //cpu . TPR.CA = address;
         // initiate a directed fault
@@ -1349,7 +1368,7 @@ G:;
         appendingUnitCycleType = apuCycle_PTWfetch;
         //fetchPTW(cpu . SDW, cpu . TPR.CA);
         fetchPTW(cpu . SDW, address);
-        if (!cpu . PTW0.F)
+        if (!cpu . PTW0.DF)
         {
             //cpu . TPR.CA = address;
             // initiate a directed fault
@@ -1498,8 +1517,8 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
   {
     // Local copies so we don't disturb machine state
 
-    struct _ptw0 PTW1;
-    struct _sdw0 SDW1;
+    _ptw0 PTW1;
+    _sdw0 SDW1;
 
    if (2u * segno >= 16u * (cpu . DSBR.BND + 1u))
      {
@@ -1521,10 +1540,10 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         PTW1 . ADDR = GETHI (PTWx1);
         PTW1 . U = TSTBIT (PTWx1, 9);
         PTW1 . M = TSTBIT (PTWx1, 6);
-        PTW1 . F = TSTBIT (PTWx1, 2);
+        PTW1 . DF = TSTBIT (PTWx1, 2);
         PTW1 . FC = PTWx1 & 3;
     
-        if (! PTW1 . F)
+        if (! PTW1 . DF)
           {
             if (msg)
               * msg = "!PTW0.F";
@@ -1544,7 +1563,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         SDW1 . R1 = (SDWeven >> 9) & 7;
         SDW1 . R2 = (SDWeven >> 6) & 7;
         SDW1 . R3 = (SDWeven >> 3) & 7;
-        SDW1 . F = TSTBIT(SDWeven, 2);
+        SDW1 . DF = TSTBIT(SDWeven, 2);
         SDW1 . FC = SDWeven & 3;
     
         // odd word
@@ -1571,7 +1590,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         SDW1 . R1 = (SDWeven >> 9) & 7;
         SDW1 . R2 = (SDWeven >> 6) & 7;
         SDW1 . R3 = (SDWeven >> 3) & 7;
-        SDW1 . F = TSTBIT (SDWeven, 2);
+        SDW1 . DF = TSTBIT (SDWeven, 2);
         SDW1 . FC = SDWeven & 3;
         
         // odd word
@@ -1587,7 +1606,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     
       }
 
-    if (SDW1 . F == 0)
+    if (SDW1 . DF == 0)
       {
         if (msg)
           * msg = "!SDW0.F != 0";
@@ -1619,10 +1638,10 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         PTW1 . ADDR = GETHI (PTWx2);
         PTW1 . U = TSTBIT (PTWx2, 9);
         PTW1 . M = TSTBIT (PTWx2, 6);
-        PTW1 . F = TSTBIT (PTWx2, 2);
+        PTW1 . DF = TSTBIT (PTWx2, 2);
         PTW1 . FC = PTWx2 & 3;
 
-        if ( !PTW1 . F)
+        if ( !PTW1 . DF)
           {
             if (msg)
               * msg = "!PTW0.F";

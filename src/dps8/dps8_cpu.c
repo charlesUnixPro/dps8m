@@ -315,7 +315,7 @@ _sdw0 *fetchSDW (word15 segno)
     SDW -> R1 = (SDWeven >> 9) & 7;
     SDW -> R2 = (SDWeven >> 6) & 7;
     SDW -> R3 = (SDWeven >> 3) & 7;
-    SDW -> F = TSTBIT(SDWeven, 2);
+    SDW -> DF = TSTBIT(SDWeven, 2);
     SDW -> FC = SDWeven & 3;
     
     // odd word
@@ -350,11 +350,11 @@ char * strSDW0 (_sdw0 * SDW)
     static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (! SDW -> F) 
+    if (! SDW -> DF) 
       sprintf (buff, "*** Uninitialized ***");
     else
       sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
-               SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> F,
+               SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> DF,
                SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
                SDW -> P, SDW -> U, SDW -> G, SDW -> C, SDW -> EB);
     return buff;
@@ -387,29 +387,29 @@ static t_stat dpsCmd_DumpSegmentTable()
             word36 PTWx1;
             core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-            struct _ptw0 PTW1;
+            _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
             PTW1.U = TSTBIT(PTWx1, 9);
             PTW1.M = TSTBIT(PTWx1, 6);
-            PTW1.F = TSTBIT(PTWx1, 2);
+            PTW1.DF = TSTBIT(PTWx1, 2);
             PTW1.FC = PTWx1 & 3;
            
-            if (PTW1.F == 0)
+            if (PTW1.DF == 0)
                 continue;
             sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
-                        segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+                        segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
             sim_printf ("    Target segment page table\n");
             for (word15 tspt = 0; tspt < 512; tspt ++)
             {
                 word36 SDWeven, SDWodd;
                 core_read2(((PTW1.ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
-                struct _sdw0 SDW0;
+                _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
                 SDW0.R1 = (SDWeven >> 9) & 7;
                 SDW0.R2 = (SDWeven >> 6) & 7;
                 SDW0.R3 = (SDWeven >> 3) & 7;
-                SDW0.F = TSTBIT(SDWeven, 2);
+                SDW0.DF = TSTBIT(SDWeven, 2);
                 SDW0.FC = SDWeven & 3;
 
                 // odd word
@@ -423,10 +423,10 @@ static t_stat dpsCmd_DumpSegmentTable()
                 SDW0.C = TSTBIT(SDWodd, 14);
                 SDW0.EB = SDWodd & 037777;
 
-                if (SDW0.F == 0)
+                if (SDW0.DF == 0)
                     continue;
                 sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
-                          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
+                          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
                 //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0.BOUND; offset += 1024)
                 if (SDW0.U == 0)
                 {
@@ -440,15 +440,15 @@ static t_stat dpsCmd_DumpSegmentTable()
                         word36 PTWx2;
                         core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
 
-                        struct _ptw0 PTW_2;
+                        _ptw0 PTW_2;
                         PTW_2.ADDR = GETHI(PTWx2);
                         PTW_2.U = TSTBIT(PTWx2, 9);
                         PTW_2.M = TSTBIT(PTWx2, 6);
-                        PTW_2.F = TSTBIT(PTWx2, 2);
+                        PTW_2.DF = TSTBIT(PTWx2, 2);
                         PTW_2.FC = PTWx2 & 3;
 
                          sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
-                                     offset, PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.F, PTW_2.FC);
+                                     offset, PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.DF, PTW_2.FC);
 
                       }
                   }
