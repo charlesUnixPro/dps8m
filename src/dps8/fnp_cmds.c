@@ -666,16 +666,16 @@ t_stat dequeue_fnp_command (void)
         if (n != 4)
             goto scpe_arg;
         sim_printf ("received line_control %d %012llo %012llo %012llo\n", p1, d1, d2, d3);
-        sim_printf ("  dce_or_dte  %llo\n", getbits36 (d1, 0, 1));
-        sim_printf ("  lap_or_lapb %llo\n", getbits36 (d1, 1, 1));
-        sim_printf ("  disc_first  %llo\n", getbits36 (d1, 2, 1));
-        sim_printf ("  trace_off   %llo\n", getbits36 (d1, 3, 1));
-        sim_printf ("  activation_order %09llo\n", getbits36 (d1, 9, 9));
-        sim_printf ("  frame_size %llo %lld.\n", getbits36 (d1, 18, 18), getbits36 (d1, 18, 18));
-        sim_printf ("  K  %llo %lld.\n", getbits36 (d2,  0, 9), getbits36 (d2,  0, 9));
-        sim_printf ("  N2 %llo %lld.\n", getbits36 (d2,  9, 9), getbits36 (d2,  9, 9));
-        sim_printf ("  T1 %llo %lld.\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
-        sim_printf ("  T3 %llo %lld.\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
+        sim_printf ("  dce_or_dte  %llo\n", getbits36_1 (d1, 0));
+        sim_printf ("  lap_or_lapb %llo\n", getbits36_1 (d1, 1));
+        sim_printf ("  disc_first  %llo\n", getbits36_1 (d1, 2));
+        sim_printf ("  trace_off   %llo\n", getbits36_1 (d1, 3));
+        sim_printf ("  activation_order %09llo\n", getbits36_9 (d1, 9));
+        sim_printf ("  frame_size %llo %lld.\n", getbits36_18 (d1, 18), getbits36_18 (d1, 18));
+        sim_printf ("  K  %llo %lld.\n", getbits36_9 (d2,  0), getbits36_9 (d2,  0));
+        sim_printf ("  N2 %llo %lld.\n", getbits36_9 (d2,  9), getbits36_9 (d2,  9));
+        sim_printf ("  T1 %llo %lld.\n", getbits36_9 (d2, 18), getbits36_9 (d2, 18));
+        sim_printf ("  T3 %llo %lld.\n", getbits36_9 (d2, 27), getbits36_9 (d2, 27));
 
 
 

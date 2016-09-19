@@ -2301,8 +2301,8 @@ gotit:;
     //    IER 16-32       00000000        PER 4-7 
 
     uint imask =
-      ((uint) getbits36(rega, 0, 16) << 16) |
-      ((uint) getbits36(regq, 0, 16) <<  0);
+      ((uint) getbits36_16(rega, 0) << 16) |
+      ((uint) getbits36_16(regq, 0) <<  0);
     if (up -> mask_assignment [0] == (uint) scu_port_num)
       {
         up -> exec_intr_mask [0] = imask;
@@ -2316,14 +2316,14 @@ gotit:;
                    imask);
       }
 
-    scu [scu_unit_num] . port_enable [0] = (uint) getbits36 (rega, 32, 1);
-    scu [scu_unit_num] . port_enable [1] = (uint) getbits36 (rega, 33, 1);
-    scu [scu_unit_num] . port_enable [2] = (uint) getbits36 (rega, 34, 1);
-    scu [scu_unit_num] . port_enable [3] = (uint) getbits36 (rega, 35, 1);
-    scu [scu_unit_num] . port_enable [4] = (uint) getbits36 (regq, 32, 1);
-    scu [scu_unit_num] . port_enable [5] = (uint) getbits36 (regq, 33, 1);
-    scu [scu_unit_num] . port_enable [6] = (uint) getbits36 (regq, 34, 1);
-    scu [scu_unit_num] . port_enable [7] = (uint) getbits36 (regq, 35, 1);
+    scu [scu_unit_num] . port_enable [0] = (uint) getbits36_1 (rega, 32);
+    scu [scu_unit_num] . port_enable [1] = (uint) getbits36_1 (rega, 33);
+    scu [scu_unit_num] . port_enable [2] = (uint) getbits36_1 (rega, 34);
+    scu [scu_unit_num] . port_enable [3] = (uint) getbits36_1 (rega, 35);
+    scu [scu_unit_num] . port_enable [4] = (uint) getbits36_1 (regq, 32);
+    scu [scu_unit_num] . port_enable [5] = (uint) getbits36_1 (regq, 33);
+    scu [scu_unit_num] . port_enable [6] = (uint) getbits36_1 (regq, 34);
+    scu [scu_unit_num] . port_enable [7] = (uint) getbits36_1 (regq, 35);
 
     dumpIR ("smcm", scu_unit_num);
     deliverInterrupts (scu_unit_num);

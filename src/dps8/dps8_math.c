@@ -378,7 +378,7 @@ if (currentRunningCPUnum)
 sim_printf ("UFA m2 %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
-    int e2 = SIGNEXT8_int (getbits36 (cpu.CY, 0, 8));
+    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
 if (currentRunningCPUnum)
 sim_printf ("UFA e1 %d\n", e1);
