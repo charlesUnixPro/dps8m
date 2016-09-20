@@ -37,17 +37,11 @@
 //#define M_SHARED
 //LDFLAGS += -lrt
 
-// First attempt at RALR repair, needs rework.
-#define RALR_FIX_0
-
 // Enable IPC
 #define VM_DPS8
 
 // Use evlib to manage i/o polling
 #define EV_POLL
-
-//#define CAST_BITNO
-
 
 #ifdef TESTING
 #else
@@ -75,8 +69,6 @@
 #endif
 
 #define OSCAR
-
-#define OVERFLOW_WRITE_THROUGH
 
 // Instruction profiler
 // #define MATRIX
