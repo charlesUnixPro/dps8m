@@ -824,7 +824,6 @@ static void getSerialNumber (void)
 
 static void ev_poll_cb (uv_timer_t * UNUSED handle)
   {
-
     // Call the one hertz stuff every 100 loops
     static uint oneHz = 0;
     if (oneHz ++ >= 100) // ~ 1Hz
@@ -1405,6 +1404,10 @@ uint getCPUnum (void)
 // other extant cycles:
 //  ABORT_cycle
 
+#ifdef EV_POLL
+static uint fastQueueSubsample = 0;
+#endif
+
 // This is part of the simh interface
 t_stat sim_instr (void)
   {
@@ -1518,7 +1521,7 @@ setCPU:;
 // If we only test every 1000 cycles, we shouldn't miss by more then
 // 10%...
 
-        static uint fastQueueSubsample = 0;
+        //static uint fastQueueSubsample = 0;
         if (fastQueueSubsample ++ > 1024) // ~ 1KHz
           {
             fastQueueSubsample = 0;
@@ -1944,6 +1947,11 @@ setCPU:;
                     // *1000 is 10000 microseconds
                     // in uSec;
                     usleep (10000);
+#ifdef EV_POLL
+                    // Trigger I/O polling
+                    uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+                    fastQueueSubsample = 0;
+#endif
 
 #ifndef EV_POLL
                     // this ignores the amount of time since the last poll;
@@ -3216,13 +3224,9 @@ static int words2its (word36 word1, word36 word2, struct _par * prp)
     prp->WORDNO = getbits36_18 (word2, 0);
     prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
     //prp->BITNO = getbits36_6(word2, 57 - 36);
-#ifdef CAST_BITNO
-    prp->bitno = getbits36_6(word2, 57 - 36);
-#else
     prp->PR_BITNO = getbits36_6 (word2, 57 - 36);
     prp->AR_BITNO = getbits36_6 (word2, 57 - 36) % 9;
     prp->AR_CHAR = getbits36_6 (word2, 57 - 36) / 9;
-#endif
     return 0;
   }   
 
