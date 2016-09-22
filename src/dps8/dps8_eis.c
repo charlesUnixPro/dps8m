@@ -8114,8 +8114,6 @@ static int loadDec (EISaddr *p, int pos)
     EISstruct * e = & cpu . currentEISinstruction;
     int128 x = 0;
     
-    
-    // XXX use get49() for this later .....
     p->data = EISRead(p);    // read data word from memory
     
     int maxPos = e->TN1 == CTN4 ? 7 : 3;
@@ -8310,16 +8308,16 @@ void dtb (void)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
       }
-    //if (e->TN2 != 0)
-      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb: TN2 MBZ");
+
     // Bits 21-29 of OP2 MBZ
     if (e -> op [1]  & 0000000077700)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
        }
 
-    //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
-    //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
+    // Attempted conversion of a floating-point number (S1 = 0) or attempted
+    // use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
+    // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8 etc.");
@@ -8328,10 +8326,12 @@ void dtb (void)
     //e->_flags = cpu . cu.IR;
     e->_flags = 0;
     
-    // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
+    // Negative: If a minus sign character is found in C(Y-charn1), then ON;
+    // otherwise OFF
     CLRF(e->_flags, I_NEG);
     
-    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set bits and flags, return }' approach.
+    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set
+    // bits and flags, return }' approach.
 
     int result = loadDec(&e->ADDR1, (int) e->CN1);
     switch (result)
@@ -8356,7 +8356,8 @@ void dtb (void)
             if (TSTF  (e->_flags, I_OFLOW))
               {
                 SET_I_OFLOW;
-                doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  overflow fault");
+                if (! TST_I_OMASK)
+                  doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  overflow fault");
               }
             break;
         case 1:
