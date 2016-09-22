@@ -4008,9 +4008,9 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
           EISput469 (2, cpu . du . CHTALLY, c);
         else
           {
-	  // If data types are dissimilar (TA1 ≠ TA2), each character is
-	  // high-order truncated or zero filled, as appropriate, as it is
-	  // moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is
+            // high-order truncated or zero filled, as appropriate, as it is
+            // moved. No character conversion takes place.
             cout = c;
             switch (srcSZ)
               {
@@ -4037,16 +4037,16 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
                   break;
               }
 
-	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
-	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
-	  // negative overpunch sign is found, then the minus sign character
-	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
-	  // is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+            // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+            // negative overpunch sign is found, then the minus sign character
+            // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+            // is placed in C(Y-charn2)N2-1.
             
             if (ovp && (cpu . du . CHTALLY == e -> N1 - 1))
               {
-	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-	      // there *is* an overpunch char here.
+                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+                // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
 IF1 sim_printf ("overpunch char is %03o\n", c);
@@ -4273,9 +4273,9 @@ void mrl (void)
           EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, c);
         else
           {
-	  // If data types are dissimilar (TA1 ≠ TA2), each character is
-	  // high-order truncated or zero filled, as appropriate, as it is
-	  // moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is
+            // high-order truncated or zero filled, as appropriate, as it is
+            // moved. No character conversion takes place.
             cout = c;
             switch (srcSZ)
               {
@@ -4302,19 +4302,19 @@ void mrl (void)
                   break;
               }
 
-	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
-	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
-	  // negative overpunch sign is found, then the minus sign character
-	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
-	  // is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+            // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+            // negative overpunch sign is found, then the minus sign character
+            // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+            // is placed in C(Y-charn2)N2-1.
             
 // ISOLTS ps838    test-01f subtest loop point 001762 seems to indicate that
 // the rightmost digit is examined for overpunch.
             //if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
             if (ovp && (cpu.du.CHTALLY == 0))
               {
-	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-	      // there *is* an overpunch char here.
+                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+                // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
@@ -4423,19 +4423,32 @@ static void EISloadInputBufferNumeric (int k)
         switch(S)
         {
             case CSFL:  // this is the real evil one ....
-                /* Floating-point:
-                 * [sign=c0] c1×10(n-3) + c2×10(n-4) + ... + c(n-3) [exponent=8 bits]
-                 * where:
-                 *  ci is the decimal value of the byte in the ith byte position.
-                 *  [sign=ci] indicates that ci is interpreted as a sign byte.
-                 *  [exponent=8 bits] indicates that the exponent value is taken from the last 8 bits of the string. If the data is in 9-bit bytes, the exponent is bits 1-8 of c(n-1). If the data is in 4- bit bytes, the exponent is the binary value of the concatenation of c(n-2) and c(n-1).
-                 */
+                // Floating-point:
+                // [sign=c0] c1×10(n-3) + c2×10(n-4) + ... + c(n-3) [exponent=8
+                // bits]
+                //
+                // where:
+                //
+                //  ci is the decimal value of the byte in the ith byte
+                //  position.
+                //
+                //  [sign=ci] indicates that ci is interpreted as a sign byte.
+                //
+                //  [exponent=8 bits] indicates that the exponent value is
+                //  taken from the last 8 bits of the string. If the data is in
+                //  9-bit bytes, the exponent is bits 1-8 of c(n-1). If the
+                //  data is in 4- bit bytes, the exponent is the binary value
+                //  of the concatenation of c(n-2) and c(n-1).
+ 
                 if (n == 0) // first had better be a sign ....
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
 
                     if (c < 012 || c > 017)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(1): illegal char in input"); // TODO: generate ill proc fault
+                      doFault (FAULT_IPR,
+                               (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG},
+                               "loadInputBufferNumeric(1): illegal char in "
+                               "input");
 
                     if (c == 015)   // '-'
                         e->sign = -1;
