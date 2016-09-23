@@ -3087,7 +3087,7 @@ static t_stat DoBasicInstruction (void)
                 doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "adaq overflow fault");
               }
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
-	  cpu.cu.IR = ir;
+            cpu.cu.IR = ir;
 #endif
           }
           break;
@@ -4963,23 +4963,23 @@ static t_stat DoBasicInstruction (void)
           }
 
         case 0610:  // rtcd
-            /*
-             TODO: Complete RTCD
-             If an access violation fault occurs when fetching the SDW for the
-             Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If the
-             rtcd instruction is executed with the processor in absolute mode
-             with bit 29 of the instruction word set OFF and without
-             indirection through an ITP or ITS pair, then:
-
-                 appending mode is entered for address preparation for the
-                 rtcd operand and is retained if the instruction executes
-                 successfully, and the effective segment number generated for
-                 the SDW fetch and subsequent loading into C(TPR.TSR) is equal
-                 to C(PPR.PSR) and may be undefined in absolute mode, and the
-                 effective ring number loaded into C(TPR.TRR) prior to the SDW
-                 fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
-                 implying that control is always transferred into ring 0.
-             */
+            // If an access violation fault occurs when fetching the SDW for
+            // the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If
+            // the rtcd instruction is executed with the processor in absolute
+            // mode with bit 29 of the instruction word set OFF and without
+            // indirection through an ITP or ITS pair, then:
+            //
+            //   appending mode is entered for address preparation for the
+            //   rtcd operand and is retained if the instruction executes
+            //   successfully, and the effective segment number generated for
+            //   the SDW fetch and subsequent loading into C(TPR.TSR) is equal
+            //   to C(PPR.PSR) and may be undefined in absolute mode, and the
+            //   effective ring number loaded into C(TPR.TRR) prior to the SDW
+            //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
+            //   implying that control is always transferred into ring 0.
+            //
+            // This behavior is accomplished by ReadOP(); it detects the
+            // RTCD operand and forces RTCD_OPERAND_FETCH.
 
             // C(Y-pair)3,17 -> C(PPR.PSR)
             // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
@@ -5030,6 +5030,9 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[6].RNR =
             cpu.PR[7].RNR = cpu.PPR.PRR;
 
+            // RTCD always ends up in append mode.
+            set_addr_mode (APPEND_mode);
+            
             return CONT_TRA;
 
 
@@ -6189,8 +6192,8 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
                       cpu.MR.emr = getbits36_1 (cpu.CY, 35);
 
 
-		  // Stop HR Strobe on HR Counter Overflow. (Setting bit 28
-		  // shall cause the HR counter to be reset to zero.)
+                      // Stop HR Strobe on HR Counter Overflow. (Setting bit 28
+                      // shall cause the HR counter to be reset to zero.)
                       // CAC: It is unclear if bit 28 is edge or level 
                       // triggered; assuming level for simplicity.
                       if (cpu.MR.hrhlt)
@@ -7924,8 +7927,8 @@ static t_stat DoEISInstruction (void)
             }
 
         case 0443:  // sareg - Store Address Registers
-	  // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
-	  // in BITNO format, not CHAR/BITNO.
+            // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
+            // in BITNO format, not CHAR/BITNO.
             memset(cpu.Yblock8, 0, sizeof(cpu.Yblock8));
             for(uint32 n = 0 ; n < 8 ; n += 1)
             {

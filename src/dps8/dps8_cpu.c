@@ -1444,13 +1444,6 @@ setCPU:;
 
     do
       {
-#if 0
-        // XXX Don't trace Multics idle loop
-        if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
-
-          if_sim_debug (DBG_TRACE, & cpu_dev)
-            sim_printf ("\n");
-#endif
         reason = 0;
 
         // Process deferred events and breakpoints
@@ -1474,7 +1467,6 @@ setCPU:;
             scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
-            //AIO_CHECK_EVENT;
             dequeue_fnp_command ();
             absiProcessEvent ();
           }
@@ -2194,7 +2186,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
         
     // rtcd is an annoying edge case; ReadOP is called before the instruction
     // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
-    // too late. Special case it here my noticing that this is an RTCD
+    // too late. Special case it here by noticing that this is an RTCD
     // instruction
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
