@@ -1232,7 +1232,12 @@ E:;
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= cpu . SDW->CL) {
+    //if ((address & 0037777) >= cpu . SDW->CL) {
+    // [CAC] I think the AL39 flowchart is wrong; the "TCP.CA_4-17" makes
+    // no sense. pg 38 says of CL: "transfers of control into the segment must
+    // be to segment addresses no greater than this value."; masking the high
+    // bits makes no sense. Also, ISOLTS pa880 indidates this.
+    if (address >= (word18) cpu . SDW->CL) {
         // Set fault ACV7 = NO GA
         acvFaults |= ACV7;
         acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
