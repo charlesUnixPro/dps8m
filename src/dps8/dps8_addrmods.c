@@ -395,7 +395,7 @@ t_stat doComputedAddressFormation (void)
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
       cpu . rTAG = 0;
     else
-        cpu . rTAG = GET_TAG (IWB_IRODD);
+      cpu . rTAG = GET_TAG (IWB_IRODD);
 
     int lockupCnt = 0;
 #define lockupLimit 4096 // approx. 2 ms
@@ -411,8 +411,12 @@ startCA:;
     Td = GET_TD (cpu . rTAG);
     Tm = GET_TM (cpu . rTAG);
 
+    // CT_HOLD is set to 0 on instruction setup; if it is non-zero here,
+    // we must have faulted during an indirect word fetch. Restore 
+    // state and restart the fetch.
     if (cpu . cu  . CT_HOLD)
       {
+//if (currentRunningCPUnum) sim_printf ("restart CT_HOLD %o\n", cpu . cu  . CT_HOLD);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "%s(startCA): IR mode restart; CT_HOLD %02o\n",
                    __func__, cpu . cu  . CT_HOLD);
@@ -607,8 +611,8 @@ startCA:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD: CT_HOLD=%o %o\n", cpu . cu  . CT_HOLD, Td);
-
-        IR_MOD_1:
+//if (currentRunningCPUnum) sim_printf ("IR_MOD CT_HOLD %o\n", cpu.cu.CT_HOLD);
+        IR_MOD_1:;
 
         if (++ lockupCnt > lockupLimit)
           {
@@ -624,11 +628,15 @@ startCA:;
 
         word36 indword;
         word18 saveCA = cpu . TPR . CA;
+//if (currentRunningCPUnum) sim_printf ("reading indirect  CT_HOLD %o\n", cpu.cu.CT_HOLD);
         Read (cpu . TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a);
+//if (currentRunningCPUnum) sim_printf ("read    indirect  CT_HOLD %o\n", cpu.cu.CT_HOLD);
 
         if (ISITP (indword) || ISITS (indword))
           {
+//if (currentRunningCPUnum) sim_printf ("ITS/ITP           CT_HOLD %o\n", cpu.cu.CT_HOLD);
             doITSITP (cpu . TPR . CA, indword, iTAG, & cpu . rTAG);
+//if (currentRunningCPUnum) sim_printf ("ITS/ITP done      CT_HOLD %o\n", cpu.cu.CT_HOLD);
           }
         else
           {
@@ -636,7 +644,11 @@ startCA:;
             cpu . rY = cpu . TPR.CA;
             cpu . rTAG = GET_TAG (indword);
           }
+//if (currentRunningCPUnum) sim_printf ("indirect done     rTAG %o\n", cpu.rTAG);
+//if (currentRunningCPUnum) sim_printf ("indirect done     CT_HOLD %o\n", cpu.cu.CT_HOLD);
 
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "IR_MOD: CT_HOLD=%o\n", cpu . cu  . CT_HOLD);
         Td = GET_TD(cpu . rTAG);
         Tm = GET_TM(cpu . rTAG);
 
@@ -650,6 +662,7 @@ startCA:;
           {
             case TM_IT:
               {
+//if (currentRunningCPUnum) sim_printf ("TM_IT\n");
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_IT): Td=%02o => %02o\n",
                            Td, cpu . cu  . CT_HOLD);
@@ -672,6 +685,7 @@ startCA:;
 
             case TM_R:
               {
+//if (currentRunningCPUnum) sim_printf ("TM_R\n");
                 word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD), & directOperandFlag, & directOperand);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -709,6 +723,7 @@ startCA:;
 
             case TM_RI:
               {
+//if (currentRunningCPUnum) sim_printf ("TM_RI\n");
                 word18 Cr = getCr(Td, & directOperandFlag, & directOperand);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -743,6 +758,7 @@ startCA:;
 
             case TM_IR:
               {
+//if (currentRunningCPUnum) sim_printf ("TM_IR\n");
                 updateIWB (cpu . TPR . CA, cpu . rTAG); // XXX guessing here...
                 goto IR_MOD;
               } // TM_IR

@@ -684,7 +684,7 @@ typedef struct
                    // 0-2   PRR is stored in PPR
                    // 3-17  PSR is stored in PPR
                    // 18    P   is stored in PPR
-                   // 19    XSF External segment flag -- not implemented
+    word1 XSF;     // 19    XSF External segment flag
                    // 20    SDWAMM Match on SDWAM -- not implemented
     word1 SD_ON;   // 21    SDWAM enabled
                    // 22    PTWAMM Match on PTWAM -- not implemented
@@ -1019,8 +1019,7 @@ typedef struct
     word27   rTR;    // timer [map: TR, 9 0's]
 #endif
     word24   rY;     // address operand
-    word8    rTAG;   // instruction tag
-    word8    tCF;    // character position field [3b]
+    word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
     word3    RSDWH_R1; // Track the ring number of the last SDW
     struct _tpr TPR;   // Temporary Pointer Register

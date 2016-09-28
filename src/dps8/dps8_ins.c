@@ -383,7 +383,7 @@ static void scu2words(word36 *words)
     putbits36_3 (& words [0],  0,  cpu.PPR.PRR);
     putbits36_15 (& words [0],  3, cpu.PPR.PSR);
     putbits36_1 (& words [0], 18,  cpu.PPR.P);
-    // 19, 1 XSF External segment flag
+    putbits36_1 (& words [0], 19,  cpu.cu.XSF);
     // 20, 1 SDWAMM Match on SDWAM
     putbits36_1 (& words [0], 21,  cpu.cu.SD_ON);
     // 22, 1 PTWAMM Match on PTWAM
@@ -546,7 +546,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PRR         = getbits36_3  (words[0], 0);
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
-    // 19 XSF
+    cpu.cu.XSF          = getbits36_1  (words[0], 19);
     // 20 SDWAMM
     cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     // 22 PTWAMM
@@ -1556,6 +1556,8 @@ restart_1:
     cpu.du.JMP = (word3) info -> ndes;
 
     cpu.dlyFlt = false;
+
+    cpu.cu.XSF = 0;
 
 ///
 /// executeInstruction: RPT/RPD/RPL special processing for 'first time'

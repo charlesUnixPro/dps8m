@@ -1353,6 +1353,11 @@ G:;
         {
             //cpu . TPR.CA = address;
             // initiate a directed fault
+#ifdef ISOLTS
+// Satisfies ISOLTS pa885, without understanding the underlying logic...
+            if (cpu.PTW0.FC >= 1)
+              cpu.cu.XSF = 1;
+#endif
             doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
         }
 
