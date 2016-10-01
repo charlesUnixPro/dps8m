@@ -14,7 +14,6 @@
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
 
-#ifdef HDBG
 enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault };
 
 struct hevt
@@ -245,6 +244,7 @@ t_stat hdbg_size (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 #else
+#include "dps8_utils.h"
 t_stat hdbg_size (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("hdbg not enabled; ignoring\n");
