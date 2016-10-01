@@ -796,7 +796,7 @@ static void EISput469 (int k, uint i, word9 c469)
     e -> addr [k - 1] . address = address;
     word36 data = EISRead (& e -> addr [k - 1]);    // read it from memory
 
-IF1 sim_printf ("put469 c %03o WN %u CN %u address %06o residue %u\n", c469, e -> WN [k-1], e -> CN [k-1], address, residue);
+//IF1 sim_printf ("put469 c %03o WN %u CN %u address %06o residue %u\n", c469, e -> WN [k-1], e -> CN [k-1], address, residue);
     word36 w = 0;
     switch (e -> TA [k - 1])
       {
@@ -2069,11 +2069,9 @@ IF1 sim_printf ("address %o\n", address);
     word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR ((word4) reg) & MASK24;
-if (currentRunningCPUnum)
-sim_printf ("r 0%o %d.  /36 0%o %d. %%36 0%o %d.\n", r, r, r/36, r/36, r%36, r%36);
-if (currentRunningCPUnum)
-//sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
-sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
+IF1 sim_printf ("r 0%o %d.  /36 0%o %d. %%36 0%o %d.\n", r, r, r/36, r/36, r%36, r%36);
+//IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
+IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
 
     //if (cpu.AR[ARn].BITNO > 8)
       //cpu.AR[ARn].BITNO = 8;
@@ -2127,7 +2125,7 @@ IF1 sim_printf ("awd test no %d\n", ++testno);
 // XXX This code is assuming that 'r' has 18 bits of data....
     int32_t r = (int32_t) (getCrAR (reg) & MASK18);
 
-IF1 sim_printf ("swd r36 0%o %d.\n", r, r);
+IF1 sim_printf ("swd r 0%o %d.\n", r, r);
 
     r = SIGNEXT18_32 ((word18) r);
 
@@ -3864,7 +3862,7 @@ IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0],
 
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, "MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
-IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
+//IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
     
 //
 // Multics frequently uses certain code sequences which are easily detected
@@ -3997,7 +3995,7 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
     for ( ; cpu.du.CHTALLY < min (e->N1, e->N2); cpu.du.CHTALLY ++)
       {
         word9 c = EISget469 (1, cpu.du.CHTALLY); // get src char
-IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
+//IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
@@ -4110,7 +4108,7 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+//IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mrl 10 MBZ");
@@ -4192,12 +4190,12 @@ IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op 
     
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (e -> TA1 == 1) &&
                (e -> TA2 == 2); // (6-4 move)
-IF1 sim_printf ("MRL ovp %u\n", ovp);
+//IF1 sim_printf ("MRL ovp %u\n", ovp);
     bool isNeg = false;
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
-IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
+//IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 //
 // Multics frequently uses certain code sequences which are easily detected
 // and optimized; eg. it uses the MLR instruction to copy or zeros segments.
@@ -4264,7 +4262,7 @@ IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du
     for ( ; cpu.du.CHTALLY < min (e -> N1, e -> N2); cpu.du.CHTALLY ++)
       {
         word9 c = EISget469 (1, e -> N1 - cpu.du.CHTALLY - 1); // get src char
-IF1 sim_printf ("MRL TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
+//IF1 sim_printf ("MRL TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
         word9 cout = 0;
         
         if (e -> TA1 == e -> TA2) 
@@ -4315,7 +4313,7 @@ IF1 sim_printf ("MRL TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
                 // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
-IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
+//IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
                              // represents
               }
@@ -4533,12 +4531,12 @@ static void EISloadInputBufferNumeric (int k)
                 break;
         }
     }
-IF1 {
-  sim_printf ("inBuffer:");
-  for (word9 *q = e->inBuffer; q < p; q ++)
-     sim_printf (" %02o", * q);
-  sim_printf ("\n");
-}
+//IF1 {
+  //sim_printf ("inBuffer:");
+  //for (word9 *q = e->inBuffer; q < p; q ++)
+     //sim_printf (" %02o", * q);
+  //sim_printf ("\n");
+//}
     if_sim_debug (DBG_TRACEEXT, & cpu_dev)
       {
         sim_debug (DBG_TRACEEXT, & cpu_dev, "inBuffer:");
@@ -9786,7 +9784,7 @@ void mp3d (void)
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
-    
+IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
     EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
@@ -9816,6 +9814,7 @@ void mp3d (void)
         op2->bits = DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
+IF1 sim_printf ("MP3D op2->exponent %d\n", op2->exponent);
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
     
@@ -9838,6 +9837,7 @@ void mp3d (void)
     if (decNumberIsZero(op3))
         op3->exponent = 127;
     
+IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
     //printf("%s\r\n", res);
     
     // now write to memory in proper format.....
