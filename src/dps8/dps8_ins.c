@@ -5477,7 +5477,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.PR[n].WORDNO = GETHI(cpu.Ypair[1]);
                 //cpu.PR[n].BITNO = (GETLO(cpu.Ypair[1]) >> 9) & 077;
                 uint bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
-IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
+//IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 // According to ISOLTS, loading a 077 into bitno results in 037
 // pa851    test-04b    lpri test       bar-100176
 // test start 105321   patch 105461   subtest loop point 105442
@@ -8382,7 +8382,7 @@ static int doABSA (word36 * result)
         //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
         //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ABSA in absolute mode.");
-        * result = (cpu.TPR.CA & MASK18) << 12; // 24:12 format
+        * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
       }
 
@@ -8774,6 +8774,23 @@ void doRCU (void)
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
+#if 0
+// I beleive this logic is correct (cf. ISOLTS pa870 test-02d TRA PR1|6 not switching to append mode do
+// to page fault clearing went_appending), but the emulator's refetching of operand descriptors after
+// page fault of EIS instruction in absolute mode is breaking the logic.
+    // If restarting after a page fault, set went_appending...
+    if (cpu.cu.FI_ADDR == FAULT_DF0 ||
+        cpu.cu.FI_ADDR == FAULT_DF1 ||
+        cpu.cu.FI_ADDR == FAULT_DF2 ||
+        cpu.cu.FI_ADDR == FAULT_DF3 ||
+        cpu.cu.FI_ADDR == FAULT_ACV ||
+        cpu.cu.FI_ADDR == FAULT_F1 ||
+        cpu.cu.FI_ADDR == FAULT_F2 ||
+        cpu.cu.FI_ADDR == FAULT_F3)
+      {
+        set_went_appending ();
+      }
+#endif
     // MME faults resume with the next instruction
 
     if (cpu.cu.FI_ADDR == FAULT_MME ||
