@@ -1,3 +1,5 @@
+//#define ISOLTS_BITNO
+
 /**
  * \file dps8_ins.c
  * \project dps8
@@ -2226,7 +2228,8 @@ static t_stat doInstruction (void)
       CLR_I_MIF;
 
     t_stat ret =  i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
-    if (cpu.MR.hrxfr == 0 || ret == CONT_TRA)
+    if (cpu.MR.emr && cpu.MR.ihr && 
+       (cpu.MR.hrxfr == 0 || ret == CONT_TRA))
       {
         addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
       }

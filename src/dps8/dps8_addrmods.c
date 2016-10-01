@@ -1123,9 +1123,9 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (tally == 0);
-                if (tally == 0)
-                  SET_I_TALLY;
+                SC_I_TALLY (tally == 0);
+                //if (tally == 0)
+                  //SET_I_TALLY;
 
                 // write back out indword
 
@@ -1255,9 +1255,11 @@ startCA:;
 
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
+// Set the tally after the indirect word is processed; if it faults, the IR
+// should be unchanged. ISOLTS ps791 test-02g
                 //SC_I_TALLY (tally == 0);
-                if (tally == 0)
-                  SET_I_TALLY;
+                //if (tally == 0)
+                  //SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1299,6 +1301,9 @@ startCA:;
                        }
                   }
 #endif
+// Set the tally after the indirect word is processed; if it faults, the IR
+// should be unchanged. ISOLTS ps791 test-02g
+                SC_I_TALLY (tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
@@ -1350,9 +1355,9 @@ startCA:;
 
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
+// Set the tally after the indirect word is processed; if it faults, the IR
+// should be unchanged. ISOLTS ps791 test-02f
                 //SC_I_TALLY (tally == 0);
-                if (tally == 0)
-                  SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
@@ -1399,6 +1404,9 @@ startCA:;
                        }
                   }
 #endif
+// Set the tally after the indirect word is processed; if it faults, the IR
+// should be unchanged. ISOLTS ps791 test-02f
+                SC_I_TALLY (tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC
