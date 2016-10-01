@@ -43,6 +43,6 @@ bool startsWith(const char *str, const char *pre);
 
 char *Strsep(char **stringp, const char *delim);
 
-char *Now();
+char *Now(void);
 
 #endif /* defined(__fnp__fnp_utils__) */

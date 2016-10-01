@@ -718,8 +718,8 @@ void setup_scbank_map (void)
           continue;
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
-        uint scu_unit_num = (uint) (cables ->
-          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num);
+        int scu_unit_num = cables ->
+          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
@@ -749,7 +749,7 @@ void setup_scbank_map (void)
                 else
                   {
                     cpu.scbank_map [scpg] = port_num;
-                    cpu.scbank_pg_os [scpg] = (int) (scu_unit_num * 4 * 1024 * 1024 + scpg * SCBANK);
+                    cpu.scbank_pg_os [scpg] = (int) ((uint) scu_unit_num * 4u * 1024u * 1024u + scpg * SCBANK);
                   }
               }
             else
@@ -1498,13 +1498,6 @@ setCPU:;
 
     do
       {
-#if 0
-        // XXX Don't trace Multics idle loop
-        if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
-
-          if_sim_debug (DBG_TRACE, & cpu_dev)
-            sim_printf ("\n");
-#endif
         reason = 0;
 
         // Process deferred events and breakpoints
@@ -2258,7 +2251,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
         
     // rtcd is an annoying edge case; ReadOP is called before the instruction
     // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
-    // too late. Special case it here my noticing that this is an RTCD
+    // too late. Special case it here by noticing that this is an RTCD
     // instruction
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
@@ -2451,7 +2444,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
-        addr &= ~1u; /* make it an even address */
+        addr &= (word24)~1; /* make it an even address */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2521,7 +2514,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
-        addr &= ~1u; /* make it even a dress, or iron a skirt ;) */
+        addr &= (word24)~1; /* make it even a dress, or iron a skirt ;) */
     }
 #ifdef ISOLTS
     if (cpu.switches.useMap)
@@ -2532,7 +2525,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
           { 
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
           }
-        addr = (uint) os + addr % SCBANK;
+        addr = (word24)os + addr % SCBANK;
       }
     else
 #endif
@@ -3602,7 +3595,7 @@ static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>
             if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
               {
 //---                 where_t where;
-                int offset = (int) return_pr.WORDNO;
+                uint offset = return_pr.WORDNO;
                 if (offset > 0)
                     -- offset;      // call was from an instr prior to the return point
                 char * compname;

@@ -398,7 +398,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) (word6) chanNum); // slot_no XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
                 putbits36_9 (& smbxp -> word2, 18, 64); // op_code accept_new_terminal
@@ -424,7 +424,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
                 putbits36_9 (& smbxp -> word2, 18, 0114); // op_code wru_timeout
@@ -512,10 +512,10 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
                 putbits36_18 (& smbxp -> word1, 18, blksAvail);
 
-                putbits36_9 (& smbxp -> word2, 9, charsAvail); // n_chars
+                putbits36_9 (& smbxp -> word2, 9, (word9) charsAvail); // n_chars
                 putbits36_9 (& smbxp -> word2, 18, 0102); // op_code input_in_mailbox
                 putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
@@ -539,8 +539,8 @@ void fnpNProcessEvent (int fnpUnitIdx)
 
 // command_data is at mystery[25]?
 
-                putbits36_1 (& smbxp -> mystery [25], 16, outputPresent);
-                putbits36_1 (& smbxp -> mystery [25], 17, hasBreak);
+                putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputPresent);
+                putbits36_1 (& smbxp -> mystery [25], 17, (word1) hasBreak);
 
 #if 0
                 sim_printf ("    %012llo\n", smbxp -> word1);
@@ -567,7 +567,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
                 putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
@@ -591,7 +591,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
                 putbits36_9 (& smbxp -> word2, 18, 0101); // op_code line_disconnected
@@ -614,7 +614,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
                 putbits36_9 (& smbxp -> word2, 18, 0113); // op_code line_break
@@ -637,7 +637,7 @@ void fnpNProcessEvent (int fnpUnitIdx)
                 putbits36_3 (& smbxp -> word1, 0, 0); // dn355_no XXX
                 putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
                 putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-                putbits36_6 (& smbxp -> word1, 12, chanNum); // slot_no XXX
+                putbits36_6 (& smbxp -> word1, 12, (word6) chanNum); // slot_no XXX
 
                 putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
                 putbits36_9 (& smbxp -> word2, 18, 70); // op_code ack_echnego_init
@@ -754,9 +754,9 @@ static int findMbx (uint fnpUnitIdx)
 // See comment at top of file
 // For some reason ISOLTS hangs during the PROM report if....
 #ifdef ISOLTS
-    for (uint i = 0; i < 4; i ++)
+    for (int i = 0; i < 4; i ++)
 #else
-    for (uint i = 0; i < 1; i ++)
+    for (int i = 0; i < 1; i ++)
 #endif
       if (! fudp -> fnpMBXinUse [i])
         return i;

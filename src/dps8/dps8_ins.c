@@ -380,7 +380,7 @@ static void scu2words(word36 *words)
     putbits36_3 (& words [0],  0,  cpu.PPR.PRR);
     putbits36_15 (& words [0],  3, cpu.PPR.PSR);
     putbits36_1 (& words [0], 18,  cpu.PPR.P);
-    // 19, 1 XSF External segment flag
+    putbits36_1 (& words [0], 19,  cpu.cu.XSF);
     // 20, 1 SDWAMM Match on SDWAM
     putbits36_1 (& words [0], 21,  cpu.cu.SD_ON);
     // 22, 1 PTWAMM Match on PTWAM
@@ -543,7 +543,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PRR         = getbits36_3  (words[0], 0);
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
-    // 19 XSF
+    cpu.cu.XSF          = getbits36_1  (words[0], 19);
     // 20 SDWAMM
     cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     // 22 PTWAMM
@@ -1555,6 +1555,8 @@ restart_1:
 
     cpu.dlyFlt = false;
 
+    cpu.cu.XSF = 0;
+
 ///
 /// executeInstruction: RPT/RPD/RPL special processing for 'first time'
 ///
@@ -1986,7 +1988,7 @@ restart_1:
 
             if (cpu.cu.rpt) // rpt
               {
-                uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
+                uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -1999,7 +2001,7 @@ restart_1:
             if (cpu.cu.rd && icOdd && rptA) // rpd, even instruction
               {
                 // a:RJ78/rpd7
-                uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
+                uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -2008,7 +2010,7 @@ restart_1:
             if (cpu.cu.rd && icOdd && rptB) // rpdb, odd instruction
               {
                 // a:RJ78/rpd8
-                uint Xn = getbits36_3 (cpu.cu.IRODD, 36 - 3);
+                uint Xn = (uint) getbits36_3 (cpu.cu.IRODD, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX [Xn]);
@@ -2018,7 +2020,7 @@ restart_1:
         else if (cpu.cu.rl)
           {
             // C(Xn) -> y
-            uint Xn = getbits36_3 (cpu.cu.IWB, 36 - 3);
+            uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
             putbits36 (& cpu . cu  . IWB,  0, 18, cpu.rX[Xn]);
           }
 
@@ -2031,7 +2033,7 @@ restart_1:
             //  a. Execute the repeated instruction
             //  b. C(X0)0,7 - 1 -> C(X0)0,7
             // a:AL39/rpd9
-            uint x = getbits18 (cpu.rX [0], 0, 8);
+            uint x = (uint) getbits18 (cpu.rX [0], 0, 8);
             x -= 1;
             x &= MASK8;
             putbits18 (& cpu.rX [0], 0, 8, x);
@@ -4512,23 +4514,23 @@ static t_stat DoBasicInstruction (void)
           }
 
         case 0610:  // rtcd
-            /*
-             TODO: Complete RTCD
-             If an access violation fault occurs when fetching the SDW for the
-             Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If the
-             rtcd instruction is executed with the processor in absolute mode
-             with bit 29 of the instruction word set OFF and without
-             indirection through an ITP or ITS pair, then:
-
-                 appending mode is entered for address preparation for the
-                 rtcd operand and is retained if the instruction executes
-                 successfully, and the effective segment number generated for
-                 the SDW fetch and subsequent loading into C(TPR.TSR) is equal
-                 to C(PPR.PSR) and may be undefined in absolute mode, and the
-                 effective ring number loaded into C(TPR.TRR) prior to the SDW
-                 fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
-                 implying that control is always transferred into ring 0.
-             */
+            // If an access violation fault occurs when fetching the SDW for
+            // the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If
+            // the rtcd instruction is executed with the processor in absolute
+            // mode with bit 29 of the instruction word set OFF and without
+            // indirection through an ITP or ITS pair, then:
+            //
+            //   appending mode is entered for address preparation for the
+            //   rtcd operand and is retained if the instruction executes
+            //   successfully, and the effective segment number generated for
+            //   the SDW fetch and subsequent loading into C(TPR.TSR) is equal
+            //   to C(PPR.PSR) and may be undefined in absolute mode, and the
+            //   effective ring number loaded into C(TPR.TRR) prior to the SDW
+            //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
+            //   implying that control is always transferred into ring 0.
+            //
+            // This behavior is accomplished by ReadOP(); it detects the
+            // RTCD operand and forces RTCD_OPERAND_FETCH.
 
             // C(Y-pair)3,17 -> C(PPR.PSR)
             // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
@@ -4581,6 +4583,9 @@ static t_stat DoBasicInstruction (void)
             cpu.PR[6].RNR =
             cpu.PR[7].RNR = cpu.PPR.PRR;
 
+            // RTCD always ends up in append mode.
+            set_addr_mode (APPEND_mode);
+            
             return CONT_TRA;
 
 
@@ -4986,7 +4991,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
                 cpu.PR[n].WORDNO = GETHI(cpu.Ypair[1]);
                 word6 bitno = (GETLO(cpu.Ypair[1]) >> 9) & 077;
-IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
+//IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 // According to ISOLTS, loading a 077 into bitno results in 037
 // pa851    test-04b    lpri test       bar-100176
 // test start 105321   patch 105461   subtest loop point 105442
@@ -5610,7 +5615,7 @@ IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 
         case 0674:  // lcpr
             // DPS8M interpratation
-IF1 sim_printf ("lcpr %d\n", i->tag);
+//IF1 sim_printf ("lcpr %d\n", i->tag);
             switch (i->tag)
               {
                // Extract bits from 'from' under 'mask' shifted to where (where
@@ -5654,7 +5659,7 @@ IF1 sim_printf ("lcpr %d\n", i->tag);
                 case 04: // mode register
                   //if (GETBITS (cpu.CY, 1, 35))
                     {
-IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
+//IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
                       cpu.MR.cuolin = getbits36_1 (cpu.CY, 18);
                       cpu.MR.solin = getbits36_1 (cpu.CY, 19);
                       cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
@@ -5694,7 +5699,7 @@ IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
 
                 case 03: // DPS 8m 0's -> history
                   {
-IF1 sim_printf ("set history to 0\n");
+//IF1 sim_printf ("set history to 0\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
                       addHistForce (i, 0, 0);
                   }
@@ -5702,7 +5707,7 @@ IF1 sim_printf ("set history to 0\n");
 
                 case 07: // DPS 8m 1's -> history
                   {
-IF1 sim_printf ("set history to 1\n");
+//IF1 sim_printf ("set history to 1\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
                       addHistForce (i, MASK36, MASK36);
                   }
@@ -5748,7 +5753,7 @@ IF1 sim_printf ("set history to 1\n");
         case 0452:  // scpr
           {
             uint tag = (i -> tag) & MASK6;
-IF1 sim_printf ("scpr %d\n", i->tag);
+//IF1 sim_printf ("scpr %d\n", i->tag);
             switch (tag)
               {
                 case 000: // C(APU history register#1) -> C(Y-pair)
@@ -5791,7 +5796,7 @@ IF1 sim_printf ("scpr %d\n", i->tag);
                     putbits36_1 (& cpu.Ypair [0], 32, cpu.MR.mrgctl);
                     putbits36_1 (& cpu.Ypair [0], 33, cpu.MR.hexfp);
                     putbits36_1 (& cpu.Ypair [0], 35, cpu.MR.emr);
-IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
+//IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair [1] = 0;
                     putbits36_15 (& cpu.Ypair [1], 36 - 36,
                                   cpu.CMR.cache_dir_address);
@@ -5807,7 +5812,7 @@ IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
                     putbits36_1 (& cpu.Ypair [1], 68 - 36, 
                                  cpu.CMR.bypass_cache);
                     putbits36_2 (& cpu.Ypair [1], 70 - 36, cpu.CMR.luf);
-IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
+//IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
                   }
                   break;
 
@@ -5832,8 +5837,8 @@ IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
                     cpu.Ypair [1] =
                       cpu.history [CU_HIST_REG]
                                   [cpu.history_cyclic[CU_HIST_REG]] [1];
-IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", 
-  cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
+//IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", 
+//  cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic [CU_HIST_REG] =
                       (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
@@ -6103,6 +6108,10 @@ IF1 sim_printf ("read CU history[%d] %012llo %012llo\n",
                 // 39: bits 24-31
                 PROM [39] = getbits36_8 (tmp, 24);
                 // 40: bits 32-35
+                // 40: bits 0-3: bits 32-35 of RSW 2 field (this is dps8m, so only 32 is always 0)
+                //            4: hex option
+                //            5: RSCR clock is slave
+                //          6-7: reserved
                 PROM [40] = ((unsigned char) ((tmp & 017) << 4))
                    // | 0100  // hex option
                    // | 0040  // clock is slave
@@ -7914,7 +7923,10 @@ static int doABSA (word36 * result)
 
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
-        * result = (cpu.TPR.CA & MASK18) << 12; // 24:12 format
+        //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
+        // Not clear what the subfault should be; see Fault Register in AL39.
+        //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ABSA in absolute mode.");
+        * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
       }
 
@@ -8320,6 +8332,23 @@ void doRCU (void)
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
+#if 0
+// I beleive this logic is correct (cf. ISOLTS pa870 test-02d TRA PR1|6 not switching to append mode do
+// to page fault clearing went_appending), but the emulator's refetching of operand descriptors after
+// page fault of EIS instruction in absolute mode is breaking the logic.
+    // If restarting after a page fault, set went_appending...
+    if (cpu.cu.FI_ADDR == FAULT_DF0 ||
+        cpu.cu.FI_ADDR == FAULT_DF1 ||
+        cpu.cu.FI_ADDR == FAULT_DF2 ||
+        cpu.cu.FI_ADDR == FAULT_DF3 ||
+        cpu.cu.FI_ADDR == FAULT_ACV ||
+        cpu.cu.FI_ADDR == FAULT_F1 ||
+        cpu.cu.FI_ADDR == FAULT_F2 ||
+        cpu.cu.FI_ADDR == FAULT_F3)
+      {
+        set_went_appending ();
+      }
+#endif
     // MME faults resume with the next instruction
 
     if (cpu.cu.FI_ADDR == FAULT_MME ||

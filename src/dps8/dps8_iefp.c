@@ -192,7 +192,7 @@ t_stat ReadPage (word18 address, word36 * result, _processor_cycle_type cyctyp, 
       {
         sim_err ("ReadPage not on boundary %06o\n", address);
       }
-    address &= ~PGMK; // Round to page boundary
+    address &= (word18) ~PGMK; // Round to page boundary
     cpu.iefpFinalAddress = address;
 
     // The following is wrong; we do need get_bar_mode for when the SCU 
@@ -481,7 +481,7 @@ t_stat WritePage (word18 address, word36 * data, _processor_cycle_type cyctyp, b
       {
         sim_err ("WritePage not on boundary %06o\n", address);
       }
-    address &= ~PGMK; // Round to page boundary
+    address &= (word18) ~PGMK; // Round to page boundary
     cpu.iefpFinalAddress = address;
 
     // The following is wrong; we do need get_bar_mode for when the SCU 

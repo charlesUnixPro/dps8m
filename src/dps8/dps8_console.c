@@ -453,7 +453,7 @@ static void oscar (char * text)
   }
 #endif
 
-static void sendConsole (uint stati)
+static void sendConsole (word12 stati)
   {
     uint tally = console_state . tally;
     uint daddr = console_state . daddr;

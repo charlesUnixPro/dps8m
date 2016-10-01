@@ -46,7 +46,7 @@ static const apuStatusBits apuStatusAll =
 void setAPUStatus (apuStatusBits status)
   {
 #if 1
-    word3 FCT = cpu.cu.APUCycleBits & MASK3;
+    word12 FCT = cpu.cu.APUCycleBits & MASK3;
     cpu.cu.APUCycleBits = (status & 07770) | FCT;
 #else
     cpu . cu . PI_AP = 0;
@@ -174,7 +174,7 @@ void do_ldbr (word36 * Ypair)
     // If SDWAM is enabled, then
     //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
-    for (int i = 0; i < 64; i ++)
+    for (uint i = 0; i < 64; i ++)
       {
         cpu . SDWAM [i] . DF = 0;
         cpu . SDWAM [i] . USE = (word6) i;
@@ -183,7 +183,7 @@ void do_ldbr (word36 * Ypair)
     // If PTWAM is enabled, then
     //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
-    for (int i = 0; i < 64; i ++)
+    for (uint i = 0; i < 64; i ++)
       {
         cpu . PTWAM [i] . FE = 0;
         cpu . PTWAM [i] . USE = (word6) i;
@@ -252,7 +252,7 @@ void do_camp (UNUSED word36 Y)
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #1
 #ifndef SPEED
-    for (int i = 0; i < 64; i ++)
+    for (uint i = 0; i < 64; i ++)
       {
         cpu.PTWAM[i].FE = 0;
         cpu.PTWAM[i].USE = (word6) i;
@@ -288,7 +288,7 @@ void do_cams (UNUSED word36 Y)
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #2
 #ifndef SPEED
-    for (int i = 0; i < 64; i ++)
+    for (uint i = 0; i < 64; i ++)
       {
         cpu.SDWAM[i].DF = 0;
         cpu.SDWAM[i].USE = (word6) i;

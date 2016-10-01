@@ -639,7 +639,7 @@ static void EISReadPage (EISaddr * p, uint n, word36 * data)
     if ((addressN & PGMK) != 0)
       {
         sim_err ("EISReadPage not aligned %06o\n", addressN);
-        addressN &= ~PGMK;
+        addressN &= (word18) ~PGMK;
       }
 
     word3 saveTRR = cpu.TPR.TRR;
@@ -687,7 +687,7 @@ static void EISWritePage (EISaddr * p, uint n, word36 * data)
     if ((addressN & PGMK) != 0)
       {
         sim_err ("EISWritePage not aligned %06o\n", addressN);
-        addressN &= ~PGMK;
+        addressN &= (uint) ~PGMK;
       }
 
     word3 saveTRR = cpu.TPR.TRR;
@@ -1115,6 +1115,7 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
+// XXX Handle N too big intelligently....
         e -> N [k - 1] = (uint) getMFReg36 (reg, false, false);
         switch (e -> TA [k - 1])
           {
@@ -1139,7 +1140,7 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
     //if (e->N [k - 1] == 0)
       //doFault (FAULT_IPR, FR_ILL_PROC, "parseAlphanumericOperandDescriptor N 0");
 
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %o\n", k, e->N[k-1]);
 
     word36 r = getMFReg36 (MFk & 017, allowDU, true);
     
@@ -1170,7 +1171,8 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
             uint arn_char4 = bitoffset * 2 / 9; // / 4.5
             // 8 chars per word plus the number of chars in r, plus the 
             // number of chars in ARn CHAR/BITNO plus the CN from the operand
-            uint nchars = (uint) (address * 8 + r + arn_char4 + CN);
+// XXX Handle 'r' too big intelligently...
+            uint nchars = address * 8 + (uint) r + arn_char4 + CN;
 
             effWORDNO = nchars / 8; // 8 chars/word
             effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not 
@@ -1348,7 +1350,7 @@ static void parseNumericOperandDescriptor (int k)
     else
         e->N[k-1] = opDesc & 077;
 
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %u\n", k, e->N[k-1]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %0o\n", k, e->N[k-1]);
 
     word36 r = getMFReg36(MFk & 017, false, true);
     if ((MFk & 017) == 4)   // reg == IC ?
@@ -1362,10 +1364,10 @@ static void parseNumericOperandDescriptor (int k)
     }
 
 #ifdef ISOLTS
-    int TN = (int) e->TN[k-1];
-    int S = (int) e->S[k-1];  // This is where MVNE gets really nasty.
+    uint TN = e->TN[k-1];
+    uint S = e->S[k-1];  // This is where MVNE gets really nasty.
 #endif
-    int N = (int) (e->N[k-1]);  // number of chars in string
+    uint N = e->N[k-1];  // number of chars in string
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
 
     if (N == 0)
@@ -1426,6 +1428,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
             //if (bitoffset & 1) // if odd
             //  arn_char4 ++;
             // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
+// XXX Handle 'r' too big intelligently...
             uint nchars = (uint) (address * 8 + r + arn_char4 + CN);
 
             effWORDNO = nchars / 8; // 8 chars/word
@@ -1805,7 +1808,7 @@ void abd (void)
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 //if (currentRunningCPUnum)
 //sim_printf ("address %o\n", address);
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR ((word4) reg) & MASK24;
 //if (currentRunningCPUnum)
@@ -2011,11 +2014,13 @@ IF1 sim_printf ("awd test no %d\n", ++testno);
 IF1 sim_printf ("-----> OS %o  SIGNEXT %o\n", GET_OFFSET (cpu . cu . IWB), SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB)));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of characters
-    int32_t r = (int32_t) getCrAR ((word4) reg);
+// XXX This code is assuming that 'r' has 18 bits of data....
+    int32_t r = (int32_t) (getCrAR (reg) & MASK18);
 
 IF1 sim_printf ("awd r 0%o %d.\n", r, r);
+
 
     r = SIGNEXT18_32 ((word18) r);
 
@@ -2061,7 +2066,7 @@ IF1 sim_printf ("sbd test no %d\n", ++testno);
 
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 IF1 sim_printf ("address %o\n", address);
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of bits (0 - 2^18 * 36 -1); 24 bits
     word24 r = getCrAR ((word4) reg) & MASK24;
 if (currentRunningCPUnum)
@@ -2117,13 +2122,14 @@ IF1 sim_printf ("awd test no %d\n", ++testno);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    uint reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
     // r is the count of characters
-    word36 r36 = getCrAR ((word4) reg);
+// XXX This code is assuming that 'r' has 18 bits of data....
+    int32_t r = (int32_t) (getCrAR (reg) & MASK18);
 
 IF1 sim_printf ("swd r36 0%llo %lld.\n", r36, r36);
 
-    int32_t r = SIGNEXT18_32 ((word18) r36);
+    r = SIGNEXT18_32 ((word18) r);
 
 IF1 sim_printf ("swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "swd ARn 0%o address 0%o reg 0%o r 0%o\n", ARn, address, reg, r);
@@ -2173,7 +2179,7 @@ void s9bd (void)
 //sim_printf ("address %o\n", address);
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
-    word4 reg = GET_TD (cpu.cu.IWB);
+    word4 reg = (word4) GET_TD (cpu.cu.IWB);
 
     // r is the count of 9-bit characters
     word21 r = getCrAR (reg) & MASK21;;
@@ -2462,7 +2468,7 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu . cu . IWB);
     uint address = SIGNEXT15_18 (GET_OFFSET (cpu . cu . IWB));
-    word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
+    word4 reg = (word4) GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
 
 //
@@ -2660,15 +2666,15 @@ IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
                 { 3, 5 }, // 34
                 { 3, 5 }  // 35
               };
-            word2 charno = (word2) tab [sum % 36u] [0];
-            word4 bitno = (word4) tab [sum % 36u] [1];
-            SET_AR_CHAR_BITNO (ARn, charno, bitno);
+            uint charno = tab [sum % 36u] [0];
+            uint bitno = tab [sum % 36u] [1];
+            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) bitno);
           }
         else
           {
-            word2 charno = (sum % 36u) / 9;
-            word4 bitno = sum % 9;
-            SET_AR_CHAR_BITNO (ARn, charno, sum % 9);
+            uint charno = (sum % 36u) / 9;
+            uint bitno = sum % 9;
+            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) (sum % 9));
 
 IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / 36u) & AMASK, (sum / 36u) & AMASK);
 IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
@@ -3998,9 +4004,9 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
           EISput469 (2, cpu . du . CHTALLY, c);
         else
           {
-	  // If data types are dissimilar (TA1 ≠ TA2), each character is
-	  // high-order truncated or zero filled, as appropriate, as it is
-	  // moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is
+            // high-order truncated or zero filled, as appropriate, as it is
+            // moved. No character conversion takes place.
             cout = c;
             switch (srcSZ)
               {
@@ -4027,16 +4033,16 @@ IF1 sim_printf ("MLR TALLY %u ch %03o\n", cpu.du.CHTALLY, c);
                   break;
               }
 
-	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
-	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
-	  // negative overpunch sign is found, then the minus sign character
-	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
-	  // is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+            // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+            // negative overpunch sign is found, then the minus sign character
+            // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+            // is placed in C(Y-charn2)N2-1.
             
             if (ovp && (cpu . du . CHTALLY == e -> N1 - 1))
               {
-	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-	      // there *is* an overpunch char here.
+                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+                // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
 IF1 sim_printf ("overpunch char is %03o\n", c);
@@ -4263,9 +4269,9 @@ void mrl (void)
           EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, c);
         else
           {
-	  // If data types are dissimilar (TA1 ≠ TA2), each character is
-	  // high-order truncated or zero filled, as appropriate, as it is
-	  // moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is
+            // high-order truncated or zero filled, as appropriate, as it is
+            // moved. No character conversion takes place.
             cout = c;
             switch (srcSZ)
               {
@@ -4292,19 +4298,19 @@ void mrl (void)
                   break;
               }
 
-	  // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
-	  // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
-	  // negative overpunch sign is found, then the minus sign character
-	  // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
-	  // is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then
+            // C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a
+            // negative overpunch sign is found, then the minus sign character
+            // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
+            // is placed in C(Y-charn2)N2-1.
             
 // ISOLTS ps838    test-01f subtest loop point 001762 seems to indicate that
 // the rightmost digit is examined for overpunch.
             //if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
             if (ovp && (cpu.du.CHTALLY == 0))
               {
-	      // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-	      // there *is* an overpunch char here.
+                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
+                // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
                 bOvp = isOvp2 (c, & isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
@@ -4413,19 +4419,32 @@ static void EISloadInputBufferNumeric (int k)
         switch(S)
         {
             case CSFL:  // this is the real evil one ....
-                /* Floating-point:
-                 * [sign=c0] c1×10(n-3) + c2×10(n-4) + ... + c(n-3) [exponent=8 bits]
-                 * where:
-                 *  ci is the decimal value of the byte in the ith byte position.
-                 *  [sign=ci] indicates that ci is interpreted as a sign byte.
-                 *  [exponent=8 bits] indicates that the exponent value is taken from the last 8 bits of the string. If the data is in 9-bit bytes, the exponent is bits 1-8 of c(n-1). If the data is in 4- bit bytes, the exponent is the binary value of the concatenation of c(n-2) and c(n-1).
-                 */
+                // Floating-point:
+                // [sign=c0] c1×10(n-3) + c2×10(n-4) + ... + c(n-3) [exponent=8
+                // bits]
+                //
+                // where:
+                //
+                //  ci is the decimal value of the byte in the ith byte
+                //  position.
+                //
+                //  [sign=ci] indicates that ci is interpreted as a sign byte.
+                //
+                //  [exponent=8 bits] indicates that the exponent value is
+                //  taken from the last 8 bits of the string. If the data is in
+                //  9-bit bytes, the exponent is bits 1-8 of c(n-1). If the
+                //  data is in 4- bit bytes, the exponent is the binary value
+                //  of the concatenation of c(n-2) and c(n-1).
+ 
                 if (n == 0) // first had better be a sign ....
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
 
                     if (c < 012 || c > 017)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(1): illegal char in input"); // TODO: generate ill proc fault
+                      doFault (FAULT_IPR,
+                               (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG},
+                               "loadInputBufferNumeric(1): illegal char in "
+                               "input");
 
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -8104,8 +8123,6 @@ static int loadDec (EISaddr *p, int pos)
     EISstruct * e = & cpu . currentEISinstruction;
     int128 x = 0;
     
-    
-    // XXX use get49() for this later .....
     p->data = EISRead(p);    // read data word from memory
     
     int maxPos = e->TN1 == CTN4 ? 7 : 3;
@@ -8300,16 +8317,16 @@ void dtb (void)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
       }
-    //if (e->TN2 != 0)
-      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb: TN2 MBZ");
+
     // Bits 21-29 of OP2 MBZ
     if (e -> op [1]  & 0000000077700)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
        }
 
-    //Attempted conversion of a floating-point number (S1 = 0) or attempted use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
-    //If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
+    // Attempted conversion of a floating-point number (S1 = 0) or attempted
+    // use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
+    // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8 etc.");
@@ -8318,10 +8335,12 @@ void dtb (void)
     //e->_flags = cpu . cu.IR;
     e->_flags = 0;
     
-    // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
+    // Negative: If a minus sign character is found in C(Y-charn1), then ON;
+    // otherwise OFF
     CLRF(e->_flags, I_NEG);
     
-    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set bits and flags, return }' approach.
+    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set
+    // bits and flags, return }' approach.
 
     int result = loadDec(&e->ADDR1, (int) e->CN1);
     switch (result)
@@ -8346,7 +8365,8 @@ void dtb (void)
             if (TSTF  (e->_flags, I_OFLOW))
               {
                 SET_I_OFLOW;
-                doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  overflow fault");
+                if (! TST_I_OMASK)
+                  doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  overflow fault");
               }
             break;
         case 1:
