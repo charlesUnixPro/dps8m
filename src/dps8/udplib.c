@@ -247,7 +247,7 @@ int udp_create (char * premote, int * pln)
     memset ((char *) & si_me, 0, sizeof (si_me));
  
     si_me . sin_family = AF_INET;
-    si_me . sin_port = htons (udp_links [link] . lportno);
+    si_me . sin_port = htons ((uint16_t) udp_links [link] . lportno);
     si_me . sin_addr . s_addr = htonl (INADDR_ANY);
      
     rc = bind (sock, (struct sockaddr *) & si_me, sizeof (si_me));
