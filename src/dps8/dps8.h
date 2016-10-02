@@ -80,12 +80,6 @@
 // Instruction profiler
 // #define MATRIX
 
-#ifdef ISOLTS
-#define IF1 if (currentRunningCPUnum)
-#else
-#define IF1 if (0)
-#endif
-
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
