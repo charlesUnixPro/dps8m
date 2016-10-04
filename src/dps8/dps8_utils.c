@@ -495,9 +495,9 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-sim_printf ("Add72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
- (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
+//if (currentRunningCPUnum)
+//sim_printf ("Add72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+ //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
@@ -544,12 +544,12 @@ sim_printf ("Add72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet 
     bool cry = r74;
 
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-{
-//char buf [1024];
-//print_int128 (res, buf);
-sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
-}
+//if (currentRunningCPUnum)
+//{
+////char buf [1024];
+////print_int128 (res, buf);
+//sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
+//}
 #endif
     if (flagsToSet & I_CARRY)
       {
@@ -582,10 +582,10 @@ sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36
       }
     
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-{
-sim_printf ("Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
-}
+//if (currentRunningCPUnum)
+//{
+//sim_printf ("Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+//}
 #endif
     return res;
   }
@@ -594,9 +594,9 @@ sim_printf ("Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 3
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-sim_printf ("Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
- (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
+//if (currentRunningCPUnum)
+//sim_printf ("Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+ //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
     sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
  (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
@@ -643,12 +643,12 @@ sim_printf ("Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet 
     bool cry = r74;
 
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-{
-//char buf [1024];
-//print_int128 (res, buf);
-sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
-}
+//if (currentRunningCPUnum)
+//{
+////char buf [1024];
+////print_int128 (res, buf);
+//sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
+//}
 #endif
 
     if (flagsToSet & I_CARRY)
