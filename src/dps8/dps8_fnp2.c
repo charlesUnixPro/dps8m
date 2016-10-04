@@ -1897,6 +1897,17 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 
 static void fnpProcessBuffer (struct t_line * linep)
   {
+    // The connection could have closed when we were not looking
+    if (! linep->client)
+      {
+        if (linep->inBuffer)
+          free (linep->inBuffer);
+        linep->inBuffer = NULL;
+        linep->inSize = 0;
+        linep->inUsed = 0;
+        return;
+      }
+
     while (linep->inBuffer && linep->inUsed < linep->inSize)
        {
          unsigned char c = linep->inBuffer [linep->inUsed ++];
