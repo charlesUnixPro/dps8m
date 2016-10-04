@@ -6517,7 +6517,6 @@ static t_stat DoBasicInstruction (void)
                             " no events in queue\n", cpu.PPR.IC);
                 sim_printf("\nsimCycles = %lld\n", sim_timell ());
                 sim_printf("\ncpuCycles = %lld\n", sys_stats.total_cycles);
-                //stop_reason = STOP_DIS;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 
@@ -6561,9 +6560,13 @@ static t_stat DoBasicInstruction (void)
                 cpu.interrupt_flag = true;
                 break;
               }
-            // Currently, the only G7 fault we recognize is TRO, so
-            // this code suffices for "all other G7 faults."
-            if (GET_I (cpu.cu.IWB) ? bG7PendingNoTRO () : bG7Pending ())
+            //if (GET_I (cpu.cu.IWB) ? bG7PendingNoTRO () : bG7Pending ())
+            // Don't check timer runout if in absolute mode, privledged, or
+            // interrupts inhibited.
+            bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
+                              is_priv_mode ()  ||
+                              GET_I (cpu.cu.IWB);
+            if (noCheckTR ? bG7PendingNoTRO () : bG7Pending ())
               {
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS sees a TRO\n");
                 cpu.g7_flag = true;

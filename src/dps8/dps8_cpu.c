@@ -1743,6 +1743,26 @@ setCPU:;
 // or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
 // not sampled.
 
+// Group 7 Faults
+// 
+// Shutdown
+//
+// An external power shutdown condition has been detected. DC POWER shutdown
+// will occur in approximately one millisecond.
+//
+// Timer Runout
+//
+// The timer register has decremented to or through the value zero. If the
+// processor is in privileged mode or absolute mode, recognition of this fault
+// is delayed until a return to normal mode or BAR mode. Counting in the timer
+// register continues.  
+//
+// Connect
+//
+// A connect signal ($CON strobe) has been received from a system controller.
+// This event is to be distinguished from a Connect Input/Output Channel (cioc)
+// instruction encountered in the program sequence.
+
                 if ((! cpu.wasInhibited) &&
                     (cpu.PPR.IC % 2) == 0 &&
                     (! cpu.wasXfer) &&
@@ -1750,7 +1770,13 @@ setCPU:;
                         cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
                   {
                     cpu.interrupt_flag = sample_interrupts ();
-                    cpu.g7_flag = bG7Pending ();
+                    //cpu.g7_flag = bG7Pending ();
+                    // Don't check timer runout if in absolute mode, privledged, or
+                    // interrupts inhibited.
+                    bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
+                                      is_priv_mode ()  ||
+                                      GET_I (cpu.cu.IWB);
+                    cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
                   }
 
                 // The cpu.wasInhibited accumulates across the even and 
@@ -1916,7 +1942,7 @@ setCPU:;
 //
 // The Timer Register is a fast, high-precision timer but Multics uses it 
 // in only two ways: detecting I/O lockup during early boot, and process
-// quantum scheduling (1/4 second).
+// quantum scheduling (1/4 second for Multics).
 //
 // Neither of these require high resolution or high accuracy.
 //
@@ -2646,30 +2672,33 @@ void decodeInstruction (word36 inst, DCDstruct * p)
 
 // MM stuff ...
 
-/*
- * is_priv_mode()
- *
- * Report whether or or not the CPU is in privileged mode.
- * True if in absolute mode or if priv bit is on in segment TPR.TSR
- * The processor executes instructions in privileged mode when forming addresses in absolute mode
- * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
- * and the execution ring is equal to zero.
- *
- * PPR.P A flag controlling execution of privileged instructions.
- *
- * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
- */
+//
+// is_priv_mode()
+//
+// Report whether or or not the CPU is in privileged mode.
+// True if in absolute mode or if priv bit is on in segment TPR.TSR
+// The processor executes instructions in privileged mode when forming
+// addresses in absolute mode or when forming addresses in append mode and the
+// segment descriptor word (SDW) for the segment in execution specifies a
+// privileged procedure and the execution ring is equal to zero.
+//
+// PPR.P A flag controlling execution of privileged instructions.
+//
+// Its value is 1 (permitting execution of privileged instructions) if PPR.PRR
+// is 0 and the privileged bit in the segment descriptor word (SDW.P) for the
+// procedure is 1; otherwise, its value is 0.
+//
  
 int is_priv_mode(void)
-{
+  {
     if (cpu.PPR.P)
-        return 1;
+      return 1;
     
     if (get_addr_mode () == ABSOLUTE_mode)
-        return 1;
+      return 1;
 
     return 0;
-}
+  }
 
 void set_went_appending (void)
   {
