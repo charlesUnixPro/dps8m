@@ -6560,6 +6560,11 @@ static t_stat DoBasicInstruction (void)
                 cpu.interrupt_flag = true;
                 break;
               }
+// Implementing TRO according to AL39 for the DIS cause caues idle systems to hang
+// in the DIS instruction. Revert back to the old behavior.
+#if 1
+            if (GET_I (cpu.cu.IWB) ? bG7PendingNoTRO () : bG7Pending ())
+#else
             //if (GET_I (cpu.cu.IWB) ? bG7PendingNoTRO () : bG7Pending ())
             // Don't check timer runout if in absolute mode, privledged, or
             // interrupts inhibited.
@@ -6567,6 +6572,7 @@ static t_stat DoBasicInstruction (void)
                               is_priv_mode ()  ||
                               GET_I (cpu.cu.IWB);
             if (noCheckTR ? bG7PendingNoTRO () : bG7Pending ())
+#endif
               {
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS sees a TRO\n");
                 cpu.g7_flag = true;
