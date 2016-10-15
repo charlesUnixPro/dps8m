@@ -963,6 +963,16 @@ static void setupOperandDescriptor (int k)
     {
         word36 opDesc = e -> op [k - 1];
         
+// XXX This check breaks Multics; line 161 of sys_trouble.alm contains
+//
+// 000103 aa 040100 1006 20    160   mlr     (id),(pr),fill(040) copy error message
+// 000104 0a 000126 0002 05    161   arg     trouble_messages-1,al
+// 000105 aa 300063 200063     162   desc9a  bb|fgbx.message+3(1),64-13
+//
+// bit 28 of 000104 is set
+//
+
+#if 0
         // Bits 18-28,30, 31 MBZ
         if (opDesc & 0000000777660)
           {
@@ -981,7 +991,8 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 #endif
             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 18-28,30, 31 MBZ");
           }
- 
+#endif 
+
         // fill operand according to MFk....
         word18 address = GETHI (opDesc);
         e -> addr [k - 1] . address = address;
