@@ -367,7 +367,7 @@ static void fuv_write_cb (uv_write_t * req, int status)
   {
     if (status < 0)
       {
-        if (status == -ECONNRESET)
+        if (status == -ECONNRESET || status == -ECANCELED)
           {
             // This occurs when the other end disconnects; not an "error"
           }
