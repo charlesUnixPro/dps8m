@@ -180,6 +180,7 @@ enum _processor_cycle_type {
 };
 typedef enum _processor_cycle_type _processor_cycle_type;
 
+#ifndef EIS_PTR4
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
     Unknown          = 0,
@@ -206,6 +207,7 @@ enum eMemoryAccessType {
 };
 
 typedef enum eMemoryAccessType MemoryAccessType;
+#endif
 
 #define MA_IF  0   /* fetch */
 #define MA_ID  1   /* indirect */

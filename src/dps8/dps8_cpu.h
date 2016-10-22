@@ -425,7 +425,9 @@ typedef struct MOPstruct MOPstruct;
 // address of an EIS operand
 typedef struct EISaddr
 {
+#ifndef EIS_PTR
     word18  address;    // 18-bit virtual address
+#endif
     //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
     word36  data;
@@ -438,11 +440,14 @@ typedef struct EISaddr
     
     // eisDataType _type;   // type of data - alphunumeric/numeric
     
+#ifndef EIS_PTR3
     int     TA;   // type of Alphanumeric chars in src
+#endif
     int     TN;   // type of Numeric chars in src
     int     cPos;
     int     bPos;
     
+#ifndef EIS_PTR4
     // for when using AR/PR register addressing
     word15  SNR;        // The segment number of the segment containing the data item described by the pointer register.
     word3   RNR;        // The effective ring number value calculated during execution of the instruction that last loaded
@@ -450,6 +455,7 @@ typedef struct EISaddr
     //bool    bUsesAR;    // true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
     
     MemoryAccessType    mat;    // memory access type for operation
+#endif
 
     // Cache
 
@@ -518,10 +524,16 @@ typedef struct EISstruct
 #define TN2 TN [1]
 #define TN3 TN [2]
 
+#ifdef EIS_PTR3
+#define TA1 cpu.du.TAk[0]
+#define TA2 cpu.du.TAk[1]
+#define TA3 cpu.du.TAk[2]
+#else
     uint   TA [3];          // type alphanumeric
 #define TA1 TA [0]
 #define TA2 TA [1]
 #define TA3 TA [2]
+#endif
 
     uint   S [3];           // Sign and decimal type of number
 #define S1  S [0]
@@ -553,7 +565,11 @@ typedef struct EISstruct
     int     exponent;       // For decimal floating-point (evil)
     int     sign;           // For signed decimal (1, -1)
     
+#ifdef EIS_PTR2
+#define KMOP 2
+#else
     EISaddr *mopAddress;    // mopAddress, pointer to addr [0], [1], or [2]
+#endif
     
     int     mopTally;       // number of micro-ops
     int     mopPos;         // current mop char posn
@@ -777,6 +793,22 @@ typedef struct
     
     /* word 3 */
                    //  0-17          0
+#ifdef EIS_PTR4
+                   // 18-21 TSNA     Pointer register number for non-EIS 
+                   //                operands or EIS Operand #1
+                   //                  18-20 PRNO Pointer register number
+                   //                  21       PRNO is valid
+                   // 22-25 TSNB     Pointer register number for EIS operand #2
+                   //                  22-24 PRNO Pointer register number
+                   //                  25       PRNO is valid
+                   // 26-29 TSNC     Pointer register number for EIS operand #2
+                   //                  26-28 PRNO Pointer register number
+                   //                  29       PRNO is valid
+
+    word3 TSN_PRNO [3];
+    word1 TSN_VALID [3];
+
+#else
                    // 18-21 TSNA     Pointer register number for non-EIS operands or
                    //                EIS Operand #1
                    //                  18-20 PRNO Pointer register number
@@ -787,6 +819,7 @@ typedef struct
                    // 26-29 TSNC     Pointer register number for EIS operand #2
                    //                  26-28 PRNO Pointer register number
                    //                  29       PRNO is valid
+#endif
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
     /* word 4 */

@@ -447,9 +447,18 @@ static void scu2words(word36 *words)
     // words [3]
 
     //  0, 18 0
+#ifdef EIS_PTR4
+    putbits36_3 (& words [2], 18, cpu.cu.TSN_PRNO[0]);
+    putbits36_1 (& words [2], 21, cpu.cu.TSN_VALID[0]);
+    putbits36_3 (& words [2], 22, cpu.cu.TSN_PRNO[1]);
+    putbits36_1 (& words [2], 25, cpu.cu.TSN_VALID[1]);
+    putbits36_3 (& words [2], 26, cpu.cu.TSN_PRNO[2]);
+    putbits36_1 (& words [2], 29, cpu.cu.TSN_VALID[2]);
+#else
     // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
     // 22, 4 TSNB pointer register number for EIS operand #2
     // 26, 4 TSNC pointer register number for EIS operand #3
+#endif
     putbits36_6 (& words [3], 30, cpu.TPR.TBR);
 
     // words [4]
@@ -605,9 +614,18 @@ static void words2scu (word36 * words)
     // words[3]
 
     // 0-17 0
+#ifdef EIS_PTR4
+    cpu.cu.TSN_PRNO[0]  = getbits36_3 (words[3], 18);
+    cpu.cu.TSN_VALID[0] = getbits36_3 (words[3], 21);
+    cpu.cu.TSN_PRNO[1]  = getbits36_3 (words[3], 22);
+    cpu.cu.TSN_VALID[1] = getbits36_3 (words[3], 25);
+    cpu.cu.TSN_PRNO[2]  = getbits36_3 (words[3], 26);
+    cpu.cu.TSN_VALID[2] = getbits36_3 (words[3], 29);
+#else
     // 18-21 TSNA
     // 22-26 TSNB
     // 26-29 TSNC
+#endif
     cpu.TPR.TBR         = getbits36_6 (words[3], 30);
 
     // words [4]
@@ -1546,6 +1564,14 @@ restart_1:
     // This must not happen on instruction restart
     if (! ci -> restart)
       {
+#ifdef EIS_PTR4
+#if 0 // XXX Causes system_startup_: Error condition while initializing ring 1 environment.
+        cpu.cu.TSN_VALID[0] = 0;
+        cpu.cu.TSN_VALID[1] = 0;
+        cpu.cu.TSN_VALID[2] = 0;
+#endif
+#endif
+
         if (! ci -> a)
           {
             cpu.TPR.TRR = cpu.PPR.PRR;
