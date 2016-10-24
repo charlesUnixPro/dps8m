@@ -102,7 +102,12 @@ typedef struct pcw_t
 // CPU
 //
 
+#ifdef DPS8M
 enum { N_CPU_PORTS = 4 };
+#endif
+#ifdef L68
+enum { N_CPU_PORTS = 8 };
+#endif
 
 //
 // Tape drive

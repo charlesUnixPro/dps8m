@@ -24,6 +24,16 @@
 
 //#define EMULATOR_ONLY 1
 
+// Define to emulate Level 68 instead of DPS8M
+
+//#define L68 
+
+#ifndef L68
+#ifndef DPS8M
+#define DPS8M
+#endif
+#endif
+
 #ifndef USE_INT64
 #define USE_INT64
 #endif

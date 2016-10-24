@@ -244,7 +244,13 @@ struct _sdw
                      //  register is valid. If this bit is set OFF, a hit is
                      //  not possible. All SDWAM . F bits are set OFF by the
                      //  instructions that clear the SDWAM.
-    word6   USE;     // Usage count for the register. The SDWAM . USE field is
+#ifdef DPS8M
+    word6   USE;
+#endif
+#ifdef L68
+    word4   USE;
+#endif
+                     // Usage count for the register. The SDWAM . USE field is
                      //  used to maintain a strict FIFO queue order among the
                      //  SDWs. When an SDW is matched, its USE value is set to
                      //  15 (newest) on the DPS/L68 and to 63 on the DPS 8M,
@@ -336,7 +342,14 @@ struct _ptw
                      //  the register is valid. If this bit is set OFF, a
                      //  hit is not possible. All PTWAM . F bits are set OFF
                      //  by the instructions that clear the PTWAM.
-    word6   USE;     // Usage count for the register. The PTWAM . USE field
+#ifdef DPS8M
+    word6   USE;
+#endif
+
+#ifdef L68
+    word4   USE;
+#endif
+                     // Usage count for the register. The PTWAM . USE field
                      //  is used to maintain a strict FIFO queue order
                      //  among the PTWs. When an PTW is matched its USE 
                      // value is set to 15 (newest) on the DPS/L68 and to
@@ -381,6 +394,9 @@ struct _cache_mode_register
     word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
     word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
     //word1    opnd_on; // DPS8, but not DPS8M
+#ifdef L68
+    word1    opnd_on; // 1: The cache memory (if active) is used for operands.
+#endif
     word1    inst_on; // 1: The cache memory (if active) is used for instructions.
     // When the cache-to-register mode flag (bit 59 of the cache mode register) is set ON, the
     // processor is forced to fetch the operands of all double-precision operations unit load operations
@@ -390,7 +406,9 @@ struct _cache_mode_register
     word1    str_asd;
     word1    col_ful;
     word2    rro_AB;
+#ifdef DPS8M
     word1    bypass_cache;
+#endif
     word2    luf;       // LUF value
                         // 0   1   2   3
                         // Lockup time
@@ -403,6 +421,12 @@ typedef struct _cache_mode_register _cache_mode_register;
 
 typedef struct mode_registr
   {
+#ifdef L68
+    word15 FFV;
+    word1 OC_TRAP;
+    word1 ADR_TRAP;
+    word10 OPCODE;
+#endif
     word1 cuolin;
     word1 solin;
     word1 sdpap;
@@ -410,11 +434,18 @@ typedef struct mode_registr
     word2 tm;
     word2 vm;
     word1 hrhlt;
+#ifdef DPS8M
     word1 hrxfr;
+#endif
+#ifdef L68
+    word1 hropc;
+#endif
     word1 ihr;
     word1 ihrrs;
     word1 mrgctl;
+#ifdef DPS8M
     word1 hexfp;
+#endif
     word1 emr;
   } _mode_register;
 
@@ -759,10 +790,12 @@ typedef struct
     word1 OCB;     //  8    OCB       AVF Out of call bracket
     word1 OCALL;   //  9    OCALL     AVF Outward call
     word1 BOC;     // 10    BOC       AVF Bad outward call
-    word1 PTWAM_ER;// 11    PTWAM_ER  AVF PTWAM error
+// PTWAM error is DPS8M only
+    word1 PTWAM_ER;// 11    PTWAM_ER  AVF PTWAM error // inward return
     word1 CRT;     // 12    CRT       AVF Cross ring transfer
     word1 RALR;    // 13    RALR      AVF Ring alarm
-    word1 SWWAM_ER;// 14    SWWAM_ER  AVF SDWAM error
+// On DPS8M a SDWAM error, on DP8/L68 a WAM error
+    word1 SDWAM_ER;// 14    SWWAM_ER  AVF SDWAM error
     word1 OOSB;    // 15    OOSB      AVF Out of segment bounds
     word1 PARU;    // 16    PARU      Parity fault - processor parity upper
     word1 PARL;    // 17    PARL      Parity fault - processor parity lower
@@ -1028,6 +1061,13 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 
 #define N_CPU_UNITS_MAX 8
 
+#ifdef DPS8M
+#define N_WAM_ENTRIES 64
+#endif
+#ifdef L68
+#define N_WAM_ENTRIES 16
+#endif
+
 typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
@@ -1077,7 +1117,7 @@ typedef struct
 #ifdef SPEED
     _sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
-    _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+    _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
 #endif
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
@@ -1085,7 +1125,7 @@ typedef struct
 #ifdef SPEED
     _ptw PTWAM0;
 #else
-    _ptw PTWAM [64];
+    _ptw PTWAM [N_WAM_ENTRIES];
 #endif
     _ptw * PTW;
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
@@ -1284,10 +1324,18 @@ char *strSDW0 (_sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
+#ifdef DPS8M
 void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
 void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
+#endif
+#ifdef L68
+void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
+// XXX addDUhist
+// XXX addOUhist
+// XXX addAPUhist
+#endif
 void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);

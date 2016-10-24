@@ -2950,11 +2950,7 @@ static config_value_list_t cfg_interlace [] =
 
 static config_value_list_t cfg_size_list [] =
   {
-// Examination of the runtime image indicates that the source code does not
-// match the boot image. The table in core does not contian this version of
-// dps_mem_size_table
-
-#if 0
+#ifdef L68
 // rsw.incl.pl1
 //
 //  dcl  dps_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS and L68 memory sizes */
@@ -2987,7 +2983,9 @@ static config_value_list_t cfg_size_list [] =
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 2 },
-#else
+#endif // L68
+
+#ifdef DPS8M
 // These values are taken from the dps8_mem_size_table loaded by the boot tape.
 
     {    "32", 0 },
@@ -3011,7 +3009,7 @@ static config_value_list_t cfg_size_list [] =
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 7 },
-#endif
+#endif // DPS8M
     { NULL, 0 }
 
   };
@@ -3734,6 +3732,7 @@ void addHistForce (uint hset, word36 w0, word36 w1)
     cpu.history_cyclic[hset] = (cpu.history_cyclic[hset] + 1) % N_HIST_SIZE;
   }
 
+#ifdef DPS8M
 void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2)
   {
     word36 w0 = 0, w1 = 0;
@@ -3775,5 +3774,24 @@ void addEAPUhist (word18 ZCA, word18 opcode)
     //cpu.eapu_hist[cpu.eapu_cyclic].opcode = opcode;
     //cpu.history_cyclic[EAPU_HIST_REG] = (cpu.history_cyclic[EAPU_HIST_REG] + 1) % N_HIST_SIZE;
   }
+#endif // DPS8M
 
+#ifdef L68
+void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2)
+  {
+    word36 w0 = 0, w1 = 0;
+    w0 |= flags & 0777777000000;
+    w0 |= opcode & MASK18;
+    w1 |= (address & MASK18) << 18;
+    w1 |= (proccmd & MASK5) << 13;
+    w1 |= (sel & MASK4) << 9;
+// XXX ignoring SEL
+    w1 |= flags2 & 0777;
+    addHist (CU_HIST_REG, w0, w1);
+  }
+
+// XXX addDUhist
+// XXX addOUhist
+// XXX addAPUhist
+#endif
 

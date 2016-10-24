@@ -26,7 +26,12 @@ char * dumpFlags(word18 flags)
     static char buffer[256] = "";
     
     sprintf(buffer, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+#ifdef DPS8M
             flags & I_HEX   ? "Hex "   : "",
+#endif
+#ifdef L68
+            "",
+#endif
             flags & I_ABS   ? "Abs "   : "",
             flags & I_MIF   ? "MIF "  : "",
             flags & I_TRUNC ? "Trunc " : "",

@@ -409,6 +409,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
+              sim_warn ("FAULT_CON can't map port %o\n", subFault.fault_con_subtype);
               break;
           }
       }
@@ -426,10 +427,12 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     cpu . cu . OCB = 0;
     cpu . cu . OCALL = 0;
     cpu . cu . BOC = 0;
+#ifdef DPS8M
     cpu . cu . PTWAM_ER = 0;
+#endif
     cpu . cu . CRT = 0;
     cpu . cu . RALR = 0;
-    cpu . cu . SWWAM_ER = 0;
+    cpu . cu . SDWAM_ER = 0;
     cpu . cu . OOSB = 0;
     cpu . cu . PARU = 0;
     cpu . cu . PARL = 0;
@@ -497,7 +500,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         if (subFault.fault_acv_subtype & ACV13)
           cpu . cu . RALR = 1;
         if (subFault.fault_acv_subtype & ACV14)
-          cpu . cu . SWWAM_ER = 1;
+          cpu . cu . SDWAM_ER = 1;
         if (subFault.fault_acv_subtype & ACV15)
           cpu . cu . OOSB = 1;
       }

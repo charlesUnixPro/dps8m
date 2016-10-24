@@ -139,21 +139,21 @@ void doPtrReg(void)
 #ifdef do_selftestPTWAM
 static void selftestPTWAM (void)
   {
-    int usages [64];
-    for (int i = 0; i < 64; i ++)
+    int usages [N_WAM_ENTRIES];
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       usages [i] = -1;
 
-    for (int i = 0; i < 64; i ++)
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       {
         _ptw * p = cpu . PTWAM + i;
-        if (p -> USE > 63)
-          sim_printf ("PTWAM[%d].USE is %d; > 63!\n", i, p -> USE);
+        if (p -> USE > N_WAM_ENTRIES - 1)
+          sim_printf ("PTWAM[%d].USE is %d; > %d!\n", i, p -> USE, N_WAM_ENTRIES - 1);
         if (usages [p -> USE] != -1)
           sim_printf ("PTWAM[%d].USE is equal to PTWAM[%d].USE; %d\n",
                       i, usages [p -> USE], p -> USE);
         usages [p -> USE] = i;
       }
-    for (int i = 0; i < 64; i ++)
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       {
         if (usages [i] == -1)
           sim_printf ("No PTWAM had a USE of %d\n", i);
@@ -169,12 +169,11 @@ void do_ldbr (word36 * Ypair)
   {
 #ifndef SPEED
     // XXX is it enabled?
-    // XXX Assuming 16 is 64 for the DPS8M
 
     // If SDWAM is enabled, then
     //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu . SDWAM [i] . DF = 0;
         cpu . SDWAM [i] . USE = (word6) i;
@@ -183,7 +182,7 @@ void do_ldbr (word36 * Ypair)
     // If PTWAM is enabled, then
     //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu . PTWAM [i] . FE = 0;
         cpu . PTWAM [i] . USE = (word6) i;
@@ -252,7 +251,7 @@ void do_camp (UNUSED word36 Y)
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #1
 #ifndef SPEED
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.PTWAM[i].FE = 0;
         cpu.PTWAM[i].USE = (word6) i;
@@ -288,11 +287,11 @@ void do_cams (UNUSED word36 Y)
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #2
 #ifndef SPEED
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.SDWAM[i].DF = 0;
         cpu.SDWAM[i].USE = (word6) i;
-#ifdef ISOSLTS
+#ifdef ISOLTS
 if (currentRunningCPUnum)
 sim_printf ("CAMS cleared it\n");
 #endif
@@ -373,7 +372,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
-    int nwam = 64;
+    int nwam = N_WAM_ENTRIES;
     if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
@@ -399,7 +398,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
                 if (cpu . SDWAM[_h].USE > cpu . SDW->USE)
                     cpu . SDWAM[_h].USE -= 1;
             }
-            cpu . SDW->USE = 63;
+            cpu . SDW->USE = N_WAM_ENTRIES - 1;
             
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(cpu . SDW));
             return cpu . SDW;
@@ -529,7 +528,7 @@ static char *strSDW(_sdw *SDW)
  */
 t_stat dumpSDWAM (void)
 {
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _sdw *p = &cpu . SDWAM[_n];
         
@@ -607,7 +606,7 @@ static void loadSDWAM(word15 segno)
     
     /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63?), and the newly loaded register is read out into the address preparation circuitry.
      */
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _sdw *p = &cpu . SDWAM[_n];
         //if (!p->_initialized || p->USE == 0)
@@ -638,7 +637,7 @@ static void loadSDWAM(word15 segno)
             //p->_initialized = true;     // in use by SDWAM
             p->DF = true;     // in use by SDWAM
             
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
             {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
@@ -666,7 +665,7 @@ static void loadSDWAM(word15 segno)
 #ifndef SPEED
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
-    int nwam = 64;
+    int nwam = N_WAM_ENTRIES;
     if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
@@ -688,7 +687,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
                 if (cpu . PTWAM[_h].USE > cpu . PTW->USE)
                     cpu . PTWAM[_h].USE -= 1; //PTW->USE -= 1;
             }
-            cpu . PTW->USE = 63;
+            cpu . PTW->USE = N_WAM_ENTRIES - 1;
 #ifdef do_selftestPTWAM
             selftestPTWAM ();
 #endif
@@ -760,7 +759,7 @@ static void loadPTWAM(word15 segno, word18 offset)
     /*
      * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63), and the newly loaded register is read out into the address preparation circuitry.
      */
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _ptw *p = &cpu . PTWAM[_n];
         //if (!p->_initialized || p->USE == 0)
@@ -777,7 +776,7 @@ static void loadPTWAM(word15 segno, word18 offset)
             p->USE = 0;
             p->FE = true;
             
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
             {
                 _ptw *q = &cpu . PTWAM[_h];
                 //if (!q->_initialized)

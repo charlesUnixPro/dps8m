@@ -58,7 +58,12 @@ word36 *M = NULL;                                          /*!< memory */
 
 
 // These are part of the simh interface
-char sim_name[] = "dps-8/m";
+#ifdef DPS8M
+char sim_name[] = "DPS8M";
+#endif
+#ifdef L68
+char sim_name[] = "L68";
+#endif
 int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
@@ -193,7 +198,12 @@ static void usr1SignalHandler (UNUSED int sig)
 static void dps8_init(void)
 {
 #include "dps8.sha1.txt"
+#ifdef DPS8M
     sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
+#endif
+#ifdef L68
+    sim_printf ("L68 emulator (git %8.8s)\n", COMMIT_ID);
+#endif
 #ifdef TESTING
     sim_printf ("#### TESTING BUILD ####\n");
 #else
@@ -215,7 +225,12 @@ static void dps8_init(void)
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
+#ifdef DPS8M
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+#endif
+#ifdef L68
+    sim_printf ("L68 system session id is %d\n", dps8m_sid);
+#endif
 
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);

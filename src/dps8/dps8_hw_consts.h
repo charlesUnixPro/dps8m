@@ -474,7 +474,9 @@ enum {
 #define F_N             (1LLU << F_V_N)
 #define F_O             (1LLU << F_V_O)
 
+#ifdef DPS8M
 #define I_HEX   F_O     // base-16 exponent                 0000010
+#endif
 #define I_ABS   F_N     // absolute mode                    0000020
 #define I_MIF   F_M     // mid-instruction interrupt fault  0000040
 #define I_TRUNC F_L     // truncation                       0000100
@@ -531,7 +533,9 @@ enum {
 #define TST_I_NEG   TSTF (cpu.cu.IR, I_NEG)
 #define TST_I_ZERO  TSTF (cpu.cu.IR, I_ZERO)
 
+#ifdef DPS8M
 #define SC_I_HEX(v)   SCF (v, cpu.cu.IR, I_HEX)
+#endif
 #define SC_I_MIF(v)   SCF (v, cpu.cu.IR, I_MIF)
 #define SC_I_TALLY(v) SCF (v, cpu.cu.IR, I_TALLY)
 #define SC_I_NEG(v)   SCF (v, cpu.cu.IR, I_NEG)
@@ -701,10 +705,10 @@ typedef enum fault_acv_subtype_
     ACV8  = (1U <<  7),   ///< 16.Out of call brackets (ACV8=OCB)
     ACV9  = (1U <<  6),   ///< 9. Outward call (ACV9=OCALL)
     ACV10 = (1U <<  5),   ///< 10.Bad outward call (ACV10=BOC)
-    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET) XXX ??
+    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET)
     ACV12 = (1U <<  3),   ///< 7. Invalid ring crossing (ACV12=CRT)
     ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
-    ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
+    ACV14 = (1U <<  1), ///< 13.Associative memory error 
     ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
     flt_acv_FORCE  = 0400000000000llu // Force enum size to 36 bits.
   } fault_acv_subtype_;
@@ -715,7 +719,7 @@ typedef enum fault_ipr_subtype_
     FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
     FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
     FR_ILL_PROC  = 0040000000000llu, //  3 d ILL PROC
-      FR_ILL_PROC_MOD  = 0240000000000llu, //  1,3 d ILL PROC | ILL MOD
+    FR_ILL_PROC_MOD  = 0240000000000llu, //  1,3 d ILL PROC | ILL MOD
     FR_NEM       = 0020000000000llu, //  4 e NEM
     FR_OOB       = 0010000000000llu, //  5 f OOB
     FR_ILL_DIG   = 0004000000000llu, //  6 g ILL DIG
@@ -1383,7 +1387,12 @@ typedef enum {
 //
 
 enum { N_HIST_SETS = 4 };
+#ifdef DPS8M
 enum { N_HIST_SIZE = 64 };
+#endif
+#ifdef L68
+enum { N_HIST_SIZE = 16 };
+#endif
 
 // Bit in CU history register word 0
 
@@ -1498,7 +1507,12 @@ enum
   };
 
 
+#ifdef DPS8M
 enum { CU_HIST_REG = 0, DU_OU_HIST_REG = 1, APU_HIST_REG = 2, EAPU_HIST_REG = 3 };
+#endif
+#ifdef L68
+enum { CU_HIST_REG = 0, DU_HIST_REG = 1, OU_HIST_REG = 2, APU_HIST_REG = 3 };
+#endif
 
 
 #endif // DPS8_HW_CONSTS_H

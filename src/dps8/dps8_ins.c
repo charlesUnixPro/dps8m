@@ -422,7 +422,7 @@ static void scu2words(word36 *words)
     putbits36_1 (& words [1], 11, cpu.cu.PTWAM_ER);
     putbits36_1 (& words [1], 12, cpu.cu.CRT);
     putbits36_1 (& words [1], 13, cpu.cu.RALR);
-    putbits36_1 (& words [1], 14, cpu.cu.SWWAM_ER);
+    putbits36_1 (& words [1], 14, cpu.cu.SDWAM_ER);
     putbits36_1 (& words [1], 15, cpu.cu.OOSB);
     putbits36_1 (& words [1], 16, cpu.cu.PARU);
     putbits36_1 (& words [1], 17, cpu.cu.PARL);
@@ -589,7 +589,7 @@ static void words2scu (word36 * words)
     cpu.cu.PTWAM_ER     = getbits36_1 (words [1], 11);
     cpu.cu.CRT          = getbits36_1 (words [1], 12);
     cpu.cu.RALR         = getbits36_1 (words [1], 13);
-    cpu.cu.SWWAM_ER     = getbits36_1 (words [1], 14);
+    cpu.cu.SDWAM_ER     = getbits36_1 (words [1], 14);
     cpu.cu.OOSB         = getbits36_1 (words [1], 15);
     cpu.cu.PARU         = getbits36_1 (words [1], 16);
     cpu.cu.PARL         = getbits36_1 (words [1], 17);
@@ -2254,11 +2254,21 @@ static t_stat doInstruction (void)
       CLR_I_MIF;
 
     t_stat ret =  i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
+#ifdef DPS8M
     if (cpu.MR.emr && cpu.MR.ihr && 
        (cpu.MR.hrxfr == 0 || ret == CONT_TRA))
       {
         addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
       }
+#endif
+#ifdef L68
+// XXX strobe hist on opcode match
+    //if (cpu.MR.emr && cpu.MR.ihr && 
+       //(cpu.MR.hrxfr == 0 || ret == CONT_TRA))
+      //{
+        //addCUhist (0, cpu.cu.IWB & MASK18, cpu.CA, 0, CUH_XINT);
+      //}
+#endif
     return ret;
 }
 
@@ -2442,7 +2452,9 @@ static t_stat DoBasicInstruction (void)
             SC_I_TRUNC (tmp18 & I_TRUNC);
             // I_MIF handled below
             // LDI cannot change I_ABS
+#ifdef DPS8M
             SC_I_HEX  (tmp18 & I_HEX);
+#endif
 
             if (bAbsPriv)
               {
@@ -5370,7 +5382,12 @@ static t_stat DoBasicInstruction (void)
               // field of the instruction are used to specify which SCU.
               // init_processor.alm systematically steps through the SCUs,
               // using addresses 000000 100000 200000 300000.
+#ifdef DPS8M
               uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
+#endif
+#ifdef L68
+              uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
+#endif
               int scu_unit_num =
                 query_scu_unit_num ((int) currentRunningCPUnum,
                                     (int) cpu_port_num);
@@ -5672,7 +5689,9 @@ static t_stat DoBasicInstruction (void)
                     //if (clear) // a:AL39/cmr2
                       //{
                       //}
-                    // cpu.CMR.opnd_on = ; // DPS8, not DPS8M
+#ifdef L68
+                    cpu.CMR.opnd_on = GETBITS (cpu.CY, 1, 72 - 56);
+#endif
                     cpu.CMR.inst_on = GETBITS (cpu.CY, 1, 72 - 57);
                     cpu.CMR.csh_reg = GETBITS (cpu.CY, 1, 72 - 59);
                     if (cpu.CMR.csh_reg)
@@ -5680,7 +5699,9 @@ static t_stat DoBasicInstruction (void)
                     // cpu.CMR.str_asd = <ignored for lcpr>
                     // cpu.CMR.col_ful = <ignored for lcpr>
                     // cpu.CMR.rro_AB = GETBITS (cpu.CY, 1, 18);
+#ifdef DPS8M
                     cpu.CMR.bypass_cache = GETBITS (cpu.CY, 1, 72 - 68);
+#endif
                     cpu.CMR.luf = GETBITS (cpu.CY, 2, 72 - 72);
                   }
                   break;
@@ -5696,11 +5717,18 @@ static t_stat DoBasicInstruction (void)
                       cpu.MR.tm = getbits36_3 (cpu.CY, 23);
                       cpu.MR.vm = getbits36_3 (cpu.CY, 26);
                       cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
+#ifdef DPS8M
                       cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
+#endif
+#ifdef L68
+                      cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
+#endif
                       cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                       cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
                       cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
+#ifdef DPS8M
                       cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
+#endif
                       cpu.MR.emr = getbits36_1 (cpu.CY, 35);
 
 
@@ -5768,11 +5796,22 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0257:  // lsdp
+#ifdef DPS8M
             // Not clear what the subfault should be; see Fault Register in
             //  AL39.
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
                      "lsdp is illproc on DPS8M");
+#endif
+#ifdef L68
+          {
+            // For i = 0, 1, ..., 15
+            //   m = C(SDWAM(i).USE)
+            //   C(Y-block16+m)0,14 -> C(SDWAM(m).POINTER)
+            //   C(Y-block16+m)17 -> C(SDWAM(m).P)
+            sim_warn ("lsdp not implemented\n");
+          }
+#endif
 
         case 0613:  // rcu
             doRCU (); // never returns
@@ -5812,18 +5851,44 @@ static t_stat DoBasicInstruction (void)
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
                     cpu.Ypair [0] = 0;
+#ifdef L68
+                    putbits36_15 (& cpu.Ypair [0], 0, cpu.MR.FFV);
+                    if (cpu.MR.OC_TRAP || cpu.MR.hropc)
+                      {
+                        putbits36_10 (& cpu.Ypair [0], 18, cpu.MR.OPCODE);
+                      }
+                    else
+                      {
+                        putbits36_1 (& cpu.Ypair [0], 16, cpu.MR.OC_TRAP);
+                        putbits36_1 (& cpu.Ypair [0], 17, cpu.MR.ADR_TRAP);
+                        putbits36_1 (& cpu.Ypair [0], 18, cpu.MR.cuolin);
+                        putbits36_1 (& cpu.Ypair [0], 19, cpu.MR.solin);
+                        putbits36_1 (& cpu.Ypair [0], 20, cpu.MR.sdpap);
+                        putbits36_1 (& cpu.Ypair [0], 21, cpu.MR.separ);
+                        putbits36_2 (& cpu.Ypair [0], 22, cpu.MR.tm);
+                        putbits36_2 (& cpu.Ypair [0], 24, cpu.MR.vm);
+                      }
+#else
                     putbits36_1 (& cpu.Ypair [0], 18, cpu.MR.cuolin);
                     putbits36_1 (& cpu.Ypair [0], 19, cpu.MR.solin);
                     putbits36_1 (& cpu.Ypair [0], 20, cpu.MR.sdpap);
                     putbits36_1 (& cpu.Ypair [0], 21, cpu.MR.separ);
                     putbits36_2 (& cpu.Ypair [0], 22, cpu.MR.tm);
-                    putbits36_24 (& cpu.Ypair [0], 2, cpu.MR.vm);
+                    putbits36_2 (& cpu.Ypair [0], 24, cpu.MR.vm);
+#endif
                     putbits36_1 (& cpu.Ypair [0], 28, cpu.MR.hrhlt);
+#ifdef DPS8M
                     putbits36_1 (& cpu.Ypair [0], 29, cpu.MR.hrxfr);
+#endif
+#ifdef L68
+                    putbits36_1 (& cpu.Ypair [0], 29, cpu.MR.hropc);
+#endif
                     putbits36_1 (& cpu.Ypair [0], 30, cpu.MR.ihr);
                     putbits36_1 (& cpu.Ypair [0], 31, cpu.MR.ihrrs);
                     putbits36_1 (& cpu.Ypair [0], 32, cpu.MR.mrgctl);
+#ifdef DPS8M
                     putbits36_1 (& cpu.Ypair [0], 33, cpu.MR.hexfp);
+#endif
                     putbits36_1 (& cpu.Ypair [0], 35, cpu.MR.emr);
 //IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair [1] = 0;
@@ -5833,13 +5898,18 @@ static t_stat DoBasicInstruction (void)
                     putbits36_1 (& cpu.Ypair [1], 52 - 36, cpu.CMR.lev_ful);
                     putbits36_1 (& cpu.Ypair [1], 54 - 36, cpu.CMR.csh1_on);
                     putbits36_1 (& cpu.Ypair [1], 55 - 36, cpu.CMR.csh2_on);
+#ifdef L68
+                    putbits36_1 (& cpu.Ypair [1], 56 - 36, cpu.CMR.opnd_on);
+#endif
                     putbits36_1 (& cpu.Ypair [1], 57 - 36, cpu.CMR.inst_on);
                     putbits36_1 (& cpu.Ypair [1], 59 - 36, cpu.CMR.csh_reg);
                     putbits36_1 (& cpu.Ypair [1], 60 - 36, cpu.CMR.str_asd);
                     putbits36_1 (& cpu.Ypair [1], 61 - 36, cpu.CMR.col_ful);
                     putbits36_2 (& cpu.Ypair [1], 62 - 36, cpu.CMR.rro_AB);
+#ifdef DPS8M
                     putbits36_1 (& cpu.Ypair [1], 68 - 36, 
                                  cpu.CMR.bypass_cache);
+#endif
                     putbits36_2 (& cpu.Ypair [1], 70 - 36, cpu.CMR.luf);
 //IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
                   }
@@ -5847,6 +5917,7 @@ static t_stat DoBasicInstruction (void)
 
                 case 010: // C(APU history register#2) -> C(Y-pair)
                   {
+#ifdef DPS8M
                     cpu.Ypair [0] =
                       cpu.history [EAPU_HIST_REG]
                                   [cpu.history_cyclic[EAPU_HIST_REG]] [0];
@@ -5855,6 +5926,17 @@ static t_stat DoBasicInstruction (void)
                                   [cpu.history_cyclic[EAPU_HIST_REG]] [1];
                     cpu.history_cyclic [EAPU_HIST_REG] =
                       (cpu.history_cyclic[EAPU_HIST_REG] + 1) % N_HIST_SIZE;
+#endif
+#ifdef L68
+                    cpu.Ypair [0] =
+                      cpu.history [DU_HIST_REG]
+                                  [cpu.history_cyclic[DU_HIST_REG]] [0];
+                    cpu.Ypair [1] =
+                      cpu.history [DU_HIST_REG]
+                                  [cpu.history_cyclic[DU_HIST_REG]] [1];
+                    cpu.history_cyclic [DU_HIST_REG] =
+                      (cpu.history_cyclic[DU_HIST_REG] + 1) % N_HIST_SIZE;
+#endif
                   }
                   break;
 
@@ -5875,6 +5957,7 @@ static t_stat DoBasicInstruction (void)
 
                 case 040: // C(OU/DU history register) -> C(Y-pair)
                   {
+#ifdef DPS8M
                     cpu.Ypair [0] =
                       cpu.history [DU_OU_HIST_REG]
                                   [cpu.history_cyclic[DU_OU_HIST_REG]] [0];
@@ -5883,6 +5966,17 @@ static t_stat DoBasicInstruction (void)
                                   [cpu.history_cyclic[DU_OU_HIST_REG]] [1];
                     cpu.history_cyclic [DU_OU_HIST_REG] =
                       (cpu.history_cyclic[DU_OU_HIST_REG] + 1) % N_HIST_SIZE;
+#endif
+#ifdef L68
+                    cpu.Ypair [0] =
+                      cpu.history [OU_HIST_REG]
+                                  [cpu.history_cyclic[OU_HIST_REG]] [0];
+                    cpu.Ypair [1] = 
+                      cpu.history [OU_HIST_REG]
+                                  [cpu.history_cyclic[OU_HIST_REG]] [1];
+                    cpu.history_cyclic [OU_HIST_REG] =
+                      (cpu.history_cyclic[OU_HIST_REG] + 1) % N_HIST_SIZE;
+#endif
                   }
                   break;
 
@@ -5925,7 +6019,12 @@ static t_stat DoBasicInstruction (void)
             // during address preparation.
             // The emulator always sets 'no match'
             // Level j is selected by C(TPR.CA)12,13
+#ifdef DPS8M
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#endif
+#ifdef L68
+            uint level = 0;
+#endif
 #ifndef SPEED
             uint toffset = level * 16;
 #endif
@@ -5937,8 +6036,14 @@ static t_stat DoBasicInstruction (void)
                            cpu.SDWAM [toffset + j].POINTER);
                 putbits36_1 (& cpu.Yblock16 [j], 27,
                            cpu.SDWAM [toffset + j].DF);
+#ifdef DPS8M
                 putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.SDWAM [toffset + j].USE);
+#endif
+#ifdef L68
+                putbits36_4 (& cpu.Yblock16 [j], 32,
+                           cpu.SDWAM [toffset + j].USE);
+#endif
 #endif
               }
 #ifdef SPEED
@@ -5948,8 +6053,14 @@ static t_stat DoBasicInstruction (void)
                            cpu.SDWAM0.POINTER);
                 putbits36 (& cpu.Yblock16 [0], 27, 1,
                            cpu.SDWAM0.FE);
+#ifdef DPS8M
                 putbits36 (& cpu.Yblock16 [0], 30, 6,
                            cpu.SDWAM0.USE);
+#endif
+#ifdef L68
+                putbits36 (& cpu.Yblock16 [0], 32, 4,
+                           cpu.SDWAM0.USE);
+#endif
               }
 #endif
           }
@@ -5968,7 +6079,12 @@ static t_stat DoBasicInstruction (void)
                 // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor)
                 // specify which processor port (i.e., which system
                 // controller) is used.
+#ifdef DPS8M
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
+#endif
+#ifdef L68
+                uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
+#endif
                 int scu_unit_num =
                   query_scu_unit_num ((int) currentRunningCPUnum, 
                                       (int) cpu_port_num);
@@ -6009,7 +6125,12 @@ static t_stat DoBasicInstruction (void)
               //   port*1024 + scr_input*8
 
 // Looking at privileged_mode_ut.alm, shift 10 bits...
+#ifdef DPS8M
               uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
+#endif
+#ifdef L68
+              uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
+#endif
               int scu_unit_num =
                 query_scu_unit_num ((int) currentRunningCPUnum,
                                     (int) cpu_port_num);
@@ -6041,6 +6162,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0231:  // rsw
           {
+#ifdef DPS8M
             //if (i -> tag == TD_DL)
             word6 rTAG = GET_TAG (IWB_IRODD);
             word6 Td = GET_TD (rTAG);
@@ -6149,6 +6271,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rA = PROM [cpu.TPR.CA & 1023];
                 break;
               }
+#endif // DPS8M
             uint select = cpu.TPR.CA & 0x7;
             switch (select)
               {
@@ -6168,17 +6291,6 @@ static t_stat DoBasicInstruction (void)
 //  -------------------------------------------------------------------------
 //
 //
-//   a: port A-D is 0: 4 word or 1: 2 word
-//   b: processor type 0:L68 or DPS, 1: DPS8M, 2,3: reserved for future use
-//   c: id prom 0: not installed, 1: installed
-//   d: 1: bcd option installed (marketing designation)
-//   e: 1: dps option installed (marketing designation)
-//   f: 1: 8k cache installed
-//   g: processor type designation: 0: dps8/xx, 1: dps8m/xx
-//   h: gcos/vms switch position: 0:GCOS mode 1: virtual mode
-//   i: current or new product line peripheral type: 0:CPL, 1:NPL
-//   SPEED: 0000 = 8/70, 0100 = 8/52
-//   CPU: Processor number
 //   ADR: Address assignment switch setting for port
 //         This defines the base address for the SCU
 //   j: port enabled flag
@@ -6252,6 +6364,17 @@ static t_stat DoBasicInstruction (void)
 //  --------------------------------------------------------------------------
 //
 
+//   a: port A-D is 0: 4 word or 1: 2 word
+//   b: processor type 0:L68 or DPS, 1: DPS8M, 2,3: reserved for future use
+//   c: id prom 0: not installed, 1: installed
+//   d: 1: bcd option installed (marketing designation)
+//   e: 1: dps option installed (marketing designation)
+//   f: 1: 8k cache installed
+//   g: processor type designation: 0: dps8/xx, 1: dps8m/xx
+//   h: gcos/vms switch position: 0:GCOS mode 1: virtual mode
+//   i: current or new product line peripheral type: 0:CPL, 1:NPL
+//   SPEED: 0000 = 8/70, 0100 = 8/52
+//   CPU: Processor number
 // DPS 8M processors:
 // C(Port interlace, Ports A-D) -> C(A) 0,3
 // 01 -> C(A) 4,5
@@ -6268,6 +6391,7 @@ static t_stat DoBasicInstruction (void)
 // C(Processor number switches) -> C(A) 33,35
 
                   cpu.rA = 0;
+#ifdef DPS8M
                   cpu.rA |= (word36) ((cpu.switches.interlace [0] == 2 ?
                             1LL : 0LL) << (35- 0));
                   cpu.rA |= (word36) ((cpu.switches.interlace [1] == 2 ?
@@ -6276,12 +6400,22 @@ static t_stat DoBasicInstruction (void)
                             1LL : 0LL) << (35- 2));
                   cpu.rA |= (word36) ((cpu.switches.interlace [3] == 2 ?
                             1LL : 0LL) << (35- 3));
+#endif
+
+#ifdef DPS8M
                   cpu.rA |= (word36) ((0b01L)  /* DPS8M */
                              << (35- 5));
+#endif
+#ifdef L68
+                  cpu.rA |= (word36) ((0b00L)  /* L68/DPS */
+                             << (35- 5));
+#endif
                   cpu.rA |= (word36) ((cpu.switches.FLT_BASE & 0177LL)
                              << (35-12));
+#ifdef DPS8M
                   cpu.rA |= (word36) ((0b1L) /* ID_PROM installed */
                              << (35-13));
+#endif
                   cpu.rA |= (word36) ((0b0000L) 
                             << (35-17));
                   //cpu.rA |= (word36) ((0b111L)
@@ -6289,8 +6423,15 @@ static t_stat DoBasicInstruction (void)
                   // According to rsw.incl.pl1, Multics ignores this bit.
                   cpu.rA |= (word36) ((0b0L)
                             << (35-18));  //BCD option off
+#ifdef DPS8M
                   cpu.rA |= (word36) ((0b1L)
-                            << (35-19));  //DPS option
+                            << (35-19));  // L68/DPS option: DPS
+#endif
+#ifdef L68
+                  cpu.rA |= (word36) ((0b0L)
+                            << (35-19));  // L68/DPS option: L68
+#endif
+#ifdef DPS8M
                   cpu.rA |= (word36) ((0b0L)
                             << (35-20));  //8K cache not installed
                   cpu.rA |= (word36) ((0b00L)
@@ -6305,15 +6446,98 @@ static t_stat DoBasicInstruction (void)
                             << (35-28));
                   cpu.rA |= (word36) ((cpu.switches.proc_speed & 017LL)
                             << (35-32));
+#endif
+#ifdef L68
+                  cpu.rA |= (word36) ((0b0L)
+                            << (35-27)); // 2K cache disabled
+                  cpu.rA |= (word36) ((0b0L)
+                            << (35-28)); // GCOS mode extended memory disabled
+                  cpu.rA |= (word36) ((0b1110L)
+                            << (35-32)); // CPU ID
+#endif
                   cpu.rA |= (word36) ((cpu.switches.cpu_num & 07LL)
                             << (35-35));
                   break;
 
-                case 3: // configuration switches for ports E-H, which
-                        // the DPS didn't have (SCUs had more memory, so
-                        // fewer SCUs were needed
+                case 3: // configuration switches for ports E, F, G, H
+#ifdef DPS8M
                   cpu.rA = 0;
                   break;
+#endif
+#ifdef L68
+// y = 3:
+//
+//   0               0 0               1 1               2 2               3
+//   0               8 9               7 8               6 7               5
+//  -------------------------------------------------------------------------
+//  |      PORT E     |     PORT F      |     PORT G      |     PORT H      |
+//  -------------------------------------------------------------------------
+//  | ADR |j|k|l| MEM | ADR |j|k|l| MEM | ADR |j|k|l| MEM | ADR |j|k|l| MEM |
+//  -------------------------------------------------------------------------
+//
+//
+//   ADR: Address assignment switch setting for port
+//         This defines the base address for the SCU
+//   j: port enabled flag
+//   k: system initialize enabled flag
+//   l: interface enabled flag
+//   MEM coded memory size
+//     000 32K     2^15
+//     001 64K     2^16
+//     010 128K    2^17
+//     011 256K    2^18
+//     100 512K    2^19
+//     101 1024K   2^20
+//     110 2048K   2^21
+//     111 4096K   2^22
+
+                  cpu.rA  = 0;
+                  cpu.rA |= (word36) (cpu.switches.assignment  [4] & 07LL)
+                            << (35 -  (2 +  0));
+                  cpu.rA |= (word36) (cpu.switches.enable      [4] & 01LL)
+                            << (35 -  (3 +  0));
+                  cpu.rA |= (word36) (cpu.switches.init_enable [4] & 01LL)
+                            << (35 -  (4 +  0));
+                  cpu.rA |= (word36) (cpu.switches.interlace   [4] ? 1LL:0LL)
+                            << (35 -  (5 +  0));
+                  cpu.rA |= (word36) (cpu.switches.store_size  [4] & 07LL)
+                            << (35 -  (8 +  0));
+
+                  cpu.rA |= (word36) (cpu.switches.assignment  [5] & 07LL)
+                            << (35 -  (2 +  9));
+                  cpu.rA |= (word36) (cpu.switches.enable      [5] & 01LL)
+                            << (35 -  (3 +  9));
+                  cpu.rA |= (word36) (cpu.switches.init_enable [5] & 01LL)
+                            << (35 -  (4 +  9));
+                  cpu.rA |= (word36) (cpu.switches.interlace   [5] ? 1LL:0LL)
+                            << (35 -  (5 +  9));
+                  cpu.rA |= (word36) (cpu.switches.store_size  [5] & 07LL)
+                            << (35 -  (8 +  9));
+
+                  cpu.rA |= (word36) (cpu.switches.assignment  [6] & 07LL)
+                            << (35 -  (2 + 18));
+                  cpu.rA |= (word36) (cpu.switches.enable      [6] & 01LL)
+                            << (35 -  (3 + 18));
+                  cpu.rA |= (word36) (cpu.switches.init_enable [6] & 01LL)
+                            << (35 -  (4 + 18));
+                  cpu.rA |= (word36) (cpu.switches.interlace   [6] ? 1LL:0LL)
+                            << (35 -  (5 + 18));
+                  cpu.rA |= (word36) (cpu.switches.store_size  [6] & 07LL)
+                            << (35 -  (8 + 18));
+
+                  cpu.rA |= (word36) (cpu.switches.assignment  [7] & 07LL)
+                            << (35 -  (2 + 27));
+                  cpu.rA |= (word36) (cpu.switches.enable      [7] & 01LL)
+                            << (35 -  (3 + 27));
+                  cpu.rA |= (word36) (cpu.switches.init_enable [7] & 01LL)
+                            << (35 -  (4 + 27));
+                  cpu.rA |= (word36) (cpu.switches.interlace   [7] ? 1LL:0LL)
+                            << (35 -  (5 + 27));
+                  cpu.rA |= (word36) (cpu.switches.store_size  [7] & 07LL)
+                            << (35 -  (8 + 27));
+                  break;
+
+#endif
 
                 case 4:
                   // I suspect the this is a L68 only, but AL39 says both
@@ -6340,6 +6564,16 @@ static t_stat DoBasicInstruction (void)
                             1LL : 0LL) << (35-17);
                   cpu.rA |= (word36) (cpu.switches.interlace [3] == 2 ?
                             1LL : 0LL) << (35-19);
+#ifdef L68
+                  cpu.rA |= (word36) (cpu.switches.interlace [4] == 2 ?
+                            1LL : 0LL) << (35-21);
+                  cpu.rA |= (word36) (cpu.switches.interlace [5] == 2 ?
+                            1LL : 0LL) << (35-23);
+                  cpu.rA |= (word36) (cpu.switches.interlace [6] == 2 ?
+                            1LL : 0LL) << (35-25);
+                  cpu.rA |= (word36) (cpu.switches.interlace [7] == 2 ?
+                            1LL : 0LL) << (35-27);
+#endif
                   break;
 
                 default:
@@ -6403,7 +6637,12 @@ static t_stat DoBasicInstruction (void)
                 // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor)
                 // specify which processor port (i.e., which system
                 // controller) is used.
+#ifdef DPS8M
                 uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
+#endif
+#ifdef L68
+                uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
+#endif
                 int scu_unit_num =
                    query_scu_unit_num ((int) currentRunningCPUnum,
                                        (int) cpu_port_num);
@@ -6448,24 +6687,35 @@ static t_stat DoBasicInstruction (void)
             // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor)
             // specify which processor port (i.e., which system
             // controller) is used.
+#ifdef DPS8M
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
+#endif
+#ifdef L68
+            uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
+#endif
             int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
                                                    (int) cpu_port_num);
 
             if (scu_unit_num < 0)
               {
+#ifdef DPS8M
+                return SCPE_OK;
+#endif 
+#ifdef L68
                 if (cpu_port_num == 0)
                   putbits36_4 (& cpu.faultRegister [0], 16, 010);
                 else if (cpu_port_num == 1)
                   putbits36_4 (& cpu.faultRegister [0], 20, 010);
                 else if (cpu_port_num == 2)
                   putbits36_4 (& cpu.faultRegister [0], 24, 010);
-                else
+                else if (cpu_port_num == 3)
                   putbits36 (& cpu.faultRegister [0], 28, 4, 010);
+// XXX What if the port is > 3?
                 doFault (FAULT_CMD,
                          (_fault_subtype)
                            {.fault_cmd_subtype=flt_cmd_not_control},
                          "(smic)");
+#endif
               }
             t_stat rc = scu_smic ((uint) scu_unit_num, currentRunningCPUnum, 
                                   cpu_port_num, cpu.rA);
@@ -6479,7 +6729,12 @@ static t_stat DoBasicInstruction (void)
           {
             //uint cpu_port_num = (cpu.TPR.CA >> 15) & 03;
             // Looking at privileged_mode_ut.alm, shift 10 bits...
+#ifdef DPS8M
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
+#endif
+#ifdef L68
+            uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
+#endif
             int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
                                                    (int) cpu_port_num);
             if (scu_unit_num < 0)
@@ -7008,18 +7263,40 @@ static t_stat DoEISInstruction (void)
         /// Privileged - Register Load
 
         case 0257:  // lptp
+#ifdef DPS8M
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "lptp is illproc on DPS8M");
-
+#endif
+#ifdef L68
+          {
+            // For i = 0, 1, ..., 15
+            //   m = C(PTWAM(i).USE)
+            //   C(Y-block16+m)0,14 -> C(PTWAM(m).POINTER)
+            //   C(Y-block16+m)15,26 -> C(PTWAM(m).PAGE)
+            //   C(Y-block16+m)27 -> C(PTWAM(m).F)
+            sim_warn ("lptp not implemented\n");
+          }
+#endif
         case 0173:  // lptr
+#ifdef DPS8M
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "lptr is illproc on DPS8M");
+#endif
+#ifdef L68
+          {
+            // For i = 0, 1, ..., 15
+            //   m = C(PTWAM(i).USE)
+            //   C(Y-block16+m)0,17 -> C(PTWAM(m).ADDR)
+            //   C(Y-block16+m)29 -> C(PTWAM(m).M)
+            sim_warn ("lptr not implemented\n");
+          }
+#endif
 
         case 0774:  // lra
             cpu.rRALR = cpu.CY & MASK3;
@@ -7027,11 +7304,25 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0232:  // lsdr
+#ifdef DPS8M
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "lsdr is illproc on DPS8M");
+#endif
+#ifdef L68
+          {
+            // For i = 0, 1, ..., 15
+            //   m = C(SDWAM(i).USE)
+            //   C(Y-block16+m)0,23 -> C(SDWAM(m).ADDR)
+            //   C(Y-block16+m)24,32 -> C(SDWAM(m).R1, R2, R3)
+            //   C(Y-block16+m)37,50 -> C(SDWAM(m).BOUND)
+            //   C(Y-block16+m)52,57 -> C(SDWAM(m).R, E, W, P, U, G, C)
+            //   C(Y-block16+m)58,71 -> C(SDWAM(m).CL)
+            sim_warn ("lsdr not implemented\n");
+          }
+#endif
 
         case 0557:  // sptp
           {
@@ -7039,7 +7330,12 @@ static t_stat DoEISInstruction (void)
 // preparation.
 // The emulator always sets 'no match' so not a problem
             // Level j is selected by C(TPR.CA)12,13
+#ifdef DPS8M
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#endif
+#ifdef L68
+            uint level = 0;
+#endif
 #ifndef SPEED
             uint toffset = level * 16;
 #endif
@@ -7049,12 +7345,25 @@ static t_stat DoEISInstruction (void)
 #ifndef SPEED
                 putbits36_15 (& cpu.Yblock16 [j],  0,
                            cpu.PTWAM [toffset + j].POINTER);
+#ifdef DPS8M
+                putbits36_12 (& cpu.Yblock16 [j], 15,
+                           cpu.PTWAM [toffset + j].PAGENO & 07760);
+#endif
+#ifdef L68
                 putbits36_12 (& cpu.Yblock16 [j], 15,
                            cpu.PTWAM [toffset + j].PAGENO);
+#endif
                 putbits36_1 (& cpu.Yblock16 [j], 27, 
                            cpu.PTWAM [toffset + j].FE);
+#ifdef DPS8M
                 putbits36_6 (& cpu.Yblock16 [j], 30,
                            cpu.PTWAM [toffset + j].USE);
+#endif
+#ifdef L68
+                putbits36_4 (& cpu.Yblock16 [j], 32,
+                           cpu.PTWAM [toffset + j].USE);
+#endif
+
 #endif
               }
 #ifdef SPEED
@@ -7062,12 +7371,24 @@ static t_stat DoEISInstruction (void)
               {
                 putbits36 (& cpu.Yblock16 [0],  0, 15,
                            cpu.PTWAM0.POINTER);
+#ifdef DPS8M
+                putbits36 (& cpu.Yblock16 [0], 15, 12,
+                           cpu.PTWAM0.PAGENO & 07760);
+#endif
+#ifdef L68
                 putbits36 (& cpu.Yblock16 [0], 15, 12,
                            cpu.PTWAM0.PAGENO);
+#endif
                 putbits36 (& cpu.Yblock16 [0], 27,  1,
                            cpu.PTWAM0.FE);
+#ifdef DPS8M
                 putbits36 (& cpu.Yblock16 [0], 30,  6,
                            cpu.PTWAM0.USE);
+#endif
+#ifdef L68
+                putbits36 (& cpu.Yblock16 [0], 32,  4,
+                           cpu.PTWAM0.USE);
+#endif
               }
 #endif
           }
@@ -7079,7 +7400,12 @@ static t_stat DoEISInstruction (void)
 // preparation.
 
             // Level j is selected by C(TPR.CA)12,13
+#ifdef DPS8M
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#endif
+#ifdef L68
+            uint level = 0;
+#endif
 #ifndef SPEED
             uint toffset = level * 16;
 #endif
@@ -7087,15 +7413,26 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock16 [j] = 0;
 #ifndef SPEED
+#ifdef DPS8M
+                putbits36_18 (& cpu.Yblock16 [j], 0,
+                              cpu.PTWAM [toffset + j].ADDR & 0777760);
+#endif
+#ifdef L68
                 putbits36_18 (& cpu.Yblock16 [j], 0,
                               cpu.PTWAM [toffset + j].ADDR);
+#endif
                 putbits36_1 (& cpu.Yblock16 [j], 29,
                              cpu.PTWAM [toffset + j].M);
 #endif
               }
 #ifdef SPEED
             if (level == 0)
+#ifdef DPS8M
+              putbits36 (& cpu.Yblock16 [0], 0, 13, cpu.PTWAM0.ADDR & 0777760);
+#endif
+#ifdef L68
               putbits36 (& cpu.Yblock16 [0], 0, 13, cpu.PTWAM0.ADDR);
+#endif
 #endif
           }
           break;
@@ -7107,7 +7444,12 @@ static t_stat DoEISInstruction (void)
 // The emulator always sets 'no match' so ok here.
 
             // Level j is selected by C(TPR.CA)12,13
+#ifdef DPS8M
             uint level = (cpu.TPR.CA >> 4) & 02u;
+#endif
+#ifdef L68
+            uint level = 0;
+#endif
 #ifndef SPEED
             uint toffset = level * 16;
 #endif
