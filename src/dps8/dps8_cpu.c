@@ -723,9 +723,17 @@ void setup_scbank_map (void)
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
-        //uint sz = 1 << (store_size + 16);
-        uint sz = 1 << (store_size + 15);
-
+        // Map store size configuration switch (0-8) to memory size.
+#ifdef DPS8M
+        uint store_table [8] = 
+          { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+#endif
+#ifdef L68
+        uint store_table [8] = 
+          { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+#endif
+        //uint sz = 1 << (store_size + 15);
+        uint sz = store_table [store_size];
         // Calculate the base address of the memory in words
         uint assignment = cpu.switches.assignment [port_num];
         uint base = assignment * sz;

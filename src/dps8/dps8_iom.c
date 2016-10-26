@@ -536,7 +536,16 @@ static void setupIOMScbankMap (void)
               continue;
             // Calculate the amount of memory in the SCU in words
             uint store_size = p -> configSwPortStoresize [port_num];
-            uint sz = 1 << (store_size + 16);
+#ifdef DPS8M
+            uint store_table [8] = 
+              { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+#endif
+#ifdef L68
+            uint store_table [8] = 
+              { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+#endif
+            //uint sz = 1 << (store_size + 16);
+            uint sz = store_table [store_size];
     
             // Calculate the base address of the memory in words
             uint assignment = p -> configSwPortAddress [port_num];
