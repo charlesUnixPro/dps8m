@@ -978,7 +978,11 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
-    
+#ifdef APPFIX
+    bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
+    bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+#endif
+
     cpu . RSDWH_R1 = 0;
     
     acvFaults = 0;
@@ -986,10 +990,39 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     word24 finalAddress = (word24) -1;  // not everything requires a final address
     
+#ifdef APPFIX
+// START APPEND
+
+    if (indirectFetch)
+      goto A;
+
+    if (rtcdOperandFetch)
+      goto A;
+
+    if (! instructionFetch && i -> a)
+      {
+        word3 n = GET_PRN(IWB_IRODD);  // get PRn
+sim_printf ("saw bit 29; n %o\n", n);
+        if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+          {
+            cpu.TPR.TRR = cpu.PAR[n].RNR;
+          }
+        else
+         {
+            cpu.TPR.TRR = cpu.PPR.PRR;
+         }
+        cpu.TPR.TSR = cpu.PAR[n].SNR;
+sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
+        goto A;
+      }
+
+    cpu.TPR.TRR = cpu.PPR.PRR;
+    cpu.TPR.TSR = cpu.PPR.PSR;
+    goto A;
+
 //
 //  A:
 //    Get SDW
-#ifndef QUIET_UNUSED
 A:;
 #endif
 

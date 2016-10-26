@@ -1745,7 +1745,14 @@ restart_1:
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               {
+#ifndef APPFIX
                 doPtrReg ();
+#else
+                //word15 offset = GET_OFFSET(IWB_IRODD);
+                //cpu . TPR.CA = (cpu . PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
+                //cpu . TPR.TBR = GET_PR_BITNO (n);
+                set_went_appending ();
+#endif
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
