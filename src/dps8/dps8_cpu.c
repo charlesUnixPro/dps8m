@@ -729,8 +729,25 @@ void setup_scbank_map (void)
           { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
 #endif
 #ifdef L68
+//#ifdef ISOLTS
+//// ISOLTS sezi
+//// for DPS88:
+////   3. set store size switches to 2222.
+////   4. verify that the mode switch is in vms.
+//// for L68:
+////   3. remove the right free-edge connector on the 645pq wwb at slot ab28.
+////   4. verify that the mode switch is in vms.
+////
+//// During ISOLTS initialization, it requires that the memory switch be set to
+//// '3' for all eight ports; this corresponds to '2' for the DPS8, 131072
+//// Then:
+//
+//        uint store_table [8] = 
+//          { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+//#else
         uint store_table [8] = 
           { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+//#endif
 #endif
         //uint sz = 1 << (store_size + 15);
         uint sz = store_table [store_size];
@@ -2945,6 +2962,12 @@ static config_value_list_t cfg_port_letter [] =
     { "b", 1 },
     { "c", 2 },
     { "d", 3 },
+#ifdef L68
+    { "e", 4 },
+    { "f", 5 },
+    { "g", 6 },
+    { "h", 7 },
+#endif
     { NULL, 0 }
   };
 
