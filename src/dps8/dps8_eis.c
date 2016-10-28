@@ -6358,7 +6358,7 @@ static MOPstruct* EISgetMop (void)
         p->data = EISRead(&e->ADDR2);   // read it from memory
 #else
 #ifdef EIS_PTR
-        cpu.du.Dk_PTR_W[2] = (cpu.du.Dk_PTR_W[2] + 1) & AMASK;     // bump source to next address
+        cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK;     // bump source to next address
         p->data = EISRead(e->mopAddress);   // read it from memory
 #else
         e->mopAddress->address = (e->mopAddress->address + 1) & AMASK;     // bump source to next address

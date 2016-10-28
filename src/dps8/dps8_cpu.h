@@ -597,7 +597,7 @@ typedef struct EISstruct
     int     sign;           // For signed decimal (1, -1)
     
 #ifdef EIS_PTR2
-#define KMOP 2
+#define KMOP 1
 #else
     EISaddr *mopAddress;    // mopAddress, pointer to addr [0], [1], or [2]
 #endif
