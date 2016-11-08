@@ -1188,6 +1188,10 @@ typedef struct
     _fault_subtype dlySubFltNum;
     const char * dlyCtx;
 
+#ifdef PANEL
+    // Panel switches
+    bool panelInitialize;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED

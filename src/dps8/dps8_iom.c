@@ -2583,6 +2583,13 @@ static t_stat bootSvc (UNIT * unitp)
     return SCPE_OK;
   }
 
+#ifdef PANEL
+void doBoot (void)
+  {
+    bootSvc (& bootChannelUnit [0]);
+  }
+#endif
+
 static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
   {
     if (unitNum < 0 || unitNum >= (int) iom_dev . numunits)

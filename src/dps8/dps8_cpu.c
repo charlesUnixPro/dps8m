@@ -1383,6 +1383,19 @@ uint getCPUnum (void)
     return currentRunningCPUnum;
   }
 
+#ifdef PANEL
+static void panelProcessEvent (void)
+  {
+    // INITIALIZE pressed; treat at as a BOOT.
+    if (cpu.panelInitialize) 
+      {
+         cpu.panelInitialize = false;
+         cpu_reset (& cpu_dev);
+         doBoot ();
+      }
+  }
+#endif
+
 //
 // Okay, lets treat this as a state machine
 //
@@ -1546,6 +1559,9 @@ setCPU:;
           {
             fastQueueSubsample = 0;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef PANEL
+            panelProcessEvent ();
+#endif
           }
 #else
         static uint slowQueueSubsample = 0;
@@ -1566,6 +1582,9 @@ setCPU:;
             dequeue_fnp_command ();
 #endif
             absiProcessEvent ();
+#ifdef PANEL
+            panelProcessEvent ();
+#endif
           }
 #endif
 
