@@ -123,6 +123,8 @@ enum { N_DEV_CODES = 64 };
 #define MASK8           0377U                    // 8-bit mask
 #define MASK9           0777U                    // 9-bit mask
 
+#define MASK11          03777U
+
 #define SIGN12          0x800U                   // sign mask 12-bit number
 #define MASK12          07777U
 

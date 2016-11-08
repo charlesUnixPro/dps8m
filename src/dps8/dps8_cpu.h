@@ -746,9 +746,9 @@ typedef struct
                    // 3-17  PSR is stored in PPR
                    // 18    P   is stored in PPR
     word1 XSF;     // 19    XSF External segment flag
-                   // 20    SDWAMM Match on SDWAM -- not implemented
+    word1 SDWAMM;  // 20    SDWAMM Match on SDWAM
     word1 SD_ON;   // 21    SDWAM enabled
-                   // 22    PTWAMM Match on PTWAM -- not implemented
+    word1 PTWAMM;  // 22    PTWAMM Match on PTWAM
     word1 PT_ON;   // 23    PTWAM enabled
 
 #if 0
@@ -826,7 +826,6 @@ typedef struct
     
     /* word 3 */
                    //  0-17          0
-#ifdef EIS_PTR4
                    // 18-21 TSNA     Pointer register number for non-EIS 
                    //                operands or EIS Operand #1
                    //                  18-20 PRNO Pointer register number
@@ -841,18 +840,6 @@ typedef struct
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
 
-#else
-                   // 18-21 TSNA     Pointer register number for non-EIS operands or
-                   //                EIS Operand #1
-                   //                  18-20 PRNO Pointer register number
-                   //                  21       PRNO is valid
-                   // 22-25 TSNB     Pointer register number for EIS operand #2
-                   //                  22-24 PRNO Pointer register number
-                   //                  25       PRNO is valid
-                   // 26-29 TSNC     Pointer register number for EIS operand #2
-                   //                  26-28 PRNO Pointer register number
-                   //                  29       PRNO is valid
-#endif
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
     /* word 4 */
@@ -1063,9 +1050,11 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 
 #ifdef DPS8M
 #define N_WAM_ENTRIES 64
+#define N_WAM_MASK 077
 #endif
 #ifdef L68
 #define N_WAM_ENTRIES 16
+#define N_WAM_MASK 017
 #endif
 
 typedef struct
@@ -1109,12 +1098,14 @@ typedef struct
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
     word3    RSDWH_R1; // Track the ring number of the last SDW
+    fault_acv_subtype_  acvFaults;   // pending ACV faults
+
     struct _tpr TPR;   // Temporary Pointer Register
     struct _ppr PPR;   // Procedure Pointer Register
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
-#ifdef SPEED
+#ifndef WAM
     _sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
@@ -1122,7 +1113,34 @@ typedef struct
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
     _sdw _s;
-#ifdef SPEED
+
+#ifdef PANEL
+    // Intermediate data collection for APU SCROLL 
+    word18 lastPTWOffset;
+// The L68 APU SCROLL 4U has an entry "ACSD"; I am interpreting it as
+//  on: lastPTRAddr was a DSPTW
+//  off: lastPTRAddr was a PTW
+    bool lastPTWIsDS;
+    word18 APUDataBusOffset;
+    word24 APUDataBusAddr;
+    word24 APUMemAddr;
+    // Intermediate data collection for DATA SCROLL
+    word2 portSelect;
+    word36 portAddr [N_CPU_PORTS];
+    word36 portData [N_CPU_PORTS];
+    // Intermediate data collection for CU
+    word36 IWRAddr;
+    word7 dataMode; // 0100  9 bit
+                    // 0040  6 bit
+                    // 0020  4 bit
+                    // 0010  1 bit
+                    // 0004  36 bit
+                    // 0002  alphanumeric
+                    // 0001  numeric
+
+#endif
+
+#ifndef WAM
     _ptw PTWAM0;
 #else
     _ptw PTWAM [N_WAM_ENTRIES];
@@ -1212,6 +1230,17 @@ int OPSIZE (void);
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
 t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 
+#ifdef PANEL
+static inline void trackport (word24 a, word36 d)
+  {
+    // Simplifying assumption: 4 * 4MW SCUs
+    word2 port = (a >> 22) & MASK2;
+    cpu.portSelect = port;
+    cpu.portAddr [port] = a;
+    cpu.portData [port] = d;
+  }
+#endif
+
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
@@ -1228,8 +1257,12 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
       }
 #endif
     *data = M[addr] & DMASK;
+#ifdef PANEL
+    trackport (addr, * data);
+#endif
     return 0;
   }
+
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef ISOLTS
@@ -1245,6 +1278,9 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
 #endif
     M[addr] = data & DMASK;
+#ifdef PANEL
+    trackport (addr, data);
+#endif
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
@@ -1262,7 +1298,13 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
       }
 #endif
     *even = M[addr++] & DMASK;
+#ifdef PANEL
+    trackport (addr - 1, * even);
+#endif
     *odd = M[addr] & DMASK;
+#ifdef PANEL
+    trackport (addr, * odd);
+#endif
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
@@ -1280,7 +1322,13 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
       }
 #endif
     M[addr++] = even;
+#ifdef PANEL
+    trackport (addr - 1, even);
+#endif
     M[addr] = odd;
+#ifdef PANEL
+    trackport (addr, odd);
+#endif
     return 0;
   }
 #else

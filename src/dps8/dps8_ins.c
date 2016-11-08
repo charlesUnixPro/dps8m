@@ -447,20 +447,13 @@ static void scu2words (word36 *words)
     // words[3]
 
     //  0, 18 0
-#ifdef EIS_PTR4
-    putbits36_3 (& words[2], 18, cpu.cu.TSN_PRNO[0]);
-    putbits36_1 (& words[2], 21, cpu.cu.TSN_VALID[0]);
-    putbits36_3 (& words[2], 22, cpu.cu.TSN_PRNO[1]);
-    putbits36_1 (& words[2], 25, cpu.cu.TSN_VALID[1]);
-    putbits36_3 (& words[2], 26, cpu.cu.TSN_PRNO[2]);
-    putbits36_1 (& words[2], 29, cpu.cu.TSN_VALID[2]);
-#else
-    // 18, 4 TSNA pointer register number for non-EIS or EIS operand #1
-    // 22, 4 TSNB pointer register number for EIS operand #2
-    // 26, 4 TSNC pointer register number for EIS operand #3
-#endif
+    putbits36_3 (& words[3], 18, cpu.cu.TSN_PRNO[0]);
+    putbits36_1 (& words[3], 21, cpu.cu.TSN_VALID[0]);
+    putbits36_3 (& words[3], 22, cpu.cu.TSN_PRNO[1]);
+    putbits36_1 (& words[3], 25, cpu.cu.TSN_VALID[1]);
+    putbits36_3 (& words[3], 26, cpu.cu.TSN_PRNO[2]);
+    putbits36_1 (& words[3], 29, cpu.cu.TSN_VALID[2]);
     putbits36_6 (& words[3], 30, cpu.TPR.TBR);
-
     // words[4]
 
     putbits36_18 (& words[4],  0, cpu.PPR.IC);
@@ -555,9 +548,9 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-    // 20 SDWAMM
+    cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
-    // 22 PTWAMM
+    cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
     cpu.cu.PT_ON        = getbits36_1  (words[0], 23);
 #if 0
     cpu.cu.PI_AP        = getbits36_1  (words[0], 24);
@@ -614,18 +607,12 @@ static void words2scu (word36 * words)
     // words[3]
 
     // 0-17 0
-#ifdef EIS_PTR4
     cpu.cu.TSN_PRNO[0]  = getbits36_3  (words[3], 18);
-    cpu.cu.TSN_VALID[0] = getbits36_3  (words[3], 21);
+    cpu.cu.TSN_VALID[0] = getbits36_1  (words[3], 21);
     cpu.cu.TSN_PRNO[1]  = getbits36_3  (words[3], 22);
-    cpu.cu.TSN_VALID[1] = getbits36_3  (words[3], 25);
+    cpu.cu.TSN_VALID[1] = getbits36_1  (words[3], 25);
     cpu.cu.TSN_PRNO[2]  = getbits36_3  (words[3], 26);
-    cpu.cu.TSN_VALID[2] = getbits36_3  (words[3], 29);
-#else
-    // 18-21 TSNA
-    // 22-26 TSNB
-    // 26-29 TSNC
-#endif
+    cpu.cu.TSN_VALID[2] = getbits36_1  (words[3], 29);
     cpu.TPR.TBR         = getbits36_6  (words[3], 30);
 
     // words[4]
@@ -1564,14 +1551,11 @@ restart_1:
     // This must not happen on instruction restart
     if (! ci->restart)
       {
-#ifdef EIS_PTR4
-#if 0 // XXX Causes system_startup_: Error condition while initializing ring 1 
+// XXX Causes system_startup_: Error condition while initializing ring 1 
 // environment.
         cpu.cu.TSN_VALID[0] = 0;
         cpu.cu.TSN_VALID[1] = 0;
         cpu.cu.TSN_VALID[2] = 0;
-#endif
-#endif
 
         if (! ci->a)
           {
@@ -1732,6 +1716,9 @@ restart_1:
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
                   EIS_OPERAND_READ, 0); // I think.
           }
+#ifdef PANEL
+        cpu.IWRAddr = cpu.currentEISinstruction.op[0];
+#endif
         setupEISoperands ();
       }
     else
@@ -1821,6 +1808,9 @@ restart_1:
             cpu.iefpFinalAddress = cpu.TPR.CA;
             readOperands ();
           }
+#endif
+#ifdef PANEL
+        cpu.IWRAddr = 0;
 #endif
       }
 
@@ -2275,6 +2265,7 @@ static t_stat doInstruction (void)
     //if (cpu.MR.emr && cpu.MR.ihr && 
        //(cpu.MR.hrxfr == 0 || ret == CONT_TRA))
       //{
+// XXX Should CA be the upper half of IWB?
         //addCUhist (0, cpu.cu.IWB & MASK18, cpu.CA, 0, CUH_XINT);
       //}
 #endif
@@ -6034,13 +6025,13 @@ static t_stat DoBasicInstruction (void)
 #ifdef L68
             uint level = 0;
 #endif
-#ifndef SPEED
+#ifdef WAM
             uint toffset = level * 16;
 #endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifndef SPEED
+#ifdef WAM
                 putbits36_15 (& cpu.Yblock16[j], 0,
                            cpu.SDWAM[toffset + j].POINTER);
                 putbits36_1 (& cpu.Yblock16[j], 27,
@@ -6055,7 +6046,7 @@ static t_stat DoBasicInstruction (void)
 #endif
 #endif
               }
-#ifdef SPEED
+#ifndef WAM
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock16[0], 0, 15,
@@ -7346,13 +7337,13 @@ static t_stat DoEISInstruction (void)
 #ifdef L68
             uint level = 0;
 #endif
-#ifndef SPEED
+#ifdef WAM
             uint toffset = level * 16;
 #endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifndef SPEED
+#ifdef WAM
                 putbits36_15 (& cpu.Yblock16[j],  0,
                            cpu.PTWAM[toffset + j].POINTER);
 #ifdef DPS8M
@@ -7376,7 +7367,7 @@ static t_stat DoEISInstruction (void)
 
 #endif
               }
-#ifdef SPEED
+#ifndef WAM
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock16[0],  0, 15,
@@ -7416,13 +7407,13 @@ static t_stat DoEISInstruction (void)
 #ifdef L68
             uint level = 0;
 #endif
-#ifndef SPEED
+#ifdef WAM
             uint toffset = level * 16;
 #endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifndef SPEED
+#ifdef WAM
 #ifdef DPS8M
                 putbits36_18 (& cpu.Yblock16[j], 0,
                               cpu.PTWAM[toffset + j].ADDR & 0777760);
@@ -7435,7 +7426,7 @@ static t_stat DoEISInstruction (void)
                              cpu.PTWAM[toffset + j].M);
 #endif
               }
-#ifdef SPEED
+#ifndef WAM
             if (level == 0)
 #ifdef DPS8M
               putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTWAM0.ADDR & 0777760);
@@ -7460,13 +7451,13 @@ static t_stat DoEISInstruction (void)
 #ifdef L68
             uint level = 0;
 #endif
-#ifndef SPEED
+#ifdef WAM
             uint toffset = level * 16;
 #endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock32[j * 2] = 0;
-#ifndef SPEED
+#ifdef WAM
                 putbits36_23 (& cpu.Yblock32[j * 2],  0,
                            cpu.SDWAM[toffset + j].ADDR);
                 putbits36_3 (& cpu.Yblock32[j * 2], 24,
@@ -7477,7 +7468,7 @@ static t_stat DoEISInstruction (void)
                            cpu.SDWAM[toffset + j].R3);
 #endif
                 cpu.Yblock32[j * 2 + 1] = 0;
-#ifndef SPEED
+#ifdef WAM
                 putbits36_14 (& cpu.Yblock32[j * 2 + 1], 37 - 36,
                            cpu.SDWAM[toffset + j].BOUND);
                 putbits36_1 (& cpu.Yblock32[j * 2 + 1], 51 - 36,
@@ -7498,7 +7489,7 @@ static t_stat DoEISInstruction (void)
                            cpu.SDWAM[toffset + j].EB);
 #endif
               }
-#ifdef SPEED
+#ifndef WAM
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock32[0],  0, 23,

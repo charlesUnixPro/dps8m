@@ -97,7 +97,7 @@ void setAPUStatus (apuStatusBits status)
 #endif
   }
 
-#ifndef SPEED
+#ifdef WAM
 static char *strSDW(_sdw *SDW);
 #endif
 
@@ -167,7 +167,7 @@ static void selftestPTWAM (void)
 
 void do_ldbr (word36 * Ypair)
   {
-#ifndef SPEED
+#ifdef WAM
     // XXX is it enabled?
 
     // If SDWAM is enabled, then
@@ -195,7 +195,7 @@ void do_ldbr (word36 * Ypair)
     cpu.SDWAM0.USE = 0;
     cpu.PTWAM0.FE = 0;
     cpu.PTWAM0.USE = 0;
-#endif // SPEED
+#endif // WAM
 
     // If cache is enabled, reset all cache column and level full flags
     // XXX no cache
@@ -250,7 +250,7 @@ void do_camp (UNUSED word36 Y)
     // counters are initialized.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #1
-#ifndef SPEED
+#ifdef WAM
     for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.PTWAM[i].FE = 0;
@@ -286,7 +286,7 @@ void do_cams (UNUSED word36 Y)
     // This may be done to either or both halves.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #2
-#ifndef SPEED
+#ifdef WAM
     for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.SDWAM[i].DF = 0;
@@ -321,13 +321,22 @@ static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
+      {
         // generate access violation, out of segment bounds fault
+#ifdef PANEL
+        cpu.acvFaults |= ACV15;
+#endif
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
-        
+      }
     setAPUStatus (apuStatus_DSPTW);
 
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
+
+#ifdef PANEL
+    cpu.lastPTWOffset = segno;
+    cpu.lastPTWIsDS = true;
+#endif
 
     word36 PTWx1;
     core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
@@ -349,8 +358,13 @@ static void fetchDSPTW(word15 segno)
 static void modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
+      {
         // generate access violation, out of segment bounds fault
+#ifdef PANEL
+        cpu.acvFaults |= ACV15;
+#endif
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
+      }
 
     setAPUStatus (apuStatus_MDSPTW); 
 
@@ -366,7 +380,7 @@ static void modifyDSPTW(word15 segno)
 }
 
 
-#ifndef SPEED
+#ifdef WAM
 // XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
 static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
@@ -388,6 +402,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
+            cpu.cu.SDWAMM = 1;
             cpu . SDW = &cpu . SDWAM[_n];
             
             /*
@@ -405,9 +420,10 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
         }
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
+    cpu.cu.SDWAMM = 0;
     return NULL;    // segment not referenced in SDWAM
 }
-#endif // SPEED
+#endif // WAM
 /**
  * Fetches an SDW from a paged descriptor segment.
  */
@@ -461,6 +477,9 @@ static void fetchNSDW(word15 segno)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, cpu . DSBR.BND);
         // generate access violation, out of segment bounds fault
+#ifdef PANEL
+        cpu.acvFaults |= ACV15;
+#endif
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2 * segno);
@@ -492,7 +511,7 @@ static void fetchNSDW(word15 segno)
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&cpu . SDW0));
 }
 
-#ifndef SPEED
+#ifdef WAM
 static char *strSDW(_sdw *SDW)
 {
     static char buff[256];
@@ -522,7 +541,7 @@ static char *strSDW(_sdw *SDW)
 }
 #endif
 
-#ifndef SPEED
+#ifdef WAM
 /**
  * dump SDWAM...
  */
@@ -546,7 +565,7 @@ t_stat dumpSDWAM (void)
  */
 static void loadSDWAM(word15 segno)
 {
-#ifdef SPEED
+#ifndef WAM
 #if 0
     cpu . SDWAM0 . ADDR = cpu . SDW0.ADDR;
     cpu . SDWAM0 . R1 = cpu . SDW0.R1;
@@ -645,7 +664,7 @@ static void loadSDWAM(word15 segno)
                     continue;
                 
                 q->USE -= 1;
-                q->USE &= 077;
+                q->USE &= N_WAM_MASK;
             }
             
             cpu . SDW = p;
@@ -662,7 +681,7 @@ static void loadSDWAM(word15 segno)
 #endif
 }
 
-#ifndef SPEED
+#ifdef WAM
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
     int nwam = N_WAM_ENTRIES;
@@ -677,6 +696,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     {
         if (((CA >> 10) & 0377) == ((cpu . PTWAM[_n].PAGENO >> 4) & 0377) && cpu . PTWAM[_n].POINTER == segno && cpu . PTWAM[_n].FE)   //_initialized)
         {
+            cpu.cu.PTWAMM = 1;
             cpu . PTW = &cpu . PTWAM[_n];
             
             /*
@@ -694,6 +714,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
             return cpu . PTW;
         }
     }
+    cpu.cu.PTWAMM = 0;
     return NULL;    // segment not referenced in SDWAM
 }
 #endif
@@ -710,6 +731,10 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     
     sim_debug (DBG_APPENDING,& cpu_dev, "fetchPTW address %08o\n", sdw->ADDR + x2);
 
+#ifdef PANEL
+    cpu.lastPTWOffset = offset;
+    cpu.lastPTWIsDS = false;
+#endif
     core_read((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
     
     cpu . PTW0.ADDR = GETHI(PTWx2);
@@ -723,7 +748,7 @@ static void fetchPTW(_sdw *sdw, word18 offset)
 
 static void loadPTWAM(word15 segno, word18 offset)
 {
-#ifdef SPEED
+#ifndef WAM
 #if 0
     cpu . PTWAM0 . ADDR = cpu . PTW0.ADDR;
     cpu . PTWAM0 . M = cpu . PTW0.M;
@@ -784,7 +809,7 @@ static void loadPTWAM(word15 segno, word18 offset)
                     //continue;
                 
                 q->USE -= 1;
-                q->USE &= 077;
+                q->USE &= N_WAM_MASK;
             }
             
             cpu . PTW = p;
@@ -795,7 +820,7 @@ static void loadPTWAM(word15 segno, word18 offset)
         }
     }
     sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
-#endif // SPEED
+#endif // WAM
 }
 
 /**
@@ -885,14 +910,12 @@ static char *strACV(_fault_subtype acv)
 }
 #endif
 
-static fault_acv_subtype_  acvFaults;   ///< pending ACV faults
-
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
-    acvFaults |= acvfault;
+    cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
               "doAppendCycle(acvFault): acvFault=%llo acvFaults=%llo: %s",
-              (word36) acvfault, (word36) acvFaults, msg);
+              (word36) acvfault, (word36) cpu.acvFaults, msg);
 }
 
 static char *strPCT(_processor_cycle_type t)
@@ -985,7 +1008,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     cpu . RSDWH_R1 = 0;
     
-    acvFaults = 0;
+    cpu.acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
 
     word24 finalAddress = (word24) -1;  // not everything requires a final address
@@ -1027,6 +1050,10 @@ A:;
 #endif
 
     cpu . TPR . CA = address;
+#ifdef PANEL
+    cpu.APUMemAddr = address;
+#endif
+
 //
 // Phase 1:
 //
@@ -1095,7 +1122,7 @@ A:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
-#ifdef SPEED
+#ifndef WAM
     if (cpu . DSBR.U == 0)
     {
         fetchDSPTW(cpu . TPR.TSR);
@@ -1216,7 +1243,7 @@ A:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (cpu . TPR.TRR > cpu . SDW->R2) {
             //Set fault ACV3 = ORB
-            acvFaults |= ACV3;
+            cpu.acvFaults |= ACV3;
             acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
         }
         
@@ -1225,7 +1252,7 @@ A:;
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu . PPR.PSR != cpu . TPR.TSR) {
                 //Set fault ACV4 = R-OFF
-                acvFaults |= ACV4;
+                cpu.acvFaults |= ACV4;
                 acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
             }
         }
@@ -1251,7 +1278,7 @@ D:;
     if (!(cpu . PPR.PRR < cpu . rRALR)) {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
-        acvFaults |= ACV13;
+        cpu.acvFaults |= ACV13;
         acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
     }
     
@@ -1268,7 +1295,7 @@ E:;
     //SDW .E set ON?
     if (!cpu . SDW->E) {
         // Set fault ACV2 = E-OFF
-        acvFaults |= ACV2;
+        cpu.acvFaults |= ACV2;
         acvFaultsMsg = "acvFaults(E) SDW .E set OFF";
     }
     
@@ -1285,7 +1312,7 @@ E:;
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
     if ((address & 0037777) >= cpu . SDW->EB) {
         // Set fault ACV7 = NO GA
-        acvFaults |= ACV7;
+        cpu.acvFaults |= ACV7;
         acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
     }
     
@@ -1295,14 +1322,14 @@ E1:
     // C(TPR.TRR) > SDW.R3?
     if (cpu . TPR.TRR > cpu . SDW->R3) {
         //Set fault ACV8 = OCB
-        acvFaults |= ACV8;
+        cpu.acvFaults |= ACV8;
         acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
     }
     
     // C(TPR.TRR) < SDW.R1?
     if (cpu . TPR.TRR < cpu . SDW->R1) {
         // Set fault ACV9 = OCALL
-        acvFaults |= ACV9;
+        cpu.acvFaults |= ACV9;
         acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";
     }
     
@@ -1312,7 +1339,7 @@ E1:
         // C(PPR.PRR) < SDW.R2?
         if (cpu . PPR.PRR < cpu . SDW->R2) {
             // Set fault ACV10 = BOC
-            acvFaults |= ACV10;
+            cpu.acvFaults |= ACV10;
             acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
         }
     
@@ -1333,7 +1360,7 @@ F:;
     if (cpu . TPR.TRR < cpu . SDW->R1) {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, cpu . SDW -> R1);
-        acvFaults |= ACV1;
+        cpu.acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
     }
     
@@ -1341,20 +1368,20 @@ F:;
     if (cpu . TPR.TRR > cpu . SDW->R2) {
         sim_debug (DBG_TRACE, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
-        acvFaults |= ACV1;
+        cpu.acvFaults |= ACV1;
         acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
     }
     
     //SDW .E set ON?
     if (!cpu . SDW->E) {
-        acvFaults |= ACV2;
+        cpu.acvFaults |= ACV2;
         acvFaultsMsg = "acvFaults(F) SDW .E set OFF";
     }
     
     //C(PPR.PRR) = C(TPR.TRR)?
     if (cpu . PPR.PRR != cpu . TPR.TRR) {
         //Set fault ACV12 = CRT
-        acvFaults |= ACV12;
+        cpu.acvFaults |= ACV12;
         acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";
     }
     
@@ -1367,15 +1394,15 @@ G:;
     //C(TPR.CA)0,13 > SDW.BOUND?
     //if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
     if (((address >> 4) & 037777) > cpu . SDW->BOUND) {
-        acvFaults |= ACV15;
+        cpu.acvFaults |= ACV15;
         acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";
         sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
                     address, ((address >> 4) & 037777), cpu . SDW->BOUND);
     }
     
-    if (acvFaults)
+    if (cpu.acvFaults)
         // Initiate an access violation fault
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=acvFaults}, "ACV fault");
+        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults}, "ACV fault");
     
     // is segment C(TPR.TSR) paged?
     if (cpu . SDW->U)
@@ -1384,7 +1411,7 @@ G:;
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
-#ifdef SPEED
+#ifndef WAM
     fetchPTW(cpu . SDW, address);
     if (!cpu . PTW0.DF)
     {
@@ -1451,6 +1478,9 @@ H:;
 
     finalAddress = cpu . SDW->ADDR + address;
     finalAddress &= 0xffffff;
+#ifdef PANEL
+    cpu.APUMemAddr = finalAddress;
+#endif
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     
@@ -1484,6 +1514,9 @@ I:;
     
     finalAddress = ((cpu . PTW->ADDR & 0777777) << 6) + y2;
     finalAddress &= 0xffffff;
+#ifdef PANEL
+    cpu.APUMemAddr = finalAddress;
+#endif
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     goto HI;
@@ -1536,6 +1569,11 @@ KL:;
    
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
+
+#ifdef PANEL
+    cpu.APUDataBusOffset = address;
+    cpu.APUDataBusAddr = finalAddress;
+#endif
 
     cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???

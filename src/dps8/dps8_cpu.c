@@ -277,7 +277,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
     return SCPE_OK;
   }
 
-#ifndef SPEED
+#ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
 #ifdef ROUND_ROBIN
@@ -468,7 +468,7 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_DumpSegmentTable();
-#ifndef SPEED
+#ifdef WAM
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dumpSDWAM();
 #endif
@@ -616,7 +616,7 @@ t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
         return dpsCmd_InitUnpagedSegmentTable();
-#ifndef SPEED
+#ifdef WAM
     if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
         return dpsCmd_InitSDWAM();
 #endif
@@ -2457,6 +2457,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012llo (%s)\n",
                 addr, * data, ctx);
+#ifdef PANEL
+    trackport (addr, data);
+#endif
     return 0;
 }
 #endif
@@ -2489,6 +2492,9 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012llo (%s)\n",
                 addr, data, ctx);
+#ifdef PANEL
+    trackport (addr, data);
+#endif
     return 0;
 }
 #endif
@@ -2530,6 +2536,9 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr - 1, * even, ctx);
+#ifdef PANEL
+    trackport (addr - 1, * even);
+#endif
 
     // if the even address is OK, the odd will be
     //nem_check (addr,  "core_read2 nem");
@@ -2549,6 +2558,9 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr, * odd, ctx);
+#ifdef PANEL
+    trackport (addr, * odd);
+#endif
     return 0;
 }
 #endif
@@ -2592,6 +2604,9 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr++] = even;
+#ifdef PANEL
+    trackport (addr - 1, even);
+#endif
 
     // If the even address is OK, the odd will be
     //nem_check (addr,  "core_write2 nem");
@@ -2604,6 +2619,9 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
+#ifdef PANEL
+    trackport (addr, odd);
+#endif
     return 0;
 }
 #endif

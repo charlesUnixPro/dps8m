@@ -59,6 +59,12 @@
 #define SPEED
 #endif
 
+// Enable WAM
+//#define WAM
+
+// Enable panel support
+//#define PANEL
+
 // Enable history debugger
 //#define HDBG
 
@@ -115,6 +121,7 @@ typedef uint8       word8;
 typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
 typedef uint16      word10;
+typedef uint16      word11;
 typedef uint16      word12;
 typedef uint16      word13;
 typedef uint16      word14;

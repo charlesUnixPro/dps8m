@@ -1223,31 +1223,23 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 #endif
 //            if (get_addr_mode () == APPEND_mode)
               //{
-#ifdef EIS_PTR4
                 cpu.cu.TSN_PRNO[k-1] = n;
-#else
                 e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
                 e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
                                                 cpu . TPR . TRR,
                                                 cpu . PPR . PRR);
-#endif
                 
-#ifdef EIS_PTR4
                 cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#endif
               //}
             //else
               //sim_warn ("AR set in non-append mode.\n");
           }
         else
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
-          cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#else
-          e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
-#endif
+          {
+            cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+            e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
+          }
 
         // Address modifier for ADDRESS. All register modifiers except du and
         // dl may be used. If the ic modifier is used, then ADDRESS is an
@@ -1269,12 +1261,8 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
     }
     else
     {
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
           cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#else
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
-#endif
     }
     setupOperandDescriptorCache (k);
 }
@@ -1315,6 +1303,23 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     else
       e -> TA [k - 1] = getbits36_2 (opDesc, 21);    // type alphanumeric
 #endif
+#ifdef PANEL
+    if (k == 1) // Use data from first operand
+      {
+        switch (e->TA[0])
+          {
+            case CTA9:
+              cpu.dataMode = 0102; // 9 bit an
+              break;
+            case CTA6:
+              cpu.dataMode = 0042; // 6 bit an
+              break;
+            case CTA4:
+              cpu.dataMode = 0022; // 4 bit an
+              break;
+          }
+      }
+#endif
     if (MFk & MFkAR)
       {
         // if MKf contains ar then it Means Y-charn is not the memory address
@@ -1331,27 +1336,19 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
         //if (get_addr_mode() == APPEND_mode)
           //{
-#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-#else
             e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
-#endif
 
-#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#endif
           //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
       }
-#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
 
@@ -1537,26 +1534,18 @@ static void parseArgOperandDescriptor (uint k)
         
         //if (get_addr_mode() == APPEND_mode)
           //{
-#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-#else
             e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
-#endif
-#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
             e -> addr [k - 1] . mat = viaPR;
-#endif
         //  }
         //else
           //sim_warn ("AR set in non-append mode.\n");
       }
-#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
 
     
     y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
@@ -1595,27 +1584,19 @@ static void parseNumericOperandDescriptor (int k)
 
         //if (get_addr_mode() == APPEND_mode)
         //{
-#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-#else
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-#endif
 
-#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
             e->addr[k-1].mat = viaPR;   // ARs involved
-#endif
         //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
     }
-#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
 
     //word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
 
@@ -1624,6 +1605,15 @@ static void parseNumericOperandDescriptor (int k)
     //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
     word3 CN = getbits36_3 (opDesc, 18);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
+#ifdef PANEL
+    if (k == 1)
+      {
+        if (e->TN[0])
+          cpu.dataMode = 0021; // 4 bit numeric
+        else
+          cpu.dataMode = 0101; // 9 bit numeric
+      }
+#endif
     e->S[k-1]  = getbits36_2 (opDesc, 22);    // Sign and decimal type of data
     e->SF[k-1] = SIGNEXT6_int (getbits36_6 (opDesc, 24));    // Scaling factor.
 
@@ -1780,6 +1770,10 @@ static void parseBitstringOperandDescriptor (int k)
     word18 MFk = e->MF[k-1];
     word36 opDesc = e->op[k-1];
     
+#ifdef PANEL
+    if (k == 1)
+      cpu.dataMode = 0010; // 1 bit not alpha, not alpha numeric
+#endif
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
@@ -1801,26 +1795,18 @@ static void parseBitstringOperandDescriptor (int k)
         
         //if (get_addr_mode() == APPEND_mode)
         //{
-#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-#else
             e->addr[k-1].SNR = cpu . PR[n].SNR;
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-#endif
-#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
             e->addr[k-1].mat = viaPR;   // ARs involved
-#endif
         //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
     }
-#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
     
     //Operand length. If MFk.RL = 0, this field contains the string length of
     //the operand. If MFk.RL = 1, this field contains the code for a register
