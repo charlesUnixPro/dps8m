@@ -2477,7 +2477,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
                "core_read  %08o %012llo (%s)\n",
                 addr, * data, ctx);
 #ifdef PANEL
-    trackport (addr, data);
+    trackport (addr, * data);
 #endif
     return 0;
 }
