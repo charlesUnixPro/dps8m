@@ -979,10 +979,13 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
         SET_I_NBAR;
     
         cpu.CMR.luf = 3;    // default of 16 mS
+#ifdef WAM
+        cpu.cu.SD_ON = 1;
+        cpu.cu.PT_ON = 1;
+#else
         cpu.cu.SD_ON = 0;
         cpu.cu.PT_ON = 0;
-        //cpu.cu.SD_ON = 1;
-        //cpu.cu.PT_ON = 1;
+#endif
  
         setCpuCycle (FETCH_cycle);
 
@@ -1303,6 +1306,9 @@ t_stat simh_hooks (void)
     if (stop_cpu)
       return STOP_STOP;
 
+#ifdef ISOLTS
+    if (currentRunningCPUnum == 0)
+#endif
     // check clock queue 
     if (sim_interval <= 0)
       {
@@ -3847,6 +3853,41 @@ void addEAPUhist (word18 ZCA, word18 opcode)
 #endif // DPS8M
 
 #ifdef L68
+
+// According to ISOLTS
+//
+//   0 PIA
+//   1 POA
+//   2 RIW
+//   3 SIW
+//   4 POT
+//   5 PON
+//   6 RAW
+//   7 SAW
+//   8 TRGO
+//   9 XDE
+//  10 XDO
+//  11 IC
+//  12 RPTS
+//  13 WI
+//  14 AR F/E
+//  15 XIP
+//  16 FLT
+//  17 COMPL. ADD BASE
+//  18:23 OPCODE/TAG
+//  24:29 ADDREG
+//  30:34 COMMAND A/B/C/D/E
+//  35:38 PORT A/B/C/D
+//  39 FB XEC
+//  40 INS FETCH
+//  41 CU STORE
+//  42 OU STORE
+//  43 CU LOAD
+//  44 OU LOAD
+//  45 RB DIRECT
+//  46 -PC BUSY
+//  47 PORT BUSY
+
 void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2)
   {
     word36 w0 = 0, w1 = 0;
@@ -3861,7 +3902,96 @@ void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word
   }
 
 // XXX addDUhist
+
+// du history register inputs(actual names)
+// bit 00= fpol-cx;010       bit 36= fdud-dg;112
+// bit 01= fpop-cx;010       bit 37= fgdlda-dc;010
+// bit 02= need-desc-bd;000  bit 38= fgdldb-dc;010
+// bit 03= sel-adr-bd;000    bit 39= fgdldc-dc;010
+// bit 04= dlen=direct-bd;000bit 40= fnld1-dp;110
+// bit 05= dfrst-bd;021      bit 41= fgldp1-dc;110
+// bit 06= fexr-bd;010       bit 42= fnld2-dp;110
+// bit 07= dlast-frst-bd;010 bit 43= fgldp2-dc;110
+// bit 08= ddu-ldea-bd;000   bit 44= fanld1-dp;110
+// bit 09= ddu-stea-bd;000   bit 45= fanld2-dp;110
+// bit 10= dredo-bd;030      bit 46= fldwrt1-dp;110
+// bit 11= dlvl<wd-sz-bg;000 bit 47= fldwrt2-dp;110
+// bit 12= exh-bg;000        bit 48= data-avldu-cm;000
+// bit 13= dend-seg-bd;111   bit 49= fwrt1-dp;110
+// bit 14= dend-bd;000       bit 50= fgstr-dc;110
+// bit 15= du=rd+wrt-bd;010  bit 51= fanstr-dp;110
+// bit 16= ptra00-bd;000     bit 52= fstr-op-av-dg;010
+// bit 17= ptra01-bd;000     bit 53= fend-seg-dg;010
+// bit 18= fa/i1-bd;110      bit 54= flen<128-dg;010
+// bit 19= fa/i2-bd;110      bit 55= fgch-dp;110
+// bit 20= fa/i3-bd;110      bit 56= fanpk-dp;110
+// bit 21= wrd-bd;000        bit 57= fexmop-dl;110
+// bit 22= nine-bd;000       bit 58= fblnk-dp;100
+// bit 23= six-bd;000        bit 59= unused
+// bit 24= four-bd;000       bit 60= dgbd-dc;100
+// bit 25= bit-bd;000        bit 61= dgdb-dc;100
+// bit 26= unused            bit 62= dgsp-dc;100
+// bit 27= unused            bit 63= ffltg-dc;110
+// bit 28= unused            bit 64= frnd-dg;120
+// bit 29= unused            bit 65= dadd-gate-dc;100
+// bit 30= fsampl-bd;111     bit 66= dmp+dv-gate-db;100
+// bit 31= dfrst-ct-bd;010   bit 67= dxpn-gate-dg;100
+// bit 32= adj-lenint-cx;000 bit 68= unused
+// bit 33= fintrptd-cx;010   bit 69= unused
+// bit 34= finhib-stc1-cx;010bit 70= unused
+// bit 35= unused            bit 71= unused
+
+
 // XXX addOUhist
+
+// According to ISOLTS
+//  0:2 OPCODE RP
+//  3 9 BIT CHAR
+//  4:6 TAG 3/4/5
+//  7 CR FLAG
+//  8 DIR FLAG
+//  9 RP15
+// 10 RP16
+// 11 SPARE
+// 12:14 OPCODE RS
+// 15 RB1 FULL
+// 16 RP FULL
+// 17 RS FULL
+// 18 GIN
+// 19 GOS
+// 20 GD1
+// 21 GD2
+// 22 GOE
+// 23 GOA
+// 24 GOM
+// 25 GON
+// 26 GOF
+// 27 STORE OP
+// 28 DA NOT
+// 29:38 COMPLEMENTED REGISTER IN USE FLAG A/Q/0/1/2/3/4/5/6/7
+// 39 ?
+// 40 ?
+// 41 ? 
+// 42:47 ICT TRACT
+
 // XXX addAPUhist
+
+//  0:5 SEGMENT NUMBER
+//  6 SNR/ESN
+//  7 TSR/ESN
+//  8 FSDPTW
+//  9 FPTW2
+// 10 MPTW
+// 11 FANP
+// 12 FAP
+// 13 AMSDW
+// 14:15 AMSDW #
+// 16 AMPTW
+// 17:18 AMPW #
+// 19 ACV/DF
+// 20:27 ABSOLUTE MEMORY ADDRESS
+// 28 TRR #
+// 29 FLT HLD
+
 #endif
 
