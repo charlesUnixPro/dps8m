@@ -548,23 +548,25 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-    cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
-    cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
-    cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
-    cpu.cu.PT_ON        = getbits36_1  (words[0], 23);
+    //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
+    //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
+    //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
+    //cpu.cu.PT_ON        = getbits36_1  (words[0], 23);
 #if 0
-    cpu.cu.PI_AP        = getbits36_1  (words[0], 24);
-    cpu.cu.DSPTW        = getbits36_1  (words[0], 25);
-    cpu.cu.SDWNP        = getbits36_1  (words[0], 26);
-    cpu.cu.SDWP         = getbits36_1  (words[0], 27);
-    cpu.cu.PTW          = getbits36_1  (words[0], 28);
-    cpu.cu.PTW2         = getbits36_1  (words[0], 29);
-    cpu.cu.FAP          = getbits36_1  (words[0], 30);
-    cpu.cu.FANP         = getbits36_1  (words[0], 31);
-    cpu.cu.FABS         = getbits36_1  (words[0], 32);
+    //cpu.cu.PI_AP        = getbits36_1  (words[0], 24);
+    //cpu.cu.DSPTW        = getbits36_1  (words[0], 25);
+    //cpu.cu.SDWNP        = getbits36_1  (words[0], 26);
+    //cpu.cu.SDWP         = getbits36_1  (words[0], 27);
+    //cpu.cu.PTW          = getbits36_1  (words[0], 28);
+    //cpu.cu.PTW2         = getbits36_1  (words[0], 29);
+    //cpu.cu.FAP          = getbits36_1  (words[0], 30);
+    //cpu.cu.FANP         = getbits36_1  (words[0], 31);
+    //cpu.cu.FABS         = getbits36_1  (words[0], 32);
 #else
-    cpu.cu.APUCycleBits = getbits36_12 (words[0], 24);
+    //cpu.cu.APUCycleBits = getbits36_12 (words[0], 24);
 #endif
+    // The FCT is stored in APUCycleBits
+    cpu.cu.APUCycleBits = (word12) ((cpu.cu.APUCycleBits & 07770) | (word12) getbits36_3 (words[0], 33));
 
     // words[1]
 
@@ -622,6 +624,8 @@ static void words2scu (word36 * words)
 
     // words[5]
 
+// XXX According to AL39 pg 75, RCU does not restore CA, but boot crashes
+// if not restored.
     cpu.TPR.CA          = getbits36_18 (words[5], 0);
     cpu.cu.repeat_first = getbits36_1  (words[5], 18);
     cpu.cu.rpt          = getbits36_1  (words[5], 19);
