@@ -425,7 +425,8 @@ static int wcd (void)
 
         case 27: // init_echo_negotiation
           {
-            linep -> send_output = true;
+            //linep -> send_output = true;
+            linep -> send_output = SEND_OUTPUT_DELAY;
             linep -> ack_echnego_init = true;
           }
           break;
@@ -523,7 +524,8 @@ static int wcd (void)
                   {
                     //sim_printf ("fnp dumpoutput\n");
                     // XXX ignored
-                    linep -> send_output = true;
+                    //linep -> send_output = true;
+                    linep -> send_output = SEND_OUTPUT_DELAY;
                   }
                   break;
 
@@ -1293,6 +1295,7 @@ static int wtx (void)
 // op_code is 012
     uint dcwAddr = getbits36_18 (decoded.smbxp -> word6, 0);
     uint dcwCnt = getbits36_9 (decoded.smbxp -> word6, 27);
+    //uint sent = 0;
 
     // For each dcw
     for (uint i = 0; i < dcwCnt; i ++)
@@ -1312,14 +1315,25 @@ static int wtx (void)
         if (! tally)
           continue;
         fnp_wtx_output (tally, dataAddr);
+        //sent += tally;
       } // for each dcw
 
     // Set the TIMW
 
     putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, decoded.cell, 1);
 
-    decoded.fudp->MState.line[decoded.slot_no].send_output = true;
-
+#if 0
+    //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+    // send is the number of characters sent; 9600 baud is 100 cps, and
+    // the FNP is polled at about 100HZ, or about the rate it takes to send
+    // a character.
+    // 100 CPS is too slow; bump up to 1000 CPS
+    sent /= 10;
+    sent ++; // Make sure it isn't zero.
+    decoded.fudp->MState.line[decoded.slot_no].send_output = sent;
+#else
+    decoded.fudp->MState.line[decoded.slot_no].send_output = SEND_OUTPUT_DELAY;
+#endif
     return 0;
   }
 
@@ -1521,7 +1535,8 @@ static int interruptL66_FNP_to_CS (void)
                     //sim_printf ("  outputBufferThreshold %d\n", outputBufferThreshold);
 
                     // Prime the pump
-                    decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+                    //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+                    decoded.fudp->MState.line[decoded.slot_no].send_output = SEND_OUTPUT_DELAY;
                   }
                   break;
 
@@ -1982,8 +1997,10 @@ void fnpProcessEvent (void)
 
             if (linep -> send_output)
               {
-                fnp_rcd_send_output (mbx, fnpno, lineno);
-                linep -> send_output = false;
+                //linep -> send_output = false;
+                linep->send_output --;
+                if (linep->send_output == 0)
+                  fnp_rcd_send_output (mbx, fnpno, lineno);
               }
 
             // Need to send a 'line_break' command to CS?
@@ -2022,7 +2039,8 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_ack_echnego_init (mbx, fnpno, lineno);
                 linep -> ack_echnego_init = false;
-                linep -> send_output = true;
+                //linep -> send_output = true;
+                linep -> send_output = SEND_OUTPUT_DELAY;
               }
 
             // Need to send an 'line_disconnected' command to CS?
