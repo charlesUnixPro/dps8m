@@ -3,15 +3,21 @@
 CC = clang
 LD = clang
 
+# for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
+#CFLAGS  = -g -O0
+CFLAGS  = -g -O3
+
 # Our Cygwin users are using gcc.
 ifeq ($(OS),Windows_NT)
     CC = gcc
     LD = gcc
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),FreeBSD)
+      CFLAGS += -I /usr/local/include
+      LDFLAGS += -L/usr/local/lib
+    endif
 endif
-
-# for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-#CFLAGS  = -g -O0
-CFLAGS  = -g -O3
 
 #CFLAGS = -m32
 #CFLAGS = -m64
