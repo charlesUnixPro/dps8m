@@ -60,9 +60,7 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <errno.h>
-#ifdef __FreeBSD__
 #include <netinet/in.h>
-#endif
 
 
 #include "udplib.h"
