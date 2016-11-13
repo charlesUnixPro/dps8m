@@ -1793,22 +1793,17 @@ sysinfo_t sys_opts =
   {
     0, /* clock speed */
     {
-// I get too much jitter in cpuCycles when debugging 20184; try turning queing
-// off here (changing 0 to -1)
-// still get a little jitter, and once a hang in DIS. very strange
+#ifdef FNPDBG
+      4000, /* iom_times.connect */
+#else
       -1, /* iom_times.connect */
+#else
+#endif
        0,  /* iom_times.chan_activate */
       10, /* boot_time */
       10000, /* terminate_time */
     },
     {
-// XXX This suddenly started working when I reworked the iom code for multiple units.
-// XXX No idea why. However, setting it to zero queues the boot tape read instead of
-// XXX performing it immediately. This makes the boot code fail because iom_boot 
-// XXX returns before the read is dequeued, causing the CPU to start before the
-// XXX tape is read into memory. 
-// XXX Need to fix the cpu code to either do actual fault loop on unitialized memory, or force it into the wait for interrupt sate; and respond to the interrupt from the IOM's completion of the read.
-//
       -1, /* mt_times.read */
       -1  /* mt_times.xfer */
     },

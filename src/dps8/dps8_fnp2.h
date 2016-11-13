@@ -76,7 +76,11 @@ typedef struct
         uint echnego_len;
         // Pending requests
         bool line_break;
+#ifdef FNPDBG
+#define SEND_OUTPUT_DELAY 100
+#else
 #define SEND_OUTPUT_DELAY 2
+#endif
         uint send_output;
         bool accept_new_terminal;
         bool line_disconnected;
