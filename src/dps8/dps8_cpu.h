@@ -423,6 +423,9 @@ typedef struct mode_registr
   {
 #ifdef L68
     word15 FFV;
+#ifdef L68
+    word1 isolts_tracks;
+#endif
     word1 OC_TRAP;
     word1 ADR_TRAP;
     word10 OPCODE;
@@ -433,6 +436,9 @@ typedef struct mode_registr
     word1 separ;
     word2 tm;
     word2 vm;
+#ifdef L68
+    word2 isolts_tracks2;
+#endif
     word1 hrhlt;
 #ifdef DPS8M
     word1 hrxfr;
@@ -1281,6 +1287,18 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
     M[addr] = data & DMASK;
 #ifdef PANEL
     trackport (addr, data);
@@ -1323,6 +1341,18 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
         addr = (uint) os + addr % SCBANK;
+      }
+#endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
       }
 #endif
     M[addr++] = even;

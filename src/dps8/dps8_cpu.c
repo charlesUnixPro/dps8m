@@ -2505,7 +2505,18 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     else
 #endif
       nem_check (addr,  "core_write nem");
-
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
     M[addr] = data & DMASK;
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2620,6 +2631,18 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     else
 #endif
       nem_check (addr,  "core_write2 nem");
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
 
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)

@@ -2266,12 +2266,11 @@ static t_stat doInstruction (void)
 #endif
 #ifdef L68
 // XXX strobe hist on opcode match
-    //if (cpu.MR.emr && cpu.MR.ihr && 
-       //(cpu.MR.hrxfr == 0 || ret == CONT_TRA))
-      //{
+    if (cpu.MR.emr && cpu.MR.ihr)
+      {
 // XXX Should CA be the upper half of IWB?
-        //addCUhist (0, cpu.cu.IWB & MASK18, cpu.CA, 0, CUH_XINT);
-      //}
+        addCUhist (0, cpu.cu.IWB & MASK18, cpu.TPR.CA, 0, 0, 0);
+      }
 #endif
     return ret;
 }
@@ -5714,27 +5713,54 @@ static t_stat DoBasicInstruction (void)
                   //if (GETBITS (cpu.CY, 1, 35))
                     {
 //IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
+#ifdef L68
+                      cpu.MR.FFV = getbits36_15 (cpu.CY, 0);
+                      cpu.MR.isolts_tracks = getbits36_1 (cpu.CY, 15);
+                      cpu.MR.OC_TRAP = getbits36_1 (cpu.CY, 16);
+                      cpu.MR.ADR_TRAP = getbits36_1 (cpu.CY, 17);
+                      if (cpu.MR.OC_TRAP)
+                        {
+                          cpu.MR.OPCODE = getbits36_10 (cpu.CY, 18);
+                        }
+                      else
+                        {
+                          cpu.MR.cuolin = getbits36_1 (cpu.CY, 18);
+                          cpu.MR.solin = getbits36_1 (cpu.CY, 19);
+                          cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
+                          cpu.MR.separ = getbits36_1 (cpu.CY, 21);
+// tm/vm are only set if the processor maintainence panel PROG switch is on 
+#if 1
+                          cpu.MR.tm = getbits36_2 (cpu.CY, 22);
+                          cpu.MR.vm = getbits36_2 (cpu.CY, 24);
+                          cpu.MR.isolts_tracks2 = getbits36_2 (cpu.CY, 26);
+#endif
+                        }
+                      cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
+                      cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
+                      cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
+                      cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
+                      cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
+                      cpu.MR.emr = getbits36_1 (cpu.CY, 35);
+#endif
+#ifdef DPS8M
                       cpu.MR.cuolin = getbits36_1 (cpu.CY, 18);
                       cpu.MR.solin = getbits36_1 (cpu.CY, 19);
                       cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
                       cpu.MR.separ = getbits36_1 (cpu.CY, 21);
-                      cpu.MR.tm = getbits36_3 (cpu.CY, 23);
-                      cpu.MR.vm = getbits36_3 (cpu.CY, 26);
+// tm/vm are only set if the processor maintainence panel PROG switch is on 
+#if 1
+                      cpu.MR.tm = getbits36_2 (cpu.CY, 22);
+                      cpu.MR.vm = getbits36_2 (cpu.CY, 24);
+                      cpu.MR.isolts_tracks2 = getbits36_2 (cpu.CY, 26);
+#endif
                       cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
-#ifdef DPS8M
                       cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
-#endif
-#ifdef L68
-                      cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
-#endif
                       cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                       cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
                       cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
-#ifdef DPS8M
                       cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
-#endif
                       cpu.MR.emr = getbits36_1 (cpu.CY, 35);
-
+#endif
 
                       // Stop HR Strobe on HR Counter Overflow. (Setting bit 28
                       // shall cause the HR counter to be reset to zero.)
@@ -5857,28 +5883,46 @@ static t_stat DoBasicInstruction (void)
                     cpu.Ypair[0] = 0;
 #ifdef L68
                     putbits36_15 (& cpu.Ypair[0], 0, cpu.MR.FFV);
+                    putbits36_1 (& cpu.Ypair[0], 15, cpu.MR.isolts_tracks);
+                    putbits36_1 (& cpu.Ypair[0], 16, cpu.MR.OC_TRAP);
+                    putbits36_1 (& cpu.Ypair[0], 17, cpu.MR.ADR_TRAP);
+#if 0
                     if (cpu.MR.OC_TRAP || cpu.MR.hropc)
                       {
                         putbits36_10 (& cpu.Ypair[0], 18, cpu.MR.OPCODE);
                       }
                     else
+#endif
                       {
-                        putbits36_1 (& cpu.Ypair[0], 16, cpu.MR.OC_TRAP);
-                        putbits36_1 (& cpu.Ypair[0], 17, cpu.MR.ADR_TRAP);
                         putbits36_1 (& cpu.Ypair[0], 18, cpu.MR.cuolin);
                         putbits36_1 (& cpu.Ypair[0], 19, cpu.MR.solin);
                         putbits36_1 (& cpu.Ypair[0], 20, cpu.MR.sdpap);
                         putbits36_1 (& cpu.Ypair[0], 21, cpu.MR.separ);
+// tm/vm are only set if the processor maintainence panel PROG switch is on 
+#if 1
                         putbits36_2 (& cpu.Ypair[0], 22, cpu.MR.tm);
                         putbits36_2 (& cpu.Ypair[0], 24, cpu.MR.vm);
-                      }
 #else
+                        putbits36_2 (& cpu.Ypair[0], 22, 01llu);
+                        putbits36_2 (& cpu.Ypair[0], 24, 01llu);
+#endif
+                      }
+#endif
+#ifdef DPS8M
                     putbits36_1 (& cpu.Ypair[0], 18, cpu.MR.cuolin);
                     putbits36_1 (& cpu.Ypair[0], 19, cpu.MR.solin);
                     putbits36_1 (& cpu.Ypair[0], 20, cpu.MR.sdpap);
                     putbits36_1 (& cpu.Ypair[0], 21, cpu.MR.separ);
+#endif
+// tm/vm are only set if the processor maintainence panel PROG switch is on 
+#if 1
                     putbits36_2 (& cpu.Ypair[0], 22, cpu.MR.tm);
                     putbits36_2 (& cpu.Ypair[0], 24, cpu.MR.vm);
+                    putbits36_2 (& cpu.Ypair[0], 26, cpu.MR.isolts_tracks2);
+#else
+                    putbits36_2 (& cpu.Ypair[0], 22, 01llu);
+                    putbits36_2 (& cpu.Ypair[0], 24, 01llu);
+                    putbits36_2 (& cpu.Ypair[0], 26, 03llu);
 #endif
                     putbits36_1 (& cpu.Ypair[0], 28, cpu.MR.hrhlt);
 #ifdef DPS8M
@@ -5894,7 +5938,7 @@ static t_stat DoBasicInstruction (void)
                     putbits36_1 (& cpu.Ypair[0], 33, cpu.MR.hexfp);
 #endif
                     putbits36_1 (& cpu.Ypair[0], 35, cpu.MR.emr);
-//IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[0]);
+//IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair[1] = 0;
                     putbits36_15 (& cpu.Ypair[1], 36 - 36,
                                   cpu.CMR.cache_dir_address);
@@ -5915,7 +5959,7 @@ static t_stat DoBasicInstruction (void)
                                  cpu.CMR.bypass_cache);
 #endif
                     putbits36_2 (& cpu.Ypair[1], 70 - 36, cpu.CMR.luf);
-//IF1 sim_printf ("read mode register %012llo\n", cpu.Ypair[1]);
+//IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[1]);
                   }
                   break;
 
