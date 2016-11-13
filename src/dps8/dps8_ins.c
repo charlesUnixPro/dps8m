@@ -5710,19 +5710,38 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 case 04: // mode register
-                  //if (GETBITS (cpu.CY, 1, 35))
                     {
-//IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
+#if 1
+                      cpu.MR.r = cpu.CY;
+// XXX TEST/NORMAL switch is set to NORMAL
+                      putbits36_1 (& cpu.MR.r, 32, 0);
+// SBZ
+                      putbits36_2 (& cpu.MR.r, 33, 0);
+                      cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
+                      cpu.MR.separ = getbits36_1 (cpu.CY, 21);
+                      cpu.MR.emr = getbits36_1 (cpu.CY, 35);
+                      cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
+#ifdef DPS8M
+                      cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
+#endif
+                      cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
+                      cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
+#else
+IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
 #ifdef L68
                       cpu.MR.FFV = getbits36_15 (cpu.CY, 0);
                       cpu.MR.isolts_tracks = getbits36_1 (cpu.CY, 15);
                       cpu.MR.OC_TRAP = getbits36_1 (cpu.CY, 16);
                       cpu.MR.ADR_TRAP = getbits36_1 (cpu.CY, 17);
-                      if (cpu.MR.OC_TRAP)
+                      cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
+#if 1
+                      //if (cpu.MR.OC_TRAP)
+                      if (cpu.MR.OC_TRAP || cpu.MR.hropc)
                         {
                           cpu.MR.OPCODE = getbits36_10 (cpu.CY, 18);
                         }
                       else
+#endif
                         {
                           cpu.MR.cuolin = getbits36_1 (cpu.CY, 18);
                           cpu.MR.solin = getbits36_1 (cpu.CY, 19);
@@ -5736,10 +5755,11 @@ static t_stat DoBasicInstruction (void)
 #endif
                         }
                       cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
-                      cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
+                      // Captured above
+                      //cpu.MR.hropc = getbits36_1 (cpu.CY, 29);
                       cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                       cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
-                      cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
+                      //cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
                       cpu.MR.emr = getbits36_1 (cpu.CY, 35);
 #endif
 #ifdef DPS8M
@@ -5757,9 +5777,10 @@ static t_stat DoBasicInstruction (void)
                       cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
                       cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                       cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
-                      cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
+                      //cpu.MR.mrgctl = getbits36_1 (cpu.CY, 32);
                       cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
                       cpu.MR.emr = getbits36_1 (cpu.CY, 35);
+#endif
 #endif
 
                       // Stop HR Strobe on HR Counter Overflow. (Setting bit 28
@@ -5772,6 +5793,7 @@ static t_stat DoBasicInstruction (void)
                              cpu.history_cyclic[hset] = 0;
                         }
 
+#if 0 
                       if (cpu.MR.sdpap)
                         {
                           sim_warn ("LCPR set SDPAP\n");
@@ -5781,6 +5803,7 @@ static t_stat DoBasicInstruction (void)
                         {
                           sim_warn ("LCPR set SEPAR\n");
                         }
+#endif
                     }
                   break;
 
@@ -5880,13 +5903,17 @@ static t_stat DoBasicInstruction (void)
                 case 006: // C(mode register) -> C(Y-pair)0,35
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
+                    cpu.Ypair[0] = cpu.MR.r;
+                    putbits36_1 (& cpu.Ypair[0], 20, cpu.MR.sdpap);
+                    putbits36_1 (& cpu.Ypair[0], 21, cpu.MR.separ);
+#if 0
                     cpu.Ypair[0] = 0;
 #ifdef L68
                     putbits36_15 (& cpu.Ypair[0], 0, cpu.MR.FFV);
                     putbits36_1 (& cpu.Ypair[0], 15, cpu.MR.isolts_tracks);
                     putbits36_1 (& cpu.Ypair[0], 16, cpu.MR.OC_TRAP);
                     putbits36_1 (& cpu.Ypair[0], 17, cpu.MR.ADR_TRAP);
-#if 0
+#if 1
                     if (cpu.MR.OC_TRAP || cpu.MR.hropc)
                       {
                         putbits36_10 (& cpu.Ypair[0], 18, cpu.MR.OPCODE);
@@ -5933,12 +5960,13 @@ static t_stat DoBasicInstruction (void)
 #endif
                     putbits36_1 (& cpu.Ypair[0], 30, cpu.MR.ihr);
                     putbits36_1 (& cpu.Ypair[0], 31, cpu.MR.ihrrs);
-                    putbits36_1 (& cpu.Ypair[0], 32, cpu.MR.mrgctl);
+                    //putbits36_1 (& cpu.Ypair[0], 32, cpu.MR.mrgctl);
 #ifdef DPS8M
                     putbits36_1 (& cpu.Ypair[0], 33, cpu.MR.hexfp);
 #endif
                     putbits36_1 (& cpu.Ypair[0], 35, cpu.MR.emr);
-//IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
+IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
+#endif
                     cpu.Ypair[1] = 0;
                     putbits36_15 (& cpu.Ypair[1], 36 - 36,
                                   cpu.CMR.cache_dir_address);

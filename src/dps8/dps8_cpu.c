@@ -2467,6 +2467,20 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 #endif
       nem_check (addr,  "core_read nem");
 
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2557,6 +2571,20 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 #endif
       nem_check (addr,  "core_read2 nem");
 
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);

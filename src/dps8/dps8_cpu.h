@@ -419,7 +419,22 @@ struct _cache_mode_register
 
 typedef struct _cache_mode_register _cache_mode_register;
 
-typedef struct mode_registr
+#if 1
+typedef struct mode_register
+  {
+    word36 r;
+    word1 sdpap;
+    word1 separ;
+    word1 emr;
+    word1 hrhlt;
+#ifdef DPS8M
+    word1 hrxfr;
+#endif
+    word1 ihr;
+    word1 ihrrs;
+  } _mode_register;
+#else
+typedef struct mode_register
   {
 #ifdef L68
     word15 FFV;
@@ -448,12 +463,14 @@ typedef struct mode_registr
 #endif
     word1 ihr;
     word1 ihrrs;
-    word1 mrgctl;
+// XXX This bit is used to track the position of the NORMAL/TEST switch
+//    word1 mrgctl;
 #ifdef DPS8M
     word1 hexfp;
 #endif
     word1 emr;
   } _mode_register;
+#endif
 
 extern DEVICE cpu_dev;
 
@@ -1266,6 +1283,20 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     *data = M[addr] & DMASK;
 #ifdef PANEL
     trackport (addr, * data);
@@ -1319,6 +1350,20 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     *even = M[addr++] & DMASK;
 #ifdef PANEL
     trackport (addr - 1, * even);
@@ -1370,7 +1415,6 @@ int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
-int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
 static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
