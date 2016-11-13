@@ -1797,7 +1797,6 @@ sysinfo_t sys_opts =
       4000, /* iom_times.connect */
 #else
       -1, /* iom_times.connect */
-#else
 #endif
        0,  /* iom_times.chan_activate */
       10, /* boot_time */
