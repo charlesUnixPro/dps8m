@@ -92,21 +92,21 @@ static void writeOperands (void)
         //
 
         word18 Yi = GET_ADDR (indword);
-        word6 characterOperandSize = GET_TB (GET_TAG (indword));
-        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+        cpu.characterOperandSize = GET_TB (GET_TAG (indword));
+        cpu.characterOperandOffset = GET_CF (GET_TAG (indword));
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT size=%o offset=%o Yi=%06o\n",
-                   characterOperandSize, characterOperandOffset,
+                   cpu.characterOperandSize, cpu.characterOperandOffset,
                    Yi);
 
-        if (characterOperandSize == TB6 && characterOperandOffset > 5)
+        if (cpu.characterOperandSize == TB6 && cpu.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
                    (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                    "co size == TB6 && offset > 5");
 
-        if (characterOperandSize == TB9 && characterOperandOffset > 3)
+        if (cpu.characterOperandSize == TB9 && cpu.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
                    (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
@@ -129,18 +129,18 @@ static void writeOperands (void)
             // number is the decremented value of the character position
             // count, cf, field of the indirect word.
 
-            if (characterOperandOffset == 0)
+            if (cpu.characterOperandOffset == 0)
               {
-                if (characterOperandSize == TB6)
-                    characterOperandOffset = 5;
+                if (cpu.characterOperandSize == TB6)
+                    cpu.characterOperandOffset = 5;
                 else
-                    characterOperandOffset = 3;
+                    cpu.characterOperandOffset = 3;
                 Yi -= 1;
                 Yi &= MASK18;
               }
                 else
               {
-                characterOperandOffset -= 1;
+                cpu.characterOperandOffset -= 1;
               }
           }
 
@@ -161,14 +161,14 @@ static void writeOperands (void)
         // Put the character into the data word
         //
 
-        switch (characterOperandSize)
+        switch (cpu.characterOperandSize)
           {
             case TB6:
-              putChar (& data, cpu.CY & 077, characterOperandOffset);
+              putChar (& data, cpu.CY & 077, cpu.characterOperandOffset);
               break;
 
             case TB9:
-              putByte (& data, cpu.CY & 0777, characterOperandOffset);
+              putByte (& data, cpu.CY & 0777, cpu.characterOperandOffset);
               break;
           }
 
@@ -182,7 +182,7 @@ static void writeOperands (void)
                    "writeOperands IT wrote char/byte %012llo to %06o "
                    "tTB=%o tCF=%o\n",
                    data, Yi,
-                   characterOperandSize, characterOperandOffset);
+                   cpu.characterOperandSize, cpu.characterOperandOffset);
 
         // Restore the CA; Read/Write() updates it.
         cpu.TPR.CA = indwordAddress;
@@ -280,21 +280,21 @@ static void readOperands (void)
         //
 
         word18 Yi = GET_ADDR (indword);
-        word6 characterOperandSize = GET_TB (GET_TAG (indword));
-        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+        cpu.characterOperandSize = GET_TB (GET_TAG (indword));
+        cpu.characterOperandOffset = GET_CF (GET_TAG (indword));
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT size=%o offset=%o Yi=%06o\n",
-                   characterOperandSize, characterOperandOffset,
+                   cpu.characterOperandSize, cpu.characterOperandOffset,
                    Yi);
 
-        if (characterOperandSize == TB6 && characterOperandOffset > 5)
+        if (cpu.characterOperandSize == TB6 && cpu.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
                    (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                    "co size == TB6 && offset > 5");
 
-        if (characterOperandSize == TB9 && characterOperandOffset > 3)
+        if (cpu.characterOperandSize == TB9 && cpu.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
                    (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
@@ -317,18 +317,18 @@ static void readOperands (void)
             // number is the decremented value of the character position
             // count, cf, field of the indirect word.
 
-            if (characterOperandOffset == 0)
+            if (cpu.characterOperandOffset == 0)
               {
-                if (characterOperandSize == TB6)
-                    characterOperandOffset = 5;
+                if (cpu.characterOperandSize == TB6)
+                    cpu.characterOperandOffset = 5;
                 else
-                    characterOperandOffset = 3;
+                    cpu.characterOperandOffset = 3;
                 Yi -= 1;
                 Yi &= MASK18;
               }
                 else
               {
-                characterOperandOffset -= 1;
+                cpu.characterOperandOffset -= 1;
               }
           }
 
@@ -345,14 +345,14 @@ static void readOperands (void)
         // Get the character from the data word
         //
 
-        switch (characterOperandSize)
+        switch (cpu.characterOperandSize)
           {
             case TB6:
-              cpu.CY = GETCHAR (data, characterOperandOffset);
+              cpu.CY = GETCHAR (data, cpu.characterOperandOffset);
               break;
 
             case TB9:
-              cpu.CY = GETBYTE (data, characterOperandOffset);
+              cpu.CY = GETBYTE (data, cpu.characterOperandOffset);
               break;
           }
 
@@ -1872,12 +1872,12 @@ restart_1:
         //
 
         word18 Yi = GET_ADDR (indword);
-        word6 characterOperandSize = GET_TB (GET_TAG (indword));
-        word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+        cpu.characterOperandSize = GET_TB (GET_TAG (indword));
+        cpu.characterOperandOffset = GET_CF (GET_TAG (indword));
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT size=%o offset=%o Yi=%06o\n",
-                   characterOperandSize, characterOperandOffset,
+                   cpu.characterOperandSize, cpu.characterOperandOffset,
                    Yi);
 
         word12 tally = GET_TALLY (indword);    // 12-bits
@@ -1899,18 +1899,18 @@ restart_1:
             // number is the decremented value of the character position
             // count, cf, field of the indirect word.
 
-            if (characterOperandOffset == 0)
+            if (cpu.characterOperandOffset == 0)
               {
-                if (characterOperandSize == TB6)
-                    characterOperandOffset = 5;
+                if (cpu.characterOperandSize == TB6)
+                    cpu.characterOperandOffset = 5;
                 else
-                    characterOperandOffset = 3;
+                    cpu.characterOperandOffset = 3;
                 Yi -= 1;
                 Yi &= MASK18;
               }
                 else
               {
-                characterOperandOffset -= 1;
+                cpu.characterOperandOffset -= 1;
               }
             tally ++;
             tally &= 07777; // keep to 12-bits
@@ -1928,14 +1928,14 @@ restart_1:
             // field is reduced to 0, the tally runout indicator is set ON,
             // otherwise it is set OFF.
 
-            characterOperandOffset ++;
+            cpu.characterOperandOffset ++;
 
-            if (((characterOperandSize == TB6) &&
-                 (characterOperandOffset > 5)) ||
-                ((characterOperandSize == TB9) &&
-                 (characterOperandOffset > 3)))
+            if (((cpu.characterOperandSize == TB6) &&
+                 (cpu.characterOperandOffset > 5)) ||
+                ((cpu.characterOperandSize == TB9) &&
+                 (cpu.characterOperandOffset > 3)))
               {
-                characterOperandOffset = 0;
+                cpu.characterOperandOffset = 0;
                 Yi += 1;
                 Yi &= MASK18;
               }
@@ -1951,8 +1951,8 @@ restart_1:
 
         indword = (word36) (((word36) Yi << 18) |
                             (((word36) tally & 07777) << 6) |
-                            characterOperandSize |
-                            characterOperandOffset);
+                            cpu.characterOperandSize |
+                            cpu.characterOperandOffset);
 
         Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH, ci->a);
 
@@ -2269,6 +2269,7 @@ static t_stat doInstruction (void)
     if (cpu.MR.emr && cpu.MR.ihr)
       {
 // XXX Should CA be the upper half of IWB?
+//IF1 sim_printf ("addCUhist\n");
         addCUhist (0, cpu.cu.IWB & MASK18, cpu.TPR.CA, 0, 0, 0);
       }
 #endif
@@ -2278,6 +2279,12 @@ static t_stat doInstruction (void)
 // CANFAULT
 static t_stat DoBasicInstruction (void)
 {
+
+    cpu.directOperandFlag = false;
+    cpu.directOperand = 0;
+    cpu.characterOperandSize = 0;
+    cpu.characterOperandOffset = 0;
+    cpu.crflag = false;
     DCDstruct * i = & cpu.currentInstruction;
     uint opcode  = i->opcode;  // get opcode
 
@@ -2302,6 +2309,7 @@ static t_stat DoBasicInstruction (void)
 
             SC_I_ZERO (cpu.TPR.CA == 0);
             SC_I_NEG (cpu.TPR.CA & SIGN18);
+
             break;
 
         case 0620:  // eax0
@@ -2318,6 +2326,7 @@ static t_stat DoBasicInstruction (void)
 
                 SC_I_ZERO (cpu.TPR.CA == 0);
                 SC_I_NEG (cpu.TPR.CA & SIGN18);
+
             }
             break;
 
@@ -2364,6 +2373,7 @@ static t_stat DoBasicInstruction (void)
             // forming the twos complement of the string of 72 bits. In twos
             // complement arithmetic, the value 0 is its own negative. An
             // overflow condition exists if C(Y-pair) = -2**71.
+
 
             if (cpu.Ypair[0] == 0400000000000LL && cpu.Ypair[1] == 0)
               {
@@ -2470,7 +2480,6 @@ static t_stat DoBasicInstruction (void)
                 CLR_I_MIF;
               }
             }
-
             break;
 
         case 0236:  // ldq
@@ -2515,7 +2524,6 @@ static t_stat DoBasicInstruction (void)
             cpu.rA = cpu.Yblock8[4];
             cpu.rQ = cpu.Yblock8[5];
             cpu.rE = (GETHI (cpu.Yblock8[6]) >> 10) & 0377;   // need checking
-
             break;
 
         case 0720:  // lxl0
@@ -2580,20 +2588,20 @@ static t_stat DoBasicInstruction (void)
         case 0757:  // staq
             cpu.Ypair[0] = cpu.rA;
             cpu.Ypair[1] = cpu.rQ;
-
             break;
 
         case 0551:  // stba
             // 9-bit bytes of C(A) -> corresponding bytes of C(Y), the byte
             // positions affected being specified in the TAG field.
             copyBytes ((i->tag >> 2) & 0xf, cpu.rA, &cpu.CY);
+            cpu.crflag = true;
             break;
 
         case 0552:  // stbq
             // 9-bit bytes of C(Q) -> corresponding bytes of C(Y), the byte
             // positions affected being specified in the TAG field.
             copyBytes ((i->tag >> 2) & 0xf, cpu.rQ, &cpu.CY);
-
+            cpu.crflag = true;
             break;
 
         case 0554:  // stc1
@@ -2617,6 +2625,7 @@ static t_stat DoBasicInstruction (void)
             // the character positions affected being specified in the TAG
             // field.
             copyChars (i->tag, cpu.rA, &cpu.CY);
+            cpu.crflag = true;
 
             break;
 
@@ -2624,6 +2633,7 @@ static t_stat DoBasicInstruction (void)
             // Characters of C(Q) -> corresponding characters of C(Y), the
             // character positions affected being specified in the TAG field.
             copyChars (i->tag, cpu.rQ, &cpu.CY);
+            cpu.crflag = true;
             break;
 
         case 0357: //< stcd
@@ -4768,10 +4778,10 @@ static t_stat DoBasicInstruction (void)
         case 0272:  //< tsp2
         case 0273:  //< tsp3
 
-        case 0670:  //< tsp4
-        case 0671:  //< tsp5
-        case 0672:  //< tsp6
-        case 0673:  //< tsp7
+        case 0670:  // tsp4
+        case 0671:  // tsp5
+        case 0672:  // tsp6
+        case 0673:  // tsp7
             // For n = 0, 1, ..., or 7 as determined by operation code
             //  C(PPR.PRR) -> C(PRn.RNR)
             //  C(PPR.PSR) -> C(PRn.SNR)
@@ -5719,13 +5729,15 @@ static t_stat DoBasicInstruction (void)
                       putbits36_2 (& cpu.MR.r, 33, 0);
                       cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
                       cpu.MR.separ = getbits36_1 (cpu.CY, 21);
-                      cpu.MR.emr = getbits36_1 (cpu.CY, 35);
                       cpu.MR.hrhlt = getbits36_1 (cpu.CY, 28);
 #ifdef DPS8M
                       cpu.MR.hrxfr = getbits36_1 (cpu.CY, 29);
 #endif
                       cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
+#ifdef DPS8M
                       cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
+#endif
+                      cpu.MR.emr = getbits36_1 (cpu.CY, 35);
 #else
 IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
 #ifdef L68
@@ -5809,17 +5821,25 @@ IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
 
                 case 03: // DPS 8m 0's -> history
                   {
-//IF1 sim_printf ("set history to 0\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
                       addHistForce (i, 0, 0);
+// XXX ISOLTS pm700 test-01n 
+// The test clears the history registers but with ihr & emr set, causing
+// the registers to fill with alternating 0's and lcpr instructions; guessing
+// that LCPR should clear ihr.
+                    cpu.MR.ihr = 0;
                   }
                   break;
 
                 case 07: // DPS 8m 1's -> history
                   {
-//IF1 sim_printf ("set history to 1\n");
                     for (uint i = 0; i < N_HIST_SETS; i ++)
                       addHistForce (i, MASK36, MASK36);
+// XXX ISOLTS pm700 test-01n 
+// The test clears the history registers but with ihr & emr set, causing
+// the registers to fill with alternating 0's and lcpr instructions; guessing
+// that LCPR should clear ihr.
+                    cpu.MR.ihr = 0;
                   }
                   break;
 
@@ -6024,8 +6044,6 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair[1] =
                       cpu.history[CU_HIST_REG]
                                  [cpu.history_cyclic[CU_HIST_REG]][1];
-//IF1 sim_printf ("read CU history[%d] %012llo %012llo\n", 
-//  cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic[CU_HIST_REG] =
                       (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
@@ -6961,6 +6979,11 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
                      "Illegal instruction");
     }
+#ifdef L68
+    if (cpu.MR.emr && cpu.MR.ihr &&
+        NonEISopcodes [opcode].reg_use != ru_notou)
+      addOUhist ();
+#endif
     return SCPE_OK;
 }
 

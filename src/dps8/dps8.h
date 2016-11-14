@@ -335,12 +335,21 @@ typedef enum opc_mod
 /*! just dl or css */
 #define IS_DCSS(tag) (((_TM(tag) != 040U) && (_TD(tag) == 007U)) || IS_CSS(tag))
 
-//! Basic + EIS opcodes .....
+enum reg_use { ru_A  = 512, ru_Q  = 256,
+               ru_X0 = 128, ru_X1 =  64, ru_X2 =  32, ru_X3 =  16,
+               ru_X4 =   8, ru_X5 =   4, ru_X6 =   2, ru_X7 =   1,
+               ru_none = 0, ru_notou = 1024 };
+
+#define ru_AQ (ru_A | ru_Q)
+#define ru_Xn(n) (1 << (7 - (n)))
+
+// Basic + EIS opcodes .....
 struct opCode {
-    const char *mne;    ///< mnemonic
-    opc_flag flags;        ///< various and sundry flags
-    opc_mod mods;         ///< disallowed addr mods
-    uint ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+    const char *mne;    // mnemonic
+    opc_flag flags;     // various and sundry flags
+    opc_mod mods;       // disallowed addr mods
+    uint ndes;          // number of operand descriptor words for instruction (mw EIS)
+    enum reg_use reg_use;            // register usage
 };
 typedef struct opCode opCode;
 

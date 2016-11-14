@@ -431,7 +431,9 @@ typedef struct mode_register
     word1 hrxfr;
 #endif
     word1 ihr;
+#ifdef DPS8M
     word1 ihrrs;
+#endif
   } _mode_register;
 #else
 typedef struct mode_register
@@ -1080,6 +1082,8 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 #define N_WAM_MASK 017
 #endif
 
+// Operations Unit history
+
 typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
@@ -1136,6 +1140,14 @@ typedef struct
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
     _sdw _s;
+
+
+    // Operations Unit/Address Modification
+    bool directOperandFlag;
+    word36 directOperand;
+    word6 characterOperandSize;
+    word6 characterOperandOffset;
+    bool crflag;
 
 #ifdef PANEL
     // Intermediate data collection for APU SCROLL 
@@ -1215,6 +1227,7 @@ typedef struct
     // Panel switches
     bool panelInitialize;
 #endif
+
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1459,7 +1472,7 @@ void addEAPUhist (word18 ZCA, word18 opcode);
 #ifdef L68
 void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
 // XXX addDUhist
-// XXX addOUhist
+void addOUhist (void);
 // XXX addAPUhist
 #endif
 void addHist (uint hset, word36 w0, word36 w1);

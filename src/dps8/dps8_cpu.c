@@ -35,6 +35,7 @@
 #ifdef HDBG
 #include "hdbg.h"
 #endif
+#include "dps8_opcodetable.h"
 
 #ifdef FNP2
 #else
@@ -3993,7 +3994,34 @@ void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word
 // bit 35= unused            bit 71= unused
 
 
-// XXX addOUhist
+void addOUhist (void)
+  {
+    word36 w0 = 0, w1 = 0;
+     
+    // OP CODE (high nine bits)
+    word9 opc = getbits36_9 (IWB_IRODD, 18);
+    putbits36_9 (& w0, 0, opc);
+    
+    // 9 CHAR
+    putbits36_1 (& w0, 9, cpu.characterOperandSize ? 1 : 0);
+
+    // TAG 1/2/3
+    putbits36_3 (& w0, 10, cpu.characterOperandOffset & MASK3);
+
+    // CRFLAG
+    putbits36_3 (& w0, 13, cpu.crflag);
+
+    // DRFLAG
+    putbits36_3 (& w0, 14, cpu.directOperandFlag ? 1 : 0);
+
+
+
+    // stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
+    putbits36_10 (& w1, 41 - 36, ((~NonEISopcodes [opc].reg_use) & MASK10));
+
+    putbits36_18 (& w1, 54 - 36, cpu.PPR.IC);
+    addHist (OU_HIST_REG, w0, w1);
+  }
 
 // According to ISOLTS
 //  0:2 OPCODE RP

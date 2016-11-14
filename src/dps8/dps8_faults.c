@@ -532,6 +532,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
           cpu . cu . IA = 010;
       }
 
+#ifdef DPS8M
     // History registers
     // IHRRS; AL39 pg 49
     // Additional resetting of bit 30. If bit 31 = 1, the following faults also
@@ -554,6 +555,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
             cpu.MR.ihr = 0;
           }
       }
+#endif
     // Enable History Registers.  This bit will be reset by ... an Op Not
     // Complete fault. It may be reset by other faults (see bit 31). 
     if (faultNumber == FAULT_ONC)
