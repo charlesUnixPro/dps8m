@@ -3982,7 +3982,7 @@ IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
             cpu.MR.ihr = 0;
           }
 IF1 sim_printf ("trapping......\n");
-        set_FFV_fault (2);
+        set_FFV_fault (4);
         return;
       }
   }

@@ -627,6 +627,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Floating fault %d '%s'\n", 
                fault_number, fault_msg);
+IF1 sim_printf ("Floating fault %d '%s'\n", fault_number, fault_msg);
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
@@ -640,6 +641,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
       }
 
     cpu.FFV_fault_number = fault_number;
+    cpu.faultNumber = fault_number;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
     cpu.CMR.csh_reg = 0;   
@@ -813,7 +815,8 @@ void set_FFV_fault (uint f_fault_no)
   {
     sim_debug (DBG_FAULT, & cpu_dev, "set_FFV_fault CPU f_fault_no %u\n",
                f_fault_no);
-    cpu.FFV_faults_preset |= 1u << f_fault_no;
+    // Map fault number (2/4/6) to bit mask  01/02/04
+    cpu.FFV_faults_preset |= 1u << ((f_fault_no / 2) - 1);
   }
 #endif
 

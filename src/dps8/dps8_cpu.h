@@ -424,6 +424,10 @@ typedef struct mode_register
     word36 r;
 #ifdef L68
     word15 FFV;
+    word1 OC_TRAP;
+    word1 ADR_TRAP;
+    word9 OPCODE;
+    word1 OPCODEX;
 #endif
     word1 sdpap;
     word1 separ;

@@ -1367,6 +1367,17 @@ t_stat executeInstruction (void)
     addToTheMatrix (opcode, opcodeX, a, tag);
 #endif
 
+#ifdef L68
+    if (cpu.MR.emr && cpu.MR.OC_TRAP)
+      {
+        if (cpu.MR.OPCODE == ci->opcode &&
+            cpu.MR.OPCODEX == ci->opcodeX) 
+          {
+IF1 sim_printf ("trapping opcode match......\n");
+            set_FFV_fault (2);
+          }
+      }
+#endif // L68
 ///
 /// executeInstruction: Non-restart processing
 ///
@@ -5871,6 +5882,10 @@ static t_stat DoBasicInstruction (void)
                   putbits36_2 (& cpu.MR.r, 33, 0);
 #ifdef L68
                   cpu.MR.FFV = getbits36_15 (cpu.CY, 0);
+                  cpu.MR.OC_TRAP = getbits36_1 (cpu.CY, 16);
+                  cpu.MR.ADR_TRAP = getbits36_1 (cpu.CY, 17);
+                  cpu.MR.OPCODE = getbits36_9 (cpu.CY, 18);
+                  cpu.MR.OPCODEX = getbits36_1 (cpu.CY, 27);
 #endif
                   cpu.MR.sdpap = getbits36_1 (cpu.CY, 20);
                   cpu.MR.separ = getbits36_1 (cpu.CY, 21);
