@@ -159,7 +159,7 @@ enum { N_DEV_CODES = 64 };
 #define MASK27          0777777777llu
 
 
-// Sign extend DPS8 words into host words
+// Sign extend DPS8M words into host words
 
 static inline int SIGNEXT6_int (word6 w)
   {
@@ -278,10 +278,10 @@ static inline int128 SIGNEXT72_128 (word72 w)
     return w & MASK72;
   }
 
-// Sign extend DPS8 words into DPS8 words
+// Sign extend DPS8M words into DPS8M words
 // NB: The high order bits in the host container will
 // set to 0; you cannot do host math with
-// there results.
+// these results.
 
 static inline word18 SIGNEXT15_18 (word15 w)
   {

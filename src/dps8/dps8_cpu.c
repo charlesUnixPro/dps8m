@@ -738,7 +738,7 @@ void setup_scbank_map (void)
 //   3. remove the right free-edge connector on the 645pq wwb at slot ab28.
 //
 // During ISOLTS initialization, it requires that the memory switch be set to
-// '3' for all eight ports; this corresponds to '2' for the DPS8, 131072
+// '3' for all eight ports; this corresponds to '2' for the DPS8M (131072)
 // Then:
 // isolts: a "lda 65536" (64k) failed to produce a store fault
 //
@@ -947,7 +947,7 @@ void cpu_init (void)
 #endif
   }
 
-// DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
+// DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
@@ -955,7 +955,7 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
 {
     //memset (M, -1, MEMSIZE * sizeof (word36));
 
-    // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
+    // Fill DPS8M memory with zeros, plus a flag only visible to the emulator
     // marking the memory as uninitialized.
 
     for (uint i = 0; i < MEMSIZE; i ++)
@@ -1638,6 +1638,8 @@ setCPU:;
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
+
+
         switch (cpu.cycle)
           {
             case INTERRUPT_cycle:
@@ -2151,9 +2153,18 @@ setCPU:;
 
                 // (12-bits of which the top-most 7-bits are used)
                 uint fltAddress = (cpu.switches.FLT_BASE << 5) & 07740;
+#ifdef L68
+                if (cpu.is_FFV)
+                  {
+                    cpu.is_FFV = false;
+                    // The high 15 bits
+                    fltAddress = (cpu.MR.FFV & MASK15) << 3;
+IF1 sim_printf ("fltAddress %06o\n", fltAddress);
+                  }
+#endif
 
                 // absolute address of fault YPair
-                word24 addr = fltAddress +  2 * cpu.faultNumber;
+                word24 addr = fltAddress + 2 * cpu.faultNumber;
   
                 core_read2 (addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
@@ -3845,7 +3856,7 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
 
 void addHist (uint hset, word36 w0, word36 w1)
   {
-    if (cpu.MR.emr)
+    //if (cpu.MR.emr)
       {
         cpu.history [hset] [cpu.history_cyclic[hset]] [0] = w0;
         cpu.history [hset] [cpu.history_cyclic[hset]] [1] = w1;
@@ -3861,12 +3872,16 @@ void addHistForce (uint hset, word36 w0, word36 w1)
   }
 
 #ifdef DPS8M
-void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2)
+//void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2)
+void addCUhist (void)
   {
+    word36 flags = 0; // XXX fill out
+    word5 proccmd = 0; // XXX fill out
+    word7 flags2 = 0; // XXX fill out
     word36 w0 = 0, w1 = 0;
     w0 |= flags & 0777777000000;
-    w0 |= opcode & MASK18;
-    w1 |= (address & MASK24) << 12;
+    w0 |= IWB_IRODD & MASK18;
+    w1 |= (cpu.iefpFinalAddress & MASK24) << 12;
     w1 |= (proccmd & MASK5) << 7;
     w1 |= flags2 & 0176;
     addHist (CU_HIST_REG, w0, w1);
@@ -3940,20 +3955,34 @@ void addEAPUhist (word18 ZCA, word18 opcode)
 //  46 -PC BUSY
 //  47 PORT BUSY
 
-void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2)
+//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2)
+void addCUhist (void)
   {
+    word36 flags = 0; // XXX fill out
+    word5 proccmd = 0; // XXX fill out
+    word4 sel = 0; // XXX fill uout
+    word9 flags2 = 0; // XXX fill uout
+//IF1 if (cpu.MR.hrhlt) sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
+IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
     w0 |= flags & 0777777000000;
-    w0 |= opcode & MASK18;
-    w1 |= (address & MASK18) << 18;
+    w0 |= IWB_IRODD & MASK18;
+    w1 |= (cpu.TPR.CA & MASK18) << 18;
     w1 |= (proccmd & MASK5) << 13;
     w1 |= (sel & MASK4) << 9;
 // XXX ignoring SEL
     w1 |= flags2 & 0777;
     addHist (CU_HIST_REG, w0, w1);
+    // Check for overflow
+    if (cpu.MR.hrhlt && cpu.history_cyclic[CU_HIST_REG] == 0)
+      {
+        //cpu.history_cyclic[CU_HIST_REG] = 15;
+        cpu.MR.ihr = 0;
+IF1 sim_printf ("trapping......\n");
+        set_FFV_fault (2);
+        return;
+      }
   }
-
-// XXX addDUhist
 
 // du history register inputs(actual names)
 // bit 00= fpol-cx;010       bit 36= fdud-dg;112
@@ -3993,6 +4022,12 @@ void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word
 // bit 34= finhib-stc1-cx;010bit 70= unused
 // bit 35= unused            bit 71= unused
 
+void addDUhist (void)
+  {
+    word36 w0 = 0, w1 = 0;
+    addHist (DU_HIST_REG, w0, w1);
+  }
+     
 
 void addOUhist (void)
   {
@@ -4003,18 +4038,31 @@ void addOUhist (void)
     putbits36_9 (& w0, 0, opc);
     
     // 9 CHAR
-    putbits36_1 (& w0, 9, cpu.characterOperandSize ? 1 : 0);
+    putbits36_1 (& w0, 9, cpu.ou.characterOperandSize ? 1 : 0);
 
     // TAG 1/2/3
-    putbits36_3 (& w0, 10, cpu.characterOperandOffset & MASK3);
+    putbits36_3 (& w0, 10, cpu.ou.characterOperandOffset & MASK3);
 
     // CRFLAG
-    putbits36_3 (& w0, 13, cpu.crflag);
+    putbits36_1 (& w0, 13, cpu.ou.crflag);
 
     // DRFLAG
-    putbits36_3 (& w0, 14, cpu.directOperandFlag ? 1 : 0);
+    putbits36_1 (& w0, 14, cpu.ou.directOperandFlag ? 1 : 0);
 
+    // EAC
+    putbits36_2 (& w0, 15, cpu.ou.eac);
 
+    // RS 
+    putbits36_9 (& w0, 18, opc);
+
+    // RB1 FULL
+    putbits36_1 (& w0, 27, cpu.ou.RB1_FULL);
+
+    // RP FULL
+    putbits36_1 (& w0, 28, cpu.ou.RP_FULL);
+
+    // RS FULL
+    putbits36_1 (& w0, 29, cpu.ou.RS_FULL);
 
     // stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
     putbits36_10 (& w1, 41 - 36, ((~NonEISopcodes [opc].reg_use) & MASK10));

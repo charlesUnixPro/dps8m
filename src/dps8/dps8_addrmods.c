@@ -27,7 +27,7 @@
 
 static word18 getCr (word4 Tdes)
   {
-    cpu.directOperandFlag = false;
+    cpu.ou.directOperandFlag = false;
 
     if (Tdes == 0)
       return 0;
@@ -47,13 +47,13 @@ static word18 getCr (word4 Tdes)
           return GETHI (cpu . rQ);
 
         case TD_DU: // none; operand has the form y || (00...0)18
-          cpu.directOperand = 0;
-          SETHI (cpu.directOperand, cpu . rY);
-          cpu.directOperandFlag = true;
+          cpu.ou.directOperand = 0;
+          SETHI (cpu.ou.directOperand, cpu . rY);
+          cpu.ou.directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
                     "getCr(TD_DU): rY=%06o directOperand=%012llo\n",
-                    cpu . rY, cpu.directOperand);
+                    cpu . rY, cpu.ou.directOperand);
 
           return 0;
 
@@ -67,13 +67,13 @@ static word18 getCr (word4 Tdes)
             return GETLO (cpu . rQ);
 
         case TD_DL: // none; operand has the form (00...0)18 || y
-            cpu.directOperand = 0;
-            SETLO (cpu.directOperand, cpu . rY);
-            cpu.directOperandFlag = true;
+            cpu.ou.directOperand = 0;
+            SETLO (cpu.ou.directOperand, cpu . rY);
+            cpu.ou.directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "getCr(TD_DL): rY=%06o directOperand=%012llo\n",
-                       cpu . rY, cpu.directOperand);
+                       cpu . rY, cpu.ou.directOperand);
 
             return 0;
       }
@@ -389,7 +389,7 @@ t_stat doComputedAddressFormation (void)
 
     word6 iTAG;   // tag of word preceeding an indirect fetch
 
-    cpu.directOperandFlag = false;
+    cpu.ou.directOperandFlag = false;
 
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
       cpu . rTAG = 0;
@@ -461,12 +461,12 @@ startCA:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: Cr=%06o\n", Cr);
 
-        if (cpu.directOperandFlag)
+        if (cpu.ou.directOperandFlag)
           {
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "R_MOD: directOperand = %012llo\n", cpu.directOperand);
+                       "R_MOD: directOperand = %012llo\n", cpu.ou.directOperand);
 
-            //cpu . TPR . CA = cpu.directOperand;
+            //cpu . TPR . CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
             return SCPE_OK;
           }
@@ -690,12 +690,12 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cpu . cu  . CT_HOLD), Cr);
 
-                if (cpu.directOperandFlag)
+                if (cpu.ou.directOperandFlag)
                   {
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): CT_HOLD DO %012llo\n", cpu.directOperand);
-                    //cpu.TPR.CA += cpu.directOperand;
-                    //cpu.TPR.CA = cpu.directOperand;
+                               "IR_MOD(TM_R): CT_HOLD DO %012llo\n", cpu.ou.directOperand);
+                    //cpu.TPR.CA += cpu.ou.directOperand;
+                    //cpu.TPR.CA = cpu.ou.directOperand;
                     //cpu.TPR.CA &= MASK18;   // keep to 18-bits
 
                     //sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -729,10 +729,10 @@ startCA:;
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",
                            Td, Cr, cpu . TPR . CA);
 
-                if (cpu.directOperandFlag)
+                if (cpu.ou.directOperandFlag)
                   {
-                    //cpu . TPR . CA += cpu.directOperand;
-                    cpu . TPR . CA = (word18) cpu.directOperand & MASK18; // keep to 18-bits
+                    //cpu . TPR . CA += cpu.ou.directOperand;
+                    cpu . TPR . CA = (word18) cpu.ou.directOperand & MASK18; // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
@@ -868,20 +868,20 @@ startCA:;
                 //
 
                 word18 Yi_ = GET_ADDR (indword);
-                cpu.characterOperandSize = GET_TB (GET_TAG (indword));
-                cpu.characterOperandOffset = GET_CF (GET_TAG (indword));
+                cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
+                cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
-                           cpu.characterOperandSize, cpu.characterOperandOffset,
+                           cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
                            Yi_);
 
-                if (cpu.characterOperandSize == TB6 && cpu.characterOperandOffset > 5)
+                if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB6 && offset > 5");
 
-                if (cpu.characterOperandSize == TB9 && cpu.characterOperandOffset > 3)
+                if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB9 && offset > 3");
@@ -909,18 +909,18 @@ startCA:;
 		// character position count, cf, field of the indirect
 		// word.
 
-                    if (cpu.characterOperandOffset == 0)
+                    if (cpu.ou.characterOperandOffset == 0)
                       {
-                        if (cpu.characterOperandSize == TB6)
-                            cpu.characterOperandOffset = 5;
+                        if (cpu.ou.characterOperandSize == TB6)
+                            cpu.ou.characterOperandOffset = 5;
                         else
-                            cpu.characterOperandOffset = 3;
+                            cpu.ou.characterOperandOffset = 3;
                         Yi_ -= 1;
                         Yi_ &= MASK18;
                       }
                         else
                       {
-                        cpu.characterOperandOffset -= 1;
+                        cpu.ou.characterOperandOffset -= 1;
                       }
                   }
 

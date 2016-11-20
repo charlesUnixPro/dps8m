@@ -393,7 +393,6 @@ struct _cache_mode_register
     word1    lev_ful;
     word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
     word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
-    //word1    opnd_on; // DPS8, but not DPS8M
 #ifdef L68
     word1    opnd_on; // 1: The cache memory (if active) is used for operands.
 #endif
@@ -423,6 +422,9 @@ typedef struct _cache_mode_register _cache_mode_register;
 typedef struct mode_register
   {
     word36 r;
+#ifdef L68
+    word15 FFV;
+#endif
     word1 sdpap;
     word1 separ;
     word1 emr;
@@ -431,9 +433,7 @@ typedef struct mode_register
     word1 hrxfr;
 #endif
     word1 ihr;
-#ifdef DPS8M
     word1 ihrrs;
-#endif
   } _mode_register;
 #else
 typedef struct mode_register
@@ -739,6 +739,38 @@ typedef struct
     bool useMap;
   } switches_t;
 
+#ifdef L68
+enum ou_cycle_e
+  {
+    ou_GIN = 0400,
+    ou_GOS = 0200,
+    ou_GD1 = 0100,
+    ou_GD2 = 0040,
+    ou_GOE = 0020,
+    ou_GOA = 0010,
+    ou_GOM = 0004,
+    ou_GON = 0002,
+    ou_GOF = 0001
+  };
+#endif
+
+typedef struct
+  {
+    // Operations Unit/Address Modification
+    bool directOperandFlag;
+    word36 directOperand;
+    word6 characterOperandSize;
+    word6 characterOperandOffset;
+    bool crflag;
+#ifdef L68
+    word2 eac;
+    word1 RB1_FULL;
+    word1 RP_FULL;
+    word1 RS_FULL;
+    word9 cycle;
+    word1 STR_OP;
+#endif
+  } ou_unit_data_t;
 // Control unit data (288 bits) 
 
 typedef struct
@@ -923,7 +955,92 @@ typedef struct
 #define USE_IRODD (cpu.cu.rd && ((cpu. PPR.IC & 1) != 0)) 
 #define IWB_IRODD (USE_IRODD ? cpu.cu.IRODD : cpu.cu.IWB)
 
-// Control unit data (288 bits) 
+#ifdef PANEL
+// 6180 panel DU control flags with guessed meanings based on DU history 
+// register bits.
+// 
+enum du_cycle1_e
+  {
+    du1_FDUD  = 01000000000000ll, // Decimal Unit Idle
+    du1_GDLD  = 00400000000000ll, // Decimal Unit Load
+    du1_GLP1  = 00200000000000ll, // PR address bit 0
+    du1_GLP2  = 00100000000000ll, // PR address bit 1
+    du1_GEA1  = 00040000000000ll, // Descriptor 1 active
+    du1_GEM1  = 00020000000000ll, // 
+    du1_GED1  = 00010000000000ll, // Prepare alignment count for first numeric operand load
+    du1_GDB   = 00004000000000ll, // Decimal to binary gate
+    du1_GBD   = 00002000000000ll, // Binary to decimal gate
+    du1_GSP   = 00001000000000ll, // Shift procedure gate
+    du1_GED2  = 00000400000000ll, // Prepare alignment count for second numeric operand load
+    du1_GEA2  = 00000200000000ll, // Descriptor 2 active
+    du1_GADD  = 00000100000000ll, // Add subtract execute gate
+    du1_GCMP  = 00000040000000ll, // 
+    du1_GMSY  = 00000020000000ll, // 
+    du1_GMA   = 00000010000000ll, // 
+    du1_GMS   = 00000004000000ll, // 
+    du1_GQDF  = 00000002000000ll, // 
+    du1_GQPA  = 00000001000000ll, // 
+    du1_GQR1  = 00000000400000ll, // Load rewrite register one gate
+    du1_GQR2  = 00000000200000ll, // Load rewrite register two gate
+    du1_GRC   = 00000000100000ll, // 
+    du1_GRND  = 00000000040000ll, // 
+    du1_GCLZ  = 00000000020000ll, // Load with count less than word size
+    du1_GEDJ  = 00000000010000ll, // ? is the GED3?
+    du1_GEA3  = 00000000004000ll, // Descriptor 3 active
+    du1_GEAM  = 00000000002000ll, // 
+    du1_GEDC  = 00000000001000ll, // 
+    du1_GSTR  = 00000000000400ll, // Decimal unit store
+    du1_GSDR  = 00000000000200ll, // 
+    du1_NSTR  = 00000000000100ll, // Numeric store gate
+    du1_SDUD  = 00000000000040ll, //
+    du1_U32   = 00000000000020ll, // ?
+    du1_U33   = 00000000000010ll, // ?
+    du1_U34   = 00000000000004ll, // ?
+    du1_FLTG  = 00000000000002ll, // Floating result flag
+    du1_FRND  = 00000000000001ll  // Rounding flag
+  };
+
+enum du_cycle2_e
+  {
+    du2_ALD1  = 01000000000000ll, // Alphanumeric operand one load gate
+    du2_ALD2  = 00400000000000ll, // Alphanumeric operand two load gate
+    du2_NLD1  = 00200000000000ll, // Numeric operand one load gate
+    du2_NLD2  = 00100000000000ll, // Numeric operand two load gate
+    du2_LWT1  = 00040000000000ll, // Load rewrite register one gate
+    du2_LWT2  = 00020000000000ll, // Load rewrite register two gate
+    du2_ASTR  = 00010000000000ll, // Alphanumeric store gate
+    du2_ANPK  = 00004000000000ll, // Alphanumeric packing cycle gate
+    du2_FGCH  = 00002000000000ll, // Character operation gate
+    du2_XMOP  = 00001000000000ll, // Execute MOP
+    du2_BLNK  = 00000400000000ll, // Blanking gate
+    du2_U11   = 00000200000000ll, // 
+    du2_U12   = 00000100000000ll, // 
+    du2_CS_0  = 00000040000000ll, // 
+    du2_CU_0  = 00000020000000ll, //  CS=0
+    du2_FI_0  = 00000010000000ll, //  CU=0
+    du2_CU_V  = 00000004000000ll, //  CU=V
+    du2_UM_V  = 00000002000000ll, //  UM<V
+    du2_U18   = 00000001000000ll, // ?
+    du2_U19   = 00000000400000ll, // ?
+    du2_U20   = 00000000200000ll, // ?
+    du2_U21   = 00000000100000ll, // ?
+    du2_U22   = 00000000040000ll, // ?
+    du2_U23   = 00000000020000ll, // ?
+    du2_U24   = 00000000010000ll, // ?
+    du2_U25   = 00000000004000ll, // ?
+    du2_U26   = 00000000002000ll, // ?
+    du2_U27   = 00000000001000ll, // ?
+    du2_L128  = 00000000000400ll, // L<128 Length less than 128
+    du2_END_SEQ = 00000000000200ll, // End sequence flag
+    du2_U29   = 00000000000100ll, // ?
+    du2_U31   = 00000000000040ll, // ?
+    du2_U32   = 00000000000020ll, // ?
+    du2_U33   = 00000000000010ll, // ?
+    du2_U34   = 00000000000004ll, // ?
+    du2_U35   = 00000000000002ll, // ?
+    du2_U36   = 00000000000001ll  // ?
+  };
+#endif
 
 typedef struct du_unit_data_t
   {
@@ -1062,6 +1179,10 @@ typedef struct du_unit_data_t
     word36 image [8];
 #endif
 
+#ifdef PANEL
+    word37 cycle1;
+    word37 cycle2;
+#endif
   } du_unit_data_t;
 
 // History registers
@@ -1113,6 +1234,7 @@ typedef struct
     switches_t switches;
     ctl_unit_data_t cu;
     du_unit_data_t du;
+    ou_unit_data_t ou;
     word36 faultRegister [2];
 
     word36   rA;     // accumulator
@@ -1140,15 +1262,6 @@ typedef struct
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
     _sdw _s;
-
-
-    // Operations Unit/Address Modification
-    bool directOperandFlag;
-    word36 directOperand;
-    word6 characterOperandSize;
-    word6 characterOperandOffset;
-    bool crflag;
-
 #ifdef PANEL
     // Intermediate data collection for APU SCROLL 
     word18 lastPTWOffset;
@@ -1184,11 +1297,24 @@ typedef struct
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
     _cache_mode_register CMR;
     _mode_register MR;
+
+    // G7 faults
+
     bool bTroubleFaultCycle;
     uint g7FaultsPreset;
     uint g7Faults;
     //_fault_subtype  g7SubFaultsPreset [N_FAULTS];
     _fault_subtype  g7SubFaults [N_FAULTS];
+
+#ifdef L68
+    // FFV faults
+
+     uint FFV_faults_preset;
+     uint FFV_faults;
+     uint FFV_fault_number;
+     bool is_FFV;
+#endif
+
     word24 iefpFinalAddress;
     word36 CY;              // C(Y) operand data from memory
     word36 Ypair[2];        // 2-words
@@ -1214,6 +1340,14 @@ typedef struct
     uint history_cyclic [N_HIST_SETS]; // 0..63
     word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];
 
+    // Used by LCPR to prevent the LCPR instruction from being recorded
+    // in the CU.
+    bool skip_cu_hist;
+    // Changes to the mode register history bits do not take affect until
+    // the next instruction (ISOLTS 700 2a). Cache the values here so
+    // that post register updates can see the old values.
+    _mode_register MR_cache;
+    
     // If the instruction wants overflow thrown after operand write
     bool dlyFlt;
 
@@ -1464,15 +1598,18 @@ int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M
-void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+//void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+void addCUhist (void);
 void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
 #endif
 #ifdef L68
-void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
+//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
+void addCUhist (void);
 // XXX addDUhist
 void addOUhist (void);
+void addDUhist (void);
 // XXX addAPUhist
 #endif
 void addHist (uint hset, word36 w0, word36 w1);

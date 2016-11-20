@@ -690,11 +690,13 @@ void ufa (bool sub)
     // * C(AQ)0 is inverted to restore the sign.
     // * C(E) is increased by one.
 
+#ifdef ISOLTS
 static int testno = 1;
 IF1 sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
 IF1 sim_printf ("UFA E %03o A %012llo Q %012llo Y %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 IF1 sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
 IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
+#endif
 
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
@@ -710,7 +712,9 @@ IF1 sim_printf ("UFA e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK
     int e3 = -1;
 
     // which exponent is smaller?
-    
+#ifdef L68
+    cpu.ou.cycle |= ou_GOE;   
+#endif
     int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
@@ -943,6 +947,9 @@ void fno (word8 * E, word36 * A, word36 * Q)
     //
     // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GON;
+#endif
     *A &= DMASK;
     *Q &= DMASK;
     float72 m = ((word72)(*A) << 36) | (word72)(*Q);
@@ -1125,7 +1132,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
  * floating negate ...
  */
 void fneg (void)
-{
+  {
     // This instruction changes the number in C(EAQ) to its normalized negative
     // (if C(AQ) ≠ 0). The operation is executed by first forming the twos
     // complement of C(AQ), and then normalizing C(EAQ).
@@ -1182,15 +1189,16 @@ void fneg (void)
     cpu . rQ = mc & MASK36;
 #else
     // Form the mantissa from AQ
-    word72 m = ((word72)(cpu . rA & MASK36) << 36) | (word72)(cpu . rQ & MASK36);
+    word72 m = ((word72) (cpu.rA & MASK36) << 36) | (word72) (cpu.rQ & MASK36);
 
-    // If the mantissa is 4000...00 (least negative value, it is negable in two's
-    // complement arithmetic. Divide it by 2, losing a bit of precision, and increment
-    // the exponent.
+    // If the mantissa is 4000...00 (least negative value, it is negable in
+    // two's complement arithmetic. Divide it by 2, losing a bit of precision,
+    // and increment the exponent.
     if (m == SIGN72)
       {
-        // Negation of 400..0 / 2 is 200..0; we can get there shifting; we know that
-        // a zero will be shifted into the sign bit becuase fo the masking in 'm='.
+        // Negation of 400..0 / 2 is 200..0; we can get there shifting; we know
+        // that a zero will be shifted into the sign bit becuase fo the masking
+        // in 'm='.
         m >>= 1;
         // Increment the exp, checking for overflow.
         if (cpu . rE == 127)
@@ -1207,10 +1215,10 @@ void fneg (void)
         // Do the negation
         m = -m;
       }
-    cpu . rA = (m >> 36) & MASK36;
-    cpu . rQ = m & MASK36;
+    cpu.rA = (m >> 36) & MASK36;
+    cpu.rQ = m & MASK36;
 #endif
-    fno (&cpu.rE, &cpu.rA, &cpu.rQ);  // normalize
+    fno (& cpu.rE, & cpu.rA, & cpu.rQ);  // normalize
 }
 
 /*!
@@ -1442,17 +1450,18 @@ void fdi (void)
  * single precision floating round ...
  */
 void frd (void)
-{
-    // If C(AQ) ≠ 0, the frd instruction performs a true round to a precision
+  {
+    // If C(AQ) != 0, the frd instruction performs a true round to a precision
     // of 28 bits and a normalization on C(EAQ).
     // A true round is a rounding operation such that the sum of the result of
     // applying the operation to two numbers of equal magnitude but opposite
     // sign is exactly zero.
     
     // The frd instruction is executed as follows:
-    // C(AQ) + (11...1)29,71 → C(AQ)
+    // C(AQ) + (11...1)29,71 -> C(AQ)
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+    // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
+    // increased by 1.
     // If overflow does not occur, C(EAQ) is normalized.
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     
@@ -1472,7 +1481,7 @@ void frd (void)
     // 010760000002 00000100 011111000000000000000000001000000000 000000000000000000000000000000000000
     // I think this is wrong
     
-    // 0 → C(AQ)28,71
+    // 0 -> C(AQ)28,71
     //              00000110 000111110000000000000000000000000000 000000000000000000000000000000000000
     // after normalization .....
     // 010760000000 00000100 011111000000000000000000000000000000 000000000000000000000000000000000000
@@ -1503,16 +1512,19 @@ void frd (void)
     // So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in
     // later models.) I'll assume AL39 is wrong.
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GOS;
+#endif
 IF1 sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 
     word72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
     if (m == 0)
-    {
+      {
         cpu.rE = 0200U; /*-128*/
         SET_I_ZERO;
         CLR_I_NEG;
         return;
-    }
+      }
     
 
 #if 1 // according to RJ78
@@ -1523,9 +1535,9 @@ IF1 sim_printf ("FRD E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, c
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if ((m & SIGN72) == 0)
-    {
-      carry = 1;
-    }
+      {
+        carry = 1;
+      }
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
 IF1 sim_printf ("FRD add ones E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
@@ -1552,17 +1564,18 @@ sim_printf ("FRD add carry E %03o m %012llo %012llo flags %06o\n", cpu.rE, (word
     // increased by 1.
 
     if ((flags1 | flags2) & I_OFLOW)
-    {
+      {
         m >>= 1;
         if (cpu.rE == 127)
-        {
+          {
             SET_I_EOFL;
             if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "frd exp overflow fault");
-        }
+              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                          "frd exp overflow fault");
+          }
         cpu.rE ++;
 IF1 sim_printf ("FRD overflow E %03o m %012llo %012llo\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
-    }
+      }
 
     cpu.rA = (m >> 36) & MASK36;
     cpu.rQ = m & MASK36;
@@ -1570,40 +1583,40 @@ IF1 sim_printf ("FRD overflow E %03o m %012llo %012llo\n", cpu.rE, (word36) (m >
 IF1 sim_printf ("FRD E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
     // If overflow does not occur, C(EAQ) is normalized.
     if (! ((flags1 | flags2) & I_OFLOW))
-    {
+      {
         if (cpu.rA != 0 || cpu.rQ != 0)
-          fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          fno (& cpu.rE, & cpu.rA, & cpu.rQ);
 IF1 sim_printf ("FRD normalized E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
-    }
+      }
 
-    // 0 → C(AQ)28,71  (per. RJ78)
+    // 0 -> C(AQ)28,71  (per. RJ78)
     cpu.rA &= 0777777777400;
     cpu.rQ = 0;
 
     if (cpu.rA == 0 && cpu.rQ == 0)
-    {
-      SET_I_ZERO;
-      cpu . rE = 0200U; /*-128*/
-    }
+      {
+        SET_I_ZERO;
+        cpu.rE = 0200U; /*-128*/
+      }
     else
-    {
-      CLR_I_ZERO;
-    }
+      {
+        CLR_I_ZERO;
+      }
     SC_I_NEG (cpu.rA & SIGN36);
 IF1 sim_printf ("FRD final E %03o A %012llo Q %012llo\n", cpu.rE, cpu.rA, cpu.rQ);
-}
+  }
 
-void fstr(word36 *Y)
-{
-    //The fstr instruction performs a true round and normalization on C(EAQ) as
-    //it is stored.
-    //The definition of true round is located under the description of the frd
-    //instruction.
-    //The definition of normalization is located under the description of the
-    //fno instruction.
-    //Attempted repetition with the rpl instruction causes an illegal procedure
-    //fault.
+void fstr (word36 *Y)
+  {
+    // The fstr instruction performs a true round and normalization on C(EAQ)
+    // as it is stored.  The definition of true round is located under the
+    // description of the frd instruction.  The definition of normalization is
+    // located under the description of the fno instruction.  Attempted
+    // repetition with the rpl instruction causes an illegal procedure fault.
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GOS;
+#endif
     word36 A = cpu . rA, Q = cpu . rQ;
     int E = SIGNEXT8_int (cpu . rE & MASK8);
     A &= DMASK;
@@ -1612,14 +1625,14 @@ void fstr(word36 *Y)
    
     float72 m = ((word72)A << 36) | (word72)Q;
     if (m == 0)
-    {
+      {
         E = -128;
         SET_I_ZERO;
         CLR_I_NEG;
         *Y = 0;
         putbits36_8 (Y, 0, (word8) E & MASK8);
         return;
-    }
+      }
     
     // C(AQ) + (11...1)29,71 → C(AQ)
     bool s1 = (m & SIGN72) != (word72)0;
@@ -1627,133 +1640,136 @@ void fstr(word36 *Y)
     m += (word72)0177777777777777LL; // add 1's into lower 43-bits
     
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (!s1)
-        m += 1;
+    if (! s1)
+      m += 1;
     
     // 0 → C(AQ)29,71 (AL39)
     // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
-    //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
-    //m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
     putbits72 (& m, 28, 44, 0);  // 28-71 => 0 per DH02
     
     bool s2 = (m & SIGN72) != (word72)0;
     
     bool ov = s1 != s2;   // sign change denotes overflow
     if (ov)
-    {
-        // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+      {
+        // If overflow occurs, C(AQ) is shifted one place to the right and C(E)
+        // is increased by 1.
         m >>= 1;
         if (s1) // (was s2) restore sign if necessary
-            m |= SIGN72;
+          m |= SIGN72;
         
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         
         if (E == 127)
-        {
+          {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fstr exp overflow fault");
-        }
+              doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fstr exp overflow fault");
+          }
         E +=  1;
-    }
+      }
     else
-    {
+      {
         // If overflow does not occur, C(EAQ) is normalized.
         A = (m >> 36) & MASK36;
         Q = m & MASK36;
         word8 E8 = (word8) E & MASK8;   
         fno(&E8, &A, &Q);
         E = SIGNEXT8_int (E8 & MASK8);
-    }
+      }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (A == 0 && Q == 0)
-    {
+      {
         E = -128;
         SET_I_ZERO;
-    }
+      }
     
     SC_I_NEG (A & SIGN36);
     
-    //*Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
-    *Y = setbits36_8 (A >> 8, 0, (word8) E);
-}
+    * Y = setbits36_8 (A >> 8, 0, (word8) E);
+  }
 
 /*!
  * single precision Floating Compare ...
  */
 void fcmp(void)
-{
-    //! C(E) :: C(Y)0,7
-    //! C(AQ)0,27 :: C(Y)8,35
+  {
+    // C(E) :: C(Y)0,7
+    // C(AQ)0,27 :: C(Y)8,35
     
-    //! Zero: If C(EAQ) = C(Y), then ON; otherwise OFF
-    //! Neg: If C(EAQ) < C(Y), then ON; otherwise OFF
+    // Zero: If C(EAQ) = C(Y), then ON; otherwise OFF
+    // Neg: If C(EAQ) < C(Y), then ON; otherwise OFF
     
-    //! Notes: The fcmp instruction is executed as follows:
-    //! The mantissas are aligned by shifting the mantissa of the operand with the algebraically smaller exponent to the right the number of places equal to the difference in the two exponents.
-    //! The aligned mantissas are compared and the indicators set accordingly.
+    // Notes: The fcmp instruction is executed as follows:
+    // The mantissas are aligned by shifting the mantissa of the operand with
+    // the algebraically smaller exponent to the right the number of places
+    // equal to the difference in the two exponents.
+    // The aligned mantissas are compared and the indicators set accordingly.
     
-    word36 m1 = cpu . rA & 0777777777400LL;
-    int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
+    word36 m1 = cpu.rA & 0777777777400LL;
+    int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
     
-    //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;      ///< 28-bit mantissa (incl sign)
-    //int8   e2 = (int8) (bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    // 28-bit mantissa (incl sign)
+    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
-    //int e3 = -1;
-       
     //which exponent is smaller???
     
+#ifdef L68
+    cpu.ou.cycle = ou_GOE;
+#endif
     int shift_count = -1;
     
     if (e1 == e2)
-    {
+      {
         shift_count = 0;
-        //e3 = e1;
-    }
-    else
-    if (e1 < e2)
-    {
+      }
+    else if (e1 < e2)
+      {
+#ifdef L68
+        cpu.ou.cycle = ou_GOA;
+#endif
         shift_count = abs(e2 - e1);
-        bool s = m1 & SIGN36;   ///< mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
+        bool s = m1 & SIGN36;   // mantissa negative?
+        for(int n = 0; n < shift_count; n += 1)
+          {
             m1 >>= 1;
             if (s)
-                m1 |= SIGN36;
-        }
+              m1 |= SIGN36;
+          }
         
         m1 &= MASK36;
-        //e3 = e2;
-    }
+      }
     else
-    {
+      {
         // e2 < e1;
+#ifdef L68
+        cpu.ou.cycle = ou_GOA;
+#endif
         shift_count = abs(e1 - e2);
         bool s = m2 & SIGN36;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
-        {
+          {
             m2 >>= 1;
             if (s)
-                m2 |= SIGN36;
-        }
+              m2 |= SIGN36;
+          }
         m2 &= MASK36;
         //e3 = e1;
-    }
+      }
     
     // need to do algebraic comparisons of mantissae
     SC_I_ZERO ((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2));
     SC_I_NEG ((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2));
-}
+  }
 
 /*!
  * single precision Floating Compare magnitude ...
  */
 void fcmg ()
-{
+  {
     // C(E) :: C(Y)0,7
     // | C(AQ)0,27 | :: | C(Y)8,35 |
     // * Zero: If | C(EAQ)| = | C(Y) |, then ON; otherwise OFF
@@ -1768,18 +1784,21 @@ void fcmg ()
    // The fcmg instruction is identical to the fcmp instruction except that the
    // magnitudes of the mantissas are compared instead of the algebraic values.
 
+#ifdef L68
+   cpu.ou.cycle = ou_GOS;
+#endif
 IF1 sim_printf ("FCMG E %03o A %012llo Q %012llo CY %012llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 #if 1
     // C(AQ)0,27
-    word36 m1 = cpu . rA & 0777777777400LL;
-    int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
+    word36 m1 = cpu.rA & 0777777777400LL;
+    int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
 IF1 sim_printf ("FCMG e1 %d m1 %012llo\n", e1, m1);
 
-   // C(Y)0,7
-    //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;      ///< 28-bit mantissa (incl sign)
-    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
+     // C(Y)0,7
+    // 28-bit mantissa (incl sign)
+    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
 IF1 sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
 
@@ -1787,37 +1806,46 @@ IF1 sim_printf ("FCMG e2 %d m2 %012llo\n", e2, m2);
 
     //which exponent is smaller???
     
+#ifdef L68
+    cpu.ou.cycle = ou_GOE;
+#endif
     int shift_count = -1;
     
     if (e1 == e2)
-    {
+      {
         shift_count = 0;
-    }
+      }
     else if (e1 < e2)
-    {
+      {
+#ifdef L68
+        cpu.ou.cycle = ou_GOA;
+#endif
         shift_count = abs(e2 - e1);
         bool s = m1 & SIGN36;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
-        {
+          {
             m1 >>= 1;
             if (s)
-                m1 |= SIGN36;
-        }
+              m1 |= SIGN36;
+          }
         
         m1 &= MASK36;
         e3 = e2;
-    }
+      }
     else
-    {
+      {
         // e2 < e1;
+#ifdef L68
+        cpu.ou.cycle = ou_GOA;
+#endif
         shift_count = abs(e1 - e2);
         bool s = m2 & SIGN36;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
-        {
+          {
             m2 >>= 1;
             if (s)
-                m2 |= SIGN36;
-        }
+              m2 |= SIGN36;
+          }
         m2 &= MASK36;
         e3 = e1;
     }
@@ -1896,7 +1924,7 @@ IF1 sim_printf ("FCMG shft e2 %d m2 %012llo\n", e2, m2);
       CLR_I_NEG;
     SET_I_ZERO;
 #endif
-}
+  }
 
 /*
  * double-precision arithmetic routines ....
@@ -1927,9 +1955,11 @@ static void ExpMantToYpair(word72 mant, int exp, word36 *yPair)
  * unnormalized floating double-precision add
  */
 void dufa (bool subtract)
-{
+  {
+#ifdef ISOLTS
 static int testno = 1;
 IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
+#endif
     // Except for the precision of the mantissa of the operand from main
     // memory, the dufa instruction is identical to the ufa instruction.
     
@@ -1950,11 +1980,15 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     // exception that the twos complement of the mantissa of the operand from
     // main memory (op2) is used.
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GOS;
+#endif
+
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
-    //word72 m2 = (word72) bitfieldExtract36 (cpu.Ypair[0], 0, 28) << 44; // 28-bit mantissa (incl sign)
-    word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; ///< 28-bit mantissa (incl sign)
+    // 28-bit mantissa (incl sign)
+    word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
            m2 |= (word72) cpu.Ypair[1] << 8;
     
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
@@ -1962,72 +1996,81 @@ IF1 sim_printf ("DUFA e1 %03o m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & M
 IF1 sim_printf ("DUFA e2 %03o m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     if (subtract)
-    {
-      word72 m2s = m2 & SIGN72; // remember the sign bit
-      m2 = ~m2 + 1; // two's complement
-      m2 &= MASK72;
-      // If the signs are the same after complement, then overflow happened
-      if (m2s == (m2 & SIGN72))
       {
-          m2 >>= 1;
-          m2 &= MASK72;
-          if (e2 == 127)
+        word72 m2s = m2 & SIGN72; // remember the sign bit
+        m2 = ~m2 + 1; // two's complement
+        m2 &= MASK72;
+        // If the signs are the same after complement, then overflow happened
+        if (m2s == (m2 & SIGN72))
           {
-            SET_I_EOFL;
-            if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
+            m2 >>= 1;
+            m2 &= MASK72;
+            if (e2 == 127)
+              {
+                SET_I_EOFL;
+                if (tstOVFfault ())
+                  dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
+              }
+            e2 ++;
           }
-          e2 ++;
-      }
-      if (m2 == 0)
-      {
-          e2 = -128;
-      }
-    } // subtract
+        if (m2 == 0)
+          {
+            e2 = -128;
+          }
+      } // subtract
 
     int e3 = -1;
 
     // which exponent is smaller?
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GOE;
+#endif
     int shift_count = -1;
 
     if (e1 == e2)
-    {
+      {
         shift_count = 0;
         e3 = e1;
-    }
+      }
     else if (e1 < e2)
-    {
+      {
+#ifdef L68
+        cpu.ou.cycle |= ou_GOA;
+#endif
         shift_count = abs(e2 - e1);
 IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
-        {
+          {
             m1 >>= 1;
             if (s)
-                m1 |= SIGN72;
-        }
+              m1 |= SIGN72;
+          }
         
         m1 &= MASK72;
         e3 = e2;
 IF1 sim_printf ("DUFA m1 now %012llo %012llo\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-    }
+      }
     else
-    {
+      {
         // e2 < e1;
+#ifdef L68
+        cpu.ou.cycle |= ou_GOA;
+#endif
         shift_count = abs(e1 - e2);
 IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
-        {
+          {
             m2 >>= 1;
             if (s)
-                m2 |= SIGN72;
-        }
+              m2 |= SIGN72;
+          }
         m2 &= MASK72;
         e3 = e1;
 IF1 sim_printf ("DUFA m2 now %012llo %012llo\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-    }
+      }
     //sim_printf ("shift_count = %d\n", shift_count);
     
 IF1 sim_printf ("DUFA e3 %d\n", e3);
@@ -2037,7 +2080,7 @@ IF1 sim_printf ("DUFA e3 %d\n", e3);
 IF1 sim_printf ("DUFA m3 %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 
     if (ovf)
-    {
+      {
 IF1 sim_printf ("DUFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
         word72 signbit = m3 & SIGN72;
         m3 >>= 1;
@@ -2046,40 +2089,40 @@ IF1 sim_printf ("DUFA correcting ovf %012llo %012llo\n", (word36) (m3 >> 36) & M
         e3 += 1;
 IF1 sim_printf ("DUFA m3 now %012llo %012llo\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 IF1 sim_printf ("DUFA e3 now %d\n", e3);
-    }
+      }
 
-    cpu . rA = (m3 >> 36) & MASK36;
-    cpu . rQ = m3 & MASK36;
-    cpu . rE = e3 & 0377;
+    cpu.rA = (m3 >> 36) & MASK36;
+    cpu.rQ = m3 & MASK36;
+    cpu.rE = e3 & 0377;
 
     SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
                                 // of ovf handling above
     if (cpu.rA == 0 && cpu.rQ == 0)
-    {
-      SET_I_ZERO;
-      cpu . rE = 0200U; /*-128*/
-    }
+      {
+        SET_I_ZERO;
+        cpu . rE = 0200U; /*-128*/
+      }
     else
-    {
-      CLR_I_ZERO;
-    }
+      {
+        CLR_I_ZERO;
+      }
 
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-    {
+      {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp overflow fault");
-    }
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp overflow fault");
+      }
     
     // EUFL: If exponent is less than -128, then ON
-    if(e3 < -128)
-    {
+    if (e3 < -128)
+      {
         SET_I_EUFL;
         if (tstOVFfault ())
             dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp underflow fault");
-    }
-}
+      }
+  }
 
 #if 0
 /*!
@@ -2149,42 +2192,44 @@ void dufs (void)
  */
 void dufm (void)
 {
-    //! Except for the precision of the mantissa of the operand from main memory,
-    //!    the dufm instruction is identical to the ufm instruction.
+    // Except for the precision of the mantissa of the operand from main memory,
+    //the dufm instruction is identical to the ufm instruction.
     
-    //! The ufm instruction is executed as follows:
-    //!      C(E) + C(Y)0,7 → C(E)
-    //!      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
-    //! A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos  complement approximation to the decimal value -1.0.
-    //! The definition of normalization is located under the description of the fno instruction.
+    // The ufm instruction is executed as follows:
+    //      C(E) + C(Y)0,7 → C(E)
+    //      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
+    // A normalization is performed only in the case of both factor mantissas
+    // being 100...0 which is the twos  complement approximation to the decimal
+    // value -1.0.
+    // The definition of normalization is located under the description of the
+    // fno instruction.
     
-    //! * Zero: If C(AQ) = 0, then ON; otherwise OFF
-    //! * Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    //! * Exp Ovr: If exponent is greater than +127, then ON
-    //! * Exp Undr: If exponent is less than -128, then ON
+    // * Zero: If C(AQ) = 0, then ON; otherwise OFF
+    // * Neg: If C(AQ)0 = 1, then ON; otherwise OFF
+    // * Exp Ovr: If exponent is greater than +127, then ON
+    // * Exp Undr: If exponent is less than -128, then ON
     
-    uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; ///< only keep the 1st 64-bits :(
+#ifdef L68
+    cpu.ou.cycle |= ou_GOS;
+#endif
+    // only keep the 1st 64-bits :(
+    uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8);
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
     
     sim_debug (DBG_TRACE, & cpu_dev, "dufm e1 %d %03o m1 %012llo\n", e1, e1, m1);
-    // CAC uint64 m2  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 44;    ///< 64-bit mantissa (incl sign)
-           // CAC m2 |= (uint64) cpu.Ypair[1] << 8;
-    //uint64 m2  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
-    uint64 m2 = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36; ///< 28-bit mantissa (incl sign)
+     // 28-bit mantissa (incl sign)
+    uint64 m2 = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36;
            m2 |= cpu.Ypair[1];
     
-    //int8   e2 = (int8)(bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
+    // 8-bit signed integer (incl sign)
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
-    sim_debug (DBG_TRACE, & cpu_dev, "dufm e2 %d %03o m2 %012llo\n", e2, e2, m2);
+
+    sim_debug (DBG_TRACE, & cpu_dev,
+               "dufm e2 %d %03o m2 %012llo\n", e2, e2, m2);
 
     
-    //float72 m2 = 0;
-    //int8 e2 = -128;
-    
-    //YPairToExpMant(cpu.Ypair, &m2, &e2);
-    
     if (m1 == 0 || m2 == 0)
-    {
+      {
         SET_I_ZERO;
         CLR_I_NEG;
         
@@ -2193,50 +2238,59 @@ void dufm (void)
         cpu . rQ = 0;
         
         return; // normalized 0
-    }
+      }
     
     int sign = 1;
 
-    
     if (m1 & FLOAT72SIGN)
-    {
+      {
         if (m1 == FLOAT72SIGN)
-        {
+          {
             sim_debug (DBG_TRACE, & cpu_dev, "dufm case 1\n");
             m1 >>= 1;
             e1 += 1;
-        } else {
+          }
+        else
+          {
             sim_debug (DBG_TRACE, & cpu_dev, "dufm case 2\n");
             m1 = (~m1 + 1) & MASK72;
-        }
+          }
         sign = -sign;
-    }
+      }
     if (m2 & FLOAT72SIGN)
-    {
+      {
         if (m2 == FLOAT72SIGN)
-        {
+          {
             sim_debug (DBG_TRACE, & cpu_dev, "dufm case 3\n");
             m2 >>= 1;
             e2 += 1;
-        } else {
+          }
+        else
+          {
             sim_debug (DBG_TRACE, & cpu_dev, "dufm case 4\n");
             m2 = (~m2 + 1) & MASK72;
-        }
+          }
         sign = -sign;
-    }
+      }
     
     int e3 = e1 + e2;
     
     uint128 m3 = ((uint128)m1) * ((uint128)m2);
-    sim_debug (DBG_TRACE, & cpu_dev, "dufm e3 %d %03o m3 %012llo%012llo\n", e3, e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+    sim_debug (DBG_TRACE, & cpu_dev,
+               "dufm e3 %d %03o m3 %012llo%012llo\n", e3, e3,
+               (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
     uint128 m3a = m3 >> 63;
-    sim_debug (DBG_TRACE, & cpu_dev, "dufm e3 %d %03o m3a %012llo\n", e3, e3, (word36) m3a & MASK36);
+    sim_debug (DBG_TRACE, & cpu_dev,
+               "dufm e3 %d %03o m3a %012llo\n", e3, e3,
+               (word36) m3a & MASK36);
     
     if (sign == -1)
-    {
+      {
         m3a = (~m3a + 1) & (((word72)1 << 71) - 1);    //0xffffffffffffffff;
-        sim_debug (DBG_TRACE, & cpu_dev, "dufm sign -1 e3 %d %03o m3a %012llo\n", e3, e3, (word36) m3a & MASK36);
-    }
+        sim_debug (DBG_TRACE, & cpu_dev,
+                   "dufm sign -1 e3 %d %03o m3a %012llo\n", e3, e3,
+                   (word36) m3a & MASK36);
+      }
     
     if (e3 > 127)
     {
@@ -2253,10 +2307,10 @@ void dufm (void)
             doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
     }
 
-    cpu . rE = (word8) e3 & MASK8;
-    cpu . rA = (m3a >> 28) & MASK36;
-    cpu . rQ = m3a & MASK36;
-    //cpu . rQ = (m3a & 01777777777LL) << 8;
+    cpu.rE = (word8) e3 & MASK8;
+    cpu.rA = (m3a >> 28) & MASK36;
+    cpu.rQ = m3a & MASK36;
+    //cpu.rQ = (m3a & 01777777777LL) << 8;
     
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
     //if ((cpu . rE == -128 && cpu . rA == 0 && cpu . rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
@@ -2273,20 +2327,26 @@ void dufm (void)
  */
 // CANFAULT 
 static void dfdvX (bool bInvert)
-{
-    //! C(EAQ) / C (Y) → C(EA)
-    //! C(Y) / C(EAQ) → C(EA) (Inverted)
+  {
+    // C(EAQ) / C (Y) → C(EA)
+    // C(Y) / C(EAQ) → C(EA) (Inverted)
     
-    //! 00...0 → C(Q)
+    // 00...0 → C(Q)
     
-    //! The dfdv instruction is executed as follows:
-    //! The dividend mantissa C(AQ) is shifted right and the dividend exponent
-    //! C(E) increased accordingly until
-    //!    | C(AQ)0,63 | < | C(Y-pair)8,71 |
-    //!    C(E) - C(Y-pair)0,7 → C(E)
-    //!    C(AQ) / C(Y-pair)8,71 → C(AQ)0,63 00...0 → C(Q)64,71
-    //! If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
+    // The dfdv instruction is executed as follows:
+    // The dividend mantissa C(AQ) is shifted right and the dividend exponent
+    // C(E) increased accordingly until
+    //    | C(AQ)0,63 | < | C(Y-pair)8,71 |
+    //    C(E) - C(Y-pair)0,7 → C(E)
+    //    C(AQ) / C(Y-pair)8,71 → C(AQ)0,63 00...0 → C(Q)64,71
+    // If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the
+    // division does not take place. Instead, a divide check fault occurs,
+    // C(AQ) contains the dividend magnitude, and the negative indicator
+    // reflects the dividend sign.
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GOS;
+#endif
     uint64 m1;
     int    e1;
     
@@ -2294,142 +2354,156 @@ static void dfdvX (bool bInvert)
     int    e2;
     
     if (!bInvert)
-    {
-        m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ;  // only keep the 1st 64-bits :(
-        e1 = SIGNEXT8_int (cpu . rE & MASK8);
+      {
+        // only keep the 1st 64-bits :(
+        m1 = (cpu.rA << 28) | ((cpu.rQ & 0777777777400LL) >> 8);
+        e1 = SIGNEXT8_int (cpu.rE & MASK8);
         
-        //m2  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m2  = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36;    // 64-bit mantissa (incl sign)
+        // 64-bit mantissa (incl sign)
+        m2  = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36;
         m2 |= cpu.Ypair[1];
-        // CAC m2  = (uint64) bitfieldExtract36(cpu.Ypair[0], 0, 28) << 44;    // 64-bit mantissa (incl sign)
-        // CAC m2 |= cpu.Ypair[1] << 8;
         
-        //e2 = (int8)(bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
         e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
-    } else { // invert
-        m2 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
+      }
+    else
+      { // invert
+        // only keep the 1st 64-bits :(
+        m2 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8);
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
         
-        //m1  = bitfieldExtract36(cpu.Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
-        m1  = ((uint64) getbits36_28 (cpu.Ypair[0], 8) << 36);    // 64-bit mantissa (incl sign)
+        // 64-bit mantissa (incl sign)
+        m1  = ((uint64) getbits36_28 (cpu.Ypair[0], 8) << 36);
         m1 |= cpu.Ypair[1];
         
-        //e1 = (int8) (bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
         e1 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
-    }
+      }
     
     if (m1 == 0)
-    {
+      {
         // XXX check flags
         SET_I_ZERO;
         SC_I_NEG (cpu . rA & SIGN36);
         
-        cpu . rE = 0200U; /*-128*/
-        cpu . rA = 0;
-        cpu . rQ = 0;
+        cpu.rE = 0200U; /*-128*/
+        cpu.rA = 0;
+        cpu.rQ = 0;
         
         return;
-    }
+      }
     
 
     
-    //! make everything positive, but save sign info for later....
+    // make everything positive, but save sign info for later....
     int sign = 1;
-    if (m1 & SIGN64)    //((uint64)1 << 63))
-    {
+    if (m1 & SIGN64)
+      {
         if (m1 == SIGN64)
-        {
+          {
             m1 >>= 1;
             e1 += 1;
-        } else
-        m1 = (~m1 + 1);     //& (((uint64)1 << 64) - 1);
+          }
+        else
+          m1 = (~m1 + 1);     //& (((uint64)1 << 64) - 1);
         sign = -sign;
-    }
+      }
     
     if (m2 & SIGN64)    //((uint64)1 << 63))
-    {
+      {
         if (m2 == SIGN64)
-        {
+          {
             m2 >>= 1;
             e2 += 1;
-        } else
-        m2 = (~m2 + 1);     //& (((uint64)1 << 64) - 1);
+          }
+        else
+          m2 = (~m2 + 1);     //& (((uint64)1 << 64) - 1);
         sign = -sign;
-    }
+      }
     
     if (m2 == 0)
-    {
-        //If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
+      {
+        //If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the
+        //division does not take place. Instead, a divide check fault occurs,
+        //C(AQ) contains the dividend magnitude, and the negative indicator
+        //reflects the dividend sign.
         
-        // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
+        // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit!
+        // That's why it been moved before the alignment
         
         SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
+        SC_I_NEG (cpu.rA & SIGN36);
         
-        cpu . rA = m1;
+        cpu.rA = m1;
         
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DFDV: divide check fault");
-    }
+        doFault (FAULT_DIV, (_fault_subtype) {.bits=0},
+                 "DFDV: divide check fault");
+      }
     
+#ifdef L68
+    cpu.ou.cycle |= ou_GOA;
+#endif
     while (m1 >= m2)
-    {
+      {
         m1 >>= 1;
         e1 += 1;
-    }
+      }
     if (e1 > 127)
-    {
+      {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp overflow fault");
-    }
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                   "dfdvX exp overflow fault");
+      }
 
     int e3 = e1 - e2;
     if (e3 > 127)
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp overflow fault");
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                   "dfdvX exp overflow fault");
        }
     else if (e3 < -127)
       {
-         SET_I_EUFL;
+        SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfdvX exp underflow fault");
-       }
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                   "dfdvX exp underflow fault");
+      }
 
-    //uint128 M1 = (uint128)m1 << 63;
-    //uint128 M2 = (uint128)m2; ///< << 36;
-
-    //uint128 m3 = M1 / M2;
-    //uint128 m3 = (uint128)m1 << 35 / (uint128)m2;
+#ifdef L68
+    cpu.ou.cycle |= ou_GD1;
+#endif
     uint128 m3 = ((uint128)m1 << 63) / (uint128)m2;
-    uint64 m3b = m3 & ((uint64)-1);  ///< only keep last 64-bits :-(
+    uint64 m3b = m3 & ((uint64)-1);  // only keep last 64-bits :-(
+#ifdef L68
+    cpu.ou.cycle |= ou_GD2;
+#endif
 
     if (sign == -1)
-        m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
+      m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
 
-    cpu . rE = (word8) e3 & MASK8;
-    cpu . rA = (m3b >> 28) & MASK36;
-    cpu . rQ = (m3b & 01777777777LL) << 8;//MASK36;
+    cpu.rE = (word8) e3 & MASK8;
+    cpu.rA = (m3b >> 28) & MASK36;
+    cpu.rQ = (m3b & 01777777777LL) << 8;//MASK36;
     
-    SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
-    SC_I_NEG (cpu . rA & SIGN36); 
+    SC_I_ZERO (cpu.rA == 0 && cpu . rQ == 0);
+    SC_I_NEG (cpu.rA & SIGN36); 
 
-    if (cpu . rA == 0 && cpu . rQ == 0)    // set to normalized 0
-        cpu . rE = 0200U; /*-128*/
-}
+    if (cpu.rA == 0 && cpu.rQ == 0)    // set to normalized 0
+        cpu.rE = 0200U; /*-128*/
+  }
 
 // CANFAULT 
 void dfdv (void)
-{
+  {
     dfdvX (false);    // no inversion
-}
+  }
 
 // CANFAULT 
 void dfdi (void)
-{
+  {
     dfdvX (true);
-}
+  }
 
 
 //#define DVF_HWR 
@@ -2541,6 +2615,9 @@ IF1 sim_printf ("DVF A %012llo Q %012llo CY %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
     // s  dividend x
     //  C(AQ)
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GD1;
+#endif
     int sign = 1;
     bool dividendNegative = (getbits36_1 (cpu . rA, 0) != 0);
     bool divisorNegative = (getbits36_1 (cpu.CY, 0) != 0);
@@ -2602,6 +2679,9 @@ sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GD2;
+#endif
     uint128 sn = zFrac;
     word36 quot = 0;
     for (uint i = 0; i < 35; i ++)
@@ -2626,6 +2706,9 @@ sim_printf ("DVFa A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
 IF1 sim_printf ("quot %012llo %012llo\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
 IF1 sim_printf ("rem  %012llo %012llo\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GD2;
+#endif
     // I am surmising that the "If | dividend | >= | divisor |" is an
     // overflow prediction; implement it by checking that the calculated
     // quotient will fit in 35 bits.
@@ -2677,6 +2760,9 @@ IF1 sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
     // s  dividend x
     //  C(AQ)
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GD1;
+#endif
     int sign = 1;
     bool dividendNegative = (getbits36_1 (cpu . rA, 0) != 0);
     bool divisorNegative = (getbits36_1 (cpu.CY, 0) != 0);
@@ -2740,6 +2826,9 @@ IF1 sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
         doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
       }
 
+#ifdef L68
+    cpu.ou.cycle |= ou_GD2;
+#endif
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
 //if (currentRunningCPUnum)
@@ -2831,82 +2920,87 @@ IF1 sim_printf ("DVFb A %012llo Q %012llo Y %012llo\n", cpu.rA, cpu.rQ, cpu.CY);
  * double precision floating round ...
  */
 void dfrd (void)
-{
-    //! The dfrd instruction is identical to the frd instruction except that the rounding constant used is (11...1)65,71 instead of (11...1)29,71.
+  {
+    // The dfrd instruction is identical to the frd instruction except that the
+    // rounding constant used is (11...1)65,71 instead of (11...1)29,71.
     
-    //! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 64 bits and a normalization on C(EAQ).
-    //! A true round is a rounding operation such that the sum of the result of applying the operation to two numbers of equal magnitude but opposite sign is exactly zero.
+    // If C(AQ) != 0, the frd instruction performs a true round to a precision
+    // of 64 bits and a normalization on C(EAQ).
+    // A true round is a rounding operation such that the sum of the result of
+    // applying the operation to two numbers of equal magnitude but opposite
+    // sign is exactly zero.
     
-    //! The frd instruction is executed as follows:
-    //! C(AQ) + (11...1)65,71 → C(AQ)
-    //! * If C(AQ)0 = 0, then a carry is added at AQ71
-    //! * If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
-    //! * If overflow does not occur, C(EAQ) is normalized.
-    //! * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+    // The frd instruction is executed as follows:
+    // C(AQ) + (11...1)65,71 -> C(AQ)
+    // * If C(AQ)0 = 0, then a carry is added at AQ71
+    // * If overflow occurs, C(AQ) is shifted one place to the right and C(E)
+    // is increased by 1.
+    // * If overflow does not occur, C(EAQ) is normalized.
+    // * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
         
-    float72 m = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    float72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
     if (m == 0)
-    {
-        cpu . rE = 0200U; /*-128*/
+      {
+        cpu.rE = 0200U; /*-128*/
         SET_I_ZERO;
         CLR_I_NEG;
         
         return;
-    }
+      }
 
-    bool s1 = (bool)(m & SIGN72);
+    bool s1 = (bool) (m & SIGN72);
     
-    // C(AQ) + (11...1)65,71 → C(AQ)
-    m += (word72)0177LL; // add 1's into lower 64-bits
+    // C(AQ) + (11...1)65,71 -> C(AQ)
+    m += (word72) 0177LL; // add 1's into lower 64-bits
 
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (!s1)
-        m += 1;
+    if (! s1)
+      m += 1;
     
-    // 0 → C(AQ)64,71 
-    //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
-    //m = bitfieldInsert72(m, 0, 0, 8);
+    // 0 -> C(AQ)64,71 
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
     
     bool s2 = (bool)(m & SIGN72);
     
     bool ov = s1 != s2;   ///< sign change denotes overflow
     if (ov)
-    {
-        // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+      {
+        // If overflow occurs, C(AQ) is shifted one place to the right and C(E)
+        // is increased by 1.
         m >>= 1;
         if (s1) // restore sign if necessary (was s2)
-            m |= SIGN72;
+          m |= SIGN72;
         
-        if (cpu . rE == 127)
-        {
+        if (cpu.rE == 127)
+          {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfrd exp overflow fault");
-        }
-        cpu . rE +=  1;
-        cpu . rE &= MASK8;
-        cpu . rA = (m >> 36) & MASK36;
-        cpu . rQ = m & MASK36;
-    }
+                doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                         "dfrd exp overflow fault");
+          }
+        cpu.rE +=  1;
+        cpu.rE &= MASK8;
+        cpu.rA = (m >> 36) & MASK36;
+        cpu.rQ = m & MASK36;
+      }
     else
-    {
+      {
         // If overflow does not occur, C(EAQ) is normalized.
-        cpu . rA = (m >> 36) & MASK36;
-        cpu . rQ = m & MASK36;
+        cpu.rA = (m >> 36) & MASK36;
+        cpu.rQ = m & MASK36;
         
-        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
-    }
+        fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+      }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (cpu . rA == 0 && cpu . rQ == 0)
-    {
-        cpu . rE = 0200U; /*-128*/
+      {
+        cpu.rE = 0200U; /*-128*/
         SET_I_ZERO;
-    }
+      }
     
-    SC_I_NEG (cpu . rA & SIGN36);
-}
+    SC_I_NEG (cpu.rA & SIGN36);
+  }
 
 void dfstr (word36 *Ypair)
 {
@@ -3143,7 +3237,7 @@ void dfcmp (void)
  * double precision Floating Compare magnitude ...
  */
 void dfcmg (void)
-{
+  {
     // C(E) :: C(Y)0,7
     // | C(AQ)0,27 | :: | C(Y)8,35 |
     // * Zero: If | C(EAQ)| = | C(Y) |, then ON; otherwise OFF
@@ -3162,8 +3256,9 @@ void dfcmg (void)
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMG E %03o A %012llo Q %012llo CY %012llo %12llo\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
-    word72 m1 = ((uint128) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
-    int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
+    word72 m1 = ((uint128) (cpu.rA & MASK36) << 36) |
+                ((cpu.rQ) & 0777777777400LL);
+    int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMG e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -3171,56 +3266,59 @@ void dfcmg (void)
     // C(Y-pair)8,71
     word72 m2 = (uint128) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
-    int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
+    int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
 IF1 sim_printf ("DFCMG e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e3 = -1;
 
     //which exponent is smaller???
-    
+#ifdef L68
+    cpu.ou.cycle = ou_GOE;
+#endif
     int shift_count = -1;
     
     if (e1 == e2)
-    {
+      {
         shift_count = 0;
         e3 = e1;
-    }
+      }
     else if (e1 < e2)
-    {
+      {
+#ifdef L68
+        cpu.ou.cycle = ou_GOA;
+#endif
         shift_count = abs(e2 - e1);
         bool s = m1 & SIGN72;   ///< mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
+        for( int n = 0; n < shift_count; n += 1)
+          {
             m1 >>= 1;
             if (s)
-                m1 |= SIGN72;
+              m1 |= SIGN72;
 IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-        }
+          }
         
         m1 &= MASK72;
         e3 = e2;
-    }
+      }
     else
-    {
+      {
         // e2 < e1;
-        shift_count = abs(e1 - e2);
+        shift_count = abs (e1 - e2);
         bool s = m2 & SIGN72;   ///< mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
+        for(int n = 0; n < shift_count; n += 1)
+          {
             m2 >>= 1;
             if (s)
-                m2 |= SIGN72;
-        }
+              m2 |= SIGN72;
+          }
         m2 &= MASK72;
         e3 = e1;
-    }
+      }
     
 IF1 sim_printf ("DFCMG shifted e1 %d m1 %012llo %012llo\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("DFCMG shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
-    //int128 sm1 = llabs (SIGNEXT72_128 (m1));
-    //int128 sm2 = llabs (SIGNEXT72_128 (m2));
     int128 sm1 = SIGNEXT72_128 (m1);
     if (sm1 < 0)
       sm1 = - sm1;
@@ -3229,4 +3327,4 @@ IF1 sim_printf ("DFCMG shifted e2 %d m2 %012llo %012llo\n", e2, (word36) (m2 >> 
       sm2 = - sm2;
 
     SC_I_NEG (sm1 < sm2);
-}
+  }

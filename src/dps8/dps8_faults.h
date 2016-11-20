@@ -78,5 +78,9 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault);
 void doG7Fault (void);
 void clearTROFault (void);
 void advanceG7Faults (void);
+#ifdef L68
+void set_FFV_fault (uint f_fault_no);
+void do_FFV_fault (uint fault_number, const char * fault_msg);
+#endif
 
 

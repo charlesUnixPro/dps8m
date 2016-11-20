@@ -138,27 +138,21 @@ static word4 get6 (word36 w, int pos)
     switch (pos)
       {
         case 0:
-         //return bitfieldExtract36 (w, 30, 6);
          return getbits36_6 (w, 0);
 
         case 1:
-          //return bitfieldExtract36 (w, 24, 6);
          return getbits36_6 (w, 6);
 
         case 2:
-          //return bitfieldExtract36 (w, 18, 6);
          return getbits36_6 (w, 12);
 
         case 3:
-          //return bitfieldExtract36 (w, 12, 6);
          return getbits36_6 (w, 18);
 
         case 4:
-          //return bitfieldExtract36 (w, 6, 6);
          return getbits36_6 (w, 24);
 
         case 5:
-          //return bitfieldExtract36 (w, 0, 6);
          return getbits36_6 (w, 30);
 
       }
@@ -173,19 +167,15 @@ static word9 get9(word36 w, int pos)
     switch (pos)
       {
         case 0:
-          //return bitfieldExtract36 (w, 27, 9);
          return getbits36_9 (w, 0);
 
         case 1:
-          //return bitfieldExtract36 (w, 18, 9);
          return getbits36_9 (w, 9);
 
         case 2:
-          //return bitfieldExtract36 (w, 9, 9);
          return getbits36_9 (w, 18);
 
         case 3:
-          //return bitfieldExtract36 (w, 0, 9);
          return getbits36_9 (w, 27);
 
       }
@@ -1133,12 +1123,21 @@ static void setupOperandDescriptor (int k)
     switch (k)
       {
         case 1:
+#ifdef PANEL
+          cpu.du.cycle1 |= du1_GEA1;
+#endif
           e -> MF1 = getbits36_7 (cpu . cu . IWB, 29);
           break;
         case 2:
+#ifdef PANEL
+          cpu.du.cycle1 |= du1_GEA2;
+#endif
           e -> MF2 = getbits36_7 (cpu . cu . IWB, 11);
           break;
         case 3:
+#ifdef PANEL
+          cpu.du.cycle1 |= du1_GEA3;
+#endif
           e -> MF3 = getbits36_7 (cpu . cu . IWB,  2);
           break;
       }
@@ -1231,6 +1230,12 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
                 
                 cpu.cu.TSN_VALID[k-1] = 1; // Use PR
                 e -> addr [k - 1] . mat = viaPR;   // ARs involved
+#ifdef PANEL
+                if (k == 1)
+                  cpu.du.cycle1 |= du1_GED1;
+                else if (k == 2)
+                  cpu.du.cycle1 |= du1_GED2;
+#endif
               //}
             //else
               //sim_warn ("AR set in non-append mode.\n");
@@ -1285,6 +1290,13 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
     
+#ifdef PANEL
+    if (k == 1)
+      cpu.du.cycle2 |= du2_ALD1;
+    if (k == 2)
+      cpu.du.cycle2 |= du2_ALD2;
+#endif
+
     word36 opDesc = e -> op [k - 1];
     
     word8 ARn_CHAR = 0;
@@ -1342,6 +1354,12 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
 
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
+#ifdef PANEL
+            if (k == 1)
+              cpu.du.cycle1 |= du1_GLP1;
+            else if (k == 2)
+              cpu.du.cycle1 |= du1_GLP2;
+#endif
           //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
@@ -1539,6 +1557,12 @@ static void parseArgOperandDescriptor (uint k)
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
             e -> addr [k - 1] . mat = viaPR;
+#ifdef PANEL
+            if (k == 1)
+              cpu.du.cycle1 |= du1_GLP1;
+            else if (k == 2)
+              cpu.du.cycle1 |= du1_GLP2;
+#endif
         //  }
         //else
           //sim_warn ("AR set in non-append mode.\n");
@@ -1563,6 +1587,13 @@ static void parseNumericOperandDescriptor (int k)
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
 
+#ifdef PANEL
+    if (k == 1)
+      cpu.du.cycle2 |= du2_NLD1;
+    if (k == 2)
+      cpu.du.cycle2 |= du2_NLD2;
+#endif
+
     word36 opDesc = e->op[k-1];
 
     word8 ARn_CHAR = 0;
@@ -1574,7 +1605,6 @@ static void parseNumericOperandDescriptor (int k)
         // if MKf contains ar then it Means Y-charn is not the memory address
         // of the data but is a reference to a pointer register pointing to the
         // data.
-        //uint n = (int)bitfieldExtract36(address, 15, 3);
         word3 n = (word3) getbits18 (address, 0, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
@@ -1590,6 +1620,12 @@ static void parseNumericOperandDescriptor (int k)
 
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
             e->addr[k-1].mat = viaPR;   // ARs involved
+#ifdef PANEL
+            if (k == 1)
+              cpu.du.cycle1 |= du1_GLP1;
+            else if (k == 2)
+              cpu.du.cycle1 |= du1_GLP2;
+#endif
         //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
@@ -1598,11 +1634,6 @@ static void parseNumericOperandDescriptor (int k)
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
 
-    //word8 CN = (word8)bitfieldExtract36(opDesc, 15, 3);    // character number
-
-    //e->TN[k-1] = (int)bitfieldExtract36(opDesc, 14, 1);    // type numeric
-    //e->S[k-1]  = (int)bitfieldExtract36(opDesc, 12, 2);    // Sign and decimal type of data
-    //e->SF[k-1] = (int)SIGNEXT6_int(bitfieldExtract36(opDesc, 6, 6));    // Scaling factor.
     word3 CN = getbits36_3 (opDesc, 18);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
 #ifdef PANEL
@@ -1783,7 +1814,6 @@ static void parseBitstringOperandDescriptor (int k)
         // if MKf contains ar then it Means Y-charn is not the memory address
         // of the data but is a reference to a pointer register pointing to the
         // data.
-        //uint n = (int)bitfieldExtract36(address, 15, 3);
         word3 n = (word3) getbits18 (address, 0, 3);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
@@ -1800,6 +1830,12 @@ static void parseBitstringOperandDescriptor (int k)
             e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
             e->addr[k-1].mat = viaPR;   // ARs involved
+#ifdef PANEL
+            if (k == 1)
+              cpu.du.cycle1 |= du1_GLP1;
+            else if (k == 2)
+              cpu.du.cycle1 |= du1_GLP2;
+#endif
         //}
         //else
           //sim_warn ("AR set in non-append mode.\n");
@@ -1827,8 +1863,6 @@ static void parseBitstringOperandDescriptor (int k)
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
-    //int B = (int)bitfieldExtract36(opDesc, 12, 4) & 0xf;    // bit# from descriptor
-    //int C = (int)bitfieldExtract36(opDesc, 16, 2) & 03;     // char# from descriptor
     word4 B = getbits36_4(opDesc, 20);    // bit# from descriptor
     word2 C = getbits36_2 (opDesc, 18);     // char# from descriptor
 
@@ -3022,6 +3056,9 @@ void cmpc (void)
     // Instruction execution proceeds until an inequality is found or the
     // larger string length count is exhausted.
     
+#ifdef PANEL
+    cpu.du.cycle2 |= du2_ASTR;
+#endif
     
 #ifndef EIS_SETUP
     setupOperandDescriptor (1);
@@ -3500,7 +3537,6 @@ void scm (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
     uint mask = (uint) getbits36_9 (cpu.cu.IWB, 0);
     
     // fetch 'test' char
@@ -3648,7 +3684,6 @@ void scmr (void)
     // pair, TA2, is ignored.
 
     // get 'mask'
-    //uint mask = (uint) bitfieldExtract36 (cpu . cu . IWB, 27, 9);
     uint mask = (uint) getbits36_9 (cpu.cu.IWB, 0);
     
     // fetch 'test' char
@@ -4165,6 +4200,10 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+#ifdef PANEL
+    cpu.du.cycle2 |= du2_ASTR;
+#endif
+    
 IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bit 10 MBZ
@@ -4215,10 +4254,8 @@ IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0],
           break;
       }
     
-    //uint T = bitfieldExtract36 (cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
-    //uint fill = bitfieldExtract36 (cpu . cu . IWB, 27, 9);
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
     word9 fillT = fill;  // possibly truncated fill pattern
 
@@ -4553,6 +4590,10 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
+#ifdef PANEL
+    cpu.du.cycle2 |= du2_ASTR;
+#endif
+    
 //IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
@@ -4602,7 +4643,6 @@ void mrl (void)
           break;
       }
     
-    //uint T = bitfieldExtract36 (cpu.cu.IWB, 26, 1) != 0;  // truncation bit
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
     word9 fill = getbits36_9 (cpu.cu.IWB, 0);
@@ -6516,6 +6556,10 @@ void mve (void)
     if (e -> op [2]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
 
+#ifdef PANEL
+    cpu.du.cycle2 |= du2_ASTR;
+#endif
+    
     // ISOLTS test 841, testing for ipr fault by setting (l=1)(s=00)
     // in the first descriptor of the
     // instruction mvn
@@ -6796,6 +6840,10 @@ void mvt (void)
     if (e -> op [2]  & 0000000777600)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op3 18-28 MBZ");
 
+#ifdef PANEL
+    cpu.du.cycle2 |= du2_ASTR;
+#endif
+    
 #ifdef EIS_PTR3
     e->srcTA = (int) TA1;
     uint dstTA = TA2;
@@ -6877,10 +6925,8 @@ void mvt (void)
     // XXX here is where we probably need to to the prepage thang...
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
-    //int fill = (int)bitfieldExtract36(cpu . cu . IWB, 27, 9);
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
     word9 fillT = fill;  // possibly truncated fill pattern
     // play with fill if we need to use it
@@ -7328,12 +7374,12 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N1=1 S1=1");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7628,12 +7674,9 @@ void csl (bool isSZTL)
     e->ADDR1.bPos = (int) e->B1;
     e->ADDR2.bPos = (int) e->B2;
     
-    //uint F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
-    //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
     uint BOLR = getbits36_4 (cpu.cu.IWB, 5);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
@@ -7842,7 +7885,6 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     
     if (p -> mode == eRWreadBit)
       {
-        //p -> bit = (bool) bitfieldExtract36 (p -> data, bitPosn, 1);
         p -> bit = getbits36_1 (p -> data, (uint) bitPosn);
       } 
     else if (p -> mode == eRWwriteBit)
@@ -7945,12 +7987,9 @@ void csr (bool isSZTR)
     e->ADDR2.address += (word18) numWords2;
 #endif
     
-    //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;   // fill bit
-    //bool T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;   // T (enablefault) bit
     bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;   // T (enablefault) bit
     
-    //uint BOLR = (int)bitfieldExtract36(cpu . cu . IWB, 27, 4);  // BOLR field
     uint BOLR = getbits36_4 (cpu.cu.IWB, 5);   // T (enablefault) bit
     bool B5 = (bool)((BOLR >> 3) & 1);
     bool B6 = (bool)((BOLR >> 2) & 1);
@@ -8121,7 +8160,6 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     //int charPosn = ((3 - *cpos) * 9);     // 9-bit char bit position
     //int bitPosn = charPosn + (8 - *bpos);
     
-    //bool b = (bool)bitfieldExtract36(p->data, bitPosn, 1);
     int charPosn = *cpos * 9;
     int bitPosn = charPosn + *bpos;
     bool b = getbits36_1 (p->data, (uint) bitPosn) != 0;
@@ -8165,7 +8203,6 @@ void cmpb (void)
     int bitPosn1 = (int) e->B1;
     int bitPosn2 = (int) e->B2;
     
-    //bool F = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;     // fill bit (was 25)
     bool F = getbits36_1 (cpu.cu.IWB, 0) != 0;   // fill bit
 
     SET_I_ZERO;  // assume all =
@@ -8601,6 +8638,10 @@ static void _btd (bool * ovfp)
 {
     EISwriteToOutputStringReverse(2, 0, ovfp);    // initialize output writer .....
     
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GDB;
+#endif
+
     EISstruct * e = & cpu . currentEISinstruction;
     * ovfp = false;
 
@@ -8754,7 +8795,6 @@ void btd (void)
     if (e->S[1] == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op2 S=0");
 
-    //e->P = (bool)bitfieldExtract36(cpu . cu . IWB, 35, 1);  // 4-bit data sign character control
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     
     if (e->N1 == 0 || e->N1 > 8)
@@ -8987,6 +9027,10 @@ void dtb (void)
     setupOperandDescriptor(2);
 #endif
     
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GDB;
+#endif
+
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
    
@@ -9091,12 +9135,16 @@ void ad2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=1");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -9380,13 +9428,17 @@ void ad3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad3d(): 1 MBZ");
 
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     // initialize mop flags. Probably best done elsewhere.
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9657,12 +9709,16 @@ void sb2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=1");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9899,12 +9955,16 @@ void sb3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb3d(): 1 MBZ");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10162,9 +10222,16 @@ void mp2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=1");
 
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10399,12 +10466,16 @@ void mp3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp3d(): 1 MBZ");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10893,8 +10964,10 @@ static int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
 /*
  * output formatting for DV?X (divide) instructions ....
  */
-static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, decNumber *num, decNumber *den, bool *OVR, bool *TRUNC)
-{
+static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
+                                int n, int s, int sf, bool R, decNumber * num,
+                                decNumber * den, bool * OVR, bool * TRUNC)
+  {
 
     bool bDgtN = false;
 
@@ -10903,12 +10976,12 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 //    if (s == CSFL && bDgtN)
 //        sim_printf("den > num\n");
 
-        // 1) Floating-point quotient
-        //NQ = N2, but if the divisor is greater than the dividend after
-        //operand alignment, the leading zero digit produced is counted and the
-        //effective precision of the result is reduced by one.
+    // 1) Floating-point quotient
+    // NQ = N2, but if the divisor is greater than the dividend after
+    // operand alignment, the leading zero digit produced is counted and the
+    // effective precision of the result is reduced by one.
     if (s == CSFL)
-    {
+      {
         
 //            decNumber _4, _5, _6a, _6b, *op4, *op5, *op6a, *op6b;
 //            
@@ -10941,7 +11014,6 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 //            sim_printf("bAdj2 == %d\n", decNumberToInt32(cmp, set));
 //            
 //            
-//        }
         
         //  The dividend mantissa C(AQ) is shifted right and the dividend exponent
         //  C(E) increased accordingly until
@@ -10991,11 +11063,11 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
 
         
         if (decCompareMAG(dividend, divisor, set) == -1)
-        {
+          {
             bDgtN = true;
-        }
+          }
             
-    }
+      } // s == CSFL
 
     if (s == CSFL)
         sf = 0;
@@ -11012,20 +11084,20 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
     
     int adjLen = n;             // adjLen is the adjusted allowed length of the result taking into account signs and/or exponent
     switch (s)
-    {
+      {
         case CSFL:              // we have a leading sign and a trailing exponent.
-            if (tn == CTN9)
-                adjLen -= 2;    // a sign and an 1 9-bit exponent
-            else
-                adjLen -= 3;    // a sign and 2 4-bit digits making up the exponent
-            break;
+          if (tn == CTN9)
+            adjLen -= 2;        // a sign and an 1 9-bit exponent
+          else
+            adjLen -= 3;        // a sign and 2 4-bit digits making up the exponent
+          break;
         case CSLS:
         case CSTS:              // take sign into assount. One less char to play with
-            adjLen -= 1;
-            break;
+          adjLen -= 1;
+          break;
         case CSNS:
-            break;          // no sign to worry about. Use everything
-    }
+          break;                // no sign to worry about. Use everything
+      }
     
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
@@ -11036,14 +11108,14 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
     PRINTALL("pa(1:r):", r, set);
     
     if (adjLen < 1)
-    {
+      {
         // adjusted length is too small for anything but sign and/or exponent
         //*OVR = 1;
         
         // XXX what do we fill in here? Sign and exp?
         *OVR = true;
         return (char *)"";
-    }
+      }
     
     // scale result (if not floating)
     
@@ -11057,44 +11129,44 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
         
         
 #ifndef SPEED
-        int scale;
-        char out[256], out2[256];
-        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+      int scale;
+      char out[256], out2[256];
+      if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
-            bzero(out, sizeof(out));
-            bzero(out2, sizeof(out2));
-            
-            decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
-            for(int i = 0 ; i < r->digits ; i += 1 )
-                out[i] += '0';
-            sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
+          bzero(out, sizeof(out));
+          bzero(out2, sizeof(out2));
+           
+          decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
+          for(int i = 0 ; i < r->digits ; i += 1 )
+              out[i] += '0';
+          sim_printf("formatDecimal(DEBUG): out[]: '%s'\n", out);
         }
 #endif
         
-        if (s != CSFL)// && sf != 0)
+      if (s != CSFL)// && sf != 0)
         {
-            decNumberFromInt32(&_sf, sf);
-            sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
-            r2 = decNumberRescale(&_r2, r, &_sf, set);
-            sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+          decNumberFromInt32(&_sf, sf);
+          sim_debug (DBG_TRACEEXT, & cpu_dev,
+                     "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+          r2 = decNumberRescale(&_r2, r, &_sf, set);
+          sim_debug (DBG_TRACEEXT, & cpu_dev,
+                     "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
         }
-        else
-            //*r2 = *r;
-            decNumberCopy(r2, r);
+      else
+        //*r2 = *r;
+        decNumberCopy(r2, r);
         
-        PRINTDEC("fd(2:r2):", r2);
+      PRINTDEC("fd(2:r2):", r2);
 
 #ifndef SPEED
-        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+      if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
-            decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
-            for(int i = 0 ; i < r2->digits ; i += 1 )
-                out2[i] += '0';
+          decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
+          for(int i = 0 ; i < r2->digits ; i += 1 )
+            out2[i] += '0';
             
-            sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn], out2, r2->exponent);
+          sim_debug (DBG_TRACEEXT, & cpu_dev,
+                     "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn], out2, r2->exponent);
         }
 #endif
     }
@@ -11114,13 +11186,13 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
     
     // now let's check for overflows
     if (!ovr && !trunc)
-    {
+      {
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
         if (s == CSFL)
-        {
+          {
             if (r2->digits < adjLen)
-            {
+              {
                 PRINTDEC("Value 1a", r2)
                 
                 decNumber _s, *sc;
@@ -11132,9 +11204,11 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                     r2 = decNumberRescale(r2, r2, sc, set);
                 
                 PRINTDEC("Value 2a", r2)
-            } else {
+              }
+            else
+              {
                 PRINTDEC("Value 1b", r2)
-            }
+              }
             
             // if it's floating justify it ...
             /// <remark>
@@ -11155,48 +11229,48 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
             // ... if bAdj then we leave a (single?) leading 0
             
             if (!decNumberIsZero(r2))
-            {
+              {
                 char *q = getBCDn(r2, adjLen) ;
                 int lz = 0; // leading 0's
                 while (*q)
-                {
+                  {
                     if (*q == '0')
-                    {
+                      {
                         lz += 1;
                         q += 1;
-                    }
+                      }
                     else
-                        break;
-                }
+                      break;
+                  }
                 
                 if (lz)
-                {
+                  {
                     decNumber _1;
                     decNumberFromInt32(&_1, lz);
                     decNumberShift(r2, r2, &_1, set);
                     r2->exponent -= lz;
-                }
-            }
-        }
+                  }
+              }
+          } // s == CSFL
         
         
         decBCDFromNumber(out, adjLen, &scale, r2);
         
         for(int i = 0 ; i < adjLen ; i += 1 )
-            out[i] += '0';
+          out[i] += '0';
         
         // add leading 0 and reduce precision if needed
         if (bDgtN)
-        {
+          {
             for(int i = adjLen - 1 ; i >= 0 ; i -= 1 )
                 out[i + 1] = out[i];
             out[adjLen] = 0;
             out[0] = '0';
             r2->exponent += 1;
-        }
-    }
+          }
+      } // ! ovr && ! trunc
     else
-    {
+      {
         PRINTDEC("r2(a):", r2);
 
         ovr = false;
@@ -11209,7 +11283,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
         
         // so, what do we do?
         if (R)
-        {
+          {
             // NB even with rounding you can have an overflow...
             
             // if we're in rounding mode then we just make things fit and everything is OK - except if we have an overflow.
@@ -11219,7 +11293,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
             int safe = set->digits;
             
             if (ro->digits > adjLen)    //(adjLen + 1))
-            {
+              {
                 //set->digits = ro->digits + sf + 1;
                 sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "formatDecimal(!OK R1): ro->digits %d adjLen %d\n", ro->digits, adjLen);
@@ -11240,14 +11314,14 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                 
                 //sim_debug (DBG_TRACEEXT, & cpu_dev, "R OVR\n");
                 //ovr = true; breaks ET MVN 5
-            }
+              } // digits > adjlen
             else
-            {
+              {
                 sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "formatDecimal(!OK R2): ro->digits %d adjLen %d\n", ro->digits, adjLen);
                 
                 if (s==CSFL)
-                {
+                  {
                     
                     set->digits = adjLen;
                     decNumberPlus(ro, ro, set);
@@ -11258,9 +11332,9 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                     out[adjLen] = 0;
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2a): %s\n", out);
                     
-                }
+                  } // s == CSFL
                 else
-                {
+                  {
                     int dig = set->digits;
                     set->digits = adjLen;
                     ro = decNumberPlus(ro, ro, set);    // round to adjLen digits
@@ -11271,9 +11345,9 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                         out[j] += '0';
                     
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(!OK R2b): %s\n", out);
-                }
+                  } // s != CSFL
                 ovr = false;    // since we've rounded we can have no overflow ?????
-            }
+              } // digits <= adjlen
             sim_debug (DBG_TRACEEXT, & cpu_dev, "formatDecimal(R3): digits:'%s'\n", out);
             
             set->digits = safe;
@@ -11282,7 +11356,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
             
 #ifndef SPEED
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
-            {
+              {
                 decNumber _i;
                 decNumber *i = decNumberToIntegralValue(&_i, ro, set);
                 char outi[256];
@@ -11291,15 +11365,15 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                 for(int j = 0 ; j < adjLen; j += 1 )
                     outi[j] += '0';
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
-            }
+              }
 #endif
-        }
+          } // R
         else
-        {
+          {
             // if we're not in rounding mode then we can either have a truncation or an overflow
             
             if (s == CSFL)
-            {
+              {
                 enum rounding safeR = decContextGetRounding(set);         // save rounding mode
                 decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
 
@@ -11323,23 +11397,23 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                 // With the divisor (den) greater than the dividend (num), the algorithm generates a leading zero in the quotient. 
 
                 if (bDgtN)
-                {
+                  {
                     for(int i = adjLen - 1 ; i >= 0 ; i -= 1 )
                         out[i + 1] = out[i];
                     out[adjLen] = 0;
                     out[0] = '0';
                     r2->exponent += 1;
-                }
+                  }
 
                 set->digits = safe;
                 decContextSetRounding(set, safeR);              // restore rounding mode
                 
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "CSFL TRUNC\n");
-            }
+              } // s == CSFL
             else
-            {
+              {
                 if (r2->digits < r->digits)
-                {
+                  {
                     enum rounding safeR = decContextGetRounding(set);         // save rounding mode
                     decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
                     
@@ -11350,15 +11424,15 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                     trunc = true;
 
                     if (r2->digits <= adjLen)
-                    {
+                      {
                         decBCDFromNumber(out, adjLen, &scale, r2);
                         for(int i = 0 ; i < adjLen; i += 1 )
                             out[i] += '0';
                         out[adjLen] = 0;
                         trunc = false;
-                    }
+                      }
                     else
-                    {
+                      {
                         decBCDFromNumber(out, r2->digits, &scale, r2);
                         for(int i = 0 ; i < r2->digits; i += 1 )
                             out[i] += '0';
@@ -11369,13 +11443,14 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                         
                         ovr = true;
                         trunc = false;
-                    }
+                      }
                     decContextSetRounding(set, safeR);              // restore rounding mode
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "TRUNC\n");
                     
-                    //                } else if ((r2->digits-sf) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
-                } else if ((r2->digits) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
-                {
+                    //                else if ((r2->digits-sf) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                  } // r2 < r
+                else if ((r2->digits) > adjLen)     // HWR 18 July 2014 was (r->digits > adjLen)
+                  {
                     // OVR
                     decBCDFromNumber(out, r2->digits, &scale, r2);
                     for(int i = 0 ; i < r2->digits ; i += 1 )
@@ -11390,12 +11465,12 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
                     
                     sim_debug (DBG_TRACEEXT, & cpu_dev, "OVR\n");
                     ovr = true;
-                }
+                  } // r2 >= r
                 else
-                    sim_printf("formatDecimal(?): How'd we get here?\n");
-            }
-        }
-    }
+                  sim_printf("formatDecimal(?): How'd we get here?\n");
+              } // s != CSFL
+          } // !R
+      } // ovr || trunc
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "formatDecimal(END): ovrflow=%d trunc=%d R=%d out[]='%s'\n", ovr, trunc, R, out);
     *OVR = ovr;
@@ -11403,7 +11478,7 @@ static char *formatDecimalDIV(decContext *set, decNumber *r, int tn, int n, int 
     
     decNumberCopy(r, r2);
     return (char *) out;
-}
+  }
 
 /*
  * dv2d - Divide Using Two Decimal Operands
@@ -11430,12 +11505,16 @@ void dv2d (void)
     if (e->N1 == 1 && e->S1 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d N1=1 S1=0");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11699,12 +11778,16 @@ void dv3d (void)
     if (IWB_IRODD & 0200400000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv3d(): 1,9 MBZ");
 
-    //e->P = bitfieldExtract36(cpu . cu . IWB, 35, 1) != 0;  // 4-bit data sign character control
-    //uint T = bitfieldExtract36(cpu . cu . IWB, 26, 1) != 0;  // truncation bit
-    //uint R = bitfieldExtract36(cpu . cu . IWB, 25, 1) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_GSTR;
+#endif
+
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
+#ifdef PANEL
+    cpu.du.cycle1 |= du1_FRND;
+#endif
     
     uint srcTN = e->TN1;    // type of chars in src
     

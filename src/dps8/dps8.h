@@ -80,8 +80,23 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+// Dependencies
+
+// ISOLTS requires multiple CPU support
 #ifdef ISOLTS
+#ifndef ROUND_ROBIN
 #define ROUND_ROBIN
+#endif
+#endif
+
+// PANEL only works on L68
+#ifdef PANEL
+#ifdef DPS8M
+#error "PANEL works with L68, not DPS8M"
+#endif
+#ifndef L68
+#define L68
+#endif
 #endif
 
 // debugging tool
@@ -335,10 +350,15 @@ typedef enum opc_mod
 /*! just dl or css */
 #define IS_DCSS(tag) (((_TM(tag) != 040U) && (_TD(tag) == 007U)) || IS_CSS(tag))
 
-enum reg_use { ru_A  = 512, ru_Q  = 256,
-               ru_X0 = 128, ru_X1 =  64, ru_X2 =  32, ru_X3 =  16,
-               ru_X4 =   8, ru_X5 =   4, ru_X6 =   2, ru_X7 =   1,
-               ru_none = 0, ru_notou = 1024 };
+enum reg_use { is_DU = 2048,
+               is_OU = 1024,
+               ru_A  = 1024 + 512, ru_Q  = 1024 + 256,
+               ru_X0 = 1024 + 128, ru_X1 = 1024 +  64,
+               ru_X2 = 1024 +  32, ru_X3 = 1024 +  16,
+               ru_X4 = 1024 +   8, ru_X5 = 1024 +   4,
+               ru_X6 = 1024 +   2, ru_X7 = 1024 +   1,
+               ru_none = 1024 + 0 };
+//, ru_notou = 1024 };
 
 #define ru_AQ (ru_A | ru_Q)
 #define ru_Xn(n) (1 << (7 - (n)))
