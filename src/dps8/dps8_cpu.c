@@ -3977,7 +3977,10 @@ IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     if (cpu.MR.hrhlt && cpu.history_cyclic[CU_HIST_REG] == 0)
       {
         //cpu.history_cyclic[CU_HIST_REG] = 15;
-        cpu.MR.ihr = 0;
+        if (cpu.MR.ihrrs)
+          {
+            cpu.MR.ihr = 0;
+          }
 IF1 sim_printf ("trapping......\n");
         set_FFV_fault (2);
         return;
