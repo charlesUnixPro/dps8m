@@ -1373,8 +1373,13 @@ t_stat executeInstruction (void)
         if (cpu.MR.OPCODE == ci->opcode &&
             cpu.MR.OPCODEX == ci->opcodeX) 
           {
+            if (cpu.MR.ihrrs)
+              {
+                cpu.MR.ihr = 0;
+              }
 IF1 sim_printf ("trapping opcode match......\n");
-            set_FFV_fault (2);
+            //set_FFV_fault (2); // XXX According to AL39
+            do_FFV_fault (1, "OC TRAP");
           }
       }
 #endif // L68
@@ -1572,8 +1577,12 @@ restart_1:
         cpu.cu.TSN_VALID[1] = 0;
         cpu.cu.TSN_VALID[2] = 0;
 
+// XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
+#ifdef PANEL
+            cpu.apu.state |= apu_ESN_PSR;
+#endif
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }

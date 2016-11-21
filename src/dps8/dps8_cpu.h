@@ -775,7 +775,54 @@ typedef struct
     word1 STR_OP;
 #endif
   } ou_unit_data_t;
-// Control unit data (288 bits) 
+
+enum { 
+//   AL39 pg 64 APU hist.
+                                  //  0   l FLT Access violation or directed fault on this cycle
+                                  //  1-2 a BSY    Data source for ESN
+    apu_ESN_PSR = 0,              //                  00 PPR.PSR
+    apu_ESN_SNR = 1ll << (33- 1), //                  01 PRn.SNR
+    apu_ESN_RTSR= 1ll << (33- 2), //                  10 TPR.TSR
+                                  //                  11 not used
+                                  //  3     PRAP
+    apu_HOLD = 1ll <<  (33- 4),   //  4     HOLD  An access violation or directed fault is waiting
+                                  //  5     FRIW
+                                  //  6     XSF
+                                  //  7     STF
+    apu_TP_P = 1ll <<  (33- 8),   //  8     TP P    Guessing PPR.p set from SDW.P
+    apu_PP_P = 1ll <<  (33- 9),   //  9     PP P    PPR.P?
+                                  // 10     ?
+                                  // 11     S-ON   Segment on?
+                                  // 12     ZMAS
+                                  // 13     SDMF   Seg. Descr. Modify?
+                                  // 14     SFND
+                                  // 15     ?
+                                  // 16     P-ON   Page on?
+                                  // 17     ZMAP
+                                  // 18     PTMF
+                                  // 19     PFND  
+    apu_FDPT = 1ll << (33-20),    // 20   b FDPT   Fetch descriptor segment PTW
+    apu_MDPT = 1ll << (33-21),    // 21   c MDPT   Modify descriptor segment PTW
+    apu_FSDP = 1ll << (33-22),    // 22   d FSDP   Fetch SDW paged descr. seg.
+    apu_FSDN = 1ll << (33-23),    // 23     FSDN   Fetch SDW non-paged 
+    apu_FPTW = 1ll << (33-24),    // 24   e FPTW   Fetch PTW
+    apu_MPTW = 1ll << (33-25),    // 25   g MPTW   Modify PTW
+                                  // 26   f FPT2 // Fetch prepage
+    apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from paged seg.
+    apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from non-paged segment
+                                  // 29     FAAB   Final address absolute?
+    apu_FA   = 1ll << (33-30),    // 30     FA     Final address?
+                                  // 31     EAAU
+    apu_PIAU = 1ll << (33-32)     // 32     PIAU   Instruction fetch?
+                                  // 33     TGAU
+  };
+
+typedef struct
+  {
+#ifdef PANEL
+    word34 state;
+#endif
+  } apu_unit_data_t;
 
 typedef struct
   {
@@ -953,7 +1000,6 @@ typedef struct
 
     /* word 7 */
     word36 IRODD; /* Instr holding register; odd word of last pair fetched */
-    
  } ctl_unit_data_t;
 
 #define USE_IRODD (cpu.cu.rd && ((cpu. PPR.IC & 1) != 0)) 
@@ -1239,6 +1285,7 @@ typedef struct
     ctl_unit_data_t cu;
     du_unit_data_t du;
     ou_unit_data_t ou;
+    apu_unit_data_t apu;
     word36 faultRegister [2];
 
     word36   rA;     // accumulator

@@ -320,6 +320,11 @@ sim_printf ("CAMS cleared it\n");
 static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
+
+#ifdef PANEL
+    cpu.apu.state |= apu_FDPT;
+#endif
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
         // generate access violation, out of segment bounds fault
@@ -357,6 +362,11 @@ static void fetchDSPTW(word15 segno)
 // CANFAULT
 static void modifyDSPTW(word15 segno)
 {
+
+#ifdef PANEL
+    cpu.apu.state |= apu_MDPT;
+#endif
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
         // generate access violation, out of segment bounds fault
@@ -431,7 +441,11 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
 static void fetchPSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
-    
+
+#ifdef PANEL
+    cpu.apu.state |= apu_FSDP;
+#endif
+
     setAPUStatus (apuStatus_SDWP);
     word24 y1 = (2 * segno) % 1024;
     
@@ -470,6 +484,10 @@ static void fetchPSDW(word15 segno)
 static void fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
+
+#ifdef PANEL
+    cpu.apu.state |= apu_FSDN;
+#endif
 
     setAPUStatus (apuStatus_SDWNP);
 
@@ -721,7 +739,9 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 
 static void fetchPTW(_sdw *sdw, word18 offset)
 {
-
+#ifdef PANEL
+    cpu.apu.state |= apu_FPTW;
+#endif
     setAPUStatus (apuStatus_PTW);
 
     word24 y2 = offset % 1024;
@@ -828,6 +848,9 @@ static void loadPTWAM(word15 segno, word18 offset)
  */
 static void modifyPTW(_sdw *sdw, word18 offset)
 {
+#ifdef PANEL
+    cpu.apu.state |= apu_MPTW;
+#endif
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
     
@@ -912,6 +935,9 @@ static char *strACV(_fault_subtype acv)
 
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
+#ifdef PANEL
+    cpu.apu.state |= apu_HOLD;
+#endif
     cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
               "doAppendCycle(acvFault): acvFault=%llo acvFaults=%llo: %s",
@@ -1006,6 +1032,10 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
 #endif
 
+#ifdef PANEL
+    cpu.apu.state = 0;
+#endif
+
     cpu . RSDWH_R1 = 0;
     
     cpu.acvFaults = 0;
@@ -1024,6 +1054,9 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     if (! instructionFetch && i -> a)
       {
+#ifdef PANEL
+        cpu.apu.state |= apu_ESN_SNR;
+#endif
         word3 n = GET_PRN(IWB_IRODD);  // get PRn
 sim_printf ("saw bit 29; n %o\n", n);
         if (cpu.PAR[n].RNR > cpu.PPR.PRR)
@@ -1146,6 +1179,7 @@ A:;
     }
     loadSDWAM(cpu . TPR.TSR);
 #else
+
     // is SDW for C(TPR.TSR) in SDWAM?
     if (!fetchSDWfromSDWAM(cpu . TPR.TSR))
     {
@@ -1353,7 +1387,9 @@ E1:
     goto G;
     
 F:;
-    
+#ifdef PANEL
+    cpu.apu.state |= apu_PIAU;
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
@@ -1442,7 +1478,12 @@ G:;
     // is prepage mode???
     // XXX: don't know what todo with this yet ...
     // XXX: ticket #11
-    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
+    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size
+    // of the translate table is determined by the TA1 data type as shown in
+    // the table below. Before the instruction is executed, a check is made for
+    // allocation in memory for the page for the translate table. If the page
+    // is not in memory, a Missing Page fault occurs before execution of the
+    // instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
 #if 0
     if (bPrePageMode)
     {
@@ -1458,6 +1499,9 @@ G:;
     
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
+#ifdef PANEL
+    cpu.apu.state |= apu_FANP;
+#endif
 #if 1
     appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
@@ -1508,6 +1552,9 @@ I:;
     // final address paged
     appendingUnitCycleType = apuCycle_FAP;
     setAPUStatus (apuStatus_FAP);
+#ifdef PANEL
+    cpu.apu.state |= apu_FAP;
+#endif
     
     //word24 y2 = TPR.CA % 1024;
     word24 y2 = address % 1024;
@@ -1553,8 +1600,13 @@ KL:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
     if (cpu . TPR.TRR == 0)
+      {
         // C(SDW.P) → C(PPR.P)
         cpu . PPR.P = cpu . SDW->P;
+#ifdef PANEL
+        cpu.apu.state |= apu_TP_P;
+#endif
+      }
     else
         // 0 → C(PPR.P)
         cpu . PPR.P = 0;
@@ -1573,6 +1625,7 @@ Exit:;
 #ifdef PANEL
     cpu.APUDataBusOffset = address;
     cpu.APUDataBusAddr = finalAddress;
+    cpu.apu.state |= apu_FA;
 #endif
 
     cpu . TPR . CA = address;
