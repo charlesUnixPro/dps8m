@@ -774,15 +774,34 @@ typedef struct
     word9 cycle;
     word1 STR_OP;
 #endif
+#ifdef PANEL
+    word9 RS;
+    word4 opsz;
+    word10 reguse;
+#endif
   } ou_unit_data_t;
+
+// APU history operation parameter
+
+enum APUH_e
+  {
+    APUH_FDSPTW = 1llu << (35 - 17),
+    APUH_MDSPTW = 1llu << (35 - 18),
+    APUH_FSDWP =  1llu << (35 - 19),
+    APUH_FPTW =   1llu << (35 - 20),
+    APUH_FPTW2 =  1llu << (35 - 21),
+    APUH_MPTW =   1llu << (35 - 22),
+    APUH_FANP =   1llu << (35 - 23),
+    APUH_FAP =    1llu << (35 - 24)
+  };
 
 enum { 
 //   AL39 pg 64 APU hist.
-                                  //  0   l FLT Access violation or directed fault on this cycle
+    apu_FLT = 1ll << (33 - 0),    //  0   l FLT Access violation or directed fault on this cycle
                                   //  1-2 a BSY    Data source for ESN
     apu_ESN_PSR = 0,              //                  00 PPR.PSR
     apu_ESN_SNR = 1ll << (33- 1), //                  01 PRn.SNR
-    apu_ESN_RTSR= 1ll << (33- 2), //                  10 TPR.TSR
+    apu_ESN_TSR = 1ll << (33- 2), //                  10 TPR.TSR
                                   //                  11 not used
                                   //  3     PRAP
     apu_HOLD = 1ll <<  (33- 4),   //  4     HOLD  An access violation or directed fault is waiting
@@ -1232,8 +1251,25 @@ typedef struct du_unit_data_t
 #ifdef PANEL
     word37 cycle1;
     word37 cycle2;
+    word1 POL; // Prepare operand length
+    word1 POP; // Prepare operand pointer
 #endif
   } du_unit_data_t;
+
+#ifdef PANEL
+// prepare_state bits
+enum
+  {
+    ps_PIA = 0200,
+    ps_POA = 0100,
+    ps_RIW = 0040,
+    ps_SIW = 0020,
+    ps_POT = 0010,
+    ps_PON = 0004,
+    ps_RAW = 0002,
+    ps_SAW = 0001
+  };
+#endif
 
 // History registers
 
@@ -1252,8 +1288,6 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 #define N_WAM_ENTRIES 16
 #define N_WAM_MASK 017
 #endif
-
-// Operations Unit history
 
 typedef struct
   {
@@ -1309,6 +1343,12 @@ typedef struct
     _sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+#ifdef L68
+    word4 SDWAMR;
+#endif
+#ifdef DPS8M
+    word6 SDWAMR;
+#endif
 #endif
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
@@ -1372,13 +1412,19 @@ typedef struct
                     // 0004  36 bit
                     // 0002  alphanumeric
                     // 0001  numeric
-
+    word8 prepare_state;
 #endif
 
 #ifndef WAM
     _ptw PTWAM0;
 #else
     _ptw PTWAM [N_WAM_ENTRIES];
+#ifdef L68
+    word4 PTWAMR;
+#endif
+#ifdef DPS8M
+    word6 PTWAMR;
+#endif
 #endif
     _ptw * PTW;
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
@@ -1697,7 +1743,7 @@ void addCUhist (void);
 // XXX addDUhist
 void addOUhist (void);
 void addDUhist (void);
-// XXX addAPUhist
+void addAPUhist (enum APUH_e op);
 #endif
 void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);

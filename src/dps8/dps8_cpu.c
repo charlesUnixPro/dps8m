@@ -1917,6 +1917,9 @@ setCPU:;
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
+#ifdef PANEL
+                    cpu.prepare_state = ps_PIA;
+#endif
                     fetchInstruction (cpu.PPR.IC);
                   }
 
@@ -4122,6 +4125,40 @@ void addOUhist (void)
 // 20:27 ABSOLUTE MEMORY ADDRESS
 // 28 TRR #
 // 29 FLT HLD
+
+void addAPUhist (enum APUH_e op)
+  {
+    word36 w0 = 0, w1 = 0;
+     
+    w0 = op; // set 17-24 FDSPTW/.../FAP bits
+
+    // 0-14 ESN 
+    putbits36_15 (& w0, 0, cpu.TPR.TSR);
+    // 15-16 BSY
+    putbits36_1 (& w0, 15, (cpu.apu.state & apu_ESN_SNR) ? 1 : 0);
+    putbits36_1 (& w0, 16, (cpu.apu.state & apu_ESN_TSR) ? 1 : 0);
+    // 25 SDWAMM
+    putbits36_1 (& w0, 25, cpu.cu.SDWAMM);
+    // 26-29 SDWAMR
+    putbits36_4 (& w0, 26, cpu.SDWAMR);
+    // 30 PTWAMM
+    putbits36_1 (& w0, 30, cpu.cu.PTWAMM);
+    // 31-34 PTWAMR
+    putbits36_4 (& w0, 31, cpu.PTWAMR);
+    // 35 FLt
+    putbits36_1 (& w0, 35, (cpu.apu.state & apu_FLT) ? 1 : 0);
+
+    // 36-59 ADD
+    putbits36_24 (& w1,  0, cpu.APUMemAddr);
+    // 60-62 TRR
+    putbits36_3 (& w1, 24, cpu.TPR.TRR);
+    // 66 XXX Multiple match error in SDWAM
+    // 70 Segment is encachable
+    putbits36_1 (& w1, 34, cpu.SDW0.C);
+    // 71 XXX Multiple match error in PTWAM
+
+    addHist (APU_HIST_REG, w0, w1);
+  }
 
 #endif
 

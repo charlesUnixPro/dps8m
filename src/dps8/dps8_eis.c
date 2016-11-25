@@ -879,6 +879,9 @@ static word9 EISget469 (int k, uint i)
     address += nChars / nPos;
     uint residue = nChars % nPos;
 
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = address;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -940,6 +943,9 @@ static void EISput469 (int k, uint i, word9 c469)
     address += nChars / nPos;
     uint residue = nChars % nPos;
 
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = address;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1180,6 +1186,9 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 
         // fill operand according to MFk....
         word18 address = GETHI (opDesc);
+#ifdef PANEL
+        cpu.du.Dk_PTR_W[k-1] = address;
+#endif
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1215,6 +1224,9 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
             word15 offset = address & MASK15;  // 15-bit signed number
             address = (cpu . AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
+#ifdef PANEL
+            cpu.du.Dk_PTR_W[k-1] = address;
+#endif
 #ifdef EIS_PTR
             cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1255,6 +1267,9 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
         address += getMFReg18 (reg, false, true);
         address &= AMASK;
 
+#ifdef PANEL
+        cpu.du.Dk_PTR_W[k-1] = address;
+#endif
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1274,6 +1289,11 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 
 void setupEISoperands (void)
   {
+#ifdef PANEL
+    cpu.du.POP = 0;
+    cpu.du.POL = 0;
+#endif
+
 #ifdef EIS_SETUP
     for (int i = 0; i < 3; i ++)
       {
@@ -1295,6 +1315,9 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
       cpu.du.cycle2 |= du2_ALD1;
     if (k == 2)
       cpu.du.cycle2 |= du2_ALD2;
+#endif
+#ifdef PANEL
+    cpu.du.POP = 1;
 #endif
 
     word36 opDesc = e -> op [k - 1];
@@ -1322,12 +1345,15 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           {
             case CTA9:
               cpu.dataMode = 0102; // 9 bit an
+              cpu.ou.opsz = is_9 >> 12;
               break;
             case CTA6:
               cpu.dataMode = 0042; // 6 bit an
+              cpu.ou.opsz = is_6 >> 12;
               break;
             case CTA4:
               cpu.dataMode = 0022; // 4 bit an
+              cpu.ou.opsz = is_4 >> 12;
               break;
           }
       }
@@ -1367,6 +1393,10 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+
+#ifdef PANEL
+    cpu.du.POL = 1;
+#endif
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
 
@@ -1510,6 +1540,9 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
     }
     
     EISaddr * a = & e -> addr [k - 1];
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -1537,6 +1570,10 @@ static void parseArgOperandDescriptor (uint k)
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
+
+#ifdef PANEL
+    cpu.du.POP = 1;
+#endif
 
     if (yA)
       {
@@ -1575,6 +1612,9 @@ static void parseArgOperandDescriptor (uint k)
     y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
     y &= AMASK;
     
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = y;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = y;
 #else
@@ -1592,6 +1632,9 @@ static void parseNumericOperandDescriptor (int k)
       cpu.du.cycle2 |= du2_NLD1;
     if (k == 2)
       cpu.du.cycle2 |= du2_NLD2;
+#endif
+#ifdef PANEL
+    cpu.du.POP = 1;
 #endif
 
     word36 opDesc = e->op[k-1];
@@ -1634,6 +1677,9 @@ static void parseNumericOperandDescriptor (int k)
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
 
+#ifdef PANEL
+    cpu.du.POL = 1;
+#endif
     word3 CN = getbits36_3 (opDesc, 18);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
 #ifdef PANEL
@@ -1775,6 +1821,9 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
     }
 
     EISaddr *a = &e->addr[k-1];
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -1808,6 +1857,10 @@ static void parseBitstringOperandDescriptor (int k)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
+#ifdef PANEL
+    cpu.du.POP = 1;
+#endif
+
     word18 address = GETHI(opDesc);
     if (MFk & MFkAR)
     {
@@ -1844,6 +1897,10 @@ static void parseBitstringOperandDescriptor (int k)
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
     
+#ifdef PANEL
+    cpu.du.POL = 1;
+#endif
+
     //Operand length. If MFk.RL = 0, this field contains the string length of
     //the operand. If MFk.RL = 1, this field contains the code for a register
     //holding the operand string length. See Table 4-1 and EIS modification
@@ -1888,6 +1945,9 @@ static void parseBitstringOperandDescriptor (int k)
     e->C[k-1] = effCHAR;
     
     EISaddr *a = &e->addr[k-1];
+#ifdef PANEL
+    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
+#endif
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -6383,6 +6443,10 @@ static MOPstruct* EISgetMop (void)
         cpu.du.Dk_PTR_W[KMOP] = (cpu.du.Dk_PTR_W[KMOP] + 1) & AMASK;     // bump source to next address
         p->data = EISRead(&e->ADDR2);   // read it from memory
 #else
+#ifdef PANEL
+        cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK;     // bump source to next address
+        p->data = EISRead(e->mopAddress);   // read it from memory
+#endif
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK;     // bump source to next address
         p->data = EISRead(e->mopAddress);   // read it from memory
@@ -7966,6 +8030,10 @@ void csr (bool isSZTR)
     int numWords1=0, numWords2=0;
     
     getBitOffsets((int) e->N1, (int) e->C1, (int) e->B1, &numWords1, &e->ADDR1.cPos, &e->ADDR1.bPos);
+#ifdef PANEL
+    cpu.du.D1_PTR_W += (word18) numWords1;
+    cpu.du.D1_PTR_W &= AMASK;
+#endif
 #ifdef EIS_PTR
     cpu.du.D1_PTR_W += (word18) numWords1;
     cpu.du.D1_PTR_W &= AMASK;
@@ -7980,6 +8048,10 @@ void csr (bool isSZTR)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "CSR N2 %d C2 %d B2 %d numWords2 %d cPos %d bPos %d\n",
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
+#ifdef PANEL
+    cpu.du.D2_PTR_W += (word18) numWords1;
+    cpu.du.D2_PTR_W &= AMASK;
+#endif
 #ifdef EIS_PTR
     cpu.du.D2_PTR_W += (word18) numWords1;
     cpu.du.D2_PTR_W &= AMASK;
@@ -8474,6 +8546,10 @@ static void EISwriteToOutputStringReverse (int k, word9 charToWrite, bool * ovf)
         if (lastWordOffset > 0)           // more that the 1 word needed?
         {
             //address += lastWordOffset;    // highest memory address
+#ifdef PANEL
+            cpu.du.Dk_PTR_W[k-1] += (word18) lastWordOffset;
+            cpu.du.Dk_PTR_W[k-1] &= AMASK;
+#endif
 #ifdef EIS_PTR
             cpu.du.Dk_PTR_W[k-1] += (word18) lastWordOffset;
             cpu.du.Dk_PTR_W[k-1] &= AMASK;
@@ -8993,12 +9069,14 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     int lastChar = (CN + N - 1) % 4;   // last character number
     
     if (lastWordOffset > 0)           // more that the 1 word needed?
+      {
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[eisaddr_idx] += (word18) lastWordOffset;    // highest memory address
         cpu.du.Dk_PTR_W[eisaddr_idx] &= AMASK;
 #else
         p->address += (word18) lastWordOffset;    // highest memory address
 #endif
+      }
     int pos = lastChar;             // last character number
     
     int128 x = e->x;

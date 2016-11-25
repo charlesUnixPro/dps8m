@@ -46,6 +46,10 @@ static void writeOperands (void)
                "writeOperands (%s):mne=%s flags=%x\n",
                disAssemble (IWB_IRODD), i->info->mne, i->info->flags);
 
+#ifdef PANEL
+        cpu.prepare_state |= ps_RAW;
+#endif
+
     word6 rTAG = 0;
     if (! (i->info->flags & NO_TAG))
       rTAG = GET_TAG (cpu.cu.IWB);
@@ -148,6 +152,10 @@ static void writeOperands (void)
         // Get the data word
         //
 
+#ifdef PANEL
+        cpu.prepare_state |= ps_POT;
+#endif
+
         cpu.cu.pot = 1;
 
         word36 data;
@@ -176,6 +184,9 @@ static void writeOperands (void)
         // Write it
         //
 
+#ifdef PANEL
+        cpu.prepare_state |= ps_SAW;
+#endif
         Write (Yi, data, OPERAND_STORE, i->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -189,7 +200,6 @@ static void writeOperands (void)
 
         return;
       } // IT
-
 
 
     WriteOP (cpu.TPR.CA, OPERAND_STORE, i->a);
@@ -207,6 +217,10 @@ static void readOperands (void)
                disAssemble (cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
               "readOperands a %d address %08o\n", i->a, cpu.TPR.CA);
+
+#ifdef PANEL
+    cpu.prepare_state |= ps_POA;
+#endif
 
     word6 rTAG = 0;
     if (! (i->info->flags & NO_TAG))
@@ -267,6 +281,10 @@ static void readOperands (void)
         //
         // Get the indirect word
         //
+
+#ifdef PANEL
+        cpu.prepare_state |= ps_RIW;
+#endif
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
@@ -335,6 +353,10 @@ static void readOperands (void)
         //
         // Get the data word
         //
+
+#ifdef PANEL
+        cpu.prepare_state |= ps_SIW;
+#endif
 
         word36 data;
         Read (Yi, & data, OPERAND_READ, i->a);
@@ -1383,6 +1405,7 @@ IF1 sim_printf ("trapping opcode match......\n");
           }
       }
 #endif // L68
+
 ///
 /// executeInstruction: Non-restart processing
 ///
@@ -1580,9 +1603,7 @@ restart_1:
 // XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
-#ifdef PANEL
             cpu.apu.state |= apu_ESN_PSR;
-#endif
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }
@@ -2284,6 +2305,9 @@ static t_stat doInstruction (void)
     cpu.ou.STR_OP = 0;
     cpu.ou.cycle = 0;
 #endif
+#ifdef PANEL
+    cpu.ou.RS = (word9) i->opcode;
+#endif
 
 #ifdef PANEL
     cpu.du.cycle1 = du1_FDUD; // set idle
@@ -2333,13 +2357,15 @@ static t_stat DoBasicInstruction (void)
     cpu.ou.characterOperandOffset = 0;
     cpu.ou.crflag = false;
 
-#ifdef L68
+#ifdef PANEL
     if (NonEISopcodes[i->opcode].reg_use & is_OU)
       {
         is_ou = true;
 // XXX Punt on RP FULL, RS FULL
         cpu.ou.RB1_FULL = cpu.ou.RP_FULL = cpu.ou.RS_FULL = 1;
         cpu.ou.cycle |= ou_GIN;
+        cpu.ou.opsz = (NonEISopcodes[i->opcode].reg_use >> 12) & 037;
+        cpu.ou.reguse = (NonEISopcodes[i->opcode].reg_use) & MASK10;
       }
 #endif
 
