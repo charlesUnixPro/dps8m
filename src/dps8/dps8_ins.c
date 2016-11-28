@@ -5896,7 +5896,7 @@ static t_stat DoBasicInstruction (void)
                   cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                   cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
                   cpu.MR.emr = getbits36_1 (cpu.CY, 35);
-IF1 sim_printf ("hrhlt %u ihr %u emr %u\n", cpu.MR.hrhlt, cpu.MR.ihr, cpu.MR.emr);
+//IF1 sim_printf ("hrhlt %u ihr %u emr %u\n", cpu.MR.hrhlt, cpu.MR.ihr, cpu.MR.emr);
 #else
 IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
 #ifdef L68
@@ -6207,7 +6207,7 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair[1] =
                       cpu.history[CU_HIST_REG]
                                  [cpu.history_cyclic[CU_HIST_REG]][1];
-IF1 sim_printf ("scpr cu %u %012llo %012llo\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
+//IF1 sim_printf ("scpr cu %u %012llo %012llo\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic[CU_HIST_REG] =
                       (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }

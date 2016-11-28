@@ -951,16 +951,8 @@ void cpu_init (void)
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
-static t_stat cpu_reset (UNUSED DEVICE *dptr)
+static void cpu_reset2 (void)
 {
-    //memset (M, -1, MEMSIZE * sizeof (word36));
-
-    // Fill DPS8M memory with zeros, plus a flag only visible to the emulator
-    // marking the memory as uninitialized.
-
-    for (uint i = 0; i < MEMSIZE; i ++)
-      M [i] = MEM_UNINITIALIZED;
-
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
 #ifdef ROUND_ROBIN
@@ -1032,7 +1024,19 @@ static t_stat cpu_reset (UNUSED DEVICE *dptr)
 #endif
 
     tidy_cu ();
+}
 
+static t_stat cpu_reset (UNUSED DEVICE *dptr)
+{
+    //memset (M, -1, MEMSIZE * sizeof (word36));
+
+    // Fill DPS8M memory with zeros, plus a flag only visible to the emulator
+    // marking the memory as uninitialized.
+
+    for (uint i = 0; i < MEMSIZE; i ++)
+      M [i] = MEM_UNINITIALIZED;
+
+    cpu_reset2 ();
     return SCPE_OK;
 }
 
@@ -1399,8 +1403,32 @@ static void panelProcessEvent (void)
          // Wait for release
          while (cpu.panelInitialize) 
            ;
-         cpu_reset (& cpu_dev);
+         if (cpu.DATA_panel_init_sw)
+           cpu_reset (& cpu_dev); // INITIALIZE & CLEAR
+         else
+           cpu_reset2 (); // INITIALIZE
+         // XXX Until a boot switch is wired up
          doBoot ();
+      }
+    // EXECUTE pressed; EXECUTE PB set, EXECUTE FAULT set
+    if (cpu.DATA_panel_execute_sw && // EXECUTE buttton
+        cpu.DATA_panel_scope_sw && // 'EXECUTE PB/SCOPE REPEAT' set to PB
+        cpu.DATA_panel_exec_sw == 0) // 'EXECUTE SWITCH/EXECUTE FAULT' set to FAULT
+      {
+        // Wait for release
+        while (cpu.DATA_panel_execute_sw) 
+          ;
+
+        if (cpu.DATA_panel_exec_sw) // EXECUTE SWITCH
+          {
+            cpu_reset2 ();
+            cpu.cu.IWB = cpu.switches.data_switches;
+            setCpuCycle (EXEC_cycle);
+          }
+         else // EXECUTE FAULT
+          {
+            setG7fault (currentRunningCPUnum, FAULT_EXF, (_fault_subtype) {.bits=0});
+          }
       }
   }
 #endif
@@ -2165,7 +2193,7 @@ setCPU:;
                     cpu.is_FFV = false;
                     // The high 15 bits
                     fltAddress = (cpu.MR.FFV & MASK15) << 3;
-IF1 sim_printf ("fltAddress %06o\n", fltAddress);
+//IF1 sim_printf ("fltAddress %06o\n", fltAddress);
                   }
 #endif
 
@@ -3972,7 +4000,7 @@ void addCUhist (void)
       return;
 
 //IF1 if (cpu.MR.hrhlt) sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
-IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
+//IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
 
     // 0 PIA
@@ -4036,7 +4064,7 @@ IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
           {
             cpu.MR.ihr = 0;
           }
-IF1 sim_printf ("trapping......\n");
+//IF1 sim_printf ("trapping......\n");
         set_FFV_fault (4);
         return;
       }
