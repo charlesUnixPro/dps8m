@@ -49,7 +49,7 @@ typedef enum
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
-    FETCH_cycle = INSTRUCTION_FETCH,
+    FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
@@ -1024,6 +1024,220 @@ typedef struct
 #define USE_IRODD (cpu.cu.rd && ((cpu. PPR.IC & 1) != 0)) 
 #define IWB_IRODD (USE_IRODD ? cpu.cu.IRODD : cpu.cu.IWB)
 
+#ifdef L68
+enum du_cycle1_e
+  {
+    //  0 -FPOL Prepare operand length
+    du1_nFPOL        = 0400000000000ll,
+    //  1 -FPOP Prepare operand pointer
+    du1_nFPOP        = 0200000000000ll,
+    //  2 -NEED-DESC Need descriptor 
+    du1_nNEED_DESC   = 0100000000000ll,
+    //  3 -SEL-ADR Select address register
+    du1_nSEL_DIR     = 0040000000000ll,
+    //  4 -DLEN=DIRECT Length equals direct
+    du1_nDLEN_DIRECT = 0020000000000ll,
+    //  5 -DFRST Descriptor processed for first time
+    du1_nDFRST       = 0010000000000ll,
+    //  6 -FEXR Extended register modification
+    du1_nFEXR        = 0004000000000ll,
+    //  7 -DLAST-FRST Last cycle of DFRST
+    du1_nLAST_DFRST  = 0002000000000ll,
+    //  8 -DDU-LDEA Decimal unit load  (lpl?)
+    du1_nDDU_LDEA    = 0001000000000ll,
+    //  9 -DDU-STAE Decimal unit store (spl?)
+    du1_nDDU_STEA    = 0000400000000ll,
+    // 10 -DREDO Redo operation without pointer and length update
+    du1_nDREDO       = 0000200000000ll,
+    // 11 -DLVL<WD-SZ Load with count less than word size
+    du1_nDLVL_WD_SZ  = 0000100000000ll,
+    // 12 -EXH Exhaust
+    du1_nEXH         = 0000040000000ll,
+    // 13 DEND-SEQ End of sequence
+    du1_DEND_SEQ     = 0000020000000ll,
+    // 14 -DEND End of instruction
+    du1_nEND         = 0000010000000ll,
+    // 15 -DU=RD+WRT Decimal unit write-back
+    du1_nDU_RD_WRT   = 0000004000000ll,
+    // 16 -PTRA00 PR address bit 0
+    du1_nPTRA00      = 0000002000000ll,
+    // 17 -PTRA01 PR address bit 1
+    du1_nPTRA01      = 0000001000000ll,
+    // 18 FA/Il Descriptor l active
+    du1_FA_I1        = 0000000400000ll,
+    // 19 FA/I2 Descriptor 2 active
+    du1_FA_I2        = 0000000200000ll,
+    // 20 FA/I3 Descriptor 3 active
+    du1_FA_I3        = 0000000100000ll,
+    // 21 -WRD Word operation
+    du1_nWRD         = 0000000040000ll,
+    // 22 -NINE 9-bit character operation
+    du1_nNINE        = 0000000020000ll,
+    // 23 -SIX 6-bit character operation
+    du1_nSIX         = 0000000010000ll,
+    // 24 -FOUR 4-bit character operation
+    du1_nFOUR        = 0000000004000ll,
+    // 25 -BIT Bit operation
+    du1_nBIT         = 0000000002000ll,
+    // 26 Unused
+    //               = 0000000001000ll,
+    // 27 Unused
+    //               = 0000000000400ll,
+    // 28 Unused
+    //               = 0000000000200ll,
+    // 29 Unused
+    //               = 0000000000100ll,
+    // 30 FSAMPL Sample for mid-instruction interrupt
+    du1_FSAMPL       = 0000000000040ll,
+    // 31 -DFRST-CT Specified first count of a sequence
+    du1_nDFRST_CT    = 0000000000020ll,
+    // 32 -ADJ-LENGTH Adjust length
+    du1_nADJ_LENTGH  = 0000000000010ll,
+    // 33 -INTRPTD Mid-instruction interrupt
+    du1_nINTRPTD     = 0000000000004ll,
+    // 34 -INHIB Inhibit STC1 (force "STC0")
+    du1_nINHIB       = 0000000000002ll,
+    // 35 Unused
+    //               = 0000000000001ll,
+  };
+
+enum du_cycle2_e
+  {
+    // 36 DUD Decimal unit idle
+    du2_DUD          = 0400000000000ll,
+    // 37 -GDLDA Descriptor load gate A
+    du2_nGDLDA       = 0200000000000ll,
+    // 38 -GDLDB Descriptor load gate B
+    du2_nGDLDB       = 0100000000000ll,
+    // 39 -GDLDC Descriptor load gate C
+    du2_nGDLDC       = 0040000000000ll,
+    // 40 NLD1 Prepare alignment count for first numeric operand load
+    du2_NLD1         = 0020000000000ll,
+    // 41 GLDP1 Numeric operand one load gate
+    du2_GLDP1        = 0010000000000ll,
+    // 42 NLD2 Prepare alignment count for second numeric operand load
+    du2_NLD2         = 0004000000000ll,
+    // 43 GLDP2 Numeric operand two load gate
+    du2_GLDP2        = 0002000000000ll,
+    // 44 ANLD1 Alphanumeric operand one load gate
+    du2_ANLD1        = 0001000000000ll,
+    // 45 ANLD2 Alphanumeric operand two load gate
+    du2_ANLD2        = 0000400000000ll,
+    // 46 LDWRT1 Load rewrite register one gate (XXX Guess indirect desc. MFkID)
+    du2_LDWRT1       = 0000200000000ll,
+    // 47 LDWRT2 Load rewrite register two gate (XXX Guess indirect desc. MFkID)
+    du2_LDWRT2       = 0000100000000ll,
+    // 50 -DATA-AVLDU Decimal unit data available
+    du2_nDATA_AVLDU  = 0000040000000ll,
+    // 49 WRT1 Rewrite register one loaded
+    du2_WRT1         = 0000020000000ll,
+    // 50 GSTR Numeric store gate
+    du2_GSTR         = 0000010000000ll,
+    // 51 ANSTR Alphanumeric store gate
+    du2_ANSTR        = 0000004000000ll,
+    // 52 FSTR-OP-AV Operand available to be stored
+    du2_FSTR_OP_AV   = 0000002000000ll,
+    // 53 -FEND-SEQ End sequence flag
+    du2_nFEND_SEQ    = 0000001000000ll,
+    // 54 -FLEN<128 Length less than 128
+    du2_nFLEN_128    = 0000000400000ll,
+    // 55 FGCH Character operation gate
+    du2_FGCH         = 0000000200000ll,
+    // 56 FANPK Alphanumeric packing cycle gate
+    du2_FANPK        = 0000000100000ll,
+    // 57 FEXMOP Execute MOP gate
+    du2_FEXOP        = 0000000040000ll,
+    // 58 FBLNK Blanking gate
+    du2_FBLNK        = 0000000020000ll,
+    // 59 Unused
+    //               = 0000000010000ll,
+    // 60 DGBD Binary to decimal execution gate
+    du2_DGBD         = 0000000004000ll,
+    // 61 DGDB Decimal to binary execution gate
+    du2_DGDB         = 0000000002000ll,
+    // 62 DGSP Shift procedure gate
+    du2_DGSP         = 0000000001000ll,
+    // 63 FFLTG Floating result flag
+    du2_FFLTG        = 0000000000400ll,
+    // 64 FRND Rounding flag
+    du2_FRND         = 0000000000200ll,
+    // 65 DADD-GATE Add/subtract execute gate
+    du2_DADD_GATE    = 0000000000100ll,
+    // 66 DMP+DV-GATE Multiply/divide execution gate
+    du2_DMP_DV_GATE  = 0000000000040ll,
+    // 67 DXPN-GATE Exponent network execution gate
+    du2_DXPN_GATE    = 0000000000020ll,
+    // 68 Unused
+    //               = 0000000000010ll,
+    // 69 Unused
+    //               = 0000000000004ll,
+    // 70 Unused
+    //               = 0000000000002ll,
+    // 71 Unused
+    //               = 0000000000001ll,
+  };
+
+#define DU_CYCLE_GDLDA { clrmask (& cpu.du.cycle2, du2_nGDLDA); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDB | du2_nGDLDC); }
+#define DU_CYCLE_GDLDB { clrmask (& cpu.du.cycle2, du2_nGDLDB); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDA | du2_nGDLDC); }
+#define DU_CYCLE_GDLDC { clrmask (& cpu.du.cycle2, du2_nGDLDC); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDA | du2_nGDLDB); }
+#define DU_CYCLE_FA_I1 setmask (& cpu.du.cycle1, du1_FA_I1)
+#define DU_CYCLE_FA_I2 setmask (& cpu.du.cycle1, du1_FA_I2)
+#define DU_CYCLE_FA_I3 setmask (& cpu.du.cycle1, du1_FA_I3)
+#define DU_CYCLE_ANLD1 setmask (& cpu.du.cycle2, du2_ANLD1)
+#define DU_CYCLE_ANLD2 setmask (& cpu.du.cycle2, du2_ANLD2)
+#define DU_CYCLE_NLD1  setmask (& cpu.du.cycle2, du2_NLD1)
+#define DU_CYCLE_NLD2  setmask (& cpu.du.cycle2, du2_NLD2)
+#define DU_CYCLE_FRND  setmask (& cpu.du.cycle2, du2_FRND)
+#define DU_CYCLE_DGBD  setmask (& cpu.du.cycle2, du2_DGBD)
+#define DU_CYCLE_DGDB  setmask (& cpu.du.cycle2, du2_DGDB)
+#define DU_CYCLE_DDU_LDEA clrmask (& cpu.du.cycle1, du1_nDDU_LDEA)
+#define DU_CYCLE_DDU_STEA clrmask (& cpu.du.cycle1, du1_nDDU_STEA)
+#define DU_CYCLE_END clrmask (& cpu.du.cycle1, du1_nEND)
+#define DU_CYCLE_LDWRT1  setmask (& cpu.du.cycle2, du2_LDWRT1)
+#define DU_CYCLE_LDWRT2  setmask (& cpu.du.cycle2, du2_LDWRT2)
+#define DU_CYCLE_FEXOP  setmask (& cpu.du.cycle2, du2_FEXOP)
+#define DU_CYCLE_ANSTR  setmask (& cpu.du.cycle2, du2_ANSTR)
+#define DU_CYCLE_GSTR  setmask (& cpu.du.cycle2, du2_GSTR)
+#define DU_CYCLE_FLEN_128  clrmask (& cpu.du.cycle2, du2_nFLEN_128)
+#define DU_CYCLE_FDUD  { cpu.du.cycle1 = \
+                      du1_nFPOL | \
+                      du1_nFPOP | \
+                      du1_nNEED_DESC | \
+                      du1_nSEL_DIR | \
+                      du1_nDLEN_DIRECT | \
+                      du1_nDFRST | \
+                      du1_nFEXR | \
+                      du1_nLAST_DFRST | \
+                      du1_nDDU_LDEA | \
+                      du1_nDDU_STEA | \
+                      du1_nDREDO | \
+                      du1_nDLVL_WD_SZ | \
+                      du1_nEXH | \
+                      du1_nEND | \
+                      du1_nDU_RD_WRT | \
+                      du1_nWRD | \
+                      du1_nNINE | \
+                      du1_nSIX | \
+                      du1_nFOUR | \
+                      du1_nBIT | \
+                      du1_nINTRPTD | \
+                      du1_nINHIB; \
+                    cpu.du.cycle2 = \
+                      du2_DUD | \
+                      du2_nGDLDA | \
+                      du2_nGDLDB | \
+                      du2_nGDLDC | \
+                      du2_nDATA_AVLDU | \
+                      du2_nFEND_SEQ | \
+                      du2_nFLEN_128; \
+                  }
+#define DU_CYCLE_nDUD clrmask (& cpu.du.cycle2, du2_DUD) 
+#endif
+
+#if 0
 #ifdef PANEL
 // 6180 panel DU control flags with guessed meanings based on DU history 
 // register bits.
@@ -1109,6 +1323,7 @@ enum du_cycle2_e
     du2_U35   = 00000000000002ll, // ?
     du2_U36   = 00000000000001ll  // ?
   };
+#endif
 #endif
 
 typedef struct du_unit_data_t
@@ -1366,40 +1581,43 @@ typedef struct
     word1 panel4_red_ready_light_state;
     word1 panel7_enabled_light_state;
 // The state of the panel switches
-    word15 APU_panel_segno_sw;
-    word1  APU_panel_enable_match_ptw_sw;
-    word1  APU_panel_enable_match_sdw_sw;
-    word1  APU_panel_scroll_select_ul_sw;
-    word4  APU_panel_scroll_select_n_sw;
-    word4  APU_panel_scroll_wheel_sw;
-    word18 APU_panel_addr_sw;
-    word18 APU_panel_enter_sw;
-    word18 APU_panel_display_sw;
-    word4  CP_panel_wheel_sw;
-    word4  DATA_panel_ds_sw;
-    word4  DATA_panel_d1_sw;
-    word4  DATA_panel_d2_sw;
-    word4  DATA_panel_d3_sw;
-    word4  DATA_panel_d4_sw;
-    word4  DATA_panel_d5_sw;
-    word4  DATA_panel_d6_sw;
-    word4  DATA_panel_d7_sw;
-    word4  DATA_panel_wheel_sw;
-    word4  DATA_panel_addr_stop_sw;
-    word1  DATA_panel_enable_sw;
-    word1  DATA_panel_validate_sw;
-    word1  DATA_panel_auto_fast_sw;
-    word1  DATA_panel_auto_slow_sw;
-    word4  DATA_panel_cycle_sw;
-    word1  DATA_panel_step_sw;
-    word1  DATA_panel_s_trig_sw;
-    word1  DATA_panel_execute_sw;
-    word1  DATA_panel_scope_sw;
-    word1  DATA_panel_init_sw;
-    word1  DATA_panel_exec_sw;
-    word4  DATA_panel_hr_sel_sw;
-    word4  DATA_panel_trackers_sw;
+    volatile word15 APU_panel_segno_sw;
+    volatile word1  APU_panel_enable_match_ptw_sw;
+    volatile word1  APU_panel_enable_match_sdw_sw;
+    volatile word1  APU_panel_scroll_select_ul_sw;
+    volatile word4  APU_panel_scroll_select_n_sw;
+    volatile word4  APU_panel_scroll_wheel_sw;
+    volatile word18 APU_panel_addr_sw;
+    volatile word18 APU_panel_enter_sw;
+    volatile word18 APU_panel_display_sw;
+    volatile word4  CP_panel_wheel_sw;
+    volatile word4  DATA_panel_ds_sw;
+    volatile word4  DATA_panel_d1_sw;
+    volatile word4  DATA_panel_d2_sw;
+    volatile word4  DATA_panel_d3_sw;
+    volatile word4  DATA_panel_d4_sw;
+    volatile word4  DATA_panel_d5_sw;
+    volatile word4  DATA_panel_d6_sw;
+    volatile word4  DATA_panel_d7_sw;
+    volatile word4  DATA_panel_wheel_sw;
+    volatile word4  DATA_panel_addr_stop_sw;
+    volatile word1  DATA_panel_enable_sw;
+    volatile word1  DATA_panel_validate_sw;
+    volatile word1  DATA_panel_auto_fast_sw;
+    volatile word1  DATA_panel_auto_slow_sw;
+    volatile word4  DATA_panel_cycle_sw;
+    volatile word1  DATA_panel_step_sw;
+    volatile word1  DATA_panel_s_trig_sw;
+    volatile word1  DATA_panel_execute_sw;
+    volatile word1  DATA_panel_scope_sw;
+    volatile word1  DATA_panel_init_sw;
+    volatile word1  DATA_panel_exec_sw;
+    volatile word4  DATA_panel_hr_sel_sw;
+    volatile word4  DATA_panel_trackers_sw;
+    volatile bool panelInitialize;
+
     // Intermediate data collection for DATA SCROLL
+    bool portBusy;
     word2 portSelect;
     word36 portAddr [N_CPU_PORTS];
     word36 portData [N_CPU_PORTS];
@@ -1413,7 +1631,12 @@ typedef struct
                     // 0002  alphanumeric
                     // 0001  numeric
     word8 prepare_state;
+    bool DACVpDF;
+    bool AR_F_E;
+    bool INS_FETCH;
+    // Address Modification tally
 #endif
+    word12 AM_tally;
 
 #ifndef WAM
     _ptw PTWAM0;
@@ -1489,12 +1712,6 @@ typedef struct
     _fault dlyFltNum;
     _fault_subtype dlySubFltNum;
     const char * dlyCtx;
-
-#ifdef PANEL
-    // Panel switches
-    bool panelInitialize;
-#endif
-
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1545,12 +1762,14 @@ static inline void trackport (word24 a, word36 d)
     cpu.portSelect = port;
     cpu.portAddr [port] = a;
     cpu.portData [port] = d;
+    cpu.portBusy = false;
   }
 #endif
 
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1578,14 +1797,13 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #endif
 #endif
     *data = M[addr] & DMASK;
-#ifdef PANEL
-    trackport (addr, * data);
-#endif
+    PNL (trackport (addr, * data);)
     return 0;
   }
 
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1611,13 +1829,12 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
 #endif
     M[addr] = data & DMASK;
-#ifdef PANEL
-    trackport (addr, data);
-#endif
+    PNL (trackport (addr, data);)
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1645,17 +1862,14 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
 #endif
 #endif
     *even = M[addr++] & DMASK;
-#ifdef PANEL
-    trackport (addr - 1, * even);
-#endif
+    PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
-#ifdef PANEL
-    trackport (addr, * odd);
-#endif
+    PNL (trackport (addr, * odd);)
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1681,13 +1895,9 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
       }
 #endif
     M[addr++] = even;
-#ifdef PANEL
-    trackport (addr - 1, even);
-#endif
+    PNL (trackport (addr - 1, even);)
     M[addr] = odd;
-#ifdef PANEL
-    trackport (addr, odd);
-#endif
+    PNL (trackport (addr, odd);)
     return 0;
   }
 #else

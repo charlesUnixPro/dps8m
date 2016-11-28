@@ -214,6 +214,7 @@ static int fault2prio[32] = {
  * fault handler(s).
  */
 
+#ifdef TESTING
 // We stash a few things for debugging; they are accessed by emCall.
 static word18 fault_ic; 
 static word15 fault_psr;
@@ -228,6 +229,8 @@ void emCallReportFault (void)
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
+#endif
+
 
 void clearFaultCycle (void)
   {
@@ -335,10 +338,14 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
       traceInstruction (DBG_FAULT);
 #endif
 
+    PNL (cpu.DACVpDF = faultNumber >=  FAULT_DF0 && faultNumber <= FAULT_ACV;)
+
+#ifdef TESTING
     // some debugging support stuff
     fault_psr = cpu . PPR.PSR;
     fault_ic = cpu . PPR.IC;
     strcpy (fault_msg, faultMsg);
+#endif
 
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?

@@ -780,7 +780,6 @@ startCA:;
         //    IT_DIC        = 015,
         //    IT_ID     = 016,
         //    IT_IDC        = 017
-        word12 tally;
         word6 idwtag, delta;
         word24 Yi = (word24) -1;
 
@@ -986,7 +985,7 @@ startCA:;
                 word36 indword;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
                 Yi = GETHI (indword);        // from where data live
 
@@ -995,7 +994,7 @@ startCA:;
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n",
-                           Yi, tally, delta);
+                           Yi, cpu.AM_tally, delta);
 
                 cpu . TPR . CA = Yi;
                 word18 computedAddress = cpu . TPR . CA;
@@ -1003,18 +1002,18 @@ startCA:;
                 Yi += delta;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 #if 1
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
 #else
 // This breaks emacs
-                if (tally == 0)
+                if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 #endif
 
                 indword = (word36) (((word36) Yi << 18) |
-                                    (((word36) tally & 07777) << 6) |
+                                    (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
@@ -1048,7 +1047,7 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
                            cpu . TPR . CA);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
                 Yi    = GETHI (indword);     // from where data live
 
@@ -1057,21 +1056,21 @@ startCA:;
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n",
-                           Yi, tally, delta);
+                           Yi, cpu.AM_tally, delta);
 
                 Yi -= delta;
                 Yi &= MASK18;
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (tally == 0);
-                if (tally == 0)
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
+                //SC_I_TALLY (cpu.AM_tally == 0);
+                if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    (((word36) tally & 07777) << 6) |
+                                    (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
@@ -1106,7 +1105,7 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 word6 junk = GET_TAG (indword); // get tag field, but ignore it
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1114,22 +1113,22 @@ startCA:;
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DI): address:%06o tally:%04o\n",
-                           Yi, tally);
+                           Yi, cpu.AM_tally);
 
                 Yi -= 1;
                 Yi &= MASK18;
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
-                //if (tally == 0)
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
+                SC_I_TALLY (cpu.AM_tally == 0);
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
 
                 // write back out indword
 
                 indword = (word36) (((word36) cpu . TPR . CA << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1166,12 +1165,12 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 // get tag field, but ignore it
                 word6 junk = GET_TAG (indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n",
-                           indword, Yi, tally);
+                           indword, Yi, cpu.AM_tally);
 
                 cpu . TPR . CA = Yi;
                 word18 computedAddress = cpu . TPR . CA;
@@ -1179,17 +1178,17 @@ startCA:;
                 Yi += 1;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 
                 // XXX Breaks boot?
-                //if (tally == 0)
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1237,13 +1236,13 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 idwtag = GET_TAG (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): indword=%012llo Yi=%06o "
                            "tally=%04o idwtag=%02o\n", 
-                           indword, Yi, tally, idwtag);
+                           indword, Yi, cpu.AM_tally, idwtag);
 
                 Yi -= 1;
                 Yi &= MASK18;
@@ -1252,17 +1251,17 @@ startCA:;
 
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
-                //SC_I_TALLY (tally == 0);
-                //if (tally == 0)
+                //SC_I_TALLY (cpu.AM_tally == 0);
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                          ((word36) tally << 6) | idwtag);
+                          ((word36) cpu.AM_tally << 6) | idwtag);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): writing indword=%012llo to "
@@ -1302,7 +1301,7 @@ startCA:;
 #endif
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
@@ -1339,28 +1338,28 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 idwtag = GET_TAG (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_IDC): indword=%012llo Yi=%06o "
                            "tally=%04o idwtag=%02o\n",
-                           indword, Yi, tally, idwtag);
+                           indword, Yi, cpu.AM_tally, idwtag);
 
                 word24 YiSafe = Yi; // save indirect address for later use
 
                 Yi += 1;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
-                //SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (cpu.AM_tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     idwtag);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1405,7 +1404,7 @@ startCA:;
 #endif
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC

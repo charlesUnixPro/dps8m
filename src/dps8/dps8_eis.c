@@ -879,9 +879,7 @@ static word9 EISget469 (int k, uint i)
     address += nChars / nPos;
     uint residue = nChars % nPos;
 
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = address;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = address);
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -943,9 +941,7 @@ static void EISput469 (int k, uint i, word9 c469)
     address += nChars / nPos;
     uint residue = nChars % nPos;
 
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = address;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = address);
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1129,21 +1125,18 @@ static void setupOperandDescriptor (int k)
     switch (k)
       {
         case 1:
-#ifdef PANEL
-          cpu.du.cycle1 |= du1_GEA1;
-#endif
+          L68_ (DU_CYCLE_FA_I1;)
+          L68_ (DU_CYCLE_GDLDA;)
           e -> MF1 = getbits36_7 (cpu . cu . IWB, 29);
           break;
         case 2:
-#ifdef PANEL
-          cpu.du.cycle1 |= du1_GEA2;
-#endif
+          L68_ (DU_CYCLE_FA_I2;)
+          L68_ (DU_CYCLE_GDLDB;)
           e -> MF2 = getbits36_7 (cpu . cu . IWB, 11);
           break;
         case 3:
-#ifdef PANEL
-          cpu.du.cycle1 |= du1_GEA3;
-#endif
+          L68_ (DU_CYCLE_FA_I3;)
+          L68_ (DU_CYCLE_GDLDC;)
           e -> MF3 = getbits36_7 (cpu . cu . IWB,  2);
           break;
       }
@@ -1152,6 +1145,11 @@ static void setupOperandDescriptor (int k)
     
     if (MFk & MFkID)
     {
+        L68_ (if (k == 1)
+          DU_CYCLE_LDWRT1;)
+        L68_ (if (k == 2)
+          DU_CYCLE_LDWRT2;)
+
         word36 opDesc = e -> op [k - 1];
         
 // XXX This check breaks Multics; line 161 of sys_trouble.alm contains
@@ -1186,9 +1184,7 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 
         // fill operand according to MFk....
         word18 address = GETHI (opDesc);
-#ifdef PANEL
-        cpu.du.Dk_PTR_W[k-1] = address;
-#endif
+        PNL (cpu.du.Dk_PTR_W[k-1] = address);
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1224,33 +1220,20 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
             word15 offset = address & MASK15;  // 15-bit signed number
             address = (cpu . AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
-#ifdef PANEL
-            cpu.du.Dk_PTR_W[k-1] = address;
-#endif
+            PNL (cpu.du.Dk_PTR_W[k-1] = address);
 #ifdef EIS_PTR
             cpu.du.Dk_PTR_W[k-1] = address;
 #else
             e -> addr [k - 1] . address = address;
 #endif
-//            if (get_addr_mode () == APPEND_mode)
-              //{
-                cpu.cu.TSN_PRNO[k-1] = n;
-                e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
-                e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
-                                                cpu . TPR . TRR,
-                                                cpu . PPR . PRR);
+            cpu.cu.TSN_PRNO[k-1] = n;
+            e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
+            e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
+                                            cpu . TPR . TRR,
+                                            cpu . PPR . PRR);
                 
-                cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-                e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#ifdef PANEL
-                if (k == 1)
-                  cpu.du.cycle1 |= du1_GED1;
-                else if (k == 2)
-                  cpu.du.cycle1 |= du1_GED2;
-#endif
-              //}
-            //else
-              //sim_warn ("AR set in non-append mode.\n");
+            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+            e -> addr [k - 1] . mat = viaPR;   // ARs involved
           }
         else
           {
@@ -1267,9 +1250,8 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
         address += getMFReg18 (reg, false, true);
         address &= AMASK;
 
-#ifdef PANEL
-        cpu.du.Dk_PTR_W[k-1] = address;
-#endif
+        PNL (cpu.du.Dk_PTR_W[k-1] = address);
+
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[k-1] = address;
 #else
@@ -1289,10 +1271,8 @@ sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
 
 void setupEISoperands (void)
   {
-#ifdef PANEL
-    cpu.du.POP = 0;
-    cpu.du.POL = 0;
-#endif
+    PNL (cpu.du.POP = 0);
+    PNL (cpu.du.POL = 0);
 
 #ifdef EIS_SETUP
     for (int i = 0; i < 3; i ++)
@@ -1310,15 +1290,14 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
     
-#ifdef PANEL
-    if (k == 1)
-      cpu.du.cycle2 |= du2_ALD1;
-    if (k == 2)
-      cpu.du.cycle2 |= du2_ALD2;
-#endif
-#ifdef PANEL
-    cpu.du.POP = 1;
-#endif
+    L68_ (if (k == 1)
+      DU_CYCLE_ANLD1;
+    else if (k == 2)
+      DU_CYCLE_ANLD2;
+    else if (k == 3)
+      DU_CYCLE_ANSTR;)
+
+    PNL (cpu.du.POP = 1);
 
     word36 opDesc = e -> op [k - 1];
     
@@ -1338,6 +1317,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     else
       e -> TA [k - 1] = getbits36_2 (opDesc, 21);    // type alphanumeric
 #endif
+
 #ifdef PANEL
     if (k == 1) // Use data from first operand
       {
@@ -1358,6 +1338,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           }
       }
 #endif
+
     if (MFk & MFkAR)
       {
         // if MKf contains ar then it Means Y-charn is not the memory address
@@ -1372,31 +1353,18 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
 IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
-        //if (get_addr_mode() == APPEND_mode)
-          //{
-            cpu.cu.TSN_PRNO[k-1] = n;
-            e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
-            e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
+        cpu.cu.TSN_PRNO[k-1] = n;
+        e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
+        e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
 
-            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-            e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#ifdef PANEL
-            if (k == 1)
-              cpu.du.cycle1 |= du1_GLP1;
-            else if (k == 2)
-              cpu.du.cycle1 |= du1_GLP2;
-#endif
-          //}
-        //else
-          //sim_warn ("AR set in non-append mode.\n");
+        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+        e -> addr [k - 1] . mat = viaPR;   // ARs involved
       }
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
 
-#ifdef PANEL
-    cpu.du.POL = 1;
-#endif
+    PNL (cpu.du.POL = 1);
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
 
@@ -1540,9 +1508,7 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
     }
     
     EISaddr * a = & e -> addr [k - 1];
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = effWORDNO);
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -1559,6 +1525,13 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
 
 static void parseArgOperandDescriptor (uint k)
   {
+    L68_ (if (k == 1)
+      DU_CYCLE_NLD1;
+    else if (k == 2)
+      DU_CYCLE_NLD2;
+    else if (k == 3)
+      DU_CYCLE_GSTR;)
+
     EISstruct * e = & cpu . currentEISinstruction;
     word36 opDesc = e -> op [k - 1];
     word18 y = GETHI (opDesc);
@@ -1571,9 +1544,7 @@ static void parseArgOperandDescriptor (uint k)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
 
-#ifdef PANEL
-    cpu.du.POP = 1;
-#endif
+    PNL (cpu.du.POP = 1);
 
     if (yA)
       {
@@ -1587,22 +1558,11 @@ static void parseArgOperandDescriptor (uint k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-        //if (get_addr_mode() == APPEND_mode)
-          //{
-            cpu.cu.TSN_PRNO[k-1] = n;
-            e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
-            e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
-            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-            e -> addr [k - 1] . mat = viaPR;
-#ifdef PANEL
-            if (k == 1)
-              cpu.du.cycle1 |= du1_GLP1;
-            else if (k == 2)
-              cpu.du.cycle1 |= du1_GLP2;
-#endif
-        //  }
-        //else
-          //sim_warn ("AR set in non-append mode.\n");
+        cpu.cu.TSN_PRNO[k-1] = n;
+        e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
+        e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
+        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+        e -> addr [k - 1] . mat = viaPR;
       }
 // XXX remove when pointers saved correctly
     else
@@ -1612,9 +1572,8 @@ static void parseArgOperandDescriptor (uint k)
     y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
     y &= AMASK;
     
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = y;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = y);
+
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = y;
 #else
@@ -1624,18 +1583,17 @@ static void parseArgOperandDescriptor (uint k)
 
 static void parseNumericOperandDescriptor (int k)
 {
+    L68_ (if (k == 1)
+      DU_CYCLE_NLD1;
+    else if (k == 2)
+      DU_CYCLE_NLD2;
+    else if (k == 3)
+      DU_CYCLE_GSTR;)
+
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
 
-#ifdef PANEL
-    if (k == 1)
-      cpu.du.cycle2 |= du2_NLD1;
-    if (k == 2)
-      cpu.du.cycle2 |= du2_NLD2;
-#endif
-#ifdef PANEL
-    cpu.du.POP = 1;
-#endif
+    PNL (cpu.du.POP = 1);
 
     word36 opDesc = e->op[k-1];
 
@@ -1655,33 +1613,22 @@ static void parseNumericOperandDescriptor (int k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
-        //if (get_addr_mode() == APPEND_mode)
-        //{
-            cpu.cu.TSN_PRNO[k-1] = n;
-            e->addr[k-1].SNR = cpu . PR[n].SNR;
-            e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+        cpu.cu.TSN_PRNO[k-1] = n;
+        e->addr[k-1].SNR = cpu . PR[n].SNR;
+        e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
 
-            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-            e->addr[k-1].mat = viaPR;   // ARs involved
-#ifdef PANEL
-            if (k == 1)
-              cpu.du.cycle1 |= du1_GLP1;
-            else if (k == 2)
-              cpu.du.cycle1 |= du1_GLP2;
-#endif
-        //}
-        //else
-          //sim_warn ("AR set in non-append mode.\n");
+        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+        e->addr[k-1].mat = viaPR;   // ARs involved
     }
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
 
-#ifdef PANEL
-    cpu.du.POL = 1;
-#endif
+    PNL (cpu.du.POL = 1);
+
     word3 CN = getbits36_3 (opDesc, 18);    // character number
     e->TN[k-1] = getbits36_1 (opDesc, 21); // type numeric
+
 #ifdef PANEL
     if (k == 1)
       {
@@ -1691,6 +1638,7 @@ static void parseNumericOperandDescriptor (int k)
           cpu.dataMode = 0101; // 9 bit numeric
       }
 #endif
+
     e->S[k-1]  = getbits36_2 (opDesc, 22);    // Sign and decimal type of data
     e->SF[k-1] = SIGNEXT6_int (getbits36_6 (opDesc, 24));    // Scaling factor.
 
@@ -1821,9 +1769,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
     }
 
     EISaddr *a = &e->addr[k-1];
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = effWORDNO);
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -1845,6 +1791,12 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
 static void parseBitstringOperandDescriptor (int k)
 {
+    L68_ (if (k == 1)
+      DU_CYCLE_ANLD1;
+    else if (k == 2)
+      DU_CYCLE_ANLD2;
+    else if (k == 3)
+      DU_CYCLE_ANSTR;)
 
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
@@ -1857,9 +1809,7 @@ static void parseBitstringOperandDescriptor (int k)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
-#ifdef PANEL
-    cpu.du.POP = 1;
-#endif
+    PNL (cpu.du.POP = 1);
 
     word18 address = GETHI(opDesc);
     if (MFk & MFkAR)
@@ -1875,31 +1825,17 @@ static void parseBitstringOperandDescriptor (int k)
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
-        
-        //if (get_addr_mode() == APPEND_mode)
-        //{
-            cpu.cu.TSN_PRNO[k-1] = n;
-            e->addr[k-1].SNR = cpu . PR[n].SNR;
-            e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-            e->addr[k-1].mat = viaPR;   // ARs involved
-#ifdef PANEL
-            if (k == 1)
-              cpu.du.cycle1 |= du1_GLP1;
-            else if (k == 2)
-              cpu.du.cycle1 |= du1_GLP2;
-#endif
-        //}
-        //else
-          //sim_warn ("AR set in non-append mode.\n");
+        cpu.cu.TSN_PRNO[k-1] = n;
+        e->addr[k-1].SNR = cpu . PR[n].SNR;
+        e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+        e->addr[k-1].mat = viaPR;   // ARs involved
     }
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
     
-#ifdef PANEL
-    cpu.du.POL = 1;
-#endif
+    PNL (cpu.du.POL = 1);
 
     //Operand length. If MFk.RL = 0, this field contains the string length of
     //the operand. If MFk.RL = 1, this field contains the code for a register
@@ -1945,9 +1881,7 @@ static void parseBitstringOperandDescriptor (int k)
     e->C[k-1] = effCHAR;
     
     EISaddr *a = &e->addr[k-1];
-#ifdef PANEL
-    cpu.du.Dk_PTR_W[k-1] = effWORDNO;
-#endif
+    PNL (cpu.du.Dk_PTR_W[k-1] = effWORDNO);
 #ifdef EIS_PTR
     cpu.du.Dk_PTR_W[k-1] = effWORDNO;
 #else
@@ -3116,10 +3050,6 @@ void cmpc (void)
     // Instruction execution proceeds until an inequality is found or the
     // larger string length count is exhausted.
     
-#ifdef PANEL
-    cpu.du.cycle2 |= du2_ASTR;
-#endif
-    
 #ifndef EIS_SETUP
     setupOperandDescriptor (1);
     setupOperandDescriptor (2);
@@ -3154,6 +3084,9 @@ IF1 sim_printf ("CMPC instr %012llo op1 %012llo op2 %012llo\n", IWB_IRODD, e -> 
     SET_I_ZERO;  // set ZERO flag assuming strings are equal ...
     SET_I_CARRY; // set CARRY flag assuming strings are equal ...
     
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
+
     for (; cpu.du.CHTALLY < min (e->N1, e->N2); cpu . du . CHTALLY ++)
       {
         word9 c1 = EISget469 (1, cpu.du.CHTALLY); // get Y-char1n
@@ -3340,6 +3273,9 @@ void scd ()
       }
     
 
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
+
     word9 yCharn11;
     word9 yCharn12;
     if (e -> N1)
@@ -3501,6 +3437,9 @@ void scdr (void)
     word9 yCharn11;
     word9 yCharn12;
 
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
+
     if (e -> N1)
       {
         uint limit = e -> N1 - 1;
@@ -3648,6 +3587,9 @@ void scm (void)
             ctest &= 0777;   // keep 9-bits
       }
 
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
+
     uint limit = e -> N1;
 
     for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY ++)
@@ -3794,6 +3736,9 @@ void scmr (void)
         case CTA9:
             ctest &= 0777;   // keep 9-bits
       }
+
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
 
     uint limit = e -> N1;
     for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY ++)
@@ -3965,6 +3910,9 @@ void tct (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
+
     for ( ; cpu . du . CHTALLY < e -> N1; cpu . du . CHTALLY ++)
       {
         word9 c = EISget469 (1, cpu . du . CHTALLY); // get src char
@@ -4134,6 +4082,9 @@ void tctr (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
+    L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;)
+
     uint limit = e -> N1;
     for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY ++)
       {
@@ -4260,10 +4211,6 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-#ifdef PANEL
-    cpu.du.cycle2 |= du2_ASTR;
-#endif
-    
 IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bit 10 MBZ
@@ -4352,6 +4299,9 @@ IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0],
     // Attempted repetition with the rpt, rpd, or rpl instructions causes an
     // illegal procedure fault.
     
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
+
 #ifdef EIS_PTR3
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (TA1 == 1) &&
                (TA2 == 2); // (6-4 move)
@@ -4650,10 +4600,6 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-#ifdef PANEL
-    cpu.du.cycle2 |= du2_ASTR;
-#endif
-    
 //IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
@@ -4752,6 +4698,9 @@ void mrl (void)
     bool isNeg = false;
     bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
+
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
 
 //IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 //
@@ -6443,10 +6392,8 @@ static MOPstruct* EISgetMop (void)
         cpu.du.Dk_PTR_W[KMOP] = (cpu.du.Dk_PTR_W[KMOP] + 1) & AMASK;     // bump source to next address
         p->data = EISRead(&e->ADDR2);   // read it from memory
 #else
-#ifdef PANEL
-        cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK;     // bump source to next address
-        p->data = EISRead(e->mopAddress);   // read it from memory
-#endif
+        PNL (cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK);     // bump source to next address
+        PNL (p->data = EISRead(e->mopAddress));   // read it from memory
 #ifdef EIS_PTR
         cpu.du.Dk_PTR_W[1] = (cpu.du.Dk_PTR_W[1] + 1) & AMASK;     // bump source to next address
         p->data = EISRead(e->mopAddress);   // read it from memory
@@ -6486,6 +6433,7 @@ static void mopExecutor (int kMop)
 #endif
   {
     EISstruct * e = & cpu . currentEISinstruction;
+    L68_ (DU_CYCLE_FEXOP;)
 #ifdef EIS_PTR2
     e->mopTally = (int) e->N[KMOP];        // number of micro-ops
     e->mopPos   = (int) e->CN[KMOP];        // starting at char pos CN
@@ -6620,10 +6568,6 @@ void mve (void)
     if (e -> op [2]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle2 |= du2_ASTR;
-#endif
-    
     // ISOLTS test 841, testing for ipr fault by setting (l=1)(s=00)
     // in the first descriptor of the
     // instruction mvn
@@ -6904,10 +6848,6 @@ void mvt (void)
     if (e -> op [2]  & 0000000777600)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op3 18-28 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle2 |= du2_ASTR;
-#endif
-    
 #ifdef EIS_PTR3
     e->srcTA = (int) TA1;
     uint dstTA = TA2;
@@ -7008,6 +6948,9 @@ void mvt (void)
       "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
       __func__, e -> CN1, e -> CN2, e -> srcSZ, e -> dstSZ, T,
       fill, fillT, e -> N1, e -> N2);
+
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
 
     for ( ; cpu . du . CHTALLY < min(e->N1, e->N2); cpu . du . CHTALLY ++)
     {
@@ -7441,9 +7384,8 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7767,6 +7709,10 @@ void csl (bool isSZTL)
 #endif
 
     bool bR = false; // result bit
+
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
+
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
         //bool b1 = EISgetBitRW(&e->ADDR1);  // read w/ addt incr from src 1
@@ -8030,10 +7976,8 @@ void csr (bool isSZTR)
     int numWords1=0, numWords2=0;
     
     getBitOffsets((int) e->N1, (int) e->C1, (int) e->B1, &numWords1, &e->ADDR1.cPos, &e->ADDR1.bPos);
-#ifdef PANEL
-    cpu.du.D1_PTR_W += (word18) numWords1;
-    cpu.du.D1_PTR_W &= AMASK;
-#endif
+    PNL (cpu.du.D1_PTR_W += (word18) numWords1);
+    PNL (cpu.du.D1_PTR_W &= AMASK);
 #ifdef EIS_PTR
     cpu.du.D1_PTR_W += (word18) numWords1;
     cpu.du.D1_PTR_W &= AMASK;
@@ -8048,10 +7992,8 @@ void csr (bool isSZTR)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "CSR N2 %d C2 %d B2 %d numWords2 %d cPos %d bPos %d\n",
                e->N2, e->C2, e->B2, numWords2, e->ADDR2.cPos, e->ADDR2.bPos);
-#ifdef PANEL
-    cpu.du.D2_PTR_W += (word18) numWords1;
-    cpu.du.D2_PTR_W &= AMASK;
-#endif
+    PNL (cpu.du.D2_PTR_W += (word18) numWords1);
+    PNL (cpu.du.D2_PTR_W &= AMASK);
 #ifdef EIS_PTR
     cpu.du.D2_PTR_W += (word18) numWords1;
     cpu.du.D2_PTR_W &= AMASK;
@@ -8076,6 +8018,9 @@ void csr (bool isSZTR)
     
     bool bR = false; // result bit
     
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
+
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
         bool b1 = EISgetBitRWNR(&e->ADDR1);  // read w/ addt decr from src 1
@@ -8297,6 +8242,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
         return;
       }
 #endif
+
+    L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;)
 
     uint i;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -8546,10 +8494,8 @@ static void EISwriteToOutputStringReverse (int k, word9 charToWrite, bool * ovf)
         if (lastWordOffset > 0)           // more that the 1 word needed?
         {
             //address += lastWordOffset;    // highest memory address
-#ifdef PANEL
-            cpu.du.Dk_PTR_W[k-1] += (word18) lastWordOffset;
-            cpu.du.Dk_PTR_W[k-1] &= AMASK;
-#endif
+            PNL (cpu.du.Dk_PTR_W[k-1] += (word18) lastWordOffset);
+            PNL (cpu.du.Dk_PTR_W[k-1] &= AMASK);
 #ifdef EIS_PTR
             cpu.du.Dk_PTR_W[k-1] += (word18) lastWordOffset;
             cpu.du.Dk_PTR_W[k-1] &= AMASK;
@@ -8714,9 +8660,7 @@ static void _btd (bool * ovfp)
 {
     EISwriteToOutputStringReverse(2, 0, ovfp);    // initialize output writer .....
     
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GDB;
-#endif
+    L68_ (DU_CYCLE_DGBD;)
 
     EISstruct * e = & cpu . currentEISinstruction;
     * ovfp = false;
@@ -9105,9 +9049,7 @@ void dtb (void)
     setupOperandDescriptor(2);
 #endif
     
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GDB;
-#endif
+    L68_ (DU_CYCLE_DGDB;)
 
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -9213,16 +9155,12 @@ void ad2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=1");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -9506,17 +9444,13 @@ void ad3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad3d(): 1 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     // initialize mop flags. Probably best done elsewhere.
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9787,16 +9721,13 @@ void sb2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=1");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
+
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10033,16 +9964,12 @@ void sb3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb3d(): 1 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10300,16 +10227,12 @@ void mp2d (void)
     if (e->N1 == 1 && e->S1 == 1)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=1");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10544,16 +10467,12 @@ void mp3d (void)
     if (IWB_IRODD & 0200000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp3d(): 1 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-    
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11583,16 +11502,12 @@ void dv2d (void)
     if (e->N1 == 1 && e->S1 == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d N1=1 S1=0");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11856,16 +11771,12 @@ void dv3d (void)
     if (IWB_IRODD & 0200400000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv3d(): 1,9 MBZ");
 
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_GSTR;
-#endif
-
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-#ifdef PANEL
-    cpu.du.cycle1 |= du1_FRND;
-#endif
+
+    L68_ (if (R)
+      DU_CYCLE_FRND;)
     
     uint srcTN = e->TN1;    // type of chars in src
     

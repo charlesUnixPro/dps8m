@@ -99,6 +99,24 @@
 #endif
 #endif
 
+#ifdef PANEL
+#define PNL(x) x
+#else
+#define PNL(x)
+#endif
+
+#ifdef L68
+#define L68_(x) x
+#else
+#define L68_(x)
+#endif
+
+#ifdef DPS8M
+#define DPS8M_(x) x
+#else
+#define DPS8M_(x)
+#endif
+
 // debugging tool
 #ifdef ISOLTS
 #define IF1 if (currentRunningCPUnum)

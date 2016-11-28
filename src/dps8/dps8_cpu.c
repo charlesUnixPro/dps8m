@@ -1396,7 +1396,9 @@ static void panelProcessEvent (void)
     // INITIALIZE pressed; treat at as a BOOT.
     if (cpu.panelInitialize) 
       {
-         cpu.panelInitialize = false;
+         // Wait for release
+         while (cpu.panelInitialize) 
+           ;
          cpu_reset (& cpu_dev);
          doBoot ();
       }
@@ -1566,9 +1568,7 @@ setCPU:;
           {
             fastQueueSubsample = 0;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
-#ifdef PANEL
-            panelProcessEvent ();
-#endif
+            PNL (panelProcessEvent ());
           }
 #else
         static uint slowQueueSubsample = 0;
@@ -1589,9 +1589,7 @@ setCPU:;
             dequeue_fnp_command ();
 #endif
             absiProcessEvent ();
-#ifdef PANEL
-            panelProcessEvent ();
-#endif
+            PNL (panelProcessEvent ());
           }
 #endif
 
@@ -1734,9 +1732,13 @@ setCPU:;
 
                 if (ret == CONT_TRA)
                   {
-                     //sim_debug (DBG_TRACE,& cpu_dev,
-                                //"interrupt CONT_TRA; was_appending %d\n",
-                                //get_went_appending () ? 1 : 0);
+                    cpu.wasXfer = true;
+                  }
+
+                addCUhist ();
+
+                if (ret == CONT_TRA)
+                  {
 
 // BAR mode:  [NBAR] is set ON (taking the processor
 // out of BAR mode) by the execution of any transfer instruction
@@ -1748,15 +1750,12 @@ setCPU:;
                         SET_I_NBAR;
                       }
 
-                     cpu.wasXfer = true; 
-                     setCpuCycle (FETCH_cycle);
-                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                       {
-                         //sim_debug (DBG_TRACE, & cpu_dev,
-                                    //"CONR_TRA: went_appending was false, so setting absolute mode\n");
-                         set_addr_mode (ABSOLUTE_mode);
-                       }
-                     break;
+                    setCpuCycle (FETCH_cycle);
+                    if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                      {
+                        set_addr_mode (ABSOLUTE_mode);
+                      }
+                    break;
                   }
 
                 if (ret == CONT_DIS)
@@ -1784,6 +1783,9 @@ setCPU:;
 
             case FETCH_cycle:
               {
+
+                L68_ (cpu.INS_FETCH = false;)
+
 // "If the interrupt inhibit bit is not set in the currect instruction 
 // word at the point of the next sequential instruction pair virtual
 // address formation, the processor samples the [group 7 and interrupts]."
@@ -1917,9 +1919,8 @@ setCPU:;
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
-#ifdef PANEL
-                    cpu.prepare_state = ps_PIA;
-#endif
+                    PNL (cpu.prepare_state = ps_PIA);
+                    L68_ (cpu.INS_FETCH = true;)
                     fetchInstruction (cpu.PPR.IC);
                   }
 
@@ -2136,7 +2137,9 @@ setCPU:;
                     (cpu.switches.report_faults == 2 &&
                      cpu.faultNumber == FAULT_OFL))
                   {
+#ifdef TESTING
                     emCallReportFault ();
+#endif
                     clearFaultCycle ();
                     cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
@@ -2269,7 +2272,6 @@ IF1 sim_printf ("fltAddress %06o\n", fltAddress);
               }
 #endif
           }  // switch (cpu.cycle)
-
       } 
 #ifdef ROUND_ROBIN
     while (0);
@@ -2466,6 +2468,7 @@ static void nem_check (word24 addr, char * context)
 #ifndef SPEED
 int32 core_read(word24 addr, word36 *data, const char * ctx)
 {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -2511,15 +2514,14 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012llo (%s)\n",
                 addr, * data, ctx);
-#ifdef PANEL
-    trackport (addr, * data);
-#endif
+    PNL (trackport (addr, * data));
     return 0;
 }
 #endif
 
 #ifndef SPEED
 int core_write(word24 addr, word36 data, const char * ctx) {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -2557,15 +2559,14 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012llo (%s)\n",
                 addr, data, ctx);
-#ifdef PANEL
-    trackport (addr, data);
-#endif
+    PNL (trackport (addr, data));
     return 0;
 }
 #endif
 
 #ifndef SPEED
 int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
+    PNL (cpu.portBusy = true;)
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2 (%s)\n", addr, ctx);
         addr &= (word24)~1; /* make it an even address */
@@ -2615,9 +2616,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr - 1, * even, ctx);
-#ifdef PANEL
-    trackport (addr - 1, * even);
-#endif
+    PNL (trackport (addr - 1, * even));
 
     // if the even address is OK, the odd will be
     //nem_check (addr,  "core_read2 nem");
@@ -2637,9 +2636,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012llo (%s)\n",
                 addr, * odd, ctx);
-#ifdef PANEL
-    trackport (addr, * odd);
-#endif
+    PNL (trackport (addr, * odd));
     return 0;
 }
 #endif
@@ -2656,6 +2653,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //
 #ifndef SPEED
 int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
+    PNL (cpu.portBusy = true;)
     if(addr & 1) {
         sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2 (%s)\n", addr, ctx);
         addr &= (word24)~1; /* make it even a dress, or iron a skirt ;) */
@@ -2695,9 +2693,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr++] = even;
-#ifdef PANEL
-    trackport (addr - 1, even);
-#endif
+    PNL (trackport (addr - 1, even));
 
     // If the even address is OK, the odd will be
     //nem_check (addr,  "core_write2 nem");
@@ -2710,9 +2706,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
-#ifdef PANEL
-    trackport (addr, odd);
-#endif
+    PNL (trackport (addr, odd));
     return 0;
 }
 #endif
@@ -3878,6 +3872,15 @@ void addHistForce (uint hset, word36 w0, word36 w1)
 //void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2)
 void addCUhist (void)
   {
+    if (cpu.skip_cu_hist)
+      return;
+    if (! cpu.MR_cache.emr)
+      return;
+    if (! cpu.MR_cache.ihr)
+      return;
+    if (cpu.MR_cache.hrxfr && ! cpu.wasXfer)
+      return;
+
     word36 flags = 0; // XXX fill out
     word5 proccmd = 0; // XXX fill out
     word7 flags2 = 0; // XXX fill out
@@ -3958,24 +3961,73 @@ void addEAPUhist (word18 ZCA, word18 opcode)
 //  46 -PC BUSY
 //  47 PORT BUSY
 
-//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2)
 void addCUhist (void)
   {
-    word36 flags = 0; // XXX fill out
-    word5 proccmd = 0; // XXX fill out
-    word4 sel = 0; // XXX fill uout
-    word9 flags2 = 0; // XXX fill uout
+// XXX strobe on opcode match
+    if (cpu.skip_cu_hist)
+      return;
+    if (! cpu.MR_cache.emr)
+      return;
+    if (! cpu.MR_cache.ihr)
+      return;
+
 //IF1 if (cpu.MR.hrhlt) sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
 IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
-    w0 |= flags & 0777777000000;
-    w0 |= IWB_IRODD & MASK18;
-    w1 |= (cpu.TPR.CA & MASK18) << 18;
-    w1 |= (proccmd & MASK5) << 13;
-    w1 |= (sel & MASK4) << 9;
-// XXX ignoring SEL
-    w1 |= flags2 & 0777;
+
+    // 0 PIA
+    // 1 POA
+    // 2 RIW
+    // 3 SIW
+    // 4 POT
+    // 5 PON
+    // 6 RAW
+    // 7 SAW
+    putbits36_8 (& w0, 0, cpu.prepare_state);
+    // 8 TRG 
+    putbits36_1 (& w0, 8, cpu.wasXfer);
+    // 9 XDE
+    putbits36_1 (& w0, 9, cpu.cu.xde);
+    // 10 XDO
+    putbits36_1 (& w0, 10, cpu.cu.xdo);
+    // 11 IC
+    putbits36_1 (& w0, 11, USE_IRODD?1:0);
+    // 12 RPT
+    putbits36_1 (& w0, 12, cpu.cu.rpt);
+    // 13 WI Wait for instruction fetch XXX Not tracked
+    // 14 ARF "AR F/E" Address register Full/Empty Address has valid data 
+    putbits36_1 (& w0, 14, cpu.AR_F_E);
+    // 15 !XA/Z "-XIP NOT prepare interrupt address" 
+    putbits36_1 (& w0, 15, cpu.cycle != INTERRUPT_cycle?1:0);
+    // 16 !FA/Z Not tracked. (cu.-FL?)
+    putbits36_1 (& w0, 16, cpu.cycle != FAULT_cycle?1:0);
+    // 17 M/S  (master/slave, cu.-BASE?, NOT BAR MODE)
+    putbits36_1 (& w0, 17, TSTF (cpu.cu.IR, I_NBAR)?1:0);
+    // 18:35 IWR (lower half of IWB)
+    putbits36_18 (& w0, 18, (word18) (IWB_IRODD & MASK18));
+
+    // 36:53 CA
+    putbits36_18 (& w1, 0, cpu.TPR.CA);
+    // 54:58 CMD system controller command XXX
+    // 59:62 SEL port select (XXX ignoring "only valid if port A-D is selected")
+    putbits36_1 (& w1, 59-36, (cpu.portSelect == 0)?1:0);
+    putbits36_1 (& w1, 60-36, (cpu.portSelect == 1)?1:0);
+    putbits36_1 (& w1, 61-36, (cpu.portSelect == 2)?1:0);
+    putbits36_1 (& w1, 62-36, (cpu.portSelect == 3)?1:0);
+    // 63 XEC-INT An interrupt is present
+    putbits36_1 (& w1, 63-36, cpu.interrupt_flag?1:0);
+    // 64 INS-FETCH Perform an instruction fetch
+    putbits36_1 (& w1, 64-36, cpu.INS_FETCH?1:0);
+    // 65 CU-STORE Control unit store cycle XXX
+    // 66 OU-STORE Operations unit store cycle XXX
+    // 67 CU-LOAD Control unit load cycle XXX
+    // 68 OU-LOAD Operations unit load cycle XXX
+    // 69 DIRECT Direct cycle XXX
+    // 70 -PC-BUSY Port control logic not busy XXX
+    // 71 BUSY Port interface busy XXX
+
     addHist (CU_HIST_REG, w0, w1);
+
     // Check for overflow
     if (cpu.MR.hrhlt && cpu.history_cyclic[CU_HIST_REG] == 0)
       {
@@ -4030,8 +4082,7 @@ IF1 sim_printf ("trapping......\n");
 
 void addDUhist (void)
   {
-    word36 w0 = 0, w1 = 0;
-    addHist (DU_HIST_REG, w0, w1);
+    addHist (DU_HIST_REG, cpu.du.cycle1, cpu.du.cycle2);
   }
      
 
@@ -4039,41 +4090,57 @@ void addOUhist (void)
   {
     word36 w0 = 0, w1 = 0;
      
-    // OP CODE (high nine bits)
-    word9 opc = getbits36_9 (IWB_IRODD, 18);
-    putbits36_9 (& w0, 0, opc);
+    // 0-16 RP
+    //   0-8 OP CODE
+    putbits36_9 (& w0, 0, cpu.ou.RS);
     
-    // 9 CHAR
+    //   9 CHAR
     putbits36_1 (& w0, 9, cpu.ou.characterOperandSize ? 1 : 0);
 
-    // TAG 1/2/3
-    putbits36_3 (& w0, 10, cpu.ou.characterOperandOffset & MASK3);
+    //   10-12 TAG 1/2/3
+    putbits36_3 (& w0, 10, cpu.ou.characterOperandOffset);
 
-    // CRFLAG
+    //   13 CRFLAG
     putbits36_1 (& w0, 13, cpu.ou.crflag);
 
-    // DRFLAG
+    //   14 DRFLAG
     putbits36_1 (& w0, 14, cpu.ou.directOperandFlag ? 1 : 0);
 
-    // EAC
+    //   15-16 EAC
     putbits36_2 (& w0, 15, cpu.ou.eac);
 
-    // RS 
-    putbits36_9 (& w0, 18, opc);
+    // 17 0
+    // 18-26 RS REG
+    putbits36_9 (& w0, 18, cpu.ou.RS);
 
-    // RB1 FULL
+    // 27 RB1 FULL
     putbits36_1 (& w0, 27, cpu.ou.RB1_FULL);
 
-    // RP FULL
+    // 28 RP FULL
     putbits36_1 (& w0, 28, cpu.ou.RP_FULL);
 
-    // RS FULL
+    // 29 RS FULL
     putbits36_1 (& w0, 29, cpu.ou.RS_FULL);
 
-    // stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
-    putbits36_10 (& w1, 41 - 36, ((~NonEISopcodes [opc].reg_use) & MASK10));
+    // 30-35 GIN/GOS/GD1/GD2/GOE/GOA
+    putbits36_6 (& w0, 30, (word6) (cpu.ou.cycle >> 3));
 
+    // 36-38 GOM/GON/GOF
+    putbits36_3 (& w1, 36-36, (word3) cpu.ou.cycle);
+
+    // 39 STR OP
+    putbits36_1 (& w1, 39-36, cpu.ou.STR_OP);
+
+    // 40 -DA-AV XXX
+
+    // 41-50 stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
+    putbits36_10 (& w1, 41-36, (word10) ~NonEISopcodes [cpu.ou.RS].reg_use);
+
+    // 51-53 0
+
+    // 54-71 ICT TRACKER
     putbits36_18 (& w1, 54 - 36, cpu.PPR.IC);
+
     addHist (OU_HIST_REG, w0, w1);
   }
 

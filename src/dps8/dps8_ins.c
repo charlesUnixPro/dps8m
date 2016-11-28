@@ -33,8 +33,10 @@
 
 static int doABSA (word36 * result);
 static t_stat doInstruction (void);
+#ifdef TESTING
 #if EMULATOR_ONLY
 static int emCall (void);
+#endif
 #endif
 
 // CANFAULT
@@ -46,9 +48,7 @@ static void writeOperands (void)
                "writeOperands (%s):mne=%s flags=%x\n",
                disAssemble (IWB_IRODD), i->info->mne, i->info->flags);
 
-#ifdef PANEL
-        cpu.prepare_state |= ps_RAW;
-#endif
+    PNL (cpu.prepare_state |= ps_RAW);
 
     word6 rTAG = 0;
     if (! (i->info->flags & NO_TAG))
@@ -152,9 +152,7 @@ static void writeOperands (void)
         // Get the data word
         //
 
-#ifdef PANEL
-        cpu.prepare_state |= ps_POT;
-#endif
+        PNL (cpu.prepare_state |= ps_POT);
 
         cpu.cu.pot = 1;
 
@@ -184,9 +182,8 @@ static void writeOperands (void)
         // Write it
         //
 
-#ifdef PANEL
-        cpu.prepare_state |= ps_SAW;
-#endif
+        PNL (cpu.prepare_state |= ps_SAW);
+
         Write (Yi, data, OPERAND_STORE, i->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -218,9 +215,7 @@ static void readOperands (void)
     sim_debug (DBG_ADDRMOD, &cpu_dev,
               "readOperands a %d address %08o\n", i->a, cpu.TPR.CA);
 
-#ifdef PANEL
-    cpu.prepare_state |= ps_POA;
-#endif
+    PNL (cpu.prepare_state |= ps_POA);
 
     word6 rTAG = 0;
     if (! (i->info->flags & NO_TAG))
@@ -282,9 +277,7 @@ static void readOperands (void)
         // Get the indirect word
         //
 
-#ifdef PANEL
-        cpu.prepare_state |= ps_RIW;
-#endif
+        PNL (cpu.prepare_state |= ps_RIW);
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
@@ -354,9 +347,7 @@ static void readOperands (void)
         // Get the data word
         //
 
-#ifdef PANEL
-        cpu.prepare_state |= ps_SIW;
-#endif
+        PNL (cpu.prepare_state |= ps_SIW);
 
         word36 data;
         Read (Yi, & data, OPERAND_READ, i->a);
@@ -1413,6 +1404,9 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
+    // Set Address register empty
+    L68_ (cpu.AR_F_E = false;)
+
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
 
@@ -1603,7 +1597,7 @@ restart_1:
 // XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
-            cpu.apu.state |= apu_ESN_PSR;
+            L68_ (cpu.apu.state |= apu_ESN_PSR;)
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }
@@ -1761,9 +1755,7 @@ restart_1:
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
                   EIS_OPERAND_READ, 0); // I think.
           }
-#ifdef PANEL
-        cpu.IWRAddr = cpu.currentEISinstruction.op[0];
-#endif
+        PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
         setupEISoperands ();
       }
     else
@@ -1834,6 +1826,7 @@ restart_1:
         if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
           {
             doComputedAddressFormation ();
+            L68_ (cpu.AR_F_E = true;)
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 
@@ -1845,6 +1838,7 @@ restart_1:
         if (ci->info->flags & PREPARE_CA)
           {
             doComputedAddressFormation ();
+            L68_ (cpu.AR_F_E = true;)
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
         else if (READOP (ci))
@@ -1854,9 +1848,7 @@ restart_1:
             readOperands ();
           }
 #endif
-#ifdef PANEL
-        cpu.IWRAddr = 0;
-#endif
+        PNL (cpu.IWRAddr = 0);
       }
 
 ///
@@ -2305,40 +2297,13 @@ static t_stat doInstruction (void)
     cpu.ou.STR_OP = 0;
     cpu.ou.cycle = 0;
 #endif
-#ifdef PANEL
-    cpu.ou.RS = (word9) i->opcode;
-#endif
-
-#ifdef PANEL
-    cpu.du.cycle1 = du1_FDUD; // set idle
-    cpu.du.cycle2 = 0;
-#endif
-
+    PNL (cpu.ou.RS = (word9) i->opcode);
+    L68_ (DU_CYCLE_FDUD;) // set DU idle
     cpu.skip_cu_hist = false;
     memcpy (& cpu.MR_cache, & cpu.MR, sizeof (cpu.MR_cache));
 
     t_stat ret =  i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 
-#ifdef DPS8M
-    if ((! cpu.skip_cu_hist) &&
-        cpu.MR_cache.emr && cpu.MR_cache.ihr && 
-       (cpu.MR_cache.hrxfr == 0 || ret == CONT_TRA))
-      {
-        //addCUhist (0, cpu.cu.IWB & MASK18, cpu.iefpFinalAddress, 0, CUH_XINT);
-        addCUhist ();
-      }
-#endif
-#ifdef L68
-// XXX strobe hist on opcode match
-    if ((! cpu.skip_cu_hist) &&
-        cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      {
-// XXX Should CA be the upper half of IWB?
-//IF1 sim_printf ("addCUhist\n");
-        //addCUhist (0, cpu.cu.IWB & MASK18, cpu.TPR.CA, 0, 0, 0);
-        addCUhist ();
-      }
-#endif
     return ret;
 }
 
@@ -7192,31 +7157,12 @@ static t_stat DoEISInstruction (void)
     DCDstruct * i = & cpu.currentInstruction;
     uint32 opcode = i->opcode;
 
-#ifdef L68
     bool is_du = false;
-     if (EISopcodes[i->opcode].reg_use & is_DU)
-        {
-          is_du = true;
-#ifdef PANEL
-          cpu.du.cycle1 = 0; // set not idle
-#endif
-        }
-#ifdef PANEL
-    if (is_du && (i->info->flags & (READ_OPERAND | READ_YPAIR)))
-      cpu.du.cycle1 |= du1_GDLD;  
-
-    switch (EISopcodes[i->opcode].ndes)
+    if (EISopcodes[i->opcode].reg_use & is_DU)
       {
-        case 3:
-          cpu.du.cycle1 |= du1_GEA3;
-        case 2:
-          cpu.du.cycle1 |= du1_GEA2;
-        case 1:
-          cpu.du.cycle1 |= du1_GEA1;
+        is_du = true;
+        L68_ (DU_CYCLE_nDUD;) // set not idle
       }
-#endif
-#endif
-
 
     switch (opcode)
     {
@@ -7866,6 +7812,7 @@ static t_stat DoEISInstruction (void)
         case 0567:
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
+            L68_ (DU_CYCLE_DDU_LDEA;)
 
             if (getbits36_1 (cpu.CY, 23) != 0)
               doFault (FAULT_IPR,
@@ -7965,6 +7912,7 @@ static t_stat DoEISInstruction (void)
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
             //    C(Y)0,23 -> C(ARn)
+            L68_ (DU_CYCLE_DDU_LDEA;)
 
             uint32 n = opcode & 07;  // get n
             cpu.AR[n].WORDNO = GETHI (cpu.CY);
@@ -7975,9 +7923,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0463:  // lareg - Load Address Registers
-#ifdef PANEL
-          cpu.du.cycle1 |= du1_GDLD;  
-#endif
+          L68_ (DU_CYCLE_DDU_LDEA;)
 
           for (uint32 n = 0 ; n < 8 ; n += 1)
             {
@@ -7989,9 +7935,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0467:  // lpl - Load Pointers and Lengths
-#ifdef PANEL
-          cpu.du.cycle1 |= du1_GDLD;  
-#endif
+          L68_ (DU_CYCLE_DDU_LDEA;)
           words2du (cpu.Yblock8);
           break;
 
@@ -8005,9 +7949,7 @@ static t_stat DoEISInstruction (void)
         case 0667:
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
-#ifdef PANEL
-            cpu.du.cycle1 |= du1_GDLD;  
-#endif
+            L68_ (DU_CYCLE_DDU_LDEA;)
 
             uint32 n = opcode & 07;  // get
 
@@ -8082,6 +8024,7 @@ static t_stat DoEISInstruction (void)
             {
                 // The alphanumeric descriptor is fetched from Y and C(Y)21,22
                 // (TA field) is examined to determine the data type described.
+                L68_ (DU_CYCLE_DDU_STEA;)
 
                 uint TA = getbits36_2 (cpu.CY, 21);
 
@@ -8144,6 +8087,7 @@ static t_stat DoEISInstruction (void)
         case 0646:
         case 0647:
             {
+                L68_ (DU_CYCLE_DDU_STEA;)
                 uint32 n = opcode & 07;  // get register #
 
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA
@@ -8190,6 +8134,7 @@ static t_stat DoEISInstruction (void)
             //  C(ARn) -> C(Y)0,23
             //  C(Y)24,35 -> unchanged
             {
+                L68_ (DU_CYCLE_DDU_STEA;)
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
 // AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
@@ -8202,6 +8147,7 @@ static t_stat DoEISInstruction (void)
         case 0443:  // sareg - Store Address Registers
             // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
             // in BITNO format, not CHAR/BITNO.
+            L68_ (DU_CYCLE_DDU_STEA;)
             memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
             for (uint32 n = 0 ; n < 8 ; n += 1)
             {
@@ -8214,6 +8160,7 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0447:  // spl - Store Pointers and Lengths
+            L68_ (DU_CYCLE_DDU_STEA;)
             du2words (cpu.Yblock8);
           break;
 
@@ -8405,6 +8352,7 @@ static t_stat DoEISInstruction (void)
             dv3d ();
             break;
 
+#ifdef TESTING
 #if EMULATOR_ONLY
 
         case 0420:  // emcall instruction Custom, for an emulator call for
@@ -8417,6 +8365,7 @@ static t_stat DoEISInstruction (void)
         }
 
 #endif
+#endif
         default:
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
@@ -8424,11 +8373,7 @@ static t_stat DoEISInstruction (void)
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
                      "Illegal instruction");
     }
-#ifdef PANEL
-    if (is_du && (i->info->flags & (STORE_OPERAND | STORE_YPAIR)))
-      cpu.du.cycle2 |= du1_GSTR;
-    cpu.du.cycle2 |= du2_END_SEQ;
-#endif
+    L68_ (DU_CYCLE_END;)
 
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr && is_du)
@@ -8441,6 +8386,7 @@ static t_stat DoEISInstruction (void)
 
 
 
+#ifdef TESTING
 #include <ctype.h>
 
 #if EMULATOR_ONLY
@@ -8635,6 +8581,7 @@ static int emCall (void)
     return 0;
 }
 #endif
+#endif // TESTING
 
 // This code may be redundant; it may be possible to just let CAF do its
 // thing and put the final address into A.

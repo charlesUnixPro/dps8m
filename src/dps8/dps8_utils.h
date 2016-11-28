@@ -818,9 +818,25 @@ static inline void putbits18 (word18 * x, uint p, uint n, word18 val)
     return;
   }
 
+//
+// setmask -- set bits from mask
+//
+
+static inline void setmask (word36 * v, word36 mask)
+  {
+    * v |= mask;
+  }
+
+//
+// clrmask -- clear bits from mask
+//
+
+static inline void clrmask (word36 * v, word36 mask)
+  {
+    * v &= ~mask;
+  }
+
 char * strdupesc (const char * str);
-
-
 word36 extr36 (uint8 * bits, uint woffset);
 #ifndef QUIET_UNUSED
 word9 extr9 (uint8 * bits, uint coffset);
