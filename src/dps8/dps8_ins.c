@@ -3747,12 +3747,12 @@ static t_stat DoBasicInstruction (void)
             cpu.rA &= DMASK;
             cpu.rQ &= DMASK;
 
-            if (cpu.rA == 0400000000000ULL & cpu.rQ == 0)
-              {
+            if (cpu.rA == 0400000000000ULL && cpu.rQ == 0)
+            {
                 CLR_I_ZERO;
                 SET_I_NEG;
                 overflow (true, false, "negl overflow fault");
-              }
+            }
 
             word72 tmp72 = convertToWord72 (cpu.rA, cpu.rQ);
             tmp72 = -tmp72;
