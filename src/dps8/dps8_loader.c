@@ -835,7 +835,7 @@ t_stat setupFXE()
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, 
+static t_stat scanDirectives(FILE *f, const char * fnam, bool bDeferred, 
                              UNUSED bool bVerbose)
 {
     long curpos = ftell(f);
@@ -1387,7 +1387,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     return NULL;
 }
 
-static t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam, 
+static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const char * fnam, 
                  UNUSED int flag)
 {
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
@@ -1400,7 +1400,7 @@ static t_stat sim_dump (FILE *fileref, UNUSED char * cptr, UNUSED char * fnam,
 }
 
 // This is part of the simh interface
-t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
+t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 {
     if (flag)
         return sim_dump (fileref, cptr, fnam, flag);
@@ -1446,8 +1446,10 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     *
     */
     // load file at offset ?
+    char ccpy [strlen (cptr)+1];
+    strcpy (ccpy, cptr);
     // Syntax load file.oct address addr
-    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "addr*"))
+    if (flag == 0 && strlen(ccpy) && strmask(strlower(ccpy), "addr*"))
     {
         char s[128], *end_ptr, w[128], s2[128], sDef[128];
         
@@ -1456,7 +1458,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         strcpy(s2, "");
         strcpy(sDef, "");
         
-        /* long n = */ sscanf(cptr, "%*s %s", s);
+        /* long n = */ sscanf(ccpy, "%*s %s", s);
         ldaddr = (int32)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
         
         if (end_ptr == s)
@@ -1468,7 +1470,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 
     // load file into segment?
     // Syntax load file.oct segment xxx address addr
-    else if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
+    else if (flag == 0 && strlen(ccpy) && strmask(strlower(ccpy), "seg*"))
     {
         char s[128], *end_ptr, w[128], s2[128], sDef[128];
         
@@ -1477,7 +1479,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         strcpy(s2, "");
         strcpy(sDef, "");
         
-        long n = sscanf(cptr, "%*s %s %s %s %s", s, w, s2, sDef);
+        long n = sscanf(ccpy, "%*s %s %s %s %s", s, w, s2, sDef);
         if (!strmask(w, "addr*"))
         {
             sim_printf("sim_load(): No/illegal destination specifier was found\n");
@@ -1503,15 +1505,15 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     }
     else
     // Syntax load file.oct deferred
-    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "def*"))
+    if (flag == 0 && strlen(ccpy) && strmask(strlower(ccpy), "def*"))
         bDeferred = true;
     
     // syntax: load file.oct as segment xxx deferred
-    else if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "as*"))
+    else if (flag == 0 && strlen(ccpy) && strmask(strlower(ccpy), "as*"))
     {
         char s[1024], *end_ptr, sn[1024], def[1024];
         
-        sscanf(cptr, "%*s %s %s %s", s, sn, def);
+        sscanf(ccpy, "%*s %s %s %s", s, sn, def);
 
         if (!strmask(s, "seg*"))
         {

@@ -539,12 +539,12 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
-static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, 
+static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_set_nunits (UNIT * uptr, int32 value, const char * cptr, 
                               void * desc);
-static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, 
+static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_set_config (UNIT * uptr, int32 value, const char * cptr, 
                               void * desc);
 static void deliverInterrupts (uint scu_unit_num);
 
@@ -554,10 +554,10 @@ scu_t scu [N_SCU_UNITS_MAX];
 
 static UNIT scu_unit [N_SCU_UNITS_MAX] =
   {
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 
 #define UNIT_NUM(uptr) ((uptr) - scu_unit)
@@ -614,14 +614,14 @@ static MTAB scu_mod [] =
 
 static DEBTAB scu_dt [] =
   {
-    { (char *) "TRACE", DBG_TRACE },
-    { (char *) "NOTIFY", DBG_NOTIFY },
-    { (char *) "INFO", DBG_INFO },
-    { (char *) "ERR", DBG_ERR },
-    { (char *) "WARN", DBG_WARN },
-    { (char *) "DEBUG", DBG_DEBUG },
-    { (char *) "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { (char *) "TRACE", DBG_TRACE, NULL },
+    { (char *) "NOTIFY", DBG_NOTIFY, NULL },
+    { (char *) "INFO", DBG_INFO, NULL },
+    { (char *) "ERR", DBG_ERR, NULL },
+    { (char *) "WARN", DBG_WARN, NULL },
+    { (char *) "DEBUG", DBG_DEBUG, NULL },
+    { (char *) "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 DEVICE scu_dev = {
@@ -650,7 +650,8 @@ DEVICE scu_dev = {
     NULL,            /* help */
     NULL,            /* attach_help */
     NULL,            /* help_ctx */
-    NULL             /* description */
+    NULL,            /* description */
+    NULL
 };
 
 enum { MODE_MANUAL = 0, MODE_PROGRAM = 1 };
@@ -879,7 +880,7 @@ static uint64 getSCUclock (uint scu_unit_num)
     static uint64 lastUnixuSecs = 0;
     if (UnixuSecs < lastUnixuSecs)
       {
-        sim_warn ("gettimeofday() went backwards %ld uS\n", 
+        sim_warn ("gettimeofday() went backwards %llu uS\n", 
                   lastUnixuSecs - UnixuSecs);
       }
     lastUnixuSecs = UnixuSecs;
@@ -1778,14 +1779,14 @@ uint scuGetHighestIntr (uint scuUnitNum)
 // ============================================================================
 
 static t_stat scu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int val, UNUSED void * desc)
+                               UNUSED int val, const UNUSED void * desc)
   {
     sim_printf("Number of SCU units in system is %d\n", scu_dev . numunits);
     return SCPE_OK;
   }
 
 static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                              char * cptr, UNUSED void * desc)
+                              const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
@@ -1795,7 +1796,7 @@ static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val, 
-                              UNUSED void * desc)
+                              UNUSED const void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
@@ -1855,7 +1856,7 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
   }
 
 static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int val, UNUSED void * desc)
+                               UNUSED int val, UNUSED const void * desc)
 {
     static const char * map [N_SCU_PORTS] = 
       {
@@ -2010,7 +2011,7 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
                               UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
@@ -2128,7 +2129,7 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
     return SCPE_OK;
   }
 
-t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED char * cptr, 
+t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
                        UNUSED void * desc)
   {
     uint scu_unit_num = (uint) (uptr - scu_unit);

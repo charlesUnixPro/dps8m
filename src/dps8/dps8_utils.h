@@ -32,7 +32,7 @@ typedef struct config_state
     char * statement_save;
   } config_state_t;
 
-int cfgparse (const char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
+int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
 void cfgparse_done (config_state_t * state);
 
 struct opCode *getIWBInfo(DCDstruct *i);

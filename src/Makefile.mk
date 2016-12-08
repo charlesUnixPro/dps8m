@@ -45,6 +45,12 @@ else
     endif
 endif
 
+#CFLAGS = -m32
+#CFLAGS = -m64
+
+#CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 
+CFLAGS += -I../decNumber -I../simh-master -I ../include 
+
 CFLAGS += -std=c99
 CFLAGS += -U__STRICT_ANSI__  
 CFLAGS += -D_GNU_SOURCE

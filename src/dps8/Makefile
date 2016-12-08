@@ -16,6 +16,9 @@
 #  TESTING=1    Enables sim_debug and additional runtime checks
 #
 
+SIMHx = ../simh-master
+#SIMHx = ../simhv40-beta
+
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
 
@@ -63,7 +66,7 @@ endif
 # Configuration switches
 
 #LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
-LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
+LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a 
 
 # simh requires -ldl
 # Cygwin seems to need...
@@ -275,7 +278,8 @@ slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 : 
-	(cd ../simhv40-beta; $(MAKE))
+	#(cd ../simhv40-beta; $(MAKE))
+	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
 ifeq ($(CROSS),MINGW64)
 	#(cd ../gnulib; $(MAKE))
@@ -332,7 +336,7 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 clean:
 	@echo CLEAN
 	#(cd ../simhv40-beta; $(MAKE) clean)
-	@$(MAKE) -C ../simhv40-beta clean
+	@$(MAKE) -C $(SIMHx) -f Makefile clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
 	@$(MAKE) -C ../utils clean

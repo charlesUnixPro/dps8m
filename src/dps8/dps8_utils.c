@@ -1834,6 +1834,7 @@ void sim_printf( const char * format, ... )
 }
 #endif
 
+#if 0
 // Rework sim_printf.
 //
 // Distinguish between the console device and the window in which dps8 is
@@ -1910,6 +1911,7 @@ void sim_printf (const char * format, ...)
     if (bOut)
       fflush (stdout);
 }
+#endif
 
 void sim_printl (const char * format, ...)
   {
@@ -1944,7 +1946,7 @@ void sim_puts (char * str)
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
 // return -2: error; -1: done; >= 0 option found
-int cfgparse (const char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
+int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
   {
     if (! cptr)
       return -2;

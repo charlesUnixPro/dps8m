@@ -217,7 +217,7 @@ static int udp_find_free_link (void)
 // 0: ok
 // -1: out of links
 
-int udp_create (char * premote, int * pln)
+int udp_create (const char * premote, int * pln)
   {
     int rc;
     //   Create a logical UDP link to the specified remote system.  The "remote"

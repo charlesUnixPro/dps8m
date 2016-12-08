@@ -1015,7 +1015,7 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
 }
 #endif
 
-t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
+t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
 {
 #ifdef MATRIX
     long long count;

@@ -229,21 +229,21 @@
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
 
-static t_stat iom_action (struct sim_unit *up);
+static t_stat iom_action (UNIT *up);
 
 static UNIT iomUnit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 
-static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, void * desc);
-static t_stat iomShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat iomSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
-static t_stat iomShowUnits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat iomSetUnits (UNIT * uptr, int value, char * cptr, void * desc);
+static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, const void * desc);
+static t_stat iomShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat iomSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
+static t_stat iomShowUnits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat iomSetUnits (UNIT * uptr, int value, const char * cptr, void * desc);
 static t_stat iomReset (DEVICE * dptr);
 static t_stat iomBoot (int unitNum, DEVICE * dptr);
 
@@ -287,14 +287,14 @@ static MTAB iomMod [] =
 
 static DEBTAB iomDT [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "TRACE", DBG_TRACE },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "TRACE", DBG_TRACE, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 DEVICE iom_dev =
@@ -324,16 +324,17 @@ DEVICE iom_dev =
     NULL,        // help
     NULL,        // attach help
     NULL,        // help context
-    NULL         // description
+    NULL,        // description
+    NULL
   };
 
 static t_stat bootSvc (UNIT * unitp);
 static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
 static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
@@ -2627,19 +2628,19 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
 
 static t_stat iomShowMbx (UNUSED FILE * st, 
                             UNUSED UNIT * uptr, UNUSED int val, 
-                            UNUSED void * desc)
+                            UNUSED const void * desc)
   {
     return SCPE_OK;
   }
 
 
-static t_stat iomShowUnits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat iomShowUnits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf ("Number of IOM units in system is %d\n", iom_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
+static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_IOM_UNITS_MAX)
@@ -2651,7 +2652,7 @@ static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, char * cptr, UN
   }
 
 static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
-                             UNUSED void * desc)
+                             UNUSED const void * desc)
   {
     uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
@@ -2811,7 +2812,7 @@ static config_list_t iom_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
+static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
@@ -2917,7 +2918,7 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
 
 // Used by scu_cioc() to schedule connects
 
-static t_stat iom_action (struct sim_unit *up)
+static t_stat iom_action (UNIT *up)
   {
     // Recover the stash parameters
     uint scuUnitNum = (uint) (up -> u3);

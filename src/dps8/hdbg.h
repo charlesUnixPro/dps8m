@@ -9,7 +9,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-t_stat hdbg_size (int32 arg, UNUSED char * buf);
+t_stat hdbg_size (int32 arg, UNUSED const char * buf);
 #ifdef HDBG
 void hdbgTrace (void);
 void hdbgPrint (void);

@@ -72,24 +72,24 @@ static void setCpuCycle (cycles_t cycle);
 
 static UNIT cpu_unit [N_CPU_UNITS_MAX] =
   {
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 
-static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat cpu_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
 #ifndef SPEED
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 #endif
-static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat cpu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #ifdef EV_POLL
 static uv_loop_t * ev_poll_loop;
@@ -132,36 +132,36 @@ static MTAB cpu_mod[] = {
 };
 
 static DEBTAB cpu_dt[] = {
-    { "TRACE",      DBG_TRACE       },
-    { "TRACEEXT",   DBG_TRACEEXT    },
-    { "MESSAGES",   DBG_MSG         },
+    { "TRACE",      DBG_TRACE, NULL       },
+    { "TRACEEXT",   DBG_TRACEEXT, NULL    },
+    { "MESSAGES",   DBG_MSG, NULL         },
 
-    { "REGDUMPAQI", DBG_REGDUMPAQI  },
-    { "REGDUMPIDX", DBG_REGDUMPIDX  },
-    { "REGDUMPPR",  DBG_REGDUMPPR   },
-    { "REGDUMPADR", DBG_REGDUMPADR  },
-    { "REGDUMPPPR", DBG_REGDUMPPPR  },
-    { "REGDUMPDSBR",DBG_REGDUMPDSBR },
-    { "REGDUMPFLT", DBG_REGDUMPFLT  },
-    { "REGDUMP",    DBG_REGDUMP     }, // don't move as it messes up DBG message
+    { "REGDUMPAQI", DBG_REGDUMPAQI, NULL  },
+    { "REGDUMPIDX", DBG_REGDUMPIDX, NULL  },
+    { "REGDUMPPR",  DBG_REGDUMPPR, NULL   },
+    { "REGDUMPADR", DBG_REGDUMPADR, NULL  },
+    { "REGDUMPPPR", DBG_REGDUMPPPR, NULL  },
+    { "REGDUMPDSBR",DBG_REGDUMPDSBR, NULL },
+    { "REGDUMPFLT", DBG_REGDUMPFLT, NULL  },
+    { "REGDUMP",    DBG_REGDUMP, NULL     }, // don't move as it messes up DBG message
 
-    { "ADDRMOD",    DBG_ADDRMOD     },
-    { "APPENDING",  DBG_APPENDING   },
+    { "ADDRMOD",    DBG_ADDRMOD, NULL     },
+    { "APPENDING",  DBG_APPENDING, NULL   },
 
-    { "NOTIFY",     DBG_NOTIFY      },
-    { "INFO",       DBG_INFO        },
-    { "ERR",        DBG_ERR         },
-    { "WARN",       DBG_WARN        },
-    { "DEBUG",      DBG_DEBUG       },
-    { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
+    { "NOTIFY",     DBG_NOTIFY, NULL      },
+    { "INFO",       DBG_INFO, NULL        },
+    { "ERR",        DBG_ERR, NULL         },
+    { "WARN",       DBG_WARN, NULL        },
+    { "DEBUG",      DBG_DEBUG, NULL       },
+    { "ALL",        DBG_ALL, NULL         }, // don't move as it messes up DBG message
 
-    { "FAULT",      DBG_FAULT       },
-    { "INTR",       DBG_INTR        },
-    { "CORE",       DBG_CORE        },
-    { "CYCLE",      DBG_CYCLE       },
-    { "CAC",        DBG_CAC         },
-    { "FINAL",      DBG_FINAL       },
-    { NULL,         0               }
+    { "FAULT",      DBG_FAULT, NULL       },
+    { "INTR",       DBG_INTR, NULL        },
+    { "CORE",       DBG_CORE, NULL        },
+    { "CYCLE",      DBG_CYCLE, NULL       },
+    { "CAC",        DBG_CAC, NULL         },
+    { "FINAL",      DBG_FINAL, NULL       },
+    { NULL,         0, NULL               }
 };
 
 // This is part of the simh interface
@@ -474,7 +474,7 @@ static t_stat dpsCmd_DumpSegmentTable()
 }
 
 //! custom command "dump"
-t_stat dpsCmd_Dump (UNUSED int32 arg, char *buf)
+t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
 {
     char cmds [256][256];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -622,7 +622,7 @@ t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
 #endif
 
 //! custom command "init"
-t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
+t_stat dpsCmd_Init (UNUSED int32 arg, const char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -641,7 +641,7 @@ t_stat dpsCmd_Init (UNUSED int32 arg, char *buf)
 }
 
 //! custom command "segment" - stuff to do with deferred segments
-t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
+t_stat dpsCmd_Segment (UNUSED int32  arg, const char *buf)
 {
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
@@ -663,7 +663,7 @@ t_stat dpsCmd_Segment (UNUSED int32  arg, char *buf)
 }
 
 //! custom command "segments" - stuff to do with deferred segments
-t_stat dpsCmd_Segments (UNUSED int32 arg, char *buf)
+t_stat dpsCmd_Segments (UNUSED int32 arg, const char *buf)
 {
     bool bVerbose = !sim_quiet;
 
@@ -1101,12 +1101,12 @@ static word18 dummyIC;
 
 static REG cpu_reg[] = {
 #ifdef M_SHARED
-    { ORDATA (IC, dummyIC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
-    //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
+    { ORDATA (IC, dummyIC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
+    //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
 #else
-    { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0 },// Must be the first; see sim_PC.
-    //{ ORDATA (IR, cpu.cu.IR, 18), 0, 0 },
-    //{ ORDATADF (IR, cpu.cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
+    { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
+    //{ ORDATA (IR, cpu.cu.IR, 18), 0, 0, 0 },
+    //{ ORDATADF (IR, cpu.cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0, 0 },
     
     //    { FLDATA (Zero, cpu.cu.IR, F_V_A), 0, 0 },
     //    { FLDATA (Negative, cpu.cu.IR, F_V_B), 0, 0 },
@@ -1124,128 +1124,128 @@ static REG cpu_reg[] = {
     //    { FLDATA (AbsMode, cpu.cu.IR, F_V_N), 0, 0 },
     //    { FLDATA (HexMode, cpu.cu.IR, F_V_O), 0, 0 },
     
-    { ORDATA (A, cpus[0].rA, 36), 0, 0 },
-    { ORDATA (Q, cpus[0].rQ, 36), 0, 0 },
-    { ORDATA (E, cpus[0].rE, 8), 0, 0 },
+    { ORDATA (A, cpus[0].rA, 36), 0, 0, 0 },
+    { ORDATA (Q, cpus[0].rQ, 36), 0, 0, 0 },
+    { ORDATA (E, cpus[0].rE, 8), 0, 0, 0 },
     
-    { ORDATA (X0, cpus[0].rX [0], 18), 0, 0 },
-    { ORDATA (X1, cpus[0].rX [1], 18), 0, 0 },
-    { ORDATA (X2, cpus[0].rX [2], 18), 0, 0 },
-    { ORDATA (X3, cpus[0].rX [3], 18), 0, 0 },
-    { ORDATA (X4, cpus[0].rX [4], 18), 0, 0 },
-    { ORDATA (X5, cpus[0].rX [5], 18), 0, 0 },
-    { ORDATA (X6, cpus[0].rX [6], 18), 0, 0 },
-    { ORDATA (X7, cpus[0].rX [7], 18), 0, 0 },
+    { ORDATA (X0, cpus[0].rX [0], 18), 0, 0, 0 },
+    { ORDATA (X1, cpus[0].rX [1], 18), 0, 0, 0 },
+    { ORDATA (X2, cpus[0].rX [2], 18), 0, 0, 0 },
+    { ORDATA (X3, cpus[0].rX [3], 18), 0, 0, 0 },
+    { ORDATA (X4, cpus[0].rX [4], 18), 0, 0, 0 },
+    { ORDATA (X5, cpus[0].rX [5], 18), 0, 0, 0 },
+    { ORDATA (X6, cpus[0].rX [6], 18), 0, 0, 0 },
+    { ORDATA (X7, cpus[0].rX [7], 18), 0, 0, 0 },
     
-    { ORDATA (PPR.IC,  cpus[0].PPR.IC,  18), 0, 0 },
-    { ORDATA (PPR.PRR, cpus[0].PPR.PRR,  3), 0, 0 },
-    { ORDATA (PPR.PSR, cpus[0].PPR.PSR, 15), 0, 0 },
-    { ORDATA (PPR.P,   cpus[0].PPR.P,    1), 0, 0 },
+    { ORDATA (PPR.IC,  cpus[0].PPR.IC,  18), 0, 0, 0 },
+    { ORDATA (PPR.PRR, cpus[0].PPR.PRR,  3), 0, 0, 0 },
+    { ORDATA (PPR.PSR, cpus[0].PPR.PSR, 15), 0, 0, 0 },
+    { ORDATA (PPR.P,   cpus[0].PPR.P,    1), 0, 0, 0 },
     
-    { ORDATA (RALR,    cpus[0].rRALR,    3), 0, 0 },
+    { ORDATA (RALR,    cpus[0].rRALR,    3), 0, 0, 0 },
     
-    { ORDATA (DSBR.ADDR,  cpus[0].DSBR.ADDR,  24), 0, 0 },
-    { ORDATA (DSBR.BND,   cpus[0].DSBR.BND,   14), 0, 0 },
-    { ORDATA (DSBR.U,     cpus[0].DSBR.U,      1), 0, 0 },
-    { ORDATA (DSBR.STACK, cpus[0].DSBR.STACK, 12), 0, 0 },
+    { ORDATA (DSBR.ADDR,  cpus[0].DSBR.ADDR,  24), 0, 0, 0 },
+    { ORDATA (DSBR.BND,   cpus[0].DSBR.BND,   14), 0, 0, 0 },
+    { ORDATA (DSBR.U,     cpus[0].DSBR.U,      1), 0, 0, 0 },
+    { ORDATA (DSBR.STACK, cpus[0].DSBR.STACK, 12), 0, 0, 0 },
     
-    { ORDATA (BAR.BASE,  cpus[0].BAR.BASE,  9), 0, 0 },
-    { ORDATA (BAR.BOUND, cpus[0].BAR.BOUND, 9), 0, 0 },
+    { ORDATA (BAR.BASE,  cpus[0].BAR.BASE,  9), 0, 0, 0 },
+    { ORDATA (BAR.BOUND, cpus[0].BAR.BOUND, 9), 0, 0, 0 },
     
     //{ ORDATA (FAULTBASE, rFAULTBASE, 12), 0, 0 }, ///< only top 7-msb are used
     
-    { ORDATA (PR0.SNR, cpus[0].PR[0].SNR, 18), 0, 0 },
-    { ORDATA (PR1.SNR, cpus[0].PR[1].SNR, 18), 0, 0 },
-    { ORDATA (PR2.SNR, cpus[0].PR[2].SNR, 18), 0, 0 },
-    { ORDATA (PR3.SNR, cpus[0].PR[3].SNR, 18), 0, 0 },
-    { ORDATA (PR4.SNR, cpus[0].PR[4].SNR, 18), 0, 0 },
-    { ORDATA (PR5.SNR, cpus[0].PR[5].SNR, 18), 0, 0 },
-    { ORDATA (PR6.SNR, cpus[0].PR[6].SNR, 18), 0, 0 },
-    { ORDATA (PR7.SNR, cpus[0].PR[7].SNR, 18), 0, 0 },
+    { ORDATA (PR0.SNR, cpus[0].PR[0].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR1.SNR, cpus[0].PR[1].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR2.SNR, cpus[0].PR[2].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR3.SNR, cpus[0].PR[3].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR4.SNR, cpus[0].PR[4].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR5.SNR, cpus[0].PR[5].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR6.SNR, cpus[0].PR[6].SNR, 18), 0, 0, 0 },
+    { ORDATA (PR7.SNR, cpus[0].PR[7].SNR, 18), 0, 0, 0 },
     
-    { ORDATA (PR0.RNR, cpus[0].PR[0].RNR, 18), 0, 0 },
-    { ORDATA (PR1.RNR, cpus[0].PR[1].RNR, 18), 0, 0 },
-    { ORDATA (PR2.RNR, cpus[0].PR[2].RNR, 18), 0, 0 },
-    { ORDATA (PR3.RNR, cpus[0].PR[3].RNR, 18), 0, 0 },
-    { ORDATA (PR4.RNR, cpus[0].PR[4].RNR, 18), 0, 0 },
-    { ORDATA (PR5.RNR, cpus[0].PR[5].RNR, 18), 0, 0 },
-    { ORDATA (PR6.RNR, cpus[0].PR[6].RNR, 18), 0, 0 },
-    { ORDATA (PR7.RNR, cpus[0].PR[7].RNR, 18), 0, 0 },
+    { ORDATA (PR0.RNR, cpus[0].PR[0].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR1.RNR, cpus[0].PR[1].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR2.RNR, cpus[0].PR[2].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR3.RNR, cpus[0].PR[3].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR4.RNR, cpus[0].PR[4].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR5.RNR, cpus[0].PR[5].RNR, 18), 0, 0, 0 },
+    { ORDATA (PR6.RNR, cpus[0].PR[6].RNR, 18), 0, 0 , 0},
+    { ORDATA (PR7.RNR, cpus[0].PR[7].RNR, 18), 0, 0, 0 },
     
-    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18), 0, 0 },
-    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18), 0, 0, 0 },
+    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18), 0, 0, 0 },
     
-    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0 },
-    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0, 0 },
+    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0, 0 },
     
-    { ORDATA (PR0.WORDNO, cpus[0].PR[0].WORDNO, 18), 0, 0 },
-    { ORDATA (PR1.WORDNO, cpus[0].PR[1].WORDNO, 18), 0, 0 },
-    { ORDATA (PR2.WORDNO, cpus[0].PR[2].WORDNO, 18), 0, 0 },
-    { ORDATA (PR3.WORDNO, cpus[0].PR[3].WORDNO, 18), 0, 0 },
-    { ORDATA (PR4.WORDNO, cpus[0].PR[4].WORDNO, 18), 0, 0 },
-    { ORDATA (PR5.WORDNO, cpus[0].PR[5].WORDNO, 18), 0, 0 },
-    { ORDATA (PR6.WORDNO, cpus[0].PR[6].WORDNO, 18), 0, 0 },
-    { ORDATA (PR7.WORDNO, cpus[0].PR[7].WORDNO, 18), 0, 0 },
+    { ORDATA (PR0.WORDNO, cpus[0].PR[0].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR1.WORDNO, cpus[0].PR[1].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR2.WORDNO, cpus[0].PR[2].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR3.WORDNO, cpus[0].PR[3].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR4.WORDNO, cpus[0].PR[4].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR5.WORDNO, cpus[0].PR[5].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR6.WORDNO, cpus[0].PR[6].WORDNO, 18), 0, 0, 0 },
+    { ORDATA (PR7.WORDNO, cpus[0].PR[7].WORDNO, 18), 0, 0, 0 },
     
-    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18), 0, 0 },
-    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18), 0, 0, 0 },
+    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18), 0, 0, 0 },
     
     /*
-     { ORDATA (EBR, ebr, EBR_N_EBR), 0, 0 },
-     { FLDATA (PGON, ebr, EBR_V_PGON), 0, 0 },
-     { FLDATA (T20P, ebr, EBR_V_T20P), 0, 0 },
-     { ORDATA (UBR, ubr, 36), 0, 0 },
-     { GRDATA (CURAC, ubr, 8, 3, UBR_V_CURAC), REG_RO },
-     { GRDATA (PRVAC, ubr, 8, 3, UBR_V_PRVAC) },
-     { ORDATA (SPT, spt, 36), 0, 0 },
-     { ORDATA (CST, cst, 36), 0, 0 },
-     { ORDATA (PUR, pur, 36), 0, 0 },
-     { ORDATA (CSTM, cstm, 36), 0, 0 },
-     { ORDATA (HSB, hsb, 36), 0, 0 },
-     { ORDATA (DBR1, dbr1, PASIZE), 0, 0 },
-     { ORDATA (DBR2, dbr2, PASIZE), 0, 0 },
-     { ORDATA (DBR3, dbr3, PASIZE), 0, 0 },
-     { ORDATA (DBR4, dbr4, PASIZE), 0, 0 },
-     { ORDATA (PCST, pcst, 36), 0, 0 },
-     { ORDATA (PIENB, pi_enb, 7), 0, 0 },
-     { FLDATA (PION, pi_on, 0), 0, 0 },
-     { ORDATA (PIACT, pi_act, 7), 0, 0 },
-     { ORDATA (PIPRQ, pi_prq, 7), 0, 0 },
-     { ORDATA (PIIOQ, pi_ioq, 7), REG_RO },
-     { ORDATA (PIAPR, pi_apr, 7), REG_RO },
-     { ORDATA (APRENB, apr_enb, 8), 0, 0 },
-     { ORDATA (APRFLG, apr_flg, 8), 0, 0 },
-     { ORDATA (APRLVL, apr_lvl, 3), 0, 0 },
-     { ORDATA (RLOG, rlog, 10), 0, 0 },
-     { FLDATA (F1PR, its_1pr, 0), 0, 0 },
-     { BRDATA (PCQ, pcq, 8, VASIZE, PCQ_SIZE), REG_RO+REG_CIRC },
-     { ORDATA (PCQP, pcq_p, 6), REG_HRO },
-     { DRDATA (INDMAX, ind_max, 8), PV_LEFT + REG_NZ },
-     { DRDATA (XCTMAX, xct_max, 8), PV_LEFT + REG_NZ },
-     { ORDATA (WRU, sim_int_char, 8), 0, 0 },
-     { FLDATA (STOP_ILL, stop_op0, 0), 0, 0 },
-     { BRDATA (REG, acs, 8, 36, AC_NUM * AC_NBLK) },
+     { ORDATA (EBR, ebr, EBR_N_EBR), 0, 0, 0 },
+     { FLDATA (PGON, ebr, EBR_V_PGON), 0, 0, 0 },
+     { FLDATA (T20P, ebr, EBR_V_T20P), 0, 0, 0 },
+     { ORDATA (UBR, ubr, 36), 0, 0, 0 },
+     { GRDATA (CURAC, ubr, 8, 3, UBR_V_CURAC), REG_RO, 0 },
+     { GRDATA (PRVAC, ubr, 8, 3, UBR_V_PRVAC), 0 },
+     { ORDATA (SPT, spt, 36), 0, 0, 0 },
+     { ORDATA (CST, cst, 36), 0, 0, 0 },
+     { ORDATA (PUR, pur, 36), 0, 0, 0 },
+     { ORDATA (CSTM, cstm, 36), 0, 0, 0 },
+     { ORDATA (HSB, hsb, 36), 0, 0, 0 },
+     { ORDATA (DBR1, dbr1, PASIZE), 0, 0, 0 },
+     { ORDATA (DBR2, dbr2, PASIZE), 0, 0, 0 },
+     { ORDATA (DBR3, dbr3, PASIZE), 0, 0, 0 },
+     { ORDATA (DBR4, dbr4, PASIZE), 0, 0, 0 },
+     { ORDATA (PCST, pcst, 36), 0, 0, 0 },
+     { ORDATA (PIENB, pi_enb, 7), 0, 0, 0 },
+     { FLDATA (PION, pi_on, 0), 0, 0, 0 },
+     { ORDATA (PIACT, pi_act, 7), 0, 0, 0 },
+     { ORDATA (PIPRQ, pi_prq, 7), 0, 0, 0 },
+     { ORDATA (PIIOQ, pi_ioq, 7), REG_RO, 0 },
+     { ORDATA (PIAPR, pi_apr, 7), REG_RO, 0 },
+     { ORDATA (APRENB, apr_enb, 8), 0, 0, 0 },
+     { ORDATA (APRFLG, apr_flg, 8), 0, 0, 0 },
+     { ORDATA (APRLVL, apr_lvl, 3), 0, 0, 0 },
+     { ORDATA (RLOG, rlog, 10), 0, 0, 0 },
+     { FLDATA (F1PR, its_1pr, 0), 0, 0, 0 },
+     { BRDATA (PCQ, pcq, 8, VASIZE, PCQ_SIZE), REG_RO+REG_CIRC, 0 },
+     { ORDATA (PCQP, pcq_p, 6), REG_HRO, 0 },
+     { DRDATA (INDMAX, ind_max, 8), PV_LEFT + REG_NZ, 0 },
+     { DRDATA (XCTMAX, xct_max, 8), PV_LEFT + REG_NZ, 0 },
+     { ORDATA (WRU, sim_int_char, 8), 0, 0, 0 },
+     { FLDATA (STOP_ILL, stop_op0, 0), 0, 0, 0 },
+     { BRDATA (REG, acs, 8, 36, AC_NUM * AC_NBLK), 0 },
      */
 #endif
-    { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
+    { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0, 0 }
 };
 
 /*
@@ -1281,7 +1281,8 @@ DEVICE cpu_dev = {
     NULL,           // help
     NULL,           // attach help
     NULL,           // help context
-    NULL            // description
+    NULL,           // description
+    NULL
 };
 
 #ifdef M_SHARED
@@ -2557,7 +2558,7 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
     
 }
 
-t_stat memWatch (int32 arg, char * buf)
+t_stat memWatch (int32 arg, const char * buf)
   {
     //sim_printf ("%d <%s>\n", arg, buf);
     if (strlen (buf) == 0)
@@ -3093,7 +3094,7 @@ static void cpu_init_array (void)
   }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
-                               UNUSED int val, UNUSED void * desc)
+                               UNUSED int val, UNUSED const void * desc)
 {
     long unit_num = UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= (int) cpu_dev.numunits)
@@ -3331,7 +3332,7 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
                               UNUSED void * desc)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
@@ -3975,13 +3976,13 @@ static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr,
   }
 #endif
 
-static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of CPUs in system is %d\n", cpu_dev.numunits);
     return SCPE_OK;
   }
 
-static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_CPU_UNITS_MAX)

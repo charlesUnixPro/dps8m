@@ -94,6 +94,6 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
 void scu_clear_interrupt (uint scu_unit_num, uint inum);
 uint scuGetHighestIntr (uint scuUnitNum);
 t_stat scu_reset (DEVICE *dptr);
-t_stat scu_reset_unit (UNIT * uptr, int32 value, char * cptr, 
+t_stat scu_reset_unit (UNIT * uptr, int32 value, const char * cptr, 
                        void * desc);
 
