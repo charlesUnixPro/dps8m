@@ -3542,7 +3542,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rA &= DMASK;
                 cpu.rQ &= DMASK;
 
-                if (cpu.rA == 0400000000000ULL & cpu.rQ == 0)
+                if (cpu.rA == 0400000000000ULL && cpu.rQ == 0)
                 {
                     CLR_I_ZERO;
                     SET_I_NEG;
