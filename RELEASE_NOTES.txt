@@ -1,3 +1,15 @@
+2016-12-08
+
+Crossbuild for MinGW64 from Fedora 23
+
+   git clone git@github.com:libuv/libuv.git
+   cd libuv
+   sh autogen.sh
+   #./configure --build=x86_64-w64-mingw32-gcc
+   mingw64-configure
+   sudo make install
+
+
 2014-11-11
 
 Alpha 1.0

@@ -6941,7 +6941,7 @@ if (sim_deb_switches & SWMASK ('P')) {
     sprintf(pc_s, "-%s:", sim_deb_PC->name);
     sprint_val (&pc_s[strlen(pc_s)], val, sim_deb_PC->radix, sim_deb_PC->width, sim_deb_PC->flags & REG_FMT);
     }
-extern uint getCPUnum (void);
+extern unsigned int getCPUnum (void);
 char name [257];
 strcpy (name, dptr->name);
 if (strcmp (name, "CPU") == 0) { name [3] = '0' + getCPUnum (); name [4] = 0; }

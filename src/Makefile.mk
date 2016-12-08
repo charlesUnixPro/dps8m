@@ -1,7 +1,12 @@
+ifeq ($(CROSS),MINGW64)
+  CC = x86_64-w64-mingw32-gcc
+  LD = x86_64-w64-mingw32-gcc
+#else
 #CC = gcc
 #LD = gcc
 CC = clang
 LD = clang
+endif
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 #CFLAGS  = -g -O0
@@ -29,7 +34,12 @@ CFLAGS += -std=c99 -U__STRICT_ANSI__
 
 # CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
 
-CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
+CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD
+ifeq ($(CROSS),MINGW64)
+CFLAGS += -D__USE_MINGW_ANSI_STDIO
+#else
+CFLAGS += -DHAVE_DLOPEN=so 
+endif
 CFLAGS += -DUSE_INT64
 #CFLAGS += -DMULTIPASS
 # Clang generates warning messages for code it generates itself...
