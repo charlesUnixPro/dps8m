@@ -2832,7 +2832,7 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
 static void cpu_init_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
-      for (int p = 0; p < N_CPU_PORTS_MAX; p ++)
+      for (int p = 0; p < N_CPU_PORTS; p ++)
         cables -> cablesFromScuToCpu [i].ports [p].inuse = false;
   }
 
