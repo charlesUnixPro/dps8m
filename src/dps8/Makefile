@@ -400,6 +400,7 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 dps8 : tags $(OBJS) $(LOCALLIBS) 
 	@echo LD dps8
+	@echo $(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	@$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
 .PHONY: FORCE

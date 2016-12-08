@@ -1,7 +1,7 @@
 ifeq ($(CROSS),MINGW64)
   CC = x86_64-w64-mingw32-gcc
   LD = x86_64-w64-mingw32-gcc
-#else
+else
 #CC = gcc
 #LD = gcc
 CC = clang
@@ -37,7 +37,7 @@ CFLAGS += -std=c99 -U__STRICT_ANSI__
 CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -D__USE_MINGW_ANSI_STDIO
-#else
+else
 CFLAGS += -DHAVE_DLOPEN=so 
 endif
 CFLAGS += -DUSE_INT64
