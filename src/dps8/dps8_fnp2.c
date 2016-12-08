@@ -40,13 +40,13 @@
 #include "sim_tmxr.h"
 #include <regex.h>
 
-static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
-static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetIPCname (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat fnpAttach (UNIT * uptr, char * cptr);
+static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
+static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetNUnits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetIPCname (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpAttach (UNIT * uptr, const char * cptr);
 static t_stat fnpDetach (UNIT *uptr);
 
 static int findMbx (uint fnpUnitIdx);
@@ -54,34 +54,34 @@ static int findMbx (uint fnpUnitIdx);
 #define N_FNP_UNITS 1 // default
 
 UNIT fnp_unit [N_FNP_UNITS_MAX] = {
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
 };
 
 static DEBTAB fnpDT [] =
   {
-    { "TRACE", DBG_TRACE },
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "TRACE", DBG_TRACE, NULL },
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 static MTAB fnpMod [] =
@@ -152,6 +152,7 @@ DEVICE fnpDev = {
     NULL,             // help
     NULL,             // help context
     NULL,             // device description
+    NULL
 };
 
 static int telnet_port = 6180;
@@ -2431,14 +2432,14 @@ int fnpIOMCmd (uint iomUnitIdx, uint chan)
 
 
 static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of FNP units in system is %d\n", fnpDev . numunits);
     return SCPE_OK;
   }
 
 static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             char * cptr, UNUSED void * desc)
+                             const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_FNP_UNITS_MAX)
@@ -2450,7 +2451,7 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
 
 //    ATTACH FNPn llll:w.x.y.z:rrrr - connect via UDP to an external FNP
 
-static t_stat fnpAttach (UNIT * uptr, char * cptr)
+static t_stat fnpAttach (UNIT * uptr, const char * cptr)
   {
     char * pfn;
 
@@ -2488,7 +2489,7 @@ static t_stat fnpDetach (UNIT * uptr)
 
 
 static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {   
     long n = FNP_UNIT_IDX (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
@@ -2498,7 +2499,7 @@ static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
   }   
 
 static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
-                             UNUSED char * cptr, UNUSED void * desc)
+                             UNUSED const char * cptr, UNUSED void * desc)
   {
     long n = FNP_UNIT_IDX (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
@@ -2514,7 +2515,7 @@ static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
-                             UNUSED void * desc)
+                             UNUSED const void * desc)
   {
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
     if (fnpUnitIdx >= fnpDev . numunits)
@@ -2540,7 +2541,7 @@ static config_list_t fnp_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
+static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint fnpUnitIdx = (uint) FNP_UNIT_IDX (uptr);
     if (fnpUnitIdx >= fnpDev . numunits)
@@ -2584,7 +2585,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
     return SCPE_OK;
   }
 
-t_stat fnpLoad (UNUSED int32 arg, char * buf)
+t_stat fnpLoad (UNUSED int32 arg, const char * buf)
   {
     FILE * fileref = fopen (buf, "r");
     if (! fileref)
@@ -2661,7 +2662,7 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-t_stat fnpServerPort (UNUSED int32 arg, char * buf)
+t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 1 || n > 65535)

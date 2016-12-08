@@ -79,7 +79,7 @@ t_stat ipc_reset (DEVICE *dptr);
 DIB ipc_dib = { MUX_INT_CLK, MUX_INT_CLK, PI_CLK, &clk };
 #endif
 
-UNIT ipc_unit = { UDATA (&ipc_svc, UNIT_DISABLE, 0), 0, 0, 0, 0, 0, NULL, NULL  };
+UNIT ipc_unit = { UDATA (&ipc_svc, UNIT_DISABLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL};
 
 static t_stat ipc_start (UNIT *uptr, int32 val, char *c, void *desc);
 static t_stat ipc_stop  (UNIT *uptr, int32 val, char *c, void *desc);
@@ -181,8 +181,8 @@ MTAB ipc_mod[] = {
 
 
 DEBTAB ipc_dbg[] = {
-    {"TRACE",   DBG_IPCTRACE  },
-    {"VERBOSE", DBG_IPCVERBOSE},
+    {"TRACE",   DBG_IPCTRACE, NULL  },
+    {"VERBOSE", DBG_IPCVERBOSE, NULL},
     {NULL, 0}
 };
 

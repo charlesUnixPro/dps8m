@@ -17,7 +17,7 @@ void cu_safe_store(void);
 void initializeTheMatrix (void);
 void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
 #endif
-t_stat displayTheMatrix (int32 arg, char * buf);
+t_stat displayTheMatrix (int32 arg, const char * buf);
 t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
 void fetchInstruction(word18 addr);

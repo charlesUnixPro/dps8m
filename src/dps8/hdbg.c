@@ -247,7 +247,7 @@ void hdbgPrint (void)
   }
 
 // set buffer size 
-t_stat hdbg_size (UNUSED int32 arg, char * buf)
+t_stat hdbg_size (UNUSED int32 arg, const char * buf)
   {
     hdbgSize = strtoul (buf, NULL, 0);
     sim_printf ("hdbg size set to %ld\n", hdbgSize);
@@ -256,7 +256,7 @@ t_stat hdbg_size (UNUSED int32 arg, char * buf)
   }
 #else
 #include "dps8_utils.h"
-t_stat hdbg_size (UNUSED int32 arg, UNUSED char * buf)
+t_stat hdbg_size (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("hdbg not enabled; ignoring\n");
     return SCPE_OK;

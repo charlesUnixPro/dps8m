@@ -45,15 +45,15 @@ operation is terminated. The timer is controlled by an enable switch, must be
 set to enabled during Multics and BCE */
 
 static t_stat opcon_reset (DEVICE * dptr);
-static t_stat opcon_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat opcon_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
-static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat opcon_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat opcon_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static int opcon_autoinput_set(UNIT *uptr, int32 val, const char *cptr, void *desc);
+static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, const void *desc);
 
 static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
-                              char * cptr, UNUSED void * desc);
+                              const char * cptr, UNUSED void * desc);
 static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
-                               UNUSED int  val, UNUSED void * desc);
+                               UNUSED int  val, UNUSED const void * desc);
 static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
@@ -84,13 +84,13 @@ static MTAB opcon_mod[] = {
 
 static DEBTAB opcon_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 
@@ -104,7 +104,7 @@ static t_stat opcon_svc (UNIT * unitp);
 
 UNIT opcon_unit [N_OPCON_UNITS_MAX] =
   {
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 
 DEVICE opcon_dev = {
@@ -133,7 +133,8 @@ DEVICE opcon_dev = {
     NULL,          // help
     NULL,          // attach help
     NULL,          // help context
-    NULL           // description
+    NULL,          // description
+    NULL
 };
 
 /*
@@ -221,7 +222,7 @@ void console_init()
 
 }
 
-static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cptr, UNUSED void * desc)
+static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, const char *  cptr, UNUSED void * desc)
   {
     if (cptr)
       {
@@ -252,7 +253,7 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val, char *  cp
     return SCPE_OK;
   }
 
-int opconAutoinput (int32 flag, char *  cptr)
+int opconAutoinput (int32 flag, const char *  cptr)
   {
     if (! flag)
       {
@@ -284,7 +285,7 @@ int opconAutoinput (int32 flag, char *  cptr)
   }
 
 static int opcon_autoinput_show (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                                 UNUSED int val, UNUSED void * desc)
+                                 UNUSED int val, UNUSED const void * desc)
   {
     sim_debug (DBG_NOTIFY, & opcon_dev,
                "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
@@ -309,7 +310,7 @@ t_stat console_attn (UNUSED UNIT * uptr)
   }
 
 static UNIT attn_unit = 
-  { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
+  { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL };
 
 static struct termios ttyTermios;
 static bool ttyTermiosOk = false;
@@ -451,7 +452,7 @@ static void oscar (char * text)
     //do_cmd (0, text + strlen (prefix));
     char * cptr = text + strlen (prefix);
     char gbuf [257];
-    cptr = get_glyph (cptr, gbuf, 0);                   /* get command glyph */
+    cptr = (char *) get_glyph (cptr, gbuf, 0);                   /* get command glyph */
     CTAB *cmdp;
     if ((cmdp = find_cmd (gbuf)))                       /* lookup command */
       {
@@ -1057,13 +1058,13 @@ static t_stat opcon_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-static t_stat opcon_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat opcon_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of OPCON units in system is %d\n", opcon_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, char * cptr, UNUSED void * desc)
+static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_OPCON_UNITS_MAX)
@@ -1090,7 +1091,7 @@ static config_list_t con_config_list [] =
   };
 
 static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
-                              char * cptr, UNUSED void * desc)
+                              const char * cptr, UNUSED void * desc)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
     config_state_t cfg_state = { NULL, NULL };
@@ -1125,7 +1126,7 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
   }
 
 static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
-                               UNUSED int  val, UNUSED void * desc)
+                               UNUSED int  val, UNUSED const void * desc)
   {
     sim_printf ("Attn hack:  %d\n", attn_hack);
     return SCPE_OK;

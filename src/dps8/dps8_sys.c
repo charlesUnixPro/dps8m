@@ -48,6 +48,7 @@
 #include "dps8_fnp2.h"
 #else
 #include "dps8_fnp.h"
+#include "fnp.h"
 #endif
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
@@ -57,7 +58,6 @@
 #include "dps8_absi.h"
 #include "utlist.h"
 #include "hdbg.h"
-#include "fnp.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -82,102 +82,102 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
 
 stats_t sys_stats;
 
-static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf);
-static t_stat dps_debug_skip (int32 arg, char * buf);
-static t_stat dps_debug_start (int32 arg, char * buf);
-static t_stat dps_debug_stop (int32 arg, char * buf);
-static t_stat dps_debug_break (int32 arg, char * buf);
-static t_stat dps_debug_segno (int32 arg, char * buf);
-static t_stat dps_debug_ringno (int32 arg, char * buf);
-static t_stat dps_debug_bar (int32 arg, UNUSED char * buf);
-static t_stat loadSystemBook (int32 arg, char * buf);
-static t_stat addSystemBookEntry (int32 arg, char * buf);
-static t_stat lookupSystemBook (int32 arg, char * buf);
-static t_stat absAddr (int32 arg, char * buf);
-static t_stat setSearchPath (int32 arg, char * buf);
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf);
+static t_stat dps_debug_skip (int32 arg, const char * buf);
+static t_stat dps_debug_start (int32 arg, const char * buf);
+static t_stat dps_debug_stop (int32 arg, const char * buf);
+static t_stat dps_debug_break (int32 arg, const char * buf);
+static t_stat dps_debug_segno (int32 arg, const char * buf);
+static t_stat dps_debug_ringno (int32 arg, const char * buf);
+static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf);
+static t_stat loadSystemBook (int32 arg, const char * buf);
+static t_stat addSystemBookEntry (int32 arg, const char * buf);
+static t_stat lookupSystemBook (int32 arg, const char * buf);
+static t_stat absAddr (int32 arg, const char * buf);
+static t_stat setSearchPath (int32 arg, const char * buf);
 static t_stat absAddrN (int segno, uint offset);
 //static t_stat virtAddrN (uint address);
-static t_stat virtAddr (int32 arg, char * buf);
-static t_stat sbreak (int32 arg, char * buf);
-static t_stat stackTrace (int32 arg, char * buf);
-static t_stat listSourceAt (int32 arg, char * buf);
-static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
-static t_stat launch (int32 arg, char * buf);
+static t_stat virtAddr (int32 arg, const char * buf);
+static t_stat sbreak (int32 arg, const char * buf);
+static t_stat stackTrace (int32 arg, const char * buf);
+static t_stat listSourceAt (int32 arg, const char * buf);
+static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf);
+static t_stat launch (int32 arg, const char * buf);
 #ifdef DVFDBG
-static t_stat dfx1entry (int32 arg, char * buf);
-static t_stat dfx1exit (int32 arg, char * buf);
-static t_stat dv2scale (int32 arg, char * buf);
-static t_stat dfx2entry (int32 arg, char * buf);
-static t_stat mdfx3entry (int32 arg, char * buf);
-static t_stat smfx1entry (int32 arg, char * buf);
+static t_stat dfx1entry (int32 arg, const char * buf);
+static t_stat dfx1exit (int32 arg, const char * buf);
+static t_stat dv2scale (int32 arg, const char * buf);
+static t_stat dfx2entry (int32 arg, const char * buf);
+static t_stat mdfx3entry (int32 arg, const char * buf);
+static t_stat smfx1entry (int32 arg, const char * buf);
 #endif
-static t_stat searchMemory (UNUSED int32 arg, char * buf);
-static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf);
+static t_stat searchMemory (UNUSED int32 arg, const char * buf);
+static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 
 static CTAB dps8_cmds[] =
 {
-    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL},
-    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL},
-    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
-    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
-    {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
-    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL},
-    {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
-    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
-    {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
-    {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL},
-    {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL},
-    {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL},
-    {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL},
-    {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL},
-    {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL},
-    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
-    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
-    {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
-    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL},
-    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL},
-    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL},
-    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL},
-    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
-    {"TEST", brkbrk, 0, "test: internal testing\n", NULL},
+    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL, NULL},
+    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL, NULL},
+    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL, NULL},
+    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL, NULL},
+    {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL, NULL},
+    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL, NULL},
+    {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL, NULL},
+    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL, NULL},
+    {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL, NULL},
+    {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL, NULL},
+    {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL, NULL},
+    {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
+    {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL, NULL},
+    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL, NULL},
+    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL, NULL},
+    {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL, NULL},
+    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL, NULL},
+    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL, NULL},
+    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL, NULL},
+    {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
 #define SSH_SH          1                               /* show */
 #define SSH_CL          2                               /* clear */
-    {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
-    {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL},
-    {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
-    {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
-    {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
+    {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL, NULL},
+    {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL, NULL},
+    {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL, NULL},
+    {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL, NULL},
+    {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL, NULL},
 #ifdef DVFDBG
     // dvf debugging
-    {"DFX1ENTRY", dfx1entry, 0, "", NULL},
-    {"DFX2ENTRY", dfx2entry, 0, "", NULL},
-    {"DFX1EXIT", dfx1exit, 0, "", NULL},
-    {"DV2SCALE", dv2scale, 0, "", NULL},
-    {"MDFX3ENTRY", mdfx3entry, 0, "", NULL},
-    {"SMFX1ENTRY", smfx1entry, 0, "", NULL},
+    {"DFX1ENTRY", dfx1entry, 0, "", NULL, NULL},
+    {"DFX2ENTRY", dfx2entry, 0, "", NULL, NULL},
+    {"DFX1EXIT", dfx1exit, 0, "", NULL, NULL},
+    {"DV2SCALE", dv2scale, 0, "", NULL, NULL},
+    {"MDFX3ENTRY", mdfx3entry, 0, "", NULL, NULL},
+    {"SMFX1ENTRY", smfx1entry, 0, "", NULL, NULL},
 #endif
     // doesn't work
     //{"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
-    {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL},
-    {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
-    {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
-    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
-    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+    {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL, NULL},
+    {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL, NULL},
+    {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL, NULL},
+    {"LAUNCH", launch, 0, "start subprocess\n", NULL, NULL},
     
-    {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+    {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
-    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
+    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
 #ifdef FNP2
-    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL},
+    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
 #endif
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫
-    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL}, 
+    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL, NULL}, 
 #endif
-    {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL},
-    { NULL, NULL, 0, NULL, NULL}
+    {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
+    { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
 /*!
@@ -189,7 +189,7 @@ static CTAB dps8_cmds[] =
  Guess I shouldn't use these then :)
  */
 
-static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
+static t_addr parse_addr(DEVICE *dptr, const char *cptr, const char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
 static void usr1SignalHandler (UNUSED int sig)
@@ -260,14 +260,14 @@ uint64 sim_deb_mme_cntdwn = 0;
 
 bool sim_deb_bar = false;
 
-static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf)
   {
     sim_deb_mme_cntdwn = strtoull (buf, NULL, 0);
     sim_printf ("Debug MME countdown set to %lld\n", sim_deb_mme_cntdwn);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_skip (UNUSED int32 arg, const char * buf)
   {
     sim_deb_skip_cnt = 0;
     sim_deb_skip_limit = strtoull (buf, NULL, 0);
@@ -275,42 +275,42 @@ static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat dps_debug_start (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_start (UNUSED int32 arg, const char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_stop (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_stop (UNUSED int32 arg, const char * buf)
   {
     sim_deb_stop = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to stop at cycle: %lld\n", sim_deb_stop);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_break (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_break (UNUSED int32 arg, const char * buf)
   {
     sim_deb_break = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to break at cycle: %lld\n", sim_deb_break);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_segno (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_segno (UNUSED int32 arg, const char * buf)
   {
     sim_deb_segno = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to segno %llo\n", sim_deb_segno);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_ringno (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_ringno (UNUSED int32 arg, const char * buf)
   {
     sim_deb_ringno = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to ringno %llo\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
+static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf)
   {
     sim_deb_bar = arg;
     if (arg)
@@ -538,7 +538,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
+static t_stat setSearchPath (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -549,13 +549,13 @@ static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
     return SCPE_OK;
   }
 
-t_stat brkbrk (UNUSED int32 arg, UNUSED char *  buf)
+t_stat brkbrk (UNUSED int32 arg, UNUSED const char *  buf)
   {
     //listSource (buf, 0);
     return SCPE_OK;
   }
 
-static t_stat listSourceAt (UNUSED int32 arg, UNUSED char *  buf)
+static t_stat listSourceAt (UNUSED int32 arg, UNUSED const char *  buf)
   {
     // list seg:offset
     int segno;
@@ -772,7 +772,7 @@ fileDone:
 
 // SEARCHMEMORY valye
 
-static t_stat searchMemory (UNUSED int32 arg, char * buf)
+static t_stat searchMemory (UNUSED int32 arg, const char * buf)
   {
     word36 value;
     if (sscanf (buf, "%llo", & value) != 1)
@@ -788,7 +788,7 @@ static t_stat searchMemory (UNUSED int32 arg, char * buf)
 
 // ABS segno:offset
 
-static t_stat absAddr (UNUSED int32 arg, char * buf)
+static t_stat absAddr (UNUSED int32 arg, const char * buf)
   {
     int segno;
     uint offset;
@@ -1016,7 +1016,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 // EXF
 
-static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
+static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf)
   {
     // Assume bootload CPU
     setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
@@ -1032,7 +1032,7 @@ t_stat dbgStackTrace (void)
   }
 #endif 
 
-static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
+static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
   {
     char * msg;
 
@@ -1197,7 +1197,7 @@ skipArgs:;
 
 // SBREAK segno:offset
 
-static t_stat sbreak (int32 arg, char * buf)
+static t_stat sbreak (int32 arg, const char * buf)
   {
     //printf (">> <%s>\n", buf);
     int segno, offset;
@@ -1218,7 +1218,7 @@ t_stat virtAddrN (uint address);
 
 // VIRTUAL address
 
-static t_stat virtAddr (UNUSED int32 arg, char * buf)
+static t_stat virtAddr (UNUSED int32 arg, const char * buf)
   {
     uint address;
     if (sscanf (buf, "%o", & address) != 1)
@@ -1328,7 +1328,7 @@ t_stat virtAddrN (uint address)
 //           given a segment name, component name and offset, return
 //           the segment number and offset
    
-static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
+static t_stat lookupSystemBook (UNUSED int32  arg, const char * buf)
   {
     char w1 [strlen (buf)];
     char w2 [strlen (buf)];
@@ -1400,7 +1400,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
+static t_stat addSystemBookEntry (UNUSED int32 arg, const char * buf)
   {
     // asbe segname compname seg txt_start txt_len intstat_start intstat_length symbol_start symbol_length
     char segname [bookSegmentNameLen];
@@ -1427,7 +1427,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED
@@ -1600,7 +1600,7 @@ static struct PRtab {
     
 };
 
-static t_addr parse_addr (UNUSED DEVICE * dptr, char *cptr, char **optr)
+static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **optr)
 {
     // a segment reference?
     if (strchr(cptr, '|'))
@@ -1778,7 +1778,7 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
 /*!  – Based on the switch variable, parse character string cptr for a symbolic value val at the specified addr
  in unit uptr.
  */
-t_stat parse_sym (UNUSED char * cptr, UNUSED t_addr addr, UNUSED UNIT * uptr, 
+t_stat parse_sym (UNUSED const char * cptr, UNUSED t_addr addr, UNUSED UNIT * uptr, 
                   UNUSED t_value * val, UNUSED int32 sswitch)
 {
     return SCPE_ARG;
@@ -1822,7 +1822,7 @@ static char * encode_timing (int timing)
   }
 
 static t_stat sys_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int  val, UNUSED void * desc)
+                               UNUSED int  val, UNUSED const void * desc)
   {
     sim_printf ("IOM connect time:         %s\n",
                 encode_timing (sys_opts . iom_times . connect));
@@ -1856,7 +1856,7 @@ static config_list_t sys_config_list [] =
  };
 
 static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value, 
-                              char * cptr, UNUSED void * desc)
+                              const char * cptr, UNUSED void * desc)
   {
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1912,7 +1912,7 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 
 
 #ifdef DVFDBG
-static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx1entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // divide_fx1, divide_fx3
     sim_printf ("dfx1entry\n");
@@ -1951,7 +1951,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
     return SCPE_OK;
   }
 
-static t_stat dfx1exit (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx1exit (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("dfx1exit\n");
     sim_printf ("rA %012llo (%llu)\n", rA, rA);
@@ -1959,14 +1959,14 @@ static t_stat dfx1exit (UNUSED int32 arg, UNUSED char * buf)
     return SCPE_OK;
   }
 
-static t_stat dv2scale (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dv2scale (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("dv2scale\n");
     sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
     return SCPE_OK;
   }
 
-static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx2entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // divide_fx2
     sim_printf ("dfx2entry\n");
@@ -2022,7 +2022,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
     return SCPE_OK;
   }
 
-static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat mdfx3entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // operator to form mod(fx2,fx1)
 // entered with first arg in q, bp pointing at second
@@ -2066,7 +2066,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
     return SCPE_OK;
   }
 
-static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat smfx1entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // operator to form mod(fx2,fx1)
 // entered with first arg in q, bp pointing at second
@@ -2157,7 +2157,8 @@ static DEVICE sys_dev = {
     NULL,        /* help */
     NULL,        /* attach_help */
     NULL,        /* help_ctx */
-    NULL         /* description */
+    NULL,        /* description */
+    NULL
 };
 
 
@@ -2211,7 +2212,7 @@ static void addChild (pid_t pid)
      atexit (cleanupChildren);
   }
 
-static t_stat launch (int32 UNUSED arg, char * buf)
+static t_stat launch (int32 UNUSED arg, const char * buf)
   {
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
@@ -2339,7 +2340,7 @@ t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
     return SCPE_OK;
   }
 
-static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf)
+static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
   {
     uint32 skipped;
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);

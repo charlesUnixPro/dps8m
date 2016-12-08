@@ -648,7 +648,7 @@ static int getval (char * * save, char * text)
 //
 
 
-t_stat sys_cable (UNUSED int32 arg, char * buf)
+t_stat sys_cable (UNUSED int32 arg, const char * buf)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 

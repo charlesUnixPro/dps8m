@@ -110,16 +110,16 @@
 
 #include "dps8_mt.h"
 
-static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat mt_show_boot_drive (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat mt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat mt_set_tape_path (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat mt_set_capac (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat mt_rewind (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat mt_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_show_boot_drive (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat mt_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat mt_set_tape_path (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_set_capac (UNIT * uptr, int32 value, const char * cptr, void * desc);
 //static t_stat mt_show_device_length (FILE *st, UNIT *uptr, int val, void *desc);
 //static t_stat mt_set_device_length (UNIT * uptr, int32 value, char * cptr, void * desc);
 
@@ -137,34 +137,34 @@ UNIT mt_unit [N_MT_UNITS_MAX] = {
     // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
 // Unit 0 is the controller
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
 };
 
 static DEBTAB mt_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 #define UNIT_WATCH (1 << MTUF_V_UF)
@@ -277,6 +277,7 @@ DEVICE tape_dev = {
     NULL,             // help
     NULL,             // help context
     NULL,             // device description
+    NULL
 };
 
 #define MAX_DEV_NAME_LEN 64
@@ -1877,20 +1878,20 @@ static const char *simh_tape_msg(int code)
   }
 
 static t_stat mt_rewind (UNIT * uptr, UNUSED int32 value, 
-                         UNUSED char * cptr, UNUSED void * desc)
+                         UNUSED const char * cptr, UNUSED void * desc)
   {
     return sim_tape_rewind (uptr);
   }
 
 static t_stat mt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of TAPE units in system is %d\n", tape_dev . numunits);
     return SCPE_OK;
   }
 
 static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             char * cptr, UNUSED void * desc)
+                             const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_MT_UNITS_MAX)
@@ -1900,14 +1901,14 @@ static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat mt_show_boot_drive (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Tape drive to boot from is %d\n", boot_drive);
     return SCPE_OK;
   }
 
 static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             UNUSED char * cptr, UNUSED void * desc)
+                             UNUSED const char * cptr, UNUSED void * desc)
   {
     int n = (int) MT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_MT_UNITS_MAX)
@@ -1917,7 +1918,7 @@ static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat mt_show_device_name (UNUSED FILE * st, UNIT * uptr, 
-                                   UNUSED int val, UNUSED void * desc)
+                                   UNUSED int val, UNUSED const void * desc)
   {
     int n = (int) MT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_MT_UNITS_MAX)
@@ -1927,7 +1928,7 @@ static t_stat mt_show_device_name (UNUSED FILE * st, UNIT * uptr,
   }
 
 static t_stat mt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value, 
-                                  UNUSED char * cptr, UNUSED void * desc)
+                                  UNUSED const char * cptr, UNUSED void * desc)
   {
     int n = (int) MT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_MT_UNITS_MAX)
@@ -1943,14 +1944,14 @@ static t_stat mt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat mt_show_tape_path (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                                 UNUSED int val, UNUSED void * desc)
+                                 UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Tape path <%s>\n", tape_path);
     return SCPE_OK;
   }
 
 static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             char * cptr, UNUSED void * desc)
+                             const char * cptr, UNUSED void * desc)
   {
     if (strlen (cptr) >= TAPE_PATH_LEN - 1)
       {
@@ -1962,7 +1963,7 @@ static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             char * cptr, UNUSED void * desc)
+                             const char * cptr, UNUSED void * desc)
   {
     t_stat rc;
     int i;
