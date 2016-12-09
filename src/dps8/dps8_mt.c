@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //#define IOMDBG1
 /**
  * \file dps8_mt.c
@@ -1025,11 +1038,11 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
               }
 
 //sim_printf ("chan mode %d\n", p -> chanMode);
-//sim_printf ("ddcw %012llo\n", p -> DCW);
+//sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
             iomDirectDataService (iomUnitIdx, chan, & control, false);
-//sim_printf ("control %012llo\n", control);
-//sim_printf ("  addr %012llo tally %012llo\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+//sim_printf ("control %012"PRIo64"\n", control);
+//sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
             tape_statep -> cntlrTally = getbits36_16 (control, 16);
 
@@ -1095,7 +1108,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
-//sim_printf ("ddcw %012llo\n", p -> DCW);
+//sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
 //sim_printf (" addr %06o tally %06o\n", p -> DDCW_ADDR, p -> DDCW_TALLY);
             uint tally = p -> DDCW_TALLY;
             if (tally != 04000)
@@ -1201,7 +1214,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
-//sim_printf ("ddcw %012llo\n", p -> DCW);
+//sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
 //sim_printf (" addr %06o tally %06o\n", p -> DDCW_ADDR, p -> DDCW_TALLY);
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: initiate write data transfer tally %d\n", __func__, p -> DDCW_TALLY);
@@ -1272,11 +1285,11 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
               }
 
 //sim_printf ("chan mode %d\n", p -> chanMode);
-//sim_printf ("ddcw %012llo\n", p -> DCW);
+//sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
             iomDirectDataService (iomUnitIdx, chan, & control, false);
-//sim_printf ("control %012llo\n", control);
-//sim_printf ("  addr %012llo tally %012llo\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+//sim_printf ("control %012"PRIo64"\n", control);
+//sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
             tape_statep -> cntlrTally = getbits36_16 (control, 16);
             sim_debug (DBG_DEBUG, & tape_dev,

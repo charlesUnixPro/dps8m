@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 // IOM rework, try # 6
 //
@@ -719,7 +732,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     word36 scw;
     core_read (scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
-               "SCW chan %02o %012llo\n", chan, scw);
+               "SCW chan %02o %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
     uint lq = getbits36_2 (scw, 18);
     uint tally = getbits36_12 (scw, 24);
@@ -732,7 +745,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     sim_debug (DBG_TRACE, & iom_dev,
                "Writing status for chan %d dev_code %d to 0%o=>0%o\n",
                chan, p -> dev_code, scwAddr, addr);
-    sim_debug (DBG_DEBUG | DBG_TRACE, & iom_dev, "%s: Status: 0%012llo 0%012llo\n",
+    sim_debug (DBG_DEBUG | DBG_TRACE, & iom_dev, "%s: Status: 0%012"PRIo64" 0%012"PRIo64"\n",
                __func__, word1, word2);
     if (lq == 3)
       {
@@ -741,7 +754,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
                    __func__, chan);
         lq = 0;
       }
-//sim_printf ("status %d %08o %012llo %012llo\n", chan, addr, word1, word2);
+//sim_printf ("status %d %08o %012"PRIo64" %012"PRIo64"\n", chan, addr, word1, word2);
     core_write2 (addr, word1, word2, __func__);
 
     if (tally > 0 || (tally == 0 && lq != 0))
@@ -786,12 +799,12 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
           }
 
         sim_debug (DBG_DEBUG, & iom_dev,
-                   "%s: Updating SCW from: %012llo\n",
+                   "%s: Updating SCW from: %012"PRIo64"\n",
                    __func__, scw);
         putbits36_12 (& scw, 24, (word12) tally);
         putbits36_18 (& scw, 0, addr);
         sim_debug (DBG_DEBUG, & iom_dev,
-                   "%s:                to: %012llo\n",
+                   "%s:                to: %012"PRIo64"\n",
                    __func__, scw);
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
@@ -880,7 +893,7 @@ static void fetchIDSPTW (uint iomUnitIdx, int chan, word18 addr)
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
     core_read (pgte, & p -> PTW_DCW, __func__);
-//sim_printf ("       %08o %012llo\n", pgte, p -> PTW_DCW);
+//sim_printf ("       %08o %012"PRIo64"\n", pgte, p -> PTW_DCW);
   }
 
 
@@ -991,7 +1004,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
                 core_write (addr, * data, __func__);
-//sim_printf (" %o %08o %08o %012llo %012llo\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
+//sim_printf (" %o %08o %08o %012"PRIo64" %012"PRIo64"\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
             else
               {
@@ -1188,7 +1201,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
 
     core_read (chanLoc, & p -> LPW, __func__);
-    sim_debug (DBG_DEBUG, & iom_dev, "lpw %012llo\n", p -> LPW);
+    sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
     p -> LPW_18_RES =  getbits36_1 (p -> LPW, 18);
@@ -1299,7 +1312,7 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
-//sim_printf ("%012llo %012llo\n", p -> PCW0, p ->  PCW1);
+//sim_printf ("%012"PRIo64" %012"PRIo64"\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
     p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
@@ -1380,13 +1393,13 @@ sim_err ("unhandled fetchAndParseDCW\n");
 //                    p -> LPWX_SIZE);
 //sim_printf ("ptPtr %o\n", p -> PCW_PAGE_TABLE_PTR);
             fetchLPWPTW (iomUnitIdx, chan);
-//sim_printf ("PTW %012llo\n", p -> PTW_LPW);
+//sim_printf ("PTW %012"PRIo64"\n", p -> PTW_LPW);
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
 //sim_printf ("addr now %08o\n", addr_);
             core_read (addr_, & p -> DCW, __func__);
-//sim_printf ("dcw now %012llo\n", p -> DCW);
+//sim_printf ("dcw now %012"PRIo64"\n", p -> DCW);
           }
           break;
       }
@@ -2151,11 +2164,11 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
-               "%s: IMW at %#o was %012llo; setting bit %d\n", 
+               "%s: IMW at %#o was %012"PRIo64"; setting bit %d\n", 
                __func__, imw_addr, imw, chan_in_group);
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
-               "%s: IMW at %#o now %012llo\n", __func__, imw_addr, imw);
+               "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
     (void) core_write (imw_addr, imw, __func__);
     
 // XXX this should call scu_svc
@@ -2414,7 +2427,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     // 43A239854)
 
     M [010 + 2 * iom_num] = (imu << 34) | dis0;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       010 + 2 * iom_num, (imu << 34) | dis0);
 
     // Zero other 1/2 of y-pair to avoid msgs re reading uninitialized
@@ -2430,7 +2443,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     // terminate interrupt vector (overwritten by bootload)
 
     M [030 + 2 * iom_num] = dis0;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       030 + 2 * iom_num, dis0);
 
 
@@ -2441,7 +2454,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     
     // tally word for sys fault status
     M [base_addr + 7] = ((word36) base_addr << 18) | 02000002;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
        base_addr + 7, ((word36) base_addr << 18) | 02000002);
 
 
@@ -2488,7 +2501,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     // SCW
 
     M [mbx + 2] = ((word36)base_addr << 18);
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       mbx + 2, ((word36)base_addr << 18));
     
 
@@ -2530,7 +2543,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     // 2nd word of PCW pair
 
     M [1] = ((word36) (bootchan) << 27) | port;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       1, ((word36) (bootchan) << 27) | port);
     
 
@@ -2542,7 +2555,7 @@ static void initMemoryIOM (uint iomUnitIdx)
    // word after PCW (used by program)
 
     M [2] = ((word36) base_addr << 18) | (pi_base) | iom_num;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       2,  ((word36) base_addr << 18) | (pi_base) | iom_num);
     
 
@@ -2551,7 +2564,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     // IDCW for read binary
 
     M [3] = (cmd << 30) | (dev << 24) | 0700000;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
+    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
       3, (cmd << 30) | (dev << 24) | 0700000);
     
   }

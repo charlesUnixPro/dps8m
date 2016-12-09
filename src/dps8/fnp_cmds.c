@@ -1,3 +1,16 @@
+/*
+ Copyright 2014-2016 by Harry Reed
+ Copyright 2014-2016 by Charles Anthony
+ Copyright 2016 by Eric Swenson
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  fnp_cmds.c
 //  fnp
@@ -662,20 +675,20 @@ t_stat dequeue_fnp_command (void)
         int p1;
         word36 d1, d2, d3;
 
-        int n = sscanf(arg3, "%*s %d %llo %llo %llo", &p1, &d1, &d2, &d3);
+        int n = sscanf(arg3, "%*s %d %"PRIo64" %"PRIo64" %"PRIo64"", &p1, &d1, &d2, &d3);
         if (n != 4)
             goto scpe_arg;
-        sim_printf ("received line_control %d %012llo %012llo %012llo\n", p1, d1, d2, d3);
-        sim_printf ("  dce_or_dte  %llo\n", getbits36_1 (d1, 0));
-        sim_printf ("  lap_or_lapb %llo\n", getbits36_1 (d1, 1));
-        sim_printf ("  disc_first  %llo\n", getbits36_1 (d1, 2));
-        sim_printf ("  trace_off   %llo\n", getbits36_1 (d1, 3));
-        sim_printf ("  activation_order %09llo\n", getbits36_9 (d1, 9));
-        sim_printf ("  frame_size %llo %lld.\n", getbits36_18 (d1, 18), getbits36_18 (d1, 18));
-        sim_printf ("  K  %llo %lld.\n", getbits36_9 (d2,  0), getbits36_9 (d2,  0));
-        sim_printf ("  N2 %llo %lld.\n", getbits36_9 (d2,  9), getbits36_9 (d2,  9));
-        sim_printf ("  T1 %llo %lld.\n", getbits36_9 (d2, 18), getbits36_9 (d2, 18));
-        sim_printf ("  T3 %llo %lld.\n", getbits36_9 (d2, 27), getbits36_9 (d2, 27));
+        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
+        sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36_1 (d1, 0));
+        sim_printf ("  lap_or_lapb %"PRIo64"\n", getbits36_1 (d1, 1));
+        sim_printf ("  disc_first  %"PRIo64"\n", getbits36_1 (d1, 2));
+        sim_printf ("  trace_off   %"PRIo64"\n", getbits36_1 (d1, 3));
+        sim_printf ("  activation_order %09"PRIo64"\n", getbits36_9 (d1, 9));
+        sim_printf ("  frame_size %"PRIo64" %"PRId64".\n", getbits36_18 (d1, 18), getbits36_18 (d1, 18));
+        sim_printf ("  K  %"PRIo64" %"PRId64".\n", getbits36_9 (d2,  0), getbits36_9 (d2,  0));
+        sim_printf ("  N2 %"PRIo64" %"PRId64".\n", getbits36_9 (d2,  9), getbits36_9 (d2,  9));
+        sim_printf ("  T1 %"PRIo64" %"PRId64".\n", getbits36_9 (d2, 18), getbits36_9 (d2, 18));
+        sim_printf ("  T3 %"PRIo64" %"PRId64".\n", getbits36_9 (d2, 27), getbits36_9 (d2, 27));
 
 
 
@@ -939,7 +952,7 @@ t_stat dequeue_fnp_command (void)
         int p1;
         word36 d1, d2, d3;
 
-        int n = sscanf(arg3, "%*s %d %llo %llo %llo", &p1, &d1, &d2, &d3);
+        int n = sscanf(arg3, "%*s %d %"PRIo64" %"PRIo64" %"PRIo64"", &p1, &d1, &d2, &d3);
         if (n != 4)
             goto scpe_arg;
         if (p1 < 0 || p1 >= MAX_LINES)
@@ -947,7 +960,7 @@ t_stat dequeue_fnp_command (void)
             sim_printf("err: SET_BUFFER_SIZE p1 (%d) != [0..%d]\n", p1, MAX_LINES - 1);
             goto scpe_arg;
         }
-        sim_printf ("received dial_out %d %012llo %012llo %012llo\n", p1, d1, d2, d3);
+        sim_printf ("received dial_out %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
 
         uint d01 = (d1 >> 30) & 017;
         uint d02 = (d1 >> 24) & 017;

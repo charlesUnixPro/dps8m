@@ -1,5 +1,18 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 #include <uv.h>
-#include <libtelnet.h>
+#include "libtelnet.h"
 
 #define encodeline(fnp,line) ((fnp) * MAX_LINES + (line))
 #define decodefnp(coded) ((coded) / MAX_LINES)

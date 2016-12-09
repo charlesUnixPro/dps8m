@@ -162,8 +162,13 @@ typedef int             t_bool;                         /* boolean */
 /* 64b integers */
 
 #if defined (__GNUC__)                                  /* GCC */
+#if __WORDSIZE == 64
+typedef signed long        t_int64;
+typedef unsigned long      t_uint64;
+#else
 typedef signed long long        t_int64;
 typedef unsigned long long      t_uint64;
+#endif
 #elif defined (_WIN32)                                  /* Windows */
 typedef signed __int64          t_int64;
 typedef unsigned __int64        t_uint64;

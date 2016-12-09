@@ -1,3 +1,15 @@
+/*
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 /**
  * \file dps8_append.c
  * \project dps8
@@ -212,7 +224,7 @@ void do_ldbr (word36 * Ypair)
     // C(Y-pair) 60,71 → C(DSBR.STACK)
     cpu . DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
     sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
-    //sim_printf ("ldbr %012llo %012llo\n", Ypair [0], Ypair [1]);
+    //sim_printf ("ldbr %012"PRIo64" %012"PRIo64"\n", Ypair [0], Ypair [1]);
     //sim_printf ("ldbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
   }
 
@@ -235,7 +247,7 @@ void do_sdbr (word36 * Ypair)
                 ((word36) (cpu . DSBR . U & 1)) << (71 - 55) |
                 ((word36) (cpu . DSBR . STACK & 07777)) << (71 - 71);
     //sim_printf ("sdbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
-    //sim_printf ("sdbr %012llo %012llo\n", Ypair [0], Ypair [1]);
+    //sim_printf ("sdbr %012"PRIo64" %012"PRIo64"\n", Ypair [0], Ypair [1]);
   }
 
 /**
@@ -351,7 +363,7 @@ static void fetchDSPTW(word15 segno)
       addAPUhist (APUH_FDSPTW);
 #endif
 
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 
@@ -482,7 +494,7 @@ static void fetchPSDW(word15 segno)
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (APUH_FSDWP);
 #endif
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012"PRIo64" 0%012"PRIo64" ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, cpu . PTW0.ADDR, SDWeven, SDWodd, cpu . SDW0.ADDR, cpu . SDW0.BOUND, cpu . SDW0.U, cpu . SDW0.DF);
 }
 
@@ -780,7 +792,7 @@ static void fetchPTW(_sdw *sdw, word18 offset)
       addAPUhist (APUH_FPTW);
 #endif
 
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 static void loadPTWAM(word15 segno, word18 offset)
@@ -877,7 +889,7 @@ static void modifyPTW(_sdw *sdw, word18 offset)
     PTWx2 = SETBIT(PTWx2, 6);
     core_write((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
 //if_sim_debug (DBG_TRACE, & cpu_dev)
-//sim_printf ("modifyPTW 0%o %012llo ADDR %o U %llo M %llo F %llo FC %llo\n",
+//sim_printf ("modifyPTW 0%o %012"PRIo64" ADDR %o U %"PRIo64" M %"PRIo64" F %"PRIo64" FC %"PRIo64"\n",
             //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 
             //TSTBIT(PTWx2, 6), TSTBIT(PTWx2, 2), PTWx2 & 3);
    
@@ -957,7 +969,7 @@ static void acvFault(fault_acv_subtype_ acvfault, char * msg)
     L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;)
     cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
-              "doAppendCycle(acvFault): acvFault=%llo acvFaults=%llo: %s",
+              "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s",
               (word36) acvfault, (word36) cpu.acvFaults, msg);
 }
 

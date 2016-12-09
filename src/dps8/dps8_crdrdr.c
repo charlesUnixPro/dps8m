@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_crdrdr.c
 //  dps8
@@ -592,7 +605,7 @@ sim_printf ("\n");
             // because Multics will ignore the last 12 bits.
             for (uint i = 0; i < 27; i ++)
               buffer [i] = extr36 ((uint8 *) rawCardImage, i);
-//sim_printf ("7deck %012llo %012llo %012llo %012llo\n", buffer [0], buffer [1], buffer [2], buffer [3]);
+//sim_printf ("7deck %012"PRIo64" %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", buffer [0], buffer [1], buffer [2], buffer [3]);
           }
           break;
         case streamDeck:
@@ -646,7 +659,7 @@ sim_printf ("\n");
 sim_printf ("\n");
 for (uint i = 0; i < 27; i ++)
   {
-    sim_printf ("  %012llo     \n", buffer [i]);
+    sim_printf ("  %012"PRIo64"     \n", buffer [i]);
 #define B(n) bit_rep [(buffer [i] >> n) & 0x0f]
     for (int j = 32; j >= 0; j -= 4)
       sim_printf ("%s", B(j));

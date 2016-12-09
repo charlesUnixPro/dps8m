@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 // XXX Remember to free client->data when closing connection
 // XXX There is a lurking bug in fnpProcessEvent(). A second 'input' messages
 // XXX from a particular line could be placed in mailbox beforme the first is
@@ -239,32 +252,32 @@ static t_stat fnpReset (DEVICE * dptr)
 static void dmpmbx (uint mailboxAddress)
   {
     struct mailbox * mbxp = (struct mailbox *) & M [mailboxAddress];
-    sim_printf ("dia_pcw            %012llo\n", mbxp -> dia_pcw);
-    sim_printf ("mailbox_requests   %012llo\n", mbxp -> mailbox_requests);
-    sim_printf ("term_inpt_mpx_wd   %012llo\n", mbxp -> term_inpt_mpx_wd);
-    sim_printf ("last_mbx_req_count %012llo\n", mbxp -> last_mbx_req_count);
-    sim_printf ("num_in_use         %012llo\n", mbxp -> num_in_use);
-    sim_printf ("mbx_used_flags     %012llo\n", mbxp -> mbx_used_flags);
+    sim_printf ("dia_pcw            %012"PRIo64"\n", mbxp -> dia_pcw);
+    sim_printf ("mailbox_requests   %012"PRIo64"\n", mbxp -> mailbox_requests);
+    sim_printf ("term_inpt_mpx_wd   %012"PRIo64"\n", mbxp -> term_inpt_mpx_wd);
+    sim_printf ("last_mbx_req_count %012"PRIo64"\n", mbxp -> last_mbx_req_count);
+    sim_printf ("num_in_use         %012"PRIo64"\n", mbxp -> num_in_use);
+    sim_printf ("mbx_used_flags     %012"PRIo64"\n", mbxp -> mbx_used_flags);
     for (uint i = 0; i < 8; i ++)
       {
         sim_printf ("CS  mbx %d\n", i);
         struct dn355_submailbox * smbxp = & (mbxp -> dn355_sub_mbxes [i]);
-        sim_printf ("    word1        %012llo\n", smbxp -> word1);
-        sim_printf ("    word2        %012llo\n", smbxp -> word2);
-        sim_printf ("    command_data %012llo\n", smbxp -> command_data [0]);
-        sim_printf ("                 %012llo\n", smbxp -> command_data [1]);
-        sim_printf ("                 %012llo\n", smbxp -> command_data [2]);
-        sim_printf ("    word6        %012llo\n", smbxp -> word6);
+        sim_printf ("    word1        %012"PRIo64"\n", smbxp -> word1);
+        sim_printf ("    word2        %012"PRIo64"\n", smbxp -> word2);
+        sim_printf ("    command_data %012"PRIo64"\n", smbxp -> command_data [0]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> command_data [1]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> command_data [2]);
+        sim_printf ("    word6        %012"PRIo64"\n", smbxp -> word6);
       }
     for (uint i = 0; i < 4; i ++)
       {
         sim_printf ("FNP mbx %d\n", i);
         struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [i]);
-        sim_printf ("    word1        %012llo\n", smbxp -> word1);
-        sim_printf ("    word2        %012llo\n", smbxp -> word2);
-        sim_printf ("    mystery      %012llo\n", smbxp -> mystery [0]);
-        sim_printf ("                 %012llo\n", smbxp -> mystery [1]);
-        sim_printf ("                 %012llo\n", smbxp -> mystery [2]);
+        sim_printf ("    word1        %012"PRIo64"\n", smbxp -> word1);
+        sim_printf ("    word2        %012"PRIo64"\n", smbxp -> word2);
+        sim_printf ("    mystery      %012"PRIo64"\n", smbxp -> mystery [0]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> mystery [1]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> mystery [2]);
       }
         
   }
@@ -352,7 +365,7 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            //sim_printf ("XXX dial_out %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            //sim_printf ("XXX dial_out %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
             fnpuv_dial_out (decoded.devUnitIdx, decoded.slot_no, command_data0, command_data1, command_data2);
           }
           break;
@@ -362,19 +375,19 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX line_control %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
 #if 0
-        sim_printf ("received line_control %d %012llo %012llo %012llo\n", p1, d1, d2, d3);
-        sim_printf ("  dce_or_dte  %llo\n", getbits36 (d1, 0, 1));
-        sim_printf ("  lap_or_lapb %llo\n", getbits36 (d1, 1, 1));
-        sim_printf ("  disc_first  %llo\n", getbits36 (d1, 2, 1));
-        sim_printf ("  trace_off   %llo\n", getbits36 (d1, 3, 1));
-        sim_printf ("  activation_order %09llo\n", getbits36 (d1, 9, 9));
-        sim_printf ("  frame_size %llo %lld.\n", getbits36 (d1, 18, 18), getbits36 (d1, 18, 18));
-        sim_printf ("  K  %llo %lld.\n", getbits36 (d2,  0, 9), getbits36 (d2,  0, 9));
-        sim_printf ("  N2 %llo %lld.\n", getbits36 (d2,  9, 9), getbits36 (d2,  9, 9));
-        sim_printf ("  T1 %llo %lld.\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
-        sim_printf ("  T3 %llo %lld.\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
+        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
+        sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
+        sim_printf ("  lap_or_lapb %"PRIo64"\n", getbits36 (d1, 1, 1));
+        sim_printf ("  disc_first  %"PRIo64"\n", getbits36 (d1, 2, 1));
+        sim_printf ("  trace_off   %"PRIo64"\n", getbits36 (d1, 3, 1));
+        sim_printf ("  activation_order %09"PRIo64"\n", getbits36 (d1, 9, 9));
+        sim_printf ("  frame_size %"PRIo64" %"PRId64".\n", getbits36 (d1, 18, 18), getbits36 (d1, 18, 18));
+        sim_printf ("  K  %"PRIo64" %"PRId64".\n", getbits36 (d2,  0, 9), getbits36 (d2,  0, 9));
+        sim_printf ("  N2 %"PRIo64" %"PRId64".\n", getbits36 (d2,  9, 9), getbits36 (d2,  9, 9));
+        sim_printf ("  T1 %"PRIo64" %"PRId64".\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
+        sim_printf ("  T3 %"PRIo64" %"PRId64".\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
 #endif
 
           }
@@ -410,7 +423,7 @@ static int wcd (void)
                 for (uint i = 0; i < echoTableLen; i ++)
                   {
                     echoTable [i] = M [dataAddrPhys + i];
-                    //sim_printf ("   %012llo\n", echoTable [i]);
+                    //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
                   }
               }
             for (int i = 0; i < 256; i ++)
@@ -969,7 +982,7 @@ sim_printf ("\n");
           putbits36_9 (& v, 18, linep->buffer [i + 2]);
         if (i + 3 < linep->nPos)
           putbits36_9 (& v, 27, linep->buffer [i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         smbxp -> mystery [j ++] = v;
       }
 
@@ -983,10 +996,10 @@ sim_printf ("\n");
 
 
 #if 0
-    sim_printf ("    %012llo\n", smbxp -> word1);
-    sim_printf ("    %012llo\n", smbxp -> word2);
+    sim_printf ("    %012"PRIo64"\n", smbxp -> word1);
+    sim_printf ("    %012"PRIo64"\n", smbxp -> word2);
     for (int i = 0; i < 26; i ++)
-      sim_printf ("    %012llo\n", smbxp -> mystery [i]);
+      sim_printf ("    %012"PRIo64"\n", smbxp -> mystery [i]);
     sim_printf ("interrupting!\n"); 
 #endif
 
@@ -1126,7 +1139,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     {
       uint wordAddr = virtToPhys (ptPtr, dataAddr + i);
       word = M [wordAddr];
-      sim_printf (" %012llo\n", word);
+      sim_printf (" %012"PRIo64"\n", word);
     }
 }
 #endif
@@ -1154,7 +1167,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
       bcnt ++;
       if (bcnt == 9)
         {
-          sim_printf ("%012llo\n%012llo\n", hi, lo);
+          sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", hi, lo);
           hi = lo = bcnt = 0;
         }
     }
@@ -1180,7 +1193,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
       bcnt ++;
       if (bcnt == 9)
         {
-          sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+          sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
           ac = bcnt = 0;
         }
     }
@@ -1191,7 +1204,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
           ac <<= 8;
           bcnt ++;
         }
-      sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+      sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
     }
  }
 #endif
@@ -1208,7 +1221,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
              lastWordOff = wordOff;
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
              word = M [wordAddr];
-//sim_printf ("   %012llo\n", M [wordAddr]);
+//sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
@@ -1268,7 +1281,7 @@ static int wtx (void)
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw = M [dcwAddrPhys];
-        //sim_printf ("  %012llo\n", dcw);
+        //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1345,7 +1358,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         M [addr0 ++] = v;
       }
 
@@ -1360,7 +1373,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [tally0 + i + 2]);
         if (i + 3 < tally1)
           putbits36_9 (& v, 27, data [tally0 + i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         M [addr1 ++] = v;
       }
 
@@ -1452,11 +1465,11 @@ static int interruptL66_FNP_to_CS (void)
     decoded.fsmbxp = & (decoded.mbxp -> fnp_sub_mbxes [mbx]);
 #if 0
     sim_printf ("fnp smbox %d update\n", decoded.cell);
-    sim_printf ("    word1 %012llo\n", decoded.fsmbxp -> word1);
-    sim_printf ("    word2 %012llo\n", decoded.fsmbxp -> word2);
-    sim_printf ("    word3 %012llo\n", decoded.fsmbxp -> mystery[0]);
-    sim_printf ("    word4 %012llo\n", decoded.fsmbxp -> mystery[1]);
-    sim_printf ("    word5 %012llo\n", decoded.fsmbxp -> mystery[2]);
+    sim_printf ("    word1 %012"PRIo64"\n", decoded.fsmbxp -> word1);
+    sim_printf ("    word2 %012"PRIo64"\n", decoded.fsmbxp -> word2);
+    sim_printf ("    word3 %012"PRIo64"\n", decoded.fsmbxp -> mystery[0]);
+    sim_printf ("    word4 %012"PRIo64"\n", decoded.fsmbxp -> mystery[1]);
+    sim_printf ("    word5 %012"PRIo64"\n", decoded.fsmbxp -> mystery[2]);
 #endif
     word36 word2 = decoded.fsmbxp -> word2;
     //uint cmd_data_len = getbits36_9 (word2, 9);
@@ -2131,7 +2144,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
-//sim_printf ("mbx %08o:%012llo\n", fudp -> mailboxAddress, dia_pcw);
+//sim_printf ("mbx %08o:%012"PRIo64"\n", fudp -> mailboxAddress, dia_pcw);
 
 // Mailbox word 0:
 //
@@ -2287,9 +2300,9 @@ sim_printf ("reset??\n");
 
         //word24 L66Addr = (word24) getbits36_18 (dia_pcw, 0);
         //sim_printf ("L66 xfer\n");
-        //sim_printf ("PCW  %012llo\n", dia_pcw);
+        //sim_printf ("PCW  %012"PRIo64"\n", dia_pcw);
         //sim_printf ("L66Addr %08o\n", L66Addr);
-        //sim_printf ("M[] %012llo\n", M[L66Addr]);
+        //sim_printf ("M[] %012"PRIo64"\n", M[L66Addr]);
 
         // 'dump_mpx d'
         //L66 xfer

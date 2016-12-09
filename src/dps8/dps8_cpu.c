@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
  /** * \file dps8_cpu.c
  * \project dps8
  * \date 9/17/12
@@ -586,14 +599,14 @@ t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
 #if 0
     for (word18 offset = 0; offset < 1024 * 64; offset ++)
       {
-        sim_printf ("%06o %012llo\n", offset, getKST (offset));
+        sim_printf ("%06o %012"PRIo64"\n", offset, getKST (offset));
       }
 #endif
 
-    //sim_printf ("lowseg  %06llo\n", getKST (0) >> 18);
-    //sim_printf ("highseg %06llo\n", getKST (0) & MASK18);
-    sim_printf ("lowseg  %06llo\n", getKST (0) & MASK18);
-    sim_printf ("highseg %06llo\n", getKST (1) & MASK18);
+    //sim_printf ("lowseg  %06"PRIo64"\n", getKST (0) >> 18);
+    //sim_printf ("highseg %06"PRIo64"\n", getKST (0) & MASK18);
+    sim_printf ("lowseg  %06"PRIo64"\n", getKST (0) & MASK18);
+    sim_printf ("highseg %06"PRIo64"\n", getKST (1) & MASK18);
 
     word18 start = 0110;
     for (word18 i = 0; ; i ++)
@@ -601,8 +614,8 @@ t_stat dumpKST (UNUSED int32 arg, UNUSED char * buf)
         word36 w0 = getKST (start + i * 8);
         if ((w0 & MASK18) == 0)
           break;
-        sim_printf ("%4d %06llo\n", i, w0 & MASK18);
-        sim_printf ("    %012llo %012llo\n", getKST (start + i * 8 + 3), getKST (start + i * 8 + 4));
+        sim_printf ("%4d %06"PRIo64"\n", i, w0 & MASK18);
+        sim_printf ("    %012"PRIo64" %012"PRIo64"\n", getKST (start + i * 8 + 3), getKST (start + i * 8 + 4));
       }
     return SCPE_OK;
   }
@@ -865,7 +878,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #ifndef FNP2
     dequeue_fnp_command ();
 #endif
+#ifndef CROSS_MINGW64
     absiProcessEvent ();
+#endif
 
 // Update the TR
 
@@ -876,7 +891,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
     if (cpu.rTR <= 5120)
       {
-        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
         if (cpu.switches.tro_enable)
         setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
@@ -1655,7 +1670,7 @@ setCPU:;
             //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
             if (cpu.rTR == 0) // passing thorugh 0...
               {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09llo\n", rTR, MASK27);
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
                 if (cpu.switches.tro_enable)
                   setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
               }
@@ -2159,7 +2174,7 @@ setCPU:;
                 // normal EXECUTE CYCLE but in the FAULT CYCLE with the
                 // processor in temporary absolute mode.
 
-                //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sim_timell ());
+                //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%"PRId64"]\n", sim_timell ());
     
                 if (cpu.switches.report_faults == 1 ||
                     (cpu.switches.report_faults == 2 &&
@@ -2314,12 +2329,12 @@ leave:
 #ifdef HDBG
     hdbgPrint ();
 #endif
-    sim_printf("\nsimCycles = %lld\n", sim_timell ());
-    sim_printf("\ncpuCycles = %lld\n", sys_stats.total_cycles);
+    sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
+    sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
       {
         if (sys_stats.total_faults [i])
-          sim_printf("%s faults = %lld\n", faultNames [i], sys_stats.total_faults [i]);
+          sim_printf("%s faults = %"PRId64"\n", faultNames [i], sys_stats.total_faults [i]);
      }
     
 #ifdef M_SHARED
@@ -2487,7 +2502,7 @@ static void nem_check (word24 addr, char * context)
   {
     if (query_scbank_map (addr) < 0)
       {
-        //sim_printf ("nem %o [%lld]\n", addr, sim_timell ());
+        //sim_printf ("nem %o [%"PRId64"]\n", addr, sim_timell ());
         doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  context);
       }
   }
@@ -2534,13 +2549,13 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        //sim_debug (0, & cpu_dev, "read   %08o %012llo (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%lld] read   %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read   %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read  %08o %012llo (%s)\n",
+               "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
     PNL (trackport (addr, * data));
     return 0;
@@ -2580,12 +2595,12 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        //sim_debug (0, & cpu_dev, "write  %08o %012llo (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%lld] write  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "write  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRIo64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_write %08o %012llo (%s)\n",
+               "core_write %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
     PNL (trackport (addr, data));
     return 0;
@@ -2636,13 +2651,13 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read2 %08o %012llo (%s)\n",
+               "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, * even, ctx);
     PNL (trackport (addr - 1, * even));
 
@@ -2655,14 +2670,14 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
       {
-        //sim_debug (0, & cpu_dev, "read2  %08o %012llo (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%lld] read2  %08o %012llo (%s)\n", sim_timell (), addr, M [addr], ctx);
+        //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
 
     *odd = M[addr] & DMASK;
     sim_debug (DBG_CORE, & cpu_dev,
-               "core_read2 %08o %012llo (%s)\n",
+               "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
     PNL (trackport (addr, * odd));
     return 0;
@@ -2716,8 +2731,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)
       {
-        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, even, ctx);
-        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, even, ctx);
+        //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, even, ctx);
+        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
@@ -2729,8 +2744,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     if (watchBits [addr])
     //if (watchBits [addr] && odd==0)
       {
-        //sim_debug (0, & cpu_dev, "write2 %08o %012llo (%s)\n",addr, odd, ctx);
-        sim_printf ("WATCH [%lld] write2 %08o %012llo (%s)\n", sim_timell (), addr, odd, ctx);
+        //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, odd, ctx);
+        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd;
@@ -2996,7 +3011,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", cpu.switches.cpu_num);
-    sim_printf("Data switches:            %012llo(8)\n", cpu.switches.data_switches);
+    sim_printf("Data switches:            %012"PRIo64"(8)\n", cpu.switches.data_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
         sim_printf("Port%c enable:             %01o(8)\n", 'A' + i, cpu.switches.enable [i]);
@@ -3447,7 +3462,7 @@ static void print_frame (
 //---            sim_printf ("\tUnknown entry %o|%o  ", entry_pr.PR.snr, entry_pr.wordno);
       }
     else
-      sim_printf ("\tUnknowable entry {%llo,%llo}  ", M [addr + 026], M [addr + 027]);
+      sim_printf ("\tUnknowable entry {%"PRIo64",%"PRIo64"}  ", M [addr + 026], M [addr + 027]);
     sim_printf ("\n");
     sim_printf ("(stack frame at %03o|%06o)\n", seg, offset);
 
@@ -3493,14 +3508,14 @@ static int dumpStack (uint stkBase, uint stkNo)
 
     w0 = M [hdrPage + 022];
     w1 = M [hdrPage + 023];
-    sim_printf ("  stack_begin_ptr  %012llo %012llo %05o:%08o\n",
+    sim_printf ("  stack_begin_ptr  %012"PRIo64" %012"PRIo64" %05o:%08o\n",
                 w0, w1,
                 (word15) getbits36_15 (w0,  3),
                 (word18) getbits36_18 (w1,  0));
 
     w0 = M [hdrPage + 024];
     w1 = M [hdrPage + 025];
-    sim_printf ("  stack_end_ptr    %012llo %012llo %05o:%08o\n",
+    sim_printf ("  stack_end_ptr    %012"PRIo64" %012"PRIo64" %05o:%08o\n",
                 w0, w1,
                 (word15) getbits36_15 (w0,  3),
                 (word18) getbits36_18 (w1,  0));
@@ -3550,7 +3565,7 @@ static int dumpStack (uint stkBase, uint stkNo)
               return 1;
             w0 = M [addr + 0];
             w1 = M [addr + 1];
-            sim_printf ("    PR%o               %012llo %012llo %05o:%06o BITNO %02o RNG %o\n",
+            sim_printf ("    PR%o               %012"PRIo64" %012"PRIo64" %05o:%06o BITNO %02o RNG %o\n",
                         n,
                         w0, w1,
                         (word15) getbits36_15 (w0,  3),
@@ -3564,7 +3579,7 @@ static int dumpStack (uint stkBase, uint stkNo)
           return 1;
         w0 = M [addr + 0];
         w1 = M [addr + 1];
-        sim_printf ("    prev_sp         %012llo %012llo %05o:%08o\n",
+        sim_printf ("    prev_sp         %012"PRIo64" %012"PRIo64" %05o:%08o\n",
                     w0, w1,
                     (word15) getbits36_15 (w0,  3),
                     (word18) getbits36_18 (w1,  0));
@@ -3577,7 +3592,7 @@ static int dumpStack (uint stkBase, uint stkNo)
 
         word15 nextSpSegno  = (word15) getbits36_15 (w0,  3);
         word18 nextSpOffset = (word18) getbits36_18 (w1,  3);
-        sim_printf ("    next_sp         %012llo %012llo %05o:%08o\n",
+        sim_printf ("    next_sp         %012"PRIo64" %012"PRIo64" %05o:%08o\n",
                     w0, w1, nextSpSegno, nextSpOffset);
 
       
@@ -3849,7 +3864,7 @@ static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
 //---     sim_printf ("\n");
 
     //float secs = (float) sys_stats.total_msec / 1000;
-    //out_msg("Stats: %.1f seconds: %lld cycles at %.0f cycles/sec, %lld instructions at %.0f instr/sec\n",
+    //out_msg("Stats: %.1f seconds: %"PRIo64" cycles at %.0f cycles/sec, %"PRIo64" instructions at %.0f instr/sec\n",
         //secs, sys_stats.total_cycles, sys_stats.total_cycles/secs, sys_stats.total_instr, sys_stats.total_instr/secs);
 
     return 0;

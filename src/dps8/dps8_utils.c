@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 /**
  * \file dps8_utils.c
  * \project dps8
@@ -186,7 +199,7 @@ char *getModString(word6 tag)
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
 
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012llo op2 %012llo carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
 // In general, any two N-bit numbers may be added without overflow, by first
@@ -260,7 +273,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012llo flags %06o ovf %o\n", res, * flags, * ovf); 
+    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012"PRIo64" flags %06o ovf %o\n", res, * flags, * ovf); 
     return res;
   }
 
@@ -501,7 +514,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
-//sim_printf ("Add72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+//sim_printf ("Add72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
 
@@ -553,7 +566,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
-//sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
+//sim_printf ("res %012"PRIo64"%012"PRIo64"\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
 //}
 #endif
     if (flagsToSet & I_CARRY)
@@ -589,7 +602,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
 //{
-//sim_printf ("Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+//sim_printf ("Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
 //}
 #endif
     return res;
@@ -600,10 +613,10 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
-//sim_printf ("Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+//sim_printf ("Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012llo%012llo op2 %012llo%012llo carryin %o flagsToSet %06o flags %06o ovf %o\n",
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
@@ -652,7 +665,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
-//sim_printf ("res %012llo%012llo\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
+//sim_printf ("res %012"PRIo64"%012"PRIo64"\nr72 %d r73 %d r74 %d ovf %d cry %d\n", ((word36) (res >> 36)) & MASK36, (word36) res & MASK36, r72, r73, r74, * ovf, cry);
 //}
 #endif
 
@@ -686,14 +699,14 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012llo%012llo flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
     return res;
   }
 
 // CANFAULT
 word36 compl36(word36 op1, word18 *flags, bool * ovf)
 {
-    //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);
+    //printf("op1 = %"PRIo64" %"PRIo64"\n", op1, (-op1) & DMASK);
     
     op1 &= DMASK;
     
@@ -720,7 +733,7 @@ word36 compl36(word36 op1, word18 *flags, bool * ovf)
 // CANFAULT
 word18 compl18(word18 op1, word18 *flags, bool * ovf)
 {
-    //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);
+    //printf("op1 = %"PRIo64" %"PRIo64"\n", op1, (-op1) & DMASK);
     
     op1 &= MASK18;
     
@@ -1444,7 +1457,7 @@ int bitfieldExtract(int a, int b, int c)
 word36 bitfieldExtract36(word36 a, int b, int c)
 {
     word36 mask = ~(0xffffffffffffffffLL  << c);
-    //printf("mask=%012llo\n", mask);
+    //printf("mask=%012"PRIo64"\n", mask);
     if (b > 0)
         return (a >> b) & mask; // original pseudocode had b-1
     else
@@ -1568,7 +1581,7 @@ word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)n+1;
     if (shift < 0 || shift > 35) {
-        sim_printf ("getbits36: bad args (%012llo,i=%d,n=%d)\n", x, i, n);
+        sim_printf ("getbits36: bad args (%012"PRIo64",i=%d,n=%d)\n", x, i, n);
         return 0;
     } else
         return (x >> (unsigned) shift) & ~ (~0U << n);
@@ -1587,7 +1600,7 @@ word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35) {
-        sim_printf ("setbits36: bad args (%012llo,pos=%d,n=%d)\n", x, p, n);
+        sim_printf ("setbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", x, p, n);
         return 0;
     }
     word36 mask = ~ (~0U<<n);  // n low bits on
@@ -1613,7 +1626,7 @@ void putbits36 (word36 * x, uint p, uint n, word36 val)
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35)
       {
-        sim_printf ("putbits36: bad args (%012llo,pos=%d,n=%d)\n", * x, p, n);
+        sim_printf ("putbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", * x, p, n);
         return;
       }
     word36 mask = ~ (~0U << n);  // n low bits on
@@ -2343,11 +2356,11 @@ int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed
     uint bytes_processed = wp * 4;
     if (bytes_processed >= tbc)
       return 1;
-    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+    //sim_printf ("store 0%08lo@0%012"PRIo64"\n", wordp - M, extr36 (bufp, wp));
 
     * wordp = extrASCII36 (bufp, wp);
-//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012llo\n", * wordp); 
-    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012"PRIo64"\n", * wordp); 
+    //sim_printf ("* %06lo = %012"PRIo64"\n", wordp - M, * wordp);
     (* words_processed) ++;
 
     return 0;
@@ -2362,11 +2375,11 @@ int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed,
     uint bytes_processed = (wp * 9 + 1) / 2;
     if (bytes_processed >= tbc)
       return 1;
-    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+    //sim_printf ("store 0%08lo@0%012"PRIo64"\n", wordp - M, extr36 (bufp, wp));
 
     * wordp = extr36 (bufp, wp);
-//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012llo\n", * wordp); 
-    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+//if (* wordp & ~MASK36) sim_printf (">>>>>>> extr %012"PRIo64"\n", * wordp); 
+    //sim_printf ("* %06lo = %012"PRIo64"\n", wordp - M, * wordp);
     (* words_processed) ++;
 
     return 0;
@@ -2381,10 +2394,10 @@ int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, w
     uint bytes_processed = wp * 4;
     if (bytes_processed >= tbc)
       return 1;
-    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+    //sim_printf ("store 0%08lo@0%012"PRIo64"\n", wordp - M, extr36 (bufp, wp));
 
     putASCII36 (word, bufp, wp);
-    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    //sim_printf ("* %06lo = %012"PRIo64"\n", wordp - M, * wordp);
     (* words_processed) ++;
 
     return 0;
@@ -2399,10 +2412,10 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, wo
     uint bytes_processed = (wp * 9 + 1) / 2;
     if (bytes_processed >= tbc)
       return 1;
-    //sim_printf ("store 0%08lo@0%012llo\n", wordp - M, extr36 (bufp, wp));
+    //sim_printf ("store 0%08lo@0%012"PRIo64"\n", wordp - M, extr36 (bufp, wp));
 
     put36 (word, bufp, wp);
-    //sim_printf ("* %06lo = %012llo\n", wordp - M, * wordp);
+    //sim_printf ("* %06lo = %012"PRIo64"\n", wordp - M, * wordp);
     (* words_processed) ++;
 
     return 0;

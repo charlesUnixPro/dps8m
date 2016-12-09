@@ -84,6 +84,7 @@
 #include "sim_defs.h"
 #include <ctype.h>
 #include <math.h>
+#include <inttypes.h>
 
 t_bool sim_idle_enab = FALSE;                       /* global flag */
 volatile t_bool sim_idle_wait = FALSE;              /* global flag */
@@ -731,7 +732,7 @@ for (tmr=0; tmr<SIM_NTIMERS; ++tmr) {
         }
     fprintf (st, "  Seconds Running:         %u\n",   rtc_elapsed[tmr]);
     fprintf (st, "  Calibrations:            %u\n",   rtc_calibrations[tmr]);
-    fprintf (st, "  Instruction Time:        %lld\n", rtc_gtime[tmr]);
+    fprintf (st, "  Instruction Time:        %"PRId64"\n", rtc_gtime[tmr]);
     if (!(sim_asynch_enabled && sim_asynch_timer)) {
         fprintf (st, "  Real Time:               %u\n",   rtc_rtime[tmr]);
         fprintf (st, "  Virtual Time:            %u\n",   rtc_vtime[tmr]);

@@ -1,3 +1,17 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+ Copyright 2015-2016 by Craig Ruff
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 /**
  * file dps8_eis.c
  * project dps8
@@ -369,7 +383,7 @@ static word18 getMFReg18 (uint n, bool allowDUL, bool allowN)
           if (! allowDUL)
             {
 #if 0 // fixes first fail
-sim_printf ("getMFReg18 %012llo\n", IWB_IRODD);
+sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
               if (cpu.currentInstruction.opcode == 0305 && // dtb
                   cpu.currentInstruction.opcodeX == 1)
                 {
@@ -509,11 +523,11 @@ static void EISWriteCache (EISaddr * p)
                 for (uint i = 0; i < 8; i ++)
 #ifdef EIS_PTR4
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                             "%s: writeCache (PR) %012llo@%o:%06o\n", 
+                             "%s: writeCache (PR) %012"PRIo64"@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], cpu.cu.TSN_PRNO[EISADDR_IDX(p)], p -> cachedAddr + i);
 #else
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                             "%s: writeCache (PR) %012llo@%o:%06o\n", 
+                             "%s: writeCache (PR) %012"PRIo64"@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], p -> SNR, p -> cachedAddr + i);
 #endif
               }
@@ -531,7 +545,7 @@ static void EISWriteCache (EISaddr * p)
               {
                 for (uint i = 0; i < 8; i ++)
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                             "%s: writeCache %012llo@%o:%06o\n", 
+                             "%s: writeCache %012"PRIo64"@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], cpu . TPR . TSR, p -> cachedAddr + i);
               }
             Write8 (p->cachedAddr, p -> cachedParagraph, EIS_OPERAND_STORE, false);
@@ -584,11 +598,11 @@ static void EISReadCache (EISaddr * p, word18 address)
             for (uint i = 0; i < 8; i ++)
 #ifdef EIS_PTR4
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: readCache (PR) %012llo@%o:%06o\n", 
+                         "%s: readCache (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, p -> cachedParagraph [i], cpu.TPR.TSR, paragraphAddress + i);
 #else
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: readCache (PR) %012llo@%o:%06o\n", 
+                         "%s: readCache (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, p -> cachedParagraph [i], p -> SNR, paragraphAddress + i);
 #endif
           }
@@ -606,7 +620,7 @@ static void EISReadCache (EISaddr * p, word18 address)
           {
             for (uint i = 0; i < 8; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: readCache %012llo@%o:%06o\n", 
+                         "%s: readCache %012"PRIo64"@%o:%06o\n", 
                          __func__, p -> cachedParagraph [i], cpu . TPR . TSR, paragraphAddress + i);
           }
       }
@@ -752,11 +766,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
             for (uint i = 0; i < PGSZ; i ++)
 #ifdef EIS_PTR
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: (PR) %012llo@%o:%06o\n", 
+                         "%s: (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, data [i], cpu.TPR.TSR, addressN + i);
 #else
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: (PR) %012llo@%o:%06o\n", 
+                         "%s: (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, data [i], p -> SNR, addressN + i);
 #endif
           }
@@ -774,7 +788,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
           {
             for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: %012llo@%o:%06o\n", 
+                         "%s: %012"PRIo64"@%o:%06o\n", 
                          __func__, data [i], cpu . TPR . TSR, addressN + i);
           }
       }
@@ -824,11 +838,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
             for (uint i = 0; i < PGSZ; i ++)
 #ifdef EIS_PTR
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: (PR) %012llo@%o:%06o\n", 
+                         "%s: (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, data [i], cpu.TPR.TSR, addressN + i);
 #else
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: (PR) %012llo@%o:%06o\n", 
+                         "%s: (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, data [i], p -> SNR, addressN + i);
 #endif
           }
@@ -846,7 +860,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
           {
             for (uint i = 0; i < PGSZ; i ++)
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: %012llo@%o:%06o\n", 
+                         "%s: %012"PRIo64"@%o:%06o\n", 
                          __func__, data [i], cpu . TPR . TSR, addressN + i);
           }
       }
@@ -1166,8 +1180,8 @@ static void setupOperandDescriptor (int k)
         if (opDesc & 0000000777660)
           {
 #if 0 // fix 2nd fail
-sim_printf ("setupOperandDescriptor %012llo\n", opDesc);
-sim_printf ("setupOperandDescriptor %012llo\n", IWB_IRODD);
+sim_printf ("setupOperandDescriptor %012"PRIo64"\n", opDesc);
+sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
             if (cpu.currentInstruction.opcode == 0305 && // dtb
                 cpu.currentInstruction.opcodeX == 1)
               {
@@ -1486,7 +1500,7 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
           effBITNO = 0;
           effCHAR = (CN + ARn_CHAR + r) % 4;
           sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                     "effCHAR %d = (CN %d + ARn_CHAR %d + r %lld) %% 4)\n",
+                     "effCHAR %d = (CN %d + ARn_CHAR %d + r %"PRId64") %% 4)\n",
                      effCHAR, CN, ARn_CHAR, r);
           effWORDNO = (uint) (address +
                            ((9 * CN +
@@ -1844,7 +1858,7 @@ static void parseBitstringOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %llo\n", k, reg, getMFReg36(reg, false, false));
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %"PRIo64"\n", k, reg, getMFReg36(reg, false, false));
         e->N[k-1] = getMFReg36(reg, false, false) & 077777777;
     }
     else
@@ -1852,7 +1866,7 @@ static void parseBitstringOperandDescriptor (int k)
         e ->N[k-1] = opDesc & 07777;
     }
 
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012llo\n", k, opDesc);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d opdesc %012"PRIo64"\n", k, opDesc);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %u\n", k, e->N[k-1]);
     
     
@@ -2071,7 +2085,7 @@ sim_printf ("axbd AxBDX\n");
     word36 rcnt = getCrAR (reg);
     int32_t r;
 
-IF1 sim_printf ("axbd rcnt 0%llo %lld.\n", rcnt, rcnt);
+IF1 sim_printf ("axbd rcnt 0%"PRIo64" %"PRId64".\n", rcnt, rcnt);
     if (sz == 1)
       r = SIGNEXT24_32 ((word24) rcnt);
     else if (sz == 4)
@@ -2810,8 +2824,8 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
     // r is the count of characters (or bits if sz is 1; words if sz == 36)
     word36 rcnt = getCrAR (reg);
 
-IF1 sim_printf ("asxbd sz %d r 0%llo\n", sz, rcnt);
-    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d r 0%llo\n", sz, rcnt);
+IF1 sim_printf ("asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
+    sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
 
     // Crop rcnt into r based on the operand size.
     uint r = 0;
@@ -3057,7 +3071,7 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
-IF1 sim_printf ("CMPC instr %012llo op1 %012llo op2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+IF1 sim_printf ("CMPC instr %012"PRIo64" op1 %012"PRIo64" op2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
@@ -3179,7 +3193,7 @@ void scd ()
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
       {
-        //sim_printf ("scd %12llo\n", IWB_IRODD);
+        //sim_printf ("scd %12"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scd 0-10 MBZ");
       }
 
@@ -3341,7 +3355,7 @@ void scdr (void)
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
       {
-        //sim_printf ("scdr %12llo\n", IWB_IRODD);
+        //sim_printf ("scdr %12"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scdr 0-10 MBZ");
       }
 
@@ -4211,7 +4225,7 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-IF1 sim_printf ("IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
@@ -4600,7 +4614,7 @@ void mrl (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-//IF1 sim_printf ("MRL IWB %012llo OP1 %012llo OP2 %012llo\n", IWB_IRODD, e -> op [0], e -> op [1]);
+//IF1 sim_printf ("MRL IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mrl 10 MBZ");
@@ -6668,7 +6682,7 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
 //if ((e -> op [0]  & 0000000007700) ||
 //    (e -> op [1]  & 0000000077700) ||
 //    (e -> op [2]  & 0000000017700))
-//sim_printf ("%012llo\n%012llo\n%012llo\n%012llo\n", cpu.cu.IWB, e->op[0], e->op[1], e-> op[2]);
+//sim_printf ("%012"PRIo64"\n%012"PRIo64"\n%012"PRIo64"\n%012"PRIo64"\n", cpu.cu.IWB, e->op[0], e->op[1], e-> op[2]);
 //if (e -> op [0]  & 0000000007700) sim_printf ("op1\n");
 //if (e -> op [1]  & 0000000077700) sim_printf ("op2\n");
 //if (e -> op [2]  & 0000000017700) sim_printf ("op3\n");
@@ -6821,14 +6835,14 @@ void mvt (void)
     // Bits 10 MBZ 
     if (IWB_IRODD & 0000200000000)
       {
-        //sim_printf ("mvt %012llo\n", IWB_IRODD);
+        //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 10 MBZ");
       }
 #else
     // Bits 0,1,9,10 MBZ 
     if (IWB_IRODD & 0600600000000)
       {
-        //sim_printf ("mvt %012llo\n", IWB_IRODD);
+        //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 0,1,9,10 MBZ");
       }
 #endif
@@ -7394,7 +7408,7 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     
     sim_debug (DBG_CAC, & cpu_dev, "mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n", e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
     sim_debug (DBG_CAC, & cpu_dev, "mvn(2): SF1 %d              SF2 %d\n", e->SF1, e->SF2);
-    sim_debug (DBG_CAC, & cpu_dev, "mvn(3): OP1 %012llo OP2 %012llo\n", e->OP1, e->OP2);
+    sim_debug (DBG_CAC, & cpu_dev, "mvn(3): OP1 %012"PRIo64" OP2 %012"PRIo64"\n", e->OP1, e->OP2);
 
     decContext set;
     decContextDefaultDPS8(&set);
@@ -8800,7 +8814,7 @@ void btd (void)
     // Bits 1-10 MBZ 
     if (IWB_IRODD & 0377600000000)
       {
-        //sim_printf ("sb2d %012llo\n", IWB_IRODD);
+        //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "btd 0-8 MBZ");
       }
 
@@ -8976,14 +8990,14 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
         x *= 10;
         x += c & 0xf;
         sim_debug (DBG_TRACEEXT, & cpu_dev,
-              "loadDec:  x %lld\n", (int64) x);
+              "loadDec:  x %"PRId64"\n", (int64) x);
         
         pos += 1;           // onto next posotion
     }
     
     e->x = sgn * x;
     sim_debug (DBG_TRACEEXT, & cpu_dev,
-      "loadDec:  final x %lld\n", (int64) x);
+      "loadDec:  final x %"PRId64"\n", (int64) x);
     
     return 0;
 }
@@ -9711,7 +9725,7 @@ void sb2d (void)
     // Bits 1-8 MBZ 
     if (IWB_IRODD & 0377000000000)
       {
-        //sim_printf ("sb2d %012llo\n", IWB_IRODD);
+        //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
       }
 
@@ -11130,8 +11144,8 @@ static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
       char out[256], out2[256];
       if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
-          bzero(out, sizeof(out));
-          bzero(out2, sizeof(out2));
+          memset (out, 0, sizeof (out));
+          memset (out2, 0, sizeof (out2));
            
           decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
           for(int i = 0 ; i < r->digits ; i += 1 )
@@ -11174,7 +11188,7 @@ static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
     
     static uint8_t out[256];
     
-    bzero(out, sizeof(out));
+    memset (out, 0, sizeof (out));
     
     //bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
     bool ovr = r2->digits > adjLen;          // is integer portion too large to fit?
@@ -11357,7 +11371,7 @@ static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
                 decNumber _i;
                 decNumber *i = decNumberToIntegralValue(&_i, ro, set);
                 char outi[256];
-                bzero(outi, sizeof(outi));
+                memset (outi, 0, sizeof (outi));
                 decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
                 for(int j = 0 ; j < adjLen; j += 1 )
                     outi[j] += '0';

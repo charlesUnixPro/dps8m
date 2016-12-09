@@ -1,3 +1,14 @@
+/*
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 #include "dps8.h"
 #include "dps8_simh.h"
 #include "dps8_iom.h"
@@ -17,7 +28,9 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#ifndef CROSS_MINGW64
 #include "dps8_absi.h"
+#endif
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 #ifdef M_SHARED
@@ -558,6 +571,7 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
  
+#ifndef CROSS_MINGW64
 //
 // String a cable from a ABSI to an IOM
 //
@@ -596,7 +610,7 @@ static t_stat cable_absi (int absi_unit_num, int iomUnitIdx, int chan_num,
 
     return SCPE_OK;
   }
- 
+#endif 
 
 static int getval (char * * save, char * text)
   {
@@ -712,10 +726,12 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_urp (n1, n2, n3, n4);
       }
+#ifndef CROSS_MINGW64
     else if (strcasecmp (name, "ABSI") == 0)
       {
         rc = cable_absi (n1, n2, n3, n4);
       }
+#endif
     else
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);

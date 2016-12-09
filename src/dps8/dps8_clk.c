@@ -1,3 +1,15 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
 
 #include "dps8.h"
 #include "dps8_clk.h"
@@ -80,7 +92,7 @@ static int activate_timer (void)
 {
     uint32 t;
     sim_debug (DBG_DEBUG, & clk_dev, "clk_svc: TR has %d time units left\n", t);
-    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %lld %#llo.\n", rTR, rTR);
+    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %"PRId64" %#"PRIo64".\n", rTR, rTR);
     if (bit_is_neg(rTR, 27)) {
         if ((t = sim_is_active(&TR_clk_unit[0])) != 0)
             sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR cancelled with %d time units left.\n", t);

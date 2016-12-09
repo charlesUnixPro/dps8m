@@ -1,3 +1,14 @@
+/*
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 // The MIT Multics archive contain .s.archive files which are 8 bit unpacks,
 // but that's okay, since the .archive file metadata is all 8 bit, so
 // simply reversing the unpacking with 0 fill in the 9th bit should suffice.

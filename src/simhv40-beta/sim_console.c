@@ -1346,6 +1346,10 @@ return tmxr_close_master (&sim_con_tmxr);               /* close master socket *
 
 /* Open log file */
 
+#ifdef CROSS_MINGW64
+#define setlinebuf(stream) setvbuf(stream, NULL, _IOLBF, 0)
+#endif
+
 t_stat sim_open_logfile (char *filename, t_bool binary, FILE **pf, FILEREF **pref)
 {
 char *tptr, gbuf[CBUFSIZE];

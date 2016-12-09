@@ -1,3 +1,14 @@
+/*
+ Copyright 2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 // The FNP <--> libuv interface
 //
 // Every libuv TCP connection has a uv_tcp_t object.
@@ -717,7 +728,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
     if (! loop)
       return;
-    sim_printf ("received dial_out %c.h%03d %012llo %012llo %012llo\n", fnpno+'a', lineno, d1, d2, d3);
+    sim_printf ("received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uint d01 = (d1 >> 30) & 017;
     uint d02 = (d1 >> 24) & 017;
@@ -880,7 +891,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (& linep->server, (const struct sockaddr *) & addr, 0);
 sim_printf ("listening on port %d\n", linep->port);
-    int r = uv_listen ((uv_stream_t *) & linep->server, 0, 
+    int r = uv_listen ((uv_stream_t *) & linep->server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
@@ -911,7 +922,7 @@ sim_printf ("listening on port %d\n", linep->port);
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (linep->client, (const struct sockaddr *) & addr, 0);
 sim_printf ("listening on port %d\n", linep->port);
-    int r = uv_listen ((uv_stream_t *) linep->client, 0, 
+    int r = uv_listen ((uv_stream_t *) linep->client, DEFAULT_BACKLOG, 
                        on_slave_connect);
     if (r)
      {

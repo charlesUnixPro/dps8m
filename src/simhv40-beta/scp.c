@@ -226,6 +226,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <time.h>
+#include <inttypes.h>
 #if defined(_WIN32)
 #include <direct.h>
 #else
@@ -2940,10 +2941,10 @@ int32 accum;
 if (cptr && (*cptr != 0))
     return SCPE_2MARG;
 if (sim_clock_queue == QUEUE_LIST_END)
-    fprintf (st, "%s event queue empty, time = %lld, executing %.0f instructios/sec\n",
+    fprintf (st, "%s event queue empty, time = %"PRId64", executing %.0f instructios/sec\n",
              sim_name, sim_time, sim_timer_inst_per_sec ());
 else {
-    fprintf (st, "%s event queue status, time = %lld, executing %.0f instructions/sec\n",
+    fprintf (st, "%s event queue status, time = %"PRId64", executing %.0f instructions/sec\n",
              sim_name, sim_time, sim_timer_inst_per_sec ());
     accum = 0;
     for (uptr = sim_clock_queue; uptr != QUEUE_LIST_END; uptr = uptr->next) {
@@ -3019,7 +3020,7 @@ t_stat show_time (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, char *cptr)
 {
 if (cptr && (*cptr != 0))
     return SCPE_2MARG;
-fprintf (st, "Time:\t%lld\n", sim_time);
+fprintf (st, "Time:\t%"PRId64"\n", sim_time);
 return SCPE_OK;
 }
 
@@ -4033,7 +4034,7 @@ REG *rptr;
 
 #define WRITE_I(xx) sim_fwrite (&(xx), sizeof (xx), 1, sfile)
 
-fprintf (sfile, "%s\n%s\n%s\n%s\n%s\n%lld\n",
+fprintf (sfile, "%s\n%s\n%s\n%s\n%s\n%"PRId64"\n",
     save_vercur,                                        /* [V2.5] save format */
     sim_name,                                           /* sim name */
     sim_si64, sim_sa64, sim_snet,                       /* [V3.5] options */
@@ -4213,7 +4214,7 @@ if (v35) {                                              /* [V3.5+] options */
     }
 if (v32) {                                              /* [V3.2+] time as string */
     READ_S (buf);
-    sscanf (buf, "%lld", &sim_time);
+    sscanf (buf, "%"PRId64"", &sim_time);
     }
 else READ_I (sim_time);                                 /* sim time */
 READ_I (sim_rtime);                                     /* [V2.6+] sim rel time */
@@ -6949,10 +6950,10 @@ static t_int64 lastGtime = 0;
 t_int64 gtime = sim_gtime ();
 if (gtime != lastGtime) {
 lastGtime = gtime;
-sprintf(debug_line_prefix, "\nDBG(%s%s%lld%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", name, debug_type);
+sprintf(debug_line_prefix, "\nDBG(%s%s%"PRId64"%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", name, debug_type);
 }
 else
-sprintf(debug_line_prefix, "DBG(%s%s%lld%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", name, debug_type);
+sprintf(debug_line_prefix, "DBG(%s%s%"PRId64"%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", name, debug_type);
 return debug_line_prefix;
 }
 
@@ -7116,7 +7117,7 @@ void _sim_err (const char* fmt, ...)
     char *buf = stackbuf;
     va_list arglist;
     int32 i, j, len;
-    sprintf(debug_line_prefix, "DBG(%lld)> ERR ERR: ", sim_gtime());
+    sprintf(debug_line_prefix, "DBG(%"PRId64")> ERR ERR: ", sim_gtime());
 
     buf[bufsize-1] = '\0';
 

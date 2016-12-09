@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_faults.c
 //  dps8
@@ -225,7 +238,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %llu (%llo)\n", cpu.subFault.bits, cpu.subFault.bits);
+           sim_printf ("  subfault number %llu (%"PRIo64")\n", cpu.subFault.bits, cpu.subFault.bits);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -327,7 +340,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 //if (currentRunningCPUnum)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
-               "Fault %d(0%0o), sub %llu(0%llo), dfc %c, '%s'\n", 
+               "Fault %d(0%0o), sub %llu(0%"PRIo64"), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault.bits, subFault.bits, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
@@ -350,7 +363,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037U)  // quicker?
     {
-        sim_printf ("fault(out-of-range): %d %llo '%s'\n", 
+        sim_printf ("fault(out-of-range): %d %"PRIo64" '%s'\n", 
                     faultNumber, subFault.bits, faultMsg ? faultMsg : "?");
         sim_warn ("fault out-of-range\n");
         faultNumber = FAULT_TRB;
@@ -599,8 +612,8 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu . PPR.IC);
-                sim_printf("\nsimCycles = %lld\n", sim_timell ());
-                sim_printf("\ncpuCycles = %lld\n", sys_stats . total_cycles);
+                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
+                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats . total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
@@ -735,8 +748,8 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu.PPR.IC);
-                sim_printf("\nsimCycles = %lld\n", sim_timell ());
-                sim_printf("\ncpuCycles = %lld\n", sys_stats.total_cycles);
+                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
+                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
@@ -802,7 +815,7 @@ bool bG7PendingNoTRO (void)
 
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
-    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %lld %llo\n", 
+    sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %"PRId64" %"PRIo64"\n", 
                cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpuNo);
@@ -834,7 +847,7 @@ void clearTROFault (void)
 
 void doG7Fault (void)
   {
-    // sim_printf ("doG7fault %08o [%lld]\n", cpu . g7Faults, sim_timell ());
+    // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, sim_timell ());
     // if (cpu . g7Faults)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu . g7Faults);

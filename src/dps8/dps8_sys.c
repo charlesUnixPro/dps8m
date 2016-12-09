@@ -1,3 +1,15 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
 
 /**
  * \file dps8_sys.c
@@ -7,8 +19,8 @@
 */
 
 #include <stdio.h>
-#include <wordexp.h>
-#include <signal.h>
+//#include <wordexp.h>
+//#include <signal.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -68,7 +80,9 @@ int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
+#ifndef CROSS_MINGW64
 static pid_t dps8m_sid; // Session id
+#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
@@ -95,7 +109,7 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
-static t_stat launch (int32 arg, char * buf);
+//static t_stat launch (int32 arg, char * buf);
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
 static t_stat dfx1exit (int32 arg, char * buf);
@@ -157,7 +171,7 @@ static CTAB dps8_cmds[] =
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
-    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+//    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
 
@@ -185,6 +199,7 @@ static CTAB dps8_cmds[] =
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
+#if 0
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
@@ -192,6 +207,7 @@ static void usr1SignalHandler (UNUSED int sig)
     setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
+#endif 
 
 // Once-only initialization
 
@@ -221,6 +237,7 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+#ifndef CROSS_MINGW64
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
@@ -231,9 +248,10 @@ static void dps8_init(void)
 #ifdef L68
     sim_printf ("L68 system session id is %d\n", dps8m_sid);
 #endif
+#endif
 
     // Wire the XF button to signal USR1
-    signal (SIGUSR1, usr1SignalHandler);
+    //signal (SIGUSR1, usr1SignalHandler);
 
     init_opcodes();
     sysCableInit ();
@@ -249,7 +267,9 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
+#ifndef CROSS_MINGW64
     absi_init ();
+#endif
 }
 
 uint64 sim_deb_start = 0;
@@ -266,7 +286,7 @@ bool sim_deb_bar = false;
 static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf)
   {
     sim_deb_mme_cntdwn = strtoull (buf, NULL, 0);
-    sim_printf ("Debug MME countdown set to %lld\n", sim_deb_mme_cntdwn);
+    sim_printf ("Debug MME countdown set to %"PRId64"\n", sim_deb_mme_cntdwn);
     return SCPE_OK;
   }
 
@@ -274,42 +294,42 @@ static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
   {
     sim_deb_skip_cnt = 0;
     sim_deb_skip_limit = strtoull (buf, NULL, 0);
-    sim_printf ("Debug skip set to %lld\n", sim_deb_skip_limit);
+    sim_printf ("Debug skip set to %"PRId64"\n", sim_deb_skip_limit);
     return SCPE_OK;
   }
 
 static t_stat dps_debug_start (UNUSED int32 arg, char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
+    sim_printf ("Debug set to start at cycle: %"PRId64"\n", sim_deb_start);
     return SCPE_OK;
   }
 
 static t_stat dps_debug_stop (UNUSED int32 arg, char * buf)
   {
     sim_deb_stop = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to stop at cycle: %lld\n", sim_deb_stop);
+    sim_printf ("Debug set to stop at cycle: %"PRId64"\n", sim_deb_stop);
     return SCPE_OK;
   }
 
 static t_stat dps_debug_break (UNUSED int32 arg, char * buf)
   {
     sim_deb_break = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to break at cycle: %lld\n", sim_deb_break);
+    sim_printf ("Debug set to break at cycle: %"PRId64"\n", sim_deb_break);
     return SCPE_OK;
   }
 
 static t_stat dps_debug_segno (UNUSED int32 arg, char * buf)
   {
     sim_deb_segno = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to segno %llo\n", sim_deb_segno);
+    sim_printf ("Debug set to segno %"PRIo64"\n", sim_deb_segno);
     return SCPE_OK;
   }
 
 static t_stat dps_debug_ringno (UNUSED int32 arg, char * buf)
   {
     sim_deb_ringno = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to ringno %llo\n", sim_deb_ringno);
+    sim_printf ("Debug set to ringno %"PRIo64"\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
@@ -317,9 +337,9 @@ static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
   {
     sim_deb_bar = arg;
     if (arg)
-      sim_printf ("Debug set BAR %llo\n", sim_deb_ringno);
+      sim_printf ("Debug set BAR %"PRIo64"\n", sim_deb_ringno);
     else
-      sim_printf ("Debug unset BAR %llo\n", sim_deb_ringno);
+      sim_printf ("Debug unset BAR %"PRIo64"\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
@@ -778,7 +798,7 @@ fileDone:
 static t_stat searchMemory (UNUSED int32 arg, char * buf)
   {
     word36 value;
-    if (sscanf (buf, "%llo", & value) != 1)
+    if (sscanf (buf, "%"PRIo64"", & value) != 1)
       return SCPE_ARG;
     
     uint i;
@@ -1181,7 +1201,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
                     continue;
                   }
                 word36 argv = M [argnop];
-                sim_printf ("arg%d value   %05o:%06o [%08o] %012llo (%llu)\n", 
+                sim_printf ("arg%d value   %05o:%06o [%08o] %012"PRIo64" (%llu)\n", 
                             argno, argSegno, argOffset, argnop, argv, argv);
                 sim_printf ("\n");
              }
@@ -1764,14 +1784,14 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
             // XXX Need to complete MW EIS support in disAssemble()
             
             for(uint n = 0 ; n < p->info->ndes; n += 1)
-                fprintf(ofile, " %012llo", val[n + 1]);
+                fprintf(ofile, " %012"PRIo64"", val[n + 1]);
           
             return (t_stat) -p->info->ndes;
         }
         
         return SCPE_OK;
 
-        //fprintf(ofile, "%012llo", *val);
+        //fprintf(ofile, "%012"PRIo64"", *val);
         //return SCPE_OK;
     }
     return SCPE_ARG;
@@ -1913,8 +1933,8 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
   {
 // divide_fx1, divide_fx3
     sim_printf ("dfx1entry\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -1925,7 +1945,7 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -1935,7 +1955,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
@@ -1943,7 +1963,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
@@ -1951,15 +1971,15 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 static t_stat dfx1exit (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("dfx1exit\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     return SCPE_OK;
   }
 
 static t_stat dv2scale (UNUSED int32 arg, UNUSED char * buf)
   {
     sim_printf ("dv2scale\n");
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     return SCPE_OK;
   }
 
@@ -1967,8 +1987,8 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
   {
 // divide_fx2
     sim_printf ("dfx2entry\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -1979,7 +1999,7 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 #if 0
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
@@ -1990,7 +2010,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale ptr %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale ptr %012"PRIo64" (%llu)\n", M [pa], M [pa]);
         if ((M [pa] & 077) == 043)
           {
             word15 segno = (M [pa] >> 18u) & MASK15;
@@ -2002,7 +2022,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
               }
             else
               {
-                sim_printf ("scale %012llo (%llu)\n", M [ipa], M [ipa]);
+                sim_printf ("scale %012"PRIo64" (%llu)\n", M [ipa], M [ipa]);
               }
           }
       }
@@ -2013,8 +2033,8 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
-        sim_printf ("divisor %012llo (%llu)\n", M [pa + 1], M [pa + 1]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa + 1], M [pa + 1]);
       }
     return SCPE_OK;
   }
@@ -2026,8 +2046,8 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
 
 // divide_fx1, divide_fx2
     sim_printf ("mdfx3entry\n");
-    //sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -2038,7 +2058,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 //sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -2049,7 +2069,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 #endif
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
@@ -2058,7 +2078,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
@@ -2070,8 +2090,8 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
 
 // divide_fx1, divide_fx2
     sim_printf ("smfx1entry\n");
-    //sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -2082,7 +2102,7 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -2092,7 +2112,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
@@ -2100,7 +2120,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
@@ -2181,7 +2201,9 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+#ifndef CROSS_MINGW64
     & absi_dev,
+#endif
     NULL
   };
 
@@ -2208,6 +2230,7 @@ static void addChild (pid_t pid)
      atexit (cleanupChildren);
   }
 
+#if 0
 static t_stat launch (int32 UNUSED arg, char * buf)
   {
     wordexp_t p;
@@ -2236,6 +2259,7 @@ static t_stat launch (int32 UNUSED arg, char * buf)
 
     return SCPE_OK;
   }
+#endif
 
 // SCP message queue; when IPC messages come in, they are append to this
 // queue. The sim_instr loop will poll the queue for messages for delivery 

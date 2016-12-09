@@ -1,3 +1,15 @@
+/*
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 /**
  * \file dps8_loader.c
  * \project dps8
@@ -516,7 +528,7 @@ int resolveLinks(bool bVerbose)
                         }
                         word36 *Ypair = &sg1->M[sr->value];
                         makeITS(sg2->segno, sd->value, 0, Ypair);   // "snap" link for segref in sg1
-                        if (bVerbose) sim_printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
+                        if (bVerbose) sim_printf("            ITS Pair: [even:%012"PRIo64", odd:%012"PRIo64"]\n", Ypair[0], Ypair[1]);
                     }
                 }
             }
@@ -744,7 +756,7 @@ t_stat snapLOT(bool bVerbose)
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
             if (bVerbose)
-                printf("\t%o + %o => %012llo\n", lot->ldaddr, s->segno, pp);
+                printf("\t%o + %o => %012"PRIo64"\n", lot->ldaddr, s->segno, pp);
                 //sim_printf(".");
         }
     }
@@ -755,7 +767,7 @@ t_stat snapLOT(bool bVerbose)
 //        word36 c = M[lot->ldaddr + n]; // LOT is in-core
 //        if (c)
 //        {
-//            sim_printf("%06o %012llo\n", n, c);
+//            sim_printf("%06o %012"PRIo64"\n", n, c);
 //        }
 //
 //    }
@@ -1063,7 +1075,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             word24 maddr; ///< 18 bits
             word36 data;  ///< 36 bits
             
-            int n = sscanf(c, "%o %*s %llo", &maddr, &data);
+            int n = sscanf(c, "%o %*s %"PRIo64"", &maddr, &data);
             if (n == 2)
             {
                 if ((int) maddr > currSegment->size)
@@ -1097,7 +1109,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             word24 maddr; ///< 18 bits
             word36 data;  ///< 36 bits
             
-            int n = sscanf(c, "%o %*s %llo", &maddr, &data);
+            int n = sscanf(c, "%o %*s %"PRIo64"", &maddr, &data);
             if (n == 2)
             {
                 if (currSegment && currSegment->M == NULL)
@@ -1125,7 +1137,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             word24 maddr;       ///< 24-bits
             word36 data;        ///< 36 bits
             
-            int n = sscanf(c, "%o %*s %llo", &maddr, &data);
+            int n = sscanf(c, "%o %*s %"PRIo64"", &maddr, &data);
             if (n == 2)
             {
                 if (currSegment && currSegment->M == NULL)

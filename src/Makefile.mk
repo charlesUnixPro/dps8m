@@ -1,6 +1,16 @@
+# Copyright 2014-2016 by Charles Anthony
+#
+# All rights reserved.
+#
+# This software is made available under the terms of the
+# ICU License -- ICU 1.8.1 and later. 
+# See the LICENSE file at the top-level directory of this distribution and
+# at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+
 ifeq ($(CROSS),MINGW64)
   CC = x86_64-w64-mingw32-gcc
   LD = x86_64-w64-mingw32-gcc
+  AR = x86_64-w64-mingw32-ar
 else
 #CC = gcc
 #LD = gcc
@@ -27,31 +37,28 @@ endif
 #CFLAGS = -m32
 #CFLAGS = -m64
 
-CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 
+#CFLAGS += -I../decNumber -I../simhv40-beta
 
-CFLAGS += -std=c99 -U__STRICT_ANSI__  
-#CFLAGS += -std=c99 -U__STRICT_ANSI__  -Wconversion
-
-# CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
-
-CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD
-ifeq ($(CROSS),MINGW64)
-CFLAGS += -D__USE_MINGW_ANSI_STDIO
-else
-CFLAGS += -DHAVE_DLOPEN=so 
-endif
+CFLAGS += -std=c99
+CFLAGS += -U__STRICT_ANSI__  
+CFLAGS += -D_GNU_SOURCE
+CFLAGS += -DUSE_READER_THREAD
 CFLAGS += -DUSE_INT64
-#CFLAGS += -DMULTIPASS
+
+ifneq ($(CROSS),MINGW64)
+CFLAGS += -DHAVE_DLOPEN=so
+endif
+
 # Clang generates warning messages for code it generates itself...
 CFLAGS += -Wno-array-bounds
+
 LDFLAGS += -g
-#CFLAGS += -pg
-#LDFLAGS += -pg
 
 MAKEFLAGS += --no-print-directory
 
 %.o : %.c
 	@echo CC $<
+	@echo $(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 # This file is included as '../Makefile.mk', so it's local include needs the ../

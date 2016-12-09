@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //#define ISOLTS_BITNO
 
 /**
@@ -89,7 +102,7 @@ static void writeOperands (void)
         Read (indwordAddress, & indword, OPERAND_READ, i->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012llo\n", indword);
+                   "writeOperands IT indword=%012"PRIo64"\n", indword);
 
         //
         // Parse and validate the indirect word
@@ -159,7 +172,7 @@ static void writeOperands (void)
         word36 data;
         Read (Yi, & data, OPERAND_READ, i->a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT data=%012llo\n", data);
+                   "writeOperands IT data=%012"PRIo64"\n", data);
 
         cpu.cu.pot = 0;
 
@@ -187,7 +200,7 @@ static void writeOperands (void)
         Write (Yi, data, OPERAND_STORE, i->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT wrote char/byte %012llo to %06o "
+                   "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
                    "tTB=%o tCF=%o\n",
                    data, Yi,
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
@@ -232,7 +245,7 @@ static void readOperands (void)
         cpu.CY = 0;
         SETHI (cpu.CY, cpu.TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DU CY=%012llo\n", cpu.CY);
+                   "readOperands DU CY=%012"PRIo64"\n", cpu.CY);
         return;
       }
 
@@ -245,7 +258,7 @@ static void readOperands (void)
         cpu.CY = 0;
         SETLO (cpu.CY, cpu.TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DL CY=%012llo\n", cpu.CY);
+                   "readOperands DL CY=%012"PRIo64"\n", cpu.CY);
         return;
       }
 
@@ -284,7 +297,7 @@ static void readOperands (void)
         Read (indwordAddress, & indword, OPERAND_READ, i->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT indword=%012llo\n", indword);
+                   "readOperands IT indword=%012"PRIo64"\n", indword);
 
         //
         // Parse and validate the indirect word
@@ -352,7 +365,7 @@ static void readOperands (void)
         word36 data;
         Read (Yi, & data, OPERAND_READ, i->a);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT data=%012llo\n", data);
+                   "readOperands IT data=%012"PRIo64"\n", data);
 
         //
         // Get the character from the data word
@@ -370,8 +383,8 @@ static void readOperands (void)
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT read operand %012llo from"
-                   " %06o char/byte=%llo\n",
+                   "readOperands IT read operand %012"PRIo64" from"
+                   " %06o char/byte=%"PRIo64"\n",
                    data, Yi, cpu.CY);
 
         // Restore the CA; Read/Write() updates it.
@@ -1033,10 +1046,10 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
             strcat (result, extMods[tag].mod);
         }
         if (result[0] == '?')
-            sim_printf ("%20lld: ? opcode 0%04o X %d a %d tag 0%02do\n",
+            sim_printf ("%20"PRId64": ? opcode 0%04o X %d a %d tag 0%02do\n",
                         count, opcode, opcodeX, a, tag);
         else
-            sim_printf ("%20lld: %s\n", count, result);
+            sim_printf ("%20"PRId64": %s\n", count, result);
     }
 #else
     sim_printf ("matrix code not enabled\n");
@@ -1137,7 +1150,7 @@ force:;
 #ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
-                  "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   currentRunningCPUnum,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1152,7 +1165,7 @@ force:;
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
                 sim_debug (flag, &cpu_dev,
-                  "%05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1171,7 +1184,7 @@ force:;
 #ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
-                  "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   currentRunningCPUnum,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1185,7 +1198,7 @@ force:;
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
                 sim_debug (flag, &cpu_dev,
-                  "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (IWB_IRODD),
@@ -1206,7 +1219,7 @@ force:;
 #ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
-                 "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                 "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   currentRunningCPUnum,
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
@@ -1222,7 +1235,7 @@ force:;
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
                 sim_debug (flag, &cpu_dev,
-                 "%05o:%06o|%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                 "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1242,7 +1255,7 @@ force:;
 #ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
-                  "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   currentRunningCPUnum,
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
@@ -1258,7 +1271,7 @@ force:;
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
                 sim_debug (flag, &cpu_dev,
-                  "%05o:%06o %o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n",
+                  "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
@@ -1539,7 +1552,7 @@ IF1 sim_printf ("RPx_fault RPx not Xn\n");
 
     if (RPx_fault)
       {
-IF1 sim_printf ("RPx_fault %012llo\n", (word36) RPx_fault);
+IF1 sim_printf ("RPx_fault %012"PRIo64"\n", (word36) RPx_fault);
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
                  "RPx test fail");
@@ -1898,7 +1911,7 @@ restart_1:
         Read (cpu.TPR.CA, & indword, OPERAND_READ, ci->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT indword=%012llo\n", indword);
+                   "update IT indword=%012"PRIo64"\n", indword);
 
         //
         // Parse and validate the indirect word
@@ -1990,7 +2003,7 @@ restart_1:
         Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH, ci->a);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT wrote tally word %012llo to %06o\n",
+                   "update IT wrote tally word %012"PRIo64" to %06o\n",
                    indword, cpu.TPR.CA);
       } // SC/SCR
 
@@ -2195,11 +2208,11 @@ restart_1:
     if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
         sim_debug (DBG_REGDUMPAQI, &cpu_dev,
-                   "A=%012llo Q=%012llo IR:%s\n",
+                   "A=%012"PRIo64" Q=%012"PRIo64" IR:%s\n",
                    cpu.rA, cpu.rQ, dumpFlags (cpu.cu.IR));
 
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
-                   "E=%03o A=%012llo Q=%012llo %.10Lg\n",
+                   "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10Lg\n",
                    cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());
 
         sim_debug (DBG_REGDUMPIDX, &cpu_dev,
@@ -3599,7 +3612,7 @@ static t_stat DoBasicInstruction (void)
           if ((cpu.rQ == MAXNEG && (cpu.CY == 1 || cpu.CY == NEG136)) ||
               (cpu.CY == 0))
             {
-//sim_printf ("DIV Q %012llo Y %012llo\n", cpu.rQ, cpu.CY); 
+//sim_printf ("DIV Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rQ, cpu.CY); 
 // case 1  400000000000 000000000000 --> 000000000000
 // case 2  000000000000 000000000000 --> 400000000000
               //cpu.rA = 0;  // works for case 1
@@ -3624,10 +3637,10 @@ static t_stat DoBasicInstruction (void)
 #ifdef DIV_TRACE
               sim_debug (DBG_CAC, & cpu_dev, "\n");
               sim_debug (DBG_CAC, & cpu_dev,
-                         ">>> dividend cpu.rQ %lld (%012llo)\n",
+                         ">>> dividend cpu.rQ %"PRId64" (%012"PRIo64")\n",
                          dividend, cpu.rQ);
               sim_debug (DBG_CAC, & cpu_dev,
-                         ">>> divisor  CY %lld (%012llo)\n",
+                         ">>> divisor  CY %"PRId64" (%012"PRIo64")\n",
                          divisor, cpu.CY);
 #endif
 
@@ -3638,8 +3651,8 @@ static t_stat DoBasicInstruction (void)
               t_int64 remainder = dividend % divisor;
 
 #ifdef DIV_TRACE
-              sim_debug (DBG_CAC, & cpu_dev, ">>> quot 1 %lld\n", quotient);
-              sim_debug (DBG_CAC, & cpu_dev, ">>> rem 1 %lld\n", remainder);
+              sim_debug (DBG_CAC, & cpu_dev, ">>> quot 1 %"PRId64"\n", quotient);
+              sim_debug (DBG_CAC, & cpu_dev, ">>> rem 1 %"PRId64"\n", remainder);
 #endif
 
 // Evidence is that DPS8M rounds toward zero; if it turns out that it
@@ -3655,9 +3668,9 @@ static t_stat DoBasicInstruction (void)
 
 #ifdef DIV_TRACE
                   sim_debug (DBG_CAC, & cpu_dev,
-                             ">>> quot 2 %lld\n", quotient);
+                             ">>> quot 2 %"PRId64"\n", quotient);
                   sim_debug (DBG_CAC, & cpu_dev,
-                             ">>> rem 2 %lld\n", remainder);
+                             ">>> rem 2 %"PRId64"\n", remainder);
 #endif
                 }
 #endif
@@ -3665,9 +3678,9 @@ static t_stat DoBasicInstruction (void)
 #ifdef DIV_TRACE
               //  (a/b)*b + a%b is equal to a.
               sim_debug (DBG_CAC, & cpu_dev,
-                         "dividend was                   = %lld\n", dividend);
+                         "dividend was                   = %"PRId64"\n", dividend);
               sim_debug (DBG_CAC, & cpu_dev,
-                         "quotient * divisor + remainder = %lld\n",
+                         "quotient * divisor + remainder = %"PRId64"\n",
                          quotient * divisor + remainder);
               if (dividend != quotient * divisor + remainder)
                 {
@@ -3681,15 +3694,15 @@ static t_stat DoBasicInstruction (void)
                 {
                   sim_debug (DBG_ERR, & cpu_dev,
                              "Internal division error;"
-                             " rQ %012llo CY %012llo\n", cpu.rQ, cpu.CY);
+                             " rQ %012"PRIo64" CY %012"PRIo64"\n", cpu.rQ, cpu.CY);
                 }
 
               cpu.rA = (word36) remainder & DMASK;
               cpu.rQ = (word36) quotient & DMASK;
 
 #ifdef DIV_TRACE
-              sim_debug (DBG_CAC, & cpu_dev, "rA (rem)  %012llo\n", cpu.rA);
-              sim_debug (DBG_CAC, & cpu_dev, "rQ (quot) %012llo\n", cpu.rQ);
+              sim_debug (DBG_CAC, & cpu_dev, "rA (rem)  %012"PRIo64"\n", cpu.rA);
+              sim_debug (DBG_CAC, & cpu_dev, "rQ (quot) %012"PRIo64"\n", cpu.rQ);
 #endif
 
               SC_I_ZERO (cpu.rQ == 0);
@@ -4762,7 +4775,7 @@ static t_stat DoBasicInstruction (void)
           //processorCycle = RTCD_OPERAND_FETCH;
 
           sim_debug (DBG_TRACE, & cpu_dev,
-                     "RTCD even %012llo odd %012llo\n",
+                     "RTCD even %012"PRIo64" odd %012"PRIo64"\n",
                      cpu.Ypair[0], cpu.Ypair[1]);
 
           // C(Y-pair)3,17 -> C(PPR.PSR)
@@ -5291,7 +5304,7 @@ static t_stat DoBasicInstruction (void)
               cpu.PR[n].WORDNO = GETLO (cpu.CY);
 
               sim_debug (DBG_APPENDING, & cpu_dev,
-                         "lprp%d CY 0%012llo, PR[n].RNR 0%o, "
+                         "lprp%d CY 0%012"PRIo64", PR[n].RNR 0%o, "
                          "PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n",
                          n, cpu.CY, cpu.PR[n].RNR, GET_PR_BITNO (n),
                          cpu.PR[n].SNR, cpu.PR[n].WORDNO);
@@ -5898,7 +5911,7 @@ static t_stat DoBasicInstruction (void)
                   cpu.MR.emr = getbits36_1 (cpu.CY, 35);
 //IF1 sim_printf ("hrhlt %u ihr %u emr %u\n", cpu.MR.hrhlt, cpu.MR.ihr, cpu.MR.emr);
 #else
-IF1 sim_printf ("set mode register %012llo\n", cpu.CY);
+IF1 sim_printf ("set mode register %012"PRIo64"\n", cpu.CY);
 #ifdef L68
                   cpu.MR.FFV = getbits36_15 (cpu.CY, 0);
                   cpu.MR.isolts_tracks = getbits36_1 (cpu.CY, 15);
@@ -6148,7 +6161,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                     putbits36_1 (& cpu.Ypair[0], 33, cpu.MR.hexfp);
 #endif
                     putbits36_1 (& cpu.Ypair[0], 35, cpu.MR.emr);
-IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
+IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #endif
                     cpu.Ypair[1] = 0;
                     putbits36_15 (& cpu.Ypair[1], 36 - 36,
@@ -6170,7 +6183,7 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                                  cpu.CMR.bypass_cache);
 #endif
                     putbits36_2 (& cpu.Ypair[1], 70 - 36, cpu.CMR.luf);
-//IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[1]);
+//IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[1]);
                   }
                   break;
 
@@ -6207,7 +6220,7 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
                     cpu.Ypair[1] =
                       cpu.history[CU_HIST_REG]
                                  [cpu.history_cyclic[CU_HIST_REG]][1];
-//IF1 sim_printf ("scpr cu %u %012llo %012llo\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
+//IF1 sim_printf ("scpr cu %u %012"PRIo64" %012"PRIo64"\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic[CU_HIST_REG] =
                       (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }
@@ -7055,8 +7068,8 @@ IF1 sim_printf ("get mode register %012llo\n", cpu.Ypair[0]);
             {
               sim_printf ("DIS@0%06o with no interrupts pending and"
                           " no events in queue\n", cpu.PPR.IC);
-              sim_printf ("\nsimCycles = %lld\n", sim_timell ());
-              sim_printf ("\ncpuCycles = %lld\n", sys_stats.total_cycles);
+              sim_printf ("\nsimCycles = %"PRId64"\n", sim_timell ());
+              sim_printf ("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
               longjmp (cpu.jmpMain, JMP_STOP);
             }
 
@@ -8437,13 +8450,13 @@ static int emCall (void)
         case 4:     // putoctZ - put octal contents of A to stdout
                     // (zero-suppressed)
         {
-            sim_printf ("%llo", cpu.rA);
+            sim_printf ("%"PRIo64"", cpu.rA);
             break;
         }
         case 5:     // putdec - put decimal contents of A to stdout
         {
             t_int64 tmp = SIGNEXT36_64 (cpu.rA);
-            sim_printf ("%lld", tmp);
+            sim_printf ("%"PRId64"", tmp);
             break;
         }
         case 6:     // putEAQ - put float contents of C(EAQ) to stdout
@@ -8469,7 +8482,7 @@ static int emCall (void)
             }
             break;
         case 27:    // dump registers A & Q
-            sim_printf ("A: %012llo Q:%012llo\n", cpu.rA, cpu.rQ);
+            sim_printf ("A: %012"PRIo64" Q:%012"PRIo64"\n", cpu.rA, cpu.rQ);
             break;
 
         case 8: // crlf to console
@@ -8484,13 +8497,13 @@ static int emCall (void)
         case 14:     // putoctZ - put octal contents of Q to stdout
                      // (zero-suppressed)
         {
-            sim_printf ("%llo", cpu.rQ);
+            sim_printf ("%"PRIo64"", cpu.rQ);
             break;
         }
         case 15:     // putdec - put decimal contents of Q to stdout
         {
             t_int64 tmp = SIGNEXT36_64 (cpu.rQ);
-            sim_printf ("%lld", tmp);
+            sim_printf ("%"PRId64"", tmp);
             break;
         }
 
@@ -8639,7 +8652,7 @@ static int doABSA (word36 * result)
 //sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n",
 //           DSBR.ADDR, cpu.TPR.TSR);
 //sim_debug (DBG_TRACE, & cpu_dev,
-//           "absa  SDWaddr: %08o SDW: %012llo %012llo\n",
+//           "absa  SDWaddr: %08o SDW: %012"PRIo64" %012"PRIo64"\n",
 //           DSBR.ADDR + 2 * cpu.TPR.TSR, SDWe, SDWo);
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
@@ -8898,7 +8911,7 @@ void doRCU (void)
       {
         for (int i = 0; i < 8; i ++)
           {
-            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012llo\n", i,
+            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
                        cpu.Yblock8[i]);
           }
       }

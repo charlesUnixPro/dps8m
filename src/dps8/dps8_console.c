@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_console.c
 //  dps8
@@ -8,8 +21,10 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#ifndef CROSS_MINGW64
 #include <signal.h>
 #include <termios.h>
+#endif
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -175,11 +190,13 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
 
 static bool attn_pressed = false;
 
+#ifndef CROSS_MINGW64
 static void quit_sig_hndlr (int UNUSED signum)
   {
     //printf ("quit\n");
     attn_pressed = true;
   }
+#endif
 
 bool check_attn_key (void)
   {
@@ -199,12 +216,14 @@ void console_init()
     console_state . auto_input = NULL;
     console_state . autop = NULL;
 
+#ifndef CROSS_MINGW64
     // The quit signal is used has the console ATTN key
     struct sigaction quit_action;
     quit_action . sa_handler = quit_sig_hndlr;
     quit_action . sa_flags = SA_RESTART;
     sigemptyset (& quit_action . sa_mask);
     sigaction (SIGQUIT, & quit_action, NULL);
+#endif
 
 }
 
@@ -298,6 +317,7 @@ t_stat console_attn (UNUSED UNIT * uptr)
 static UNIT attn_unit = 
   { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
+#ifndef CROSS_MINGW64
 static struct termios ttyTermios;
 static bool ttyTermiosOk = false;
 
@@ -326,6 +346,7 @@ static void newlineOn (void)
       return;
     tcsetattr (0, TCSAFLUSH, & ttyTermios);
   }
+#endif
 
 static void handleRCP (char * text)
   {
@@ -724,13 +745,15 @@ sim_printf ("uncomfortable with this\n");
                       }
                   }
 
-//sim_printf ("%012llo %012llo\n", M [daddr + 0], M [daddr + 1]);
+//sim_printf ("%012"PRIo64" %012"PRIo64"\n", M [daddr + 0], M [daddr + 1]);
                 // Tally is in words, not chars.
     
                 char text [tally * 4 + 1];
                 * text = 0;
                 char * textp = text;
+#ifndef CROSS_MINGW64
                 newlineOff ();
+#endif
 // XXX this should be iomIndirectDataService
                 while (tally)
                   {
@@ -754,7 +777,9 @@ sim_printf ("uncomfortable with this\n");
                 * textp ++ = 0;
                 handleRCP (text);
                 // sim_printf ("\n");
+#ifndef CROSS_MINGW64
                 newlineOn ();
+#endif
                 p -> stati = 04000;
                 p -> initiate = false;
 

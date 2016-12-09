@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_scu.c  4MW SCU Emulator
 //  dps8
@@ -1011,7 +1024,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
-            sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, rega, regq);
+            sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, rega, regq);
             scu_t * up = scu + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1070,7 +1083,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
           {
             uint port_num = (addr >> 6) & 07;
             sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to "
-                       "%012llo,%012llo\n", 
+                       "%012"PRIo64",%012"PRIo64"\n", 
                        port_num, rega, regq);
 
             // Find mask reg assigned to specified port
@@ -1331,7 +1344,7 @@ gotit:;
             putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 
-            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, * rega, * regq);
+            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, * rega, * regq);
             break;
           }
 
@@ -2249,7 +2262,7 @@ gotit:;
     putbits36_1 (regq, 34,  (word1) up -> port_enable [6]);
     putbits36_1 (regq, 35,  (word1) up -> port_enable [7]);
 
-    sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012llo %012llo\n", 
+    sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
                * rega, * regq);
     dumpIR ("rmcm", scu_unit_num);
     return SCPE_OK;
@@ -2258,7 +2271,7 @@ gotit:;
 t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
   {
     sim_debug (DBG_TRACE, & scu_dev, 
-              "SMCM SCU unit %d CPU unit %d A %012llo Q %012llo\n",
+              "SMCM SCU unit %d CPU unit %d A %012"PRIo64" Q %012"PRIo64"\n",
                scu_unit_num, cpu_unit_num, rega, regq);
 
     scu_t * up = scu + scu_unit_num;

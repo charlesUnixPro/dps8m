@@ -1,3 +1,16 @@
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_disk.c
 //  dps8
@@ -291,7 +304,7 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
     uint devUnitIdx = d -> devUnitIdx;
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", devUnitIdx);
-//sim_printf ("disk seek512 [%lld]\n", sim_timell ());
+//sim_printf ("disk seek512 [%"PRId64"]\n", sim_timell ());
     disk_statep -> io_mode = seek512_mode;
 
 // Process DDCW
@@ -336,7 +349,7 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
     word36 seekData;
     iomDirectDataService (iomUnitIdx, chan, & seekData, false);
 
-//sim_printf ("seekData %012llo\n", seekData);
+//sim_printf ("seekData %012"PRIo64"\n", seekData);
 // Observations about the seek/write stream
 // the stream is seek512 followed by a write 1024.
 // the seek data is:  000300nnnnnn
@@ -451,7 +464,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
 //for (uint i = 0; i < p72ByteCnt; i += 9)
 //{ word36 w1 = extr (& diskBuffer [i / 9], 0, 36);
   //word36 w2 = extr (& diskBuffer [i / 9], 36, 36);
-  //sim_printf ("%5d %012llo %012llo\n", i * 2 / 9, w1, w2);
+  //sim_printf ("%5d %012"PRIo64" %012"PRIo64"\n", i * 2 / 9, w1, w2);
 //}
 //sim_printf ("read seekPosition %d\n", disk_statep -> seekPosition);
 //sim_printf ("diskBuffer 0...\n");
@@ -756,7 +769,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
             sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
             disk_statep -> io_mode = write_mode;
-//sim_printf ("disk write [%lld]\n", sim_timell ());
+//sim_printf ("disk write [%"PRId64"]\n", sim_timell ());
             p -> stati = 04000;
           }
 //exit(1);
@@ -765,7 +778,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 #if 0
         case 034: // CMD 34 SEEK
           {
-//sim_printf ("disk seek [%lld]\n", sim_timell ());
+//sim_printf ("disk seek [%"PRId64"]\n", sim_timell ());
             sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
             disk_statep -> io_mode = seek_mode;
           }

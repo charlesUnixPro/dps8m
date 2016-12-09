@@ -1,3 +1,15 @@
+/*
+ Copyright 2012-2016 by Harry Reed
+ Copyright 2013-2016 by Charles Anthony
+
+ All rights reserved.
+
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+ */
+
 //
 //  dps8_decimal.c
 //  dps8
@@ -308,10 +320,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     if (r->digits > 63 || r->digits > n)
     {
         static char out1 [132];
-        bzero(out1, sizeof(out1));
+        memset (out1, 0, sizeof (out1));
         
         static char out2 [132];
-        bzero(out2, sizeof(out2));
+        memset (out2, 0, sizeof (out2));
         
         int scale, adjLen = n;
         
@@ -350,10 +362,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     if (r->digits > 63 || r->digits > n)
     {
         static char out1 [132];
-        bzero(out1, sizeof(out1));
+        memset (out1, 0, sizeof (out1));
         
         static char out2 [132];
-        bzero(out2, sizeof(out2));
+        memset (out2, 0, sizeof (out2));
         
         int scale, adjLen = n;
         
@@ -447,8 +459,8 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
         
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
-            bzero(out, sizeof(out));
-            bzero(out2, sizeof(out2));
+            memset (out, 0, sizeof (out));
+            memset (out2, 0, sizeof (out2));
             
             decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
             for(int i = 0 ; i < r->digits ; i += 1 )
@@ -487,7 +499,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     
     static uint8_t out[256];
     
-    bzero(out, sizeof(out));
+    memset (out, 0, sizeof (out));
     
     //bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
     bool ovr = r2->digits > adjLen;          // is integer portion too large to fit?
@@ -612,7 +624,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                 decNumber _i;
                 decNumber *i = decNumberToIntegralValue(&_i, ro, set);
                 char outi[256];
-                bzero(outi, sizeof(outi));
+                memset (outi, 0, sizeof (outi));
                 decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
                 for(int j = 0 ; j < adjLen; j += 1 )
                     outi[j] += '0';

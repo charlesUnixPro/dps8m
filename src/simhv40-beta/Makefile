@@ -26,8 +26,12 @@ sim_timer.o \
 sim_tmxr.o
 
 #CFLAGS += -Wall 
-CFLAGS += -Wno-array-bounds -Wno-unevaluated-expression
+#CFLAGS += -Wno-array-bounds 
+CFLAGS += -Wno-array-bounds -Wno-unevaluated-expression -Wno-sign-conversion
 
+ifeq ($(CROSS),MINGW64)
+CFLAGS += -DCROSS_MINGW64
+endif
 
 all: simh.a
 
