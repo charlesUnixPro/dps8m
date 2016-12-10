@@ -1371,7 +1371,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                 sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
-            tape_statep -> rec_num += skipped;
+            tape_statep -> rec_num += (int) skipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld forward skips to record %d\n",
                           (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
@@ -1420,7 +1420,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                 sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
-            tape_statep -> rec_num += recsskipped;
+            tape_statep -> rec_num += (int) recsskipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld forward skips to record %d\n",
                           (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
@@ -1494,7 +1494,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               {
                 sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
-            tape_statep -> rec_num -= skipped;
+            tape_statep -> rec_num -= (int) skipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld skip back to record %d\n",
                           (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
@@ -1558,7 +1558,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                 sim_warn ("skipped %d != tally %d\n", skipped, tally);
               }
 
-            tape_statep -> rec_num -= recsskipped;
+            tape_statep -> rec_num -= (int) recsskipped;
             if (unitp->flags & UNIT_WATCH)
               sim_printf ("Tape %ld backward skips to record %d\n",
                           (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);

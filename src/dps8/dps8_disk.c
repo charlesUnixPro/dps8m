@@ -418,7 +418,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
 
         rc = fseek (unitp -> fileref, 
-                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    (long) (disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES),
                     SEEK_SET);
         if (rc)
           {
@@ -543,7 +543,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
 
         rc = fseek (unitp -> fileref, 
-                    disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES,
+                    (long) (disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES),
                     SEEK_SET);
         if (rc)
           {

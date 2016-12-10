@@ -252,6 +252,7 @@ void IEEElongdoubleToEAQ(long double f0)
 #endif
 
 //#ifndef QUIET_UNUSED
+#ifdef ISOLTS
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
@@ -289,6 +290,7 @@ static double float36ToIEEEdouble(word36 f36)
     return (S ? -1 : 1) * ldexp(m, e);
 }
 //#endif
+#endif
 
 #ifndef QUIET_UNUSED
 /*!
@@ -1634,7 +1636,7 @@ void fstr (word36 *Y)
     int E = SIGNEXT8_int (cpu . rE & MASK8);
     A &= DMASK;
     Q &= DMASK;
-    E &= MASK8;
+    E &= (int) MASK8;
    
     float72 m = ((word72)A << 36) | (word72)Q;
     if (m == 0)
@@ -1815,7 +1817,7 @@ IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64"\n", e1, m1);
 
 IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
 
-    int e3 = -1;
+    //int e3 = -1;
 
     //which exponent is smaller???
     
@@ -1843,7 +1845,7 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
           }
         
         m1 &= MASK36;
-        e3 = e2;
+        //e3 = e2;
       }
     else
       {
@@ -1860,7 +1862,7 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
               m2 |= SIGN36;
           }
         m2 &= MASK36;
-        e3 = e1;
+        //e3 = e1;
     }
     
 IF1 sim_printf ("FCMG m1 %012"PRIo64"\n", m1);
@@ -3195,7 +3197,7 @@ void dfcmp (void)
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMP e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
-    int e3 = -1;
+    //int e3 = -1;
 
     //which exponent is smaller???
     
@@ -3204,7 +3206,7 @@ void dfcmp (void)
     if (e1 == e2)
     {
         shift_count = 0;
-        e3 = e1;
+        //e3 = e1;
     }
     else if (e1 < e2)
     {
@@ -3218,7 +3220,7 @@ void dfcmp (void)
         }
         
         m1 &= MASK72;
-        e3 = e2;
+        //e3 = e2;
     }
     else
     {
@@ -3232,7 +3234,7 @@ void dfcmp (void)
                 m2 |= SIGN72;
         }
         m2 &= MASK72;
-        e3 = e1;
+        //e3 = e1;
     }
     
 //if (currentRunningCPUnum)
@@ -3283,7 +3285,7 @@ void dfcmg (void)
     
 IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
-    int e3 = -1;
+    //int e3 = -1;
 
     //which exponent is smaller???
 #ifdef L68
@@ -3294,7 +3296,7 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     if (e1 == e2)
       {
         shift_count = 0;
-        e3 = e1;
+        //e3 = e1;
       }
     else if (e1 < e2)
       {
@@ -3312,7 +3314,7 @@ IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (
           }
         
         m1 &= MASK72;
-        e3 = e2;
+        //e3 = e2;
       }
     else
       {
@@ -3326,7 +3328,7 @@ IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (
               m2 |= SIGN72;
           }
         m2 &= MASK72;
-        e3 = e1;
+        //e3 = e1;
       }
     
 IF1 sim_printf ("DFCMG shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);

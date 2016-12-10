@@ -2211,9 +2211,11 @@ restart_1:
                    "A=%012"PRIo64" Q=%012"PRIo64" IR:%s\n",
                    cpu.rA, cpu.rQ, dumpFlags (cpu.cu.IR));
 
+#ifndef CROSS_MINGW64
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
                    "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10Lg\n",
                    cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());
+#endif
 
         sim_debug (DBG_REGDUMPIDX, &cpu_dev,
                    "X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n",
@@ -4668,7 +4670,7 @@ static t_stat DoBasicInstruction (void)
                        "call6 access violation fault (outward call)");
           }
           if (cpu.TPR.TRR < cpu.PPR.PRR)
-            cpu.PR[7].SNR = (((word15) (cpu.DSBR.STACK << 3)) |
+            cpu.PR[7].SNR = (word15) (((word15) (cpu.DSBR.STACK << 3)) |
                              cpu.TPR.TRR) & MASK15;
           if (cpu.TPR.TRR == cpu.PPR.PRR)
             cpu.PR[7].SNR = cpu.PR[6].SNR;
@@ -7170,12 +7172,14 @@ static t_stat DoEISInstruction (void)
     DCDstruct * i = & cpu.currentInstruction;
     uint32 opcode = i->opcode;
 
+#ifdef L68
     bool is_du = false;
     if (EISopcodes[i->opcode].reg_use & is_DU)
       {
         is_du = true;
-        L68_ (DU_CYCLE_nDUD;) // set not idle
+        DU_CYCLE_nDUD; // set not idle
       }
+#endif
 
     switch (opcode)
     {
@@ -8639,13 +8643,13 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa DSBR.ADDR %08o TSR %o SDWe offset %o SWDe %08o\n",
-          cpu.DSBR.ADDR, cpu.TPR.TSR, 2 * cpu.TPR.TSR,
-          cpu.DSBR.ADDR + 2 * cpu.TPR.TSR);
+          cpu.DSBR.ADDR, cpu.TPR.TSR, 2u * cpu.TPR.TSR,
+          cpu.DSBR.ADDR + 2u * cpu.TPR.TSR);
 
         word36 SDWe, SDWo;
-        core_read ((cpu.DSBR.ADDR + 2 * cpu.TPR.TSR) & PAMASK, & SDWe,
+        core_read ((cpu.DSBR.ADDR + 2u * cpu.TPR.TSR) & PAMASK, & SDWe,
                    __func__);
-        core_read ((cpu.DSBR.ADDR + 2 * cpu.TPR.TSR  + 1) & PAMASK, & SDWo, 
+        core_read ((cpu.DSBR.ADDR + 2u * cpu.TPR.TSR + 1u) & PAMASK, & SDWo, 
                    __func__);
 
 //sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
@@ -8715,8 +8719,8 @@ static int doABSA (word36 * result)
         //       y1 = (2 * segno) modulo 1024
         //       x1 = (2 * segno - y1) / 1024
 
-        word24 y1 = (2 * segno) % 1024;
-        word24 x1 = (2 * segno - y1) / 1024;
+        word24 y1 = (2u * segno) % 1024u;
+        word24 x1 = (2u * segno - y1) / 1024u;
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa y1:%08o x1:%08o\n", y1, x1);
@@ -8943,9 +8947,9 @@ void doRCU (void)
 //      AL39 is contradictory or vague about store fault subfaults and store
 //      faults in general. They are mentioned:
 //        SPRPn: store fault (illegal pointer) (assuming STR:ISN)
-//        SMCM: store fault (not control)  \
+//        SMCM: store fault (not control)  -
 //        SMIC: store fault (not control)   > I believe that these should be
-//        SSCR: store fault (not control)  /  command fault
+//        SSCR: store fault (not control)  -  command fault
 //        TSS:  STR:OOB
 //        Bar mode out-of-bounds: STR:OOB
 //     The SCU register doesn't define which bit is "store fault (not control)"

@@ -277,7 +277,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
     while (2 * segno < (16 * (cpu.DSBR.BND + 1)))
       {
         //generate target segment SDW for DSBR.ADDR + 2 * segno.
-        word24 a = cpu.DSBR.ADDR + 2 * segno;
+        word24 a = cpu.DSBR.ADDR + 2u * segno;
         
         // just fill with 0's for now .....
         core_write ((a + 0) & PAMASK, 0, __func__);
@@ -318,7 +318,7 @@ _sdw0 *fetchSDW (word15 segno)
   {
     word36 SDWeven, SDWodd;
     
-    core_read2 ((cpu.DSBR.ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
+    core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
     
     // even word
     
@@ -396,8 +396,8 @@ static t_stat dpsCmd_DumpSegmentTable()
         sim_printf("Descriptor segment pages\n");
         for(word15 segno = 0; 2 * segno < 16 * (cpu.DSBR.BND + 1); segno += 512)
         {
-            word24 y1 = (2 * segno) % 1024;
-            word24 x1 = (2 * segno - y1) / 1024;
+            word24 y1 = (2u * segno) % 1024u;
+            word24 x1 = (2u * segno - y1) / 1024u;
             word36 PTWx1;
             core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
@@ -416,7 +416,7 @@ static t_stat dpsCmd_DumpSegmentTable()
             for (word15 tspt = 0; tspt < 512; tspt ++)
             {
                 word36 SDWeven, SDWodd;
-                core_read2(((PTW1.ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
+                core_read2(((PTW1.ADDR << 6) + tspt * 2u) & PAMASK, & SDWeven, & SDWodd, __func__);
                 _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
@@ -1383,6 +1383,8 @@ static char * cycleStr (cycles_t cycle)
           return "FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
           return "SYNC_FAULT_RTN_cycle";
+        default:
+          return "unknown cycle";
      }
   }
 

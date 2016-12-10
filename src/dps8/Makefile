@@ -51,7 +51,13 @@ endif
 
 CFLAGS += -I../decNumber -I../simhv40-beta
 
-CFLAGS += -Wconversion
+# gcc is reporting completely bogus 'conversion' warnings.
+
+ifeq ($(CC),clang)
+CFLAGS += -Wall -Wconversion -Wsign-conversion
+else
+CFLAGS += -Wall -Wno-conversion -Wsign-conversion
+endif
 
 # Configuration switches
 

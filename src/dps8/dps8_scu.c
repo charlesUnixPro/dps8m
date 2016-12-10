@@ -1500,7 +1500,7 @@ if (scu_unit_num || (scu_port_num != 0 /* && scu_port_num != 7*/)) sim_printf ("
       {
         for (uint i = 0; i < N_SCU_SUBPORTS; i++)
           {
-            portp->subport_enables [i] = !! (sub_mask & (0200 >> i));
+            portp->subport_enables [i] = !! (sub_mask & (0200u >> i));
           }
 
 #ifdef RCFDBG
@@ -1521,7 +1521,7 @@ sim_printf (" [%d]\n", cnt);
         int val = -1;
         for (uint i = 0; i < N_SCU_SUBPORTS; i++)
           {
-            portp->xipmask [i] = !! (sub_mask & (0200 >> i));
+            portp->xipmask [i] = !! (sub_mask & (0200u >> i));
             if (portp->xipmask [i])
               {
                 val = (int) i;
@@ -1706,7 +1706,7 @@ static void deliverInterrupts (uint scu_unit_num)
             //sim_debug (DBG_DEBUG, & scu_dev, "mask %u port %u type %u cells %o\n", mask, port, scu [scu_unit_num] . ports [port] . type, scu [scu_unit_num] . cells [inum]);
             if (scu [scu_unit_num].ports [port].type != ADEV_CPU)
               continue;
-            if ((mask & (1 << (31 - inum))) != 0)
+            if ((mask & (1u << (31 - inum))) != 0)
               {
                 int cpu_unit_num = -1;
                 if (scu[scu_unit_num].ports[port].is_exp)
@@ -1763,7 +1763,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
             if (scu [scuUnitNum] . ports [port] . type != ADEV_CPU)
               continue;
             if (scu [scuUnitNum] . cells [inum] &&
-                (mask & (1 << (31 - inum))) != 0)
+                (mask & (1u << (31 - inum))) != 0)
               {
                 scu [scuUnitNum] . cells [inum] = false;
                 dumpIR ("scuGetHighestIntr", scuUnitNum);

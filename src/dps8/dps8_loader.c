@@ -634,7 +634,7 @@ int loadDeferredSegments(bool bVerbose)
         //if (sg->ldaddr == -1)
         //{
             word18 segwords = (word18) sg->size;
-            ldaddr += segwords;
+            ldaddr += (int) segwords;
             if (ldaddr % 16)
                 ldaddr += 16 - (ldaddr % 16);
         //}
@@ -869,9 +869,9 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred,
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
-            cpu . PPR.IC = addr & AMASK;
+            cpu.PPR.IC = (word18) addr & AMASK;
             
-            if (cpu . PPR.IC)
+            if (cpu.PPR.IC)
                 sim_printf("!GO address: %06lo\n", addr);
         }
         

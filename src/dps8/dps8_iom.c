@@ -1459,9 +1459,9 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     word36 ddcw;
     core_read (mbx, & ddcw, __func__);
     // incr addr
-    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1) & MASK18);
+    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
-    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1) & MASK12);
+    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
     core_write (mbx, ddcw, __func__);
   }
 
@@ -1751,7 +1751,7 @@ A:;
 
 
         // Decrement tally
-        p -> LPW_TALLY = (p -> LPW_TALLY - 1) & MASK12;
+        p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;
 
         packLPW (iomUnitIdx, chan);
 
@@ -1825,8 +1825,8 @@ D:;
     if (p -> LPW_21_NC == 0) // UPDATE
      {
         // UPDATE LPW ADDRESS & TALLY
-        p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1) & MASK18;       
-        p -> LPW_TALLY = (p -> LPW_TALLY - 1) & MASK12;       
+        p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1u) & MASK18;       
+        p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;       
         packLPW (iomUnitIdx, chan);
      }
 
@@ -2151,7 +2151,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     // address switches and zeros for the bits defined by the mailbox base
     // address switches.
     //imw_addr += 01200;  // all remaining bits
-    uint pi_base = iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress & ~3;
+    uint pi_base = iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress & ~3u;
     imw_addr = (pi_base << 3) | interrupt_num;
 
     sim_debug (DBG_NOTIFY, & iom_dev, 
@@ -2473,7 +2473,7 @@ static void initMemoryIOM (uint iomUnitIdx)
 
     // 5
 
-    word24 mbx = base_addr + 4 * bootchan;
+    word24 mbx = base_addr + 4u * bootchan;
 
     // Boot device LPW; points to IDCW at 000003
 

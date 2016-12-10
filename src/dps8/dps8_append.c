@@ -343,8 +343,8 @@ static void fetchDSPTW(word15 segno)
       }
     setAPUStatus (apuStatus_DSPTW);
 
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
+    word24 y1 = (2u * segno) % 1024u;
+    word24 x1 = (2u * segno - y1) / 1024u;
 
     PNL (cpu.lastPTWOffset = segno;)
     PNL (cpu.lastPTWIsDS = true;)
@@ -386,8 +386,8 @@ static void modifyDSPTW(word15 segno)
 
     setAPUStatus (apuStatus_MDSPTW); 
 
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
+    word24 y1 = (2u * segno) % 1024u;
+    word24 x1 = (2u * segno - y1) / 1024u;
     
     word36 PTWx1;
     core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
@@ -517,10 +517,10 @@ static void fetchNSDW(word15 segno)
         L68_ (cpu.apu.state |= apu_FLT;)
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
     }
-    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2 * segno);
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2u * segno);
     word36 SDWeven, SDWodd;
     
-    core_read2((cpu . DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2((cpu . DSBR.ADDR + 2u * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     cpu . SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -1066,7 +1066,10 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     cpu . RSDWH_R1 = 0;
     
     cpu.acvFaults = 0;
-    char * acvFaultsMsg = "<unknown>";
+
+//#define FMSG(x) x
+#define FMSG(x) 
+    FMSG (char * acvFaultsMsg = "<unknown>";)
 
     word24 finalAddress = (word24) -1;  // not everything requires a final address
     
@@ -1303,7 +1306,7 @@ A:;
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
             L68_ (cpu.apu.state |= apu_FLT;)
-            acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
+            FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";)
         }
         
         if (cpu . SDW->R == 0)
@@ -1313,7 +1316,7 @@ A:;
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
                 L68_ (cpu.apu.state |= apu_FLT;)
-                acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+                FMSG (acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";)
             }
         }
         
@@ -1340,7 +1343,7 @@ D:;
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
         cpu.acvFaults |= ACV13;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
+        FMSG (acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";)
     }
     
     goto G;
@@ -1358,7 +1361,7 @@ E:;
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(E) SDW .E set OFF";
+        FMSG (acvFaultsMsg = "acvFaults(E) SDW .E set OFF";)
     }
     
     //SDW .G set ON?
@@ -1376,7 +1379,7 @@ E:;
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
+        FMSG (acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";)
     }
     
 E1:
@@ -1387,7 +1390,7 @@ E1:
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
+        FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";)
     }
     
     // C(TPR.TRR) < SDW.R1?
@@ -1395,7 +1398,7 @@ E1:
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";
+        FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";)
     }
     
     
@@ -1406,7 +1409,7 @@ E1:
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
             L68_ (cpu.apu.state |= apu_FLT;)
-            acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
+            FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";)
         }
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
@@ -1428,7 +1431,7 @@ F:;
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, cpu . SDW -> R1);
         cpu.acvFaults |= ACV1;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
+        FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";)
     }
     
     //C(TPR.TRR) > C(SDW .R2)?
@@ -1437,14 +1440,14 @@ F:;
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
         cpu.acvFaults |= ACV1;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
+        FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";)
     }
     
     //SDW .E set ON?
     if (!cpu . SDW->E) {
         cpu.acvFaults |= ACV2;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(F) SDW .E set OFF";
+        FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
     }
     
     //C(PPR.PRR) = C(TPR.TRR)?
@@ -1452,7 +1455,7 @@ F:;
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";
+        FMSG (acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";)
     }
     
     goto D;
@@ -1466,7 +1469,7 @@ G:;
     if (((address >> 4) & 037777) > cpu . SDW->BOUND) {
         cpu.acvFaults |= ACV15;
         L68_ (cpu.apu.state |= apu_FLT;)
-        acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";
+        FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
         sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
                     address, ((address >> 4) & 037777), cpu . SDW->BOUND);
     }

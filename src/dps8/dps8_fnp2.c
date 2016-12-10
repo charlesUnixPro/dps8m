@@ -431,7 +431,7 @@ static int wcd (void)
                 int wordno = i / 32;
                 int bitno = i % 32;
                 int bitoffset = bitno > 16 ? 35 - bitno : 33 - bitno; 
-                linep->echnego[i] = !!(echoTable[wordno] & (1 << bitoffset));
+                linep->echnego[i] = !!(echoTable[wordno] & (1u << bitoffset));
               }
             linep->echnego_len = data_len;
           }
@@ -2526,7 +2526,7 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
                              UNUSED void * desc)
   {
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
-    if (fnpUnitIdx >= fnpDev . numunits)
+    if (fnpUnitIdx >= (long) fnpDev.numunits)
       {
         sim_debug (DBG_ERR, & fnpDev, 
                    "fnpShowConfig: Invalid unit number %ld\n", fnpUnitIdx);

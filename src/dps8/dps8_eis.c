@@ -1037,7 +1037,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
 #endif
     int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
     int baseBitPosn = baseCharPosn + p -> bPos;
-    baseBitPosn += cpu . du . CHTALLY;
+    baseBitPosn += (int) cpu . du . CHTALLY;
 
     int bitPosn = baseBitPosn % 36;
     int woff = baseBitPosn / 36;
@@ -1448,7 +1448,7 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
         case CTA4:
           {
             // Calculate character number of ARn CHAR and BITNO
-            uint bitoffset = ARn_CHAR * 9 + ARn_BITNO;
+            uint bitoffset = ARn_CHAR * 9u + ARn_BITNO;
             uint arn_char4 = bitoffset * 2 / 9; // / 4.5
             // 8 chars per word plus the number of chars in r, plus the 
             // number of chars in ARn CHAR/BITNO plus the CN from the operand
@@ -1475,15 +1475,15 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
         case CTA6:
           if (CN >= 6)
             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
-          effBITNO = (9 * ARn_CHAR + 6 * r + ARn_BITNO) % 9;
-          effCHAR = ((6 * CN +
-                      9 * ARn_CHAR +
-                      6 * r + ARn_BITNO) % 36) / 6;//9;
+          effBITNO = (9u * ARn_CHAR + 6u * r + ARn_BITNO) % 9u;
+          effCHAR = ((6u * CN +
+                      9u * ARn_CHAR +
+                      6u * r + ARn_BITNO) % 36u) / 6u;//9;
           effWORDNO = (uint) (address +
-                           (6 * CN +
-                            9 * ARn_CHAR +
-                            6 * r +
-                            ARn_BITNO) / 36);
+                           (6u * CN +
+                            9u * ARn_CHAR +
+                            6u * r +
+                            ARn_BITNO) / 36u);
           effWORDNO &= AMASK;
             
           e -> CN [k - 1] = effCHAR;   // ??????
@@ -1503,10 +1503,10 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
                      "effCHAR %d = (CN %d + ARn_CHAR %d + r %"PRId64") %% 4)\n",
                      effCHAR, CN, ARn_CHAR, r);
           effWORDNO = (uint) (address +
-                           ((9 * CN +
-                             9 * ARn_CHAR +
-                             9 * r +
-                             ARn_BITNO) / 36));
+                           ((9u * CN +
+                             9u * ARn_CHAR +
+                             9u * r +
+                             ARn_BITNO) / 36u));
           effWORDNO &= AMASK;
             
           e -> CN [k - 1] = effCHAR;   // ??????
@@ -1583,7 +1583,7 @@ static void parseArgOperandDescriptor (uint k)
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
 
     
-    y += ((9 * ARn_CHAR + 36 * r + ARn_BITNO) / 36);
+    y += ((9u * ARn_CHAR + 36u * r + ARn_BITNO) / 36u);
     y &= AMASK;
     
     PNL (cpu.du.Dk_PTR_W[k-1] = y);
@@ -1742,18 +1742,18 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
         case CTN4:
           {
             // Calculate character number of ARn CHAR and BITNO
-            uint bitoffset = ARn_CHAR * 9 + ARn_BITNO;
-            uint arn_char4 = bitoffset * 2 / 9; // / 4.5
+            uint bitoffset = ARn_CHAR * 9u + ARn_BITNO;
+            uint arn_char4 = bitoffset * 2u / 9u; // / 4.5
             //// The odd chars start at the 6th bit, not the 5th
             //if (bitoffset & 1) // if odd
             //  arn_char4 ++;
             // 8 chars per word plus the number of chars in r, plus the number of chars in ARn CHAR/BITNO
 // XXX Handle 'r' too big intelligently...
-            uint nchars = (uint) (address * 8 + r + arn_char4 + CN);
+            uint nchars = (uint) (address * 8u + r + arn_char4 + CN);
 
-            effWORDNO = nchars / 8; // 8 chars/word
-            effCHAR = nchars % 8; // effCHAR is the 4 bit char number, not the 9-bit char no
-            effBITNO = (nchars & 1) ? 5 : 0;
+            effWORDNO = nchars / 8u; // 8 chars/word
+            effCHAR = nchars % 8u; // effCHAR is the 4 bit char number, not the 9-bit char no
+            effBITNO = (nchars & 1u) ? 5u : 0u;
             effWORDNO &= AMASK;
 
             e->CN[k-1] = effCHAR;        // ?????
@@ -1761,13 +1761,13 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
           break;
 
         case CTN9:
-            if (CN & 1)
+            if (CN & 1u)
               doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
-            CN = (CN >> 1) & 03;
+            CN = (CN >> 1u) & 03u;
 
             effBITNO = 0;
-            effCHAR = (CN + ARn_CHAR + r) % 4;
-            effWORDNO = (uint) (address + (9*CN + 9*ARn_CHAR + 9*r + ARn_BITNO) / 36);
+            effCHAR = ((word36) CN + (word36) ARn_CHAR + r) % 4u;
+            effWORDNO = (uint) (address + (9u*CN + 9u*ARn_CHAR + 9u*r + ARn_BITNO) / 36);
             effWORDNO &= AMASK;
 
             e->CN[k-1] = effCHAR;        // ?????
@@ -1886,9 +1886,9 @@ static void parseBitstringOperandDescriptor (int k)
         r = 0;
     }
 
-    uint effBITNO = (9*ARn_CHAR + r + ARn_BITNO + B + 9*C) % 9;
-    uint effCHAR = ((9*ARn_CHAR + r + ARn_BITNO + B + 9*C) % 36) / 9;
-    uint effWORDNO = (uint) (address + (9*ARn_CHAR + r + ARn_BITNO + B + 9*C) / 36);
+    uint effBITNO = (9u*ARn_CHAR + r + ARn_BITNO + B + 9u*C) % 9u;
+    uint effCHAR = ((9u*ARn_CHAR + r + ARn_BITNO + B + 9u*C) % 36u) / 9u;
+    uint effWORDNO = (uint) (address + (9u*ARn_CHAR + r + ARn_BITNO + B + 9u*C) / 36u);
     effWORDNO &= AMASK;
     
     e->B[k-1] = effBITNO;
@@ -1966,10 +1966,10 @@ void a4bd (void)
          // force to 4 bit character boundary
          //augend = augend & ~3;
          //augend = cpu.AR[ARn].WORDNO * 8 + cpu.AR[ARn].CHAR * 2;
-         augend = cpu.AR[ARn].WORDNO * 8 + GET_AR_CHAR (ARn) * 2;
+         augend = cpu.AR[ARn].WORDNO * 8u + GET_AR_CHAR (ARn) * 2u;
 
          //if (cpu.AR[ARn].BITNO >= 5)
-         if (GET_AR_BITNO (ARn) >= 5)
+         if (GET_AR_BITNO (ARn) >= 5u)
            augend ++;
        }
 
@@ -2010,7 +2010,7 @@ void a4bd (void)
 //    AR [ARn] . BITNO = tab [bitno];
     //cpu . AR [ARn] . BITNO = bitFromCnt[bitno % 8];
     //SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
-    uint char4no = sum % 8;
+    uint char4no = (uint) (sum % 8);
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd char4no %d.\n", char4no);
 
@@ -2059,7 +2059,7 @@ void s4bd (void)
 //                       28, 29, 30, 31, 32, 33, 34, 35};
 //
 
-    uint bitno = difference % 32;
+    uint bitno = (uint) (difference % 32);
 //    cpu . AR [ARn] . BITNO = tab [bitno];
     // SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
     SET_AR_CHAR_BITNO (ARn, bitFromCnt[bitno % 8] / 9, bitFromCnt[bitno % 8] % 9);
@@ -2106,7 +2106,7 @@ IF1 sim_printf ("axbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, addre
       {
 IF1 sim_printf ("axbd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
        sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd ARn %d WORDNO %o CHAR %o BITNO %0o %d.\n", ARn, cpu.PAR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
-       augend = cpu . AR [ARn] . WORDNO * 36 + GET_AR_CHAR (ARn) * 9 + GET_AR_BITNO (ARn);
+       augend = cpu.AR[ARn].WORDNO * 36u + GET_AR_CHAR (ARn) * 9u + GET_AR_BITNO (ARn);
       }
 IF1 sim_printf ("axbd augend 0%o\n", augend);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "axbd augend 0%o\n", augend);
@@ -2174,7 +2174,7 @@ void abd (void)
 //if (currentRunningCPUnum)
 //sim_printf ("A 1\n");
         //word24 bits = 9 * cpu.AR[ARn].CHAR + cpu.AR[ARn].BITNO + r;
-        word24 bits = 9 * GET_AR_CHAR (ARn) + GET_AR_BITNO (ARn) + r;
+        word24 bits = 9u * GET_AR_CHAR (ARn) + GET_AR_BITNO (ARn) + r;
 //if (currentRunningCPUnum)
 //sim_printf ("bits 0%o %d.\n", bits, bits);
         cpu.AR[ARn].WORDNO = (cpu.AR[ARn].WORDNO + address +
@@ -2430,7 +2430,7 @@ IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO
       {
 IF1 sim_printf ("A 1\n");
         //word24 bits = 9 * cpu.AR[ARn].CHAR + cpu.AR[ARn].BITNO - r;
-        word24 bits = 9 * GET_AR_CHAR (ARn) + GET_AR_BITNO (ARn) - r;
+        word24 bits = 9u * GET_AR_CHAR (ARn) + GET_AR_BITNO (ARn) - r;
 IF1 sim_printf ("bits 0%o %d.\n", bits, bits);
         cpu.AR[ARn].WORDNO = (cpu.AR[ARn].WORDNO - 
                              address + bits / 36) & MASK18;
@@ -2846,7 +2846,7 @@ IF1 sim_printf ("asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
 IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
 IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 IF1 if (sz == 6)
-{ uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
+{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
     sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
 
@@ -3030,7 +3030,7 @@ IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
 
 IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 IF1 if (sz == 6)
-{ uint bt = GET_AR_CHAR (ARn) * 9  + GET_AR_BITNO (ARn);
+{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
 sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
 }
 
@@ -3950,8 +3950,8 @@ void tct (void)
 
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT c %03o %c cout %03o %c\n",
-                   m, isprint (m) ? '?' : m, 
-                   cout, isprint (cout) ? '?' : cout);
+                   m, isprint ((int) m) ? '?' : (char) m, 
+                   cout, isprint ((int) cout) ? '?' : (char) cout);
 
         if (cout)
           {
@@ -4123,8 +4123,8 @@ void tctr (void)
 
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT c %03o %c cout %03o %c\n",
-                   m, isprint (m) ? '?' : m, 
-                   cout, isprint (cout) ? '?' : cout);
+                   m, isprint ((int) m) ? '?' : (char) m, 
+                   cout, isprint ((int) cout) ? '?' : (char) cout);
 
         if (cout)
           {
@@ -4180,6 +4180,7 @@ static bool isOvp (uint c, word9 * on)
 }
 #endif
 
+#if 0
 static bool isOvp2 (uint c, bool * isNeg)
   {
     if (c & 020)
@@ -4194,6 +4195,7 @@ static bool isOvp2 (uint c, bool * isNeg)
       }
     return false;
   }
+#endif
 
 // Applies to both MLR and MRL
 // 
@@ -4325,7 +4327,7 @@ IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IROD
 #endif
     //word9 on;     // number overpunch represents (if any)
     bool isNeg = false;
-    bool bOvp = false;  // true when a negative overpunch character has been 
+    //bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
     
@@ -4548,7 +4550,7 @@ IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IROD
                 // this is kind of wierd. I guess that C(FILL)0 = 1 means that
                 // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
-                bOvp = isOvp2 (c, & isNeg);
+                //bOvp = isOvp2 (c, & isNeg);
 IF1 sim_printf ("overpunch char is %03o\n", c);
                 //  cout = on;   // replace char with the digit the overpunch 
                                // represents
@@ -4710,7 +4712,7 @@ void mrl (void)
 #endif
 //IF1 sim_printf ("MRL ovp %u\n", ovp);
     bool isNeg = false;
-    bool bOvp = false;  // true when a negative overpunch character has been 
+    //bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
     L68_ (if (max (e->N1, e->N2) < 128)
@@ -4847,7 +4849,7 @@ void mrl (void)
                 // this is kind of wierd. I guess that C(FILL)0 = 1 means that
                 // there *is* an overpunch char here.
                 //bOvp = isOvp (c, & on);
-                bOvp = isOvp2 (c, & isNeg);
+                //bOvp = isOvp2 (c, & isNeg);
 //IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
                 //cout = on;   // replace char with the digit the overpunch 
                              // represents
@@ -7876,7 +7878,7 @@ static bool EISgetBitRWNR (EISaddr * p)
   {
     int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
     int baseBitPosn = baseCharPosn + p -> bPos;
-    baseBitPosn -= cpu . du . CHTALLY;
+    baseBitPosn -= (int) cpu.du.CHTALLY;
 
     int bitPosn = baseBitPosn % 36;
     int woff = baseBitPosn / 36;

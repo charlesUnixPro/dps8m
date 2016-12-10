@@ -165,9 +165,13 @@ typedef int             t_bool;                         /* boolean */
 #if __WORDSIZE == 64
 typedef signed long        t_int64;
 typedef unsigned long      t_uint64;
+#define I64(c) (c ## L)
+#define U64(c) (c ## UL)
 #else
 typedef signed long long        t_int64;
 typedef unsigned long long      t_uint64;
+#define I64(c) (c ## LL)
+#define U64(c) (c ## ULL)
 #endif
 #elif defined (_WIN32)                                  /* Windows */
 typedef signed __int64          t_int64;

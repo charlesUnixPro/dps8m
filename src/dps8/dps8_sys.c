@@ -109,7 +109,11 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
-//static t_stat launch (int32 arg, char * buf);
+//#define LAUNCH
+#ifdef LAUNCH
+static t_stat launch (int32 arg, char * buf);
+#endif
+
 #ifdef DVFDBG
 static t_stat dfx1entry (int32 arg, char * buf);
 static t_stat dfx1exit (int32 arg, char * buf);
@@ -171,7 +175,9 @@ static CTAB dps8_cmds[] =
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
-//    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+#ifdef LAUNCH
+    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+#endif
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
 
@@ -549,7 +555,7 @@ static int lookupSystemBookName (char * segname, char * compname, long * segno, 
         if (strcmp (bookComponents [j] . compname, compname) == 0)
           {
             * segno = bookSegments [i] . segno;
-            * offset = bookComponents [j] . txt_start;
+            * offset = (long) bookComponents[j].txt_start;
             return 0;
           }
       }
@@ -644,7 +650,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                 while (! feof (listing))
                   {
                     fgets (line, 1024, listing);
-                    if (strncmp (line, offset_str, offset_str_len) == 0)
+                    if (strncmp (line, offset_str, (size_t) offset_str_len) == 0)
                       {
                         if (! dflag)
                           sim_printf ("%s", line);
@@ -1201,7 +1207,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
                     continue;
                   }
                 word36 argv = M [argnop];
-                sim_printf ("arg%d value   %05o:%06o [%08o] %012"PRIo64" (%llu)\n", 
+                sim_printf ("arg%d value   %05o:%06o [%08o] %012"PRIo64" (%"PRIu64")\n", 
                             argno, argSegno, argOffset, argnop, argv, argv);
                 sim_printf ("\n");
              }
@@ -1252,17 +1258,17 @@ static t_stat virtAddr (UNUSED int32 arg, char * buf)
 t_stat virtAddrN (uint address)
   {
     if (cpu . DSBR.U) {
-        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 1)
+        for(word15 segno = 0; 2u * segno < 16u * (cpu . DSBR.BND + 1u); segno += 1)
         {
             _sdw0 *s = fetchSDW(segno);
-            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16)
+            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16u)
               sim_printf ("  %06o:%06o\n", segno, address - s -> ADDR);
         }
     } else {
-        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 512)
+        for(word15 segno = 0; 2u * segno < 16u * (cpu . DSBR.BND + 1u); segno += 512u)
         {
-            word24 y1 = (2 * segno) % 1024;
-            word24 x1 = (2 * segno - y1) / 1024;
+            word24 y1 = (2u * segno) % 1024u;
+            word24 x1 = (2u * segno - y1) / 1024u;
             word36 PTWx1;
             core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
@@ -1278,18 +1284,18 @@ t_stat virtAddrN (uint address)
             //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
             //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
             //sim_printf ("    Target segment page table\n");
-            for (word15 tspt = 0; tspt < 512; tspt ++)
+            for (word15 tspt = 0; tspt < 512u; tspt ++)
             {
                 word36 SDWeven, SDWodd;
-                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2u) & PAMASK, & SDWeven, & SDWodd, __func__);
                 _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-                SDW0.R1 = (SDWeven >> 9) & 7;
-                SDW0.R2 = (SDWeven >> 6) & 7;
-                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.R1 = (SDWeven >> 9) & 7u;
+                SDW0.R2 = (SDWeven >> 6) & 7u;
+                SDW0.R3 = (SDWeven >> 3) & 7u;
                 SDW0.DF = TSTBIT(SDWeven, 2);
-                SDW0.FC = SDWeven & 3;
+                SDW0.FC = SDWeven & 3u;
 
                 // odd word
                 SDW0.BOUND = (SDWodd >> 21) & 037777;
@@ -1334,7 +1340,7 @@ t_stat virtAddrN (uint address)
                   }
                 else
                   {
-                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16)
+                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16u)
                       sim_printf ("  %06o:%06o\n", tspt, address - SDW0.ADDR);
                   }
             }
@@ -2207,6 +2213,7 @@ DEVICE * sim_devices [] =
     NULL
   };
 
+#ifdef LAUNCH
 #define MAX_CHILDREN 256
 static int nChildren = 0;
 static pid_t childrenList [MAX_CHILDREN];
@@ -2230,7 +2237,6 @@ static void addChild (pid_t pid)
      atexit (cleanupChildren);
   }
 
-#if 0
 static t_stat launch (int32 UNUSED arg, char * buf)
   {
     wordexp_t p;

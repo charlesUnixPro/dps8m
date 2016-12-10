@@ -240,8 +240,7 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
 #include <fcntl.h>
 
 // Copied from https://searchcode.com/codesearch/view/32512650/
-int
-mkstemps (char *pattern, int suffix_len)
+static int mkstemps (char *pattern, int suffix_len)
 {
   static const char letters[]
     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -256,17 +255,17 @@ mkstemps (char *pattern, int suffix_len)
   len = strlen (pattern);
 
   if ((int) len < 6 + suffix_len
-      || strncmp (&pattern[len - 6 - suffix_len], "XXXXXX", 6))
+      || strncmp (&pattern[((int) len) - 6 - suffix_len], "XXXXXX", 6))
     {
       return -1;
     }
 
-  XXXXXX = &pattern[len - 6 - suffix_len];
+  XXXXXX = &pattern[((int) len) - 6 - suffix_len];
 
 //#ifdef HAVE_GETTIMEOFDAY
   /* Get some more or less random data.  */
   gettimeofday (&tv, NULL);
-  value += ((uint64_t) tv.tv_usec << 16) ^ tv.tv_sec ^ getpid ();
+  value += ((uint64_t) tv.tv_usec << 16) ^ (uint64_t) tv.tv_sec ^ (uint64_t) getpid ();
 //#else
 //  value += getpid ();
 //#endif

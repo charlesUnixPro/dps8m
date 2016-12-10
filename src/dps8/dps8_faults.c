@@ -238,7 +238,7 @@ void emCallReportFault (void)
   {
            sim_printf ("fault report:\n");
            sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
-           sim_printf ("  subfault number %llu (%"PRIo64")\n", cpu.subFault.bits, cpu.subFault.bits);
+           sim_printf ("  subfault number %"PRIu64" (%"PRIo64")\n", cpu.subFault.bits, cpu.subFault.bits);
            sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
            sim_printf ("  msg %s\n", fault_msg);
   }
@@ -340,7 +340,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 //if (currentRunningCPUnum)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
-               "Fault %d(0%0o), sub %llu(0%"PRIo64"), dfc %c, '%s'\n", 
+               "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault.bits, subFault.bits, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 #ifdef HDBG
@@ -379,7 +379,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     // Increment FCT
 
     word3 FCT = cpu.cu.APUCycleBits & MASK3;
-    FCT = (FCT + 1) & MASK3;
+    FCT = (FCT + 1u) & MASK3;
     cpu.cu.APUCycleBits = (word12) ((cpu.cu.APUCycleBits & 07770) | FCT);
 
     // Set fault register bits

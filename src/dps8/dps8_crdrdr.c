@@ -466,7 +466,8 @@ sim_printf ("hopper empty\n");
     unsigned char cardImage [80] = "";
     uint8_t rawCardImage [rawCardImageBytes + 2 ];
     size_t l = 0;
-    enum deckFormat thisCard;
+    // initialize to quiet compiler
+    enum deckFormat thisCard = cardDeck;
 
     static int jobNo = 0;
 

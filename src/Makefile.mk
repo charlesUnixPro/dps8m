@@ -34,11 +34,6 @@ else
     endif
 endif
 
-#CFLAGS = -m32
-#CFLAGS = -m64
-
-#CFLAGS += -I../decNumber -I../simhv40-beta
-
 CFLAGS += -std=c99
 CFLAGS += -U__STRICT_ANSI__  
 CFLAGS += -D_GNU_SOURCE
@@ -58,7 +53,6 @@ MAKEFLAGS += --no-print-directory
 
 %.o : %.c
 	@echo CC $<
-	@echo $(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 # This file is included as '../Makefile.mk', so it's local include needs the ../
