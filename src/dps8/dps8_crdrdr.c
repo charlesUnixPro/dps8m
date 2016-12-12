@@ -415,7 +415,7 @@ static int getCardLine (int fd, unsigned char * buffer)
           return 0;
         buffer [n ++] = ch;
         buffer [n] = 0;
-        if (n >= 79)
+        if (n > 79)
          return 0;
      }
   }
