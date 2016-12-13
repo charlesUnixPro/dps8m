@@ -68,7 +68,7 @@ LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
 # simh requires -ldl
 # Cygwin seems to need...
 ifeq ($(OS),Windows_NT)
-    LIBS += -lgcc -lm -ldl -lrt
+    LIBS += -lgcc -lm -ldl
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)

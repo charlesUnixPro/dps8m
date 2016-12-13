@@ -8,10 +8,19 @@
 # See the LICENSE file at the top-level directory of this distribution and
 # at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
 
+msys_version := $(if $(findstring Msys, $(shell uname -o)),$(word 1, $(subst ., ,$(shell uname -r))),0)
+ifeq ($(msys_version),0)
+else
+  CROSS=MINGW64
+endif
 ifeq ($(CROSS),MINGW64)
   CC = x86_64-w64-mingw32-gcc
   LD = x86_64-w64-mingw32-gcc
+ifeq ($(msys_version),0)
   AR = x86_64-w64-mingw32-ar
+else
+  AR = ar
+endif
   EXE = .exe
 else
 #CC = gcc
