@@ -8463,12 +8463,14 @@ static int emCall (void)
             sim_printf ("%"PRId64"", tmp);
             break;
         }
+#ifndef __MINGW64__
         case 6:     // putEAQ - put float contents of C(EAQ) to stdout
         {
             long double eaq = EAQToIEEElongdouble ();
             sim_printf ("%12.8Lg", eaq);
             break;
         }
+#endif
         case 7:   // dump index registers
             for (int i = 0 ; i < 8 ; i += 4)
                 sim_printf ("r[%d]=%06o r[%d]=%06o r[%d]=%06o r[%d]=%06o\n",
