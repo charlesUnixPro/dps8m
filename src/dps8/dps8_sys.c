@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -19,8 +20,10 @@
 */
 
 #include <stdio.h>
-//#include <wordexp.h>
-//#include <signal.h>
+#ifndef __MINGW64__
+#include <wordexp.h>
+#include <signal.h>
+#endif
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -80,7 +83,7 @@ int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
 static pid_t dps8m_sid; // Session id
 #endif
 
@@ -109,7 +112,7 @@ static t_stat sbreak (int32 arg, char * buf);
 static t_stat stackTrace (int32 arg, char * buf);
 static t_stat listSourceAt (int32 arg, char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
-//#define LAUNCH
+#define LAUNCH
 #ifdef LAUNCH
 static t_stat launch (int32 arg, char * buf);
 #endif
@@ -205,7 +208,7 @@ static CTAB dps8_cmds[] =
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
-#if 0
+#ifndef __MINGW64__
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
@@ -213,7 +216,7 @@ static void usr1SignalHandler (UNUSED int sig)
     setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
-#endif 
+#endif
 
 // Once-only initialization
 
@@ -243,7 +246,7 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
@@ -256,8 +259,10 @@ static void dps8_init(void)
 #endif
 #endif
 
+#ifndef __MINGW64__
     // Wire the XF button to signal USR1
-    //signal (SIGUSR1, usr1SignalHandler);
+    signal (SIGUSR1, usr1SignalHandler);
+#endif
 
     init_opcodes();
     sysCableInit ();
@@ -273,7 +278,7 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
     absi_init ();
 #endif
 }
@@ -2207,13 +2212,13 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
     & absi_dev,
 #endif
     NULL
   };
 
-#ifdef LAUNCH
+//#ifdef LAUNCH
 #define MAX_CHILDREN 256
 static int nChildren = 0;
 static pid_t childrenList [MAX_CHILDREN];
@@ -2223,8 +2228,13 @@ static void cleanupChildren (void)
     printf ("cleanupChildren\n");
     for (int i = 0; i < nChildren; i ++)
       {
+#ifndef __MINGW64__
         printf ("  kill %d\n", childrenList [i]);
         kill (childrenList [i], SIGHUP);
+#else
+        TerminateProcess((HANDLE)childrenList [i], 1);
+        CloseHandle((HANDLE)childrenList [i]);
+#endif
       }
   }
 
@@ -2237,8 +2247,10 @@ static void addChild (pid_t pid)
      atexit (cleanupChildren);
   }
 
+#ifdef LAUNCH
 static t_stat launch (int32 UNUSED arg, char * buf)
   {
+#ifndef __MINGW64__
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
     if (rc)
@@ -2262,7 +2274,21 @@ static t_stat launch (int32 UNUSED arg, char * buf)
       }
     addChild (pid);
     wordfree (& p);
-
+#else
+     STARTUPINFO si;
+     PROCESS_INFORMATION pi;
+ 
+     memset( &si, 0, sizeof(si) );
+     si.cb = sizeof(si);
+     memset( &pi, 0, sizeof(pi) );
+ 
+     if( !CreateProcess( NULL, buf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) 
+     {
+         sim_printf ("fork failed\n");
+         return SCPE_ARG;
+     }
+     addChild ((pid_t)pi.hProcess);
+#endif
     return SCPE_OK;
   }
 #endif

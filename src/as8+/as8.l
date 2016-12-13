@@ -1,5 +1,6 @@
 /*
  Copyright 2012-2015 by Harry Reed
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -12,7 +13,11 @@
 %{
     #include <ctype.h>
     #include <math.h>
-    
+
+    #ifdef __MINGW64__
+    char * strcasestr (const char *haystack_start, const char *needle_start);
+    #endif    
+
     #include "as.h"
     
     #include "y.tab.h"

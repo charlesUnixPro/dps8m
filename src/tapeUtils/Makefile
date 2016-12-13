@@ -1,3 +1,21 @@
+# Copyright 2014-2016 by Charles Anthony
+# Copyright 2016 by Michal Tomek
+#
+# All rights reserved.
+#
+# This software is made available under the terms of the
+# ICU License -- ICU 1.8.1 and later. 
+# See the LICENSE file at the top-level directory of this distribution and
+# at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+
+# Our Cygwin users are using gcc.
+ifeq ($(OS),Windows_NT)
+    CC = gcc
+    LD = gcc
+    SYS := $(shell $(CC) -dumpmachine)
+    EXE = .exe
+endif
+
 CFLAGS = -g -O0 -Wall -std=c99 -U__STRICT_ANSI__
 LDFLAGS = -g
 ETF_OBJS = extract_tape_files.o bit36.o simhtapes.o
@@ -23,10 +41,20 @@ P72C_OBJS = p72_to_bcd.o bit36.o
 P72S_OBJS = p72archive_to_segment.o bit36.o
 DD_OBJS = diskDump.o bit36.o
 ABA_OBJS = p72archive_bind_to_ascii.o bit36.o
+VII_OBJS = viipunch.o bit36.o
+CDUMP_OBJS = cdump.o
+CDUMPA_OBJS = cdumpa.o
+ifeq ($(OS),Windows_NT)
+  ifneq (, $(findstring mingw, $(SYS)))
+    CDUMP_OBJS += ../gnulib/dirent.o
+    CDUMPA_OBJS += ../gnulib/dirent.o
+    CFLAGS += -I../mingw_include
+  endif 
+endif
 
-EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36 cdump cdumpa reload p72_to_bcd
+EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36 cdump cdumpa reload p72_to_bcd p72_to_binary prt2pdf
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS) $(VII_OBJS) prt2pdf.o p72_to_binary.o p72_to_bcd.o cdumpa.o cdump.o cat36.o pack8.o purge.o dumpDiskRecords.o dumpDisk.o p72archive_bind_to_ascii.o diskDump.o p72archive_to_segment.o p72archive_to_acsii.o p72_to_acsii.o unpack.o
 
 all : $(EXES)
 
@@ -57,7 +85,10 @@ p72archive_bind_to_ascii: $(ABA_OBJS)
 dumpDisk: dumpDisk.o bit36.o
 dumpDiskRecords: dumpDiskRecords.o bit36.o
 cat36: cat36.o bit36.o
-
+viipunch: $(VII_OBJS)
+cdump: $(CDUMP_OBJS)
+cdumpa: $(CDUMPA_OBJS)
+prt2pdf: prt2pdf.o
 extract_tape_files.o : extract_tape_files.c bit36.h simhtapes.h mst.h
 bit36.o : bit36.c bit36.h
 mfile.o : mfile.c bit36.h simhtapes.h mst.h
@@ -77,5 +108,5 @@ restore_toc.o : restore_toc.c bit36.h
 restore_tape.o : restore_tape.c bit36.h mst.h simhtapes.h
 purge.o : purge.c
 clean:
-	-rm $(OBJS)  $(EXES)
+	-rm -f $(OBJS)  $(EXES:=$(EXE)) 
 

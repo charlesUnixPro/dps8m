@@ -1,5 +1,6 @@
 /*
  Copyright 2012-2015 by Harry Reed
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -61,8 +62,8 @@ int asMain(int argc, char **argv)
     inFile = argv[0];   // for LEXgets/c
     srcFile = strdup(inFile);
     
-    char *bnIn = strdup(basename(srcFile));
-    char *bnOut = strdup(basename(outFile));
+    char *bnIn = basename(strdup(srcFile));
+    char *bnOut = basename(strdup(outFile));
     
     if (strcmp(bnIn, bnOut) == 0)
     {

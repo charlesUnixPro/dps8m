@@ -1,5 +1,6 @@
 /*
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -14,6 +15,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+typedef unsigned int uint;
 
 // dcl 1 card aligned,           /* 7punch card declaration */
 //     2 w0,                     /* first word */

@@ -2211,7 +2211,7 @@ restart_1:
                    "A=%012"PRIo64" Q=%012"PRIo64" IR:%s\n",
                    cpu.rA, cpu.rQ, dumpFlags (cpu.cu.IR));
 
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
                    "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10Lg\n",
                    cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());

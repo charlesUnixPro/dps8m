@@ -1,5 +1,4 @@
-/*
- Copyright (c) 2007-2013 Michael Mondy
+/* Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
 
@@ -19,10 +18,14 @@
 //  Copyright (c) 2013 Harry Reed. All rights reserved.
 //
 
+//#ifdef __MINGW64__
+//#include <inttypes.h>
+//#include "signal_gnu.h"
+//#endif
 #include <stdio.h>
 #include <unistd.h>
-#ifndef CROSS_MINGW64
 #include <signal.h>
+#ifndef __MINGW64__
 #include <termios.h>
 #endif
 
@@ -190,12 +193,14 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
 
 static bool attn_pressed = false;
 
-#ifndef CROSS_MINGW64
+#if 0
+//#ifndef __MINGW64__
 static void quit_sig_hndlr (int UNUSED signum)
   {
     //printf ("quit\n");
     attn_pressed = true;
   }
+//#endif
 #endif
 
 bool check_attn_key (void)
@@ -216,13 +221,15 @@ void console_init()
     console_state . auto_input = NULL;
     console_state . autop = NULL;
 
-#ifndef CROSS_MINGW64
+#if 0
+//#ifndef __MINGW64__
     // The quit signal is used has the console ATTN key
     struct sigaction quit_action;
     quit_action . sa_handler = quit_sig_hndlr;
     quit_action . sa_flags = SA_RESTART;
     sigemptyset (& quit_action . sa_mask);
     sigaction (SIGQUIT, & quit_action, NULL);
+//#endif
 #endif
 
 }
@@ -317,7 +324,7 @@ t_stat console_attn (UNUSED UNIT * uptr)
 static UNIT attn_unit = 
   { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
 
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
 static struct termios ttyTermios;
 static bool ttyTermiosOk = false;
 
@@ -751,7 +758,7 @@ sim_printf ("uncomfortable with this\n");
                 char text [tally * 4 + 1];
                 * text = 0;
                 char * textp = text;
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
                 newlineOff ();
 #endif
 // XXX this should be iomIndirectDataService
@@ -777,7 +784,7 @@ sim_printf ("uncomfortable with this\n");
                 * textp ++ = 0;
                 handleRCP (text);
                 // sim_printf ("\n");
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
                 newlineOn ();
 #endif
                 p -> stati = 04000;

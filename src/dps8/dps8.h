@@ -552,7 +552,7 @@ typedef struct DCDstruct DCDstruct;
 #ifdef __GNUC__
 #define NO_RETURN   __attribute__ ((noreturn))
 #define UNUSED      __attribute__ ((unused))
-#elif defined (CROSS_MINGW64)
+#elif defined (__MINGW64__)
 #define NO_RETURN   __attribute__ ((noreturn))
 #define UNUSED      __attribute__ ((unused))
 #else

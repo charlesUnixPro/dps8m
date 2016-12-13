@@ -1,6 +1,7 @@
 # Copyright 2013-2016 by Harry Reed
 # Copyright 2013-2016 by Charles Anthony
 # Copyright 2016 Jean-Michel Merliot
+# Copyright 2016 by Michal Tomek
 #
 # All rights reserved.
 #
@@ -37,9 +38,6 @@ endif
 
 FNP2=1
 ifdef FNP2
-$(warning ####)
-$(warning #### FNP2 mode)
-$(warning ####)
 CFLAGS += -DFNP2
 LIBS += -luv
 endif
@@ -50,6 +48,9 @@ LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32
 endif
 
 CFLAGS += -I../decNumber -I../simhv40-beta
+#ifeq ($(CROSS),MINGW64)
+#CFLAGS += -I../gnulib
+#endif
 
 # gcc is reporting completely bogus 'conversion' warnings.
 
@@ -61,7 +62,8 @@ endif
 
 # Configuration switches
 
-LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
+#LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a
 
 # simh requires -ldl
 # Cygwin seems to need...
@@ -224,7 +226,7 @@ all: locallibs_then_dps8
 #	$(CC) remote.c -o remote fnp_udplib.o
 
 install: all
-	cp dps8 $(INSTALL_BIN)/dps8
+	cp dps8$(EXE) $(INSTALL_BIN)/dps8$(EXE)
 
 cscope:
 	cscope $(C_SRCS)
@@ -250,12 +252,9 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 #all : blinkenLightsCurses
 
-dps8 : $(OBJS) $(LOCALLIBS) 
-	@echo LD dps8
-	@$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LOCALLIBS) $(LIBS)
-ifeq ($(CROSS),MINGW64)
-	cp dps8 dps8.exe
-endif
+dps8$(EXE) : $(OBJS) $(LOCALLIBS) 
+	@echo LD dps8$(EXE)
+	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 
@@ -278,9 +277,12 @@ slte.inc : system_book_12_3.ascii
 locallibs_then_dps8 : 
 	(cd ../simhv40-beta; $(MAKE))
 	(cd ../decNumber; $(MAKE))
+ifeq ($(CROSS),MINGW64)
+	#(cd ../gnulib; $(MAKE))
+endif
 	#$(MAKE) zmq
 	$(MAKE) dps8.sha1.txt
-	$(MAKE) dps8
+	$(MAKE) dps8$(EXE)
 
 
 # Other Targets
@@ -336,7 +338,7 @@ clean:
 
 clean_dps8:
 	@echo CLEAN dps8
-	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
+	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8$(EXE) tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt

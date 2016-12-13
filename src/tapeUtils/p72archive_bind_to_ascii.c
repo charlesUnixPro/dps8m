@@ -1,5 +1,6 @@
 /*
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -22,6 +23,9 @@
 #include <ctype.h>
 #include <libgen.h>
 
+#ifdef __MINGW64__
+#define mkdir(x,mode) mkdir(x)
+#endif   
 
 // extract bits into a number
 #include <stdint.h>

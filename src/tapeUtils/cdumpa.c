@@ -1,5 +1,6 @@
 /*
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -16,6 +17,9 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
+#ifdef __MINGW64__
+#include <dirent_gnu.h>
+#endif
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fcntl.h>

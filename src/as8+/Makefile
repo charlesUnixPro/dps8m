@@ -1,4 +1,5 @@
 # Copyright 2012-2015 by Harry Reed
+# Copyright 2016 by Michal Tomek
 #
 # All rights reserved.
 #
@@ -6,6 +7,14 @@
 # ICU License -- ICU 1.8.1 and later. 
 # See the LICENSE file at the top-level directory of this distribution and
 # at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
+
+# Our Cygwin users are using gcc.
+ifeq ($(OS),Windows_NT)
+    CC = gcc
+    LD = gcc
+    SYS := $(shell $(CC) -dumpmachine)
+    EXE = .exe
+endif
 
 C_SRCS += \
 ./as8.l \
@@ -38,13 +47,21 @@ CFLAGS = -std=c99
 YACC = bison
 LEX = flex
 
+ifeq ($(OS),Windows_NT)
+  ifneq (, $(findstring mingw, $(SYS)))
+     OBJSG = ../gnulib/asprintf.o ../gnulib/strcasestr.o
+     OBJSG2 = ../gnulib/strndup.o
+     INDEXfix = -Dindex=strchr
+  endif
+endif
+
 # rules
 
 all: as8+ as8pp
 
 # Tool invocations
-as8+: $(OBJS) y.tab.o lex.yy.o 
-	gcc  -o "as8+" $(OBJS) 
+as8+: $(OBJS)
+	$(CC) -o "as8+" $(OBJS) $(OBJSG)
 
 opcodeTable.o: y.tab.h
 
@@ -61,15 +78,14 @@ y.tab.h: y.tab.c
 
 lex.yy.c: as8.l
 	$(LEX) -i as8.l	
-	
+
 as8pp : as8pp.c
-	gcc as8pp.c -o as8pp $(CFLAGS) -U__STRICT_ANSI__ -O0 -g
+	$(CC) as8pp.c $(OBJSG2) -o as8pp $(CFLAGS) $(INDEXfix) -U__STRICT_ANSI__ -O0 -g
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) y.tab.c y.tab.h lex.yy.c y.output as8+
+	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) y.tab.c y.tab.h lex.yy.c y.output as8+$(EXE) as8pp$(EXE)
 	-@echo ' '
 
 .PHONY: all clean dependents
 .SECONDARY:
-

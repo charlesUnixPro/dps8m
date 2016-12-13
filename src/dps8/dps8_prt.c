@@ -234,7 +234,7 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
     return 1;
   }
 
-#ifdef CROSS_MINGW64
+#ifdef __MINGW64__
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>

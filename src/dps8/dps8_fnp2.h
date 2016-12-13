@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -11,6 +12,12 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+//#ifdef __MINGW64__
+//#ifndef SRWLOCK
+//typedef PVOID RTL_SRWLOCK;
+//typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
+//#endif 
+//#endif
 #include <uv.h>
 #include "libtelnet.h"
 

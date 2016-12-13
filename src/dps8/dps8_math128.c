@@ -12,7 +12,7 @@
 #ifndef DPS8_MATH128
 #define DPS8_MATH128
 
-#if __SIZEOF_LONG__ < 8 && ! defined (CROSS_MINGW64)
+#if __SIZEOF_LONG__ < 8 && ! defined (__MINGW64__)
 
 #include "dps8_math128.h"
 

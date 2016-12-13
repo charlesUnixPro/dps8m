@@ -28,7 +28,7 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
 #include "dps8_absi.h"
 #endif
 #include "dps8_cable.h"
@@ -571,7 +571,7 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
  
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
 //
 // String a cable from a ABSI to an IOM
 //
@@ -726,7 +726,7 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_urp (n1, n2, n3, n4);
       }
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
     else if (strcasecmp (name, "ABSI") == 0)
       {
         rc = cable_absi (n1, n2, n3, n4);

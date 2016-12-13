@@ -878,7 +878,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #ifndef FNP2
     dequeue_fnp_command ();
 #endif
-#ifndef CROSS_MINGW64
+#ifndef __MINGW64__
     absiProcessEvent ();
 #endif
 

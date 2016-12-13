@@ -1,4 +1,5 @@
 # Copyright 2014-2016 by Charles Anthony
+# Copyright 2016 by Michal Tomek
 #
 # All rights reserved.
 #
@@ -11,6 +12,7 @@ ifeq ($(CROSS),MINGW64)
   CC = x86_64-w64-mingw32-gcc
   LD = x86_64-w64-mingw32-gcc
   AR = x86_64-w64-mingw32-ar
+  EXE = .exe
 else
 #CC = gcc
 #LD = gcc

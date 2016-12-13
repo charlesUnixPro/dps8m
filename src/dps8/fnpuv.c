@@ -1,5 +1,6 @@
 /*
  Copyright 2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -177,7 +178,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <uv.h>
+//#include <uv.h>
 #ifdef TUN
 #include <string.h>
 #include <fcntl.h>

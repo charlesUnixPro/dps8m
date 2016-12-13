@@ -1,5 +1,6 @@
 /*
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -20,10 +21,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef uint64_t word36;
+//typedef uint64_t word36;
+#include "bit36.h"
 
 #define MASKBITS(x)     ( ~(~((uint64_t)0)<<x) )   // lower (x) bits all ones
 
+/*
 //
 //  getbit
 //     Get a single bit. offset can be bigger when word size
@@ -66,7 +69,7 @@ static uint64_t extr (void * bits, int offset, int nbits)
       }
     return n;
   }
-
+*/
 //  getbits36 (data, starting bit, number of bits)
 
 static inline word36 getbits36(word36 x, uint i, uint n) {
@@ -110,7 +113,7 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     return;
   }
     
-
+/*
 word36 extr36 (uint8_t * bits, uint woffset)
   {
     uint isOdd = woffset % 2;
@@ -163,6 +166,7 @@ void put36 (word36 val, uint8_t * bits, uint woffset)
         p [4] |= (val <<  4) & 0xf0;
       }
   }
+*/
 
 // The card image is 80 columns * 12 rows; 960 bits
 // which is 26 and 2/3 36-bit words. 
