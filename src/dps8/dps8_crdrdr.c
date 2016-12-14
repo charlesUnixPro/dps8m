@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -160,6 +161,10 @@ DEVICE crdrdr_dev = {
 
 enum deckFormat { sevenDeck, cardDeck, streamDeck };
 
+// Windows cannot unlink an open file; rework the code to unlink the
+// submitted card deck after closing it.
+//  -- Add fname tp crdrdr_state
+//  -- Add unlink calls at eof close
 static struct crdrdr_state
   {
     char device_name [MAX_DEV_NAME_LEN];
@@ -168,6 +173,7 @@ static struct crdrdr_state
     bool running;
     enum { deckStart = 0, eof1Sent, uid1Sent, inputSent, eof2Sent } deckState;
     enum deckFormat deckFormat;
+    char fname [PATH_MAX+1];
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
 
@@ -498,6 +504,10 @@ sim_printf ("hopper empty\n");
             if (rc)
               {
                 close (crdrdr_state [unitIdx] . deckfd);
+// Windows can't unlink open files; do it now...
+                rc = unlink (crdrdr_state [unitIdx] . fname);
+                if (rc)
+                  perror ("crdrdr deck unlink\n");
                 crdrdr_state [unitIdx] . deckfd = -1;
                 crdrdr_state [unitIdx] . deckState = deckStart;
                 goto empty;
@@ -573,6 +583,10 @@ sim_printf ("hopper empty\n");
             thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = deckStart;
             close (crdrdr_state [unitIdx] . deckfd);
+// Windows can't unlink open files; do it now...
+            int rc = unlink (crdrdr_state [unitIdx] . fname);
+            if (rc)
+              perror ("crdrdr deck unlink\n");
             crdrdr_state [unitIdx] . deckfd = -1;
           }
           break;
@@ -768,10 +782,10 @@ static void submit (enum deckFormat fmt, char * fname)
     int deckfd = open (fname, O_RDONLY);
     if (deckfd < 0)
       perror ("crdrdr deck open\n");
-    int rc = unlink (fname);
-    if (rc)
-      perror ("crdrdr deck unlink\n");
+// Windows can't unlink open files; save the file name and unlink on close.
+    // int rc = unlink (fname); // this only works on UNIX
     sim_printf ("submit %s\n", fname);
+    strcpy (crdrdr_state [0 /* ASSUME0 */] . fname, fname);
     crdrdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
     crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
     crdrdr_state [0 /* ASSUME0 */] . deckFormat = fmt;
@@ -781,7 +795,13 @@ static void submit (enum deckFormat fmt, char * fname)
 
 void rdrProcessEvent ()
   {
+#ifndef __MINGW64__
     char * qdir = "/tmp/rdra";
+#else
+    char qdir[260];
+    strcpy(qdir,getenv("TEMP"));
+    strcat(qdir,"/rdra");
+#endif
     if (! crdrdr_state [0 /* ASSUME0 */] . running)
       return;
 #if 0
@@ -797,10 +817,10 @@ void rdrProcessEvent ()
         return;
       }
     struct dirent * entry;
+    char fqname [PATH_MAX+1];
     while ((entry = readdir (dp)))
       {
         //printf ("%s\n", entry -> d_name);
-        char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
         strcpy (fqname, qdir);
         strcat (fqname, "/");
         strcat (fqname, entry -> d_name);
@@ -824,12 +844,16 @@ void rdrProcessEvent ()
           }
         if (strcmp (entry -> d_name, "discard") == 0)
           {
+// Windows can't unlink open files; do it now...
             int rc = unlink (fqname);
             if (rc)
-              perror ("crdrdr discark unlink\n");
+              perror ("crdrdr discard unlink\n");
             if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
               {
                 close (crdrdr_state [0 /* ASSUME0 */] . deckfd);
+                rc = unlink (crdrdr_state [0 /* ASSUME0 */] . fname);
+                if (rc)
+                  perror ("crdrdr deck unlink\n");
                 crdrdr_state [0 /* ASSUME0 */] . deckfd = -1;
                 crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
                 break;
