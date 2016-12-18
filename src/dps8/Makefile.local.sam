@@ -27,28 +27,31 @@
 #$(warning "####")
 #$(warning "#### Setting ISOLTS")
 #$(warning "####")
-#CFLAGS += -DISOLTS 
+#CFLAGS += -DISOLTS -DL68 -DWAM
 
+### Enable Level 68 mode
+
+#CFLAGS += -DL68
+
+### Enable panel display support
+
+#CFLAGS += -DPANEL
+
+### Enable WAM
+
+#CFLAGS += -DWAM
+#CFLAGS += -Ddo_selftestPTWAM
 
 ### Electric Fence malloc debugger
 
 #LDFLAGS += -lefence
 
-
-### Add tags
-
-all :
-
-tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
-	@echo TAGS
-	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
-
-
 ### Enable shared memory
 
-M_SHARED = 1
-CFLAGS += -DM_SHARED
-LDFLAGS += -lrt
+#M_SHARED = 1
+#CFLAGS += -DM_SHARED
+#LDFLAGS += -lrt
+
 
 
 ### Turn on complier warnings
