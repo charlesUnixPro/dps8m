@@ -1418,7 +1418,7 @@ IF1 sim_printf ("trapping opcode match......\n");
       goto restart_1;
 
     // Set Address register empty
-    L68_ (cpu.AR_F_E = false;)
+    PNL (L68_ (cpu.AR_F_E = false;))
 
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
@@ -1610,7 +1610,7 @@ restart_1:
 // XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
-            L68_ (cpu.apu.state |= apu_ESN_PSR;)
+            PNL (L68_ (cpu.apu.state |= apu_ESN_PSR;))
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }
@@ -1839,7 +1839,7 @@ restart_1:
         if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
           {
             doComputedAddressFormation ();
-            L68_ (cpu.AR_F_E = true;)
+            PNL (L68_ (cpu.AR_F_E = true;))
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 
@@ -2313,7 +2313,7 @@ static t_stat doInstruction (void)
     cpu.ou.cycle = 0;
 #endif
     PNL (cpu.ou.RS = (word9) i->opcode);
-    L68_ (DU_CYCLE_FDUD;) // set DU idle
+    PNL (L68_ (DU_CYCLE_FDUD;)) // set DU idle
     cpu.skip_cu_hist = false;
     memcpy (& cpu.MR_cache, & cpu.MR, sizeof (cpu.MR_cache));
 
@@ -7177,7 +7177,7 @@ static t_stat DoEISInstruction (void)
     if (EISopcodes[i->opcode].reg_use & is_DU)
       {
         is_du = true;
-        DU_CYCLE_nDUD; // set not idle
+        PNL (DU_CYCLE_nDUD;) // set not idle
       }
 #endif
 
@@ -7829,7 +7829,7 @@ static t_stat DoEISInstruction (void)
         case 0567:
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
-            L68_ (DU_CYCLE_DDU_LDEA;)
+            PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
             if (getbits36_1 (cpu.CY, 23) != 0)
               doFault (FAULT_IPR,
@@ -7929,7 +7929,7 @@ static t_stat DoEISInstruction (void)
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
             //    C(Y)0,23 -> C(ARn)
-            L68_ (DU_CYCLE_DDU_LDEA;)
+            PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
             uint32 n = opcode & 07;  // get n
             cpu.AR[n].WORDNO = GETHI (cpu.CY);
@@ -7940,7 +7940,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0463:  // lareg - Load Address Registers
-          L68_ (DU_CYCLE_DDU_LDEA;)
+          PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
           for (uint32 n = 0 ; n < 8 ; n += 1)
             {
@@ -7952,7 +7952,7 @@ static t_stat DoEISInstruction (void)
           break;
 
         case 0467:  // lpl - Load Pointers and Lengths
-          L68_ (DU_CYCLE_DDU_LDEA;)
+          PNL (L68_ (DU_CYCLE_DDU_LDEA;))
           words2du (cpu.Yblock8);
           break;
 
@@ -7966,7 +7966,7 @@ static t_stat DoEISInstruction (void)
         case 0667:
           {
             // For n = 0, 1, ..., or 7 as determined by operation code
-            L68_ (DU_CYCLE_DDU_LDEA;)
+            PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
             uint32 n = opcode & 07;  // get
 
@@ -8041,7 +8041,7 @@ static t_stat DoEISInstruction (void)
             {
                 // The alphanumeric descriptor is fetched from Y and C(Y)21,22
                 // (TA field) is examined to determine the data type described.
-                L68_ (DU_CYCLE_DDU_STEA;)
+                PNL (L68_ (DU_CYCLE_DDU_STEA;))
 
                 uint TA = getbits36_2 (cpu.CY, 21);
 
@@ -8104,7 +8104,7 @@ static t_stat DoEISInstruction (void)
         case 0646:
         case 0647:
             {
-                L68_ (DU_CYCLE_DDU_STEA;)
+                PNL (L68_ (DU_CYCLE_DDU_STEA;))
                 uint32 n = opcode & 07;  // get register #
 
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA
@@ -8151,7 +8151,7 @@ static t_stat DoEISInstruction (void)
             //  C(ARn) -> C(Y)0,23
             //  C(Y)24,35 -> unchanged
             {
-                L68_ (DU_CYCLE_DDU_STEA;)
+                PNL (L68_ (DU_CYCLE_DDU_STEA;))
                 uint32 n = opcode & 07;  // get n
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
 // AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
@@ -8164,7 +8164,7 @@ static t_stat DoEISInstruction (void)
         case 0443:  // sareg - Store Address Registers
             // a:AL39/ar1 According to ISOLTS ps805, the BITNO data is stored
             // in BITNO format, not CHAR/BITNO.
-            L68_ (DU_CYCLE_DDU_STEA;)
+            PNL (L68_ (DU_CYCLE_DDU_STEA;))
             memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
             for (uint32 n = 0 ; n < 8 ; n += 1)
             {
@@ -8177,7 +8177,7 @@ static t_stat DoEISInstruction (void)
             break;
 
         case 0447:  // spl - Store Pointers and Lengths
-            L68_ (DU_CYCLE_DDU_STEA;)
+            PNL (L68_ (DU_CYCLE_DDU_STEA;))
             du2words (cpu.Yblock8);
           break;
 
@@ -8390,7 +8390,7 @@ static t_stat DoEISInstruction (void)
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
                      "Illegal instruction");
     }
-    L68_ (DU_CYCLE_END;)
+    PNL (L68_ (DU_CYCLE_END;))
 
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr && is_du)

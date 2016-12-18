@@ -991,8 +991,9 @@ static void cpu_reset2 (void)
         cpu.cu.SD_ON = 1;
         cpu.cu.PT_ON = 1;
 #else
-        cpu.cu.SD_ON = 0;
-        cpu.cu.PT_ON = 0;
+// If WAM emulation is not enabled lie and say it is...
+        cpu.cu.SD_ON = 1;
+        cpu.cu.PT_ON = 1;
 #endif
  
         setCpuCycle (FETCH_cycle);
@@ -1829,7 +1830,7 @@ setCPU:;
             case FETCH_cycle:
               {
 
-                L68_ (cpu.INS_FETCH = false;)
+                PNL (L68_ (cpu.INS_FETCH = false;))
 
 // "If the interrupt inhibit bit is not set in the currect instruction 
 // word at the point of the next sequential instruction pair virtual
@@ -1965,7 +1966,7 @@ setCPU:;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
                     PNL (cpu.prepare_state = ps_PIA);
-                    L68_ (cpu.INS_FETCH = true;)
+                    PNL (L68_ (cpu.INS_FETCH = true;))
                     fetchInstruction (cpu.PPR.IC);
                   }
 
@@ -2003,6 +2004,15 @@ setCPU:;
 
             case EXEC_cycle:
               {
+//#define MOLASSES 1
+#ifdef MOLASSES
+        static uint molasses = 0;
+        if (molasses ++ > 6)
+          {
+            molasses = 0;
+            usleep (MOLASSES);
+          }
+#endif
                 // The only time we are going to execute out of IRODD is
                 // during RPD, at which time interrupts are automatically
                 // inhibited; so the following can igore RPD harmelessly
@@ -4028,7 +4038,7 @@ void addCUhist (void)
     // 5 PON
     // 6 RAW
     // 7 SAW
-    putbits36_8 (& w0, 0, cpu.prepare_state);
+    PNL (putbits36_8 (& w0, 0, cpu.prepare_state);)
     // 8 TRG 
     putbits36_1 (& w0, 8, cpu.wasXfer);
     // 9 XDE
@@ -4041,7 +4051,7 @@ void addCUhist (void)
     putbits36_1 (& w0, 12, cpu.cu.rpt);
     // 13 WI Wait for instruction fetch XXX Not tracked
     // 14 ARF "AR F/E" Address register Full/Empty Address has valid data 
-    putbits36_1 (& w0, 14, cpu.AR_F_E);
+    PNL (putbits36_1 (& w0, 14, cpu.AR_F_E);)
     // 15 !XA/Z "-XIP NOT prepare interrupt address" 
     putbits36_1 (& w0, 15, cpu.cycle != INTERRUPT_cycle?1:0);
     // 16 !FA/Z Not tracked. (cu.-FL?)
@@ -4055,14 +4065,14 @@ void addCUhist (void)
     putbits36_18 (& w1, 0, cpu.TPR.CA);
     // 54:58 CMD system controller command XXX
     // 59:62 SEL port select (XXX ignoring "only valid if port A-D is selected")
-    putbits36_1 (& w1, 59-36, (cpu.portSelect == 0)?1:0);
-    putbits36_1 (& w1, 60-36, (cpu.portSelect == 1)?1:0);
-    putbits36_1 (& w1, 61-36, (cpu.portSelect == 2)?1:0);
-    putbits36_1 (& w1, 62-36, (cpu.portSelect == 3)?1:0);
+    PNL (putbits36_1 (& w1, 59-36, (cpu.portSelect == 0)?1:0);)
+    PNL (putbits36_1 (& w1, 60-36, (cpu.portSelect == 1)?1:0);)
+    PNL (putbits36_1 (& w1, 61-36, (cpu.portSelect == 2)?1:0);)
+    PNL (putbits36_1 (& w1, 62-36, (cpu.portSelect == 3)?1:0);)
     // 63 XEC-INT An interrupt is present
     putbits36_1 (& w1, 63-36, cpu.interrupt_flag?1:0);
     // 64 INS-FETCH Perform an instruction fetch
-    putbits36_1 (& w1, 64-36, cpu.INS_FETCH?1:0);
+    PNL (putbits36_1 (& w1, 64-36, cpu.INS_FETCH?1:0);)
     // 65 CU-STORE Control unit store cycle XXX
     // 66 OU-STORE Operations unit store cycle XXX
     // 67 CU-LOAD Control unit load cycle XXX
@@ -4127,7 +4137,7 @@ void addCUhist (void)
 
 void addDUhist (void)
   {
-    addHist (DU_HIST_REG, cpu.du.cycle1, cpu.du.cycle2);
+    PNL (addHist (DU_HIST_REG, cpu.du.cycle1, cpu.du.cycle2);)
   }
      
 
@@ -4137,7 +4147,7 @@ void addOUhist (void)
      
     // 0-16 RP
     //   0-8 OP CODE
-    putbits36_9 (& w0, 0, cpu.ou.RS);
+    PNL (putbits36_9 (& w0, 0, cpu.ou.RS);)
     
     //   9 CHAR
     putbits36_1 (& w0, 9, cpu.ou.characterOperandSize ? 1 : 0);
@@ -4156,7 +4166,7 @@ void addOUhist (void)
 
     // 17 0
     // 18-26 RS REG
-    putbits36_9 (& w0, 18, cpu.ou.RS);
+    PNL (putbits36_9 (& w0, 18, cpu.ou.RS);)
 
     // 27 RB1 FULL
     putbits36_1 (& w0, 27, cpu.ou.RB1_FULL);
@@ -4179,7 +4189,7 @@ void addOUhist (void)
     // 40 -DA-AV XXX
 
     // 41-50 stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
-    putbits36_10 (& w1, 41-36, (word10) ~NonEISopcodes [cpu.ou.RS].reg_use);
+    PNL (putbits36_10 (& w1, 41-36, (word10) ~NonEISopcodes [cpu.ou.RS].reg_use);)
 
     // 51-53 0
 
@@ -4247,8 +4257,8 @@ void addAPUhist (enum APUH_e op)
     // 0-14 ESN 
     putbits36_15 (& w0, 0, cpu.TPR.TSR);
     // 15-16 BSY
-    putbits36_1 (& w0, 15, (cpu.apu.state & apu_ESN_SNR) ? 1 : 0);
-    putbits36_1 (& w0, 16, (cpu.apu.state & apu_ESN_TSR) ? 1 : 0);
+    PNL (putbits36_1 (& w0, 15, (cpu.apu.state & apu_ESN_SNR) ? 1 : 0);)
+    PNL (putbits36_1 (& w0, 16, (cpu.apu.state & apu_ESN_TSR) ? 1 : 0);)
     // 25 SDWAMM
     putbits36_1 (& w0, 25, cpu.cu.SDWAMM);
     // 26-29 SDWAMR
@@ -4257,11 +4267,11 @@ void addAPUhist (enum APUH_e op)
     putbits36_1 (& w0, 30, cpu.cu.PTWAMM);
     // 31-34 PTWAMR
     putbits36_4 (& w0, 31, cpu.PTWAMR);
-    // 35 FLt
-    putbits36_1 (& w0, 35, (cpu.apu.state & apu_FLT) ? 1 : 0);
+    // 35 FLT
+    PNL (putbits36_1 (& w0, 35, (cpu.apu.state & apu_FLT) ? 1 : 0);)
 
     // 36-59 ADD
-    putbits36_24 (& w1,  0, cpu.APUMemAddr);
+    PNL (putbits36_24 (& w1,  0, cpu.APUMemAddr);)
     // 60-62 TRR
     putbits36_3 (& w1, 24, cpu.TPR.TRR);
     // 66 XXX Multiple match error in SDWAM

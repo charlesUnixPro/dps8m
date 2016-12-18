@@ -1139,18 +1139,18 @@ static void setupOperandDescriptor (int k)
     switch (k)
       {
         case 1:
-          L68_ (DU_CYCLE_FA_I1;)
-          L68_ (DU_CYCLE_GDLDA;)
+          PNL (L68_ (DU_CYCLE_FA_I1;))
+          PNL (L68_ (DU_CYCLE_GDLDA;))
           e -> MF1 = getbits36_7 (cpu . cu . IWB, 29);
           break;
         case 2:
-          L68_ (DU_CYCLE_FA_I2;)
-          L68_ (DU_CYCLE_GDLDB;)
+          PNL (L68_ (DU_CYCLE_FA_I2;))
+          PNL (L68_ (DU_CYCLE_GDLDB;))
           e -> MF2 = getbits36_7 (cpu . cu . IWB, 11);
           break;
         case 3:
-          L68_ (DU_CYCLE_FA_I3;)
-          L68_ (DU_CYCLE_GDLDC;)
+          PNL (L68_ (DU_CYCLE_FA_I3;))
+          PNL (L68_ (DU_CYCLE_GDLDC;))
           e -> MF3 = getbits36_7 (cpu . cu . IWB,  2);
           break;
       }
@@ -1159,10 +1159,10 @@ static void setupOperandDescriptor (int k)
     
     if (MFk & MFkID)
     {
-        L68_ (if (k == 1)
-          DU_CYCLE_LDWRT1;)
-        L68_ (if (k == 2)
-          DU_CYCLE_LDWRT2;)
+        PNL (L68_ (if (k == 1)
+                     DU_CYCLE_LDWRT1;
+                   if (k == 2)
+                     DU_CYCLE_LDWRT2;))
 
         word36 opDesc = e -> op [k - 1];
         
@@ -1304,12 +1304,12 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
     
-    L68_ (if (k == 1)
+    PNL (L68_ (if (k == 1)
       DU_CYCLE_ANLD1;
     else if (k == 2)
       DU_CYCLE_ANLD2;
     else if (k == 3)
-      DU_CYCLE_ANSTR;)
+      DU_CYCLE_ANSTR;))
 
     PNL (cpu.du.POP = 1);
 
@@ -1539,12 +1539,12 @@ IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 
 
 static void parseArgOperandDescriptor (uint k)
   {
-    L68_ (if (k == 1)
+    PNL (L68_ (if (k == 1)
       DU_CYCLE_NLD1;
     else if (k == 2)
       DU_CYCLE_NLD2;
     else if (k == 3)
-      DU_CYCLE_GSTR;)
+      DU_CYCLE_GSTR;))
 
     EISstruct * e = & cpu . currentEISinstruction;
     word36 opDesc = e -> op [k - 1];
@@ -1597,12 +1597,12 @@ static void parseArgOperandDescriptor (uint k)
 
 static void parseNumericOperandDescriptor (int k)
 {
-    L68_ (if (k == 1)
+    PNL (L68_ (if (k == 1)
       DU_CYCLE_NLD1;
     else if (k == 2)
       DU_CYCLE_NLD2;
     else if (k == 3)
-      DU_CYCLE_GSTR;)
+      U_CYCLE_GSTR;))
 
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
@@ -1805,12 +1805,12 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
 static void parseBitstringOperandDescriptor (int k)
 {
-    L68_ (if (k == 1)
+    PNL (L68_ (if (k == 1)
       DU_CYCLE_ANLD1;
     else if (k == 2)
       DU_CYCLE_ANLD2;
     else if (k == 3)
-      DU_CYCLE_ANSTR;)
+      DU_CYCLE_ANSTR;))
 
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e->MF[k-1];
@@ -3098,8 +3098,8 @@ IF1 sim_printf ("CMPC instr %012"PRIo64" op1 %012"PRIo64" op2 %012"PRIo64"\n", I
     SET_I_ZERO;  // set ZERO flag assuming strings are equal ...
     SET_I_CARRY; // set CARRY flag assuming strings are equal ...
     
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for (; cpu.du.CHTALLY < min (e->N1, e->N2); cpu . du . CHTALLY ++)
       {
@@ -3287,8 +3287,8 @@ void scd ()
       }
     
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     word9 yCharn11;
     word9 yCharn12;
@@ -3451,8 +3451,8 @@ void scdr (void)
     word9 yCharn11;
     word9 yCharn12;
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     if (e -> N1)
       {
@@ -3601,8 +3601,8 @@ void scm (void)
             ctest &= 0777;   // keep 9-bits
       }
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     uint limit = e -> N1;
 
@@ -3751,8 +3751,8 @@ void scmr (void)
             ctest &= 0777;   // keep 9-bits
       }
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     uint limit = e -> N1;
     for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY ++)
@@ -3924,8 +3924,8 @@ void tct (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     for ( ; cpu . du . CHTALLY < e -> N1; cpu . du . CHTALLY ++)
       {
@@ -4096,8 +4096,8 @@ void tctr (void)
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "TCT N1 %d\n", e -> N1);
 
-    L68_ (if (e->N1 < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (e->N1 < 128)
+      DU_CYCLE_FLEN_128;))
 
     uint limit = e -> N1;
     for ( ; cpu . du . CHTALLY < limit; cpu . du . CHTALLY ++)
@@ -4315,8 +4315,8 @@ IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IROD
     // Attempted repetition with the rpt, rpd, or rpl instructions causes an
     // illegal procedure fault.
     
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
 #ifdef EIS_PTR3
     bool ovp = (e -> N1 < e -> N2) && (fill & 0400) && (TA1 == 1) &&
@@ -4715,8 +4715,8 @@ void mrl (void)
     //bool bOvp = false;  // true when a negative overpunch character has been 
                         // found @ N1-1 
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
 //IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 //
@@ -6449,7 +6449,7 @@ static void mopExecutor (int kMop)
 #endif
   {
     EISstruct * e = & cpu . currentEISinstruction;
-    L68_ (DU_CYCLE_FEXOP;)
+    PNL (L68_ (DU_CYCLE_FEXOP;))
 #ifdef EIS_PTR2
     e->mopTally = (int) e->N[KMOP];        // number of micro-ops
     e->mopPos   = (int) e->CN[KMOP];        // starting at char pos CN
@@ -6965,8 +6965,8 @@ void mvt (void)
       __func__, e -> CN1, e -> CN2, e -> srcSZ, e -> dstSZ, T,
       fill, fillT, e -> N1, e -> N2);
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for ( ; cpu . du . CHTALLY < min(e->N1, e->N2); cpu . du . CHTALLY ++)
     {
@@ -7400,8 +7400,8 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7726,8 +7726,8 @@ void csl (bool isSZTL)
 
     bool bR = false; // result bit
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
@@ -8034,8 +8034,8 @@ void csr (bool isSZTR)
     
     bool bR = false; // result bit
     
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
@@ -8259,8 +8259,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
       }
 #endif
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     uint i;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -8676,7 +8676,7 @@ static void _btd (bool * ovfp)
 {
     EISwriteToOutputStringReverse(2, 0, ovfp);    // initialize output writer .....
     
-    L68_ (DU_CYCLE_DGBD;)
+    PNL (L68_ (DU_CYCLE_DGBD;))
 
     EISstruct * e = & cpu . currentEISinstruction;
     * ovfp = false;
@@ -9065,7 +9065,7 @@ void dtb (void)
     setupOperandDescriptor(2);
 #endif
     
-    L68_ (DU_CYCLE_DGDB;)
+    PNL (L68_ (DU_CYCLE_DGDB;))
 
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -9175,8 +9175,8 @@ void ad2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -9465,8 +9465,8 @@ void ad3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9741,8 +9741,8 @@ void sb2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
 
     
     uint srcTN = e->TN1;    // type of chars in src
@@ -9984,8 +9984,8 @@ void sb3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10247,8 +10247,8 @@ void mp2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10487,8 +10487,8 @@ void mp3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11522,8 +11522,8 @@ void dv2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11791,8 +11791,8 @@ void dv3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     

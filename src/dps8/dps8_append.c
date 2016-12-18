@@ -332,13 +332,13 @@ sim_printf ("CAMS cleared it\n");
 static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
-    L68_ (cpu.apu.state |= apu_FDPT;)
+    PNL (L68_ (cpu.apu.state |= apu_FDPT;))
 
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
       }
     setAPUStatus (apuStatus_DSPTW);
@@ -374,13 +374,13 @@ static void fetchDSPTW(word15 segno)
 static void modifyDSPTW(word15 segno)
 {
 
-    L68_ (cpu.apu.state |= apu_MDPT;)
+    PNL (L68_ (cpu.apu.state |= apu_MDPT;))
 
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
       }
 
@@ -460,7 +460,7 @@ static void fetchPSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
 
-    L68_ (cpu.apu.state |= apu_FSDP;)
+    PNL (L68_ (cpu.apu.state |= apu_FSDP;))
 
     setAPUStatus (apuStatus_SDWP);
     word24 y1 = (2 * segno) % 1024;
@@ -505,7 +505,7 @@ static void fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
 
-    L68_ (cpu.apu.state |= apu_FSDN;)
+    PNL (L68_ (cpu.apu.state |= apu_FSDN;))
 
     setAPUStatus (apuStatus_SDWNP);
 
@@ -514,7 +514,7 @@ static void fetchNSDW(word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, cpu . DSBR.BND);
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2u * segno);
@@ -766,7 +766,7 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 
 static void fetchPTW(_sdw *sdw, word18 offset)
 {
-    L68_ (cpu.apu.state |= apu_FPTW;)
+    PNL (L68_ (cpu.apu.state |= apu_FPTW;))
     setAPUStatus (apuStatus_PTW);
 
     word24 y2 = offset % 1024;
@@ -877,7 +877,7 @@ static void loadPTWAM(word15 segno, word18 offset)
  */
 static void modifyPTW(_sdw *sdw, word18 offset)
 {
-    L68_ (cpu.apu.state |= apu_MPTW;)
+    PNL (L68_ (cpu.apu.state |= apu_MPTW;))
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
     
@@ -966,7 +966,7 @@ static char *strACV(_fault_subtype acv)
 
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
-    L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;)
+    PNL (L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;))
     cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
               "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s",
@@ -1061,7 +1061,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
 #endif
 
-    L68_ (cpu.apu.state = 0;)
+    PNL (L68_ (cpu.apu.state = 0;))
 
     cpu . RSDWH_R1 = 0;
     
@@ -1084,7 +1084,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     if (! instructionFetch && i -> a)
       {
-        L68_ (cpu.apu.state |= apu_ESN_SNR;)
+        PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
         word3 n = GET_PRN(IWB_IRODD);  // get PRn
 sim_printf ("saw bit 29; n %o\n", n);
         if (cpu.PAR[n].RNR > cpu.PPR.PRR)
@@ -1305,7 +1305,7 @@ A:;
         if (cpu . TPR.TRR > cpu . SDW->R2) {
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
-            L68_ (cpu.apu.state |= apu_FLT;)
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
             FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";)
         }
         
@@ -1315,7 +1315,7 @@ A:;
             if (cpu . PPR.PSR != cpu . TPR.TSR) {
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
-                L68_ (cpu.apu.state |= apu_FLT;)
+                PNL (L68_ (cpu.apu.state |= apu_FLT;))
                 FMSG (acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";)
             }
         }
@@ -1342,7 +1342,7 @@ D:;
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
         cpu.acvFaults |= ACV13;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";)
     }
     
@@ -1360,7 +1360,7 @@ E:;
     if (!cpu . SDW->E) {
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E) SDW .E set OFF";)
     }
     
@@ -1378,7 +1378,7 @@ E:;
     if ((address & 0037777) >= cpu . SDW->EB) {
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";)
     }
     
@@ -1389,7 +1389,7 @@ E1:
     if (cpu . TPR.TRR > cpu . SDW->R3) {
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";)
     }
     
@@ -1397,7 +1397,7 @@ E1:
     if (cpu . TPR.TRR < cpu . SDW->R1) {
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";)
     }
     
@@ -1408,7 +1408,7 @@ E1:
         if (cpu . PPR.PRR < cpu . SDW->R2) {
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
-            L68_ (cpu.apu.state |= apu_FLT;)
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
             FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";)
         }
     
@@ -1422,7 +1422,7 @@ E1:
     goto G;
     
 F:;
-    L68_ (cpu.apu.state |= apu_PIAU;)
+    PNL (L68_ (cpu.apu.state |= apu_PIAU;))
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
@@ -1430,7 +1430,7 @@ F:;
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, cpu . SDW -> R1);
         cpu.acvFaults |= ACV1;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";)
     }
     
@@ -1439,14 +1439,14 @@ F:;
         sim_debug (DBG_TRACE, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
         cpu.acvFaults |= ACV1;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";)
     }
     
     //SDW .E set ON?
     if (!cpu . SDW->E) {
         cpu.acvFaults |= ACV2;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
     }
     
@@ -1454,7 +1454,7 @@ F:;
     if (cpu . PPR.PRR != cpu . TPR.TRR) {
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";)
     }
     
@@ -1468,7 +1468,7 @@ G:;
     //if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
     if (((address >> 4) & 037777) > cpu . SDW->BOUND) {
         cpu.acvFaults |= ACV15;
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
         sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
                     address, ((address >> 4) & 037777), cpu . SDW->BOUND);
@@ -1476,7 +1476,7 @@ G:;
     
     if (cpu.acvFaults)
       {
-        L68_ (cpu.apu.state |= apu_FLT;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         // Initiate an access violation fault
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults}, "ACV fault");
       }
@@ -1539,7 +1539,7 @@ G:;
     
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
-    L68_ (cpu.apu.state |= apu_FANP;)
+    PNL (L68_ (cpu.apu.state |= apu_FANP;))
 #if 1
     appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
@@ -1592,7 +1592,7 @@ I:;
     // final address paged
     appendingUnitCycleType = apuCycle_FAP;
     setAPUStatus (apuStatus_FAP);
-    L68_ (cpu.apu.state |= apu_FAP;)
+    PNL (L68_ (cpu.apu.state |= apu_FAP;))
     
     //word24 y2 = TPR.CA % 1024;
     word24 y2 = address % 1024;
@@ -1643,7 +1643,7 @@ KL:;
       {
         // C(SDW.P) → C(PPR.P)
         cpu . PPR.P = cpu . SDW->P;
-        L68_ (cpu.apu.state |= apu_TP_P;)
+        PNL (L68_ (cpu.apu.state |= apu_TP_P;))
       }
     else
         // 0 → C(PPR.P)
@@ -1663,7 +1663,7 @@ Exit:;
     PNL (cpu.APUDataBusOffset = address;)
     PNL (cpu.APUDataBusAddr = finalAddress;)
 
-    L68_ (cpu.apu.state |= apu_FA;)
+    PNL (L68_ (cpu.apu.state |= apu_FA;))
 
     cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???
