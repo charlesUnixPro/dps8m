@@ -21,6 +21,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \

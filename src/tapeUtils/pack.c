@@ -21,11 +21,20 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 int main (int argc, char * argv [])
   {
        FILE *fopen(const char *path, const char *mode);
 
+#ifndef __MINGW64__
     FILE * fin = fopen (argv [1], "r");
+#else
+    FILE * fin = fopen (argv [1], "rb");
+#endif
     if (! fin)
       {
         printf ("can't open input file\n");

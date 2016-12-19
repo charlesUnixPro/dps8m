@@ -26,6 +26,12 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
+
 #define SECTOR_SZ_IN_W36 512
 #define SECTOR_SZ_IN_BYTES ((36 * SECTOR_SZ_IN_W36) / 8)
 

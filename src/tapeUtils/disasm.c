@@ -22,6 +22,11 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 typedef uint64_t word36;
 typedef int32_t int32;
 typedef uint32_t uint32;

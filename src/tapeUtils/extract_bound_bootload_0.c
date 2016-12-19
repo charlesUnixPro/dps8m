@@ -67,6 +67,12 @@
 #include "mst.h"
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
+
 static uint8_t buf [mst_blksz_bytes];
 static word36 address, tally;
 // Careful, the data is loaded to 060001, NOT 060000

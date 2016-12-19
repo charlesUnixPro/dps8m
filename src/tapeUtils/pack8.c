@@ -27,6 +27,11 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 
 int main (int argc, char * argv [])
   {

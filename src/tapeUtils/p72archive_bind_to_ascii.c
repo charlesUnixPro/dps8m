@@ -25,7 +25,10 @@
 
 #ifdef __MINGW64__
 #define mkdir(x,mode) mkdir(x)
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
 #endif   
+
 
 // extract bits into a number
 #include <stdint.h>

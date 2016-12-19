@@ -21,6 +21,11 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 // upack origin dat oct
 int main (int argc, char * argv [])
   {
@@ -40,7 +45,11 @@ int main (int argc, char * argv [])
 
     int sz36 = sz * 8 / 36;
 
+#ifndef __MINGW64__
     FILE * fout = fopen (argv [3], "w");
+#else
+    FILE * fout = fopen (argv [3], "wb");
+#endif
     if (fout < 0)
       {
         fprintf (stderr, "can't open output file\n");

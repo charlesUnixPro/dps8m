@@ -23,6 +23,11 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 
 static int restore_cnt = 0;
 static char path [4097]; // sanatized top_level_dir/dir_name
@@ -176,7 +181,16 @@ printf ("padding %ld\n", padding);
         //long cnt = (bitcnt + 8) / 9; /* Num of bytes rounded UP */
 //printf ("cnt %ld\n", cnt);
 
+#ifndef __MINGW64__
         sprintf (mkcmd, "mkdir -p %s", path);
+#else
+        static char dosname [4097]; 
+        strcpy (dosname, path);
+        for (int i = 0; i < strlen (dosname); i ++)
+          if (dosname [i] == '/')
+            dosname [i] = '\\';
+        sprintf (mkcmd, "cmd /e:on /c mkdir %s", dosname);
+#endif
         int rc = system (mkcmd);
         if (rc)
           printf ("mkdir returned %d %s\n", rc, mkcmd);

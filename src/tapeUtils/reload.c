@@ -22,6 +22,11 @@
 #include <string.h>
 #include <ctype.h>
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
 
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -1051,7 +1056,15 @@ printf ("%04o:%04o\n", n_records, lros);
 
         cnt = (bit_count + 8) / 9; /* Num of characters rounded UP */
 
+#ifndef __MINGW64__
         sprintf (mkcmd, "mkdir -p %s", path);
+#else
+        strcpy (dosname, path);
+        for (int i = 0; i < strlen (dosname); i ++)
+          if (dosname [i] == '/')
+            dosname [i] = '\\';
+        sprintf (mkcmd, "cmd /e:on /c mkdir %s", dosname);
+#endif
         int rc = system (mkcmd);
         if (rc)
           printf ("mkdir returned %d %s\n", rc, mkcmd);

@@ -25,6 +25,12 @@
 
 #include "bit36.h"
 
+#ifdef __MINGW64__
+#define open(x,y,args...) open(x, y|O_BINARY,##args)
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#endif
+
+
 #define sect_per_cyl 255 
 #define sect_per_rec 2
 #define number_of_sv 3
