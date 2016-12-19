@@ -54,6 +54,8 @@
 
 
 
+ifeq ($(CROSS),MINGW64)
+else
 ### Turn on complier warnings
 
 CFLAGS += -Wall 
@@ -74,5 +76,5 @@ CFLAGS += \
 -Wshorten-64-to-32 \
 -Wmissing-prototypes \
 -Wmissing-variable-declarations 
-
+endif
 
