@@ -6647,10 +6647,10 @@ void mve (void)
     parseAlphanumericOperandDescriptor(3, 3, false);
     
 IF1 sim_printf ("mve 1\n");
-IF1 sim_printf ("IWB %012lo\n", IWB_IRODD);
-IF1 sim_printf ("op1 %012lo\n", e->op[0]);
-IF1 sim_printf ("op2 %012lo\n", e->op[1]);
-IF1 sim_printf ("op3 %012lo\n", e->op[2]);
+IF1 sim_printf ("IWB %012"PRIo64"\n", IWB_IRODD);
+IF1 sim_printf ("op1 %012"PRIo64"\n", e->op[0]);
+IF1 sim_printf ("op2 %012"PRIo64"\n", e->op[1]);
+IF1 sim_printf ("op3 %012"PRIo64"\n", e->op[2]);
     // Bits 0, 1, 9, and 10 MBZ
     // According to RJ78, bit 9 is T, but is not mentioned in the text.
     if (IWB_IRODD & 0600600000000)

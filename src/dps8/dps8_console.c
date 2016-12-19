@@ -946,9 +946,11 @@ eol:
       }
     if (c == SCPE_OK)
         return; // no input
+// Windows doesn't handle ^E as a signal; need to explictily test for it.
     if (c == SCPE_STOP)
       {
         sim_printf ("Got <sim stop>\n");
+        stop_cpu = 1;
         return; // User typed ^E to stop simulation
       }
     if (c == SCPE_BREAK)
