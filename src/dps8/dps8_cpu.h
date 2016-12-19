@@ -632,6 +632,7 @@ typedef struct EISstruct
     
     word9   inBuffer [64];  // decimal unit input buffer
     word9   *in;            // pointer to current read position in inBuffer
+    uint    inBufferCnt;    // number of characters in inBuffer
     word9   outBuffer [64]; // output buffer
     word9   *out;           // pointer to current write position in outBuffer;
     

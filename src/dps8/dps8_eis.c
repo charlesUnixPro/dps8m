@@ -3,6 +3,7 @@
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
  Copyright 2015-2016 by Craig Ruff
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -5102,11 +5103,15 @@ static void EISloadInputBufferAlphnumeric (int k)
     // string count, and 64.
     uint N = min3 (e -> N1, e -> N3, 64);
 
+IF1 sim_printf ("EISloadInputBufferAlphnumeric N %d\n", N);
     for (uint n = 0 ; n < N ; n ++)
       {
         word9 c = EISget469 (k, n);
         * p ++ = c;
+IF1 sim_printf (" %3o", c);
       }
+IF1 sim_printf ("\n");
+     e->inBufferCnt = N;
 }
 
 static void EISwriteOutputBufferToMemory (int k)
@@ -5321,16 +5326,32 @@ static int mopIGN (void)
     EISstruct * e = & cpu . currentEISinstruction;
 // AL-39 dosen't specify the == 0 test, but NovaScale does;
 // also ISOLTS ps830 test-04a seems to rely on it.
+IF1 sim_printf ("IGN %d\n", e->mopIF);
     if (e->mopIF == 0)
         e->mopIF = 16;
 
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
+#if 0
         if (e->srcTally == 0)
             return -1;  // sending buffer exhausted.
         
         e->srcTally -= 1;
         e->in += 1;
+#else
+        if (e->inBufferCnt >= 64)
+          {
+            sim_warn ("mopIGN filled inBuffer");
+            break;
+          }
+        word9 c = EISget469 (1, e->inBufferCnt);
+        e->inBuffer [e->inBufferCnt] = c;
+        e->inBufferCnt ++;
+        e->in ++;
+// eis_tester 139 et al crash without this.
+// isolts 830 test 4 fails with this.
+        //e->srcTally --;
+#endif
     }
     return 0;
 }
@@ -6007,8 +6028,11 @@ static int mopMORS (void)
         {
 IF1 sim_printf ("MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
             sim_debug (DBG_TRACEEXT, & cpu_dev, "MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
-            e->_faults |= FAULT_IPR;
-            return -1;
+// Faulting here is specified by AL39 but not RJ78.
+// If causes eis_tester mve tests to fail when the IGN inBuffer update is used.
+            //e->_faults |= FAULT_IPR;
+            //return -1;
+            return 0;
         }
         
         // XXX this is probably wrong regarding the ORing, but it's a start ....
@@ -6524,7 +6548,7 @@ IF1 sim_printf ("mopExecutor EISgetMop forced break\n");
             e->_faults |= FAULT_IPR;   // XXX ill proc fault
             break;        
           } 
-IF1 sim_printf ("mop %s %d\n", m->mopName, e->mopIF);
+IF1 sim_printf ("mop %s %d scr %d dst %d\n", m->mopName, e->mopIF, e->srcTally, e->dstTally);
         int mres = m->f();    // execute mop
         if (mres)
           {
