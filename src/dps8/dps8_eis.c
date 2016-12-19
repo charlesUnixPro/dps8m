@@ -5147,7 +5147,10 @@ static void writeToOutputBuffer (word9 **dstAddr, int szSrc, int szDst, word9 c4
                     **dstAddr = c49 & 077;   // high-order fill the digits with "00"b.
                     break;
                 case 9:
-                    **dstAddr = c49 | (e->editInsertionTable[7] & 0760);
+                    if (e->mvne)
+                      **dstAddr = c49 | (e->editInsertionTable[7] & 0760);
+                    else
+                      **dstAddr = c49 & 0777;
                     break;
             }
             break;
@@ -5671,11 +5674,11 @@ static int mopLTE (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
-    {
-IF1 sim_printf ("mopLTE 9/15\n");
-        e->_faults |= FAULT_IPR;
-        return -1;
-    }
+      {
+IF1 sim_printf ("mopLTE out of range %d\n", e->mopIF);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT out of range: %d\n", e -> mopIF);    
+        return 0;
+      }
 #ifdef EIS_PTR2
     word9 next = EISget49(&e->ADDR2, &e->mopPos, CTN9);
 #else
@@ -5683,9 +5686,21 @@ IF1 sim_printf ("mopLTE 9/15\n");
 #endif
     e->mopTally -= 1;
     
-    e->editInsertionTable[e->mopIF - 1] = next;
-    sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
+#if 0
+// According to ISOLTS ps830 test-25a, and out of range IF does not fetch
+// 'next'
+    if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
+      {
+IF1 sim_printf ("mopLTE out of range %d\n", e->mopIF);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT out of range: %d\n", e -> mopIF);    
+      }
+    else
+#endif
+      {
+        e->editInsertionTable[e->mopIF - 1] = next;
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
 IF1 sim_printf ("LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
+      }
     return 0;
 }
 
@@ -5743,8 +5758,9 @@ static int mopMFLC (void)
         if (e->srcTally == 0 || e->dstTally == 0)
         {
 IF1 sim_printf ("mopMFLC 0,0\n");
-            e->_faults |= FAULT_IPR;
-            return -1;
+            //e->_faults |= FAULT_IPR;
+            //return -1;
+            return 0;
         }
         // If ES is OFF and the character is zero, edit insertion table entry 1
         // is moved to the receiving field in place of the character.
@@ -5780,6 +5796,7 @@ IF1 sim_printf ("mopMFLC dst 0\n");
                 }
                 
                 writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+                e->mopZ = false; // iszero() tested above.
                 e->in += 1;
                 e->srcTally -= 1;
                 
@@ -5789,7 +5806,9 @@ IF1 sim_printf ("mopMFLC dst 0\n");
             sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLC ES on\n");
             // If ES is ON, the character is moved to the receiving field.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
-            
+            if (! isDecimalZero (c))
+              e->mopZ = false;
+
             e->in += 1;
             e->srcTally -= 1;
         }
@@ -5895,7 +5914,7 @@ IF1 sim_printf ("mopMFLS b 0,1\n");
 #endif
                     
                     writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
-
+                    e->mopZ = false; // iszero tested above
                     e->mopES = true;
                 } else {
                     //  SN is ON; edit insertion table entry 4 is moved to the
@@ -5914,7 +5933,7 @@ IF1 sim_printf ("mopMFLS c 0,1\n");
                     }
                     
                     writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
-                    
+                    e->mopZ = false; // iszero tested above
                     e->mopES = true;
                 }
             }
@@ -5922,6 +5941,8 @@ IF1 sim_printf ("mopMFLS c 0,1\n");
             // If ES is ON, the character is moved to the receiving field.
             sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is ON, the character is moved to the receiving field.\n");
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+            if (! isDecimalZero (c))
+              e->mopZ = false;
             
             e->in += 1;
             e->srcTally -= 1;
@@ -5991,11 +6012,14 @@ IF1 sim_printf ("MORS IPR src %d dst %d\n", e->srcTally, e->dstTally);
         }
         
         // XXX this is probably wrong regarding the ORing, but it's a start ....
-        word9 c = (*e->in | (!e->mopSN ? e->editInsertionTable[2] : e->editInsertionTable[3]));
+        word9 c = *e->in;
+        word9 cor = (c | (!e->mopSN ? e->editInsertionTable[2] : e->editInsertionTable[3]));
         e->in += 1;
         e->srcTally -= 1;
         
-        writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+        writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, cor);
+        if (! isDecimalZero (c))
+          e->mopZ = false;
     }
 
     return 0;
@@ -6038,6 +6062,8 @@ IF1 sim_printf ("MVC fault srcTally %d dstTally %d\n", e->srcTally == 0, e->dstT
 IF1 sim_printf ("MVC write to output buffer %o\n", *e->in);
         sim_debug (DBG_TRACEEXT, & cpu_dev, "MVC write to output buffer %o\n", *e->in);
         writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
+        if (! isDecimalZero (*e->in))
+          e->mopZ = false;
         e->in += 1;
         
         e->srcTally -= 1;
@@ -6156,8 +6182,11 @@ IF1 sim_printf ("mopMSES b 0 0\n");
         //If the result is zero, the second character is treated like the
         //first. This process continues until one of the comparative AND
         //results is nonzero or until all characters are moved.
+        writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, *e->in);
+        if (! isDecimalZero (*e->in))
+          e->mopZ = false;
         e->in += 1;
-        e->srcTally -= 1;   // XXX is this correct? No chars have been consumed, but ......
+        e->srcTally -= 1;
     }
     
     return 0;
@@ -6184,8 +6213,9 @@ static int mopMVZA (void)
         if (e->srcTally == 0 || e->dstTally == 0)
         {
 IF1 sim_printf ("mopMVZa 0 0\n");
-            e->_faults |= FAULT_IPR;
-            return -1;
+            //e->_faults |= FAULT_IPR;
+            //return -1;
+            return 0;
         }
         
         word9 c = *e->in;
@@ -6208,19 +6238,17 @@ IF1 sim_printf ("mopMVZa 0 0\n");
             //If ES is OFF and the character is not zero, then the character is
             //moved to the receiving field and ES is set ON.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
-            
+            e->mopZ = false;
             e->mopES = true;
         } else if (e->mopES)
         {
             //If ES is ON, the character is moved to the receiving field.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+            if (! isDecimalZero (c))
+              e->mopZ = false;
         }
     }
     
-    // XXX have no idea how to interpret this
-    // ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise,
-    // it is unchanged.
-
     return 0;
 }
 
@@ -6253,8 +6281,9 @@ static int mopMVZB (void)
         if (e->srcTally == 0 || e->dstTally == 0)
         {
 IF1 sim_printf ("mopMVZB 0,0\n");
-            e->_faults |= FAULT_IPR;
-            return -1;
+            //e->_faults |= FAULT_IPR;
+            //return -1;
+            return 0;
         }
         
         word9 c = *e->in;
@@ -6277,12 +6306,15 @@ IF1 sim_printf ("mopMVZB 0,0\n");
             //If ES is OFF and the character is not zero, then the character is
             //moved to the receiving field and ES is set ON.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+            e->mopZ = false;
             
             e->mopES = true;
         } else if (e->mopES)
         {
             //If ES is ON, the character is moved to the receiving field.
             writeToOutputBuffer(&e->out, e->srcSZ, e->dstSZ, c);
+            if (! isDecimalZero (c))
+              e->mopZ = false;
         }
     }
 
@@ -6476,6 +6508,11 @@ static void mopExecutor (int kMop)
     // an exhausted sending string or the use of an exhausted MOP string is
     // attempted.
     
+//IF1 {
+//sim_printf ("mop control string\n")
+//for (uint i = 0; i < 8; i ++)
+  //sim_printf ("  %12lo\n", EISReadIdx (e->mopAddress, i);
+//}
     while (e->dstTally && e->mopTally)
     {
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor srcTally %d dstTally %d mopTally %d\n", e->srcTally, e->dstTally, e->mopTally);
@@ -6501,6 +6538,24 @@ IF1 sim_printf ("mop %s %d\n", m->mopName, e->mopIF);
         //return;
 IF1 sim_printf ("mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "mop faults %o src %d dst %d mop %d\n", e->_faults, e->srcTally, e->dstTally, e->mopTally);
+
+    // If no faults, do the BZ thing
+
+    // Blank-when-zero flag; initially set OFF and is set ON by either the enf
+    // or ses micro operation. If, at the completion of a move, both the Z and
+    // BZ are ON, the receiving string is filled with character 1 of the edit
+    // insertion table.
+
+    if (e->_faults == 0)
+      {
+        if(e->mopZ && e->mopBZ)
+          {
+            for (int n = 0; n < e->mopIF; n ++)
+              {
+                writeToOutputBuffer(& e->out, 9, e->dstSZ, e->editInsertionTable[1]);
+              }
+          }
+      }
 
 //"The micro-operation sequence is terminated normally when the receiving string
 // length is exhausted. The micro-operation sequence is terminated abnormally (with
@@ -6567,6 +6622,11 @@ void mve (void)
     parseAlphanumericOperandDescriptor(2, 2, false);
     parseAlphanumericOperandDescriptor(3, 3, false);
     
+IF1 sim_printf ("mve 1\n");
+IF1 sim_printf ("IWB %012lo\n", IWB_IRODD);
+IF1 sim_printf ("op1 %012lo\n", e->op[0]);
+IF1 sim_printf ("op2 %012lo\n", e->op[1]);
+IF1 sim_printf ("op3 %012lo\n", e->op[2]);
     // Bits 0, 1, 9, and 10 MBZ
     // According to RJ78, bit 9 is T, but is not mentioned in the text.
     if (IWB_IRODD & 0600600000000)
@@ -6584,6 +6644,7 @@ void mve (void)
     if (e -> op [2]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
 
+IF1 sim_printf ("mve 2\n");
     // ISOLTS test 841, testing for ipr fault by setting (l=1)(s=00)
     // in the first descriptor of the
     // instruction mvn
@@ -6591,6 +6652,7 @@ void mve (void)
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
     e->mopSN = false; // Sign flag
+    e->mopZ =  true;  // Zero flag
     e->mopBZ = false; // Blank-when-zero flag
     
     e->srcTally = (int) e->N1;  // number of chars in src (max 63)
@@ -6637,6 +6699,7 @@ void mve (void)
     // 1. load sending string into inputBuffer
     EISloadInputBufferAlphnumeric (1);   // according to MF1
     
+IF1 sim_printf ("mve 3\n");
     // 2. Execute micro operation string, starting with first (4-bit) digit.
     e -> mvne = false;
     
@@ -6646,12 +6709,14 @@ void mve (void)
     mopExecutor (2);
 #endif
     
+IF1 sim_printf ("mve 4\n");
     e -> dstTally = (int) e -> N3;  // restore dstTally for output
     
     EISwriteOutputBufferToMemory (3);
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
+IF1 sim_printf ("mve 5\n");
   }
 
 void mvne (void)
@@ -6713,6 +6778,7 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
     e->mopSN = false; // Sign flag
+    e->mopZ =  true;  // Zero flag
     e->mopBZ = false; // Blank-when-zero flag
     
     e -> srcTally = (int) e -> N1;  // number of chars in src (max 63)

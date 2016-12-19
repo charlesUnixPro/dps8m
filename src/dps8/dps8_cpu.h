@@ -664,6 +664,9 @@ typedef struct EISstruct
                             //  digits are zero, the data is assumed positive
                             //  and the SN flag is set OFF, even when the
                             //  sign is negative.
+    bool    mopZ;           // Zero flag; initially set ON. It is set OFF 
+                            //  whenever a sending string character that is not
+                            //  decimal zero is moved into the receiving string.
     bool    mopBZ;          // Blank-when-zero flag; initially set OFF and
                             //  set ON by either the ENF or SES micro
                             //  operation. If, at the completion of a move
