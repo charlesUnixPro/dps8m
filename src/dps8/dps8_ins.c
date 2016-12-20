@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -2214,6 +2215,10 @@ restart_1:
 #ifndef __MINGW64__
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
                    "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10Lg\n",
+                   cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());
+#else
+        sim_debug (DBG_REGDUMPFLT, &cpu_dev,
+                   "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10g\n",
                    cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());
 #endif
 
@@ -8463,14 +8468,17 @@ static int emCall (void)
             sim_printf ("%"PRId64"", tmp);
             break;
         }
-#ifndef __MINGW64__
         case 6:     // putEAQ - put float contents of C(EAQ) to stdout
         {
+#ifndef __MINGW64__
             long double eaq = EAQToIEEElongdouble ();
             sim_printf ("%12.8Lg", eaq);
+#else
+            double eaq = EAQToIEEEdouble();
+            sim_printf("%12.8g", eaq);
+#endif
             break;
         }
-#endif
         case 7:   // dump index registers
             for (int i = 0 ; i < 8 ; i += 4)
                 sim_printf ("r[%d]=%06o r[%d]=%06o r[%d]=%06o r[%d]=%06o\n",

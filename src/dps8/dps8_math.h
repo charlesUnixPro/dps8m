@@ -12,6 +12,7 @@
  */
 
 long double EAQToIEEElongdouble(void);
+double EAQToIEEEdouble(void);
 #ifndef QUIET_UNUSED
 float72 IEEElongdoubleToFloat72(long double f);
 void IEEElongdoubleToEAQ(long double f0);

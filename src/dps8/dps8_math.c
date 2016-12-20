@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -59,13 +60,16 @@ long double EAQToIEEElongdouble(void)
     
     bool S = Mant & SIGN72; // sign of mantissa
     if (S)
-        Mant = (-Mant) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
-    
+        Mant = (-Mant) & MASK71; // 71 bits (not 72!)
+
     long double m = 0;  // mantissa value;
     int e = SIGNEXT8_int (cpu . rE & MASK8); // make signed
 
+    if (S && Mant == 0) // denormalized -1.0*2^e
+        return -exp2l(e);
+
     long double v = 0.5;
-    for(int n = 70 ; n >= 0 ; n -= 1)
+    for(int n = 70 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
         if (Mant & ((word72)1 << n))
         {
@@ -74,12 +78,44 @@ long double EAQToIEEElongdouble(void)
         v /= 2.0;
     }
     
-    if (m == 0 && e == -128)    // special case - normalized 0
+    /*if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
     if (m == 0)
-        return (S ? -1 : 1) * exp2l(e);
+        return (S ? -1 : 1) * exp2l(e); */
     
     return (S ? -1 : 1) * ldexpl(m, e);
+}
+
+// MINGW doesn't have long double support, convert to IEEE double instead
+double EAQToIEEEdouble(void)
+{
+    // mantissa
+    word72 Mant = ((word72)(cpu . rA & DMASK) << 36) | ((word72) cpu . rQ & DMASK);
+
+    if (Mant == 0)
+        return 0;
+    
+    bool S = Mant & SIGN72; // sign of mantissa
+    if (S)
+        Mant = (-Mant) & MASK71; // 71 bits (not 72!)
+
+    double m = 0;  // mantissa value
+    int e = SIGNEXT8_int (cpu . rE & MASK8); // make signed
+
+    if (S && Mant == 0)	// denormalized -1.0*2^e
+        return -exp2(e);
+
+    double v = 0.5;
+    for(int n = 70 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
+    {
+        if (Mant & ((word72)1 << n))
+        {
+            m += v;
+        }
+        v /= 2.0;
+    }
+    
+    return (S ? -1 : 1) * ldexp(m, e);
 }
 
 #ifndef QUIET_UNUSED
@@ -272,8 +308,11 @@ static double float36ToIEEEdouble(word36 f36)
     double m = 0;       ///< mantissa value;
     int e = (char)E;  ///< make signed
     
+    if (S && Mant == 0) // denormalized -1.0*2^e
+        return -exp2(e);
+    
     double v = 0.5;
-    for(int n = 26 ; n >= 0 ; n -= 1)
+    for(int n = 26 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
         if (Mant & (1 << n))
         {
@@ -281,11 +320,6 @@ static double float36ToIEEEdouble(word36 f36)
         }   //else
         v /= 2.0;
     }
-    
-    if (m == 0 && e == -128)    // special case - normalized 0
-        return 0;
-    if (m == 0)
-        return (S ? -1 : 1) * exp2(e);
     
     return (S ? -1 : 1) * ldexp(m, e);
 }
