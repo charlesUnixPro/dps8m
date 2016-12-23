@@ -6514,8 +6514,7 @@ IF1 sim_printf ("mop %s %d\n", m->mopName, e->mopIF);
 
 #if 0
         // delayed (L2) srcTally test
-        if (e->mopTally == 0)  // this assumes dstTally == 0, otherwise we 
-                               // would have received an IPR
+        if (e->mopTally == 0)
           {
 IF1 sim_printf ("mopExecutor N2 exhausted\n");
             sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor N2 exhausted\n");
@@ -6537,8 +6536,8 @@ IF1 sim_printf ("mopExecutor N1 or N2 exhausted\n");
                     writeToOutputBuffer(&e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                   }
               }
-            else if (mres)
-              { // N1 exhausted and BZ wasn't enabled
+            else if (mres || e->dstTally)
+              { // N1 or N2 exhausted and BZ wasn't enabled
                 e->_faults |= FAULT_IPR;
               } // otherwise normal termination
             break;        
