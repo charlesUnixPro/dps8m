@@ -351,7 +351,7 @@ static int wcd (void)
 
         case  8: // set_framing_chars
           {
-            //sim_printf ("fnp set delay table\n");
+            //sim_printf ("fnp set framing characters\n");
             word36 command_data0 = decoded.smbxp -> command_data [0];
             uint d1 = getbits36_9 (command_data0, 0);
             uint d2 = getbits36_9 (command_data0, 9);
@@ -640,8 +640,9 @@ static int wcd (void)
                   {
                     uint bufsiz1 = getbits36_18 (decoded.smbxp -> command_data [0], 18);
                     uint bufsiz2 = getbits36_18 (decoded.smbxp -> command_data [1], 0);
-                    linep->block_xfer_out_of_frame = bufsiz1;
-                    linep->block_xfer_in_frame = bufsiz2;
+                    linep->block_xfer_out_frame_sz = bufsiz1;
+                    linep->block_xfer_in_frame_sz = bufsiz2;
+//sim_printf ("in frame sz %u out frame sz %u\n", linep->block_xfer_in_frame_sz, linep->block_xfer_out_frame_sz);
                     //sim_printf ("fnp block_xfer %d %d\n", bufsiz1, bufsiz2);
                   }
                   break;
@@ -949,7 +950,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
-
+//sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
     putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
     putbits36_9 (& smbxp -> word2, 18, 0102); // op_code input_in_mailbox
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
@@ -1713,6 +1714,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 // telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
     uvClientData * p = linep->client->data;
     //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
+//sim_printf ("%03o %c\n", kar, isprint(kar)? kar : '#');
     if (p && p->telnetp && linep->was_CR && kar == 0)
       {
         //sim_printf ("dropping nul\n");
@@ -1779,15 +1781,12 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
             return true;
           }
     
-        // Multics seems to want CR changed to LF
-        if (kar == '\r')
-          kar = '\n';
-    
         if ((linep-> frame_begin != 0 &&
              linep-> frame_begin == kar) ||
             (linep-> frame_end != 0 &&
              linep-> frame_end == kar))
           {
+#if 0
             // Framing chars are dropped. Is that right?.
             if (linep->nPos != 0)
               {
@@ -1797,7 +1796,23 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
               }
             // Frame character on an empty frame; keep going.
             return false;
+#else
+// XXX This code assumes that only 'frame_end' is in play, as in Kermit behavior
+            linep->buffer[linep->nPos++] = kar;
+            // Pad to frame size with nulls
+            int frsz = (int) linep->block_xfer_in_frame_sz;
+            while ((size_t) linep->nPos < sizeof (linep->buffer) && linep->nPos < frsz)
+              linep->buffer[linep->nPos++] = 0;
+            linep->accept_input = 1;
+            linep->input_break = true;
+//sim_printf ("set nPos to %d\n", (int) linep->nPos);
+            return true;
+#endif
           }
+    
+        // Multics seems to want CR changed to LF
+        if (kar == '\r')
+          kar = '\n';
     
         switch (kar)
           {
@@ -1879,7 +1894,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
 
         // block xfer buffer size met
-        (linep->block_xfer_out_of_frame != 0 && linep->nPos >= (int) linep->block_xfer_out_of_frame) ||
+        (linep->block_xfer_out_frame_sz != 0 && linep->nPos >= (int) linep->block_xfer_out_frame_sz) ||
 
         // 'listen' command buffer size met
         (linep->inputBufferSize != 0 && linep->nPos >= (int) linep->inputBufferSize))
@@ -2052,7 +2067,22 @@ void fnpProcessEvent (void)
               {
                 if (linep->accept_input == 1)
                   {
-
+#if 0
+{
+  sim_printf ("\n nPos %d:", linep->nPos);
+  for (int i = 0; i < linep->nPos; i ++)
+     if (isprint (linep->buffer [i]))
+      sim_printf ("%c", linep->buffer [i]);
+     else
+      sim_printf ("\\%03o", linep->buffer [i]);
+  //for (unsigned char * p = linep->buffer; *p; p ++)
+     //if (isprint (*p))
+      //sim_printf ("%c", *p);
+     //else
+      //sim_printf ("\\%03o", *p);
+   sim_printf ("\n");
+}
+#endif
 // There is a bufferful of data that needs to be sent to the CS.
 // If the buffer has < 101 characters, use the 'input_in_mailbox'
 // command; otherwise use the 'accept_input/input_accepted'
