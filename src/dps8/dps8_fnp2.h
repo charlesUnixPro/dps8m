@@ -104,7 +104,7 @@ typedef struct
                              // the commands by waiting for this to clear before
                              // sending the next input.
         bool input_reply_pending;
-        // Part of 'accent_input'
+        // Part of 'accept_input'
         bool input_break;
 
         // Buffer being assembled for sending to Multics
