@@ -250,6 +250,15 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
   }
 
 
+void fnpuv_associated_brk (uv_tcp_t * client)
+  {
+    uvClientData * p = (uvClientData *) client->data;
+    uint fnpno = p -> fnpno;
+    uint lineno = p -> lineno;
+    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+    linep->line_break=true;
+  }
+
 // read callback for connections that are associated with an HSLA line;
 // forward the data to the FNP input handler
 

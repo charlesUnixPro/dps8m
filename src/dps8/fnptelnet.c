@@ -106,6 +106,24 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
           }
           break;
 
+        case TELNET_EV_IAC:
+          {
+            if (event->iac.cmd == 243) // BRK
+              {
+                //sim_printf ("BRK\n");
+                uvClientData * p = (uvClientData *) client->data;
+                if (p -> assoc)
+                  {
+                    fnpuv_associated_brk (client);
+                  }
+                else
+                  sim_warn ("liblnet dropping unassociated BRK\n");
+              }
+            else
+              sim_warn ("liblnet unhandle IAC event %d\n", event->iac.cmd);
+          }
+          break;
+
         default:
           sim_printf ("evHandler: unhandled event %d\n", event->type);
           break;

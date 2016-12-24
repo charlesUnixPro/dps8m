@@ -27,6 +27,7 @@ void fnpuvProcessEvent (void);
 void fnpuv_start_write (uv_tcp_t * client, char * data, ssize_t len);
 void fnpuv_start_writestr (uv_tcp_t * client, char * data);
 void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen);
+void fnpuv_associated_brk (uv_tcp_t * client);
 void fnpuv_unassociated_readcb (uv_tcp_t * client, ssize_t nread, unsigned char * buf);
 void fnpuv_associated_readcb (uv_tcp_t * client, ssize_t nread, unsigned char * buf);
 void fnpuv_read_start (uv_tcp_t * client);
