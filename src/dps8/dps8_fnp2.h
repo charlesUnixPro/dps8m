@@ -72,7 +72,7 @@ typedef struct
         t_bool odd_parity;
         t_bool output_flow_control;
         t_bool input_flow_control;
-        uint block_xfer_in_frame, block_xfer_out_of_frame;
+        uint block_xfer_in_frame_sz, block_xfer_out_frame_sz;
         uint delay_table [6];
 #define FC_STR_SZ 4
         uint inputSuspendLen;
