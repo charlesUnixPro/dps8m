@@ -7014,8 +7014,8 @@ void mvt (void)
       __func__, e -> CN1, e -> CN2, e -> srcSZ, e -> dstSZ, T,
       fill, fillT, e -> N1, e -> N2);
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for ( ; cpu . du . CHTALLY < min(e->N1, e->N2); cpu . du . CHTALLY ++)
     {
@@ -7449,8 +7449,8 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7775,8 +7775,8 @@ void csl (bool isSZTL)
 
     bool bR = false; // result bit
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
@@ -8083,8 +8083,8 @@ void csr (bool isSZTR)
     
     bool bR = false; // result bit
     
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     for( ; cpu . du . CHTALLY < min(e->N1, e->N2) ; cpu . du . CHTALLY += 1)
     {
@@ -8308,8 +8308,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb N1 %d N2 %d\n", e -> N1, e -> N2);
       }
 #endif
 
-    L68_ (if (max (e->N1, e->N2) < 128)
-      DU_CYCLE_FLEN_128;)
+    PNL (L68_ (if (max (e->N1, e->N2) < 128)
+      DU_CYCLE_FLEN_128;))
 
     uint i;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -8725,7 +8725,7 @@ static void _btd (bool * ovfp)
 {
     EISwriteToOutputStringReverse(2, 0, ovfp);    // initialize output writer .....
     
-    L68_ (DU_CYCLE_DGBD;)
+    PNL (L68_ (DU_CYCLE_DGBD;))
 
     EISstruct * e = & cpu . currentEISinstruction;
     * ovfp = false;
@@ -9114,7 +9114,7 @@ void dtb (void)
     setupOperandDescriptor(2);
 #endif
     
-    L68_ (DU_CYCLE_DGDB;)
+    PNL (L68_ (DU_CYCLE_DGDB;))
 
     parseNumericOperandDescriptor(1);
     parseNumericOperandDescriptor(2);
@@ -9224,8 +9224,8 @@ void ad2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     switch(srcTN)
@@ -9514,8 +9514,8 @@ void ad3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -9790,8 +9790,8 @@ void sb2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
 
     
     uint srcTN = e->TN1;    // type of chars in src
@@ -10033,8 +10033,8 @@ void sb3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10296,8 +10296,8 @@ void mp2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -10536,8 +10536,8 @@ void mp3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11571,8 +11571,8 @@ void dv2d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -11840,8 +11840,8 @@ void dv3d (void)
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
-    L68_ (if (R)
-      DU_CYCLE_FRND;)
+    PNL (L68_ (if (R)
+      DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
     
