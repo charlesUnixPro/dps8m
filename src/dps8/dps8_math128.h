@@ -13,7 +13,7 @@ Defines 128 bits Integer for 32 bits platform
 
 /* if (sizeof(long) < 8), I expect we're on a 32 bit system */
 
-#if __SIZEOF_LONG__ < 8
+#if __SIZEOF_LONG__ < 8 && ! defined (__MINGW64__)
 typedef          int TItype     __attribute__ ((mode (TI)));
 typedef unsigned int UTItype    __attribute__ ((mode (TI)));
 
