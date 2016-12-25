@@ -56,6 +56,7 @@ static int emCall (void);
 // CANFAULT
 static void writeOperands (void)
 {
+    CPT (cpt2U, 0); // write operands
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -76,6 +77,7 @@ static void writeOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
+        CPT (cpt2U, 1); // read indirect operand
         // CI:
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
@@ -132,6 +134,7 @@ static void writeOperands (void)
 
         if (Td == IT_SCR)
           {
+            CPT (cpt2U, 2); // write IT_SCR
             // For each reference to the indirect word, the character
             // counter, cf, is reduced by 1 and the TALLY field is
             // increased by 1 before the computed address is formed.
@@ -221,6 +224,7 @@ static void writeOperands (void)
 // CANFAULT
 static void readOperands (void)
 {
+    CPT (cpt2U, 3); // read operands
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, &cpu_dev,
@@ -269,6 +273,7 @@ static void readOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
+        CPT (cpt2U, 4); // read IT/CI/SCR
         // CI
         // Bit 30 of the TAG field of the indirect word is interpreted
         // as a character size flag, tb, with the value 0 indicating
@@ -327,6 +332,7 @@ static void readOperands (void)
 
         if (Td == IT_SCR)
           {
+            CPT (cpt2U, 5); // read SCR
             // For each reference to the indirect word, the character
             // counter, cf, is reduced by 1 and the TALLY field is
             // increased by 1 before the computed address is formed.
@@ -402,6 +408,7 @@ static void readOperands (void)
 
 static void scu2words (word36 *words)
   {
+    CPT (cpt2U, 6); // scu2words
     memset (words, 0, 8 * sizeof (* words));
 
     // words[0]
@@ -567,6 +574,7 @@ void tidy_cu (void)
 
 static void words2scu (word36 * words)
 {
+    CPT (cpt2U, 7); // words2scu
     // BUG:  We don't track much of the data that should be tracked
 
     // words[0]
@@ -684,6 +692,7 @@ void cu_safe_restore (void)
 
 static void du2words (word36 * words)
   {
+    CPT (cpt2U, 7); // du2words
 
 #ifdef ISOLTS
     for (int i = 0; i < 8; i ++)
@@ -748,6 +757,7 @@ static void du2words (word36 * words)
 
 static void words2du (word36 * words)
   {
+    CPT (cpt2U, 8); // words2du
     // Word 0
 
     cpu.du.Z        = getbits36_1  (words[0],  9);
@@ -1063,6 +1073,7 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED char * buf)
 // CANFAULT
 void fetchInstruction (word18 addr)
 {
+    CPT (cpt2U, 9); // fetchInstruction
     DCDstruct * p = & cpu.currentInstruction;
 
     memset (p, 0, sizeof (struct DCDstruct));
@@ -1080,15 +1091,22 @@ void fetchInstruction (word18 addr)
     if (cpu.cu.rd && ((cpu.PPR.IC & 1) != 0))
       {
         if (cpu.cu.repeat_first)
-          Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH, 0);
+          {
+            CPT (cpt2U, 10); // fetch rpt odd
+            Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH, 0);
+          }
       }
     else if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
         if (cpu.cu.repeat_first)
-          Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
+          {
+            CPT (cpt2U, 11); // fetch rpt even
+            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
+          }
       }
     else
       {
+        CPT (cpt2U, 12); // fetch 
         Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
 #ifdef ISOLTS
 // ISOLTS test pa870 expects IRODD to be set up.
@@ -1322,6 +1340,7 @@ bool tstOVFfault (void)
 
 t_stat executeInstruction (void)
   {
+    CPT (cpt2U, 13); // execute instruction 
 
 //
 // Decode the instruction
@@ -1404,6 +1423,7 @@ t_stat executeInstruction (void)
               {
                 cpu.MR.ihr = 0;
               }
+            CPT (cpt2U, 14); // opcode trap
 IF1 sim_printf ("trapping opcode match......\n");
             //set_FFV_fault (2); // XXX According to AL39
             do_FFV_fault (1, "OC TRAP");
@@ -1418,6 +1438,7 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
+    CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
     PNL (L68_ (cpu.AR_F_E = false;))
 
@@ -1571,6 +1592,7 @@ IF1 sim_printf ("RPx_fault %012"PRIo64"\n", (word36) RPx_fault);
 
 restart_1:
 
+    CPT (cpt2U, 15); // instruction processing
 ///
 /// executeInstruction: Initialize state saving registers
 ///
@@ -1629,6 +1651,7 @@ restart_1:
 
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
+        CPT (cpt2U, 15); // RPx processing
 //
 // RPT:
 //
@@ -1696,6 +1719,7 @@ restart_1:
 
         if (cpu.cu.repeat_first)
           {
+            CPT (cpt2U, 16); // RPx processing
             // The semantics of these are that even is the first instruction of
             // and RPD, and odd the second.
 
@@ -2350,7 +2374,18 @@ static t_stat DoBasicInstruction (void)
         cpu.ou.RB1_FULL = cpu.ou.RP_FULL = cpu.ou.RS_FULL = 1;
         cpu.ou.cycle |= ou_GIN;
         cpu.ou.opsz = (NonEISopcodes[i->opcode].reg_use >> 12) & 037;
-        cpu.ou.reguse = (NonEISopcodes[i->opcode].reg_use) & MASK10;
+        word10 reguse = (NonEISopcodes[i->opcode].reg_use) & MASK10;
+        cpu.ou.reguse = reguse;
+        if (reguse & ru_A) CPT (cpt5U, 4);
+        if (reguse & ru_Q) CPT (cpt5U, 5);
+        if (reguse & ru_X0) CPT (cpt5U, 6);
+        if (reguse & ru_X1) CPT (cpt5U, 7);
+        if (reguse & ru_X2) CPT (cpt5U, 8);
+        if (reguse & ru_X3) CPT (cpt5U, 9);
+        if (reguse & ru_X4) CPT (cpt5U, 10);
+        if (reguse & ru_X5) CPT (cpt5U, 11);
+        if (reguse & ru_X6) CPT (cpt5U, 12);
+        if (reguse & ru_X7) CPT (cpt5U, 13);
       }
 #endif
 
@@ -6429,6 +6464,12 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                          "(rscr)");
               }
 
+#ifdef PANEL
+            {
+               uint function = (cpu.iefpFinalAddress >> 3) & 07;
+               CPT (cpt13L, function);
+            }
+#endif
             t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum,
                                   cpu.iefpFinalAddress & MASK15,
                                   & cpu.rA, & cpu.rQ);

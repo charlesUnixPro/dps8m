@@ -1683,11 +1683,15 @@ setCPU:;
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
 
+#ifdef PANEL
+        memset (cpu.cpt, 0, sizeof (cpu.cpt));
+#endif
 
         switch (cpu.cycle)
           {
             case INTERRUPT_cycle:
               {
+                CPT (cpt1U, 0); // Interupt cycle
                 // In the INTERRUPT CYCLE, the processor safe-stores
                 // the Control Unit Data (see Section 3) into 
                 // program-invisible holding registers in preparation 
@@ -1703,6 +1707,7 @@ setCPU:;
                 cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
 
+                CPT (cpt1U, 1); // safe store complete
                 // Temporary absolute mode
                 set_TEMPORARY_ABSOLUTE_mode ();
 
@@ -1713,6 +1718,7 @@ setCPU:;
                 // Check that an interrupt is actually pending
                 if (cpu.interrupt_flag)
                   {
+                    CPT (cpt1U, 2); // interrupt pending
                     // clear interrupt, load interrupt pair into instruction 
                     // buffer; set INTERRUPT_EXEC_cycle.
 
@@ -1722,6 +1728,7 @@ setCPU:;
                     if (intr_pair_addr != 1) // no interrupts 
                       {
 
+                        CPT (cpt1U, 3); // interrupt identified
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
 
@@ -1733,6 +1740,7 @@ setCPU:;
                         // get interrupt pair
                         core_read2 (intr_pair_addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
+                        CPT (cpt1U, 4); // interrupt pair fetched
                         cpu.interrupt_flag = false;
                         setCpuCycle (INTERRUPT_EXEC_cycle);
                         break;
@@ -1741,6 +1749,7 @@ setCPU:;
 
                 // If we get here, there was no interrupt
 
+                CPT (cpt1U, 5); // interrupt pair spurious
                 cpu.interrupt_flag = false;
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 // Restores addressing mode 
@@ -1761,9 +1770,15 @@ setCPU:;
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu.cycle == INTERRUPT_EXEC_cycle)
-                  cpu.cu.IWB = cpu.instr_buf [0];
+                  {
+                    CPT (cpt1U, 6); // exec cycle
+                    cpu.cu.IWB = cpu.instr_buf [0];
+                  }
                 else
+                  {
+                    CPT (cpt1U, 7); // exec2 cycle
                   cpu.cu.IWB = cpu.instr_buf [1];
+                  }
 
                 if (GET_I (cpu.cu.IWB))
                   cpu.wasInhibited = true;
@@ -1778,6 +1793,7 @@ setCPU:;
 
                 if (ret == CONT_TRA)
                   {
+                    CPT (cpt1U, 8); // was xfer
                     cpu.wasXfer = true;
                   }
 
@@ -1793,12 +1809,14 @@ setCPU:;
                     if (! (cpu.currentInstruction.opcode == 0715 &&
                            cpu.currentInstruction.opcodeX == 0))
                       {
+                        CPT (cpt1U, 9); // nbar set
                         SET_I_NBAR;
                       }
 
                     setCpuCycle (FETCH_cycle);
                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
                       {
+                        CPT (cpt1U, 10); // temporary absolute mode
                         set_addr_mode (ABSOLUTE_mode);
                       }
                     break;
@@ -1807,6 +1825,7 @@ setCPU:;
                 if (ret == CONT_DIS)
                   {
                     // ISOLTS does this....
+                    CPT (cpt1U, 11); // dis in interrupt pair
                     sim_warn ("DIS in interrupt cycle\n");
                     break;
                   }
@@ -1823,12 +1842,14 @@ setCPU:;
                 // We can only get here if wasXfer was
                 // false, so we can assume it still is.
                 cpu.wasXfer = false;
+                CPT (cpt1U, 12); // cu restored
                 setCpuCycle (FETCH_cycle);
               }
               break;
 
             case FETCH_cycle:
               {
+                CPT (cpt1U, 13); // fetch cycle
 
                 PNL (L68_ (cpu.INS_FETCH = false;))
 
@@ -1872,6 +1893,7 @@ setCPU:;
                     (! (cpu.cu.xde | cpu.cu.xdo |
                         cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
                   {
+                    CPT (cpt1U, 14); // sampling interrupts
                     cpu.interrupt_flag = sample_interrupts ();
                     //cpu.g7_flag = bG7Pending ();
                     // Don't check timer runout if in absolute mode, privledged, or
@@ -1894,6 +1916,7 @@ setCPU:;
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
 // to FETCH_cycle.
+                    CPT (cpt1U, 15); // interrupt
                     setCpuCycle (INTERRUPT_cycle);
                     break;
                   }
@@ -1907,6 +1930,7 @@ setCPU:;
                 // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
                 if (cpu.lufCounter > 32000)
                   {
+                    CPT (cpt1U, 16); // LUF
                     cpu.lufCounter = 0;
                     doFault (FAULT_LUF, (_fault_subtype) {.bits=0}, "instruction cycle lockup");
                   }
@@ -1934,6 +1958,7 @@ setCPU:;
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
+                    CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
                     // Do nothing next time
@@ -1944,6 +1969,7 @@ setCPU:;
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
+                    CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
                     cpu.cu.xdo = 1;
@@ -1953,6 +1979,7 @@ setCPU:;
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
                   {
+                    CPT (cpt1U, 19); // do XEC
                     // do it this time, and nothing next time
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
@@ -1960,6 +1987,7 @@ setCPU:;
                   }
                 else
                   {
+                    CPT (cpt1U, 20); // not XEC or RPx
                     cpu.isExec = false;
                     cpu.isXED = false;
                     //processorCycle = INSTRUCTION_FETCH;
@@ -1997,6 +2025,7 @@ setCPU:;
                   }
 #endif
 
+                CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
                 setCpuCycle (EXEC_cycle);
               }
@@ -2004,6 +2033,7 @@ setCPU:;
 
             case EXEC_cycle:
               {
+                CPT (cpt1U, 22); // exec cycle
 //#define MOLASSES 1
 #ifdef MOLASSES
         static uint molasses = 0;
@@ -2021,6 +2051,7 @@ setCPU:;
 
                 t_stat ret = executeInstruction ();
 
+                CPT (cpt1U, 23); // execution complete
                 if (ret > 0)
                   {
                      reason = ret;
@@ -2029,6 +2060,7 @@ setCPU:;
 
                 if (ret == CONT_TRA)
                   {
+                    CPT (cpt1U, 24); // transfer instruction
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = false;
                     cpu.isXED = false;
@@ -2039,6 +2071,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    CPT (cpt1U, 25); // DIS instruction
 
 
 // If we get here, we have encountered a DIS instruction in EXEC_cycle.
@@ -2122,6 +2155,7 @@ setCPU:;
                      (cpu.cu.rd && (cpu.PPR.IC & 1)) ||
                      cpu.cu.rl))
                   {
+                    CPT (cpt1U, 26); // RPx instruction
                     if (cpu.cu.rd)
                       -- cpu.PPR.IC;
                     cpu.wasXfer = false; 
@@ -2131,6 +2165,7 @@ setCPU:;
 
                 if (cpu.cu.xde || cpu.cu.xdo) // we are starting or are in an XEC/XED
                   {
+                    CPT (cpt1U, 27); // XEx instruction
                     cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
@@ -2143,6 +2178,7 @@ setCPU:;
                 if (ci->info->ndes > 0)
                   cpu.PPR.IC += ci->info->ndes;
 
+                CPT (cpt1U, 28); // enter fetch cycle
                 cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
@@ -2150,6 +2186,8 @@ setCPU:;
 
             case SYNC_FAULT_RTN_cycle:
               {
+                CPT (cpt1U, 29); // sync. fault return
+                cpu.wasXfer = false; 
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decodeInstruction() restores ci->info->ndes
@@ -2164,6 +2202,7 @@ setCPU:;
 
             case FAULT_cycle:
               {
+                CPT (cpt1U, 30); // fault cycle
 #if 0
                 // Interrupts need to be processed at the beginning of the
                 // FAULT CYCLE as part of the H/W 'fetch instruction pair.'
@@ -2204,6 +2243,7 @@ setCPU:;
                   }
 
                 cu_safe_store ();
+                CPT (cpt1U, 31); // safe store complete
 
                 // Temporary absolute mode
                 set_TEMPORARY_ABSOLUTE_mode ();
@@ -2229,6 +2269,7 @@ setCPU:;
   
                 core_read2 (addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
 
+                CPT (cpt1U, 33); // set fault exec cycle
                 setCpuCycle (FAULT_EXEC_cycle);
 
                 break;
@@ -2241,15 +2282,22 @@ setCPU:;
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu.cycle == FAULT_EXEC_cycle)
-                  cpu.cu.IWB = cpu.instr_buf [0];
+                  {
+                    CPT (cpt1U, 34); // fault exec even cycle
+                    cpu.cu.IWB = cpu.instr_buf [0];
+                  }
                 else
-                  cpu.cu.IWB = cpu.instr_buf [1];
+                  {
+                    CPT (cpt1U, 35); // fault exec odd cycle
+                    cpu.cu.IWB = cpu.instr_buf [1];
+                  }
 
                 if (GET_I (cpu.cu.IWB))
                   cpu.wasInhibited = true;
 
                 t_stat ret = executeInstruction ();
 
+                CPT (cpt1L, 0); // fault instruction complete
                 if (ret > 0)
                   {
                      reason = ret;
@@ -2258,6 +2306,7 @@ setCPU:;
 
                 if (ret == CONT_TRA)
                   {
+                    CPT (cpt1L, 1); // fault instruction was transfer
                     //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault\n");
                     //sim_debug (DBG_TRACE,& cpu_dev,
                                 //"fault CONT_TRA; was_appending %d\n",
@@ -2282,6 +2331,7 @@ setCPU:;
                         //brkbrk(0, NULL);
                         //sim_debug (DBG_TRACE, & cpu_dev,
                                    //"CONR_TRA: went_appending was false, so setting absolute mode\n");
+                        CPT (cpt1L, 2); // set abs mode
                         set_addr_mode (ABSOLUTE_mode);
                       }
                     break;
@@ -2289,6 +2339,7 @@ setCPU:;
 
                 if (ret == CONT_DIS)
                   {
+                    CPT (cpt1L, 3); // DIS in fault pait
                     // ISOLTS does this....
                     sim_warn ("DIS in fault cycle\n");
                     break;
@@ -2296,9 +2347,11 @@ setCPU:;
 
                 if (cpu.cycle == FAULT_EXEC_cycle)
                   {
+                    CPT (cpt1L, 4); // go to fault exec odd cycle
                     setCpuCycle (FAULT_EXEC2_cycle);
                     break;
                   }
+                CPT (cpt1L, 5); // go to exec cycle
                 // Done with FAULT_EXEC2_cycle
                 // Restores cpu.cycle and addressing mode
                 clear_TEMPORARY_ABSOLUTE_mode ();
@@ -2397,6 +2450,7 @@ int OPSIZE (void)
 // read instruction operands
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
+    CPT (cpt1L, 6); // ReadOP
     DCDstruct * i = & cpu.currentInstruction;
         
     // rtcd is an annoying edge case; ReadOP is called before the instruction
@@ -2414,25 +2468,30 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     switch (OPSIZE ())
     {
         case 1:
+            CPT (cpt1L, 7); // word
             Read (addr, &cpu.CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
+            CPT (cpt1L, 8); // double word
             addr &= 0777776;   // make even
             Read (addr + 0, cpu.Ypair + 0, cyctyp, b29);
             Read (addr + 1, cpu.Ypair + 1, cyctyp, b29);
             break;
         case 8:
+            CPT (cpt1L, 9); // oct word
             addr &= 0777770;   // make on 8-word boundary
             for (uint j = 0 ; j < 8 ; j += 1)
                 Read (addr + j, cpu.Yblock8 + j, cyctyp, b29);
             break;
         case 16:
+            CPT (cpt1L, 10); // 16 words
             addr &= 0777760;   // make on 16-word boundary
             for (uint j = 0 ; j < 16 ; j += 1)
                 Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
             
             break;
         case 32:
+            CPT (cpt1L, 11); // 32 words
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
             for (uint j = 0 ; j < 32 ; j += 1)
                 Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
@@ -2451,24 +2510,29 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
     switch (OPSIZE ())
     {
         case 1:
+            CPT (cpt1L, 12); // word
             Write (addr, cpu.CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
+            CPT (cpt1L, 13); // double word
             addr &= 0777776;   // make even
             Write (addr + 0, cpu.Ypair[0], OPERAND_STORE, b29);
             Write (addr + 1, cpu.Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
+            CPT (cpt1L, 14); // 8 words
             addr &= 0777770;   // make on 8-word boundary
             for (uint j = 0 ; j < 8 ; j += 1)
                 Write (addr + j, cpu.Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
+            CPT (cpt1L, 15); // 16 words
             addr &= 0777760;   // make on 16-word boundary
             for (uint j = 0 ; j < 16 ; j += 1)
                 Write (addr + j, cpu.Yblock16[j], OPERAND_STORE, b29);
             break;
         case 32:
+            CPT (cpt1L, 16); // 32 words
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
             for (uint j = 0 ; j < 32 ; j += 1)
                 Write (addr + j, cpu.Yblock32[j], OPERAND_STORE, b29);
@@ -2819,6 +2883,7 @@ void encode_instr(const instr_t *ip, word36 *wordp)
  */
 void decodeInstruction (word36 inst, DCDstruct * p)
 {
+    CPT (cpt1L, 17); // instruction decoder
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
@@ -2887,11 +2952,13 @@ int is_priv_mode(void)
 
 void set_went_appending (void)
   {
+    CPT (cpt1L, 18); // set went appending
     cpu.went_appending = true;
   }
 
 void clr_went_appending (void)
   {
+    CPT (cpt1L, 19); // clear went appending
     cpu.went_appending = false;
   }
 
@@ -2912,12 +2979,14 @@ bool get_went_appending (void)
 
 static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
+    CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
     cpu.went_appending = false;
 }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
+    CPT (cpt1L, 21); // clear temp. abs. mode
     cpu.secret_addressing_mode = false;
     //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", cpu.went_appending ? "true" : "false");
     return cpu.went_appending;
@@ -2971,12 +3040,14 @@ void set_addr_mode(addr_modes_t mode)
 
     cpu.secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
+        CPT (cpt1L, 22); // set abs mode
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
 
         SET_I_ABS;
         cpu.PPR.P = 1;
         
     } else if (mode == APPEND_mode) {
+        CPT (cpt1L, 23); // set append mode
         if (! TST_I_ABS && TST_I_NBAR)
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
@@ -4018,6 +4089,7 @@ void addEAPUhist (word18 ZCA, word18 opcode)
 
 void addCUhist (void)
   {
+    CPT (cpt1L, 24); // add cu hist
 // XXX strobe on opcode match
     if (cpu.skip_cu_hist)
       return;
@@ -4137,12 +4209,14 @@ void addCUhist (void)
 
 void addDUhist (void)
   {
+    CPT (cpt1L, 25); // add du hist
     PNL (addHist (DU_HIST_REG, cpu.du.cycle1, cpu.du.cycle2);)
   }
      
 
 void addOUhist (void)
   {
+    CPT (cpt1L, 26); // add ou hist
     word36 w0 = 0, w1 = 0;
      
     // 0-16 RP
@@ -4250,6 +4324,7 @@ void addOUhist (void)
 
 void addAPUhist (enum APUH_e op)
   {
+    CPT (cpt1L, 28); // add apu hist
     word36 w0 = 0, w1 = 0;
      
     w0 = op; // set 17-24 FDSPTW/.../FAP bits

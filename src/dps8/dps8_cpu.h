@@ -1254,6 +1254,14 @@ enum du_cycle2_e
 #define DU_CYCLE_nDUD clrmask (& cpu.du.cycle2, du2_DUD) 
 #endif
 
+#ifdef PANEL
+// Control points
+
+#define CPT(R,C) cpu.cpt[R][C]=1
+#else
+#define CPT(R,C)
+#endif
+
 #if 0
 #ifdef PANEL
 // 6180 panel DU control flags with guessed meanings based on DU history 
@@ -1651,8 +1659,39 @@ typedef struct
     bool DACVpDF;
     bool AR_F_E;
     bool INS_FETCH;
-    // Address Modification tally
+    // Control Points data acquisition
+    word1 cpt [28] [36];
 #endif
+#define cpt1U  0
+#define cpt1L  1
+#define cpt2U  2
+#define cpt2L  3
+#define cpt3U  4
+#define cpt3L  5
+#define cpt4U  6
+#define cpt4L  7
+#define cpt5U  8
+#define cpt5L  9
+#define cpt6U  10
+#define cpt6L  11
+#define cpt7U  12
+#define cpt7L  13
+#define cpt8U  14
+#define cpt8L  15
+#define cpt9U  16
+#define cpt9L  17
+#define cpt10U 18
+#define cpt10L 19
+#define cpt11U 20
+#define cpt11L 21
+#define cpt12U 22
+#define cpt12L 23
+#define cpt13U 24
+#define cpt13L 25
+#define cpt14U 26
+#define cpt14L 27
+
+    // Address Modification tally
     word12 AM_tally;
 
 #ifndef WAM
