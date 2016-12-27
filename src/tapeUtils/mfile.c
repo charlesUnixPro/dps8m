@@ -21,7 +21,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <string.h>
-
+#include <inttypes.h>
 
 #include "mst.h"
 #include "bit36.h"
@@ -179,7 +179,7 @@ static void mfile (char * fname)
         word36 totbits = p -> thdr [4] & 0777777UL;
         if (totbits != 36864) // # of 9-bit bytes
           {
-            printf ("  totbits wrong %ld\n", totbits);
+            printf ("  totbits wrong %"PRId64"\n", totbits);
           }
 
         word36 rec_num = (p -> thdr [3] >> 18) & 0777777UL;
@@ -227,7 +227,7 @@ printf ("dunno\n");
             printf ("  bootable tape label\n");
             //if (totbits != 36864) // # of 9-bit bytes
               //{
-                //printf ("  totbits wrong %ld\n", totbits);
+                //printf ("  totbits wrong %"PRId64"\n", totbits);
               //}
 
             word36 rec_num = (boot_p -> thdr [3] >> 18) & 0777777UL;

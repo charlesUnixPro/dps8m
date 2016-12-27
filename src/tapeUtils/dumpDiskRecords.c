@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 // extract bits into a number
 #include <stdint.h>
@@ -76,7 +77,7 @@ printf ("sv %c rec %06o %6d.\n", sv + 'a', r, r);
               {
                 uint64_t w1 = extr (& data [w * 9], 0, 36);
                 uint64_t w2 = extr (& data [w * 9], 36, 36);
-                printf ("%08o   %012lo   %012lo   \"", w * 2, w1, w2);
+                printf ("%08o   %012"PRIo64"   %012"PRIo64"   \"", w * 2, w1, w2);
 
                 static int byteorder [8] = { 3, 2, 1, 0, 7, 6, 5, 4 };
                 for (int j = 0; j < 8; j ++)
@@ -85,7 +86,7 @@ printf ("sv %c rec %06o %6d.\n", sv + 'a', r, r);
                     if (isprint (c))
                       printf ("%c", (char) c);
                     else
-                      printf ("\\%03lo", c);
+                      printf ("\\%03o", c);
                   }
                 printf ("\n");
               } // w
@@ -127,7 +128,7 @@ printf ("sv %c rec %06o %6d.\n", sv + 'a', r, r);
               {
                 uint64_t w1 = extr (& data [w * 9], 0, 36);
                 uint64_t w2 = extr (& data [w * 9], 36, 36);
-                printf ("%08o   %012lo   %012lo   \"", w, w1, w2);
+                printf ("%08o   %012"PRIo64"   %012"PRIo64"   \"", w, w1, w2);
 
                 static int byteorder [8] = { 3, 2, 1, 0, 7, 6, 5, 4 };
                 for (int j = 0; j < 8; j ++)
@@ -136,7 +137,7 @@ printf ("sv %c rec %06o %6d.\n", sv + 'a', r, r);
                     if (isprint (c))
                       printf ("%c", (char) c);
                     else
-                      printf ("\\%03lo", c);
+                      printf ("\\%03o", c);
                   }
                 printf ("\n");
               } // w

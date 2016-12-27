@@ -25,6 +25,7 @@ a single 32 bit word of zero represents a file mark
 #include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 // extract bits into a number
 #include <stdint.h>
@@ -95,7 +96,7 @@ int main (int argc, char * argv [])
 //printf ("%012lo\n", w1);
                 uint64_t w2 = extr (bytes, 36, 36);
                 // int text [8]; // 8 9-bit bytes in 2 words
-                printf ("%04d:%04o   %012lo   %012lo   \"", blkno, i * 2 / 9, w1, w2);
+                printf ("%04d:%04o   %012"PRIo64"   %012"PRIo64"   \"", blkno, i * 2 / 9, w1, w2);
                 int j;
 //{printf ("\n<<%012lo>>\n", (* (uint64_t *) bytes) & 0777777777777); }
 
@@ -106,7 +107,7 @@ int main (int argc, char * argv [])
                     if (isprint (c))
                       printf ("%c", (char) c);
                     else
-                      printf ("\\%03lo", c);
+                      printf ("\\%03o", c);
                   }
                 printf ("\n");
               }

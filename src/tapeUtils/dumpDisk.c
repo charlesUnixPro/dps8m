@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 // extract bits into a number
 #include <stdint.h>
@@ -55,7 +56,7 @@ int main (int argc, char * argv [])
         // int text [8]; // 8 9-bit bytes in 2 words
 if (i % 1024 == 0) printf ("sect %d rec %d\n", i / 512, i / 1024);
 else if (i % 512 == 0) printf ("sect %d\n", i / 512);
-        printf ("%08o   %012lo   %012lo   \"", i, w1, w2);
+        printf ("%08o   %012"PRIo64"   %012"PRIo64"   \"", i, w1, w2);
         i += 2;
         int j;
 
@@ -66,7 +67,7 @@ else if (i % 512 == 0) printf ("sect %d\n", i / 512);
             if (isprint (c))
               printf ("%c", (char) c);
             else
-              printf ("\\%03lo", c);
+              printf ("\\%03o", c);
           }
         printf ("\n");
       }

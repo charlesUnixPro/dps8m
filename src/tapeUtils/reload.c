@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 #ifdef __MINGW64__
 #define open(x,y,args...) open(x, y|O_BINARY,##args)
@@ -509,25 +510,25 @@ printf ("read_mst_blk eof backup\n");
 
     if (w1 != header_c1)
       {
-        printf ("c1 wrong %012lo\n", w1);
+        printf ("c1 wrong %012"PRIo64"\n", w1);
       }
     if (w8 != header_c2)
       {
-        printf ("c2 wrong %012lo\n", w8);
+        printf ("c2 wrong %012"PRIo64"\n", w8);
       }
     if (t1 != trailer_c1)
       {
-        printf ("t1 wrong %012lo\n", t1);
+        printf ("t1 wrong %012"PRIo64"\n", t1);
       }
     if (t8 != trailer_c2)
       {
-        printf ("t2 wrong %012lo\n", t8);
+        printf ("t2 wrong %012"PRIo64"\n", t8);
       }
 
     word36 totbits = w5 & 0777777UL;
     if (totbits != 36864) // # of 9-bit bytes
       {
-        printf ("totbits wrong %ld\n", totbits);
+        printf ("totbits wrong %"PRId64"\n", totbits);
       }
 
     rec_num = (w4 >> 18) & 0777777UL;
@@ -833,8 +834,8 @@ static int processBLR (uint * os)
 //for (int i = 0; i < 32; i ++) printf ("%012lo\n", blk_word36 [i + * os]);
     print_string ("dname ", offsetof (struct lrhdr_ascii, dname) + * os * 4, whdrp -> dlen);
     print_string ("ename ", offsetof (struct lrhdr_ascii, ename) + * os * 4, whdrp -> elen);
-    printf ("hdrcnt %ld 0%lo\n", whdrp -> hdrcnt, whdrp -> hdrcnt);
-    printf ("segcnt %ld 0%lo\n", whdrp -> segcnt, whdrp -> segcnt);
+    printf ("hdrcnt %"PRId64" 0%"PRIo64"\n", whdrp -> hdrcnt, whdrp -> hdrcnt);
+    printf ("segcnt %"PRId64" 0%"PRIo64"\n", whdrp -> segcnt, whdrp -> segcnt);
 // I believe that the hdr and the seg are rounded up to the next 256 (0400).
 
     // The 32 makes this data start correct.
@@ -848,7 +849,7 @@ static int processBLR (uint * os)
 
     word36 hdrcnt = (whdrp -> hdrcnt + 32 + 255) & ~255l;
     word36 segcnt = (whdrp -> segcnt + 255) & ~255l;
-printf ("os %d hdrcnt %ld  segcnt %ld\n", * os, hdrcnt, segcnt);
+printf ("os %d hdrcnt %"PRId64"  segcnt %"PRId64"\n", * os, hdrcnt, segcnt);
     printf ("data start %04lo:%04lo\n", n_records + (* os + hdrcnt) / 1024,
                                       (* os + hdrcnt) % 1024);
     printf ("data end   %04lo:%04lo\n", n_records + (* os + hdrcnt + segcnt) / 1024,
@@ -1169,7 +1170,7 @@ printf ("%04o:%04o\n", n_records, lros);
             exit (1);
           }
         char mbuf [256];
-        sprintf (mbuf, "bitcnt: %ld\n", bit_count);
+        sprintf (mbuf, "bitcnt: %"PRId64"\n", bit_count);
         write (fdoutm, mbuf, strlen (mbuf));
         close (fdoutm);
 

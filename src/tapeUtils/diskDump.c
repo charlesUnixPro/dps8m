@@ -18,6 +18,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <libgen.h>
+#include <inttypes.h>
 
 
 // extract bits into a number
@@ -60,7 +61,7 @@ static void dump (word36 * sectorBuffer)
   {
     for (int i = 0; i < SECTOR_SZ_IN_W36; i += 2)
       {
-        printf ("%4d %012lo %012lo \"", i, sectorBuffer [i], sectorBuffer [i + 1]);
+        printf ("%4d %012"PRIo64" %012"PRIo64" \"", i, sectorBuffer [i], sectorBuffer [i + 1]);
         for (int j = 0; j < 8; j ++)
           {
             word9 c;
@@ -107,7 +108,7 @@ int main (int argc, char * argv [])
     printf ("\n");
     os += 32 / 4;
 
-    printf ("version: %ld\n", sectorBuffer [os ++]);
+    printf ("version: %"PRId64"\n", sectorBuffer [os ++]);
 
     printf ("mfg serial: ");
     prints (& sectorBuffer [os], 32);
@@ -124,35 +125,35 @@ int main (int argc, char * argv [])
     printf ("\n");
     os += 32 / 4;
 
-    printf ("pvid: %12lo\n", sectorBuffer [os ++]);
+    printf ("pvid: %12"PRIo64"\n", sectorBuffer [os ++]);
 
-    printf ("lvid: %12lo\n", sectorBuffer [os ++]);
+    printf ("lvid: %12"PRIo64"\n", sectorBuffer [os ++]);
 
-    printf ("root pvid: %12lo\n", sectorBuffer [os ++]);
+    printf ("root pvid: %12"PRIo64"\n", sectorBuffer [os ++]);
 
-    printf ("time_registered: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_registered: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("n_pv_in_lv: %12ld\n", sectorBuffer [os ++]);
+    printf ("n_pv_in_lv: %12"PRId64"\n", sectorBuffer [os ++]);
 
-    printf ("vol_size: %12ld\n", sectorBuffer [os ++]);
+    printf ("vol_size: %12"PRId64"\n", sectorBuffer [os ++]);
 
-    printf ("votc_size: %12ld\n", sectorBuffer [os ++]);
+    printf ("votc_size: %12"PRId64"\n", sectorBuffer [os ++]);
 
-    printf ("bits: %12lo\n", sectorBuffer [os ++]);
+    printf ("bits: %12"PRIo64"\n", sectorBuffer [os ++]);
 
-    printf ("max_access_class: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("max_access_class: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("min_access_class: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("min_access_class: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("password: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("password: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("number_of_sv: %12ld\n", sectorBuffer [os ++]);
+    printf ("number_of_sv: %12"PRId64"\n", sectorBuffer [os ++]);
 
-    printf ("this_sv: %12ld\n", sectorBuffer [os ++]);
+    printf ("this_sv: %12"PRId64"\n", sectorBuffer [os ++]);
 
     printf ("sub_vol_name: ");
     prints (& sectorBuffer [os], 1);
@@ -161,47 +162,47 @@ int main (int argc, char * argv [])
 
     os += 13; // pad1
 
-    printf ("time_mounted: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_mounted: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("time_map_updated: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_map_updated: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("volmap_version: %12ld\n", sectorBuffer [os ++]);
+    printf ("volmap_version: %12"PRId64"\n", sectorBuffer [os ++]);
 
     os += 1; // pad6
 
-    printf ("time_salvaged: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_salvaged: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("time_unmounted: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_unmounted: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("last_pvtx: %12ld\n", sectorBuffer [os ++]);
+    printf ("last_pvtx: %12"PRId64"\n", sectorBuffer [os ++]);
 
     os += 2; // pad1a
 
-    printf ("err_hist_size: %12ld\n", sectorBuffer [os ++]);
+    printf ("err_hist_size: %12"PRId64"\n", sectorBuffer [os ++]);
 
-    printf ("time_last_dump 1: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_last_dump 1: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("time_last_dump 2: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_last_dump 2: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("time_last_dump 3: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_last_dump 3: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
-    printf ("time_last_reloaded: %12lo %12lo\n", sectorBuffer [os], sectorBuffer [os + 1]);
+    printf ("time_last_reloaded: %12"PRIo64" %12"PRIo64"\n", sectorBuffer [os], sectorBuffer [os + 1]);
     os += 2;
 
     os += 40; // pad2
 
     printf ("root_here %d\n", (sectorBuffer [os] & 0400000000000) ? 1 : 0);
-    printf ("root_vtocx %ld\n", (sectorBuffer [os] & 0377777777777));
+    printf ("root_vtocx %"PRId64"\n", (sectorBuffer [os] & 0377777777777));
     os += 1;
 
-    printf ("shutdown_state: %12ld\n", sectorBuffer [os ++]);
+    printf ("shutdown_state: %12"PRId64"\n", sectorBuffer [os ++]);
 
 
   }

@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "bit36.h"
 
@@ -71,9 +72,9 @@ int main (int argc, char * argv [])
           }
         word36 Y;
         Y = extr36 (Ypair, 0);
-        fprintf (fout, "%06o xxxx %012lo\toct\t%012lo\n", origin + i, Y, Y);
+        fprintf (fout, "%06o xxxx %012"PRIo64"\toct\t%012"PRIo64"\n", origin + i, Y, Y);
         Y = extr36 (Ypair, 1);
-        fprintf (fout, "%06o xxxx %012lo\toct\t%012lo\n", origin + i + 1, Y, Y);
+        fprintf (fout, "%06o xxxx %012"PRIo64"\toct\t%012"PRIo64"\n", origin + i + 1, Y, Y);
       }
 #if 0
     char buf [256];

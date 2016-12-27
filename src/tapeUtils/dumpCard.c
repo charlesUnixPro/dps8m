@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 typedef unsigned int uint;
 
@@ -40,7 +41,7 @@ static inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)n+1;
     if (shift < 0 || shift > 35) {
-        fprintf (stderr, "getbits36: bad args (%012lo,i=%d,n=%d)\n", x, i, n);
+        fprintf (stderr, "getbits36: bad args (%012"PRIo64",i=%d,n=%d)\n", x, i, n);
         return 0;
     } else
         return (x >> (unsigned) shift) & ~ (~0U << n);
@@ -176,7 +177,7 @@ printf ("\n");
 static void displayCard (void)
   {
     for (uint i = 0; i < 27; i ++)
-      printf ("  %012lo\n", card [i]);
+      printf ("  %012"PRIo64"\n", card [i]);
     for (uint row = 0; row < 12; row ++)
       {
         for (uint col = 0; col < 80; col ++)
@@ -220,15 +221,15 @@ static void displayCard (void)
       printf ("not 7punch card");
 
     word36 tag =   getbits36 (card [0], 18,  3);
-    printf ("tag %lo\n", tag);
+    printf ("tag %"PRIo64"\n", tag);
 
     word36 cnthi = getbits36 (card [0],  3,  6);
     word36 cntlo = getbits36 (card [0], 12,  6);
     word36 cnt = (cnthi << 6) | cntlo;
-    printf ("cnt %ld %lo\n", cnt, cnt);
+    printf ("cnt %"PRId64" %"PRIo64"\n", cnt, cnt);
 
     word36 seq   = getbits36 (card [0], 21, 15);
-    printf ("seq %lo\n", seq);
+    printf ("seq %"PRIo64"\n", seq);
 
   }
 

@@ -21,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <libgen.h>
+#include <inttypes.h>
 
 #ifdef __MINGW64__
 #define mkdir(x,mode) mkdir(x)
@@ -124,7 +125,7 @@ int main (int argc, char * argv [])
         printf ("%s\n", segname);
 
 //for (int xx = 0; xx < 32; xx ++) printf ("   %012lo\n", big [i + xx]);
-printf ("bitcnt %012lo%012lo\n", big [i + 21], big [i + 22]);
+printf ("bitcnt %012"PRIo64"%012"PRIo64"\n", big [i + 21], big [i + 22]);
         char bc [9];
         bc [0] = (big [i + 21] >> 27) & 0177;
         bc [1] = (big [i + 21] >> 18) & 0177;

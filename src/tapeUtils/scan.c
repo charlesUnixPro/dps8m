@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifdef __MINGW64__
 #define open(x,y,args...) open(x, y|O_BINARY,##args)
@@ -135,22 +136,22 @@ int main (int argc, char * argv [])
 
         if (c1 != header_c1)
           {
-            printf ("c1 wrong %012lo\n", c1);
+            printf ("c1 wrong %012"PRIo64"\n", c1);
             continue;
           }
         if (c2 != header_c2)
           {
-            printf ("c2 wrong %012lo\n", c2);
+            printf ("c2 wrong %012"PRIo64"\n", c2);
             continue;
           }
         if (t_c1 != trailer_c1)
           {
-            printf ("t1 wrong %012lo\n", t_c1);
+            printf ("t1 wrong %012"PRIo64"\n", t_c1);
             continue;
           }
         if (t_c2 != trailer_c2)
           {
-            printf ("t2 wrong %012lo\n", t_c2);
+            printf ("t2 wrong %012"PRIo64"\n", t_c2);
             continue;
           }
         word36 rec_within_file = (p -> rec_within_file__phy_file >> 18) & 0777777;
@@ -164,7 +165,7 @@ int main (int argc, char * argv [])
         if (blk_num % 16 == 1)
           printf ("     blk    rec#   file#   #bits     len     flags ver repeat\n");
 
-        printf ("%8u%8lu%8lu%8lu%8lu%10lu%4lu%5lu\n", 
+        printf ("%8u%8lu%8lu%8lu%8lu%10"PRIu64"%4lu%5lu\n", 
                 blk_num, rec_within_file, phy_file, data_bits_used, data_bit_len, 
                 flags, header_version, repeat_count);
         if (flags)

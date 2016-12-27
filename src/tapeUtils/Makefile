@@ -21,6 +21,7 @@ LDFLAGS = -g
 ETF_OBJS = extract_tape_files.o bit36.o simhtapes.o
 MF_OBJS = mfile.o bit36.o simhtapes.o
 DT_OBJS = dumpTape.o bit36.o
+DI_OBJS = dumpIFAD.o bit36.o
 DF_OBJS = dumpFile.o bit36.o
 RST_OBJS = restore.o bit36.o 
 SCN_OBJS = scan.o bit36.o
@@ -52,15 +53,16 @@ ifeq ($(OS),Windows_NT)
   endif 
 endif
 
-EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36 cdump cdumpa reload p72_to_bcd p72_to_binary prt2pdf
+EXES = extract_tape_files mfile dumpTape dumpIFAD dumpFile restore scan disasm dis pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape p72_to_acsii p72archive_to_acsii p72archive_to_segment diskDump p72archive_bind_to_ascii dumpDisk dumpDiskRecords purge dumpCard viipunch pack8 cat36 cdump cdumpa reload p72_to_bcd p72_to_binary prt2pdf
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS) $(VII_OBJS) prt2pdf.o p72_to_binary.o p72_to_bcd.o cdumpa.o cdump.o cat36.o pack8.o purge.o dumpDiskRecords.o dumpDisk.o p72archive_bind_to_ascii.o diskDump.o p72archive_to_segment.o p72archive_to_acsii.o p72_to_acsii.o unpack.o
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DI_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(DIS2_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS) $(ABA_OBS) $(VII_OBJS) prt2pdf.o p72_to_binary.o p72_to_bcd.o cdumpa.o cdump.o cat36.o pack8.o purge.o dumpDiskRecords.o dumpDisk.o p72archive_bind_to_ascii.o diskDump.o p72archive_to_segment.o p72archive_to_acsii.o p72_to_acsii.o unpack.o
 
 all : $(EXES)
 
 extract_tape_files : $(ETF_OBJS)
 mfile : $(MF_OBJS)
 dumpTape : $(DT_OBJS)
+dumpIFAD : $(DI_OBJS)
 dumpFile : $(DF_OBJS)
 restore : $(RST_OBJS)
 scan : $(SCN_OBJS)
@@ -94,6 +96,7 @@ bit36.o : bit36.c bit36.h
 mfile.o : mfile.c bit36.h simhtapes.h mst.h
 simhtapes.o : simhtapes.c simhtapes.h
 dumpTape.o : dumpTape.c bit36.h
+dumpIFAD.o : dumpIFAD.c bit36.h
 dumpFile.o : dumpFile.c bit36.h
 restore.o : restore.c bit36.h mst.h
 scan.o : scan.c bit36.h mst.h
