@@ -746,7 +746,7 @@ IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu
 IF1 sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
 IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #endif
-
+    CPTUR (cptUseE);
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
     //word72 m2 = (word72) bitfieldExtract36 (cpu.CY, 0, 28) << 44;
@@ -1237,6 +1237,7 @@ void fneg (void)
     cpu . rA = (mc >> 36) & MASK36;
     cpu . rQ = mc & MASK36;
 #else
+    CPTUR (cptUseE);
     // Form the mantissa from AQ
     word72 m = ((word72) (cpu.rA & MASK36) << 36) | (word72) (cpu.rQ & MASK36);
 
@@ -1289,6 +1290,7 @@ void ufm (void)
     // Exp Ovr: If exponent is greater than +127, then ON
     // Exp Undr: If exponent is less than -128, then ON
     
+    CPTUR (cptUseE);
     uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; 
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
@@ -1389,6 +1391,7 @@ static void fdvX(bool bInvert)
     //! If the divisor mantissa C(Y)8,35 is zero after alignment, the division does
     //! not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
   
+    CPTUR (cptUseE);
     word36 m1;
     int    e1;
     
@@ -1561,6 +1564,7 @@ void frd (void)
     // So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in
     // later models.) I'll assume AL39 is wrong.
     
+    CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -1757,6 +1761,7 @@ void fcmp(void)
     // equal to the difference in the two exponents.
     // The aligned mantissas are compared and the indicators set accordingly.
     
+    CPTUR (cptUseE);
     word36 m1 = cpu.rA & 0777777777400LL;
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
     
@@ -1833,6 +1838,7 @@ void fcmg ()
    // The fcmg instruction is identical to the fcmp instruction except that the
    // magnitudes of the mantissas are compared instead of the algebraic values.
 
+   CPTUR (cptUseE);
 #ifdef L68
    cpu.ou.cycle = ou_GOS;
 #endif
@@ -2029,6 +2035,7 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     // exception that the twos complement of the mantissa of the operand from
     // main memory (op2) is used.
 
+   CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -2258,6 +2265,7 @@ void dufm (void)
     // * Exp Ovr: If exponent is greater than +127, then ON
     // * Exp Undr: If exponent is less than -128, then ON
     
+   CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -2393,6 +2401,7 @@ static void dfdvX (bool bInvert)
     // C(AQ) contains the dividend magnitude, and the negative indicator
     // reflects the dividend sign.
     
+    CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -2987,6 +2996,7 @@ void dfrd (void)
     // * If overflow does not occur, C(EAQ) is normalized.
     // * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
         
+    CPTUR (cptUseE);
     float72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
     if (m == 0)
       {
@@ -3072,6 +3082,7 @@ void dfstr (word36 *Ypair)
     
     //! I believe AL39 is incorrect; bits 64-71 should be set to 0, not 65-71. DH02-01 & Bull 9000 is correct.
     
+    CPTUR (cptUseE);
     word36 A = cpu . rA, Q = cpu . rQ;
     int E = SIGNEXT8_int (cpu . rE & MASK8);
     A &= DMASK;
@@ -3217,6 +3228,7 @@ void dfcmp (void)
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
+    CPTUR (cptUseE);
     word72 m1 = ((uint128) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
@@ -3304,6 +3316,7 @@ void dfcmg (void)
     
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
+    CPTUR (cptUseE);
     // C(AQ)0,63
     word72 m1 = ((uint128) (cpu.rA & MASK36) << 36) |
                 ((cpu.rQ) & 0777777777400LL);

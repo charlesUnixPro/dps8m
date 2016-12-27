@@ -132,6 +132,7 @@ void doPtrReg(void)
 {
     word3 n = GET_PRN(IWB_IRODD);  // get PRn
     word15 offset = GET_OFFSET(IWB_IRODD);
+    CPTUR (cptUsePRn + n);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
     cpu . TPR.TSR = cpu . PAR[n].SNR;
@@ -179,6 +180,7 @@ static void selftestPTWAM (void)
 
 void do_ldbr (word36 * Ypair)
   {
+    CPTUR (cptUseDSBR);
 #ifdef WAM
     // XXX is it enabled?
 
@@ -234,6 +236,7 @@ void do_ldbr (word36 * Ypair)
 
 void do_sdbr (word36 * Ypair)
   {
+    CPTUR (cptUseDSBR);
     // C(DSBR.ADDR) → C(Y-pair) 0,23
     // 00...0 → C(Y-pair) 24,36
     Ypair [0] = ((word36) (cpu . DSBR . ADDR & PAMASK)) << (35 - 23); 
@@ -1086,6 +1089,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
       {
         PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
         word3 n = GET_PRN(IWB_IRODD);  // get PRn
+        CPTUR (cptUsePRn + n);
 sim_printf ("saw bit 29; n %o\n", n);
         if (cpu.PAR[n].RNR > cpu.PPR.PRR)
           {

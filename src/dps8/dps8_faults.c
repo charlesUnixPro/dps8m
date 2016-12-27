@@ -374,6 +374,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     sys_stats.total_faults [faultNumber] ++;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
+    CPTUR (cptUseCMR);
     cpu.CMR.csh_reg = 0;   
 
     // Increment FCT
@@ -384,6 +385,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     // Set fault register bits
 
+    CPTUR (cptUseFR);
     if (faultNumber == FAULT_IPR)
       {
 #if 0
@@ -558,6 +560,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
     // History register lock control. If this bit is set ON, set STROBE ¢ 
     // (bit 30, key k) OFF, locking the history registers for all faults 
     // including the floating faults. 
+    CPTUR (cptUseMR);
     if (cpu.MR.emr && cpu.MR.ihrrs)
       {
         cpu.MR.ihr = 0;
@@ -664,6 +667,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     cpu.faultNumber = fault_number;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
+    CPTUR (cptUseCMR);
     cpu.CMR.csh_reg = 0;   
 
     // Increment FCT
@@ -673,6 +677,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     cpu.cu.APUCycleBits = (word12) ((cpu.cu.APUCycleBits & 07770) | FCT);
 
     // Set fault register bits
+    CPTUR (cptUseFR);
     cpu.faultRegister [0] |= 0;
 
     // Set cu word1 fault bits
@@ -727,6 +732,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     // History register lock control. If this bit is set ON, set STROBE ¢ 
     // (bit 30, key k) OFF, locking the history registers for all faults 
     // including the floating faults. 
+    CPTUR (cptUseMR);
     if (cpu.MR.emr && cpu.MR.ihrrs)
       {
         cpu.MR.ihr = 0;

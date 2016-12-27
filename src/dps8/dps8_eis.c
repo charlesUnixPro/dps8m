@@ -1232,6 +1232,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
             // A 3-bit pointer register number (n) and a 15-bit offset relative
             // to C(PRn.WORDNO) if A = 1 (all modes)
             word3 n = (word3) getbits18 (address, 0, 3);
+            CPTUR (cptUsePRn + n);
             word15 offset = address & MASK15;  // 15-bit signed number
             address = (cpu . AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
 
@@ -1242,6 +1243,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
             e -> addr [k - 1] . address = address;
 #endif
             cpu.cu.TSN_PRNO[k-1] = n;
+            CPTUR (cptUsePRn + n);
             e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
                                             cpu . TPR . TRR,
@@ -1360,6 +1362,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
         // of the data but is a reference to a pointer register pointing to the
         // data.
         word3 n = (word3) getbits18 (address, 0, 3);
+        CPTUR (cptUsePRn + n);
         word18 offset = SIGNEXT15_18 ((word15) address);  // 15-bit signed number
         address = (cpu . AR [n] . WORDNO + offset) & AMASK;
         
@@ -1369,6 +1372,7 @@ IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
 IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
         cpu.cu.TSN_PRNO[k-1] = n;
+        CPTUR (cptUsePRn + n);
         e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
 
@@ -1567,6 +1571,7 @@ static void parseArgOperandDescriptor (uint k)
         // the memory address of the data but is a reference to a pointer
         // register pointing to the data.
         word3 n = GET_ARN (opDesc);
+        CPTUR (cptUsePRn + n);
         word15 offset = y & MASK15;  // 15-bit signed number
         y = (cpu . AR [n] . WORDNO + SIGNEXT15_18 (offset)) & AMASK;
         
@@ -1574,6 +1579,7 @@ static void parseArgOperandDescriptor (uint k)
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         cpu.cu.TSN_PRNO[k-1] = n;
+        CPTUR (cptUsePRn + n);
         e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
@@ -1622,6 +1628,7 @@ static void parseNumericOperandDescriptor (int k)
         // of the data but is a reference to a pointer register pointing to the
         // data.
         word3 n = (word3) getbits18 (address, 0, 3);
+        CPTUR (cptUsePRn + n);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
@@ -1629,6 +1636,7 @@ static void parseNumericOperandDescriptor (int k)
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
         cpu.cu.TSN_PRNO[k-1] = n;
+        CPTUR (cptUsePRn + n);
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
 
@@ -1833,6 +1841,7 @@ static void parseBitstringOperandDescriptor (int k)
         // of the data but is a reference to a pointer register pointing to the
         // data.
         word3 n = (word3) getbits18 (address, 0, 3);
+        CPTUR (cptUsePRn + n);
         word15 offset = address & MASK15;  // 15-bit signed number
         address = (cpu . AR[n].WORDNO + SIGNEXT15_18(offset)) & AMASK;
 
@@ -1841,6 +1850,7 @@ static void parseBitstringOperandDescriptor (int k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         cpu.cu.TSN_PRNO[k-1] = n;
+        CPTUR (cptUsePRn + n);
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
@@ -1945,6 +1955,7 @@ void a4bd (void)
     // 8 4-bit characters/word
 
     uint ARn = GET_ARN (cpu . cu . IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
 //if (currentRunningCPUnum)
 //sim_printf ("a4bd address %o %d.\n", address, address);
@@ -2026,6 +2037,7 @@ void a4bd (void)
 void s4bd (void)
   {
     uint ARn = GET_ARN (cpu . cu . IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     word4 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
@@ -2079,6 +2091,7 @@ sim_printf ("axbd AxBDX\n");
 }
 
     uint ARn = GET_ARN (cpu . cu . IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     word6 reg = GET_TD (cpu . cu . IWB); // 4-bit register modification (None except 
                                   // au, qu, al, ql, xn)
@@ -2153,6 +2166,7 @@ void abd (void)
 //sim_printf ("abd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
+    CPTUR (cptUsePRn + ARn);
 
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 //if (currentRunningCPUnum)
@@ -2213,6 +2227,7 @@ if (currentRunningCPUnum)
 sim_printf ("abd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu.cu.IWB));
 
 if (currentRunningCPUnum)
@@ -2359,6 +2374,7 @@ static int testno = 0;
 IF1 sim_printf ("awd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
 IF1 sim_printf ("-----> OS %o  SIGNEXT %o\n", GET_OFFSET (cpu . cu . IWB), SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB)));
     // 4-bit register modification (None except 
@@ -2466,6 +2482,7 @@ static int testno = 0;
 IF1 sim_printf ("awd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
+    CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu . cu . IWB));
     // 4-bit register modification (None except 
     // au, qu, al, ql, xn)
@@ -2521,6 +2538,7 @@ void s9bd (void)
 //sim_printf ("s9bd test no %d\n", ++testno);
 
     uint ARn = GET_ARN (cpu.cu.IWB);
+    CPTUR (cptUsePRn + ARn);
     word18 address = SIGNEXT15_18 (GET_OFFSET (cpu.cu.IWB));
 //if (currentRunningCPUnum)
 //sim_printf ("address %o\n", address);

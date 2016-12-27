@@ -234,6 +234,7 @@ static void doITP (void)
     //
 
     word3 n = GET_ITP_PRNUM (itxPair);
+    CPTUR (cptUsePRn + n);
     cpu . TPR . TSR = cpu . PR [n] . SNR;
     //cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, SDW -> R1, cpu . TPR . TRR);
     cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, cpu . RSDWH_R1, cpu . TPR . TRR);
@@ -490,6 +491,7 @@ startCA:;
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
+                CPTUR (cptUsePRn + PRn);
                 cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
                 cpu.TPR.CA &= AMASK;
               }

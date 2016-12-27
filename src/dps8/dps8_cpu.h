@@ -1258,8 +1258,10 @@ enum du_cycle2_e
 // Control points
 
 #define CPT(R,C) cpu.cpt[R][C]=1
+#define CPTUR(C) cpu.cpt[cpt5L][C]=1
 #else
 #define CPT(R,C)
+#define CPTUR(C)
 #endif
 
 #if 0
@@ -1662,12 +1664,12 @@ typedef struct
     // Control Points data acquisition
     word1 cpt [28] [36];
 #endif
-#define cpt1U  0
-#define cpt1L  1
-#define cpt2U  2
-#define cpt2L  3
-#define cpt3U  4
-#define cpt3L  5
+#define cpt1U  0  // Instruction processing tracking
+#define cpt1L  1  // Instruction processing tracking
+#define cpt2U  2  // Instruction execution tracking
+#define cpt2L  3  // Instruction execution tracking
+#define cpt3U  4  // Register usage
+#define cpt3L  5  // Register usage
 #define cpt4U  6
 #define cpt4L  7
 #define cpt5U  8
@@ -1690,6 +1692,18 @@ typedef struct
 #define cpt13L 25
 #define cpt14U 26
 #define cpt14L 27
+
+#define cptUseE    0
+#define cptUseBAR  1
+#define cptUseTR   2
+#define cptUseRALR 3
+#define cptUsePRn  4 // 4 - 11
+#define cptUseDSBR 12
+#define cptUseFR   13
+#define cptUseMR   14
+#define cptUseCMR  15
+#define cptUseIR   16
+
 
     // Address Modification tally
     word12 AM_tally;

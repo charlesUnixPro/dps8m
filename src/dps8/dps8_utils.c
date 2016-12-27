@@ -198,7 +198,7 @@ char *getModString(word6 tag)
 
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
-
+    CPT (cpt2L, 17); // Add36b
     sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
@@ -243,6 +243,13 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     // Truncate the result
     res &= MASK36;
 
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry)
@@ -279,6 +286,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
 
 word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    CPT (cpt2L, 18); // Sub36b
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -321,6 +329,13 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
     // Check for carry 
     bool cry = r38;
 
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry) // Note inverted logic for subtraction
@@ -356,6 +371,7 @@ word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
 
 word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    CPT (cpt2L, 19); // Add18b
 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
@@ -400,6 +416,13 @@ word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     // Check for carry 
     bool cry = r20;
 
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry)
@@ -435,6 +458,7 @@ word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 
 word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    CPT (cpt2L, 20); // Sub18b
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -477,6 +501,13 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
     // Check for carry 
     bool cry = r20;
 
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry) // Note inverted logic for subtraction
@@ -512,6 +543,7 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    CPT (cpt2L, 21); // Add72b
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
 //sim_printf ("Add72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
@@ -560,6 +592,13 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 
     // Check for carry 
     bool cry = r74;
+
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
 
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
@@ -611,6 +650,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
+    CPT (cpt2L, 22); // Sub72b
 #ifdef ISOLTS
 //if (currentRunningCPUnum)
 //sim_printf ("Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
@@ -669,6 +709,13 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //}
 #endif
 
+#ifdef PANEL
+    if (cry) CPT (cpt2L, 28); // carry
+    if (ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
+
     if (flagsToSet & I_CARRY)
       {
         if (cry) // Note inverted logic for subtraction
@@ -706,6 +753,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 // CANFAULT
 word36 compl36(word36 op1, word18 *flags, bool * ovf)
 {
+    CPT (cpt2L, 23); // compl36
     //printf("op1 = %"PRIo64" %"PRIo64"\n", op1, (-op1) & DMASK);
     
     op1 &= DMASK;
@@ -713,6 +761,12 @@ word36 compl36(word36 op1, word18 *flags, bool * ovf)
     word36 res = -op1 & DMASK;
     
     * ovf = op1 == MAXNEG;
+
+#ifdef PANEL
+    if (* ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN36) CPT (cpt2L, 31); // neg
+#endif
 
     if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
@@ -733,6 +787,7 @@ word36 compl36(word36 op1, word18 *flags, bool * ovf)
 // CANFAULT
 word18 compl18(word18 op1, word18 *flags, bool * ovf)
 {
+    CPT (cpt2L, 24); // compl18
     //printf("op1 = %"PRIo64" %"PRIo64"\n", op1, (-op1) & DMASK);
     
     op1 &= MASK18;
@@ -740,6 +795,12 @@ word18 compl18(word18 op1, word18 *flags, bool * ovf)
     word18 res = -op1 & MASK18;
     
     * ovf = op1 == MAX18NEG;
+#ifdef PANEL
+    if (* ovf) CPT (cpt2L, 29); // ovf
+    if (!res) CPT (cpt2L, 30); // zero
+    if (res & SIGN18) CPT (cpt2L, 31); // neg
+#endif
+
     if (chkOVF () && * ovf)
         SETF(*flags, I_OFLOW);
     if (res & SIGN18)
@@ -911,6 +972,7 @@ void convertToWord36(word72 src, word36 *even, word36 *odd)
 
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
   {
+    CPT (cpt2L, 25); // cmp36
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -920,6 +982,7 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
     word36 sign1 = (word36) op1 & SIGN36;
     word36 sign2 = (word36) op2 & SIGN36;
 
+
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
 
@@ -927,22 +990,28 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
       {
          if (op1 > op2)
            {
+             CPT (cpt2L, 28); // carry
              SETF (* flags, I_CARRY);
              CLRF (* flags, I_ZERO | I_NEG);
            }
          else if (op1 == op2)
            {
+             CPT (cpt2L, 28); // carry
+             CPT (cpt2L, 30); // zero
              SETF (* flags, I_ZERO | I_CARRY);
              CLRF (* flags, I_NEG);
            }
          else //  op1 < op2
           {
+            CPT (cpt2L, 31); // neg
             SETF (* flags, I_NEG);
             CLRF (* flags, I_ZERO | I_CARRY);
           }
       }
     else // op1 < 0, op2 > 0 :: op1 < op2
       {
+        CPT (cpt2L, 28); // carry
+        CPT (cpt2L, 31); // neg
         SETF (* flags, I_CARRY | I_NEG);
         CLRF (* flags, I_ZERO);
       }
@@ -950,6 +1019,7 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
 
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
   {
+    CPT (cpt2L, 26); // cmp18
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -959,29 +1029,36 @@ void cmp18(word18 oP1, word18 oP2, word18 *flags)
     word18 sign1 = (word18) op1 & SIGN18;
     word18 sign2 = (word18) op2 & SIGN18;
 
+
     if ((! sign1) && sign2)  // op1 > 0, op2 < 0 :: op1 > op2
       CLRF (* flags, I_ZERO | I_NEG | I_CARRY);
 
     else if (sign1 == sign2) // both operands have the same sogn
       {
-         if (op1 > op2)
-           {
-             SETF (* flags, I_CARRY);
-             CLRF (* flags, I_ZERO | I_NEG);
-           }
-         else if (op1 == op2)
-           {
-             SETF (* flags, I_ZERO | I_CARRY);
-             CLRF (* flags, I_NEG);
-           }
-         else //  op1 < op2
+        if (op1 > op2)
           {
+            CPT (cpt2L, 28); // carry
+            SETF (* flags, I_CARRY);
+            CLRF (* flags, I_ZERO | I_NEG);
+          }
+        else if (op1 == op2)
+          {
+            CPT (cpt2L, 28); // carry
+            CPT (cpt2L, 30); // zero
+            SETF (* flags, I_ZERO | I_CARRY);
+            CLRF (* flags, I_NEG);
+          }
+        else //  op1 < op2
+          {
+            CPT (cpt2L, 31); // neg
             SETF (* flags, I_NEG);
             CLRF (* flags, I_ZERO | I_CARRY);
           }
       }
     else // op1 < 0, op2 > 0 :: op1 < op2
       {
+        CPT (cpt2L, 28); // carry
+        CPT (cpt2L, 31); // neg
         SETF (* flags, I_CARRY | I_NEG);
         CLRF (* flags, I_ZERO);
       }
@@ -989,6 +1066,7 @@ void cmp18(word18 oP1, word18 oP2, word18 *flags)
 
 void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 {
+    CPT (cpt2L, 26); // cmp36wl
     // This is wrong; signed math is needed.
 
     //bool Z = (A <= Y && Y <= Q) || (A >= Y && Y >= Q);
@@ -1007,18 +1085,25 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
         CLRF(*flags, I_NEG | I_CARRY);
     else if (((Q & SIGN36) == (Y & SIGN36)) && (Qs >= Ys))
     {
+        CPT (cpt2L, 28); // carry
         SETF(*flags, I_CARRY);
         CLRF(*flags, I_NEG);
     } else if (((Q & SIGN36) == (Y & SIGN36)) && (Qs < Ys))
     {
+        CPT (cpt2L, 31); // neg
         CLRF(*flags, I_CARRY);
         SETF(*flags, I_NEG);
     } else if ((Q & SIGN36) && !(Y & SIGN36) && (Qs < Ys))
+    {
+        CPT (cpt2L, 28); // carry
+        CPT (cpt2L, 31); // neg
         SETF(*flags, I_NEG | I_CARRY);
+    }
 }
 
 void cmp72(word72 op1, word72 op2, word18 *flags)
 {
+    CPT (cpt2L, 27); // cmp72
    // The case of op1 == 400000000000000000000000 and op2 == 0 falls through
    // this code.
 #if 0
@@ -1047,23 +1132,33 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
 #endif
     int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
     int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
+
     if (op1s > op2s)
       {
         if (op2 & SIGN72)
           CLRF (* flags, I_CARRY);
         else
-          SETF (* flags, I_CARRY);
+          {
+            CPT (cpt2L, 28); // carry
+            SETF (* flags, I_CARRY);
+          }
         CLRF (* flags, I_ZERO | I_NEG);
       }
     else if (op1s == op2s)
       {
+        CPT (cpt2L, 28); // carry
+        CPT (cpt2L, 30); // zero
         SETF (* flags, I_CARRY | I_ZERO);
         CLRF (* flags, I_NEG);
       }
     else /* op1s < op2s */
       {
+        CPT (cpt2L, 31); // neg
         if (op1 & SIGN72)
-          SETF (* flags, I_CARRY);
+          {
+            CPT (cpt2L, 28); // carry
+            SETF (* flags, I_CARRY);
+          }
         else
           CLRF (* flags, I_CARRY);
         CLRF (* flags, I_ZERO);

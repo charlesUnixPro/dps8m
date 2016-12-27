@@ -1684,7 +1684,7 @@ setCPU:;
                    cycleStr (cpu.cycle));
 
 #ifdef PANEL
-        memset (cpu.cpt, 0, sizeof (cpu.cpt));
+        //memset (cpu.cpt, 0, sizeof (cpu.cpt));
 #endif
 
         switch (cpu.cycle)
@@ -1849,6 +1849,9 @@ setCPU:;
 
             case FETCH_cycle:
               {
+#ifdef PANEL
+                memset (cpu.cpt, 0, sizeof (cpu.cpt));
+#endif
                 CPT (cpt1U, 13); // fetch cycle
 
                 PNL (L68_ (cpu.INS_FETCH = false;))
@@ -2258,6 +2261,7 @@ setCPU:;
                 if (cpu.is_FFV)
                   {
                     cpu.is_FFV = false;
+                    CPTUR (cptUseMR);
                     // The high 15 bits
                     fltAddress = (cpu.MR.FFV & MASK15) << 3;
 //IF1 sim_printf ("fltAddress %06o\n", fltAddress);
@@ -4156,6 +4160,7 @@ void addCUhist (void)
     addHist (CU_HIST_REG, w0, w1);
 
     // Check for overflow
+    CPTUR (cptUseMR);
     if (cpu.MR.hrhlt && cpu.history_cyclic[CU_HIST_REG] == 0)
       {
         //cpu.history_cyclic[CU_HIST_REG] = 15;

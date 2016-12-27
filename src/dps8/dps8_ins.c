@@ -1414,6 +1414,7 @@ t_stat executeInstruction (void)
 #endif
 
 #ifdef L68
+    CPTUR (cptUseMR);
     if (cpu.MR.emr && cpu.MR.OC_TRAP)
       {
         if (cpu.MR.OPCODE == ci->opcode &&
@@ -1719,7 +1720,7 @@ restart_1:
 
         if (cpu.cu.repeat_first)
           {
-            CPT (cpt2U, 16); // RPx processing
+            CPT (cpt2U, 16); // RPx first processing
             // The semantics of these are that even is the first instruction of
             // and RPD, and odd the second.
 
@@ -1772,14 +1773,17 @@ restart_1:
 
     if (info->ndes > 0)
       {
+        CPT (cpt2U, 27); // EIS operand processing
         // This must not happen on instruction restart
         if (! ci->restart)
           {
+            CPT (cpt2U, 28); // EIS not restart
             cpu.du.CHTALLY = 0;
             cpu.du.Z = 1;
           }
         for (uint n = 0; n < info->ndes; n += 1)
           {
+            CPT (cpt2U, 29 + n); // EIS operand fetch (29, 30, 31)
 // XXX This is a bit of a hack; In general the code is good about
 // setting up for bit29 or PR operations by setting up TPR, but
 // assumes that the 'else' case can be ignored when it should set
@@ -1803,11 +1807,14 @@ restart_1:
 ///
 
       {
+        CPT (cpt2U, 32); // non-EIS operand processing
         // This must not happen on instruction restart
         if (! ci->restart)
           {
+            CPT (cpt2U, 33); // not restart non-EIS operand processing
             if (ci->a)   // if A bit set set-up TPR stuff ...
               {
+                CPT (cpt2U, 34); // B29
 #ifndef APPFIX
                 doPtrReg ();
 #else
@@ -1828,6 +1835,7 @@ restart_1:
               }
             else
               {
+                CPT (cpt2U, 35); // not B29
                 cpu.TPR.TBR = 0;
                 if (get_addr_mode () == ABSOLUTE_mode)
                   {
@@ -1854,6 +1862,7 @@ restart_1:
 
         if (ci->restart && cpu.cu.pot)
           {
+            CPT (cpt2L, 0); // POT set
             cpu.TPR.CA = GET_ADDR (IWB_IRODD);
             if (getbits36_1 (cpu.cu.IWB, 29) != 0)
               cpu.TPR.CA &= MASK15;
@@ -1863,6 +1872,7 @@ restart_1:
 #ifdef REORDER
         if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
           {
+            CPT (cpt2L, 1); // CAF
             doComputedAddressFormation ();
             PNL (L68_ (cpu.AR_F_E = true;))
             cpu.iefpFinalAddress = cpu.TPR.CA;
@@ -1870,6 +1880,7 @@ restart_1:
 
         if (READOP (ci))
           {
+            CPT (cpt2L, 2); // Read operands
             readOperands ();
           }
 #else
@@ -1901,6 +1912,7 @@ restart_1:
 
     if (WRITEOP (ci))
       {
+        CPT (cpt2L, 3); // Write operands
 #ifndef REORDER
         if (! READOP (ci))
           {
@@ -1928,6 +1940,7 @@ restart_1:
         (! (ci->info->flags & NO_TAG)) &&
         Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
       {
+        CPT (cpt2L, 4); // Update IT Tally; fetch indirect word
         //
         // Get the indirect word
         //
@@ -1955,6 +1968,7 @@ restart_1:
 
         if (Td == IT_SCR)
           {
+            CPT (cpt2L, 5); // Update IT Tally; SCR
             // For each reference to the indirect word, the character
             // counter, cf, is reduced by 1 and the TALLY field is
             // increased by 1 before the computed address is formed.
@@ -1988,6 +2002,7 @@ restart_1:
           }
         else // SC
           {
+            CPT (cpt2L, 6); // Update IT Tally; SC
             // For each reference to the indirect word, the character
             // counter, cf, is increased by 1 and the TALLY field is
             // reduced by 1 after the computed address is formed. Character
@@ -2071,6 +2086,7 @@ restart_1:
 
     if ((! rf) && (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
+        CPT (cpt2L, 7); // Post execution RPx
         // If we get here, the instruction just executed was a
         // RPT, RPD or RPL target instruction, and not the RPT or RPD
         // instruction itself
@@ -2090,6 +2106,7 @@ restart_1:
 
             if (cpu.cu.rpt) // rpt
               {
+                CPT (cpt2L, 8); // RPT delta
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 sim_debug (DBG_TRACE, & cpu_dev,
@@ -2102,6 +2119,7 @@ restart_1:
             // if uses icOdd instead of the more sensical icEven.
             if (cpu.cu.rd && icOdd && rptA) // rpd, even instruction
               {
+                CPT (cpt2L, 9); // RD even
                 // a:RJ78/rpd7
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
@@ -2111,6 +2129,7 @@ restart_1:
 
             if (cpu.cu.rd && icOdd && rptB) // rpdb, odd instruction
               {
+                CPT (cpt2L, 10); // RD odd
                 // a:RJ78/rpd8
                 uint Xn = (uint) getbits36_3 (cpu.cu.IRODD, 36 - 3);
                 cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
@@ -2121,6 +2140,7 @@ restart_1:
 
         else if (cpu.cu.rl)
           {
+            CPT (cpt2L, 11); // RL
             // C(Xn) -> y
             uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
             putbits36 (& cpu.cu.IWB,  0, 18, cpu.rX[Xn]);
@@ -2130,6 +2150,7 @@ restart_1:
 
         if (cpu.cu.rpt || (cpu.cu.rd && icOdd) || cpu.cu.rl)
           {
+            CPT (cpt2L, 12); // RPx termination check
             bool exit = false;
             // The repetition cycle consists of the following steps:
             //  a. Execute the repeated instruction
@@ -2209,6 +2230,7 @@ restart_1:
 
             if (exit)
               {
+                CPT (cpt2L, 13); // RPx terminated
                 cpu.cu.rpt = false;
                 cpu.cu.rd = false;
                 cpu.cu.rl = false;
@@ -2222,6 +2244,7 @@ restart_1:
 
     if (cpu.dlyFlt)
       {
+        CPT (cpt2L, 14); // Delayed fault
         doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
       }
 ///
@@ -2283,6 +2306,7 @@ static t_stat DoEISInstruction (void);
 
 static inline void overflow (bool ovf, bool dly, const char * msg)
   {
+    CPT (cpt2L, 15); // overflow check
     // If an overflow occured and the repeat instruction is not inhibiting
     // overflow checking.
     if (ovf && chkOVF ())
@@ -2291,6 +2315,7 @@ static inline void overflow (bool ovf, bool dly, const char * msg)
         // If overflows are not masked
         if (tstOVFfault ())
           {
+            CPT (cpt2L, 16); // overflow 
             // ISOLTS test ps768: Overflows set TRO.
             if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
@@ -2350,13 +2375,21 @@ static t_stat doInstruction (void)
 
     return ret;
 }
-
 // CANFAULT
 static t_stat DoBasicInstruction (void)
 {
     DCDstruct * i = & cpu.currentInstruction;
     uint opcode  = i->opcode;  // get opcode
 
+#ifdef PANEL
+    if (insGrp [opcode])
+      {
+        word8 grp = insGrp [opcode] - 1;
+        uint row = grp / 36;
+        uint col = grp % 36;
+        CPT (cpt3U + row, col); // 3U 0-35, 3L 0-17
+      }
+#endif
 #ifdef L68
     bool is_ou = false;
 #endif
@@ -2528,6 +2561,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0634:  // ldi
           {
+            CPTUR (cptUseIR);
             // C(Y)18,31 -> C(IR)
 
             // Indicators:
@@ -2613,6 +2647,7 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0073:   // lreg
+          CPTUR (cptUseE);
 #ifdef L68
           cpu.ou.cycle |= ou_GOS;
           cpu.ou.eac = 0;
@@ -2661,6 +2696,8 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Data Movement Store
 
         case 0753:  // sreg
+          CPTUR (cptUseE);
+          CPTUR (cptUseRALR);
           // clear block (changed to memset() per DJ request)
           //memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
 #ifdef L68
@@ -2799,6 +2836,7 @@ static t_stat DoBasicInstruction (void)
           // preparation. The relation between C(Y)18,31 and the indicators
           // is given in Table 4-5.
 
+          CPTUR (cptUseIR);
           SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
           SCF (i->stiTally, cpu.CY, I_TALLY);
           if (cpu.switches.invert_absolute)
@@ -2810,8 +2848,9 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0454:  // stt
-         cpu.CY = (cpu.rTR & MASK27) << 9;
-         break;
+          CPTUR (cptUseTR);
+          cpu.CY = (cpu.rTR & MASK27) << 9;
+          break;
 
 
         case 0740:  // stx0
@@ -4375,6 +4414,7 @@ static t_stat DoBasicInstruction (void)
           // Zero: If C(AQ) = 0, then ON; otherwise OFF
           // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
 
+          CPTUR (cptUseE);
           cpu.rE = (cpu.Ypair[0] >> 28) & MASK8;
 
           cpu.rA = (cpu.Ypair[0] & FLOAT36MASK) << 8;
@@ -4393,6 +4433,7 @@ static t_stat DoBasicInstruction (void)
           // Zero: If C(AQ) = 0, then ON; otherwise OFF
           // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
 
+          CPTUR (cptUseE);
           cpu.CY &= DMASK;
           cpu.rE = (cpu.CY >> 28) & 0377;
           cpu.rA = (cpu.CY & FLOAT36MASK) << 8;
@@ -4408,6 +4449,7 @@ static t_stat DoBasicInstruction (void)
           // C(E) -> C(Y-pair)0,7
           // C(AQ)0,63 -> C(Y-pair)8,71
 
+          CPTUR (cptUseE);
           cpu.Ypair[0] = ((word36)cpu.rE << 28) |
                          ((cpu.rA & 0777777777400LLU) >> 8);
           cpu.Ypair[1] = ((cpu.rA & 0377) << 28) |
@@ -4423,6 +4465,7 @@ static t_stat DoBasicInstruction (void)
         case 0455:  // fst
           // C(E) -> C(Y)0,7
           // C(A)0,27 -> C(Y)8,35
+          CPTUR (cptUseE);
           cpu.rE &= MASK8;
           cpu.rA &= DMASK;
           cpu.CY = ((word36)cpu.rE << 28) | (((cpu.rA >> 8) & 01777777777LL));
@@ -4462,6 +4505,7 @@ static t_stat DoBasicInstruction (void)
           // The dfad instruction may be thought of as a dufa instruction
           // followed by a fno instruction.
 
+          CPTUR (cptUseE);
           dufa (false);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
           break;
@@ -4475,6 +4519,7 @@ static t_stat DoBasicInstruction (void)
           // followed by a fno instruction.
           // (Heh, heh. We'll see....)
 
+          CPTUR (cptUseE);
           ufa (false);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
@@ -4493,6 +4538,7 @@ static t_stat DoBasicInstruction (void)
           // the exception that the twos complement of the mantissa of the
           // operand from main memory is used.
 
+          CPTUR (cptUseE);
           dufa (true);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
           break;
@@ -4504,6 +4550,7 @@ static t_stat DoBasicInstruction (void)
         case 0575:  // fsb
           // The fsb instruction may be thought of as an ufs instruction
           // followed by a fno instruction.
+          CPTUR (cptUseE);
           ufa (true);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
@@ -4520,6 +4567,7 @@ static t_stat DoBasicInstruction (void)
           // The dfmp instruction may be thought of as a dufm instruction
           // followed by a fno instruction.
 
+          CPTUR (cptUseE);
           dufm ();
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
           break;
@@ -4533,6 +4581,7 @@ static t_stat DoBasicInstruction (void)
           // The fmp instruction may be thought of as a ufm instruction
           // followed by a fno instruction.
 
+          CPTUR (cptUseE);
           ufm ();
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
 
@@ -4591,6 +4640,7 @@ static t_stat DoBasicInstruction (void)
           ///true story y'all
           //you should get me darksisers 2 for christmas
 
+          CPTUR (cptUseE);
           fno (& cpu.rE, & cpu.rA, & cpu.rQ);
           break;
 
@@ -4645,6 +4695,7 @@ static t_stat DoBasicInstruction (void)
         case 0415:  // ade
           // C(E) + C(Y)0,7 -> C(E)
           {
+            CPTUR (cptUseE);
             int y = SIGNEXT8_int ((cpu.CY >> 28) & 0377);
             int e = SIGNEXT8_int (cpu.rE);
             e = e + y;
@@ -4684,6 +4735,7 @@ static t_stat DoBasicInstruction (void)
         case 0411:  // lde
           // C(Y)0,7 -> C(E)
 
+          CPTUR (cptUseE);
           cpu.rE = (cpu.CY >> 28) & 0377;
           CLR_I_ZERO;
           CLR_I_NEG;
@@ -4694,6 +4746,7 @@ static t_stat DoBasicInstruction (void)
           // C(E) -> C(Y)0,7
           // 00...0 -> C(Y)8,17
 
+          CPTUR (cptUseE);
           putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
           break;
 
@@ -4702,6 +4755,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0713:  // call6
 
+          CPTUR (cptUsePRn + 7);
           if (cpu.TPR.TRR > cpu.PPR.PRR)
           {
               sim_debug (DBG_APPENDING, & cpu_dev,
@@ -4783,6 +4837,7 @@ static t_stat DoBasicInstruction (void)
             //           TST_I_ABS ? 1 : 0,
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
             cpu.PPR.IC = GETHI (cpu.CY);
+            CPTUR (cptUseIR);
             cpu.cu.IR = tempIR;
 
             return CONT_TRA;
@@ -4849,6 +4904,14 @@ static t_stat DoBasicInstruction (void)
           //for (int n = 0 ; n < 8 ; n += 1)
           //  PR[n].RNR = cpu.PPR.PRR;
 
+          CPTUR (cptUsePRn + 0);
+          CPTUR (cptUsePRn + 1);
+          CPTUR (cptUsePRn + 2);
+          CPTUR (cptUsePRn + 3);
+          CPTUR (cptUsePRn + 4);
+          CPTUR (cptUsePRn + 5);
+          CPTUR (cptUsePRn + 6);
+          CPTUR (cptUsePRn + 7);
           cpu.PR[0].RNR =
           cpu.PR[1].RNR =
           cpu.PR[2].RNR =
@@ -5017,6 +5080,7 @@ static t_stat DoBasicInstruction (void)
             else
               n = (opcode & 3) + 4;
 
+            CPTUR (cptUsePRn + n);
             // XXX According to figure 8.1, all of this is done by the
             //  append unit.
             cpu.PR[n].RNR = cpu.PPR.PRR;
@@ -5033,6 +5097,7 @@ static t_stat DoBasicInstruction (void)
           return CONT_TRA;
 
         case 0715:  // tss
+          CPTUR (cptUseBAR);
           if (cpu.TPR.CA >= ((word18) cpu.BAR.BOUND) << 9)
             {
               doFault (FAULT_ACV,
@@ -5104,18 +5169,22 @@ static t_stat DoBasicInstruction (void)
 
         case 0311:  // easp0
           // C(TPR.CA) -> C(PRn.SNR)
+          CPTUR (cptUsePRn + 0);
           cpu.PR[0].SNR = cpu.TPR.CA & MASK15;
           break;
         case 0313:  // easp2
           // C(TPR.CA) -> C(PRn.SNR)
+          CPTUR (cptUsePRn + 2);
           cpu.PR[2].SNR = cpu.TPR.CA & MASK15;
           break;
         case 0331:  // easp4
           // C(TPR.CA) -> C(PRn.SNR)
+          CPTUR (cptUsePRn + 4);
           cpu.PR[4].SNR = cpu.TPR.CA & MASK15;
           break;
         case 0333:  // easp6
           // C(TPR.CA) -> C(PRn.SNR)
+          CPTUR (cptUsePRn + 6);
           cpu.PR[6].SNR = cpu.TPR.CA & MASK15;
           break;
 
@@ -5123,6 +5192,7 @@ static t_stat DoBasicInstruction (void)
           // For n = 0, 1, ..., or 7 as determined by operation code
           //  C(TPR.CA) -> C(PRn.WORDNO)
           //  C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 0);
           cpu.PR[0].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (0, cpu.TPR.TBR);
           break;
@@ -5130,6 +5200,7 @@ static t_stat DoBasicInstruction (void)
           // For n = 0, 1, ..., or 7 as determined by operation code
           //  C(TPR.CA) -> C(PRn.WORDNO)
           //  C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 2);
           cpu.PR[2].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (2, cpu.TPR.TBR);
           break;
@@ -5137,6 +5208,7 @@ static t_stat DoBasicInstruction (void)
           // For n = 0, 1, ..., or 7 as determined by operation code
           //  C(TPR.CA) -> C(PRn.WORDNO)
           //  C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 4);
           cpu.PR[4].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (4, cpu.TPR.TBR);
           break;
@@ -5144,6 +5216,7 @@ static t_stat DoBasicInstruction (void)
           // For n = 0, 1, ..., or 7 as determined by operation code
           //  C(TPR.CA) -> C(PRn.WORDNO)
           //  C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 6);
           cpu.PR[6].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (6, cpu.TPR.TBR);
           break;
@@ -5154,6 +5227,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PRn.SNR)
           //  00...0 -> C(PRn.WORDNO)
           //  0000 -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 1);
           cpu.PR[1].RNR = cpu.TPR.TRR;
           cpu.PR[1].SNR = cpu.TPR.TSR;
           cpu.PR[1].WORDNO = 0;
@@ -5165,6 +5239,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PRn.SNR)
           //  00...0 -> C(PRn.WORDNO)
           //  0000 -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 3);
           cpu.PR[3].RNR = cpu.TPR.TRR;
           cpu.PR[3].SNR = cpu.TPR.TSR;
           cpu.PR[3].WORDNO = 0;
@@ -5176,6 +5251,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PRn.SNR)
           //  00...0 -> C(PRn.WORDNO)
           //  0000 -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 5);
           cpu.PR[5].RNR = cpu.TPR.TRR;
           cpu.PR[5].SNR = cpu.TPR.TSR;
           cpu.PR[5].WORDNO = 0;
@@ -5187,6 +5263,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PRn.SNR)
           //  00...0 -> C(PRn.WORDNO)
           //  0000 -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 7);
           cpu.PR[7].RNR = cpu.TPR.TRR;
           cpu.PR[7].SNR = cpu.TPR.TSR;
           cpu.PR[7].WORDNO = 0;
@@ -5199,6 +5276,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PRn.SNR)
           //   C(TPR.CA) -> C(PRn.WORDNO)
           //   C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 0);
           cpu.PR[0].RNR = cpu.TPR.TRR;
           cpu.PR[0].SNR = cpu.TPR.TSR;
           cpu.PR[0].WORDNO = cpu.TPR.CA;
@@ -5210,6 +5288,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PRn.SNR)
           //   C(TPR.CA) -> C(PRn.WORDNO)
           //   C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 2);
           cpu.PR[2].RNR = cpu.TPR.TRR;
           cpu.PR[2].SNR = cpu.TPR.TSR;
           cpu.PR[2].WORDNO = cpu.TPR.CA;
@@ -5221,6 +5300,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PRn.SNR)
           //   C(TPR.CA) -> C(PRn.WORDNO)
           //   C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 4);
           cpu.PR[4].RNR = cpu.TPR.TRR;
           cpu.PR[4].SNR = cpu.TPR.TSR;
           cpu.PR[4].WORDNO = cpu.TPR.CA;
@@ -5232,6 +5312,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PRn.SNR)
           //   C(TPR.CA) -> C(PRn.WORDNO)
           //   C(TPR.TBR) -> C(PRn.BITNO)
+          CPTUR (cptUsePRn + 6);
           cpu.PR[6].RNR = cpu.TPR.TRR;
           cpu.PR[6].SNR = cpu.TPR.TSR;
           cpu.PR[6].WORDNO = cpu.TPR.CA;
@@ -5248,6 +5329,7 @@ static t_stat DoBasicInstruction (void)
 
           for (uint32 n = 0 ; n < 8 ; n ++)
             {
+              CPTUR (cptUsePRn + n);
               // Even word of ITS pointer pair
               cpu.Ypair[0] = cpu.Yblock16[n * 2 + 0];
               // Odd word of ITS pointer pair
@@ -5296,6 +5378,7 @@ static t_stat DoBasicInstruction (void)
           // C(Y)18,35 -> C(PRn.WORDNO)
           {
               uint32 n = opcode & 07;  // get n
+              CPTUR (cptUsePRn + n);
               cpu.PR[n].RNR = cpu.TPR.TRR;
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) != 11...1,
@@ -5363,6 +5446,7 @@ static t_stat DoBasicInstruction (void)
           //  00...0 -> C(Y-pair)21,29
           //  (43)8 -> C(Y-pair)30,35
           //  00...0 -> C(Y-pair)36,71
+          CPTUR (cptUsePRn + 1);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[1].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[1].RNR) << 15;
@@ -5377,6 +5461,7 @@ static t_stat DoBasicInstruction (void)
           //  00...0 -> C(Y-pair)21,29
           //  (43)8 -> C(Y-pair)30,35
           //  00...0 -> C(Y-pair)36,71
+          CPTUR (cptUsePRn + 3);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[3].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[3].RNR) << 15;
@@ -5391,6 +5476,7 @@ static t_stat DoBasicInstruction (void)
           //  00...0 -> C(Y-pair)21,29
           //  (43)8 -> C(Y-pair)30,35
           //  00...0 -> C(Y-pair)36,71
+          CPTUR (cptUsePRn + 5);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[5].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[5].RNR) << 15;
@@ -5405,6 +5491,7 @@ static t_stat DoBasicInstruction (void)
           //  00...0 -> C(Y-pair)21,29
           //  (43)8 -> C(Y-pair)30,35
           //  00...0 -> C(Y-pair)36,71
+          CPTUR (cptUsePRn + 7);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[7].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[7].RNR) << 15;
@@ -5428,6 +5515,7 @@ static t_stat DoBasicInstruction (void)
 
           for (uint32 n = 0 ; n < 8 ; n++)
             {
+              CPTUR (cptUsePRn + n);
               cpu.Yblock16[2 * n] = 043;
               cpu.Yblock16[2 * n] |= ((word36) cpu.PR[n].SNR) << 18;
               cpu.Yblock16[2 * n] |= ((word36) cpu.PR[n].RNR) << 15;
@@ -5449,6 +5537,7 @@ static t_stat DoBasicInstruction (void)
           //  000 -> C(Y-pair)54,56
           //  C(PRn.BITNO) -> C(Y-pair)57,62
           //  00...0 -> C(Y-pair)63,71
+          CPTUR (cptUsePRn + 0);
           cpu.Ypair[0]  = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[0].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[0].RNR) << 15;
@@ -5468,6 +5557,7 @@ static t_stat DoBasicInstruction (void)
           //  000 -> C(Y-pair)54,56
           //  C(PRn.BITNO) -> C(Y-pair)57,62
           //  00...0 -> C(Y-pair)63,71
+          CPTUR (cptUsePRn + 2);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[2].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[2].RNR) << 15;
@@ -5487,6 +5577,7 @@ static t_stat DoBasicInstruction (void)
           //  000 -> C(Y-pair)54,56
           //  C(PRn.BITNO) -> C(Y-pair)57,62
           //  00...0 -> C(Y-pair)63,71
+          CPTUR (cptUsePRn + 4);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[4].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[4].RNR) << 15;
@@ -5506,6 +5597,7 @@ static t_stat DoBasicInstruction (void)
           //  000 -> C(Y-pair)54,56
           //  C(PRn.BITNO) -> C(Y-pair)57,62
           //  00...0 -> C(Y-pair)63,71
+          CPTUR (cptUsePRn + 6);
           cpu.Ypair[0] = 043;
           cpu.Ypair[0] |= ((word36) cpu.PR[6].SNR) << 18;
           cpu.Ypair[0] |= ((word36) cpu.PR[6].RNR) << 15;
@@ -5528,6 +5620,7 @@ static t_stat DoBasicInstruction (void)
           //  C(PRn.WORDNO) -> C(Y)18,35
           {
             uint32 n = opcode & 07;  // get n
+            CPTUR (cptUsePRn + n);
 
             // If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) != 11...1, then
             // a store fault (illegal pointer) will occur and C(Y) will not
@@ -5558,6 +5651,7 @@ static t_stat DoBasicInstruction (void)
           //   00...0 -> C(PRn.BITNO)
           {
               uint32 n = opcode & 03;  // get n
+              CPTUR (cptUsePRn + n);
               cpu.PR[n].WORDNO += GETHI (cpu.CY);
               cpu.PR[n].WORDNO &= MASK18;
               SET_PR_BITNO (n, 0);
@@ -5573,6 +5667,7 @@ static t_stat DoBasicInstruction (void)
           //   00...0 -> C(PRn.BITNO)
           {
               uint32 n = (opcode & MASK3) + 4U;  // get n
+              CPTUR (cptUsePRn + n);
               cpu.PR[n].WORDNO += GETHI (cpu.CY);
               cpu.PR[n].WORDNO &= MASK18;
               SET_PR_BITNO (n, 0);
@@ -5803,6 +5898,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0550:  // sbar
           // C(BAR) -> C(Y) 0,17
+          CPTUR (cptUseBAR);
           SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
 
           break;
@@ -5870,6 +5966,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0230:  // lbar
           // C(Y)0,17 -> C(BAR)
+          CPTUR (cptUseBAR);
           // BAR.BASE is upper 9-bits (0-8)
           cpu.BAR.BASE = (GETHI (cpu.CY) >> 9) & 0777;
           // BAR.BOUND is next lower 9-bits (9-17)
@@ -5898,6 +5995,7 @@ static t_stat DoBasicInstruction (void)
                   // cpu.CMR.par_bit = <ignored for lcpr>
                   // cpu.CMR.lev_ful = <ignored for lcpr>
 
+                  CPTUR (cptUseCMR);
                   // a:AL39/cmr2  If either cache enable bit c or d changes
                   // from disable state to enable state, the entire cache is
                   // cleared.
@@ -5930,6 +6028,7 @@ static t_stat DoBasicInstruction (void)
               case 04: // mode register
                 {
 #if 1
+                  CPTUR (cptUseMR);
                   cpu.MR.r = cpu.CY;
 // XXX TEST/NORMAL switch is set to NORMAL
                   putbits36_1 (& cpu.MR.r, 32, 0);
@@ -6075,6 +6174,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           break;
 
         case 0637:  // ldt
+          CPTUR (cptUseTR);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
@@ -6130,6 +6230,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                 case 001: // C(fault register) -> C(Y-pair)0,35
                           // 00...0 -> C(Y-pair)36,71
                   {
+                    CPTUR (cptUseFR);
                     cpu.Ypair[0] = cpu.faultRegister[0];
                     cpu.Ypair[1] = cpu.faultRegister[1];
                     cpu.faultRegister[0] = 0;
@@ -6140,6 +6241,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                 case 006: // C(mode register) -> C(Y-pair)0,35
                           // C(cache mode register) -> C(Y-pair)36,72
                   {
+                    CPTUR (cptUseMR);
                     cpu.Ypair[0] = cpu.MR.r;
                     putbits36_1 (& cpu.Ypair[0], 20, cpu.MR.sdpap);
                     putbits36_1 (& cpu.Ypair[0], 21, cpu.MR.separ);
@@ -6205,6 +6307,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                     putbits36_1 (& cpu.Ypair[0], 35, cpu.MR.emr);
 IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #endif
+                    CPTUR (cptUseCMR);
                     cpu.Ypair[1] = 0;
                     putbits36_15 (& cpu.Ypair[1], 36 - 36,
                                   cpu.CMR.cache_dir_address);
@@ -6450,6 +6553,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
             if (scu_unit_num < 0)
               {
+                // CPTUR (cptUseFR) -- will be set by doFault
                 if (cpu_port_num == 0)
                   putbits36 (& cpu.faultRegister[0], 16, 4, 010);
                 else if (cpu_port_num == 1)
@@ -7022,6 +7126,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 return SCPE_OK;
 #endif 
 #ifdef L68
+                // CPTUR (cptUseFR) -- will be set by doFault
                 if (cpu_port_num == 0)
                   putbits36_4 (& cpu.faultRegister[0], 16, 010);
                 else if (cpu_port_num == 1)
@@ -7059,6 +7164,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                                                    (int) cpu_port_num);
             if (scu_unit_num < 0)
               {
+                // CPTUR (cptUseFR) -- will be set by doFault
                 if (cpu_port_num == 0)
                   putbits36_4 (& cpu.faultRegister[0], 16, 010);
                 else if (cpu_port_num == 1)
@@ -7218,6 +7324,15 @@ static t_stat DoEISInstruction (void)
     DCDstruct * i = & cpu.currentInstruction;
     uint32 opcode = i->opcode;
 
+#ifdef PANEL
+    if (insGrp [opcode])
+      {
+        word8 grp = eisGrp [opcode] - 1;
+        uint row = grp / 36;
+        uint col = grp % 36;
+        CPT (cpt3U + row, col); // cpt3U 0-35, cpt3L 0-17
+      }
+#endif
 #ifdef L68
     bool is_du = false;
     if (EISopcodes[i->opcode].reg_use & is_DU)
@@ -7315,18 +7430,22 @@ static t_stat DoEISInstruction (void)
 
         case 0310:  // easp1
             // C(TPR.CA) -> C(PRn.SNR)
+            CPTUR (cptUsePRn + 1);
             cpu.PR[1].SNR = cpu.TPR.CA & MASK15;
             break;
         case 0312:  // easp3
             // C(TPR.CA) -> C(PRn.SNR)
+            CPTUR (cptUsePRn + 3);
             cpu.PR[3].SNR = cpu.TPR.CA & MASK15;
             break;
         case 0330:  // easp5
             // C(TPR.CA) -> C(PRn.SNR)
+            CPTUR (cptUsePRn + 5);
             cpu.PR[5].SNR = cpu.TPR.CA & MASK15;
             break;
         case 0332:  // easp7
             // C(TPR.CA) -> C(PRn.SNR)
+            CPTUR (cptUsePRn + 7);
             cpu.PR[7].SNR = cpu.TPR.CA & MASK15;
             break;
 
@@ -7334,6 +7453,7 @@ static t_stat DoEISInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code
             //  C(TPR.CA) -> C(PRn.WORDNO)
             //  C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 1);
             cpu.PR[1].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (1, cpu.TPR.TBR);
             break;
@@ -7341,6 +7461,7 @@ static t_stat DoEISInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code
             //  C(TPR.CA) -> C(PRn.WORDNO)
             //  C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 3);
             cpu.PR[3].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (3, cpu.TPR.TBR);
             break;
@@ -7348,6 +7469,7 @@ static t_stat DoEISInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code
             //  C(TPR.CA) -> C(PRn.WORDNO)
             //  C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 5);
             cpu.PR[5].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (5, cpu.TPR.TBR);
             break;
@@ -7355,6 +7477,7 @@ static t_stat DoEISInstruction (void)
             // For n = 0, 1, ..., or 7 as determined by operation code
             //  C(TPR.CA) -> C(PRn.WORDNO)
             //  C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 7);
             cpu.PR[7].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (7, cpu.TPR.TBR);
             break;
@@ -7375,6 +7498,7 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PRn.SNR)
             //  00...0 -> C(PRn.WORDNO)
             //  0000 -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 2);
             cpu.PR[2].RNR = cpu.TPR.TRR;
             cpu.PR[2].SNR = cpu.TPR.TSR;
             cpu.PR[2].WORDNO = 0;
@@ -7386,6 +7510,7 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PRn.SNR)
             //  00...0 -> C(PRn.WORDNO)
             //  0000 -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 4);
             cpu.PR[4].RNR = cpu.TPR.TRR;
             cpu.PR[4].SNR = cpu.TPR.TSR;
             cpu.PR[4].WORDNO = 0;
@@ -7397,6 +7522,7 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PRn.SNR)
             //  00...0 -> C(PRn.WORDNO)
             //  0000 -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 6);
             cpu.PR[6].RNR = cpu.TPR.TRR;
             cpu.PR[6].SNR = cpu.TPR.TSR;
             cpu.PR[6].WORDNO = 0;
@@ -7409,6 +7535,7 @@ static t_stat DoEISInstruction (void)
             //   C(TPR.TSR) -> C(PRn.SNR)
             //   C(TPR.CA) -> C(PRn.WORDNO)
             //   C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 1);
             cpu.PR[1].RNR = cpu.TPR.TRR;
             cpu.PR[1].SNR = cpu.TPR.TSR;
             cpu.PR[1].WORDNO = cpu.TPR.CA;
@@ -7420,6 +7547,7 @@ static t_stat DoEISInstruction (void)
             //   C(TPR.TSR) -> C(PRn.SNR)
             //   C(TPR.CA) -> C(PRn.WORDNO)
             //   C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 3);
             cpu.PR[3].RNR = cpu.TPR.TRR;
             cpu.PR[3].SNR = cpu.TPR.TSR;
             cpu.PR[3].WORDNO = cpu.TPR.CA;
@@ -7431,6 +7559,7 @@ static t_stat DoEISInstruction (void)
             //   C(TPR.TSR) -> C(PRn.SNR)
             //   C(TPR.CA) -> C(PRn.WORDNO)
             //   C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 5);
             cpu.PR[5].RNR = cpu.TPR.TRR;
             cpu.PR[5].SNR = cpu.TPR.TSR;
             cpu.PR[5].WORDNO = cpu.TPR.CA;
@@ -7442,6 +7571,7 @@ static t_stat DoEISInstruction (void)
             //   C(TPR.TSR) -> C(PRn.SNR)
             //   C(TPR.CA) -> C(PRn.WORDNO)
             //   C(TPR.TBR) -> C(PRn.BITNO)
+            CPTUR (cptUsePRn + 7);
             cpu.PR[7].RNR = cpu.TPR.TRR;
             cpu.PR[7].SNR = cpu.TPR.TSR;
             cpu.PR[7].WORDNO = cpu.TPR.CA;
@@ -7458,6 +7588,7 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
+            CPTUR (cptUsePRn + 0);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[0].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[0].RNR) << 15;
@@ -7472,6 +7603,7 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
+            CPTUR (cptUsePRn + 2);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[2].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[2].RNR) << 15;
@@ -7486,6 +7618,7 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
+            CPTUR (cptUsePRn + 4);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[4].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[4].RNR) << 15;
@@ -7500,6 +7633,7 @@ static t_stat DoEISInstruction (void)
             //  00...0 -> C(Y-pair)21,29
             //  (43)8 -> C(Y-pair)30,35
             //  00...0 -> C(Y-pair)36,71
+            CPTUR (cptUsePRn + 6);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[6].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[6].RNR) << 15;
@@ -7517,6 +7651,7 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
+            CPTUR (cptUsePRn + 1);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[1].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[1].RNR) << 15;
@@ -7536,6 +7671,7 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
+            CPTUR (cptUsePRn + 3);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[3].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[3].RNR) << 15;
@@ -7555,6 +7691,7 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
+            CPTUR (cptUsePRn + 5);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[5].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[5].RNR) << 15;
@@ -7574,6 +7711,7 @@ static t_stat DoEISInstruction (void)
             //  000 -> C(Y-pair)54,56
             //  C(PRn.BITNO) -> C(Y-pair)57,62
             //  00...0 -> C(Y-pair)63,71
+            CPTUR (cptUsePRn + 7);
             cpu.Ypair[0] = 043;
             cpu.Ypair[0] |= ((word36) cpu.PR[7].SNR) << 18;
             cpu.Ypair[0] |= ((word36) cpu.PR[7].RNR) << 15;
@@ -7588,6 +7726,7 @@ static t_stat DoEISInstruction (void)
             // 00...0 -> C(Y)0,32
             // C(RALR) -> C(Y)33,35
 
+            CPTUR (cptUseRALR);
             cpu.CY = (word36)cpu.rRALR;
 
             break;
@@ -7633,6 +7772,7 @@ static t_stat DoEISInstruction (void)
 #endif
 
         case 0774:  // lra
+            CPTUR (cptUseRALR);
             cpu.rRALR = cpu.CY & MASK3;
             sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
             break;
@@ -7883,6 +8023,7 @@ static t_stat DoEISInstruction (void)
                        "aarn C(Y)23 != 0");
 
             uint32 n = opcode & 07;  // get
+            CPTUR (cptUsePRn + n);
 
             // C(Y)0,17 -> C(ARn.WORDNO)
             cpu.AR[n].WORDNO = GETHI (cpu.CY);
@@ -7978,6 +8119,7 @@ static t_stat DoEISInstruction (void)
             PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
             uint32 n = opcode & 07;  // get n
+            CPTUR (cptUsePRn + n);
             cpu.AR[n].WORDNO = GETHI (cpu.CY);
 // AL-38 implies CHAR/BITNO, but ISOLTS requires PR.BITNO.
             SET_AR_CHAR_BITNO (n,  getbits36_2 (cpu.CY, 18),
@@ -7990,6 +8132,7 @@ static t_stat DoEISInstruction (void)
 
           for (uint32 n = 0 ; n < 8 ; n += 1)
             {
+              CPTUR (cptUsePRn + n);
               word36 tmp36 = cpu.Yblock8[n];
               cpu.AR[n].WORDNO = getbits36_18 (tmp36, 0);
               SET_AR_CHAR_BITNO (n,  getbits36_2 (tmp36, 18),
@@ -8015,6 +8158,7 @@ static t_stat DoEISInstruction (void)
             PNL (L68_ (DU_CYCLE_DDU_LDEA;))
 
             uint32 n = opcode & 07;  // get
+            CPTUR (cptUsePRn + n);
 
             // C(Y)0,17 -> C(ARn.WORDNO)
             cpu.AR[n].WORDNO = GETHI (cpu.CY);
@@ -8103,6 +8247,7 @@ static t_stat DoEISInstruction (void)
                            "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get
+                CPTUR (cptUsePRn + n);
                 // For n = 0, 1, ..., or 7 as determined by operation code
 
                 // C(ARn.WORDNO) -> C(Y)0,17
@@ -8152,6 +8297,7 @@ static t_stat DoEISInstruction (void)
             {
                 PNL (L68_ (DU_CYCLE_DDU_STEA;))
                 uint32 n = opcode & 07;  // get register #
+                CPTUR (cptUsePRn + n);
 
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA
                 // field) is examined to determine the data type described.
@@ -8199,6 +8345,7 @@ static t_stat DoEISInstruction (void)
             {
                 PNL (L68_ (DU_CYCLE_DDU_STEA;))
                 uint32 n = opcode & 07;  // get n
+                CPTUR (cptUsePRn + n);
                 putbits36 (& cpu.CY,  0, 18, cpu.PR[n].WORDNO);
 // AL-39 implies CHAR/BITNO, but ISOLTS test 805 requires BITNO
                 putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
@@ -8214,6 +8361,7 @@ static t_stat DoEISInstruction (void)
             memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
             for (uint32 n = 0 ; n < 8 ; n += 1)
             {
+                CPTUR (cptUsePRn + n);
                 word36 arx = 0;
                 putbits36 (& arx,  0, 18, cpu.PR[n].WORDNO);
                 putbits36 (& arx, 18,  2, GET_AR_CHAR (n));
