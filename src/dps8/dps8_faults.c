@@ -678,7 +678,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
 
     // Set fault register bits
     CPTUR (cptUseFR);
-    cpu.faultRegister [0] |= 0;
+    cpu.faultRegister [0] = 0;
 
     // Set cu word1 fault bits
 
