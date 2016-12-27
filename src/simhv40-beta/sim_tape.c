@@ -639,7 +639,8 @@ switch (f) {                                            /* switch on fmt */
                 }
             else if (*bc != MTR_GAP)
                 uptr->pos = uptr->pos + sizeof (t_mtrlnt) +     /* spc over record */
-                    ((f == MTUF_F_STD)? ((sbc + 1) & ~1): sbc);
+                    //((f == MTUF_F_STD)? ((sbc + 1) & ~1): sbc);
+                    sbc;
             }
         while ((*bc == MTR_GAP) || (*bc == MTR_FHGAP));
         break;
