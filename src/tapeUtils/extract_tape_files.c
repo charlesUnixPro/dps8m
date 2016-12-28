@@ -28,6 +28,8 @@
 #ifdef __MINGW64__
 #define open(x,y,args...) open(x, y|O_BINARY,##args)
 #define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#undef isprint
+#define isprint(c) (c>=0x20 && c<=0x7f)
 #endif
 
 typedef uint16_t word9;

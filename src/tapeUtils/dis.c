@@ -19,11 +19,15 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "bit36.h"
 
 #ifdef __MINGW64__
+#define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
 #define open(x,y,args...) open(x, y|O_BINARY,##args)
+#undef isprint
+#define isprint(c) (c>=0x20 && c<=0x7f)
 #define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
 #endif
 
@@ -1889,8 +1893,6 @@ char *disAssembleSW(word36 instruction)
     
     return result;
 }
-
-#include <ctype.h>
 
 char *disAssembleOCT(word36 instruction)
 {

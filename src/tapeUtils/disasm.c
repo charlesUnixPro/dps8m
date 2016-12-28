@@ -19,6 +19,8 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <inttypes.h>
+#include <ctype.h>
 
 #include "bit36.h"
 
@@ -917,6 +919,15 @@ char *disAssemble(word36 instruction)
 }
 
 
+char BCD [64] =
+  "01234567"
+  "89[#@;>?"
+  " abcdefg"
+  "hi&.](<\\"
+  "^jklmnop"
+  "qr-$*);'"
+  "+/stuvwx"
+  "yz_,%=\"!";
 
 int main (int argc, char * argv [])
   {
@@ -950,6 +961,20 @@ int main (int argc, char * argv [])
             if (w & 0200)
               printf ("\" inhibit on\n");
 #else
+            char asc [5], bcd [7];
+            for (int i = 0; i < 4; i ++)
+              {
+                unsigned int ch = (unsigned int) ((w >> ((3 - i) * 9)) & 0777);
+                asc [i] = isprint (ch) ? (char) ch : ' ';
+              }
+            asc [4] = 0;
+            for (int i = 0; i < 6; i ++)
+              {
+                unsigned int ch = (unsigned int) ((w >> ((5 - i) * 6)) & 077);
+                bcd [i] = BCD [ch];
+              }
+            bcd [6] = 0;
+
             char * d = disAssemble (w);
             if (d [0] == '?' ||
 		strncmp (d, "scdr", 4) == 0 ||
@@ -962,7 +987,8 @@ int main (int argc, char * argv [])
                     printf ("\tinhibit\toff\n");
                     wasInhibit = 0;
                   }
-                printf ("\toct\t%012lo\n", w);
+                //printf ("\toct\t%012lo\n", w);
+                printf ("\toct\t%012lo \"%s\" \"%s\"\n", w, asc, bcd);
               }
             else
               {
@@ -978,7 +1004,7 @@ int main (int argc, char * argv [])
                       printf ("\tinhibit\toff\n");
                     wasInhibit = 0;
                   }
-                printf ("\t%s\t\" %012lo\n", disAssemble (w), w);
+                printf ("\t%s\t\" %012lo \"%s\" \"%s\"\n", disAssemble (w), w, asc, bcd);
               }
 #endif
           }

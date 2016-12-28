@@ -1,5 +1,5 @@
 /*
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Charles Anthony
  Copyright 2016 by Michal Tomek
 
  All rights reserved.
@@ -10,7 +10,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-// p72archive_to_ascii p72File asciiDir
+// dfm_to_segment dfmFile Dir
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,7 +62,7 @@ int main (int argc, char * argv [])
   {
     if (argc != 3)
       {
-        fprintf (stderr, "Usage: p72_to_ascii p72File asciiFile\n");
+        fprintf (stderr, "Usage: dfm_to_segment dfmFile dir\n");
         exit (1);
       }
     int fdin;
@@ -101,82 +101,24 @@ int main (int argc, char * argv [])
     strcat (dname, "/./");
     makeDirs (dname);
 
+    word36 rec_type;
+    word36 rec_len;
+
     for (uint i = 0; i < nwords; /* i ++ */)
       {
-        //printf ("top %012lo\n", big [i]);
-        if (big [i]     != 0014012012012lu ||
-            big [i + 1] != 0017012011011lu)
-          {
-            fprintf (stderr, "missing hdr\n");
-            exit (1);
-          }
+        rec_type = big [i];
+        rec_len = big [i+1] & 07777777; // iox_$read_key: bin(21)
+        if (!rec_len) break;
+
+        i += 2;
+        uint leng = rec_len >> 2;
 
         char segname [32 + 1];
-        //strncpy (segname, (char *) (big + i + 12u), 32);
-        for (uint j = 0; j < 32; j ++)
-          {
-            uint k = j + 12u;
-            uint nw = k / 4u;
-            uint nc = k % 4u;
-            uint shift = (3 - nc) * 9;
-            segname [j] = (big [i + nw] >> shift) & 0177;
-//printf ("%d %d %d %d %d %012lo %o\n", i, j, k, nw, k % 4, big [i + nw], segname [j]);
-          }
-        segname [32] = '\0';
-        trimTrailingSpaces (segname);
+        sprintf(segname,"seg%s.%07"PRIo64,argv[1],i);
         printf ("%s\n", segname);
-
-//for (int xx = 0; xx < 32; xx ++) printf ("   %012lo\n", big [i + xx]);
-printf ("bitcnt %012"PRIo64"%012"PRIo64"\n", big [i + 21], big [i + 22]);
-        char bc [9];
-        bc [0] = (big [i + 21] >> 27) & 0177;
-        bc [1] = (big [i + 21] >> 18) & 0177;
-        bc [2] = (big [i + 21] >>  9) & 0177;
-        bc [3] = (big [i + 21] >>  0) & 0177;
-        bc [4] = (big [i + 22] >> 27) & 0177;
-        bc [5] = (big [i + 22] >> 18) & 0177;
-        bc [6] = (big [i + 22] >>  9) & 0177;
-        bc [7] = (big [i + 22] >>  0) & 0177;
-        bc [8] = 0;
-//printf ("bitcnt %s\n", bc);
-        for (i += 3; i < nwords; i ++)
-          {
-            //printf ("try %d (%u)\n", i, i);
-            if (big [i]    == 0017017017017lu &&
-               big [i + 1] == 0012012012012lu)
-              break;
-          }
-        if (i >= nwords)
-          {
-            fprintf (stderr, "missing trlr\n");
-            exit (1);
-          }
-        i += 2u; // skip trailer
-        //printf ("hdr len %u (%o)\n", i - hdrStart, i - hdrStart);
-
-        // find end
-        uint j;
-        for (j = i; j < nwords; j ++)
-          {
-            if (big [j]     == 0014012012012lu &&
-                big [j + 1] == 0017012011011lu)
-//printf ("j %u\n", j);
-              break;
-          }
-
-        // j now points to the next hdr or just past the buffer end;
-        //printf ("component %d - %d (%o - %o)\n", i, j - 1, (i / 4), ((j - 1) / 4));
-        uint last = j - 1;
-        //while (big [last] == 0)
-          //last --;
-        //printf ("trimmed %u\n", j - last);
-        //if (j - last > 7)
-          //fprintf (stderr, "trimmed %u\n", j - last);
-
-        uint leng = ((last - i) + 1u);
-
+        
 //printf ("%d\n", leng);
-printf ("start %d %o leng %d %o\n", i, i, leng, leng);
+printf ("start %d %o leng %d %o rectype %o\n", i, i, leng, leng, rec_type);
         char fname [strlen (dname) + 32 + 3];
         strcpy (fname, dname);
         strcat (fname, segname);
@@ -188,14 +130,35 @@ printf ("start %d %o leng %d %o\n", i, i, leng, leng);
             fprintf (stderr, "can't open output file <%s>\n", fname);
             exit (1);
           }
-        //write (fdout, big + i, (last - i) + 1u);
-        for (int w = 0; w < leng; w += 2)
+
+        word36 blklen = 0;
+        uint wordswritten = 0;
+        uint8_t bytes [9];
+        for (uint w = 0; w < leng; )
           {
-            uint8_t bytes [9];
-            put36 (big [i + w], bytes, 0);
-            put36 (big [i + w + 1], bytes, 1);
-            write (fdout, bytes, 9);
+            if (!blklen)    {   // skip tape block header
+               if (w==leng-1) break;
+               blklen = big [i+w] & 0777777;
+               printf ("ofs %o bsn %o len %o\n", i+w, big [i+w] >> 18, blklen);
+               w ++;
+            }
+            put36 (big [i + w], bytes, wordswritten &1);
+            //printf("%llo %d\n",big [i + w],wordswritten &1);
+            w++;
+            blklen --;
+            if (wordswritten &1)
+            {  
+               //printf("%llo %llo\n",extr (bytes, 0, 36),extr (bytes, 36, 36));
+               write (fdout, bytes, 9);
+            }
+            wordswritten ++;
           }
+        if (wordswritten &1) {
+             printf ("write odd word\n");
+             put36 (0, bytes, 1);
+             write (fdout, bytes, 5);
+        }
+        fflush(stdout);
         close (fdout);
 
         char mdfname [strlen (dname) + 32 + 3 + 8];
@@ -211,13 +174,56 @@ printf ("start %d %o leng %d %o\n", i, i, leng, leng);
             exit (1);
           }
         char bcbuf [128];
-        sprintf (bcbuf, "bitcnt: %s\n", bc);
+        sprintf (bcbuf, "bitcnt: %"PRId64"\n", wordswritten*36);
         write (fdout, bcbuf, strlen (bcbuf));
         close (fdout);
 
-        i = j;
-         printf ("i now %u\n", i);
+        i += leng + (leng&1);
+
+        rec_type = big [i];
+        rec_len = big [i+1] & 07777777; // TODO
+
+        while (rec_type != 01500000) {
+            // skip library label
+            printf("skip ofs %o\n", i);
+            fflush(stdout);
+            i += (rec_len >> 2) + (rec_len%4?3:2);
+            if (big[i]==0) i++;
+            rec_type = big [i];
+            rec_len = big [i+1] & 07777777;
+        }
+
+        //printf("%llo\n",rec_id);
+        //printf("%llo\n",rec_len);
+
+        int nch = rec_len;
+
+        int j;
+
+        i += 2;
+
+        word36 *bigp = big + i;
+
+        //printf("%llu %llu %llu\n",big,bigp,i);
+
+        static int byteorder [8] = { 3, 2, 1, 0, 7, 6, 5, 4 };
+        for (j = 0; j < nch; j ++)
+          {
+            uint8_t bytes [9];
+            if ((j&7)==0) {
+                put36 (*bigp++, bytes, 0);
+                put36 (*bigp++, bytes, 1);
+            }
+            uint64_t c = extr (bytes, byteorder [j&7] * 9, 9);
+            bcbuf[j] = c & 0177;
+            //printf("%d\n",c & 0177);
+          }
+        bcbuf[j] = 0;
+        printf("%d %s",j,bcbuf);
+
+        i += nch/4 + (nch%4?1:0);
+        if (big[i]==0) i++;
+
       }        
     return 0;
   }
-
