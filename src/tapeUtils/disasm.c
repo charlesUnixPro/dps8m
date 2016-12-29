@@ -27,6 +27,8 @@
 #ifdef __MINGW64__
 #define open(x,y,args...) open(x, y|O_BINARY,##args)
 #define creat(x,y) open(x, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, y)
+#undef isprint
+#define isprint(c) (c>=0x20 && c<=0x7f)
 #endif
 
 typedef uint64_t word36;
@@ -957,7 +959,7 @@ int main (int argc, char * argv [])
 #if 0
             if (w & 0200)
               printf ("\" inhibit on\n");
-            printf ("\" %012lo %s\n", w, disAssemble (w));
+            printf ("\" %012"PRIo64" %s\n", w, disAssemble (w));
             if (w & 0200)
               printf ("\" inhibit on\n");
 #else
@@ -978,6 +980,22 @@ int main (int argc, char * argv [])
             char * d = disAssemble (w);
             if (d [0] == '?' ||
 		strncmp (d, "scdr", 4) == 0 ||
+		strncmp (d, "ad2d", 4) == 0 ||
+		strncmp (d, "mvne", 4) == 0 ||
+		strncmp (d, "mp2d", 4) == 0 ||
+		strncmp (d, "mve", 3) == 0 ||
+		strncmp (d, "mlr", 3) == 0 ||
+		strncmp (d, "btd", 3) == 0 ||
+		strncmp (d, "dv2d", 4) == 0 ||
+		strncmp (d, "rpd", 3) == 0 ||
+		strncmp (d, "mme", 3) == 0 ||
+		strncmp (d, "drl", 3) == 0 ||
+		strncmp (d, "ad3d", 4) == 0 ||
+		strncmp (d, "stbq", 4) == 0 ||
+		strncmp (d, "s4bd", 4) == 0 ||
+		strncmp (d, "stca", 4) == 0 ||
+		strncmp (d, "stcq", 4) == 0 ||
+		strncmp (d, "sb2d", 4) == 0 ||
                 w == 0252525252525 || // special cases for blk0
                 w == 0474400022120 ||
                 w == 0473326336333)
@@ -988,7 +1006,7 @@ int main (int argc, char * argv [])
                     wasInhibit = 0;
                   }
                 //printf ("\toct\t%012lo\n", w);
-                printf ("\toct\t%012lo \"%s\" \"%s\"\n", w, asc, bcd);
+                printf ("\toct\t%012"PRIo64" \"%s\" \"%s\"\n", w, asc, bcd);
               }
             else
               {
@@ -1004,7 +1022,7 @@ int main (int argc, char * argv [])
                       printf ("\tinhibit\toff\n");
                     wasInhibit = 0;
                   }
-                printf ("\t%s\t\" %012lo \"%s\" \"%s\"\n", disAssemble (w), w, asc, bcd);
+                printf ("\t%s\t\" %012"PRIo64" \"%s\" \"%s\"\n", disAssemble (w), w, asc, bcd);
               }
 #endif
           }
