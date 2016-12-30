@@ -314,7 +314,7 @@ static double float36ToIEEEdouble(word36 f36)
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
-        if (Mant & (1 << n))
+        if (Mant & ((word72)1 << n))
         {
             m += v;
         }   //else
@@ -743,7 +743,11 @@ void ufa (bool sub)
 static int testno = 1;
 IF1 sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
 IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+#ifndef __MINGW64__
 IF1 sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
+#else
+IF1 sim_printf ("UFA EAQ %f\n", EAQToIEEEdouble ());
+#endif
 IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #endif
     CPTUR (cptUseE);
@@ -754,7 +758,30 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-    
+
+    // RJ78: The two's complement of the subtrahend is first taken and the smaller value is then
+    // right-shifted to equalize it (i.e. ufa).
+
+    int m2zero = 0;
+    if (sub) {
+       // ISOLTS-735 08i asserts no carry for (-1.0*2^96)-(-1.0*2^2) but 08g asserts carry for -0.5079365*2^78-0.0
+       // I assume zero subtrahend is handled in a special way.
+
+       if (m2 == 0) 
+           m2zero = 1;
+       if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
+           if (e2 == 127)
+              {
+                SET_I_EOFL;
+                if (tstOVFfault ())
+                  dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufs exp overflow fault");
+              }
+           m2 >>= 1;
+           e2 += 1;
+       } else
+           m2 = (-m2) & MASK72;
+    }
+
 IF1 sim_printf ("UFA e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
@@ -840,10 +867,11 @@ IF1 sim_printf ("UFA e3 %d\n", e3);
     //m3 = m1 + m2;
     bool ovf;
     word72 m3;
-    if (sub)
-      m3 = Sub72b (m1, m2, 1, I_CARRY, & cpu.cu.IR, & ovf);
-    else
-      m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+    m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+    // ISOLTS-735 08g
+    // if 2's complement carried, OR it in now.
+    if (m2zero)
+        SET_I_CARRY;
 
 IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
 
@@ -1762,11 +1790,11 @@ void fcmp(void)
     // The aligned mantissas are compared and the indicators set accordingly.
     
     CPTUR (cptUseE);
-    word36 m1 = cpu.rA & 0777777777400LL;
+    word72 m1 = ((word72)cpu.rA & 0777777777400LL) << 36;
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
     
     // 28-bit mantissa (incl sign)
-    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;
+    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44;
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
     //which exponent is smaller???
@@ -1775,6 +1803,7 @@ void fcmp(void)
     cpu.ou.cycle = ou_GOE;
 #endif
     int shift_count = -1;
+    word1 notallzeros = 0;
     
     if (e1 == e2)
       {
@@ -1786,15 +1815,18 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e2 - e1);
-        bool s = m1 & SIGN36;   // mantissa negative?
+        bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
+            notallzeros |= m1 & 1;
             m1 >>= 1;
             if (s)
-              m1 |= SIGN36;
+              m1 |= SIGN72;
           }
         
-        m1 &= MASK36;
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m1 = 0;        
+        m1 &= MASK72;
       }
     else
       {
@@ -1803,20 +1835,23 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e1 - e2);
-        bool s = m2 & SIGN36;   ///< mantissa negative?
+        bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+            notallzeros |= m2 & 1;
             m2 >>= 1;
             if (s)
-              m2 |= SIGN36;
+              m2 |= SIGN72;
           }
-        m2 &= MASK36;
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m2 = 0;        
+        m2 &= MASK72;
         //e3 = e1;
       }
     
     // need to do algebraic comparisons of mantissae
-    SC_I_ZERO ((t_int64)SIGNEXT36_64(m1) == (t_int64)SIGNEXT36_64(m2));
-    SC_I_NEG ((t_int64)SIGNEXT36_64(m1) <  (t_int64)SIGNEXT36_64(m2));
+    SC_I_ZERO (m1 == m2);
+    SC_I_NEG ((int128)SIGNEXT72_128(m1) < (int128)SIGNEXT72_128(m2));
   }
 
 /*!
@@ -1838,24 +1873,29 @@ void fcmg ()
    // The fcmg instruction is identical to the fcmp instruction except that the
    // magnitudes of the mantissas are compared instead of the algebraic values.
 
-   CPTUR (cptUseE);
+    // ISOLTS-736 01u asserts that |0.0*2^64|<|1.0| in 28bit precision
+    // this implies that all shifts are 72 bits long
+    // RJ78 also comments: If the number of shifts equals or exceeds 72, the
+    // number with the lower exponent is defined as zero.
+
+    CPTUR (cptUseE);
 #ifdef L68
    cpu.ou.cycle = ou_GOS;
 #endif
 IF1 sim_printf ("FCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 #if 1
     // C(AQ)0,27
-    word36 m1 = cpu.rA & 0777777777400LL;
+    word72 m1 = ((word72)cpu.rA & 0777777777400LL) << 36;
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
-IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64"\n", e1, m1);
+IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
      // C(Y)0,7
     // 28-bit mantissa (incl sign)
-    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;
+    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44;
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
-IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
+IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     //int e3 = -1;
 
@@ -1865,6 +1905,7 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
     cpu.ou.cycle = ou_GOE;
 #endif
     int shift_count = -1;
+    word1 notallzeros = 0;
     
     if (e1 == e2)
       {
@@ -1876,15 +1917,18 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e2 - e1);
-        bool s = m1 & SIGN36;   // mantissa negative?
+        bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+            notallzeros |= m1 & 1;
             m1 >>= 1;
             if (s)
-              m1 |= SIGN36;
+              m1 |= SIGN72;
           }
-        
-        m1 &= MASK36;
+
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m1 = 0;        
+        m1 &= MASK72;
         //e3 = e2;
       }
     else
@@ -1894,24 +1938,31 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e1 - e2);
-        bool s = m2 & SIGN36;   // mantissa negative?
+        bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+            notallzeros |= m2 & 1;
             m2 >>= 1;
             if (s)
-              m2 |= SIGN36;
+              m2 |= SIGN72;
           }
-        m2 &= MASK36;
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m2 = 0;        
+        m2 &= MASK72;
         //e3 = e1;
     }
     
-IF1 sim_printf ("FCMG m1 %012"PRIo64"\n", m1);
-IF1 sim_printf ("FCMG m2 %012"PRIo64"\n", m2);
+IF1 sim_printf ("FCMG m1 %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("FCMG m2 %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
-    t_int64 sm1 = llabs (SIGNEXT36_64 (m1));
-    t_int64 sm2 = llabs (SIGNEXT36_64 (m2));
-IF1 sim_printf ("FCMG sm1 %"PRId64"\n", sm1);
-IF1 sim_printf ("FCMG sm2 %"PRId64"\n", sm2);
+    int128 sm1 = SIGNEXT72_128 (m1);
+    if (sm1 < 0)
+      sm1 = - sm1;
+    int128 sm2 = SIGNEXT72_128 (m2);
+    if (sm2 < 0)
+      sm2 = - sm2;
+IF1 sim_printf ("FCMG sm1 %012"PRIo64" %012"PRIo64"\n", (word36) (sm1 >> 36) & MASK36, (word36) sm1 & MASK36);
+IF1 sim_printf ("FCMG sm2 %012"PRIo64" %012"PRIo64"\n", (word36) (sm2 >> 36) & MASK36, (word36) sm2 & MASK36);
 IF1 sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
     SC_I_NEG (sm1 < sm2);
 #else
@@ -2035,7 +2086,7 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     // exception that the twos complement of the mantissa of the operand from
     // main memory (op2) is used.
 
-   CPTUR (cptUseE);
+    CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -2048,32 +2099,28 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
            m2 |= (word72) cpu.Ypair[1] << 8;
     
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
-IF1 sim_printf ("DUFA e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
-    if (subtract)
-      {
-        word72 m2s = m2 & SIGN72; // remember the sign bit
-        m2 = ~m2 + 1; // two's complement
-        m2 &= MASK72;
-        // If the signs are the same after complement, then overflow happened
-        if (m2s == (m2 & SIGN72))
-          {
-            m2 >>= 1;
-            m2 &= MASK72;
-            if (e2 == 127)
+    // see ufs
+    int m2zero = 0;
+    if (subtract) {
+
+       if (m2 == 0) 
+           m2zero = 1;
+       if (m2 == SIGN72) {
+           if (e2 == 127)
               {
                 SET_I_EOFL;
                 if (tstOVFfault ())
                   dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
               }
-            e2 ++;
-          }
-        if (m2 == 0)
-          {
-            e2 = -128;
-          }
-      } // subtract
+           m2 >>= 1;
+           e2 += 1;
+       } else
+           m2 = (-m2) & MASK72;
+    }
+
+IF1 sim_printf ("DUFA e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     int e3 = -1;
 
@@ -2083,6 +2130,7 @@ IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
     cpu.ou.cycle |= ou_GOE;
 #endif
     int shift_count = -1;
+    word1 notallzeros = 0;
 
     if (e1 == e2)
       {
@@ -2099,11 +2147,14 @@ IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+            notallzeros |= m1 & 1;
             m1 >>= 1;
             if (s)
               m1 |= SIGN72;
           }
-        
+
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m1 = 0;        
         m1 &= MASK72;
         e3 = e2;
 IF1 sim_printf ("DUFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -2119,10 +2170,13 @@ IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+            notallzeros |= m2 & 1;
             m2 >>= 1;
             if (s)
               m2 |= SIGN72;
           }
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m2 = 0;
         m2 &= MASK72;
         e3 = e1;
 IF1 sim_printf ("DUFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
@@ -2133,6 +2187,8 @@ IF1 sim_printf ("DUFA e3 %d\n", e3);
 
     bool ovf;
     word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
+    if (m2zero)
+        SET_I_CARRY;
 IF1 sim_printf ("DUFA m3 %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 
     if (ovf)
@@ -2265,7 +2321,7 @@ void dufm (void)
     // * Exp Ovr: If exponent is greater than +127, then ON
     // * Exp Undr: If exponent is less than -128, then ON
     
-   CPTUR (cptUseE);
+    CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -3229,14 +3285,14 @@ void dfcmp (void)
 //sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     CPTUR (cptUseE);
-    word72 m1 = ((uint128) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
+    word72 m1 = ((word72) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMP e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
-    word72 m2 = (uint128) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
+    word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
@@ -3248,6 +3304,7 @@ void dfcmp (void)
     //which exponent is smaller???
     
     int shift_count = -1;
+    word1 notallzeros = 0;
     
     if (e1 == e2)
     {
@@ -3260,11 +3317,14 @@ void dfcmp (void)
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
+            notallzeros |= m1 & 1;
             m1 >>= 1;
             if (s)
                 m1 |= SIGN72;
         }
         
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m1 = 0;        
         m1 &= MASK72;
         //e3 = e2;
     }
@@ -3275,10 +3335,13 @@ void dfcmp (void)
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
+            notallzeros |= m2 & 1;
             m2 >>= 1;
             if (s)
                 m2 |= SIGN72;
         }
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m2 = 0;        
         m2 &= MASK72;
         //e3 = e1;
     }
@@ -3318,7 +3381,7 @@ void dfcmg (void)
 //sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     CPTUR (cptUseE);
     // C(AQ)0,63
-    word72 m1 = ((uint128) (cpu.rA & MASK36) << 36) |
+    word72 m1 = ((word72) (cpu.rA & MASK36) << 36) |
                 ((cpu.rQ) & 0777777777400LL);
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
@@ -3326,7 +3389,7 @@ void dfcmg (void)
 //sim_printf ("DFCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
-    word72 m2 = (uint128) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
+    word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
@@ -3339,6 +3402,7 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     cpu.ou.cycle = ou_GOE;
 #endif
     int shift_count = -1;
+    word1 notallzeros = 0;
     
     if (e1 == e2)
       {
@@ -3354,12 +3418,15 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for( int n = 0; n < shift_count; n += 1)
           {
+            notallzeros |= m1 & 1;
             m1 >>= 1;
             if (s)
               m1 |= SIGN72;
 IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
           }
         
+if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m1 = 0;        
         m1 &= MASK72;
         //e3 = e2;
       }
@@ -3370,10 +3437,13 @@ IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
+            notallzeros |= m2 & 1;
             m2 >>= 1;
             if (s)
               m2 |= SIGN72;
           }
+if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+  m2 = 0;        
         m2 &= MASK72;
         //e3 = e1;
       }
