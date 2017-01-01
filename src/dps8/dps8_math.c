@@ -750,6 +750,7 @@ IF1 sim_printf ("UFA EAQ %f\n", EAQToIEEEdouble ());
 #endif
 IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #endif
+
     CPTUR (cptUseE);
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
@@ -1612,7 +1613,7 @@ IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cp
     // C(AQ) + (11...1)29,71 → C(AQ)
     bool ovf;
     word18 flags1 = 0;
-    word18 flags2 = 0;
+    //word18 flags2 = 0;
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if ((m & SIGN72) == 0)
@@ -1641,50 +1642,26 @@ sim_printf ("FRD add carry E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu
     }
 #endif
 
+    // 0 -> C(AQ)28,71  (per. RJ78)
+    m &= ((word72)0777777777400 << 36);
+
+IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
+
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
+    // If overflow does not occur, C(EAQ) is normalized.
+    // All of this is done by fno, we just need to save the overflow flag
 
-    if ((flags1 | flags2) & I_OFLOW)
-      {
-        m >>= 1;
-        if (cpu.rE == 127)
-          {
-            SET_I_EOFL;
-            if (tstOVFfault ())
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                          "frd exp overflow fault");
-          }
-        cpu.rE ++;
-IF1 sim_printf ("FRD overflow E %03o m %012"PRIo64" %012"PRIo64"\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
-      }
-
+    bool savedovf = TST_I_OFLOW;
+    SC_I_OFLOW(ovf);
     cpu.rA = (m >> 36) & MASK36;
     cpu.rQ = m & MASK36;
 
-IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
-    // If overflow does not occur, C(EAQ) is normalized.
-    if (! ((flags1 | flags2) & I_OFLOW))
-      {
-        if (cpu.rA != 0 || cpu.rQ != 0)
-          fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+    fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+    SC_I_OFLOW(savedovf);
 IF1 sim_printf ("FRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
-      }
 
-    // 0 -> C(AQ)28,71  (per. RJ78)
-    cpu.rA &= 0777777777400;
-    cpu.rQ = 0;
-
-    if (cpu.rA == 0 && cpu.rQ == 0)
-      {
-        SET_I_ZERO;
-        cpu.rE = 0200U; /*-128*/
-      }
-    else
-      {
-        CLR_I_ZERO;
-      }
-    SC_I_NEG (cpu.rA & SIGN36);
-IF1 sim_printf ("FRD final E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
+//IF1 sim_printf ("FRD final E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
   }
 
 void fstr (word36 *Y)
@@ -1699,15 +1676,15 @@ void fstr (word36 *Y)
     cpu.ou.cycle |= ou_GOS;
 #endif
     word36 A = cpu . rA, Q = cpu . rQ;
-    int E = SIGNEXT8_int (cpu . rE & MASK8);
-    A &= DMASK;
-    Q &= DMASK;
-    E &= (int) MASK8;
+    word8 E = cpu . rE;
+    //A &= DMASK;
+    //Q &= DMASK;
+    //E &= (int) MASK8;
    
     float72 m = ((word72)A << 36) | (word72)Q;
     if (m == 0)
       {
-        E = -128;
+        E = (word8)-128;
         SET_I_ZERO;
         CLR_I_NEG;
         *Y = 0;
@@ -1716,58 +1693,35 @@ void fstr (word36 *Y)
       }
     
     // C(AQ) + (11...1)29,71 → C(AQ)
-    bool s1 = (m & SIGN72) != (word72)0;
-    
-    m += (word72)0177777777777777LL; // add 1's into lower 43-bits
-    
+    bool ovf;
+    word18 flags1 = 0;
+    word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (! s1)
-      m += 1;
-    
-    // 0 → C(AQ)29,71 (AL39)
-    // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
-    putbits72 (& m, 28, 44, 0);  // 28-71 => 0 per DH02
-    
-    bool s2 = (m & SIGN72) != (word72)0;
-    
-    bool ov = s1 != s2;   // sign change denotes overflow
-    if (ov)
+    if ((m & SIGN72) == 0)
       {
-        // If overflow occurs, C(AQ) is shifted one place to the right and C(E)
-        // is increased by 1.
-        m >>= 1;
-        if (s1) // (was s2) restore sign if necessary
-          m |= SIGN72;
-        
-        A = (m >> 36) & MASK36;
-        Q = m & MASK36;
-        
-        if (E == 127)
-          {
-            SET_I_EOFL;
-            if (tstOVFfault ())
-              doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fstr exp overflow fault");
-          }
-        E +=  1;
+        carry = 1;
       }
-    else
-      {
-        // If overflow does not occur, C(EAQ) is normalized.
-        A = (m >> 36) & MASK36;
-        Q = m & MASK36;
-        word8 E8 = (word8) E & MASK8;   
-        fno(&E8, &A, &Q);
-        E = SIGNEXT8_int (E8 & MASK8);
-      }
-    
-    // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    if (A == 0 && Q == 0)
-      {
-        E = -128;
-        SET_I_ZERO;
-      }
-    
-    SC_I_NEG (A & SIGN36);
+    m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
+IF1 sim_printf ("FSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+
+    // 0 -> C(AQ)28,71  (per. RJ78)
+    m &= ((word72)0777777777400 << 36);
+
+IF1 sim_printf ("FSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
+
+    // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
+    // increased by 1.
+    // If overflow does not occur, C(EAQ) is normalized.
+    // All of this is done by fno, we just need to save the overflow flag
+
+    bool savedovf = TST_I_OFLOW;
+    SC_I_OFLOW(ovf);
+    A = (m >> 36) & MASK36;
+    Q = m & MASK36;
+
+    fno (& E, & A, & Q);
+    SC_I_OFLOW(savedovf);
+IF1 sim_printf ("FSTR normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, A, Q);
     
     * Y = setbits36_8 (A >> 8, 0, (word8) E);
   }
@@ -3063,58 +3017,36 @@ void dfrd (void)
         return;
       }
 
-    bool s1 = (bool) (m & SIGN72);
-    
     // C(AQ) + (11...1)65,71 -> C(AQ)
-    m += (word72) 0177LL; // add 1's into lower 64-bits
-
+    bool ovf;
+    word18 flags1 = 0;
+    word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (! s1)
-      m += 1;
-    
+    if ((m & SIGN72) == 0)
+      {
+        carry = 1;
+      }
+    m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
+IF1 sim_printf ("DFRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+
     // 0 -> C(AQ)64,71 
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
-    
-    bool s2 = (bool)(m & SIGN72);
-    
-    bool ov = s1 != s2;   ///< sign change denotes overflow
-    if (ov)
-      {
-        // If overflow occurs, C(AQ) is shifted one place to the right and C(E)
-        // is increased by 1.
-        m >>= 1;
-        if (s1) // restore sign if necessary (was s2)
-          m |= SIGN72;
-        
-        if (cpu.rE == 127)
-          {
-            SET_I_EOFL;
-            if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                         "dfrd exp overflow fault");
-          }
-        cpu.rE +=  1;
-        cpu.rE &= MASK8;
-        cpu.rA = (m >> 36) & MASK36;
-        cpu.rQ = m & MASK36;
-      }
-    else
-      {
-        // If overflow does not occur, C(EAQ) is normalized.
-        cpu.rA = (m >> 36) & MASK36;
-        cpu.rQ = m & MASK36;
-        
-        fno (& cpu.rE, & cpu.rA, & cpu.rQ);
-      }
-    
-    // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    if (cpu . rA == 0 && cpu . rQ == 0)
-      {
-        cpu.rE = 0200U; /*-128*/
-        SET_I_ZERO;
-      }
-    
-    SC_I_NEG (cpu.rA & SIGN36);
+
+IF1 sim_printf ("DFRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
+
+    // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
+    // increased by 1.
+    // If overflow does not occur, C(EAQ) is normalized.
+    // All of this is done by fno, we just need to save the overflow flag
+
+    bool savedovf = TST_I_OFLOW;
+    SC_I_OFLOW(ovf);
+    cpu.rA = (m >> 36) & MASK36;
+    cpu.rQ = m & MASK36;
+
+    fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+    SC_I_OFLOW(savedovf);
+IF1 sim_printf ("DFRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
   }
 
 void dfstr (word36 *Ypair)
@@ -3140,76 +3072,55 @@ void dfstr (word36 *Ypair)
     
     CPTUR (cptUseE);
     word36 A = cpu . rA, Q = cpu . rQ;
-    int E = SIGNEXT8_int (cpu . rE & MASK8);
-    A &= DMASK;
-    Q &= DMASK;
+    word8 E = cpu . rE;
+    //A &= DMASK;
+    //Q &= DMASK;
 
     float72 m = ((word72)A << 36) | (word72)cpu . rQ;
     if (m == 0)
     {
-        E = -128;
+        E = (word8)-128;
         SET_I_ZERO;
         CLR_I_NEG;
         
-        Ypair[0] = (((word36) E & MASK8) << 28) | ((A & 0777777777400LLU) >> 8);
-        Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
+        Ypair[0] = ((word36) E & MASK8) << 28;
+        Ypair[1] = 0;
 
         return;
     }
     
     
     // C(AQ) + (11...1)65,71 → C(AQ)
-    bool s1 = (m & SIGN72) != (word72)0;
-    
-    m += (word72)0177LLU; // add 1's into lower 43-bits
-    
+    bool ovf;
+    word18 flags1 = 0;
+    word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (s1 == 0)
-        m += 1;
-    
-    // 0 → C(AQ)64,71
-    //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
-    //m = bitfieldInsert72(m, 0, 0, 8);
+    if ((m & SIGN72) == 0)
+      {
+        carry = 1;
+      }
+    m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
+IF1 sim_printf ("DFSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+
+    // 0 -> C(AQ)65,71  (per. RJ78)
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
-    
-    bool s2 = (m & SIGN72) != (word72)0;
-    
-    bool ov = s1 != s2;   ///< sign change denotes overflow
-    if (ov)
-    {
-        // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
-        m >>= 1;
-        if (s1) // restore sign if necessary (was s2)
-            m |= SIGN72;
-        
-        if (E == 127)
-            SET_I_EOFL;
-            if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dfrd exp overflow fault");
-        E +=  1;
-        
-        A = (m >> 36) & MASK36;
-        Q = m & MASK36;
-    }
-    else
-    {
-        // If overflow does not occur, C(EAQ) is normalized.
-        A = (m >> 36) & MASK36;
-        Q = m & MASK36;
-        word8 E8 = (word8) E & MASK8;   
-        fno(&E8, &A, &Q);
-        E = SIGNEXT8_int (E8 & MASK8);
-    }
-    
-    // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    if (A == 0 && Q == 0)
-    {
-        E = -128;
-        SET_I_ZERO;
-    }
-    
-    SC_I_NEG (A & SIGN36);
-    
+
+IF1 sim_printf ("DFSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
+
+    // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
+    // increased by 1.
+    // If overflow does not occur, C(EAQ) is normalized.
+    // All of this is done by fno, we just need to save the overflow flag
+
+    bool savedovf = TST_I_OFLOW;
+    SC_I_OFLOW(ovf);
+    A = (m >> 36) & MASK36;
+    Q = m & MASK36;
+
+    fno (& E, & A, & Q);
+    SC_I_OFLOW(savedovf);
+IF1 sim_printf ("DFSTR normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, A, Q);
+
     Ypair[0] = (((word36)E & MASK8) << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
 }
