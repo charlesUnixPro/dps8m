@@ -4342,11 +4342,15 @@ void addAPUhist (enum APUH_e op)
     // 25 SDWAMM
     putbits36_1 (& w0, 25, cpu.cu.SDWAMM);
     // 26-29 SDWAMR
+#ifdef WAM
     putbits36_4 (& w0, 26, cpu.SDWAMR);
+#endif
     // 30 PTWAMM
     putbits36_1 (& w0, 30, cpu.cu.PTWAMM);
     // 31-34 PTWAMR
+#ifdef WAM
     putbits36_4 (& w0, 31, cpu.PTWAMR);
+#endif
     // 35 FLT
     PNL (putbits36_1 (& w0, 35, (cpu.apu.state & apu_FLT) ? 1 : 0);)
 
