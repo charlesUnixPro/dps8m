@@ -2726,7 +2726,7 @@ static t_stat DoBasicInstruction (void)
 #endif
           cpu.Yblock8[4] = cpu.rA;
           cpu.Yblock8[5] = cpu.rQ;
-          cpu.Yblock8[6] = SETHI (cpu.Yblock8[7], (word18)cpu.rE << 10);
+          cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
           cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
           break;
 
