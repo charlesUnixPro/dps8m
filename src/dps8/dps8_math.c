@@ -771,12 +771,6 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
-           if (e2 == 127)
-              {
-                SET_I_EOFL;
-                if (tstOVFfault ())
-                  dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufs exp overflow fault");
-              }
            m2 >>= 1;
            e2 += 1;
        } else
@@ -908,7 +902,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -916,7 +910,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
     }
 
 IF1 sim_printf ("UFA returning E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
@@ -1052,7 +1046,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
             {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                    doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
+                    dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
             }
             (*E) ++;
             *E &= MASK8;
@@ -1084,8 +1078,8 @@ void fno (word8 * E, word36 * A, word36 * Q)
     {
         m <<= 1;
         e -= 1;
-        if (m == 0) // XXX: necessary??
-            break;
+        //if (m == 0) // XXX: necessary??
+        //    break;
     }
 
     m &= MASK71;
@@ -1093,7 +1087,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
     if (s)
       m |= SIGN72;
       
-    if (e < -127)
+    if (e < -128)
     {
         SET_I_EUFL;
         if (tstOVFfault ())
@@ -1284,7 +1278,7 @@ void fneg (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fneg exp overflow fault");
+                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fneg exp overflow fault");
         }
         cpu . rE ++;
         cpu . rE &= MASK8;
@@ -1308,11 +1302,6 @@ void ufm (void)
     // The ufm instruction is executed as follows:
     //      C(E) + C(Y)0,7 → C(E)
     //      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
-    // A normalization is performed only in the case of both factor mantissas
-    // being 100...0 which is the twos  complement approximation to the decimal
-    // value -1.0.
-    // The definition of normalization is located under the description of the
-    // fno instruction.
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
@@ -1320,12 +1309,10 @@ void ufm (void)
     // Exp Undr: If exponent is less than -128, then ON
     
     CPTUR (cptUseE);
-    uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8) ; 
+    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
-    //uint64 m2 = bitfieldExtract36(cpu.CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
-    uint64 m2 = ((uint64) getbits36_28 (cpu.CY, 8)) << (8 + 28); // 28-bit mantissa (incl sign)
-    //int8   e2 = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
+    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
     if (m1 == 0 || m2 == 0)
@@ -1340,64 +1327,64 @@ void ufm (void)
         return; // normalized 0
     }
 
-    int sign = 1;
+IF1 sim_printf ("UFM e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
-    if (m1 & FLOAT72SIGN)   //0x8000000000000000LL)
-    {
-        if (m1 == FLOAT72SIGN)
-        {
-            m1 >>= 1;
-            e1 += 1;
-        }
-        else
-            m1 = (~m1 + 1);
-        sign = -sign;
-    }
-
-    if (m2 & FLOAT72SIGN)   //0x8000000000000000LL)
-    {
-        if (m1 == FLOAT72SIGN)
-        {
-            m2 >>= 1;
-            e2 += 1;
-        }
-        else
-            m2 = (~m2 + 1);
-        sign = -sign;
-    }
-    
     int e3 = e1 + e2;
     
     if (e3 >  127)
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp underflow fault");
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp underflow fault");
     }
 
-    word72 m3 = ((word72)m1) * ((word72)m2);
-    word72 m3a = m3 >> 63;
-    
-    if (sign == -1)
-        m3a = (~m3a + 1) & 0xffffffffffffffffLL;
-    
-    cpu . rE = (word8) e3 & MASK8;
-    cpu . rA = (m3a >> 28) & MASK36;
+    // RJ78: This multiplication is executed in the following way:
+    // C(E) + C(Y)(0-7) -> C(E)
+    // C(AQ) * C(Y)(8-35) results in a 98-bit product plus sign,
+    // the leading 71 bits plus sign of which -> C(AQ).
+
+    // shift the CY mantissa to get 98 bits precision
+    int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
+IF1 sim_printf ("UFM raw e3 %03o m3 %09"PRIo64"%012"PRIo64"%012"PRIo64"\n", e3, (word36) (m3 >> 72) & MASK36, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+    // realign to 72bits
+    word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
+IF1 sim_printf ("UFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3a >> 36) & MASK36, (word36) m3a & MASK36);
+
+    // A normalization is performed only in the case of both factor mantissas being 100...0 
+    // which is the twos complement approximation to the decimal value -1.0.
+    if ((m1 == SIGN72) && (m2 == SIGN72)) {
+        if (e3 == 127)
+        {
+          SET_I_EOFL;
+          if (tstOVFfault ())
+              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+        }
+        m3a >>= 1;
+        e3 += 1;
+    }
+
+    cpu . rA = (m3a >> 36) & MASK36;
     cpu . rQ = m3a & MASK36;
-    
-    // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    //if ((cpu . rE == -128 && cpu . rA == 0 && cpu . rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
-    if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
-    
-    SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
-    SC_I_NEG (cpu . rA & SIGN36);
+    cpu . rE = (word8) e3 & MASK8;
+
+    SC_I_NEG (cpu.rA & SIGN36);
+
+    if (cpu.rA == 0 && cpu.rQ == 0)
+    {
+      SET_I_ZERO;
+      cpu . rE = 0200U; /*-128*/
+    }
+    else
+    {
+      CLR_I_ZERO;
+    }
 }   
 
 /*!
@@ -1417,98 +1404,148 @@ static void fdvX(bool bInvert)
     //! C(E) - C(Y)0,7 → C(E)
     //! C(AQ) / C(Y)8,35 → C(A)
     //! 00...0 → C(Q)
-    //! If the divisor mantissa C(Y)8,35 is zero after alignment, the division does
-    //! not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
   
     CPTUR (cptUseE);
-    word36 m1;
+    word72 m1;
     int    e1;
     
-    word36 m2;
+    word72 m2;
     int    e2;
+
+    bool roundovf = 0;
     
     if (!bInvert)
     {
-        m1 = cpu . rA;    // & 0777777777400LL;
+        m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
         e1 = SIGNEXT8_int (cpu . rE & MASK8);
-    
-        //m2 = bitfieldExtract36(cpu.CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8 ;     // 28-bit mantissa (incl sign)
-        //e2 = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+
+        m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
         e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
+
     } else { // invert
-        m2 = cpu . rA;    //& 0777777777400LL ;
+
+        m2 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
-    
-        //m1 = bitfieldExtract36(cpu.CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        m1 = ((word36) getbits36_28 (cpu.CY, 8)) << 8 ;     // 28-bit mantissa (incl sign)
-        //e1 = (int8) (bitfieldExtract36(cpu.CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
+
+        // round divisor per RJ78
+        // If AQ(28-71) is not equal to 0 and A(0) = 0, then 1 is added to AQ(27).
+        // 0 -> AQ(28-71) unconditionally. AQ(0-27) is then used as the divisor mantissa. 
+        if (!(m2 & SIGN72) && m2 & 0377777777777777LL) {
+            m2 += 0400000000000000LL;
+            // I surmise that the divisor is taken as unsigned 28 bits in this case
+            roundovf = 1;
+        }
+        m2 &= (word72)0777777777400 << 36;
+
+        m1 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
         e1 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     }
 
+    if (m1 == 0)
+    {
+        SET_I_ZERO;
+        CLR_I_NEG;
+        
+        cpu . rE = 0200U; /*-128*/
+        cpu . rA = 0;
+        cpu . rQ = 0;
+        
+        return; // normalized 0
+    }
+
+IF1 sim_printf ("FDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("FDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+
     // make everything positive, but save sign info for later....
     int sign = 1;
-    if (m1 & SIGN36)
+    if (m1 & SIGN72)
     {
-        if (m1 == SIGN36)
+        SET_I_NEG; // in case of divide fault
+        if (m1 == SIGN72)
         {
             m1 >>= 1;
             e1 += 1;
         } else
-            m1 = (~m1 + 1) & 0777777777777;
+            m1 = (~m1 + 1) & MASK72;
         sign = -sign;
+    } else {
+        CLR_I_NEG; // in case of divide fault
     }
     
-    if (m2 & SIGN36)
+    if ((m2 & SIGN72) && !roundovf)
     {
-        if (m2 == SIGN36)
+        if (m2 == SIGN72)
         {
             m2 >>= 1;
             e2 += 1;
         } else
-        m2 = (~m2 + 1) & 0777777777777;
+            m2 = (~m2 + 1) & MASK72;
         sign = -sign;
     }
-    
+
+IF1 sim_printf ("FDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+
     if (m2 == 0)
     {
-        // If the divisor mantissa C(Y)8,35 is zero after alignment (HWR: why after?), the division does
-        // not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and the negative indicator reflects the dividend sign.
-        
         // NB: If C(Y)8,35 ==0 then the alignment loop will never exit! That's why it been moved before the alignment
-        
+
         SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
-        
-        cpu . rA = m1;
-        
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DFDV: divide check fault");
+        // NEG already set
+
+        // FDV: If the divisor mantissa C(Y)8,35 is zero after alignment (HWR: why after?), the division does
+        // not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and 
+        // the negative indicator reflects the dividend sign.
+        // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
+        // Instead, a divide check fault occurs and all the registers remain unchanged.
+        if (!bInvert) {
+            cpu . rA = (m1 >> 36) & MASK36;
+            cpu . rQ = m1 & MASK36;
+        }
+
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "FDV: divide check fault");
     }
 
-    while (m1 >= m2)
+    while (m1 >= m2) // DH02 (equivalent but perhaps clearer description):
+                     // dividend exponent C(E) increased accordingly until | C(AQ)0,71 | < | C(Y)8,35 with zero fill |
+    // We have already taken the absolute value so just shift it
     {
         m1 >>= 1;
         e1 += 1;
     }
 
-    if (e1 > 127)
+IF1 sim_printf ("FDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+        
+    int e3 = e1 - e2;
+
+    if (e3 > 127)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp overflow fault");
+            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp overflow fault");
+    }
+    if (e3 < -128)
+    {
+      SET_I_EUFL;
+      if (tstOVFfault ())
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp underflow fault");
     }
     
-        
-    int e3 = e1 - e2;
-        
-    word72 m3 = (((word72)m1) << 35) / ((word72)m2);
-    word36 m3b = m3 & (0777777777777LL);
+    // We need 35 bits quotient + sign. Divisor is at most 28 bits.
+    // Do a 63(28+35) by 35 fractional divide
+    // lo 44bits are always zero
+    word72 m3 = (m1 >> (44-35)) / (m2 >> 44);
+
+IF1 sim_printf ("FDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
     
+    m3 <<= 36; // convert back to float
     if (sign == -1)
-        m3b = (~m3b + 1) & 0777777777777LL;
+        m3 = (~m3 + 1) & MASK72;
+
+IF1 sim_printf ("FDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
     
     cpu . rE = (word8) e3 & MASK8;
-    cpu . rA = m3b & MASK36;
+    cpu . rA = (m3 >> 36) & MASK36;
     cpu . rQ = 0;
     
     SC_I_ZERO (cpu . rA == 0);
@@ -2048,7 +2085,7 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
-    // 28-bit mantissa (incl sign)
+    // 64-bit mantissa (incl sign)
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
            m2 |= (word72) cpu.Ypair[1] << 8;
     
@@ -2061,12 +2098,6 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {
-           if (e2 == 127)
-              {
-                SET_I_EOFL;
-                if (tstOVFfault ())
-                  dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
-              }
            m2 >>= 1;
            e2 += 1;
        } else
@@ -2264,11 +2295,6 @@ void dufm (void)
     // The ufm instruction is executed as follows:
     //      C(E) + C(Y)0,7 → C(E)
     //      ( C(AQ) × C(Y)8,35 )0,71 → C(AQ)
-    // A normalization is performed only in the case of both factor mantissas
-    // being 100...0 which is the twos  complement approximation to the decimal
-    // value -1.0.
-    // The definition of normalization is located under the description of the
-    // fno instruction.
     
     // * Zero: If C(AQ) = 0, then ON; otherwise OFF
     // * Neg: If C(AQ)0 = 1, then ON; otherwise OFF
@@ -2279,20 +2305,19 @@ void dufm (void)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-    // only keep the 1st 64-bits :(
-    uint64 m1 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8);
+    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ; 
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
     
-    sim_debug (DBG_TRACE, & cpu_dev, "dufm e1 %d %03o m1 %012"PRIo64"\n", e1, e1, m1);
-     // 28-bit mantissa (incl sign)
-    uint64 m2 = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36;
-           m2 |= cpu.Ypair[1];
+    sim_debug (DBG_TRACE, & cpu_dev, "dufm e1 %d %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+     // 64-bit mantissa (incl sign)
+    word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44;
+           m2 |= cpu.Ypair[1] << 8;
     
     // 8-bit signed integer (incl sign)
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 
     sim_debug (DBG_TRACE, & cpu_dev,
-               "dufm e2 %d %03o m2 %012"PRIo64"\n", e2, e2, m2);
+               "dufm e2 %d %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     
     if (m1 == 0 || m2 == 0)
@@ -2307,86 +2332,114 @@ void dufm (void)
         return; // normalized 0
       }
     
-    int sign = 1;
+IF1 sim_printf ("DUFM e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DUFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
-    if (m1 & FLOAT72SIGN)
-      {
-        if (m1 == FLOAT72SIGN)
-          {
-            sim_debug (DBG_TRACE, & cpu_dev, "dufm case 1\n");
-            m1 >>= 1;
-            e1 += 1;
-          }
-        else
-          {
-            sim_debug (DBG_TRACE, & cpu_dev, "dufm case 2\n");
-            m1 = (~m1 + 1) & MASK72;
-          }
-        sign = -sign;
-      }
-    if (m2 & FLOAT72SIGN)
-      {
-        if (m2 == FLOAT72SIGN)
-          {
-            sim_debug (DBG_TRACE, & cpu_dev, "dufm case 3\n");
-            m2 >>= 1;
-            e2 += 1;
-          }
-        else
-          {
-            sim_debug (DBG_TRACE, & cpu_dev, "dufm case 4\n");
-            m2 = (~m2 + 1) & MASK72;
-          }
-        sign = -sign;
-      }
-    
     int e3 = e1 + e2;
     
-    uint128 m3 = ((uint128)m1) * ((uint128)m2);
-    sim_debug (DBG_TRACE, & cpu_dev,
-               "dufm e3 %d %03o m3 %012"PRIo64"%012"PRIo64"\n", e3, e3,
-               (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-    uint128 m3a = m3 >> 63;
-    sim_debug (DBG_TRACE, & cpu_dev,
-               "dufm e3 %d %03o m3a %012"PRIo64"\n", e3, e3,
-               (word36) m3a & MASK36);
-    
-    if (sign == -1)
+    if (e3 >  127)
+    {
+      SET_I_EOFL;
+      if (tstOVFfault ())
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+    }
+    if (e3 < -128)
+    {
+      SET_I_EUFL;
+      if (tstOVFfault ())
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
+    }
+
+    // RJ78: This multiplication is executed in the following way:
+    // C(E) + C(Y)(0-7) -> C(E)
+    // C(AQ) * C(Y-pair)(8-71) results in a 134-bit product plus sign. This sign plus the
+    // leading 71 bits are loaded into the AQ.
+
+    // do a 128x64 signed multiplication
+#if 0
+    // absolute value and unsigned multiplication
+	// does not work
+    uint128 m1a = m1;
+	uint128 m2a = m2;
+    int sign = 1;
+
+    if (m1 & SIGN72)
       {
-        m3a = (~m3a + 1) & (((word72)1 << 71) - 1);    //0xffffffffffffffff;
-        sim_debug (DBG_TRACE, & cpu_dev,
-                   "dufm sign -1 e3 %d %03o m3a %012"PRIo64"\n", e3, e3,
-                   (word36) m3a & MASK36);
+         m1a = (-m1) & MASK72;
+         sign = -sign;
       }
-    
-    if (e3 > 127)
-    {
-        SET_I_EOFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+    if (m2 & SIGN72)
+      {
+         m2a = (-m2) & MASK72;
+         sign = -sign;
+      }
+
+    // shift the CY mantissa
+    m2a >>= 8;
+
+    uint128 m3l = (m1a & (((uint128)1<<64)-1)) * m2a; // lo partial product
+    uint128 m3h = (m1a >> 64) * m2a; // hi partial product
+
+IF1 sim_printf ("DUFM m3h %012"PRIo64" %012"PRIo64"\n", (word36) (m3h >> 36) & MASK36, (word36) m3h & MASK36);
+IF1 sim_printf ("DUFM m3l %012"PRIo64" %012"PRIo64"\n", (word36) (m3l >> 36) & MASK36, (word36) m3l & MASK36);
+
+    // realign to 72bits  XXX this is wrong, arithmetic shift is required
+    m3l >>= 63; // 134-71
+    m3h <<= 1;
+    word72 m3a = ((word72) (m3h+m3l)) & MASK72;
+    if (sign < 0)
+        m3a = (-m3a) & MASK72;
+#endif
+
+#if 1
+    // fast signed multiplication algorithm without 2's complements
+    // passes ISOLTS-745 08
+
+    // shift the CY mantissa
+    int128 m2s = SIGNEXT72_128(m2) >> 8;
+
+    // do a 128x64 signed multiplication
+    int128 m1l = m1 & (((uint128)1<<64)-1);
+    int128 m1h = SIGNEXT72_128(m1) >> 64;
+    int128 m3h = m1h * m2s; // hi partial product
+    int128 m3l = m1l * m2s; // lo partial product
+
+    // realign to 72bits
+    m3l >>= 63;
+    m3h <<= 1; // m3h is hi by 64, align it for addition. The result is 135 bits so this cannot overflow.
+    word72 m3a = ((word72) (m3h+m3l)) & MASK72;
+#endif
+
+IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3a >> 36) & MASK36, (word36) m3a & MASK36);
+
+    // A normalization is performed only in the case of both factor mantissas being 100...0 
+    // which is the twos complement approximation to the decimal value -1.0.
+    if ((m1 == SIGN72) && (m2 == SIGN72)) {
+        if (e3 == 127)
+        {
+          SET_I_EOFL;
+          if (tstOVFfault ())
+              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+        }
+        m3a >>= 1;
+        e3 += 1;
     }
 
-    // EUFL: If exponent is less than -128, then ON
-    if(e3 < -128)
-    {
-        SET_I_EUFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
-    }
+    cpu . rA = (m3a >> 36) & MASK36;
+    cpu . rQ = m3a & MASK36;
+    cpu . rE = (word8) e3 & MASK8;
 
-    cpu.rE = (word8) e3 & MASK8;
-    cpu.rA = (m3a >> 28) & MASK36;
-    cpu.rQ = m3a & MASK36;
-    //cpu.rQ = (m3a & 01777777777LL) << 8;
-    
-    // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    //if ((cpu . rE == -128 && cpu . rA == 0 && cpu . rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
-    if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno (&cpu.rE, &cpu.rA, &cpu.rQ);
-    
-    SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
-    SC_I_NEG (cpu . rA & SIGN36);
-    
+    SC_I_NEG (cpu.rA & SIGN36);
+
+    if (cpu.rA == 0 && cpu.rQ == 0)
+    {
+      SET_I_ZERO;
+      cpu . rE = 0200U; /*-128*/
+    }
+    else
+    {
+      CLR_I_ZERO;
+    }
 }
 
 /*!
@@ -2406,102 +2459,116 @@ static void dfdvX (bool bInvert)
     //    | C(AQ)0,63 | < | C(Y-pair)8,71 |
     //    C(E) - C(Y-pair)0,7 → C(E)
     //    C(AQ) / C(Y-pair)8,71 → C(AQ)0,63 00...0 → C(Q)64,71
-    // If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the
-    // division does not take place. Instead, a divide check fault occurs,
-    // C(AQ) contains the dividend magnitude, and the negative indicator
-    // reflects the dividend sign.
     
     CPTUR (cptUseE);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-    uint64 m1;
+    word72 m1;
     int    e1;
     
-    uint64 m2;
+    word72 m2;
     int    e2;
-    
+
+    bool roundovf = 0;
+
     if (!bInvert)
       {
-        // only keep the 1st 64-bits :(
-        m1 = (cpu.rA << 28) | ((cpu.rQ & 0777777777400LL) >> 8);
-        e1 = SIGNEXT8_int (cpu.rE & MASK8);
-        
+        m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        e1 = SIGNEXT8_int (cpu . rE & MASK8); 
+
         // 64-bit mantissa (incl sign)
-        m2  = ((uint64) getbits36_28 (cpu.Ypair[0], 8)) << 36;
-        m2 |= cpu.Ypair[1];
+        m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
+        m2 |= (word72) cpu.Ypair[1] << 8;
         
         e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
       }
     else
       { // invert
-        // only keep the 1st 64-bits :(
-        m2 = (cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8);
-        e2 = SIGNEXT8_int (cpu . rE & MASK8);
-        
+        m2 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        e2 = SIGNEXT8_int (cpu . rE & MASK8); 
+
+        // round divisor per RJ78
+        // If AQ(64-71) is not = 0 and A(0) = 0, a 1 is added to AQ(63). Zero is moved to
+        // AQ(64-71), unconditionally. AQ(0-63) is then used as the divisor mantissa.
+        // ISOLTS-745 10b
+        if (!(m2 & SIGN72) && m2 & 0377) {
+            m2 += 0400;
+            // ISOLTS-745 10e asserts that an overflowing addition of 400 to 377777777777 7777777774xx does not shift the quotient (nor divisor)
+            // I surmise that the divisor is taken as unsigned 64 bits in this case
+            roundovf = 1;
+        }
+        putbits72 (& m2, 64, 8, 0);
+
         // 64-bit mantissa (incl sign)
-        m1  = ((uint64) getbits36_28 (cpu.Ypair[0], 8) << 36);
-        m1 |= cpu.Ypair[1];
+        m1 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
+        m1 |= (word72) cpu.Ypair[1] << 8;
         
         e1 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
       }
     
     if (m1 == 0)
       {
-        // XXX check flags
         SET_I_ZERO;
-        SC_I_NEG (cpu . rA & SIGN36);
+        CLR_I_NEG;
         
         cpu.rE = 0200U; /*-128*/
         cpu.rA = 0;
         cpu.rQ = 0;
         
-        return;
+        return;	// normalized 0 
       }
-    
 
-    
+IF1 sim_printf ("DFDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+     
     // make everything positive, but save sign info for later....
     int sign = 1;
-    if (m1 & SIGN64)
-      {
-        if (m1 == SIGN64)
-          {
+    if (m1 & SIGN72)
+    {
+        SET_I_NEG; // in case of divide fault
+        if (m1 == SIGN72)
+        {
             m1 >>= 1;
             e1 += 1;
-          }
-        else
-          m1 = (~m1 + 1);     //& (((uint64)1 << 64) - 1);
+        } else
+            m1 = (~m1 + 1) & MASK72;
         sign = -sign;
-      }
+    } else {
+        CLR_I_NEG; // in case of divide fault
+    }
     
-    if (m2 & SIGN64)    //((uint64)1 << 63))
-      {
-        if (m2 == SIGN64)
-          {
+    if ((m2 & SIGN72) && !roundovf)
+    {
+        if (m2 == SIGN72)
+        {
             m2 >>= 1;
             e2 += 1;
-          }
-        else
-          m2 = (~m2 + 1);     //& (((uint64)1 << 64) - 1);
+        } else
+            m2 = (~m2 + 1) & MASK72;
         sign = -sign;
-      }
+    }
+
+IF1 sim_printf ("DFDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36); 
     
     if (m2 == 0)
       {
-        //If the divisor mantissa C(Y-pair)8,71 is zero after alignment, the
-        //division does not take place. Instead, a divide check fault occurs,
-        //C(AQ) contains the dividend magnitude, and the negative indicator
-        //reflects the dividend sign.
-        
-        // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit!
-        // That's why it been moved before the alignment
-        
+        // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
+
         SET_I_ZERO;
-        SC_I_NEG (cpu.rA & SIGN36);
-        
-        cpu.rA = m1;
-        
+        // NEG already set
+
+        // FDV: If the divisor mantissa C(Y-pair)8,71 is zero after alignment (HWR: why after?), the division does
+        // not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude, and 
+        // the negative indicator reflects the dividend sign.
+        // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
+        // Instead, a divide check fault occurs and all the registers remain unchanged.
+        if (!bInvert) {
+            cpu . rA = (m1 >> 36) & MASK36;
+            cpu . rQ = m1 & MASK36;
+        }
+         
         doFault (FAULT_DIV, (_fault_subtype) {.bits=0},
                  "DFDV: divide check fault");
       }
@@ -2514,45 +2581,49 @@ static void dfdvX (bool bInvert)
         m1 >>= 1;
         e1 += 1;
       }
-    if (e1 > 127)
-      {
-        SET_I_EOFL;
-        if (tstOVFfault ())
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                   "dfdvX exp overflow fault");
-      }
+
+IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36); 
 
     int e3 = e1 - e2;
     if (e3 > 127)
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
                    "dfdvX exp overflow fault");
        }
-    else if (e3 < -127)
+    if (e3 < -128)
       {
         SET_I_EUFL;
         if (tstOVFfault ())
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
                    "dfdvX exp underflow fault");
       }
 
 #ifdef L68
     cpu.ou.cycle |= ou_GD1;
 #endif
-    uint128 m3 = ((uint128)m1 << 63) / (uint128)m2;
-    uint64 m3b = m3 & ((uint64)-1);  // only keep last 64-bits :-(
+
+    // We need 63 bits quotient + sign. Divisor is at most 64 bits.
+    // Do a 127 by 64 fractional divide
+    // lo 8bits are always zero
+    word72 m3 = ((uint128)m1 << (63-8)) / ((uint128)m2 >> 8);
+
+IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
+
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
 
+    m3 <<= 8;  // convert back to float
     if (sign == -1)
-      m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
+        m3 = (~m3 + 1) & MASK72;
+
+IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
 
     cpu.rE = (word8) e3 & MASK8;
-    cpu.rA = (m3b >> 28) & MASK36;
-    cpu.rQ = (m3b & 01777777777LL) << 8;//MASK36;
+    cpu.rA = (m3 >> 36) & MASK36;
+    cpu.rQ = m3 & MASK36;
     
     SC_I_ZERO (cpu.rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu.rA & SIGN36); 
