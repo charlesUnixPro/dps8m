@@ -1907,7 +1907,7 @@ IF1 sim_printf ("rpl captured link %06o\n", cpu.lnk);
                     case 2:
                       {
                         cpu.lnk = GETHI36 (cpu.Ypair[0]);
-                        cpu.CY &= MASK18;
+                        cpu.Ypair[0] &= MASK18;
 IF1 sim_printf ("rpl captured link2 %06o\n", cpu.lnk);
                         break;
                       }
