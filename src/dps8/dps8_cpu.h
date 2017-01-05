@@ -1576,6 +1576,8 @@ typedef struct
     word3    RSDWH_R1; // Track the ring number of the last SDW
     fault_acv_subtype_  acvFaults;   // pending ACV faults
 
+    word18 lnk;  // rpl link value
+
     struct _tpr TPR;   // Temporary Pointer Register
     struct _ppr PPR;   // Procedure Pointer Register
     struct _par PAR [8]; // pointer/address resisters
