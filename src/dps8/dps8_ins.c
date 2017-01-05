@@ -1893,12 +1893,31 @@ IF1 if (cpu.cu.rl) sim_printf ("rpl is first\n");
           {
             CPT (cpt2L, 2); // Read operands
             readOperands ();
-if (cpu.cu.rl)
-  {
-    cpu.lnk = GETHI36 (cpu.CY);
-    cpu.CY &= MASK18;
+            if (cpu.cu.rl)
+              {
+                switch (OPSIZE ())
+                  {
+                    case 1:
+                      {
+                        cpu.lnk = GETHI36 (cpu.CY);
+                        cpu.CY &= MASK18;
 IF1 sim_printf ("rpl captured link %06o\n", cpu.lnk);
-  }
+                        break;
+                      }
+                    case 2:
+                      {
+                        cpu.lnk = GETHI36 (cpu.Ypair[0]);
+                        cpu.CY &= MASK18;
+IF1 sim_printf ("rpl captured link2 %06o\n", cpu.lnk);
+                        break;
+                      }
+                    default:
+                      {
+IF1 sim_printf ("rpl dropped link %u\n", OPSIZE());
+                        break;
+                      }
+                  }
+              }
           }
 #else
         if (ci->info->flags & PREPARE_CA)
