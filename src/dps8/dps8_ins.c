@@ -1498,6 +1498,12 @@ IF1 sim_printf ("trapping opcode match......\n");
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "Instruction not allowed in XEC/XED");
+        // The even instruction from C(Y-pair) must not alter
+        // C(Y-pair)36,71, and must not be another xed instruction.
+        if (ci->opcode == 0717 && ci->opcodeX == 0)
+            doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     "XED of XED on even word");
     }
 
     // ISOLTS wants both the not allowed in RPx and RPx illegal modifier 
