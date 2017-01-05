@@ -2301,6 +2301,7 @@ IF1 sim_printf ("RPL lnk termination\n");
                 cpu.cu.rpt = false;
                 cpu.cu.rd = false;
                 cpu.cu.rl = false;
+                SET_I_TALLY;
               }
             else
               {
