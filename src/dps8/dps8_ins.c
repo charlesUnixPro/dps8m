@@ -1100,7 +1100,6 @@ void fetchInstruction (word18 addr)
       {
         if (cpu.cu.repeat_first)
           {
-IF1 if (cpu.cu.rl) sim_printf ("rpl fetch even\n");
             CPT (cpt2U, 11); // fetch rpt even
             Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
           }
@@ -1315,7 +1314,6 @@ bool chkOVF (void)
   {
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
-IF1 if (cpu.cu.rl) sim_printf ("rpl chkOvf\n");
         // a:AL39/rpd2
         // Did the repeat instruction inhibit overflow faults?
         if ((cpu.rX[0] & 00001) == 0)
@@ -1332,7 +1330,6 @@ bool tstOVFfault (void)
     // Doing a RPT/RPD?
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
-IF1 if (cpu.cu.rl) sim_printf ("rpl tstOVFfault\n");
         // a:AL39/rpd2
         // Did the repeat instruction inhibit overflow faults?
         if ((cpu.rX[0] & 00001) == 0)
@@ -1527,7 +1524,6 @@ IF1 sim_printf ("trapping opcode match......\n");
       {
         if (ci->info->flags & NO_RPT)
           {
-IF1 sim_printf ("RPx_fault NO_RPT\n");
             RPx_fault |= FR_ILL_PROC;
           }
       }
@@ -1536,7 +1532,6 @@ IF1 sim_printf ("RPx_fault NO_RPT\n");
       {
         if (ci->info->flags & NO_RPL)
           {
-IF1 sim_printf ("RPx_fault NO_RPL\n");
             RPx_fault |= FR_ILL_PROC;
           }
       }
@@ -1555,7 +1550,6 @@ IF1 sim_printf ("RPx_fault NO_RPL\n");
                 case TM_RI:
                   if (cpu.cu.rl)
                     {
-IF1 sim_printf ("RPx_fault RPL TM_RI\n");
                       RPx_fault |= FR_ILL_MOD;
                     }
                   break;
@@ -1563,20 +1557,17 @@ IF1 sim_printf ("RPx_fault RPL TM_RI\n");
                   break;
                 default:
                   // generate fault. Only R & RI allowed
-IF1 sim_printf ("RPx_fault RPx not R/RI\n");
                   RPx_fault |= FR_ILL_MOD;
               }
 
             word6 Td = GET_TD (ci->tag);
             if (Td == TD_X0)
               {
-IF1 sim_printf ("RPx_fault RPx X0/RI\n");
                 RPx_fault |= FR_ILL_MOD;
               }
             //if (! cpu.cu.rd && Td < TD_X0)
             if (Td < TD_X0)
               {
-IF1 sim_printf ("RPx_fault RPx not Xn\n");
                 RPx_fault |= FR_ILL_MOD;
               }
           }
@@ -1584,7 +1575,6 @@ IF1 sim_printf ("RPx_fault RPx not Xn\n");
 
     if (RPx_fault)
       {
-IF1 sim_printf ("RPx_fault %012"PRIo64"\n", (word36) RPx_fault);
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
                  "RPx test fail");
@@ -1661,7 +1651,6 @@ restart_1:
 
     if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
       {
-IF1 if (cpu.cu.rl) sim_printf ("rpl executeInstruction first time processing\n");
         CPT (cpt2U, 15); // RPx processing
 //
 // RPT:
@@ -1730,7 +1719,6 @@ IF1 if (cpu.cu.rl) sim_printf ("rpl executeInstruction first time processing\n")
 
         if (cpu.cu.repeat_first)
           {
-IF1 if (cpu.cu.rl) sim_printf ("rpl is first\n");
             CPT (cpt2U, 16); // RPx first processing
             // The semantics of these are that even is the first instruction of
             // and RPD, and odd the second.
@@ -1901,19 +1889,16 @@ IF1 if (cpu.cu.rl) sim_printf ("rpl is first\n");
                       {
                         cpu.lnk = GETHI36 (cpu.CY);
                         cpu.CY &= MASK18;
-IF1 sim_printf ("rpl captured link %06o\n", cpu.lnk);
                         break;
                       }
                     case 2:
                       {
                         cpu.lnk = GETHI36 (cpu.Ypair[0]);
                         cpu.Ypair[0] &= MASK18;
-IF1 sim_printf ("rpl captured link2 %06o\n", cpu.lnk);
                         break;
                       }
                     default:
                       {
-IF1 sim_printf ("rpl dropped link %u\n", OPSIZE());
                         break;
                       }
                   }
@@ -2122,7 +2107,6 @@ IF1 sim_printf ("rpl dropped link %u\n", OPSIZE());
 
     if ((! rf) && (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
-IF1 if (cpu.cu.rl) sim_printf ("rpl executeInstruction post check\n");
         CPT (cpt2L, 7); // Post execution RPx
         // If we get here, the instruction just executed was a
         // RPT, RPD or RPL target instruction, and not the RPT or RPD
@@ -2186,11 +2170,9 @@ IF1 if (cpu.cu.rl) sim_printf ("rpl executeInstruction post check\n");
             cpu.CY &= MASK18;
             cpu.rX[Xn] = lnk;
             //putbits36 (& cpu.cu.IWB,  0, 18, lnk);
-IF1 if (cpu.cu.rl) sim_printf ("rpl linked to %06o\n", lnk);
 #else
             uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
             putbits36 (& cpu.cu.IWB,  0, 18, cpu.rX[Xn]);
-IF1 if (cpu.cu.rl) sim_printf ("rpl linked to %06o\n", cpu.rX[Xn]);
 #endif
           }
 #endif
@@ -2293,10 +2275,8 @@ IF1 if (cpu.cu.rl) sim_printf ("rpl linked to %06o\n", cpu.rX[Xn]);
         if (cpu.cu.rl)
           {
             CPT (cpt2L, 11); // RL
-IF1 sim_printf ("RPL lnk termination check %06o\n", cpu.lnk);
             if (cpu.lnk == 0)
               {
-IF1 sim_printf ("RPL lnk termination\n");
                 CPT (cpt2L, 13); // RPx terminated
                 cpu.cu.rpt = false;
                 cpu.cu.rd = false;
@@ -2312,11 +2292,9 @@ IF1 sim_printf ("RPL lnk termination\n");
                 //cpu.CY &= MASK18;
                 cpu.rX[Xn] = cpu.lnk;
                 //putbits36 (& cpu.cu.IWB,  0, 18, lnk);
-IF1 if (cpu.cu.rl) sim_printf ("rpl linked to %06o\n", cpu.lnk);
 #else
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 putbits36 (& cpu.cu.IWB,  0, 18, cpu.rX[Xn]);
-IF1 if (cpu.cu.rl) sim_printf ("rpl linked to %06o\n", cpu.rX[Xn]);
 #endif
               }
           } // rl
@@ -2569,10 +2547,6 @@ static t_stat DoBasicInstruction (void)
         case 0326:  // lcx6
         case 0327:  // lcx7
           {
-            // XXX ToDo: Attempted repetition with the rpl instruction and with
-            // the same register given as target and modifier causes an illegal
-            // procedure fault.
-
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = compl18 (GETHI (cpu.CY), & cpu.cu.IR, & ovf);
@@ -5964,7 +5938,6 @@ static t_stat DoBasicInstruction (void)
               cpu.rX[0] = i->address;    // Entire 18 bits
             cpu.cu.rl = 1;
             cpu.cu.repeat_first = 1;
-IF1 sim_printf ("RPL X0 %06o\n", cpu.rX[0]);
           }
           break;
 
