@@ -1761,6 +1761,9 @@ typedef struct
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....
+#if 0
+    bool bar_attempt;
+#endif
 #ifdef ROUND_ROBIN
     bool isRunning;
 #endif

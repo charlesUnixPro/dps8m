@@ -2666,10 +2666,20 @@ static t_stat DoBasicInstruction (void)
             SC_I_HEX  (tmp18 & I_HEX);
 #endif
 
+#if 0
+            cpu.bar_attempt = false;
+
+#endif
             if (bAbsPriv)
               {
                 SC_I_PMASK (tmp18 & I_PMASK);
                 SC_I_MIF (tmp18 & I_MIF);
+#if 0
+                if (! (tmp18 & I_NBAR))
+                  {
+                    cpu.bar_attempt = true;
+                  }
+#endif
               }
             else
               {
@@ -5111,6 +5121,14 @@ static t_stat DoBasicInstruction (void)
           cpu.PPR.PSR = cpu.TPR.TSR;
           sim_debug (DBG_TRACE, & cpu_dev, "TRA %05o:%06o\n",
                      cpu.PPR.PSR, cpu.PPR.IC);
+#if 0
+          if (cpu.bar_attempt)
+            {
+sim_printf ("do bar attempt\n");
+              set_addr_mode (APPEND_mode);
+            }
+          else 
+#endif
           if (TST_I_ABS && get_went_appending ())
             {
               set_addr_mode (APPEND_mode);
