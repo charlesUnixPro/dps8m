@@ -384,6 +384,14 @@ float36 IEEEdoubleTofloat36(double f0)
  * single-precision arithmetic routines ...
  */
 
+
+#ifdef HEX_MODE
+static inline bool isHex (void)
+  {
+    return (!!cpu.MR.hexfp) && (!!TST_I_HEX);
+  }
+#endif
+
 /*!
  * unnormalized floating single-precision add
  */
@@ -789,7 +797,12 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
     int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+    uint shift_msk = isHex() ? 017 : 1;
+#else
     word1 last = 0;
+#endif
     if (e1 == e2)
     {
         shift_count = 0;
@@ -802,10 +815,16 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
+#ifdef HEX_MODE
+            allones &= (m1 & shift_msk) ? 1 : 0;
+            notallzeros |= (m1 & shift_msk) ? 1 : 0;
+            m1 >>= shift_amt;
+#else
             last = m1 & 1;
             allones &= m1 & 1;
             notallzeros |= m1 & 1;
             m1 >>= 1;
+#endif
             if (sign)
                 m1 |= SIGN72;
         }
@@ -825,10 +844,16 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
+#ifdef HEX_MODE
+            allones &= (m2 & shift_msk) ? 1 : 0;
+            notallzeros |= (m2 & shift_msk) ? 1 : 0;
+            m2 >>= shift_amt;
+#else
             last = m2 & 1;
             allones &= m2 & 1;
             notallzeros |= m2 & 1;
             m2 >>= 1;
+#endif
             if (sign)
                 m2 |= SIGN72;
         }
@@ -856,7 +881,9 @@ IF1 sim_printf ("UFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & 
     }
     //sim_printf ("shift_count = %d\n", shift_count);
     
+#ifndef HEX_MODE
 IF1 sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
+#endif
 IF1 sim_printf ("UFA e3 %d\n", e3);
 
     //m3 = m1 + m2;

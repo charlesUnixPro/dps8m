@@ -547,6 +547,7 @@ enum {
 #define TST_I_CARRY TSTF (cpu.cu.IR, I_CARRY)
 #define TST_I_NEG   TSTF (cpu.cu.IR, I_NEG)
 #define TST_I_ZERO  TSTF (cpu.cu.IR, I_ZERO)
+#define TST_I_HEX   TSTF (cpu.cu.IR, I_HEX)
 
 #ifdef DPS8M
 #define SC_I_HEX(v)   SCF (v, cpu.cu.IR, I_HEX)
