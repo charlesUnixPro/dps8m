@@ -2324,7 +2324,7 @@ restart_1:
 #else
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
                    "E=%03o A=%012"PRIo64" Q=%012"PRIo64" %.10g\n",
-                   cpu.rE, cpu.rA, cpu.rQ, EAQToIEEElongdouble ());
+                   cpu.rE, cpu.rA, cpu.rQ, EAQToIEEEdouble ());
 #endif
 
         sim_debug (DBG_REGDUMPIDX, &cpu_dev,
@@ -6012,6 +6012,7 @@ sim_printf ("do bar attempt\n");
           // remainder -> C(A)
 
           {
+IF1 sim_printf("BCD A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36, cpu.CY); 
             word36 tmp1 = cpu.rA & SIGN36; // A0
 
             cpu.rA <<= 3;       // Shift C(A) left three positions
@@ -6025,10 +6026,12 @@ sim_printf ("do bar attempt\n");
             cpu.rQ <<= 6;       // Shift C(Q) left six positions
             cpu.rQ &= DMASK;
 
-            cpu.rQ &= (word36) ~017;     // 4-bit quotient -> C(Q)32,35
+            //cpu.rQ &= (word36) ~017;     // 4-bit quotient -> C(Q)32,35  lo6 bits already zeroed out
             cpu.rQ |= (tmp36q & 017);
 
             cpu.rA = tmp36r;    // remainder -> C(A)
+
+IF1 sim_printf("BCD final A %012"PRIo64" Q %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
 
             SC_I_ZERO (cpu.rA == 0);  // If C(A) = 0, then ON;
                                             // otherwise OFF
@@ -6041,18 +6044,16 @@ sim_printf ("do bar attempt\n");
           // C(A)0 -> C(A)0
           // C(A)i XOR C(A)i-1 -> C(A)i for i = 1, 2, ..., 35
           {
-            // TODO: untested.
+            word36 tmp = cpu.rA & MASK36;
+            word36 mask = SIGN36;
 
-            word36 tmp1 = cpu.rA & SIGN36; // save A0
-
-            word36 tmp36 = cpu.rA >> 1;
-            cpu.rA = cpu.rA ^ tmp36;
-
-            if (tmp1)
-              cpu.rA |= SIGN36;   // set A0
-            else
-              cpu.rA &= ~SIGN36;  // reset A0
-
+            for (int n=1;n<=35;n++) {
+                tmp ^= (tmp & mask) >> 1;
+                mask >>= 1;
+            }
+            
+            cpu.rA = tmp;
+            
             SC_I_ZERO (cpu.rA == 0);  // If C(A) = 0, then ON;
                                       // otherwise OFF
             SC_I_NEG (cpu.rA & SIGN36);   // If C(A)0 = 1, then ON; 
