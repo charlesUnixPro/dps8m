@@ -1544,7 +1544,7 @@ G:;
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
     PNL (L68_ (cpu.apu.state |= apu_FANP;))
-#if 1
+#if 0
     appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
 #else
