@@ -2230,6 +2230,8 @@ setCPU:;
 
                 //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%"PRId64"]\n", sim_timell ());
     
+
+#if EMULATOR_ONLY
                 if (cpu.switches.report_faults == 1 ||
                     (cpu.switches.report_faults == 2 &&
                      cpu.faultNumber == FAULT_OFL))
@@ -2244,6 +2246,7 @@ setCPU:;
                     cpu.PPR.IC ++;
                     break;
                   }
+#endif
 
                 cu_safe_store ();
                 CPT (cpt1U, 31); // safe store complete
