@@ -451,6 +451,9 @@ typedef struct mode_register
 #endif
     word1 ihr;
     word1 ihrrs;
+#ifdef DPS8M
+    word1 hexfp;
+#endif
   } _mode_register;
 #else
 typedef struct mode_register

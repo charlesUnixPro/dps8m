@@ -2635,7 +2635,15 @@ static t_stat DoBasicInstruction (void)
             //  otherwise, OFF
 
             // upper 14-bits of lower 18-bits
+
+            // AL39 ldi says that HEX is ignored, but the mode register 
+            // description says that it isn't
+#ifdef DPS8M
+            word18 tmp18 = GETLO (cpu.CY) & 0777770;
+#endif
+#ifdef L68
             word18 tmp18 = GETLO (cpu.CY) & 0777760;
+#endif
 
             bool bAbsPriv = (get_addr_mode () == ABSOLUTE_mode) ||
                             is_priv_mode ();
@@ -2831,7 +2839,14 @@ static t_stat DoBasicInstruction (void)
           // "C(Y)25 reflects the state of the tally runout indicator
           // prior to modification.
           SETHI (cpu.CY, (cpu.PPR.IC + 1) & MASK18);
+          // AL39 stc1 says that HEX is ignored, but the mode register 
+          // description says that it isn't
+#ifdef DPS8M
+          SETLO (cpu.CY, cpu.cu.IR & 0777770);
+#endif
+#ifdef L68
           SETLO (cpu.CY, cpu.cu.IR & 0777760);
+#endif
           SCF (i->stiTally, cpu.CY, I_TALLY);
           break;
 
@@ -2891,7 +2906,14 @@ static t_stat DoBasicInstruction (void)
           // is given in Table 4-5.
 
           CPTUR (cptUseIR);
+            // AL39 sti says that HEX is ignored, but the mode register 
+            // description says that it isn't
+#ifdef DPS8M
+          SETLO (cpu.CY, (cpu.cu.IR & 0000000777770LL));
+#endif
+#ifdef L68
           SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
+#endif
           SCF (i->stiTally, cpu.CY, I_TALLY);
           if (cpu.switches.invert_absolute)
             cpu.CY ^= 020;
@@ -6108,6 +6130,9 @@ static t_stat DoBasicInstruction (void)
                   cpu.MR.ihr = getbits36_1 (cpu.CY, 30);
                   cpu.MR.ihrrs = getbits36_1 (cpu.CY, 31);
                   cpu.MR.emr = getbits36_1 (cpu.CY, 35);
+#ifdef DPS8M
+                  cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
+#endif
 //IF1 sim_printf ("hrhlt %u ihr %u emr %u\n", cpu.MR.hrhlt, cpu.MR.ihr, cpu.MR.emr);
 #else
 IF1 sim_printf ("set mode register %012"PRIo64"\n", cpu.CY);
@@ -6304,6 +6329,9 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                     putbits36_1 (& cpu.Ypair[0], 20, cpu.MR.sdpap);
                     putbits36_1 (& cpu.Ypair[0], 21, cpu.MR.separ);
                     putbits36_1 (& cpu.Ypair[0], 30, cpu.MR.ihr);
+#ifdef DPS8M
+                    putbits36_1 (& cpu.Ypair[0], 33, cpu.MR.hexfp);
+#endif
 #if 0
                     cpu.Ypair[0] = 0;
 #ifdef L68
