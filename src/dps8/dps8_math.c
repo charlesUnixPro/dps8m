@@ -386,6 +386,8 @@ float36 IEEEdoubleTofloat36(double f0)
 
 
 #ifdef HEX_MODE
+#define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69)
+
 static inline bool isHex (void)
   {
     return (!!cpu.MR.hexfp) && (!!TST_I_HEX);
@@ -855,7 +857,7 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             notallzeros |= (m2 & shift_msk) ? 1 : 0;
             m2 >>= shift_amt;
             if (sign)
-                m2 |= SIGN72 | BIT71 | BIT70;
+                m2 |= SIGN72 | BIT71 | BIT70 | BIT69;
 #else
             last = m2 & 1;
             allones &= m2 & 1;
@@ -913,10 +915,19 @@ IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
     {
 IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
         word72 signbit = m3 & SIGN72;
+#ifdef HEX_MODE
+        m3 >>= shift_amt;
+        m3 = (m3 & MASK71) | signbit;
+        //if (signbit)
+          //m3 |= HEX_SIGN;
+        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+        e3 += 1;
+#else
         m3 >>= 1;
         m3 = (m3 & MASK71) | signbit;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
+#endif
 IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
     }
 
