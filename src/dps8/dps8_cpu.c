@@ -2633,7 +2633,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read   %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRIo64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
