@@ -832,7 +832,11 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         }
 IF1 sim_printf ("UFA m1 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
+#ifdef HEX_MODE
+if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+#else
 if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+#endif
   m1 = 0;
         m1 &= MASK72;
         e3 = e2;
@@ -876,7 +880,11 @@ IF1 sim_printf ("UFA m2 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36
 //}
 //else
 {
+#ifdef HEX_MODE
+if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+#else
 if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+#endif
   m2 = 0;
 }
         m2 &= MASK72;
