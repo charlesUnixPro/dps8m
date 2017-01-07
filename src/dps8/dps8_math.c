@@ -802,6 +802,7 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
     uint shift_msk = isHex() ? 017 : 1;
+    word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
 #else
     word1 last = 0;
 #endif
@@ -822,7 +823,7 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
             notallzeros |= (m1 & shift_msk) ? 1 : 0;
             m1 >>= shift_amt;
             if (sign)
-                m1 |= SIGN72 | BIT71 | BIT70 | BIT69;
+                m1 |= sign_msk;
 #else
             last = m1 & 1;
             allones &= m1 & 1;
@@ -857,7 +858,7 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             notallzeros |= (m2 & shift_msk) ? 1 : 0;
             m2 >>= shift_amt;
             if (sign)
-                m2 |= SIGN72 | BIT71 | BIT70 | BIT69;
+                m2 |= sign_msk;
 #else
             last = m2 & 1;
             allones &= m2 & 1;
@@ -918,8 +919,6 @@ IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >
 #ifdef HEX_MODE
         m3 >>= shift_amt;
         m3 = (m3 & MASK71) | signbit;
-        //if (signbit)
-          //m3 |= HEX_SIGN;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
 #else
