@@ -819,14 +819,16 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
             allones &= (m1 & shift_msk) ? 1 : 0;
             notallzeros |= (m1 & shift_msk) ? 1 : 0;
             m1 >>= shift_amt;
+            if (sign)
+                m1 |= SIGN72 | BIT71 | BIT70 | BIT69;
 #else
             last = m1 & 1;
             allones &= m1 & 1;
             notallzeros |= m1 & 1;
             m1 >>= 1;
-#endif
             if (sign)
                 m1 |= SIGN72;
+#endif
         }
 IF1 sim_printf ("UFA m1 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
@@ -848,14 +850,16 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             allones &= (m2 & shift_msk) ? 1 : 0;
             notallzeros |= (m2 & shift_msk) ? 1 : 0;
             m2 >>= shift_amt;
+            if (sign)
+                m2 |= SIGN72 | BIT71 | BIT70;
 #else
             last = m2 & 1;
             allones &= m2 & 1;
             notallzeros |= m2 & 1;
             m2 >>= 1;
-#endif
             if (sign)
                 m2 |= SIGN72;
+#endif
         }
 IF1 sim_printf ("UFA m2 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
         //if (allones)
