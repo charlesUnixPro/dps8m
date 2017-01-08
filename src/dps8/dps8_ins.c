@@ -491,6 +491,9 @@ static void scu2words (word36 *words)
     // words[4]
 
     putbits36_18 (& words[4],  0, cpu.PPR.IC);
+
+// According the AL39, the Hex Mode bit should be 0, but ISOLTS pas2 exec checks it; this code does not set it to zero and indicated by AL39.
+
     putbits36_18 (& words[4], 18, cpu.cu.IR);
 
 #ifdef ISOLTS
