@@ -386,7 +386,11 @@ float36 IEEEdoubleTofloat36(double f0)
 
 
 #ifdef HEX_MODE
+//#define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69 | BIT68)
+//#define HEX_MSB  (         BIT71 | BIT70 | BIT69 | BIT68)
 #define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69)
+#define HEX_MSB  (         BIT71 | BIT70 | BIT69)
+#define HEX_NORM (         BIT71 | BIT70 | BIT69 | BIT68)
 
 static inline bool isHex (void)
   {
@@ -432,6 +436,7 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
     uint shift_amt = isHex() ? 4 : 1;
     //uint shift_msk = isHex() ? 017 : 1;
     word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
+    //word72 sign_msb = isHex() ? HEX_MSB  : BIT71;
 #endif
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
@@ -638,19 +643,56 @@ void fno (word8 * E, word36 * A, word36 * Q)
     //
     // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
+#ifdef ISOLTS
+static int testno = 1;
+IF1 sim_printf ("FNO testno %d\n", testno ++);
+IF1 sim_printf ("FNO E %03o A %012"PRIo64" Q %012"PRIo64"\n", *E, *A, *Q);
+#ifndef __MINGW64__
+IF1 sim_printf ("FNO EAQ %Lf\n", EAQToIEEElongdouble ());
+#else
+IF1 sim_printf ("FNO EAQ %f\n", EAQToIEEEdouble ());
+#endif
+#endif
+
 #ifdef L68
     cpu.ou.cycle |= ou_GON;
+#endif
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+    //uint shift_msk = isHex() ? 017 : 1;
+    //word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
+    //word72 sign_msb = isHex() ? HEX_NORM  : BIT71;
 #endif
     *A &= DMASK;
     *Q &= DMASK;
     float72 m = ((word72)(*A) << 36) | (word72)(*Q);
     if (TST_I_OFLOW)
     {
+IF1 sim_printf ("FNO OVF\n");
         CLR_I_OFLOW;
         word72 s = m & SIGN72; // save the sign bit
+#ifdef HEX_MODE
+        m >>= shift_amt; // renormalize the mantissa
+        if (isHex ())
+          {
+            if (s)
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m &= MASK68;
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m |=  HEX_SIGN;
+          }
+        else
+          {
+            m >>= 1; // renormalize the mantissa
+            m |= SIGN72; // set the sign bit
+            m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
+          }
+#else
         m >>= 1; // renormalize the mantissa
         m |= SIGN72; // set the sign bit
         m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
+#endif
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
@@ -677,10 +719,12 @@ void fno (word8 * E, word36 * A, word36 * Q)
 
         return;
     }
+IF1 sim_printf ("FNO !OVF\n");
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
     if (m == 0) // C(AQ) == 0.
     {
+IF1 sim_printf ("FNO 0\n");
         //*A = (m >> 36) & MASK36;
         //*Q = m & MASK36;
         *E = 0200U; /*-128*/
@@ -692,7 +736,62 @@ void fno (word8 * E, word36 * A, word36 * Q)
     int e = SIGNEXT8_int ((*E) & MASK8);
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
 
-    //while (s  == !! bitfieldExtract72(m, 70, 1)) // until C(AQ)0 != C(AQ)1?
+#ifdef HEX_MODE
+// Normalized in Hex Mode: If sign is 0, bits 1-4 != 0; if sign is 1,
+// bits 1-4 != 017.
+    if (isHex ())
+      {
+        if (s)
+          {
+IF1 sim_printf ("HEX NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
+            // Negative
+            // Until bits 1-4 != 014
+            // Termination guarantee: Zeros are being shifted into the right
+	  // end, so the loop will terminate when the first shifted
+            // zero enters bits 1-4.
+            while ((m & HEX_NORM) == HEX_NORM) 
+              {
+//IF1 sim_printf ("NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
+//IF1 sim_printf ("msk %012"PRIo64" %012"PRIo64"\n", (word36)((((~m) & HEX_NORM) >> 36) & DMASK), (word36)(((~m) & HEX_NORM) & DMASK));
+//if (m == 0) // XXX: necessary??
+//    break;
+                m <<= 4;
+                e -= 1;
+              }
+            m &= MASK71;
+            m |= SIGN72;
+          }
+        else
+          {
+IF1 sim_printf ("HEX POS %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
+            // Positive
+            // Until bits 1-4 != 0
+            // Termination guarantee: m is known to be non-zero; a non-zero
+            // bit will eventually be shifted into bits 1-4.
+            while ((m & HEX_NORM) == 0)
+              {
+                m <<= 4;
+                e -= 1;
+              }
+            m &= MASK71;
+          }
+      }
+    else
+      {
+        while (s  == !! (m & BIT71)) // until C(AQ)0 != C(AQ)1?
+        {
+            m <<= 1;
+            e -= 1;
+            //if (m == 0) // XXX: necessary??
+            //    break;
+        }
+
+        m &= MASK71;
+        
+        if (s)
+          m |= SIGN72;
+      }
+#else
     while (s  == !! (m & BIT71)) // until C(AQ)0 != C(AQ)1?
     {
         m <<= 1;
@@ -705,7 +804,9 @@ void fno (word8 * E, word36 * A, word36 * Q)
         
     if (s)
       m |= SIGN72;
+#endif
       
+IF1 sim_printf ("FNO NOW %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
     if (e < -128)
     {
         SET_I_EUFL;
