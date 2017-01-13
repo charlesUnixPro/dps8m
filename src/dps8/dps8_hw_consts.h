@@ -117,11 +117,13 @@ enum { N_DEV_CODES = 64 };
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
 #define SIGN72          ((word72)1U << 71)
 // NB. these use the wrong bit number convention
+#define BIT68           ((word72)1U << 67)
 #define BIT69           ((word72)1U << 68)
 #define BIT70           ((word72)1U << 69)
 #define BIT71           ((word72)1U << 70)  // next to the sign bit
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
+#define MASK68          (((word72)1U << 68) - 1U) // Hex mode mantissa normalization mask
 #define MASK71          (((word72)1U << 71) - 1U)
 #define MASK72          ZEROEXT72
 
