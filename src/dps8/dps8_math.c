@@ -435,7 +435,7 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
     //uint shift_msk = isHex() ? 017 : 1;
-    word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
+    //word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
     //word72 sign_msb = isHex() ? HEX_MSB  : BIT71;
 #endif
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
@@ -568,10 +568,29 @@ IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
     {
 IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 #ifdef HEX_MODE
-        word72 signbit = m3 & sign_msk;
-        m3 >>= shift_amt;
-        m3 = (m3 & MASK71) | signbit;
-        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        word72 signbit = m3 & sign_msk;
+//        m3 >>= shift_amt;
+//        m3 = (m3 & MASK71) | signbit;
+//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        e3 += 1;
+        word72 s = m3 & SIGN72; // save the sign bit
+        if (isHex ())
+          {
+            m3 >>= shift_amt; // renormalize the mantissa
+            if (s)
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m3 &= MASK68;
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m3 |=  HEX_SIGN;
+          }
+        else
+          {
+            word72 signbit = m3 & SIGN72;
+            m3 >>= 1;
+            m3 = (m3 & MASK71) | signbit;
+            m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+          }
         e3 += 1;
 #else
         word72 signbit = m3 & SIGN72;
@@ -672,9 +691,9 @@ IF1 sim_printf ("FNO OVF\n");
         CLR_I_OFLOW;
         word72 s = m & SIGN72; // save the sign bit
 #ifdef HEX_MODE
-        m >>= shift_amt; // renormalize the mantissa
         if (isHex ())
           {
+            m >>= shift_amt; // renormalize the mantissa
             if (s)
               // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
               m &= MASK68;
