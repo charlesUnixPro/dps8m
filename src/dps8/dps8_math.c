@@ -397,340 +397,6 @@ static inline bool isHex (void)
 /*!
  * unnormalized floating single-precision add
  */
-#if 0
-void ufa (void)
-{
-    // C(EAQ) + C(Y) → C(EAQ)
-    // The ufa instruction is executed as follows:
-    //
-    // The mantissas are aligned by shifting the mantissa of the operand having
-    // the algebraically smaller exponent to the right the number of places
-    // equal to the absolute value of the difference in the two exponents. Bits
-    // shifted beyond the bit position equivalent to AQ71 are lost.
-    //
-    // The algebraically larger exponent replaces C(E). The sum of the
-    // mantissas replaces C(AQ).
-    //
-    // If an overflow occurs during addition, then;
-    // * C(AQ) are shifted one place to the right.
-    // * C(AQ)0 is inverted to restore the sign.
-    // * C(E) is increased by one.
-
-#if 1
-//#define NO_RND
-//#define RND_INF
-//#define RND_FRND
-#define RND_FRND2
-if (currentRunningCPUnum)
-sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
-    word72 m2 = (word72) bitfieldExtract36 (cpu.CY, 0, 28) << 44; // 28-bit mantissa (incl sign)
-if (currentRunningCPUnum)
-sim_printf ("UFA m1 %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("UFA m2 %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-
-    int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
-    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-    
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 %d\n", e1);
-if (currentRunningCPUnum)
-sim_printf ("UFA e2 %d\n", e2);
-
-    int e3 = -1;
-
-    // which exponent is smaller?
-    
-    int shift_count = -1;
-#ifdef RND_INF
-    word1 r = 0;
-#endif
-#ifdef RND_FRND2
-    word1 last = 0;
-#endif
-
-    if (e1 == e2)
-    {
-        shift_count = 0;
-        e3 = e1;
-    }
-    else if (e1 < e2)
-    {
-        shift_count = abs(e2 - e1);
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
-        bool s = m1 & SIGN72;   // mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
-#ifdef RND_INF
-            r |= m1 & 1;
-#endif
-#ifdef RND_FRND2
-            last = m1 & 1;
-#endif
-            m1 >>= 1;
-            if (s)
-                m1 |= SIGN72;
-        }
-        
-        m1 &= MASK72;
-        e3 = e2;
-#ifdef RND_FRND2
-        if (s)
-          last = 1 - last;
-#endif
-        //if (s)
-          //r = 1 - r;
-if (currentRunningCPUnum)
-sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-    }
-    else
-    {
-        // e2 < e1;
-        shift_count = abs(e1 - e2);
-if (currentRunningCPUnum)
-sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
-        bool s = m2 & SIGN72;   // mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
-#ifdef RND_INF
-            r |= m2 & 1;
-#endif
-#ifdef RND_FRND2
-            last = m2 & 1;
-#endif
-            m2 >>= 1;
-            if (s)
-                m2 |= SIGN72;
-        }
-        m2 &= MASK72;
-        e3 = e1;
-#ifdef RND_FRND2
-        if (s)
-          last = 1 - last;
-#endif
-        //if (s)
-          //r = 1 - r;
-if (currentRunningCPUnum)
-sim_printf ("UFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-    }
-    //sim_printf ("shift_count = %d\n", shift_count);
-    
-if (currentRunningCPUnum)
-sim_printf ("UFA e3 %d\n", e3);
-
-    //m3 = m1 + m2;
-    bool ovf;
-#ifdef RND_INF
-    word18 carry0 = 0;
-    word72 m3 = Add72b (m1, m2, 0, I_CARRY, & carry0, & ovf);
-#endif
-#ifdef NO_RND
-    word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
-#endif
-#ifdef RND_FRND
-    word72 m3 = Add72b (m1, m2, last, I_CARRY, & cpu.cu.IR, & ovf);
-#endif
-#ifdef RND_FRND2
-    word1 carry = (m1 & SIGN72) ? 0 : 1;
-    word72 m3 = Add72b (m1, m2, carry, I_CARRY, & cpu.cu.IR, & ovf);
-#endif
-
-    if (ovf)
-    {
-if (currentRunningCPUnum)
-sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-        word72 signbit = m3 & SIGN72;
-        m3 >>= 1;
-        //m3 &= MASK72; // MAY need to preserve sign not just set it
-        m3 = (m3 & MASK71) | signbit;
-        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-        e3 += 1;
-if (currentRunningCPUnum)
-sim_printf ("UFA m3 now %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("UFA e3 now %d\n", e3);
-    }
-
-#ifdef RND_INF
-    m3 = Add72b (m3, 0, r, I_CARRY, & cpu.cu.IR, & ovf);
-    cpu.cu.IR |= carry0;
-    if (ovf)
-    {
-if (currentRunningCPUnum)
-sim_printf ("UFA correcting ovf2 %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-        word72 signbit = m3 & SIGN72;
-        m3 >>= 1;
-        //m3 &= MASK72; // MAY need to preserve sign not just set it
-        m3 = (m3 & MASK71) | signbit;
-        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-        e3 += 1;
-if (currentRunningCPUnum)
-sim_printf ("UFA m3 now %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("UFA e3 now %d\n", e3);
-    }
-#endif
-
-    cpu . rA = (m3 >> 36) & MASK36;
-    cpu . rQ = m3 & MASK36;
-    cpu . rE = e3 & 0377;
-
-    SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
-                                // of ovf handling above
-    if (cpu.rA == 0 && cpu.rQ == 0)
-    {
-      SET_I_ZERO;
-      cpu . rE = 0200U; /*-128*/
-    }
-    else
-    {
-      CLR_I_ZERO;
-    }
-
-    // EOFL: If exponent is greater than +127, then ON
-    if (e3 > 127)
-    {
-        SET_I_EOFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
-    }
-    
-    // EUFL: If exponent is less than -128, then ON
-    if(e3 < -128)
-    {
-        SET_I_EUFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
-    }
-
-#else
-
-    float72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
-    //float72 op2 = cpu.CY;
-            
-    int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
-    
-    //int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-    int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-    //word72 m2 = (word72)bitfieldExtract36(cpu.CY, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
-    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
-    
-    int e3 = -1;
-    word72 m3 = 0;
-    
-//    if (m1 == 0) // op1 is 0
-//    {
-//        m3 = m2;
-//        e3 = e2;
-//        goto here;
-//    }
-//    if (m2 == 0) // op2 is 0
-//    {
-//        m3 = m1;
-//        e3 = e1;
-//        goto here;
-//    }
-
-    //which exponent is smaller???
-    
- 
-    int shift_count = -1;
-    
-    if (e1 == e2)
-    {
-        shift_count = 0;
-        e3 = e1;
-    }
-    else if (e1 < e2)
-    {
-        shift_count = abs(e2 - e1);
-        bool s = m1 & SIGN72;   ///< mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
-            m1 >>= 1;
-            if (s)
-                m1 |= SIGN72;
-        }
-        
-        m1 &= MASK72;
-        e3 = e2;
-    }
-    else
-    {
-        // e2 < e1;
-        shift_count = abs(e1 - e2);
-        bool s = m2 & SIGN72;   ///< mantissa negative?
-        for(int n = 0 ; n < shift_count ; n += 1)
-        {
-            m2 >>= 1;
-            if (s)
-                m2 |= SIGN72;
-        }
-        m2 &= MASK72;
-        e3 = e1;
-    }
-    //sim_printf ("shift_count = %d\n", shift_count);
-    
-    m3 = m1 + m2;
-
-    /*
-     oVerflow rules .....
-     
-     oVerflow occurs for addition if the operands have the
-     same sign and the result has a different sign. MSB(a) = MSB(b) and MSB(r) <> MSB(a)
-     */
-    bool ov = ((m1 & SIGN72) == (m2 & SIGN72)) && ((m1 & SIGN72) != (m3 & SIGN72)) ;
-    
-    //ov = m3 & 077000000000000LL;
-    if (ov)
-    {
-        m3 >>= 1;
-        m3 &= MASK72; /// MAY need to preserve sign not just set it
-        e3 += 1;
-    }
-    
-//here:;
-    // EOFL: If exponent is greater than +127, then ON
-    if (e3 > 127)
-    {
-        cpu . rE = e3 & 0377;
-        SET_I_EOFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
-    }
-    
-    // EUFL: If exponent is less than -128, then ON
-    if(e3 < -128)
-    {
-        cpu . rE = e3 & 0377;
-        SET_I_EUFL;
-        if (tstOVFfault ())
-            doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
-    }
-
-    cpu . rA = (m3 >> 36) & MASK36;
-    cpu . rQ = m3 & MASK36;
-    cpu . rE = e3 & 0377;
-
-    // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SC_I_CARRY (m3 > MASK72);
-    
-    // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
-    
-    // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SC_I_NEG (cpu.rA & SIGN36);
-
-    if (cpu.rA == 0 && cpu.rQ == 0)
-    {
-      cpu . rE = 0200U; /*-128*/
-    }
-#endif
-IF1 sim_printf ("UFA returning %03o %012"PRIo64" %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
-}
-#else
 void ufa (bool sub)
 {
     // C(EAQ) + C(Y) → C(EAQ)
@@ -762,27 +428,37 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #endif
 
     CPTUR (cptUseE);
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+    //uint shift_msk = isHex() ? 017 : 1;
+    word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
+#endif
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
-    //word72 m2 = (word72) bitfieldExtract36 (cpu.CY, 0, 28) << 44;
-    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
+    word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; // 28-bit mantissa (incl sign)
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
-    // RJ78: The two's complement of the subtrahend is first taken and the smaller value is then
-    // right-shifted to equalize it (i.e. ufa).
+    // RJ78: The two's complement of the subtrahend is first taken and the
+    // smaller value is then right-shifted to equalize it (i.e. ufa).
 
     int m2zero = 0;
     if (sub) {
-       // ISOLTS-735 08i asserts no carry for (-1.0*2^96)-(-1.0*2^2) but 08g asserts carry for -0.5079365*2^78-0.0
+       // ISOLTS-735 08i asserts no carry for (-1.0*2^96)-(-1.0*2^2) but 08g
+       // asserts carry for -0.5079365*2^78-0.0
        // I assume zero subtrahend is handled in a special way.
 
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
+#ifdef HEX_MODE
+           m2 >>= shift_amt;
+           e2 += 1;
+#else
            m2 >>= 1;
            e2 += 1;
+#endif
        } else
            m2 = (-m2) & MASK72;
     }
@@ -799,13 +475,7 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
     int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
-#ifdef HEX_MODE
-    uint shift_amt = isHex() ? 4 : 1;
-    uint shift_msk = isHex() ? 017 : 1;
-    word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
-#else
     word1 last = 0;
-#endif
     if (e1 == e2)
     {
         shift_count = 0;
@@ -813,34 +483,31 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
     }
     else if (e1 < e2)
     {
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
 IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-#ifdef HEX_MODE
-            allones &= (m1 & shift_msk) ? 1 : 0;
-            notallzeros |= (m1 & shift_msk) ? 1 : 0;
-            m1 >>= shift_amt;
-            if (sign)
-                m1 |= sign_msk;
-#else
             last = m1 & 1;
             allones &= m1 & 1;
             notallzeros |= m1 & 1;
             m1 >>= 1;
             if (sign)
                 m1 |= SIGN72;
-#endif
         }
 IF1 sim_printf ("UFA m1 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
 #ifdef HEX_MODE
-if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
 #else
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
 #endif
-  m1 = 0;
         m1 &= MASK72;
         e3 = e2;
 IF1 sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -848,60 +515,40 @@ IF1 sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & 
     else
     {
         // e2 < e1;
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
         shift_count = abs(e1 - e2);
+#endif
 IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-#ifdef HEX_MODE
-            allones &= (m2 & shift_msk) ? 1 : 0;
-            notallzeros |= (m2 & shift_msk) ? 1 : 0;
-            m2 >>= shift_amt;
-            if (sign)
-                m2 |= sign_msk;
-#else
             last = m2 & 1;
             allones &= m2 & 1;
             notallzeros |= m2 & 1;
             m2 >>= 1;
             if (sign)
                 m2 |= SIGN72;
-#endif
         }
 IF1 sim_printf ("UFA m2 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-        //if (allones)
-        //if (sign == (allones != 1))
-          //m2 ++;
-//if (sign && (notallzeros == 1))
-  //m2 ++;
-//if ((! sign) && (allones == 1))
-  //m2 ++;
-//if (sub)
-//{
-//if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  //m2 = 0;
-//}
-//else
-{
 #ifdef HEX_MODE
-if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
 #else
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
 #endif
-  m2 = 0;
-}
         m2 &= MASK72;
         e3 = e1;
 IF1 sim_printf ("UFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     }
-    //sim_printf ("shift_count = %d\n", shift_count);
     
 #ifndef HEX_MODE
 IF1 sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
 #endif
 IF1 sim_printf ("UFA e3 %d\n", e3);
 
-    //m3 = m1 + m2;
     bool ovf;
     word72 m3;
     m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
@@ -965,85 +612,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
 
 IF1 sim_printf ("UFA returning E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
 }
-#endif
 
-#if 0
-/*!
- * unnormalized floating single-precision subtract
- */
-void ufs (void)
-{
-static int testno = 1;
-if (currentRunningCPUnum)
-sim_printf ("UFS testno %d\n", testno ++);
-if (currentRunningCPUnum)
-sim_printf ("UFS E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("UFS Y %lf\n", float36ToIEEEdouble (cpu.CY));
-    //! The ufs instruction is identical to the ufa instruction with the exception that the twos complement of the mantissa of the operand from main memory (op2) is used.
-    
-    //! They're probably a few gotcha's here but we'll see.
-    //! Yup ... when mantissa 1 000 000 .... 000 we can't do 2'c comp.
-    
-    //word36 m2 = bitfieldExtract36(cpu.CY, 0, 28) & FLOAT36MASK; ///< 28-bit mantissa (incl sign)
-    word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) & FLOAT36MASK; // 28-bit mantissa (incl sign)
-    // -1  001000000000 = 2^0 * -1 = -1
-    // S          S    
-    // 000 000 00 1 000 000 000 000 000 000 000 000 000
-    // eee eee ee m mmm mmm mmm mmm mmm mmm mmm mmm mmm
-    //      ~     0 111 111 111 111 111 111 111 111 111
-    // (add 1)
-    //            1 000 000 000 000 000 000 000 000 000  <== Oops! The "weird" number problem.
-    //
-    // +1 002400000000
-    // 000 000 01 0 100 000 000 000 000 000 000 000 000 // what we wan't
-    //
-    
-    word36 m2c = ~m2 + 1;     ///< & 01777777777LL;     ///< take 2-comp of mantissa
-    m2c &= FLOAT36MASK;
-   
-if (currentRunningCPUnum)
-sim_printf ("UFS m2 %012"PRIo64" m2c %02"PRIo64"\n", m2, m2c);
-    /*
-     * When signs are the *same* after complement we have an overflow
-     * (Treat as in addition when we get an overflow)
-     */
-    bool ov = ((m2 & 01000000000LL) == (m2c & 01000000000LL)); // the "weird" number.
-
-    if (ov && m2 != 0)
-    {
-if (currentRunningCPUnum)
-sim_printf ("UFS overflow\n");
-        //sim_printf ("OV\n");
-        //int8   e = (int8)(bitfieldExtract36(cpu.CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
-        int e = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-
-        m2c >>= 1;
-        m2c &= FLOAT36MASK;
-        
-        e += 1;
-        if (e > 127)
-        {
-            SET_I_EOFL;
-            if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufs exp overflow fault");
-        }
-        
-        //cpu.CY = bitfieldInsert36(cpu.CY, (word36)e, 28, 8) & DMASK;
-        putbits36_8 (& cpu.CY, 0, e & 0377);
-        
-    }
-
-    if (m2c == 0)
-        cpu.CY = 0400000000000LL;
-    else
-        //cpu.CY = bitfieldInsert36(cpu.CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
-        putbits36_28 (& cpu.CY, 8, m2c & FLOAT36MASK);
-   
-    ufa();
-
-}
-#endif
 
 /*
  * floating normalize ...
