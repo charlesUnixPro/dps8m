@@ -1790,6 +1790,10 @@ typedef struct
     _fault dlyFltNum;
     _fault_subtype dlySubFltNum;
     const char * dlyCtx;
+
+#ifdef ISOLTS
+    uint shadowTR;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED

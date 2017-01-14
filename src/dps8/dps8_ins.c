@@ -2959,7 +2959,14 @@ static t_stat DoBasicInstruction (void)
 
         case 0454:  // stt
           CPTUR (cptUseTR);
+#ifdef ISOLTS
+          if (currentRunningCPUnum)
+            cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
+          else
+            cpu.CY = (cpu.rTR & MASK27) << 9;
+#else
           cpu.CY = (cpu.rTR & MASK27) << 9;
+#endif
           break;
 
 
@@ -6302,6 +6309,9 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
         case 0637:  // ldt
           CPTUR (cptUseTR);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
+#if ISOLTS
+          cpu.shadowTR = cpu.rTR;
+#endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
           // Undocumented feature. return to bce has been observed to

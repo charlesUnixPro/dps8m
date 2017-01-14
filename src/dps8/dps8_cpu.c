@@ -897,6 +897,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       }
     cpu.rTR -= 5120;
     cpu.rTR &= MASK27;
+#if ISOLTS
+    cpu.shadowTR = cpu.rTR;
+#endif
   }
 #endif
 
@@ -982,6 +985,9 @@ static void cpu_reset2 (void)
         cpu.PPR.P = 1;
         cpu.RSDWH_R1 = 0;
         cpu.rTR = 0;
+#if ISOLTS
+        cpu.shadowTR = 0;
+#endif
  
         set_addr_mode(ABSOLUTE_mode);
         SET_I_NBAR;
