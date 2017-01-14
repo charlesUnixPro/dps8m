@@ -2182,6 +2182,27 @@ restart_1:
 
         // Check for termination conditions.
 
+///////
+//
+// ISOLTS test 769 claims in test-02a that 'rpt;div' with a divide
+// fault should delay the divide fault until after the tremination
+// check (it checks that the tally should be decremented) and in test-02b 
+// that 'rpl;div' with a divide fault should not due the termination
+// check (the tally should not be decremented).
+//
+// This implies that rpt and rpl are handled differently; as a test
+// trying:
+
+        if (cpu.cu.rl && cpu.dlyFlt)
+          {
+            CPT (cpt2L, 14); // Delayed fault
+            doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
+          }
+
+// Sadly, it fixes ISOLTS 759 test 02.
+//
+///////
+
         if (cpu.cu.rpt || (cpu.cu.rd && icOdd) || cpu.cu.rl)
           {
             CPT (cpt2L, 12); // RPx termination check
