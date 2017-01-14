@@ -1532,6 +1532,9 @@ void fcmp(void)
 #ifdef L68
     cpu.ou.cycle = ou_GOE;
 #endif
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
     int shift_count = -1;
     word1 notallzeros = 0;
     
@@ -1544,7 +1547,11 @@ void fcmp(void)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
@@ -1553,9 +1560,13 @@ void fcmp(void)
             if (s)
               m1 |= SIGN72;
           }
-        
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m1 = 0;        
+#ifdef HEX_MODE
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
+#else
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
+#endif
         m1 &= MASK72;
       }
     else
@@ -1564,7 +1575,11 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
         shift_count = abs(e1 - e2);
+#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1573,8 +1588,13 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
             if (s)
               m2 |= SIGN72;
           }
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m2 = 0;        
+#ifdef HEX_MODE
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
+#else
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
+#endif
         m2 &= MASK72;
         //e3 = e1;
       }
@@ -1612,6 +1632,9 @@ void fcmg ()
 #ifdef L68
    cpu.ou.cycle = ou_GOS;
 #endif
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
 IF1 sim_printf ("FCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 #if 1
     // C(AQ)0,27
@@ -1646,7 +1669,11 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >>
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1656,8 +1683,13 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >>
               m1 |= SIGN72;
           }
 
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m1 = 0;        
+#ifdef HEX_MODE
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
+#else
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
+#endif
         m1 &= MASK72;
         //e3 = e2;
       }
@@ -1667,7 +1699,11 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
         shift_count = abs(e1 - e2);
+#endif
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1676,8 +1712,13 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
             if (s)
               m2 |= SIGN72;
           }
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m2 = 0;        
+#ifdef HEX_MODE
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
+#else
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
+#endif
         m2 &= MASK72;
         //e3 = e1;
     }
