@@ -2199,7 +2199,7 @@ restart_1:
             doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
           }
 
-// Sadly, it fixes ISOLTS 759 test 02.
+// Sadly, it fixes ISOLTS 759 test 02a and 02b.
 //
 ///////
 

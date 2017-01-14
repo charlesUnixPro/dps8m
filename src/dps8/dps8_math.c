@@ -2709,8 +2709,8 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);
-//if (currentRunningCPUnum)
-//sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 #if 0
     if (cpu.CY == 0)
       {
@@ -2770,10 +2770,10 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
       }
     dFrac &= MASK35;
 
-//if (currentRunningCPUnum)
-//sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-//if (currentRunningCPUnum)
-//sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
@@ -2782,19 +2782,23 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
     //if (dFrac == 0 || zFrac >= dFrac << 35)
     if (dFrac == 0)
       {
-//if (currentRunningCPUnum)
-//sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 // case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
 //         dFrac 000000000000 000000000000
 
         //cpu . rA = (zFrac >> 35) & MASK35;
-        //cpu . rQ = (zFrac & MASK35) << 1;
+        //cpu . rQ = (word36) ((zFrac & MASK35) << 1);
+// ISOLTS 730 expects the right to be zero and the sign
+// bit to be untouched.
+        cpu.rQ = cpu.rQ & (MASK35 << 1);
 
         //SC_I_ZERO (dFrac == 0);
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        return;
       }
 
 #ifdef L68
@@ -2802,10 +2806,10 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 #endif
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
-//if (currentRunningCPUnum)
-//sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-//if (currentRunningCPUnum)
-//sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 
 
 
@@ -2815,10 +2819,10 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 
     if (quot & ~MASK35)
       {
-//if (currentRunningCPUnum)
-//sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
-//if (currentRunningCPUnum)
-//sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+if (currentRunningCPUnum)
+sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
 //
 // this got:
 //            s/b 373737373737 373737373740 200200
@@ -2829,17 +2833,17 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
         bool AQzero = cpu.rA == 0 && cpu.rQ == 0;
         if (cpu.rA & SIGN36)
           {
-//if (currentRunningCPUnum)
-//sim_printf ("negating AQ\n");
+if (currentRunningCPUnum)
+sim_printf ("negating AQ\n");
             cpu.rA = (~cpu.rA) & MASK36;
             cpu.rQ = (~cpu.rQ) & MASK36;
             cpu.rQ += 1;
-//if (currentRunningCPUnum)
-//sim_printf ("Q after incr: %012"PRIo64"\n", cpu.rQ);
+if (currentRunningCPUnum)
+sim_printf ("Q after incr: %012"PRIo64"\n", cpu.rQ);
             if (cpu.rQ & BIT37) // overflow?
               {
-//if (currentRunningCPUnum)
-//sim_printf ("incr. A\n");
+if (currentRunningCPUnum)
+sim_printf ("incr. A\n");
                 cpu.rQ &= MASK36;
                 cpu.rA = (cpu.rA + 1) & MASK36;
               }
@@ -2852,14 +2856,18 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
           }
 #endif
         //cpu . rA = (zFrac >> 35) & MASK35;
-        //cpu . rQ = (zFrac & MASK35) << 1;
+        //cpu . rQ = (word36) ((zFrac & MASK35) << 1);
+// ISOLTS 730 expects the right to be zero and the sign
+// bit to be untouched.
+        cpu.rQ = cpu.rQ & (MASK35 << 1);
 
         //SC_I_ZERO (dFrac == 0);
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (AQzero);
         SC_I_NEG (Aneg);
         
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        return;
       }
     //char buf3 [128] = "";
     //print_int128 (remainder, buf3);
@@ -2871,17 +2879,17 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-//if (currentRunningCPUnum)
-//sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-//if (currentRunningCPUnum)
-//sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+if (currentRunningCPUnum)
+sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
  
 #endif
 
-//sim_debug (DBG_CAC, & cpu_dev, "Quotient %"PRId64" (%"PRIo64")\n", cpu . rA, cpu . rA);
-//sim_debug (DBG_CAC, & cpu_dev, "Remainder %"PRId64"\n", cpu . rQ);
+sim_debug (DBG_CAC, & cpu_dev, "Quotient %"PRId64" (%"PRIo64")\n", cpu . rA, cpu . rA);
+sim_debug (DBG_CAC, & cpu_dev, "Remainder %"PRId64"\n", cpu . rQ);
     SC_I_ZERO (cpu . rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu . rA & SIGN36);
 }
