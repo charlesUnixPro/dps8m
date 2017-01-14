@@ -1861,6 +1861,9 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
 
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
@@ -1878,8 +1881,13 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {
+#ifdef HEX_MODE
+           m2 >>= shift_amt;
+           e2 += 1;
+#else
            m2 >>= 1;
            e2 += 1;
+#endif
        } else
            m2 = (-m2) & MASK72;
     }
@@ -1907,7 +1915,11 @@ IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
 #ifdef L68
         cpu.ou.cycle |= ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
 IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -1917,9 +1929,13 @@ IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
             if (s)
               m1 |= SIGN72;
           }
-
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m1 = 0;        
+#ifdef HEX_MODE
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
+#else
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
+#endif
         m1 &= MASK72;
         e3 = e2;
 IF1 sim_printf ("DUFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -1930,7 +1946,11 @@ IF1 sim_printf ("DUFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) &
 #ifdef L68
         cpu.ou.cycle |= ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
         shift_count = abs(e1 - e2);
+#endif
 IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -1940,8 +1960,13 @@ IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
             if (s)
               m2 |= SIGN72;
           }
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m2 = 0;
+#ifdef HEX_MODE
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
+#else
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
+#endif
         m2 &= MASK72;
         e3 = e1;
 IF1 sim_printf ("DUFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
@@ -1959,11 +1984,38 @@ IF1 sim_printf ("DUFA m3 %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MAS
     if (ovf)
       {
 IF1 sim_printf ("DUFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+#ifdef HEX_MODE
+//        word72 signbit = m3 & sign_msk;
+//        m3 >>= shift_amt;
+//        m3 = (m3 & MASK71) | signbit;
+//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        e3 += 1;
+        word72 s = m3 & SIGN72; // save the sign bit
+        if (isHex ())
+          {
+            m3 >>= shift_amt; // renormalize the mantissa
+            if (s)
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m3 &= MASK68;
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m3 |=  HEX_SIGN;
+          }
+        else
+          {
+            word72 signbit = m3 & SIGN72;
+            m3 >>= 1;
+            m3 = (m3 & MASK71) | signbit;
+            m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+          }
+        e3 += 1;
+#else
         word72 signbit = m3 & SIGN72;
         m3 >>= 1;
         m3 = (m3 & MASK71) | signbit;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
+#endif
 IF1 sim_printf ("DUFA m3 now %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 IF1 sim_printf ("DUFA e3 now %d\n", e3);
       }
@@ -3047,6 +3099,9 @@ void dfcmp (void)
 //sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     CPTUR (cptUseE);
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
     word72 m1 = ((word72) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
@@ -3075,7 +3130,11 @@ void dfcmp (void)
     }
     else if (e1 < e2)
     {
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -3085,15 +3144,24 @@ void dfcmp (void)
                 m1 |= SIGN72;
         }
         
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m1 = 0;        
+#ifdef HEX_MODE
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
+#else
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
+#endif
         m1 &= MASK72;
         //e3 = e2;
     }
     else
     {
         // e2 < e1;
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
         shift_count = abs(e1 - e2);
+#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -3102,8 +3170,13 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
             if (s)
                 m2 |= SIGN72;
         }
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m2 = 0;        
+#ifdef HEX_MODE
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
+#else
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
+#endif
         m2 &= MASK72;
         //e3 = e1;
     }
@@ -3142,6 +3215,9 @@ void dfcmg (void)
 //if (currentRunningCPUnum)
 //sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     CPTUR (cptUseE);
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
     // C(AQ)0,63
     word72 m1 = ((word72) (cpu.rA & MASK36) << 36) |
                 ((cpu.rQ) & 0777777777400LL);
@@ -3176,7 +3252,11 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
+#ifdef HEX_MODE
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+#else
         shift_count = abs(e2 - e1);
+#endif
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for( int n = 0; n < shift_count; n += 1)
           {
@@ -3186,16 +3266,24 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
               m1 |= SIGN72;
 IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
           }
-        
-if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m1 = 0;        
+#ifdef HEX_MODE
+        if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = 0;
+#else
+        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
+            m1 = 0;
+#endif
         m1 &= MASK72;
         //e3 = e2;
       }
     else
       {
         // e2 < e1;
-        shift_count = abs (e1 - e2);
+#ifdef HEX_MODE
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+#else
+        shift_count = abs(e1 - e2);
+#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
@@ -3204,8 +3292,13 @@ if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
             if (s)
               m2 |= SIGN72;
           }
-if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-  m2 = 0;        
+#ifdef HEX_MODE
+        if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = 0;
+#else
+        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
+          m2 = 0;
+#endif
         m2 &= MASK72;
         //e3 = e1;
       }
