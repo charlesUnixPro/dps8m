@@ -1145,6 +1145,9 @@ static void fdvX(bool bInvert)
     //! 00...0 → C(Q)
   
     CPTUR (cptUseE);
+#ifdef HEX_MODE
+    uint shift_amt = isHex() ? 4 : 1;
+#endif
     word72 m1;
     int    e1;
     
@@ -1202,7 +1205,11 @@ IF1 sim_printf ("FDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
         SET_I_NEG; // in case of divide fault
         if (m1 == SIGN72)
         {
+#ifdef ISOLTS
+            m1 >>= shift_amt;
+#else
             m1 >>= 1;
+#endif
             e1 += 1;
         } else
             m1 = (~m1 + 1) & MASK72;
@@ -1215,7 +1222,11 @@ IF1 sim_printf ("FDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     {
         if (m2 == SIGN72)
         {
+#ifdef ISOLTS
+            m2 >>= shift_amt;
+#else
             m2 >>= 1;
+#endif
             e2 += 1;
         } else
             m2 = (~m2 + 1) & MASK72;
@@ -1249,7 +1260,11 @@ IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (
                      // dividend exponent C(E) increased accordingly until | C(AQ)0,71 | < | C(Y)8,35 with zero fill |
     // We have already taken the absolute value so just shift it
     {
+#ifdef ISOLTS
+        m1 >>= shift_amt;
+#else
         m1 >>= 1;
+#endif
         e1 += 1;
     }
 
