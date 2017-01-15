@@ -1368,8 +1368,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
-IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
-IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
+//IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
+//IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
         cpu.cu.TSN_PRNO[k-1] = n;
         CPTUR (cptUsePRn + n);
@@ -1387,7 +1387,7 @@ IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
 
     uint CN = getbits36_3 (opDesc, 18);    // character number
 
-IF1 sim_printf ("initial CN%u %u\n", k, CN);
+//IF1 sim_printf ("initial CN%u %u\n", k, CN);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "initial CN%u %u\n", k, CN);
     
     if (MFk & MFkRL)
@@ -1470,7 +1470,7 @@ IF1 sim_printf ("initial CN%u %u\n", k, CN);
             e -> CN [k - 1] = effCHAR;
             e -> WN [k - 1] = effWORDNO;
 
-IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 1]);
+//IF1 sim_printf ("op %d WORDNO %08o CN %d by CTA4\n", k, effWORDNO, e -> CN [k - 1]);
 
             sim_debug (DBG_TRACEEXT, & cpu_dev, "CN%d set to %d by CTA4\n",
                        k, e -> CN [k - 1]);
@@ -2823,8 +2823,8 @@ void asxbd (uint sz, bool sub)
          35  // 3 15  ill     guess
       };
 
-static int testno = 0;
-IF1 sim_printf ("asxbd test no %d\n", ++testno);
+//static int testno = 0;
+//IF1 sim_printf ("asxbd test no %d\n", ++testno);
 
 
 //
@@ -2843,7 +2843,7 @@ IF1 sim_printf ("asxbd test no %d\n", ++testno);
     // r is the count of characters (or bits if sz is 1; words if sz == 36)
     word36 rcnt = getCrAR (reg);
 
-IF1 sim_printf ("asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
+//IF1 sim_printf ("asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
 
     // Crop rcnt into r based on the operand size.
@@ -2862,12 +2862,12 @@ IF1 sim_printf ("asxbd sz %d r 0%"PRIo64"\n", sz, rcnt);
 
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd sz %d ARn 0%o address 0%o reg 0%o r 0%o\n", sz, ARn, address, reg, r);
 
-IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
-IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
-IF1 if (sz == 6)
-{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
-    sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
-}
+//IF1 sim_printf ("asxbd sz %u ARn 0%o address 0%o reg 0%o r 0%o %u.\n", sz, ARn, address, reg, r, r);
+//IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
+//IF1 if (sz == 6)
+//{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
+//    sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
+//}
 
 
 //
@@ -2885,7 +2885,7 @@ IF1 if (sz == 6)
           }
         else
           {
-IF1 sim_printf ("asxbd A set\n");
+//IF1 sim_printf ("asxbd A set\n");
             uint bitno = GET_AR_BITNO (ARn);
             uint charno = GET_AR_CHAR (ARn);
 
@@ -2901,15 +2901,15 @@ IF1 sim_printf ("asxbd A set\n");
             else
               map = map9;
 
-IF1 sim_printf ("asxbd map [%u:%u] = %u\n", charno, bitno, map [charno * 16 + bitno]);
+//IF1 sim_printf ("asxbd map [%u:%u] = %u\n", charno, bitno, map [charno * 16 + bitno]);
             augend = cpu.AR[ARn].WORDNO * 36u + map [charno * 16 + bitno];
             augend = augend % nxbits;
 
-IF1 if (sz == 6) sim_printf ("asxbd 6 ARn %06o/%u/%u\n", augend / 36u, (augend % 36u) / 6u, (augend % 36u) % 6u);
+//IF1 if (sz == 6) sim_printf ("asxbd 6 ARn %06o/%u/%u\n", augend / 36u, (augend % 36u) / 6u, (augend % 36u) % 6u);
           }
       }
 
-IF1 sim_printf ("asxbd augend %d\n", augend);
+//IF1 sim_printf ("asxbd augend %d\n", augend);
 
 //
 // Calculate addend
@@ -2933,7 +2933,7 @@ IF1 sim_printf ("asxbd augend %d\n", augend);
     // Handle overflow
     addend = addend % nxbits;
 
-IF1 sim_printf ("asxbd addend %u\n", addend);
+//IF1 sim_printf ("asxbd addend %u\n", addend);
 
 //
 // Calculate sum or difference
@@ -2953,8 +2953,8 @@ IF1 sim_printf ("asxbd addend %u\n", addend);
         sum %= nxbits;
       }
 
-IF1 sim_printf ("asxbd sum %u %d\n", sum, sum);
-IF1 sim_printf ("asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
+//IF1 sim_printf ("asxbd sum %u %d\n", sum, sum);
+//IF1 sim_printf ("asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     sim_debug (DBG_TRACEEXT|DBG_CAC, & cpu_dev, "asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
@@ -2964,7 +2964,7 @@ IF1 sim_printf ("asxbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     if (sz == 6 || sz == 9)
       {
-IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
+//IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
         sum = (sum / sz) * sz;
       }
 
@@ -3039,19 +3039,19 @@ IF1 if (sum != (sum / sz) * sz) sim_printf ("asxbd %u rounded sum\n", sz);
           {
             uint charno = (sum % 36u) / 9;
             uint bitno = sum % 9;
-            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) (sum % 9));
+            SET_AR_CHAR_BITNO (ARn, (word2) charno, (word4) bitno);
 
-IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / 36u) & AMASK, (sum / 36u) & AMASK);
-IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
-IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
+//IF1 sim_printf ("asxbd sum WORDNO %d %o\n", (sum / 36u) & AMASK, (sum / 36u) & AMASK);
+//IF1 sim_printf ("asxbd sum CHAR %d %o\n", charno, charno);
+//IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
           }
       }
 
-IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
-IF1 if (sz == 6)
-{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
-sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
-}
+//IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
+//IF1 if (sz == 6)
+//{ uint bt = GET_AR_CHAR (ARn) * 9u  + GET_AR_BITNO (ARn);
+//sim_printf ("asxbd ARn %06o/%u/%u\n", cpu.AR[ARn].WORDNO, bt / 6u, bt % 6u);
+//}
 
   }
 
@@ -3090,7 +3090,7 @@ void cmpc (void)
     parseAlphanumericOperandDescriptor (1, 1, false);
     parseAlphanumericOperandDescriptor (2, 1, false);
     
-IF1 sim_printf ("CMPC instr %012"PRIo64" op1 %012"PRIo64" op2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
+//IF1 sim_printf ("CMPC instr %012"PRIo64" op1 %012"PRIo64" op2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
@@ -4246,7 +4246,7 @@ void mlr (void)
     parseAlphanumericOperandDescriptor(1, 1, false);
     parseAlphanumericOperandDescriptor(2, 2, false);
     
-IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
+//IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
@@ -7171,16 +7171,12 @@ void cmpn (void)
     if (IWB_IRODD & 0777600000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpn 0-10 MBZ");
 
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn N1=1 S1=0");
-
-    if (e->N1 == 1 && e->S1 == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn N1=1 S1=1");
-
     uint srcTN = e->TN1;    // type of chars in src
     
     decContext set;
-    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -7221,9 +7217,13 @@ void cmpn (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -7251,10 +7251,13 @@ void cmpn (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
@@ -7419,8 +7422,8 @@ static void EISwrite49(EISaddr *p, int *pos, int tn, word9 c49)
 
 void mvn (void)
 {
-static int testno = 0;
-IF1 sim_printf ("mvn test no %d\n", ++testno);
+//static int testno = 0;
+//IF1 sim_printf ("mvn test no %d\n", ++testno);
     /*
      * EXPLANATION:
      * Starting at location YC1, the decimal number of data type TN1 and sign
@@ -7451,18 +7454,6 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     // Bits 2-8 MBZ
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvn 2-8 MBZ");
-
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N1=1 S1=0");
-
-    if (e->N2 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N2=0");
-
-    if (e->N2 == 0 && e->S2 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N2=0 S2=0");
-
-    if (e->N1 == 1 && e->S1 == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn N1=1 S1=1");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
@@ -7521,14 +7512,22 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
-    
+
     sim_debug (DBG_CAC, & cpu_dev, "n1 %d sc1 %d\n", n1, sc1);
+
+    // RJ78: An Illegal Procedure fault occurs if:
+    // The values for the number of characters (N1 or N2) of the data descriptors are
+    // not large enough to hold the number of characters required for the specified
+    // sign and/or exponent, plus at least one digit. 
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n1<1");
 
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     
     
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     if (decNumberIsZero(op1))
@@ -7538,17 +7537,7 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     {
         PRINTDEC("mvn input (op1)", op1);
     }
-    
-    bool Ovr = false, EOvr = false, Trunc = false;
-    
-    char *res = formatDecimal(&set, op1, (int) dstTN, (int) e->N2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
-    
-#ifndef SPEED
-    if_sim_debug (DBG_CAC, & cpu_dev)
-        sim_printf("mvn res: '%s'\n", res);
-#endif
-    
-    // now write to memory in proper format.....
+
     switch(e->S2)
     {
         case CSFL:
@@ -7572,6 +7561,22 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
     sim_debug (DBG_CAC, & cpu_dev,
       "n2 %d\n",
       n2);
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n2<1");
+
+   
+    bool Ovr = false, EOvr = false, Trunc = false;
+    
+//IF1 sim_printf("mvn: type %d N1 %d N2 %d nout %d S2 %d expin %d sf %d R %d\n",dstTN,e->N1,e->N2,n2,e->S2,op1->exponent,e->SF2,R);
+    char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    
+#ifndef SPEED
+    if_sim_debug (DBG_CAC, & cpu_dev)
+        sim_printf("mvn res: '%s'\n", res);
+#endif
+    
+    // now write to memory in proper format.....
 
     //word18 dstAddr = e->dstAddr;
     int pos = (int) dstCN;
@@ -7600,7 +7605,7 @@ IF1 sim_printf ("mvn test no %d\n", ++testno);
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n2 ; i++)
         switch(dstTN)
         {
@@ -8394,6 +8399,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "cmpb(e->N1 > e->N2) i %d b1 %d b2fill %d\n"
     cleanupOperandDescriptor (2);
 }
 
+#if 0
 /*
  * write 4-bit digits to memory @ pos (in reverse) ...
  */
@@ -8459,6 +8465,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     
     *pos -= 1;       // to prev byte.
 }
+#endif
 
 /*
  * write 9-bit bytes to memory @ pos (in reverse)...
@@ -8510,6 +8517,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     *pos -= 1;       // to prev byte.
 }
 
+#if 0
 /*
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
@@ -8612,6 +8620,7 @@ static void EISwriteToOutputStringReverse (int k, word9 charToWrite, bool * ovf)
 
     N -= 1;
 }
+#endif
 
 /*
  * determine sign of N*9-bit length word
@@ -8694,6 +8703,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     e->x = signExt9(x, n);  // form proper 2's-complement integer
 }
 
+#if 0
 /*
  * get sign to buffer position p
  */
@@ -8812,6 +8822,7 @@ static void _btd (bool * ovfp)
         }
     }
 }
+#endif
 
 void btd (void)
 {
@@ -8903,20 +8914,146 @@ void btd (void)
     if (e->N1 == 0 || e->N1 > 8)
         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd(1): N1 == 0 || N1 > 8"); 
 
+    uint dstTN = e->TN2;    // type of chars in dst
+    uint dstCN = e->CN2;    // starting at char pos CN
+
+    decContext set;
+    decContextDefaultDPS8(&set);
+    set.traps=0;
+
     load9x((int) e->N1, &e->ADDR1, (int) e->CN1);
+
+//IF1 sim_printf ("btd int: %012"PRIo64" %012"PRIo64"\n",(word36)((word72)e->x) >> 36, (word36)((word72)e->x) & MASK36);
+
+    // handle sign
+    e->sign = 1;
+    word72 x = (word72)e->x;
+    if (e->x < 0) {
+        e->sign = -1;
+        x = (-x) & MASK72;
+    }
+
+    // convert to decimal string, workaround missing sprintf uint128
+    char tmp[32];
+    tmp[31] = 0;
+    int i;
+    for (i=30;i>=0;i--) {
+        tmp[i] = x%10 + '0';
+        x /= 10;
+        if (x == 0) 
+            break;
+    }
+
+//IF1 sim_printf ("btd tmp: %s\n",tmp+i);
+
+    decNumber _1;
+    decNumber *op1 = decNumberFromString(&_1, tmp+i, &set);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+
+    int n2 = 0;
+
+    switch(e->S2)
+    {
+        case CSLS:
+        case CSTS:
+            n2 = (int) e->N2 - 1; // 1 sign
+            break;
+        
+        case CSNS:
+            n2 = (int) e->N2;     // no sign
+            break;          // no sign wysiwyg
+    }
     
-    bool ovf;
-    _btd ( & ovf);
+    sim_debug (DBG_CAC, & cpu_dev,
+      "n2 %d\n",
+      n2);
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd adjusted n2<1");
+    
+    bool Ovr = false, Trunc = false;
+    
+    char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, 0, &Ovr, &Trunc);
+
+//IF1 sim_printf ("btd res: %s\n",res);
+    
+    // now write to memory in proper format.....
+
+    //word18 dstAddr = e->dstAddr;
+    int pos = (int) dstCN;
+    
+    // 1st, take care of any leading sign .......
+    switch(e->S2)
+    {
+        case CSLS:  // fixed-point, leading sign
+            switch(dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 014);  // default +
+                    break;
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSTS:  // nuttin' to do here .....
+        case CSNS:
+            break;  // no sign wysiwyg
+    }
+    
+    // 2nd, write the digits .....
+    for(int i = 0 ; i < n2 ; i++)
+        switch(dstTN)
+        {
+            case CTN4:
+                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) (res[i] - '0'));
+                break;
+            case CTN9:
+                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) res[i]);
+                break;
+        }
+    
+    // 3rd, take care of any trailing sign or exponent ...
+    switch(e->S2)
+    {
+        case CSTS:  // write trailing sign ....
+            switch(dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  014);  // default +
+                    break;
+            
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSLS:  // fixed point, leading sign - already done
+        case CSNS:  // fixed point, unsigned - nuttin' needed to do
+            break;
+    }
+    
+    SC_I_NEG (decNumberIsNegative(op1) && !decNumberIsZero(op1));  // set negative indicator if op3 < 0
+    SC_I_ZERO (decNumberIsZero(op1));     // set zero indicator if op3 == 0
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     
-    if (ovf)
-      {
+    if (Ovr)
+    {
         SET_I_OFLOW;
         if (tstOVFfault ())
           doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "btd overflow fault");
-      }
+    }
 }
 
 /*
@@ -9031,7 +9168,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a trailing sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no leading sign (3)");
+                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no trailing sign (1)");
             }
             break;
         }
@@ -9051,7 +9188,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a trailing sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no leading sign (4)");
+                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no trailing sign (2)");
             }
             break;
         }
@@ -9192,7 +9329,7 @@ void dtb (void)
               {
                 SET_I_OFLOW;
                 if (! TST_I_OMASK)
-                  doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  overflow fault");
+                    doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dtb():  overflow fault");
               }
             break;
         case 1:
@@ -9231,12 +9368,6 @@ void ad2d (void)
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 1-8 MBZ");
-
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=0");
-
-    if (e->N1 == 1 && e->S1 == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d N1=1 S1=1");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -9305,9 +9436,13 @@ void ad2d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -9335,18 +9470,60 @@ void ad2d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
     decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
-    
+
+    // ISOLTS 846 07c, 10a, 11b internal register overflow - see ad3d
+    bool iOvr = 0;
+    if (op3->digits > 63) {
+        uint8_t pr[256];
+        // if sf<=0, trailing zeroes can't be shifted out
+        // if sf> 0, (some of) trailing zeroes can be shifted out 
+        int sf = e->S3==CSFL?op3->exponent:e->SF3;
+
+        int ctz = 0;
+        if (sf>0) {	// optimize: we don't care when sf>0
+            decNumberGetBCD(op3,pr);
+            for (int i=op3->digits-1;i>=0 && pr[i]==0;i--)
+                 ctz ++;
+        }
+
+        if (op3->digits - min(max(sf,0),ctz) > 63) {
+
+            enum rounding safeR = decContextGetRounding(&set);         // save rounding mode
+            int safe = set.digits;
+            decNumber tmp;
+
+            // discard MS digits
+            decContextSetRounding(&set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+            set.digits = op3->digits - min(max(sf,0),ctz) - 63;
+            decNumberPlus(&tmp, op3, &set);
+            set.digits = safe;
+
+            decNumberSubtract(op3, op3, &tmp, &set); 
+
+            //decNumberToString(op3,(char*)pr); sim_printf("discarded: %s\n",pr);
+
+            decContextSetRounding(&set, safeR);
+            iOvr = 1;
+        }
+    }
+
     bool Ovr = false, EOvr = false, Trunc = false;
-    
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+
+//IF1 sim_printf("ad2d: type %d N1 %d N2 %d nout %d S2 %d expin %d sf %d R %d\n",dstTN,e->N1,e->N2,n2,e->S2,op3->exponent,e->SF2,R);
+    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+
+    Ovr |= iOvr;
 
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -9381,8 +9558,8 @@ void ad2d (void)
         case CSNS:
             break;  // no sign wysiwyg
     }
-    
-    // 2nd, write the characteristic .....
+
+    // 2nd, write the digits .....
     for(int j = 0 ; j < n2 ; j++)
         switch(dstTN)
         {
@@ -9467,6 +9644,7 @@ void ad2d (void)
     }
 }
 
+#if 0
 static const char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
 static const char *CTN[] = {"CTN9", "CTN4"};
 
@@ -9504,6 +9682,7 @@ static int calcSF(int sf1, int sf2, int sf3)
     }
     return sf3;
 }
+#endif
 
 /*
  * ad3d - Add Using Three Decimal Operands
@@ -9583,9 +9762,13 @@ void ad3d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -9613,34 +9796,16 @@ void ad3d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
-    
-    decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
-    
-    bool Ovr = false, EOvr = false, Trunc = false;
-    
-    int jf = calcSF(e->SF1, e->SF2, e->SF3);    // justification factor
-    
-    
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
-    
-    if (decNumberIsZero(op3) && (int) strlen(res) < jf && !R)  // may need to move to formatDecimal()
-        Trunc = true;
-    
-    // If S3 indicates a fixed-point format, the results are stored using scale factor SF3, which causes leading or trailing zeros (4 bits - 0000, 9 bits - 000110000) to be supplied and/or most significant digit overflow or least significant digit truncation to occur.
-    
-    
-    if (decNumberIsZero(op3))
-        op3->exponent = 127;
-    
-    //printf("%s\r\n", res);
-    
-    // now write to memory in proper format.....
+
     switch(e->S3)
     {
         case CSFL:
@@ -9660,6 +9825,68 @@ void ad3d (void)
             n3 = (int) e->N3;     // no sign
             break;  // no sign wysiwyg
     }
+
+    if (n3 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n3<1");
+    
+    decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
+
+    // RJ78: significant digits in the result may be lost if:
+    // The difference between the scaling factors (exponents) of the source
+    // operands is large enough to cause the expected length of the intermediate
+    // result to exceed 63 digits after decimal point alignment of source operands, followed by addition.
+    // ISOLTS 846 07c, 10a, 11b internal register overflow
+    // trailing zeros are not counted towards the limit
+    // XXX it is not clear which digits are lost, but I suppose it should be the most significant. ISOLTS doesn't check for this
+    // XXX the algorithm should be similar/the same as dv3d NQ? It is to some extent already...
+    bool iOvr = 0;
+    if (op3->digits > 63) {
+        uint8_t pr[256];
+        // if sf<=0, trailing zeroes can't be shifted out
+        // if sf> 0, (some of) trailing zeroes can be shifted out 
+        int sf = e->S3==CSFL?op3->exponent:e->SF3;
+
+        int ctz = 0;
+        if (sf>0) {	// optimize: we don't care when sf>0
+            decNumberGetBCD(op3,pr);
+            for (int i=op3->digits-1;i>=0 && pr[i]==0;i--)
+                 ctz ++;
+        }
+
+        if (op3->digits - min(max(sf,0),ctz) > 63) {
+
+            enum rounding safeR = decContextGetRounding(&set);         // save rounding mode
+            int safe = set.digits;
+            decNumber tmp;
+
+            // discard MS digits
+            decContextSetRounding(&set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+            set.digits = op3->digits - min(max(sf,0),ctz) - 63;
+            decNumberPlus(&tmp, op3, &set);
+            set.digits = safe;
+
+            decNumberSubtract(op3, op3, &tmp, &set); 
+
+            //decNumberToString(op3,(char*)pr); sim_printf("discarded: %s\n",pr);
+
+            decContextSetRounding(&set, safeR);
+            iOvr = 1;
+        }
+    }
+
+    bool Ovr = false, EOvr = false, Trunc = false;
+    
+//IF1 sim_printf("ad3d: type %d N1 %d N2 %d N3 %d nout %d S3 %d expin %d sf %d R %d\n",dstTN,e->N1,e->N2,e->N3,n3,e->S3,op3->exponent,e->SF3,R);
+    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+
+    Ovr |= iOvr;
+
+    if (decNumberIsZero(op3))
+        op3->exponent = 127;
+    
+    //printf("%s\r\n", res);
+    
+    // now write to memory in proper format.....
 
     //word18 dstAddr = e->dstAddr;
     int pos = (int) dstCN;
@@ -9688,7 +9915,7 @@ void ad3d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n3 ; i++)
         switch(dstTN)
         {
@@ -9798,12 +10025,6 @@ void sb2d (void)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
       }
 
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=0");
-
-    if (e->N1 == 1 && e->S1 == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d N1=1 S1=1");
-
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
@@ -9862,9 +10083,13 @@ void sb2d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -9892,18 +10117,59 @@ void sb2d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
     decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
-    
+
+    // ISOLTS 846 07c, 10a, 11b internal register overflow - see ad3d
+    bool iOvr = 0;
+    if (op3->digits > 63) {
+        uint8_t pr[256];
+        // if sf<=0, trailing zeroes can't be shifted out
+        // if sf> 0, (some of) trailing zeroes can be shifted out 
+        int sf = e->S3==CSFL?op3->exponent:e->SF3;
+
+        int ctz = 0;
+        if (sf>0) {	// optimize: we don't care when sf>0
+            decNumberGetBCD(op3,pr);
+            for (int i=op3->digits-1;i>=0 && pr[i]==0;i--)
+                 ctz ++;
+        }
+
+        if (op3->digits - min(max(sf,0),ctz) > 63) {
+
+            enum rounding safeR = decContextGetRounding(&set);         // save rounding mode
+            int safe = set.digits;
+            decNumber tmp;
+
+            // discard MS digits
+            decContextSetRounding(&set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+            set.digits = op3->digits - min(max(sf,0),ctz) - 63;
+            decNumberPlus(&tmp, op3, &set);
+            set.digits = safe;
+
+            decNumberSubtract(op3, op3, &tmp, &set); 
+
+            //decNumberToString(op3,(char*)pr); sim_printf("discarded: %s\n",pr);
+
+            decContextSetRounding(&set, safeR);
+            iOvr = 1;
+        }
+    }
+
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+
+    Ovr |= iOvr;
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -9939,7 +10205,7 @@ void sb2d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n2 ; i++)
         switch(dstTN)
         {
@@ -10103,9 +10369,13 @@ void sb3d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -10133,23 +10403,16 @@ void sb3d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
-    
-    decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
-    
-    bool Ovr = false, EOvr = false, Trunc = false;
-    
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
-    
-    if (decNumberIsZero(op3))
-        op3->exponent = 127;
-    
-    // now write to memory in proper format.....
+
     switch(e->S3)
     {
         case CSFL:
@@ -10169,6 +10432,58 @@ void sb3d (void)
             n3 = (int) e->N3;     // no sign
             break;  // no sign wysiwyg
     }
+
+    if (n3 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n3<1");
+    
+    decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
+
+    // ISOLTS 846 07c, 10a, 11b internal register overflow - see ad3d
+    bool iOvr = 0;
+    if (op3->digits > 63) {
+        uint8_t pr[256];
+        // if sf<=0, trailing zeroes can't be shifted out
+        // if sf> 0, (some of) trailing zeroes can be shifted out 
+        int sf = e->S3==CSFL?op3->exponent:e->SF3;
+
+        int ctz = 0;
+        if (sf>0) {	// optimize: we don't care when sf>0
+            decNumberGetBCD(op3,pr);
+            for (int i=op3->digits-1;i>=0 && pr[i]==0;i--)
+                 ctz ++;
+        }
+
+        if (op3->digits - min(max(sf,0),ctz) > 63) {
+
+            enum rounding safeR = decContextGetRounding(&set);         // save rounding mode
+            int safe = set.digits;
+            decNumber tmp;
+
+            // discard MS digits
+            decContextSetRounding(&set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+            set.digits = op3->digits - min(max(sf,0),ctz) - 63;
+            decNumberPlus(&tmp, op3, &set);
+            set.digits = safe;
+
+            decNumberSubtract(op3, op3, &tmp, &set); 
+
+            //decNumberToString(op3,(char*)pr); sim_printf("discarded: %s\n",pr);
+
+            decContextSetRounding(&set, safeR);
+            iOvr = 1;
+        }
+    }
+    
+    bool Ovr = false, EOvr = false, Trunc = false;
+
+    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+
+    Ovr |= iOvr;
+    
+    if (decNumberIsZero(op3))
+        op3->exponent = 127;
+    
+    // now write to memory in proper format.....
     
     //word18 dstAddr = e->dstAddr;
     int pos = (int) dstCN;
@@ -10197,7 +10512,7 @@ void sb3d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n3 ; i++)
         switch(dstTN)
     {
@@ -10304,12 +10619,6 @@ void mp2d (void)
     if (IWB_IRODD & 0377000000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 1-8 MBZ");
 
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=0");
-
-    if (e->N1 == 1 && e->S1 == 1)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d N1=1 S1=1");
-
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
@@ -10325,7 +10634,7 @@ void mp2d (void)
     e->ADDR3 = e->ADDR2;
     
     decContext set;
-    decContextDefaultDPS8_80(&set);
+    decContextDefaultDPS8Mul(&set); // 126 digits for multiply
     
     set.traps=0;
     
@@ -10367,9 +10676,13 @@ void mp2d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
@@ -10397,10 +10710,13 @@ void mp2d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
@@ -10408,7 +10724,7 @@ void mp2d (void)
     
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -10442,7 +10758,7 @@ void mp2d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n2 ; i++)
         switch(dstTN)
     {
@@ -10564,8 +10880,9 @@ void mp3d (void)
     
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    //set.traps=0;
-    decContextDefaultDPS8_80(&set);
+    decContextDefaultDPS8Mul(&set);	// 126 digits for multiply
+
+    set.traps=0;
     
     decNumber _1, _2, _3;
     
@@ -10605,13 +10922,17 @@ void mp3d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     if (e->sign == -1)
-        op1->bits = DECNEG;
+        op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
     
-IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
+//IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
     EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
@@ -10635,39 +10956,17 @@ IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
-IF1 sim_printf ("MP3D op2->exponent %d\n", op2->exponent);
-    
-    decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
-    
-//    char c1[1024];
-//    char c2[1024];
-//    char c3[1024];
-//    
-//    decNumberToString(op1, c1);
-//    sim_printf("c1:%s\n", c1);
-//    decNumberToString(op2, c2);
-//    sim_printf("c2:%s\n", c2);
-//    decNumberToString(op3, c3);
-//    sim_printf("c3:%s\n", c3);
-    
-    bool Ovr = false, EOvr = false, Trunc = false;
-    
-    char *res = formatDecimal(&set, op3, (int) dstTN, (int) e->N3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
-//    sim_printf("res:<%s>\n", res);
-    
-    if (decNumberIsZero(op3))
-        op3->exponent = 127;
-    
-IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
-    //printf("%s\r\n", res);
-    
-    // now write to memory in proper format.....
+//IF1 sim_printf ("MP3D op2->exponent %d\n", op2->exponent);
+
     switch(e->S3)
     {
         case CSFL:
@@ -10687,6 +10986,35 @@ IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
             n3 = (int) e->N3;     // no sign
             break;  // no sign wysiwyg
     }
+
+    if (n3 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n3<1");
+    
+    decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
+    
+//    char c1[1024];
+//    char c2[1024];
+//    char c3[1024];
+//    
+//    decNumberToString(op1, c1);
+//    sim_printf("c1:%s\n", c1);
+//    decNumberToString(op2, c2);
+//    sim_printf("c2:%s\n", c2);
+//    decNumberToString(op3, c3);
+//    sim_printf("c3:%s\n", c3);
+    
+    bool Ovr = false, EOvr = false, Trunc = false;
+    
+    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+//    sim_printf("res:<%s>\n", res);
+    
+    if (decNumberIsZero(op3))
+        op3->exponent = 127;
+    
+//IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
+    //printf("%s\r\n", res);
+    
+    // now write to memory in proper format.....
     
     //word18 dstAddr = e->dstAddr;
     int pos = (int) dstCN;
@@ -10715,7 +11043,7 @@ IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n3 ; i++)
         switch(dstTN)
         {
@@ -10800,6 +11128,7 @@ IF1 sim_printf ("MP3D op3->exponent %d\n", op3->exponent);
     }
 }
 
+#if 0
 /* ------------------------------------------------------------------ */
 /* HWR 2/07 15:49 derived from ......                                 */
 /*                                                                    */
@@ -11559,6 +11888,7 @@ static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
     decNumberCopy(r, r2);
     return (char *) out;
   }
+#endif
 
 /*
  * dv2d - Divide Using Two Decimal Operands
@@ -11578,15 +11908,12 @@ void dv2d (void)
     parseNumericOperandDescriptor(2);
     
     // Bits 1-8 MBZ
-    // ISOLTS test 840 says bit 9 (T) MBZ as well
+    // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ as well
     if (IWB_IRODD & 0377400000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 1-9 MBZ");
 
-    if (e->N1 == 1 && e->S1 == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d N1=1 S1=0");
-
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
-    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
     PNL (L68_ (if (R)
@@ -11602,11 +11929,6 @@ void dv2d (void)
     decContext set;
     decContextDefaultDPS8(&set);
 
-    if (R)
-        set.round = DEC_ROUND_UP;
-    else
-        set.round = DEC_ROUND_DOWN;
-    
     set.traps=0;
     
     decNumber _1, _2, _3;
@@ -11648,18 +11970,23 @@ void dv2d (void)
             break;  // no sign wysiwyg
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);    // divisor
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n1<1");
     
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
         doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d division by 0");
     }
 
-    if (e->sign == -1)
-        op1->bits = DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
+    word9   inBufferop1 [64];
+    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
     
     EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
@@ -11684,35 +12011,133 @@ void dv2d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);    // dividend
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Quotient (Yes, they're reversed)
+    int NQ;
+    if (e->S2 == CSFL)
+    {
+        NQ = n2;
+    } 
+    else 
+    {
+        // count leading zeroes
+        // TODO optimize - can these be somehow extracted from decNumbers?
+        int clz1, clz2, i;
+        for (i=0; i < op1->digits; i++)
+            if (inBufferop1[i]!=0)
+                break;
+        clz1 = i;
+        for (i=0; i < op2->digits; i++)
+            if (e->inBuffer[i]!=0) // this still holds op2 digits
+                break;
+        clz2 = i;
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d: clz1 %d clz2 %d\n",clz1,clz2);
+
+        // XXX are clz also valid for CSFL dividend / divisor? probably yes
+        // XXX seems that exponents and scale factors are used interchangeably here ? (RJ78)
+        NQ = (n2-clz2+1) - (n1-clz1) + (-(e->S1==CSFL?op1->exponent:(int)e->SF1));
+
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %d E1 %d E2 %d SF2 %d NQ %d\n",e->S1,e->S2,e->N1,e->N2,clz1,clz2,op1->exponent,op2->exponent,e->SF2,NQ);
+    }
+    if (NQ > 63)
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d NQ>63");
+    // Note: NQ is currently unused apart from this FAULT_DIV check. decNumber produces more digits than required, but they are then rounded/truncated
+
+    // Yes, they're switched. op1=divisor
+    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set); 
+    // Note DPS88 and DPS9000 are different when NQ <= 0
+    // This is a flaw in the DPS8/70 hardware which was corrected in later models
+    // ISOLTS-817 05b
 
     PRINTDEC("op2", op2);
     PRINTDEC("op1", op1);
     PRINTDEC("op3", op3);
-
+    
     // let's check division results to see for anomalous conditions
     if (
         (set.status & DEC_Division_undefined) ||    // 0/0 will become NaN
         (set.status & DEC_Invalid_operation) ||
         (set.status & DEC_Division_by_zero)
-        ) doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d anomalous results");
+        ) { sim_debug (DBG_TRACEEXT, & cpu_dev, "oops! dv2d anomalous results"); }	// divide by zero has already been checked before
 
-    
-    
-    // In a floating-point divide operation, the required number of quotient digits is determined as follows. With the divisor greater than the dividend, the algorithm generates a leading zero in the quotient. This characteristic of the algorithm is taken into account along with rounding requirements when determining the required number of digits for the quotient, so that the resulting quotient contains as many significant digits as specified by the quotient operand descriptor.
-    
-    
+    if (e->S2 == CSFL)
+    {
+        // justify CSFL left
+        // This is a flaw in the DPS8/70 hardware which was corrected in later models
+        // Note DPS88 and DPS9000 are different
+        // ISOLTS-817 06c,06e
+
+        decNumber _sf;
+
+        if (n2 - op3->digits > 0)
+        {
+            decNumberFromInt32(&_sf, op3->exponent - (n2 - op3->digits));
+            PRINTDEC("Value 1", op3)
+            PRINTDEC("Value sf", &_sf)
+            op3 = decNumberRescale(op3, op3, &_sf, &set);
+            PRINTDEC("Value 2", op3)
+        }
+    }
     
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimalDIV(&set, op3, (int) dstTN, (int) e->N2, (int) e->S2, e->SF2, R, op2, op1, &Ovr, &Trunc);
+    // CSFL: If the divisor is greater than the dividend after operand
+    // alignment, the leading zero digit produced is counted and the effective
+    // precision of the result is reduced by one.
+    // This is a flaw in the DPS8/70 hardware which was corrected in later models
+    // Note DPS88 and DPS9000 are different
+    //
+    // "greater after operand alignment" means scale until most-significant digits are nonzero, then compare magnitudes ignoring exponents
+    // This passes ISOLTS-817 06e, ET 458,461,483,486
+    char *res;
+    if (e->S2 == CSFL) {
+        decNumber _1a;
+        decNumber _2a;
+        decNumber _sf;
+        if (op1->digits >= op2->digits) {
+            // scale op2
+            decNumberCopy(&_1a, op1);
+            decNumberFromInt32(&_sf, op1->digits - op2->digits);
+            decNumberShift(&_2a, op2, &_sf, &set);
+        } else if (op1->digits < op2->digits) {
+            // scale op1
+            decNumberFromInt32(&_sf, op2->digits - op1->digits);
+            decNumberShift(&_1a, op1, &_sf, &set);
+            decNumberCopy(&_2a, op2);
+        }
+        _1a.exponent = 0;
+        _2a.exponent = 0;
+
+        PRINTDEC("dv2d: op1a", &_1a);
+        PRINTDEC("dv2d: op2a", &_2a);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d: exp1 %d exp2 %d digits op1 %d op2 %d op1a %d op2a %d\n",op1->exponent,op2->exponent,op1->digits,op2->digits,_1a.digits,_2a.digits);
+
+        if (decCompareMAG(&_1a, &_2a, &set) > 0) {
+            // shorten the result field to get proper rounding
+            res = formatDecimal(&set, op3, n2 -1, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+
+            // prepend zero digit
+            // ET 458,483 float=float/float, ET 461,486 float=fixed/fixed
+            for (int i = n2; i > 0; i--) // incl.zero terminator
+                 res[i] = res[i-1];
+            res[0] = '0';
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d: addzero n2 %d %s exp %d\n",n2,res,op3->exponent);
+        } else {
+            // full n2 digits are retured
+            res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+        }
+    } else {
+        // same as all other decimal instructions
+        res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    }
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -11745,7 +12170,7 @@ void dv2d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n2 ; i++)
         switch(dstTN)
         {
@@ -11812,14 +12237,14 @@ void dv2d (void)
     SC_I_NEG (decNumberIsNegative(op3) && !decNumberIsZero(op3));  // set negative indicator if op3 < 0
     SC_I_ZERO (decNumberIsZero(op3));     // set zero indicator if op3 == 0
     
-    SC_I_TRUNC (!R && Trunc); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    //SC_I_TRUNC (!R && Trunc); // no truncation flag for divide
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
 
-    if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d truncation(overflow) fault");
+    //if (TST_I_TRUNC && T && tstOVFfault ())
+    //  doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
         doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d over/underflow fault");
     if (Ovr)
@@ -11850,12 +12275,12 @@ void dv3d (void)
     parseNumericOperandDescriptor(3);
     
     // Bit 1 MBZ
-    // ISOLTS test 840 says bit 9 (T) MBZ
+    // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ
     if (IWB_IRODD & 0200400000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv3d(): 1,9 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
-    bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
+    //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
 
     PNL (L68_ (if (R)
@@ -11868,11 +12293,6 @@ void dv3d (void)
     
     decContext set;
     decContextDefaultDPS8(&set);
-    
-    if (R)
-        set.round = DEC_ROUND_UP;
-    else
-        set.round = DEC_ROUND_DOWN;
     
     set.traps=0;
     
@@ -11914,47 +12334,26 @@ void dv3d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n1<1");
+
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
     //PRINTDEC("op1", op1);
 
-    /*
-     isolts error message sequence # 7 logged at 03/03/16  2029.9 pst Thu for cpu b using memory b
-     
-     
-     ************************* eis divide test    **************************
-     ps817    test-01a    dv3d test 1     bar-100016
-     ***dsbr***  addr= 00017042 bnd= 00000 u= 1 stack= 0000
-     test start 000534   patch 000623   subtest loop point 000564
-     
-     testing the dv3d instruction divide check faults
-     
-     location 000572  000000227600   instruction is   dv3d
-     location 000573  010450030077   descriptor word
-     location 000574  010470030077   descriptor word
-     location 000575  010510030077   descriptor word
-     
-     prime results   ir
-     s/b 000240
-     was 000200
-     faults         s/b                       was
-     divide check   -000573    divide check   - 000573
-     
-     function in error - the divisor operand equals zero; the divide
-     check fault should have occurred.
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
 
-     */
-    
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
         doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d division by 0");
     }
-    
-    if (e->sign == -1)
-        op1->bits = DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
+
+    word9   inBufferop1 [64];
+    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
     
     EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
@@ -11979,55 +12378,16 @@ void dv3d (void)
             sc2 = -e->SF2;
             break;  // no sign wysiwyg
     }
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n2<1");
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
-        op2->bits = DECNEG;
+        op2->bits |= DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
-    
-    // TODO: Need to check/implement this
-    // The number of required quotient digits, NQ, is determined before
-    // division begins as follows:
-    //  1) Floating-point quotient
-    //      NQ = N3, but if the divisor is greater than the dividend after
-    //      operand alignment, the leading zero digit produced is counted and
-    //      the effective precision of the result is reduced by one.
-    //  2) Fixed-point quotient
-    //    NQ = (N2-LZ2+1) - (N1-LZ1) + (E2-E1-SF3)
-    //    ￼where: Nn = given operand field length
-    //        LZn = leading zero count for operand n
-    //        En = exponent of operand n
-    //        SF3 = scaling factor of quotient
-    // 3) Rounding
-    //    If rounding is specified (R = 1), then one extra quotient digit is
-    //    produced.
-    
-    
-    // Yes, they're switched
-    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set); 
-    
-    PRINTDEC("op2", op2);
-    PRINTDEC("op1", op1);
-    PRINTDEC("op3", op3);
-    
-    // let's check division results to see for anomalous conditions
-    if (
-        (set.status & DEC_Division_undefined) ||    // 0/0 will become NaN
-        (set.status & DEC_Invalid_operation) ||
-        (set.status & DEC_Division_by_zero)
-        ) doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d anomalous results");
 
-    bool Ovr = false, EOvr = false, Trunc = false;
-     
-    char *res = formatDecimalDIV(&set, op3, (int) dstTN, (int) e->N3, (int) e->S3, e->SF3, R, op2, op1, &Ovr, &Trunc);
-    
-    if (decNumberIsZero(op3))
-        op3->exponent = 127;
-    
-    //printf("%s\r\n", res);
-    
-    // now write to memory in proper format.....
     switch(e->S3)
     {
         case CSFL:
@@ -12047,6 +12407,149 @@ void dv3d (void)
             n3 = (int) e->N3;     // no sign
             break;  // no sign wysiwyg
     }
+    if (n3 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n3<1");
+
+    // The number of required quotient digits, NQ, is determined before
+    // division begins as follows:
+    //  1) Floating-point quotient
+    //      NQ = N3
+    //  2) Fixed-point quotient
+    //    NQ = (N2-LZ2+1) - (N1-LZ1) + (E2-E1-SF3)
+    //    ￼where: Nn = given operand field length
+    //        LZn = leading zero count for operand n
+    //        En = exponent of operand n
+    //        SF3 = scaling factor of quotient
+    // 3) Rounding
+    //    If rounding is specified (R = 1), then one extra quotient digit is
+    //    produced.
+    // Note: rule 3 is already handled by formatDecimal rounding
+    // Nn doesn't represent full field length, but length without sign and exponent (RJ78/DH02 seems like)
+
+    int NQ;
+    if (e->S3 == CSFL)
+    {
+        NQ = n3;
+    } 
+    else 
+    {
+        // count leading zeroes
+        // TODO optimize - can these be somehow extracted from decNumbers?
+        int clz1, clz2, i;
+        for (i=0; i < op1->digits; i++)
+            if (inBufferop1[i]!=0)
+                break;
+        clz1 = i;
+        for (i=0; i < op2->digits; i++)
+            if (e->inBuffer[i]!=0) // this still holds op2 digits
+                break;
+        clz2 = i;
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d: clz1 %d clz2 %d\n",clz1,clz2);
+
+        // XXX are clz also valid for CSFL dividend / divisor? probably yes
+        // XXX seems that exponents and scale factors are used interchangeably here ? (RJ78)
+        NQ = (n2-clz2+1) - (n1-clz1) + ((e->S2==CSFL?op2->exponent:(int)e->SF2)-(e->S1==CSFL?op1->exponent:(int)e->SF1)-(int)e->SF3);
+
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %d E1 %d E2 %d SF3 %d NQ %d\n",e->S1,e->S2,e->N1,e->N2,clz1,clz2,op1->exponent,op2->exponent,e->SF3,NQ);
+    }
+    if (NQ > 63)
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d NQ>63");
+    // Note: NQ is currently unused apart from this FAULT_DIV check. decNumber produces more digits than required, but they are then rounded/truncated
+
+    // Yes, they're switched. op1=divisor
+    decNumber *op3 = decNumberDivide(&_3, op2, op1, &set); 
+    // Note DPS88 and DPS9000 are different when NQ <= 0
+    // This is a flaw in the DPS8/70 hardware which was corrected in later models
+    // ISOLTS-817 05b
+
+    PRINTDEC("op2", op2);
+    PRINTDEC("op1", op1);
+    PRINTDEC("op3", op3);
+    
+    // let's check division results to see for anomalous conditions
+    if (
+        (set.status & DEC_Division_undefined) ||    // 0/0 will become NaN
+        (set.status & DEC_Invalid_operation) ||
+        (set.status & DEC_Division_by_zero)
+        ) { sim_debug (DBG_TRACEEXT, & cpu_dev, "oops! dv3d anomalous results"); }	// divide by zero has already been checked before
+
+    if (e->S3 == CSFL)
+    {
+        // justify CSFL left
+        // This is a flaw in the DPS8/70 hardware which was corrected in later models
+        // Note DPS88 and DPS9000 are different
+        // ISOLTS-817 06c,06e
+
+        decNumber _sf;
+
+        if (n3 - op3->digits > 0)
+        {
+            decNumberFromInt32(&_sf, op3->exponent - (n3 - op3->digits));
+            PRINTDEC("Value 1", op3)
+            PRINTDEC("Value sf", &_sf)
+            op3 = decNumberRescale(op3, op3, &_sf, &set);
+            PRINTDEC("Value 2", op3)
+        }
+    }
+
+    bool Ovr = false, EOvr = false, Trunc = false;
+
+    // CSFL: If the divisor is greater than the dividend after operand
+    // alignment, the leading zero digit produced is counted and the effective
+    // precision of the result is reduced by one.
+    // This is a flaw in the DPS8/70 hardware which was corrected in later models
+    // Note DPS88 and DPS9000 are different
+    //
+    // "greater after operand alignment" means scale until most-significant digits are nonzero, then compare magnitudes ignoring exponents
+    // This passes ISOLTS-817 06e, ET 458,461,483,486
+    char *res;
+    if (e->S3 == CSFL) {
+        decNumber _1a;
+        decNumber _2a;
+        decNumber _sf;
+        if (op1->digits >= op2->digits) {
+            // scale op2
+            decNumberCopy(&_1a, op1);
+            decNumberFromInt32(&_sf, op1->digits - op2->digits);
+            decNumberShift(&_2a, op2, &_sf, &set);
+        } else if (op1->digits < op2->digits) {
+            // scale op1
+            decNumberFromInt32(&_sf, op2->digits - op1->digits);
+            decNumberShift(&_1a, op1, &_sf, &set);
+            decNumberCopy(&_2a, op2);
+        }
+        _1a.exponent = 0;
+        _2a.exponent = 0;
+
+        PRINTDEC("dv3d: op1a", &_1a);
+        PRINTDEC("dv3d: op2a", &_2a);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d: exp1 %d exp2 %d digits op1 %d op2 %d op1a %d op2a %d\n",op1->exponent,op2->exponent,op1->digits,op2->digits,_1a.digits,_2a.digits);
+
+        if (decCompareMAG(&_1a, &_2a, &set) > 0) {
+            // shorten the result field to get proper rounding
+            res = formatDecimal(&set, op3, n3 -1, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+
+            // prepend zero digit
+            // ET 458,483 float=float/float, ET 461,486 float=fixed/fixed
+            for (int i = n3; i > 0; i--) // incl.zero terminator
+                 res[i] = res[i-1];
+            res[0] = '0';
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d: addzero n3 %d %s exp %d\n",n3,res,op3->exponent);
+        } else {
+            // full n3 digits are retured
+            res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+        }
+    } else {
+        // same as all other decimal instructions
+        res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+    }
+    
+    if (decNumberIsZero(op3))
+        op3->exponent = 127;
+
+    //printf("%s\r\n", res);
+    
+    // now write to memory in proper format.....
     
     int pos = (int) dstCN;
     
@@ -12074,7 +12577,7 @@ void dv3d (void)
             break;  // no sign wysiwyg
     }
     
-    // 2nd, write the characteristic .....
+    // 2nd, write the digits .....
     for(int i = 0 ; i < n3 ; i++)
         switch(dstTN)
         {
@@ -12141,14 +12644,14 @@ void dv3d (void)
     SC_I_NEG (decNumberIsNegative(op3) && !decNumberIsZero(op3));  // set negative indicator if op3 < 0
     SC_I_ZERO (decNumberIsZero(op3));     // set zero indicator if op3 == 0
     
-    SC_I_TRUNC(!R && Trunc); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    // SC_I_TRUNC(!R && Trunc); // no truncation flag for divide
 
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     cleanupOperandDescriptor (3);
     
-    if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d truncation(overflow) fault");
+    //if (TST_I_TRUNC && T && tstOVFfault ())
+    //  doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
         doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d over/underflow fault");
     if (Ovr)
