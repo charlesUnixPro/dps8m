@@ -3430,7 +3430,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED char * buf)
     doIniLine ("set cpu config=bullet_time=disable");
     doIniLine ("set cpu config=y2k=disable");
     // ; 6 MIP Processor
-    doIniLine ("set cpu config=trlsb=12");
+    //doIniLine ("set cpu config=trlsb=12");
 
     doIniLine ("set sys config=activate_time=8");
     doIniLine ("set sys config=terminate_time=8");
