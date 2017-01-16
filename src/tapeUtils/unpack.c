@@ -67,7 +67,7 @@ int main (int argc, char * argv [])
         ssize_t nread = read (fin, Ypair, sizeof (Ypair));
         if (nread == 0)
           break;
-        if (nread != sizeof (Ypair))
+        if (nread != sizeof (Ypair) && nread != 5)
           {
             fprintf (stderr, "couldn't read\n");
             exit (1);

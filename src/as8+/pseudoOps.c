@@ -966,6 +966,7 @@ void doBci(char *str, int sz)
             }
         }
         
+#if 0
         // pad rest with spaces ...
         while (nPos >= 0)
         {
@@ -973,6 +974,7 @@ void doBci(char *str, int sz)
             
             *w |= (ASCIIToGEBcd[' '] << nShift);
         }
+#endif
         
         for(int i = 0 ; i < nWords; i++)
         {

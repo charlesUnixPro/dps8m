@@ -52,6 +52,8 @@ int main (int argc, char * argv [])
 
     char buf [256];
     fgets (buf, 256, fin);
+    fgets (buf, 256, fin);
+    fgets (buf, 256, fin);
     if (strncmp (buf, "!SIZE", 5))
       {
         printf ("can't find !SIZE\n");
