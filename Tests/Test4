@@ -1,4 +1,0 @@
-load Test4.oct
-set debug stderr
-set cpu debug=trace;regdumpaqi;addrmod
-
