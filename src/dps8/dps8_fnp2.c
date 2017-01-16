@@ -2885,8 +2885,8 @@ check:;
     memcpy (cpy, p->buffer, p->nPos);
     cpy [p->nPos] = 0;
     trim (cpy);
-    //sim_printf ("<%s>", cpy);
-
+    sim_printf ("<%s>", cpy);
+    p->nPos = 0;
     fnpuv_start_writestr (client, "\r\n");
 
 
