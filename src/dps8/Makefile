@@ -374,7 +374,7 @@ H_SRCS += utlist.h
 
 
 
-all: locallibs_then_dps8
+all: locallibs_then_dps8 utils
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
@@ -441,6 +441,9 @@ locallibs_then_dps8 :
 
 # Other Targets
 
+utils :
+	@$(MAKE) -C ../utils 
+
 udplib : udplib.c udplib.h
 	clang udplib.c -o udplib -DTEST=1
 
@@ -488,6 +491,7 @@ clean:
 	@$(MAKE) -C ../simhv40-beta clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
+	@$(MAKE) -C ../utils clean
 	@$(MAKE) clean_dps8
 
 .PHONY: clean_dps8
