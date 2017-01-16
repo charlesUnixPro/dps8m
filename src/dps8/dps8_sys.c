@@ -135,6 +135,7 @@ static CTAB dps8_cmds[] =
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
+    {"CABLE_RIPOUT",    sys_cable_ripout,       0, "cable Unstring all cables\n" , NULL},
     {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL},
     {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},

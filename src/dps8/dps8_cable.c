@@ -744,22 +744,8 @@ exit:
     return rc;
   }
 
-void sysCableInit (void)
+static void cable_init (void)
   {
-    if (! cables)
-      {
-#ifdef M_SHARED
-        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
-#else
-        cables = (struct cables_t *) malloc (sizeof (struct cables_t));
-#endif
-        if (cables == NULL)
-          {
-            sim_printf ("create_shm cables failed\n");
-            sim_err ("create_shm cables failed\n");
-          }
-      }
-
     // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (cables, 0, sizeof (struct cables_t));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
@@ -784,4 +770,33 @@ void sysCableInit (void)
       cables -> cablesFromIomToUrp [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
       cables -> cablesFromIomToAbsi [i] . iomUnitIdx = -1;
+    for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
+      cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
+  }
+
+t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED char * buf)
+  {
+    cable_init ();
+    scu_init ();
+    return SCPE_OK;
+  }
+
+void sysCableInit (void)
+  {
+    if (! cables)
+      {
+#ifdef M_SHARED
+        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
+#else
+        cables = (struct cables_t *) malloc (sizeof (struct cables_t));
+#endif
+        if (cables == NULL)
+          {
+            sim_printf ("create_shm cables failed\n");
+            sim_err ("create_shm cables failed\n");
+          }
+      }
+
+    // Initialize data structures
+    cable_init ();
   }
