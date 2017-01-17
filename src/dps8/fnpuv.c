@@ -608,7 +608,7 @@ sim_printf ("dropping 2nd slave\n");
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
             linep->accept_new_terminal = true;
             linep->was_CR = false;
-            linep->listen = false;
+            //linep->listen = false;
             linep->inputBufferSize = 0;
             linep->ctrlStrIdx = 0;
             linep->breakAll = false;
