@@ -86,7 +86,7 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
 #ifndef SPEED
-static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
+static int cpu_show_stack(FILE *st, UNIT *uptr, int val, const void *desc);
 #endif
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
@@ -3969,7 +3969,7 @@ static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
 
 
 static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                           UNUSED int val, UNUSED void * desc)
+                           UNUSED int val, UNUSED const void * desc)
   {
     // FIXME: use FILE *st
     return cmd_stack_trace(0, NULL);

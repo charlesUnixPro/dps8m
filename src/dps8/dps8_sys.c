@@ -131,7 +131,6 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 
 static CTAB dps8_cmds[] =
 {
-<<<<<<< HEAD
     {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL, NULL},
     {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL, NULL},
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL, NULL},
@@ -195,7 +194,6 @@ static CTAB dps8_cmds[] =
     // invoke EIS test jig.......∫
     {"ET", eisTest, 0, "invoke EIS test jig\n", NULL, NULL}, 
 #endif
-    { NULL, NULL, 0, NULL, NULL}
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     { NULL, NULL, 0, NULL, NULL, NULL}
@@ -1748,7 +1746,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
     }
     
     // No, determine absolute address given by cptr
-    return (t_addr)strtol(cptr, optr, 8);
+    return (t_addr)strtol(cptr, (char **) optr, 8);
 }
 
 static void fprint_addr (FILE * stream, UNUSED DEVICE *  dptr, t_addr simh_addr)
@@ -2304,7 +2302,7 @@ static void doIniLine (char * text)
   {
     //sim_printf ("<%s?\n", text);
     char gbuf [257];
-    char * cptr = get_glyph (text, gbuf, 0); /* get command glyph */
+    const char * cptr = get_glyph (text, gbuf, 0); /* get command glyph */
     CTAB *cmdp;
     if ((cmdp = find_cmd (gbuf)))            /* lookup command */
       {
@@ -2316,7 +2314,7 @@ static void doIniLine (char * text)
       sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
   }
 
-static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED char * buf)
+static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
   {
 
     // ;

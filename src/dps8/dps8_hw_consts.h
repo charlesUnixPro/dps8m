@@ -81,7 +81,7 @@ enum { N_DEV_CODES = 64 };
 // NB. these 2 use the wrong bit number convention
 #define BIT19          01000000U                 // carry out bit from 18 bit arithmetic
 #define BIT20          02000000U                 // carry out bit from 19 bit arithmetic
-#define MASK36         U64(0777777777777)         // data mask 
+#define MASK36         0777777777777LLU          // data mask 
 #define DMASK           MASK36
 #define MASK10          0001777U                 // 10-bit data mask
 #define MASK14          0037777U                 // 14-bit data mask

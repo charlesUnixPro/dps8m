@@ -143,6 +143,17 @@
 // Instruction profiler
 // #define MATRIX
 
+
+// Fix glibc incompatibility with new simh code.
+
+#if __WORDSIZE == 64
+#undef PRIu64
+#define PRIu64 "llu"
+#undef PRId64
+#define PRId64 "lld"
+#undef PRIo64
+#define PRIo64 "llo"
+#endif
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"

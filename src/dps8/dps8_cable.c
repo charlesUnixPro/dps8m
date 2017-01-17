@@ -774,7 +774,7 @@ static void cable_init (void)
       cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
   }
 
-t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED char * buf)
+t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf)
   {
     cable_init ();
     scu_init ();

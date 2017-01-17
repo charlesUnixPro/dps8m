@@ -238,7 +238,7 @@ int udp_create (const char * premote, int * pln)
       return -1; // out of links
 
     // Parse the remote name and set up the ipaddr and port ...
-    if (udp_parse_remote (link, premote) != 0)
+    if (udp_parse_remote (link, (char *) premote) != 0)
       return -2;
 #if 0
   // Create the socket connection to the destination ...
