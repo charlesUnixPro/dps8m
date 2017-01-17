@@ -2712,6 +2712,14 @@ t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 
+t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf)
+  {
+    sim_printf ("FNP force start\n");
+    fnpuvInit (telnet_port);
+    return SCPE_OK;
+  }
+
+
 #define PROMPT  "HSLA Port ("
 
 void fnpConnectPrompt (uv_tcp_t * client)

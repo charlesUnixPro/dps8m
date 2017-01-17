@@ -196,6 +196,7 @@ static CTAB dps8_cmds[] =
 #endif
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
+    {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
