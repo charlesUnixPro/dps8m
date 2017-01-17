@@ -655,7 +655,11 @@ sim_printf ("dropping 2nd slave\n");
 
 void fnpuvInit (int telnet_port)
   {
-
+    // Ignore multiple calls; this means that once the listen port is
+    // opened, it can't be changed. Fixing this requires non-trivial
+    // changes.
+    if (loop)
+      return;
     // Initialize the server socket
     loop = uv_default_loop ();
     uv_tcp_init (loop, & du_server);

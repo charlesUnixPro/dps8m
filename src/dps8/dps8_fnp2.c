@@ -2152,7 +2152,7 @@ static void fnpcmdBootload (uint devUnitIdx)
               "The FNP has been restarted\r\n");
           }
       }
-
+    fnpuvInit (telnet_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
@@ -2708,7 +2708,7 @@ t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
       return SCPE_ARG;
     telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
-    fnpuvInit (telnet_port);
+    //fnpuvInit (telnet_port);
     return SCPE_OK;
   }
 
