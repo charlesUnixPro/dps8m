@@ -2669,10 +2669,12 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
               fnpUnitData[devnum].MState.line[linenum].service = service_autocall;                   
             else if (strcmp (second, "slave") == 0)
               fnpUnitData[devnum].MState.line[linenum].service = service_slave;                   
+            else if (strcmp (second, "offline") == 0)
+              fnpUnitData[devnum].MState.line[linenum].service = service_undefined;                   
             else
               sim_printf ("service type '%s' not recognized; skipping\n", second);
           }
-// This is not part of the CMF language, but I need away to set some addition
+// This is not part of the CMF language, but I need away to set some additional
 // parameters
         else if (havename && second && strcmp(first, "port") == 0)
         {
@@ -2693,6 +2695,26 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
         else if (strcmp (first, "end;") == 0)
           {
             break;
+          }
+
+
+// Ingored
+        else if (strcmp (first, "Service") == 0 ||
+                 strcmp (first, "Charge") == 0 ||
+                 strcmp (first, "Terminal_type") == 0 ||
+                 strcmp (first, "Line_type") == 0 ||
+                 strcmp (first, "Baud") == 0 ||
+                 strcmp (first, "FNP_required_up_time") == 0 ||
+                 strcmp (first, "FNP") == 0 ||
+                 strcmp (first, "type") == 0 ||
+                 strcmp (first, "memory") == 0 ||
+                 strcmp (first, "lsla") == 0 ||
+                 strcmp (first, "hsla") == 0 ||
+                 strcmp (first, "image") == 0 ||
+                 strcmp (first, "service") == 0 ||
+                 strcmp (first, "attributes") == 0)
+          {
+            // Ignored
           }
         else
           sim_printf ("fnpLoad '%s' not recognized; skipping\n", buff);
