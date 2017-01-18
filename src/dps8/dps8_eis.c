@@ -359,12 +359,12 @@ static word36 getCrAR (word4 reg)
 //  1n        xn      xn          xn                      xn
 //
 
-static word18 getMFReg18 (uint n, bool allowDU, bool allowN, bool allowIC)
+static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC)
   {
     switch (n)
       {
         case 0: // n
-          if (! allowN)
+          if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
               doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 n");
@@ -400,11 +400,12 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
             }
           return 0;
 
-        case 4: // ic - The ic modifier is permitted in MFk.REG and 
+        case 4: // ic - The ic modifier is permitted in 
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
                 // the register is an address offset, not the designation of 
                 // a register containing the operand length.
-          if (! allowIC)
+                // Note that AL39 is wrong saying "is permitted in MFk.REG and C(od)32,35". Only C(od)32,35 is correct. cf RJ78
+          if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
               doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
@@ -434,12 +435,12 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
     return 0;
   }
 
-static word36 getMFReg36 (uint n, bool allowDU, bool allowN, UNUSED bool allowIC)
+static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
   {
     switch (n)
       {
         case 0: // n
-         if (! allowN)
+         if (! allowNIC)
            {
              //sim_printf ("getMFReg36 n\n");
              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 n");
@@ -461,7 +462,8 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowN, UNUSED bool allowIC
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
                 // the register is an address offset, not the designation of 
                 // a register containing the operand length.
-          if (! allowN)
+                // Note that AL39 is wrong saying "is permitted in MFk.REG and C(od)32,35". Only C(od)32,35 is correct. cf RJ78
+          if (! allowNIC)
             {
               //sim_printf ("getMFReg36 n\n");
               doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 ic");
@@ -1251,7 +1253,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
 
         uint reg = opDesc & 017;
         // XXX RH03/RJ78 say a,q modifiers are also available here. AL39 says al/ql only
-        address += getMFReg18 (reg, false, true, true); // ID=1: disallow du, allow n,ic
+        address += getMFReg18 (reg, false, true); // ID=1: disallow du, allow n,ic
         address &= AMASK;
 
         PNL (cpu.du.Dk_PTR_W[k-1] = address);
@@ -1404,7 +1406,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     {
         uint reg = opDesc & 017;
 // XXX Handle N too big intelligently....
-        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false, false); // RL=1: disallow du,n,ic
+        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false); // RL=1: disallow du,n,ic
 #ifdef EIS_PTR3
         switch (cpu.du.TAk[k-1])
 #else
@@ -1434,14 +1436,10 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36 (MFk & 017, allowDU, true, !(MFk & MFkRL)); // allow du based on instruction, allow n, allow ic but only if RL=0
+    word36 r = getMFReg36 (MFk & 017, allowDU, true); // allow du based on instruction, allow n,ic
     
     if ((MFk & 017) == 4)   // reg == IC ?
       {
-        // The ic modifier is permitted in MFk.REG and C (od)32,35 only if
-        // MFk.RL = 0, that is, if the contents of the register is an address
-        // offset, not the designation of a register containing the operand
-        // length.
         address += r;
         address &= AMASK;
         r = 0;
@@ -1568,7 +1566,7 @@ static void parseArgOperandDescriptor (uint k)
 
     uint yREG = opDesc & 0xf;
     
-    word36 r = getMFReg36 (yREG, false, true, true); // disallow du, allow n,ic
+    word36 r = getMFReg36 (yREG, false, true); // disallow du, allow n,ic
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -1684,20 +1682,16 @@ static void parseNumericOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e->N[k-1] = getMFReg18(reg, false, false, false) & 077; // RL=1: disallow du,n,ic
+        e->N[k-1] = getMFReg18(reg, false, false) & 077; // RL=1: disallow du,n,ic
     }
     else
         e->N[k-1] = opDesc & 077;
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %0o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36(MFk & 017, false, true, !(MFk & MFkRL)); // disallow du, allow n, allow ic but only if RL=0
+    word36 r = getMFReg36(MFk & 017, false, true); // disallow du, allow n, ic
     if ((MFk & 017) == 4)   // reg == IC ?
     {
-        //The ic modifier is permitted in MFk.REG and C (od)32,35 only if
-        //MFk.RL = 0, that is, if the contents of the register is an address
-        //offset, not the designation of a register containing the operand
-        //length.
         address += r;
         address &= AMASK;
         r = 0;
@@ -1888,7 +1882,7 @@ static void parseBitstringOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e->N[k-1] = getMFReg36(reg, false, false, false) & 077777777;  // RL=1: disallow du,n,ic
+        e->N[k-1] = getMFReg36(reg, false, false) & 077777777;  // RL=1: disallow du,n,ic
         sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %"PRIo64"\n", k, reg, (word36)e->N[k-1]);
     }
     else
@@ -1906,7 +1900,7 @@ static void parseBitstringOperandDescriptor (int k)
     if (B >= 9)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
      
-    word36 r = getMFReg36(MFk & 017, false, true, !(MFk & MFkRL));  // disallow du, allow n, allow ic but only if RL=0
+    word36 r = getMFReg36(MFk & 017, false, true);  // disallow du, allow n,ic
     if ((MFk & 017) == 4)   // reg == IC ?
     {
         // If reg == IC, then R is in words, not bits.
@@ -6639,17 +6633,18 @@ void mve (void)
     if (e -> op [0]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op1 23 MBZ");
 
+#if 0
     // Bits 21-23 of OP1 MBZ
     if (e -> op [1]  & 0000000070000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 21-23 MBZ");
+#endif
+    // only bit 23 according to RH03. this was fixed in DPS9000
+    if (e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 23 MBZ");
 
     // Bit 23 of OP3 MBZ
     if (e -> op [2]  & 0000000010000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
-
-    // ISOLTS test 841, testing for ipr fault by setting (l=1)(s=00)
-    // in the first descriptor of the
-    // instruction mvn
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6738,10 +6733,51 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
     if (IWB_IRODD & 0600600000000)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvne: 0, 1, 9, 10 MBZ");
 
+    uint srcTN = e -> TN1;    // type of chars in src
+
+    int n1 = 0;
+    
+    /*
+     * Here we need to distinguish between 4 type of numbers.
+     *
+     * CSFL - Floating-point, leading sign
+     * CSLS - Scaled fixed-point, leading sign
+     * CSTS - Scaled fixed-point, trailing sign
+     * CSNS - Scaled fixed-point, unsigned
+     */
+    
+    // determine precision
+    switch(e->S1)
+    {
+        case CSFL:
+            n1 = (int) e->N1 - 1; // need to account for the - sign
+            if (srcTN == CTN4)
+                n1 -= 2;    // 2 4-bit digits exponent
+            else
+                n1 -= 1;    // 1 9-bit digit exponent
+            break;
+        
+        case CSLS:
+        case CSTS:
+            n1 = (int) e->N1 - 1; // only 1 sign
+            break;
+        
+        case CSNS:
+            n1 = (int) e->N1;     // no sign
+            break;  // no sign wysiwyg
+    }
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne adjusted n1<1");
+
     // Putting this check in pAOD breaks Multics boot
+    // From DH03 it seems that DPS8 does not check this explicitly, but L2 exhaust occurs which raises IPR anyway
+    // So we may as well keep it here.
     if (e->N[1] == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne N2 0");
 
+    // this is a flaw in DPS8/70 which was corrected in DPS88 and later
+    // ISOLTS-841 07h, RH03 p.7-295
     if (e->N[2] == 0)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne N3 0");
 
@@ -6762,17 +6798,27 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
 
 
     // Bit 24-29 of OP1 MBZ
-    // Multics has been observed to use 600162017511
+    // Multics has been observed to use 600162017511, cf RJ78
     //if (e -> op [0]  & 0000000007700)
       //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op1 24-29 MBZ");
 
+#if 0
     // Bits 21-29 of OP1 MBZ
     if (e -> op [1]  & 0000000077700)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-29 MBZ");
+#endif
+    // only bits 21-23 according to RJ78, maybe even less on DPS8
+    if (e -> op [1]  & 0000000070000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-23 MBZ");
 
+#if 0
     // Bits 23-29 of OP3 MBZ
     if (e -> op [2]  & 0000000017700)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23-29 MBZ");
+#endif
+    // only bit 23 according to RJ78
+    if (e -> op [2]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6783,8 +6829,6 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
     e -> srcTally = (int) e -> N1;  // number of chars in src (max 63)
     e -> dstTally = (int) e -> N3;  // number of chars in dst (max 63)
     
-    uint srcTN = e -> TN1;    // type of chars in src
-
 // XXX Temp hack to get MOP to work. Merge TA/TN?
 // The MOP operators look at srcTA to make 9bit/not 9-bit decisions about
 // the contents of inBuffer; parseNumericOperandDescriptor() always puts
@@ -7171,17 +7215,7 @@ void cmpn (void)
 
     uint srcTN = e->TN1;    // type of chars in src
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
-
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -7219,14 +7253,6 @@ void cmpn (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -7252,6 +7278,25 @@ void cmpn (void)
 
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n2<1");
+
+
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
@@ -7468,15 +7513,7 @@ void mvn (void)
     sim_debug (DBG_CAC, & cpu_dev, "mvn(2): SF1 %d              SF2 %d\n", e->SF1, e->SF2);
     sim_debug (DBG_CAC, & cpu_dev, "mvn(3): OP1 %012"PRIo64" OP2 %012"PRIo64"\n", e->OP1, e->OP2);
 
-    decContext set;
-    decContextDefaultDPS8(&set);
-    set.traps=0;
-    
-    decNumber _1;
-    
     int n1 = 0, n2 = 0, sc1 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -7521,21 +7558,6 @@ void mvn (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    
-    
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    if (decNumberIsZero(op1))
-        op1->exponent = 127;
-   
-    if_sim_debug (DBG_CAC, & cpu_dev)
-    {
-        PRINTDEC("mvn input (op1)", op1);
-    }
-
     switch(e->S2)
     {
         case CSFL:
@@ -7563,6 +7585,28 @@ void mvn (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n2<1");
 
+
+    decContext set;
+    decContextDefaultDPS8(&set);
+    set.traps=0;
+    
+    decNumber _1;
+
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    if (decNumberIsZero(op1))
+        op1->exponent = 127;
+   
+    if_sim_debug (DBG_CAC, & cpu_dev)
+    {
+        PRINTDEC("mvn input (op1)", op1);
+    }
    
     bool Ovr = false, EOvr = false, Trunc = false;
     
@@ -8913,6 +8957,28 @@ void btd (void)
     uint dstTN = e->TN2;    // type of chars in dst
     uint dstCN = e->CN2;    // starting at char pos CN
 
+    int n2 = 0;
+
+    switch(e->S2)
+    {
+        case CSLS:
+        case CSTS:
+            n2 = (int) e->N2 - 1; // 1 sign
+            break;
+        
+        case CSNS:
+            n2 = (int) e->N2;     // no sign
+            break;          // no sign wysiwyg
+    }
+    
+    sim_debug (DBG_CAC, & cpu_dev,
+      "n2 %d\n",
+      n2);
+
+    if (n2 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd adjusted n2<1");
+
+
     decContext set;
     decContextDefaultDPS8(&set);
     set.traps=0;
@@ -8947,27 +9013,6 @@ void btd (void)
     if (e->sign == -1)
         op1->bits |= DECNEG;
 
-    int n2 = 0;
-
-    switch(e->S2)
-    {
-        case CSLS:
-        case CSTS:
-            n2 = (int) e->N2 - 1; // 1 sign
-            break;
-        
-        case CSNS:
-            n2 = (int) e->N2;     // no sign
-            break;          // no sign wysiwyg
-    }
-    
-    sim_debug (DBG_CAC, & cpu_dev,
-      "n2 %d\n",
-      n2);
-
-    if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd adjusted n2<1");
-    
     bool Ovr = false, Trunc = false;
     
     char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, 0, &Ovr, &Trunc);
@@ -9295,8 +9340,6 @@ void dtb (void)
 
     int n1 = 0;
     
-    EISloadInputBufferNumeric (1);   // according to MF1
-    
     /*
      * Here we need to distinguish between 4 type of numbers.
      *
@@ -9324,6 +9367,9 @@ void dtb (void)
 
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb adjusted n1<1");
+
+
+    EISloadInputBufferNumeric (1);   // according to MF1
 
     // prepare output mask
     word72 msk = ((word72)1<<(9*e->N2-1))-1; // excluding sign
@@ -9414,32 +9460,13 @@ void ad2d (void)
       DU_CYCLE_FRND;))
     
     uint srcTN = e->TN1;    // type of chars in src
-    switch(srcTN)
-    {
-        case CTN4:
-            //e->srcAddr = e->YChar41;
-            break;
-        case CTN9:
-            //e->srcAddr = e->YChar91;
-            break;
-    }
     
     uint dstTN = e->TN2;    // type of chars in dst
     uint dstCN = e->CN2;    // starting at char pos CN
 
     e->ADDR3 = e->ADDR2;
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
-    
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -9477,14 +9504,6 @@ void ad2d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -9511,6 +9530,25 @@ void ad2d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n2<1");
     
+
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
         op2->bits |= DECNEG;
@@ -9756,16 +9794,7 @@ void ad3d (void)
     uint dstTN = e->TN3;    // type of chars in dst
     uint dstCN = e->CN3;    // starting at char pos CN
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -9803,14 +9832,6 @@ void ad3d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -9837,12 +9858,6 @@ void ad3d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n2<1");
     
-    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
-    if (e->sign == -1)
-        op2->bits |= DECNEG;
-    if (e->S2 == CSFL)
-        op2->exponent = e->exponent;
-
     switch(e->S3)
     {
         case CSFL:
@@ -9866,6 +9881,30 @@ void ad3d (void)
     if (n3 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n3<1");
     
+
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    if (e->sign == -1)
+        op2->bits |= DECNEG;
+    if (e->S2 == CSFL)
+        op2->exponent = e->exponent;
+
     decNumber *op3 = decNumberAdd(&_3, op1, op2, &set);
 
     // RJ78: significant digits in the result may be lost if:
@@ -10077,16 +10116,7 @@ void sb2d (void)
     
     e->ADDR3 = e->ADDR2;
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -10124,14 +10154,6 @@ void sb2d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -10157,7 +10179,25 @@ void sb2d (void)
 
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n2<1");
+
     
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
         op2->bits |= DECNEG;
@@ -10362,17 +10402,7 @@ void sb3d (void)
     uint dstTN = e->TN3;    // type of chars in dst
     uint dstCN = e->CN3;    // starting at char pos CN
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8(&set);
-    
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -10410,14 +10440,6 @@ void sb3d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -10444,12 +10466,6 @@ void sb3d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n2<1");
     
-    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
-    if (e->sign == -1)
-        op2->bits |= DECNEG;
-    if (e->S2 == CSFL)
-        op2->exponent = e->exponent;
-
     switch(e->S3)
     {
         case CSFL:
@@ -10473,6 +10489,31 @@ void sb3d (void)
     if (n3 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n3<1");
     
+
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8(&set);
+    
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    if (e->sign == -1)
+        op2->bits |= DECNEG;
+    if (e->S2 == CSFL)
+        op2->exponent = e->exponent;
+
     decNumber *op3 = decNumberSubtract(&_3, op2, op1, &set);
 
     // ISOLTS 846 07c, 10a, 11b internal register overflow - see ad3d
@@ -10670,16 +10711,7 @@ void mp2d (void)
     
     e->ADDR3 = e->ADDR2;
     
-    decContext set;
-    decContextDefaultDPS8Mul(&set); // 126 digits for multiply
-    
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -10717,14 +10749,6 @@ void mp2d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -10751,6 +10775,24 @@ void mp2d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n2<1");
     
+
+    decContext set;
+    decContextDefaultDPS8Mul(&set); // 126 digits for multiply
+    
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
     if (e->sign == -1)
         op2->bits |= DECNEG;
@@ -10915,17 +10957,7 @@ void mp3d (void)
     uint dstTN = e->TN3;    // type of chars in dst
     uint dstCN = e->CN3;    // starting at char pos CN
     
-    decContext set;
-    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
-    decContextDefaultDPS8Mul(&set);	// 126 digits for multiply
-
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -10963,14 +10995,6 @@ void mp3d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-    
-//IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -10997,13 +11021,6 @@ void mp3d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n2<1");
     
-    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
-    if (e->sign == -1)
-        op2->bits |= DECNEG;
-    if (e->S2 == CSFL)
-        op2->exponent = e->exponent;
-//IF1 sim_printf ("MP3D op2->exponent %d\n", op2->exponent);
-
     switch(e->S3)
     {
         case CSFL:
@@ -11026,6 +11043,33 @@ void mp3d (void)
 
     if (n3 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n3<1");
+
+
+    decContext set;
+    //decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    decContextDefaultDPS8Mul(&set);	// 126 digits for multiply
+
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    
+//IF1 sim_printf ("MP3D op1->exponent %d\n", op1->exponent);
+    EISloadInputBufferNumeric (2);   // according to MF2
+
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    if (e->sign == -1)
+        op2->bits |= DECNEG;
+    if (e->S2 == CSFL)
+        op2->exponent = e->exponent;
+//IF1 sim_printf ("MP3D op2->exponent %d\n", op2->exponent);
     
     decNumber *op3 = decNumberMultiply(&_3, op1, op2, &set);
     
@@ -11963,16 +12007,7 @@ void dv2d (void)
     
     e->ADDR3 = e->ADDR2;
     
-    decContext set;
-    decContextDefaultDPS8(&set);
-
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -12006,26 +12041,10 @@ void dv2d (void)
             sc1 = -e->SF1;
             break;  // no sign wysiwyg
     }
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);    // divisor
 
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n1<1");
     
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-
-    // check for divide by 0!
-    if (decNumberIsZero(op1))
-    {
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d division by 0");
-    }
-
-    word9   inBufferop1 [64];
-    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -12051,6 +12070,33 @@ void dv2d (void)
 
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n2<1");
+
+
+    decContext set;
+    decContextDefaultDPS8(&set);
+
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);    // divisor
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+
+    // check for divide by 0!
+    if (decNumberIsZero(op1))
+    {
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d division by 0");
+    }
+
+    word9   inBufferop1 [64];
+    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
     
     decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);    // dividend
     if (e->sign == -1)
@@ -12328,16 +12374,7 @@ void dv3d (void)
     uint dstTN = e->TN3;    // type of chars in dst
     uint dstCN = e->CN3;    // starting at char pos CN
     
-    decContext set;
-    decContextDefaultDPS8(&set);
-    
-    set.traps=0;
-    
-    decNumber _1, _2, _3;
-    
     int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
-    
-    EISloadInputBufferNumeric (1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -12375,24 +12412,6 @@ void dv3d (void)
     if (n1 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n1<1");
 
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
-    //PRINTDEC("op1", op1);
-
-    if (e->sign == -1)
-        op1->bits |= DECNEG;
-    if (e->S1 == CSFL)
-        op1->exponent = e->exponent;
-
-    // check for divide by 0!
-    if (decNumberIsZero(op1))
-    {
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d division by 0");
-    }
-
-    word9   inBufferop1 [64];
-    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
-    
-    EISloadInputBufferNumeric (2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -12419,12 +12438,6 @@ void dv3d (void)
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n2<1");
     
-    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
-    if (e->sign == -1)
-        op2->bits |= DECNEG;
-    if (e->S2 == CSFL)
-        op2->exponent = e->exponent;
-
     switch(e->S3)
     {
         case CSFL:
@@ -12446,6 +12459,41 @@ void dv3d (void)
     }
     if (n3 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n3<1");
+
+
+    decContext set;
+    decContextDefaultDPS8(&set);
+    
+    set.traps=0;
+    
+    decNumber _1, _2, _3;
+    
+    EISloadInputBufferNumeric (1);   // according to MF1
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    //PRINTDEC("op1", op1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+
+    // check for divide by 0!
+    if (decNumberIsZero(op1))
+    {
+        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d division by 0");
+    }
+
+    word9   inBufferop1 [64];
+    memcpy (inBufferop1,e->inBuffer,64); // save for clz1 calculation later
+    
+    EISloadInputBufferNumeric (2);   // according to MF2
+
+    decNumber *op2 = decBCD9ToNumber(e->inBuffer, n2, sc2, &_2);
+    if (e->sign == -1)
+        op2->bits |= DECNEG;
+    if (e->S2 == CSFL)
+        op2->exponent = e->exponent;
+
 
     // The number of required quotient digits, NQ, is determined before
     // division begins as follows:
