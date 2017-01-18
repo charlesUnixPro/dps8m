@@ -220,7 +220,7 @@ H_SRCS += utlist.h
 
 
 
-all: locallibs_then_dps8 utils
+all: utils $(TAGS) locallibs_then_dps8 
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
