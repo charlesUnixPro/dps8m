@@ -1421,15 +1421,13 @@ IF1 sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", 
     word18 flags1 = 0;
     word18 flags2 = 0;
     m = Add72b (m, 0177777777777777LL, 0, I_OFLOW, & flags1, & ovf);
-if (currentRunningCPUnum)
-sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
+IF1 sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if ((m & SIGN72) == 0)
     {
         m = Add72b (m, 1, 0, I_OFLOW, & flags2, & ovf);
-if (currentRunningCPUnum)
-sim_printf ("FRD add carry E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags2);
+IF1 sim_printf ("FRD add carry E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags2);
     }
 #endif
 
@@ -2739,8 +2737,7 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 #if 0
     if (cpu.CY == 0)
       {
@@ -2800,10 +2797,8 @@ sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.r
       }
     dFrac &= MASK35;
 
-if (currentRunningCPUnum)
-sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
+IF1 sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
+IF1 sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
@@ -2812,8 +2807,7 @@ sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36,
     //if (dFrac == 0 || zFrac >= dFrac << 35)
     if (dFrac == 0)
       {
-if (currentRunningCPUnum)
-sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 // case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
 //         dFrac 000000000000 000000000000
 
@@ -2836,10 +2830,8 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
 #endif
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
-if (currentRunningCPUnum)
-sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 
 
 
@@ -2849,10 +2841,8 @@ sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MAS
 
     if (quot & ~MASK35)
       {
-if (currentRunningCPUnum)
-sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
-if (currentRunningCPUnum)
-sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
+IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
 //
 // this got:
 //            s/b 373737373737 373737373740 200200
@@ -2863,17 +2853,14 @@ sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, 
         bool AQzero = cpu.rA == 0 && cpu.rQ == 0;
         if (cpu.rA & SIGN36)
           {
-if (currentRunningCPUnum)
-sim_printf ("negating AQ\n");
+IF1 sim_printf ("negating AQ\n");
             cpu.rA = (~cpu.rA) & MASK36;
             cpu.rQ = (~cpu.rQ) & MASK36;
             cpu.rQ += 1;
-if (currentRunningCPUnum)
-sim_printf ("Q after incr: %012"PRIo64"\n", cpu.rQ);
+IF1 sim_printf ("Q after incr: %012"PRIo64"\n", cpu.rQ);
             if (cpu.rQ & BIT37) // overflow?
               {
-if (currentRunningCPUnum)
-sim_printf ("incr. A\n");
+IF1 sim_printf ("incr. A\n");
                 cpu.rQ &= MASK36;
                 cpu.rA = (cpu.rA + 1) & MASK36;
               }
@@ -2909,10 +2896,8 @@ sim_printf ("incr. A\n");
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-if (currentRunningCPUnum)
-sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-if (currentRunningCPUnum)
-sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
+IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
+IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
  
@@ -3133,8 +3118,7 @@ void dfcmp (void)
     // equal to the difference in the two exponents.
     // The aligned mantissas are compared and the indicators set accordingly.
     
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
+//IF1 sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     CPTUR (cptUseE);
 #ifdef HEX_MODE
@@ -3143,16 +3127,14 @@ void dfcmp (void)
     word72 m1 = ((word72) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMP e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//IF1 sim_printf ("DFCMP e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMP e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+//IF1 sim_printf ("DFCMP e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 
     //int e3 = -1;
 
@@ -3219,10 +3201,8 @@ void dfcmp (void)
         //e3 = e1;
     }
     
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMP shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMP shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+//IF1 sim_printf ("DFCMP shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//IF1 sim_printf ("DFCMP shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
     int128 sm1 = SIGNEXT72_128 (m1);
     int128 sm2 = SIGNEXT72_128 (m2);
@@ -3250,8 +3230,7 @@ void dfcmg (void)
     // the magnitudes of the mantissas are compared instead of the algebraic
     // values.
     
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
+//IF1 sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     CPTUR (cptUseE);
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
@@ -3261,8 +3240,7 @@ void dfcmg (void)
                 ((cpu.rQ) & 0777777777400LL);
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
-//if (currentRunningCPUnum)
-//sim_printf ("DFCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//IF1 sim_printf ("DFCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
