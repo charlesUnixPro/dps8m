@@ -140,6 +140,11 @@
 
 #define OSCAR
 
+// DPS8-M support Hex Mode Floating Point
+#ifdef DPS8M
+#define HEX_MODE
+#endif
+
 // Instruction profiler
 // #define MATRIX
 
