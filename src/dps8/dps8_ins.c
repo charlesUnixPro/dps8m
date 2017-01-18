@@ -965,6 +965,29 @@ static bool _nodlcss[] = {
     false, false, false, false, false, false, false, false,
 };
 
+static bool _onlyaqxn[] = {
+    // Tm = 0 (register) R
+    // --   au     qu     du     ic     al     ql     dl
+    false, false, false, true,  true, false, false, true, 
+    // 0      1      2      3      4      5      6      7
+     false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --
+    false, false, false, true, false, false, false, true, 
+    // 0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp    --     its    sd     scr    f2     f3
+    false, false, true,  false, false, false, false, false,
+    // ci     i      sc     ad     di     dic   id     idc
+    false, false, false, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --
+    false, false, false, true, false, false, false, true, 
+    // *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, false, false, false, false, false,
+};
+
 #ifndef QUIET_UNUSED
 static bool _illmod[] = {
     // Tm = 0 (register) R
@@ -1492,6 +1515,13 @@ IF1 sim_printf ("trapping opcode match......\n");
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                      "Illegal DU/DL modification");
+    }
+    else if (ci->info->mods == ONLY_AU_QU_AL_QL_XN)
+    {
+        if (_onlyaqxn[ci->tag])
+            doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                     "Illegal DU/DL/IC modification");
     }
 
     // If executing the target of XEC/XED, check the instruction is allowed

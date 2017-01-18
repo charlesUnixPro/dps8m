@@ -359,7 +359,7 @@ static word36 getCrAR (word4 reg)
 //  1n        xn      xn          xn                      xn
 //
 
-static word18 getMFReg18 (uint n, bool allowDUL, bool allowN)
+static word18 getMFReg18 (uint n, bool allowDU, bool allowN, bool allowIC)
   {
     switch (n)
       {
@@ -381,7 +381,7 @@ static word18 getMFReg18 (uint n, bool allowDUL, bool allowN)
           // du is a special case for SCD, SCDR, SCM, and SCMR
 // XXX needs attention; doesn't work with old code; triggered by
 // XXX parseOperandDescriptor;
-          if (! allowDUL)
+          if (! allowDU)
             {
 #if 0 // fixes first fail
 sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
@@ -404,7 +404,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
                 // C (od)32,35 only if MFk.RL = 0, that is, if the contents of 
                 // the register is an address offset, not the designation of 
                 // a register containing the operand length.
-          if (! allowN)
+          if (! allowIC)
             {
               //sim_printf ("getMFReg18 n\n");
               doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
@@ -434,7 +434,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
     return 0;
   }
 
-static word36 getMFReg36 (uint n, bool allowDU, bool allowN)
+static word36 getMFReg36 (uint n, bool allowDU, bool allowN, UNUSED bool allowIC)
   {
     switch (n)
       {
@@ -1112,27 +1112,6 @@ static void setupOperandDescriptorCache (int k)
 // 7. The operand descriptor is obtained from the location determined by the
 // generated effective address in item 6.
 //
-// 8. Modification of the operand descriptor address begins. This step is
-// reached directly from 2 if no indirection is involved. The AR bit of MF1 is
-// checked to determine if address register modification is specified.
-//
-// 9. Address register modification is performed on the operand descriptor as
-// described under "Address Modification with Address Registers" above. The
-// character and bit positions of the specified address register are used in
-// one of two ways, depending on the type of operand descriptor, i.e., whether
-// the type is a bit string, a numeric, or an alphanumeric descriptor.
-//
-// 10. The REG field of MF1 is checked for a legal code. If DU is specified in
-// the REG field of MF2 in one of the four multiword instructions (SCD, SCDR,
-// SCM, or SCMR) for which DU is legal, the CN field is ignored and the
-// character or characters are arranged within the 18 bits of the word address
-// portion of the operand descriptor.
-//
-// 11. The count contained in the register specified by the REG field code is
-// appropriately converted and added to the operand address.
-//
-// 12. The operand is retrieved from the calculated effective address location.
-//
 
 static void setupOperandDescriptor (int k)
   {
@@ -1167,7 +1146,7 @@ static void setupOperandDescriptor (int k)
 
         word36 opDesc = e -> op [k - 1];
         
-// XXX This check breaks Multics; line 161 of sys_trouble.alm contains
+// 18-28 MBZ check breaks Multics; line 161 of sys_trouble.alm contains
 //
 // 000103 aa 040100 1006 20    160   mlr     (id),(pr),fill(040) copy error message
 // 000104 0a 000126 0002 05    161   arg     trouble_messages-1,al
@@ -1196,6 +1175,13 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 18-28,30, 31 MBZ");
           }
 #endif 
+
+        // Bits 30, 31 MBZ
+        // RJ78 p. 5-39, ISOLTS 840 07a,07b
+        if (opDesc & 060)
+          {
+            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 30,31 MBZ");
+          }
 
         // fill operand according to MFk....
         word18 address = GETHI (opDesc);
@@ -1264,7 +1250,8 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
         // instruction word. C(REG) is always interpreted as a word offset. REG 
 
         uint reg = opDesc & 017;
-        address += getMFReg18 (reg, false, true);
+        // XXX RH03/RJ78 say a,q modifiers are also available here. AL39 says al/ql only
+        address += getMFReg18 (reg, false, true, true); // ID=1: disallow du, allow n,ic
         address &= AMASK;
 
         PNL (cpu.du.Dk_PTR_W[k-1] = address);
@@ -1356,6 +1343,29 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
       }
 #endif
 
+
+// 8. Modification of the operand descriptor address begins. This step is
+// reached directly from 2 if no indirection is involved. The AR bit of MF1 is
+// checked to determine if address register modification is specified.
+//
+// 9. Address register modification is performed on the operand descriptor as
+// described under "Address Modification with Address Registers" above. The
+// character and bit positions of the specified address register are used in
+// one of two ways, depending on the type of operand descriptor, i.e., whether
+// the type is a bit string, a numeric, or an alphanumeric descriptor.
+//
+// 10. The REG field of MF1 is checked for a legal code. If DU is specified in
+// the REG field of MF2 in one of the four multiword instructions (SCD, SCDR,
+// SCM, or SCMR) for which DU is legal, the CN field is ignored and the
+// character or characters are arranged within the 18 bits of the word address
+// portion of the operand descriptor.
+//
+// 11. The count contained in the register specified by the REG field code is
+// appropriately converted and added to the operand address.
+//
+// 12. The operand is retrieved from the calculated effective address location.
+//
+
     if (MFk & MFkAR)
       {
         // if MKf contains ar then it Means Y-charn is not the memory address
@@ -1394,7 +1404,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     {
         uint reg = opDesc & 017;
 // XXX Handle N too big intelligently....
-        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false);
+        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false, false); // RL=1: disallow du,n,ic
 #ifdef EIS_PTR3
         switch (cpu.du.TAk[k-1])
 #else
@@ -1424,7 +1434,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36 (MFk & 017, allowDU, true);
+    word36 r = getMFReg36 (MFk & 017, allowDU, true, !(MFk & MFkRL)); // allow du based on instruction, allow n, allow ic but only if RL=0
     
     if ((MFk & 017) == 4)   // reg == IC ?
       {
@@ -1558,7 +1568,7 @@ static void parseArgOperandDescriptor (uint k)
 
     uint yREG = opDesc & 0xf;
     
-    word36 r = getMFReg36 (yREG, false, true);
+    word36 r = getMFReg36 (yREG, false, true, true); // disallow du, allow n,ic
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -1674,14 +1684,14 @@ static void parseNumericOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e->N[k-1] = getMFReg18(reg, false, false) & 077;
+        e->N[k-1] = getMFReg18(reg, false, false, false) & 077; // RL=1: disallow du,n,ic
     }
     else
         e->N[k-1] = opDesc & 077;
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %0o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36(MFk & 017, false, true);
+    word36 r = getMFReg36(MFk & 017, false, true, !(MFk & MFkRL)); // disallow du, allow n, allow ic but only if RL=0
     if ((MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if
@@ -1689,13 +1699,18 @@ static void parseNumericOperandDescriptor (int k)
         //offset, not the designation of a register containing the operand
         //length.
         address += r;
+        address &= AMASK;
         r = 0;
     }
 
 #ifdef ISOLTS
+#if 0
     uint TN = e->TN[k-1];
     uint S = e->S[k-1];  // This is where MVNE gets really nasty.
 #endif
+#endif
+// handled in numeric instructions
+#if 0
     uint N = e->N[k-1];  // number of chars in string
     // I spit on the designers of this instruction set (and of COBOL.) >Ptui!<
 
@@ -1703,6 +1718,7 @@ static void parseNumericOperandDescriptor (int k)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=0");
       }
+#endif
 
 // Causes:
 //DBG(662088814)> CPU0 FAULT: Fault 10(012), sub 4294967296(040000000000), dfc N, 'parseNumericOperandDescriptor N=1 S=0|1|2'^M
@@ -1730,10 +1746,13 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
       }
 #endif
 
+// handled in numeric instructions
+#if 0
     if (N == 3 && S == 0 && TN == 1)
       {
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=3 S=0 TN 1");
       }
+#endif
 #endif
 
 
@@ -1869,8 +1888,8 @@ static void parseBitstringOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %"PRIo64"\n", k, reg, getMFReg36(reg, false, false));
-        e->N[k-1] = getMFReg36(reg, false, false) & 077777777;
+        e->N[k-1] = getMFReg36(reg, false, false, false) & 077777777;  // RL=1: disallow du,n,ic
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %"PRIo64"\n", k, reg, (word36)e->N[k-1]);
     }
     else
     {
@@ -1887,7 +1906,7 @@ static void parseBitstringOperandDescriptor (int k)
     if (B >= 9)
       doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
      
-    word36 r = getMFReg36(MFk & 017, false, true);
+    word36 r = getMFReg36(MFk & 017, false, true, !(MFk & MFkRL));  // disallow du, allow n, allow ic but only if RL=0
     if ((MFk & 017) == 4)   // reg == IC ?
     {
         // If reg == IC, then R is in words, not bits.
@@ -4199,8 +4218,8 @@ static bool isOvp (uint c, word9 * on)
 }
 #endif
 
-#if 0
-static bool isOvp2 (uint c, bool * isNeg)
+// RJ78 p.11-178,D-6
+static bool isGBCDOvp (uint c, bool * isNeg)
   {
     if (c & 020)
       {
@@ -4214,7 +4233,6 @@ static bool isOvp2 (uint c, bool * isNeg)
       }
     return false;
   }
-#endif
 
 // Applies to both MLR and MRL
 // 
@@ -4566,13 +4584,10 @@ void mlr (void)
             
             if (ovp && (cpu . du . CHTALLY == e -> N1 - 1))
               {
-                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-                // there *is* an overpunch char here.
-                //bOvp = isOvp (c, & on);
-                //bOvp = isOvp2 (c, & isNeg);
+                // C(FILL)0 = 1 means that there *is* an overpunch char here.
+                // ISOLTS-838 01e, RJ78 p. 11-126
+                isGBCDOvp (c, & isNeg);
 IF1 sim_printf ("overpunch char is %03o\n", c);
-                //  cout = on;   // replace char with the digit the overpunch 
-                               // represents
               }
             EISput469 (2, cpu . du . CHTALLY, cout);
           }
@@ -4588,12 +4603,10 @@ IF1 sim_printf ("overpunch char is %03o\n", c);
       {
         for ( ; cpu . du . CHTALLY < e -> N2 ; cpu . du . CHTALLY ++)
           {
-            // if there's an overpunch then the sign will be the last of the 
-            // fill
+            // if there's an overpunch then the sign will be the last of the fill
             if (ovp && (cpu . du . CHTALLY == e -> N2 - 1))
-            //if (bOvp && (cpu . du . CHTALLY == e -> N2 - 1))
               {
-                if (isNeg)   // is c an GEBCD negative overpunch? and of what?
+                if (isNeg)
                   EISput469 (2, cpu . du . CHTALLY, 015); // 015 is decimal -
                 else
                   EISput469 (2, cpu . du . CHTALLY, 014); // 014 is decimal +
@@ -4737,15 +4750,8 @@ void mrl (void)
     PNL (L68_ (if (max (e->N1, e->N2) < 128)
       DU_CYCLE_FLEN_128;))
 
-//IF1 sim_printf ("MLR TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
+//IF1 sim_printf ("MRL TALLY %u TA1 %u TA2 %u N1 %u N2 %u CN1 %u CN2 %u\n", cpu.du.CHTALLY, e -> TA1, e -> TA2, e -> N1, e -> N2, e -> CN1, e -> CN2);
 //
-// Multics frequently uses certain code sequences which are easily detected
-// and optimized; eg. it uses the MLR instruction to copy or zeros segments.
-//
-// The MLR implementation is correct, not efficent. Copy invokes 12 append
-// cycles per word, and fill 8.
-//
-
 // Test for the case of aligned word move; and do things a word at a time,
 // instead of a byte at a time...
 
@@ -4761,7 +4767,7 @@ void mrl (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
+        sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #1\n");
         uint limit = e -> N2;
         for ( ; cpu.du.CHTALLY < limit; cpu.du.CHTALLY += 4)
           {
@@ -4792,7 +4798,7 @@ void mrl (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
+        sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #2\n");
         word36 w = (word36) fill |
                   ((word36) fill << 9) |
                   ((word36) fill << 18) |
@@ -4860,18 +4866,12 @@ void mrl (void)
             // is placed in C(Y-charn2)N2-1; otherwise, a plus sign character
             // is placed in C(Y-charn2)N2-1.
             
-// ISOLTS ps838    test-01f subtest loop point 001762 seems to indicate that
-// the rightmost digit is examined for overpunch.
-            //if (ovp && (cpu.du.CHTALLY == e -> N1 - 1))
+// ISOLTS 838 01f, RJ78 p.11-154 - the rightmost digit is examined for overpunch.
             if (ovp && (cpu.du.CHTALLY == 0))
               {
-                // this is kind of wierd. I guess that C(FILL)0 = 1 means that
-                // there *is* an overpunch char here.
-                //bOvp = isOvp (c, & on);
-                //bOvp = isOvp2 (c, & isNeg);
-//IF1 sim_printf ("MRL ovp check %03o bOvp %u isNeg %u\n", c, bOvp, isNeg);
-                //cout = on;   // replace char with the digit the overpunch 
-                             // represents
+                // C(FILL)0 = 1 means that there *is* an overpunch char here.
+                isGBCDOvp (c, & isNeg);
+IF1 sim_printf ("MRL ovp check %03o isNeg %u\n", c, isNeg);
               }
             EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, cout);
           }
@@ -4887,19 +4887,17 @@ void mrl (void)
       {
         for ( ; cpu.du.CHTALLY < e -> N2 ; cpu.du.CHTALLY ++)
           {
-            // if there's an overpunch then the sign will be the last of the 
-            // fill
+            // if there's an overpunch then the sign will be the last of the fill
             if (ovp && (cpu.du.CHTALLY == e -> N2 - 1))
-            //if (bOvp && (cpu.du.CHTALLY == e -> N2 - 1))
               {
-                if (isNeg)   // is c an GEBCD negative overpunch? and of what?
+                if (isNeg)
                   EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 015); // 015 is decimal -
                 else
                   EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, 014); // 014 is decimal +
               }
             else
               {
-                EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
+                 EISput469 (2, e -> N2 - cpu.du.CHTALLY - 1, fillT);
               }
           }
     }
@@ -4910,7 +4908,7 @@ void mrl (void)
       {
         SET_I_TRUNC;
         if (T && ! TST_I_OMASK)
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "mlr truncation fault");
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "mrl truncation fault");
       }
     else
       CLR_I_TRUNC;
@@ -6526,7 +6524,7 @@ IF1 sim_printf ("mop %s %d\n", m->mopName, e->mopIF);
         // interpretation. Both these options pass ISOLTS-845.
         // "L3 exhausted" is also an option but unlikely since that would fire
         // the BZ check even upon normal termination.
-        // XXX DH02 7-295 suggests that there might be a difference between MVE
+        // XXX DH03 7-295 suggests that there might be a difference between MVE
         // and MVNE. It might well be that DPS88/9000 behaves differently than
         // DPS8.
 
@@ -8465,7 +8463,6 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     
     *pos -= 1;       // to prev byte.
 }
-#endif
 
 /*
  * write 9-bit bytes to memory @ pos (in reverse)...
@@ -8517,7 +8514,6 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     *pos -= 1;       // to prev byte.
 }
 
-#if 0
 /*
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
@@ -9056,6 +9052,7 @@ void btd (void)
     }
 }
 
+#if 0
 /*
  * load a decimal number into e->x ...
  */
@@ -9259,6 +9256,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     if (~x && x != 0)    // if it's all 1's this will be 0
         SETF(e->_flags, I_OFLOW);
 }
+#endif
 
 void dtb (void)
 {
@@ -9295,51 +9293,90 @@ void dtb (void)
         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
-    //e->_flags = cpu . cu.IR;
-    e->_flags = 0;
+    int n1 = 0;
     
-    // Negative: If a minus sign character is found in C(Y-charn1), then ON;
-    // otherwise OFF
-    CLRF(e->_flags, I_NEG);
+    EISloadInputBufferNumeric (1);   // according to MF1
     
-    // I'm leaning to towards 'if (c == 0 && n == 0) { treat it like '+0', set
-    // bits and flags, return }' approach.
-
-    int result = loadDec(&e->ADDR1, (int) e->CN1);
-    switch (result)
+    /*
+     * Here we need to distinguish between 4 type of numbers.
+     *
+     * CSFL - Floating-point, leading sign
+     * CSLS - Scaled fixed-point, leading sign
+     * CSTS - Scaled fixed-point, trailing sign
+     * CSNS - Scaled fixed-point, unsigned
+     */
+    
+    // determine precision
+    switch(e->S1)
     {
-        case -1:
-            e->x = 0;
-            CLRF(e->_flags, I_NEG);     // reset negative indicator
-            SETF(e->_flags, I_ZERO);    // set zero indicator
-            // fall through
-        case 0:
-            // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
-            SCF(e->x == 0, e->_flags, I_ZERO);
-            
-            EISwriteToBinaryStringReverse(&e->ADDR2, 2);
-            
-
-            //cpu . cu.IR = e->_flags;
-            SC_I_ZERO (TSTF (e->_flags, I_ZERO));
-            SC_I_NEG (TSTF (e->_flags, I_NEG));
-            
-            //if (TST_I_OFLOW)
-            if (TSTF  (e->_flags, I_OFLOW))
-              {
-                SET_I_OFLOW;
-                if (! TST_I_OMASK)
-                    doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dtb():  overflow fault");
-              }
+        case CSLS:
+        case CSTS:
+            n1 = (int) e->N1 - 1; // only 1 sign
             break;
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-            doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb(): loadDec() return value == {1,2,3,4}");
+        
+        case CSNS:
+            n1 = (int) e->N1;     // no sign
+            break;  // no sign wysiwyg
     }
+    // RJ78: An Illegal Procedure fault occurs if:
+    // N1 is not large enough to specify the number of characters required for the
+    // specified sign and/or exponent, plus at least one digit. 
+
+    if (n1 < 1)
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb adjusted n1<1");
+
+    // prepare output mask
+    word72 msk = ((word72)1<<(9*e->N2-1))-1; // excluding sign
+
+#if 0
+    decNumber _1;
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, 0, &_1);
+    if (e->sign == -1)
+        op1->bits |= DECNEG;
+    if (decNumberIsZero(op1))
+        op1->exponent = 127;
+
+sim_printf("dtb: N1 %d N2 %d nin %d CN1 %d CN2 %d msk %012"PRIo64" %012"PRIo64"\n",e->N1,e->N2,n1,e->CN1,e->CN2,(word36)((msk >> 36) & DMASK), (word36)(msk & DMASK));
+    PRINTDEC("dtb input (op1)", op1);
+#endif
+
+    // input is unscaled fixed point, so just get the digits
+    bool Ovr = false;
+    word72 x = 0;
+    for (int i = 0; i < n1; i++) {
+        x *= 10;
+        x += e->inBuffer[i];
+        //sim_printf("%d %012"PRIo64" %012"PRIo64"\n",e->inBuffer[i],(word36)((x >> 36) & DMASK), (word36)(x & DMASK));
+        Ovr |= x>msk?1:0;
+        x &= msk; // multiplication and addition mod msk+1
+    }
+    if (e->sign == -1)
+        x = -x; // no need to mask it
+
+    //sim_printf ("dtb out %012"PRIo64" %012"PRIo64"\n", (word36)((x >> 36) & DMASK), (word36)(x & DMASK));
+
+    int pos = (int)e->CN2;
+
+    // now write to memory in proper format.....
+
+    int shift = 9*((int)e->N2-1);
+    for(int i = 0; i < (int)e->N2; i++) {
+        EISwrite9(&e->ADDR2, &pos, (word9) (x >> shift )& 0777);
+        shift -= 9;
+    }
+
+    SC_I_NEG (e->sign == -1);  // set negative indicator
+    SC_I_ZERO (x==0);     // set zero indicator
+    
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
+    
+    if (Ovr)
+    {
+        SET_I_OFLOW;
+        if (tstOVFfault ())
+          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dtb overflow fault");
+    }
 }
 
 /*
@@ -12424,7 +12461,7 @@ void dv3d (void)
     //    If rounding is specified (R = 1), then one extra quotient digit is
     //    produced.
     // Note: rule 3 is already handled by formatDecimal rounding
-    // Nn doesn't represent full field length, but length without sign and exponent (RJ78/DH02 seems like)
+    // Nn doesn't represent full field length, but length without sign and exponent (RJ78/DH03 seems like)
 
     int NQ;
     if (e->S3 == CSFL)
