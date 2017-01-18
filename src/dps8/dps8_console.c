@@ -894,7 +894,9 @@ void consoleProcess (void)
               }
             if (announce)
               {
-                sim_printf ("[auto-input] ");
+                //sim_printf ("[auto-input] ");
+                for (char * p = "[auto-input] "; * p; p ++)
+                  sim_putchar (* p);
                 announce = 0;
               }
             console_state . autop ++;
