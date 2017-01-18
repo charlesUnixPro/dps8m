@@ -3424,7 +3424,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu config=lprp_highonly=enable");
     doIniLine ("set cpu config=steady_clock=disable");
     doIniLine ("set cpu config=append_after=enable");
-    doIniLine ("set cpu config=super_user=disable");
+    //doIniLine ("set cpu config=super_user=disable");
     doIniLine ("set cpu config=epp_hack=enable");
     doIniLine ("set cpu config=halt_on_unimplemented=disable");
     doIniLine ("set cpu config=disable_wam=enable");
