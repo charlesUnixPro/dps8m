@@ -6067,59 +6067,40 @@ sim_printf ("do bar attempt\n");
 
         case 0505:  // bcd
           // Shift C(A) left three positions
-          // | C(A) | / C(Y) -> 4-bit quotient plus remainder
+          // | C(A) | / C(Y) -> 4-bit quotient
+          // C(A) - C(Y) * quotient -> remainder
           // Shift C(Q) left six positions
           // 4-bit quotient -> C(Q)32,35
           // remainder -> C(A)
 
           {
-IF1 sim_printf("BCD A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36, cpu.CY); 
-IF1 sim_printf("BCD A %09llx Q %09llx Y %09llx\n", cpu.rA & MASK36, cpu.rQ & MASK36, cpu.CY); 
+//IF1 sim_printf("BCD A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36, cpu.CY); 
             word36 tmp1 = cpu.rA & SIGN36; // A0
-
-            cpu.rA <<= 3;       // Shift C(A) left three positions
-            cpu.rA &= DMASK;    // keep to 36-bits
-
-            word36 tmp36 = cpu.rA & MASK36;;
-            word36 tmp36q = tmp36 / cpu.CY; // | C(A) | / C(Y) ->
-                                            // 4-bit quotient plus remainder
-            word36 tmp36r = tmp36 % cpu.CY;
+            word36 tmp36 = (cpu.rA << 3) & DMASK;
+            word36 tmp36q = tmp36 / cpu.CY; // this may be more than 4 bits, keep it for remainder calculation
+            word36 tmp36r = 0;
+            if (!tmp1) {
+                tmp36r = tmp36 - tmp36q * cpu.CY;
+            } else {
+                // ISOLTS-745 05i: bcd when rA is negative.
+                // Note that this only gets called in the first round of the bcd
+                // conversion; the rA sign bit will get shifted out.
+                // Looking at the expected results, it appears that a 'borrow'
+                // is represented in a residue style notation -- an unborrow
+                // result is 0-9 (000 - 011), a borrowed digit as 6-15 (006-017)
+                tmp36q += 6;
+                tmp36r = tmp36 + tmp36q * cpu.CY;
+            }
 
             cpu.rQ <<= 6;       // Shift C(Q) left six positions
             cpu.rQ &= DMASK;
 
-#if 1
-// ISOLTS fails bcd when rA is negative.
-// I don't understand the underlying math, but am guessing that a 
-// borrow operation of some kind is needed.
-// Note that this only has to work for the first round of the bcd
-// conversion; the rA sign bit will get shifted out.
-// Looking at the expected results, it would appear the 'borrow'
-// data is represented as a residue style notation -- an unborrow
-// result is 0-9 (000 - 011; 00-a0), a borrowed digit as 6-15 (006-017;
-// 06-0f).
-// If rA was negative do the borrow:
-            if (tmp1)
-              {
-IF1 sim_printf ("tmp36q %012llo - %012llo ~ %012llo\n", tmp36q, -tmp36q, ~tmp36q);
-IF1 sim_printf ("tmp36q %09llx - %09llx ~ %09llx\n", tmp36q, -tmp36q, ~tmp36q);
-                cpu.rQ |= ((tmp36q + 6) & 017);
-                // And do a borrow by adding a negative something to the remainder
-                //  0300 ->  1100 0000; this value may be more complex, but
-                //  without more examples....
-                tmp36r += 0300;
-              }
-            else
-              cpu.rQ |= (tmp36q & 017);
-
-#else
             //cpu.rQ &= (word36) ~017;     // 4-bit quotient -> C(Q)32,35  lo6 bits already zeroed out
             cpu.rQ |= (tmp36q & 017);
-#endif
-            cpu.rA = tmp36r;    // remainder -> C(A)
 
-IF1 sim_printf("BCD final A %012"PRIo64" Q %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
-IF1 sim_printf("BCD final A %09llx Q %09llx\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
+            cpu.rA = tmp36r & DMASK;    // remainder -> C(A)
+
+//IF1 sim_printf("BCD final A %012"PRIo64" Q %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
 
             SC_I_ZERO (cpu.rA == 0);  // If C(A) = 0, then ON;
                                             // otherwise OFF
