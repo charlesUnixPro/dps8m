@@ -6349,7 +6349,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
-IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
+//IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
@@ -9404,6 +9404,30 @@ void doRCU (void)
 
 // Reworking logic
 
+//#define rework
+#ifdef rework
+    if (cpu.cu.FIF) // fault occured during instruction fetch
+      {
+        // I am misusing this bit; on restart I want a way to tell the
+        // CPU state machine to restart the instruction, which is not
+        // how Multics uses it. I need to pick a different way to
+        // communicate; for now, turn it off on refetch so the state
+        // machine doesn't become confused.
+        cpu.cu.rfi = 0;
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU FIF REFETCH return\n");
+        longjmp (cpu.jmpMain, JMP_REFETCH);
+      }
+
+    if (cpu.cu.rfi)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi refetch return\n");
+// Setting the to RESTART causes ISOLTS 776 to report unexpected
+// trouble faults.
+// Without clearing rfi, ISOLTS pm776-08i LUFs.
+        cpu.cu.rfi = 0;
+        longjmp (cpu.jmpMain, JMP_REFETCH);
+      }
+#else
     if (cpu.cu.rfi || // S/W asked for the instruction to be started
         cpu.cu.FIF) // fault occured during instruction fetch
       {
@@ -9429,6 +9453,7 @@ void doRCU (void)
         cpu.cu.rfi = 1;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
+#endif
 
 #if 0
 // I beleive this logic is correct (cf. ISOLTS pa870 test-02d TRA PR1|6 not
@@ -9451,7 +9476,11 @@ void doRCU (void)
     // MME faults resume with the next instruction
 
     if (cpu.cu.FI_ADDR == FAULT_MME ||
+#ifdef rework
+        cpu.cu.FI_ADDR == FAULT_MME2 ||
+#else
         /* cpu.cu.FI_ADDR == FAULT_MME2 || */
+#endif
         cpu.cu.FI_ADDR == FAULT_MME3 ||
         cpu.cu.FI_ADDR == FAULT_MME4 ||
         cpu.cu.FI_ADDR == FAULT_DRL ||
