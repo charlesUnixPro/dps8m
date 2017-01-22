@@ -408,6 +408,7 @@ static void readOperands (void)
 
 static void scu2words (word36 *words)
   {
+IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.IC);
     CPT (cpt2U, 6); // scu2words
     memset (words, 0, 8 * sizeof (* words));
 
@@ -5177,7 +5178,6 @@ static t_stat DoBasicInstruction (void)
         case 0710:  // tra
           // C(TPR.CA) -> C(PPR.IC)
           // C(TPR.TSR) -> C(PPR.PSR)
-
           cpu.PPR.IC = cpu.TPR.CA;
           cpu.PPR.PSR = cpu.TPR.TSR;
           sim_debug (DBG_TRACE, & cpu_dev, "TRA %05o:%06o\n",
@@ -6349,6 +6349,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
+IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
@@ -6989,7 +6990,38 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 // 1 -> C(A) 25
 // 000 -> C(A) 26,28
 // C(Processor speed) -> C (A) 29,32
+
+
+
 // C(Processor number switches) -> C(A) 33,35
+
+// According to bound_gcos_.1.s.archive/gcos_fault_processor_.pl1 (L68/DPS):
+//
+// /* Set the A register to reflect switch info. */
+//                          mc.regs.a =
+// 
+// /* (A-reg bits) */
+// /* (0-3) Port address expansion option:           */ (4)"0"b
+// /* (4-5) Reserved for future use:                 */ || (2)"0"b
+// /* (6-12) Processor fault base address switches:  */ || (7)"0"b
+// /* (13-16) L66 peripheral connectability:         */ || (4)"0"b
+// /* (17) Future use (must be zero):                */ || (1)"1"b
+// /* (18) BCD option installed:                     */ || (1)"1"b
+// /* (19) DPS type processor:                       */ || (1)"0"b
+// /* (20) 8K cache option installed:                */ || (1)"0"b
+// /* (21) Gear shift model processor:               */ || (1)"0"b
+// /* (22) Power pach option installed:              */ || (1)"0"b
+// /* (23) VMS-CU option installed - 66B' proc:      */ || (1)"0"b
+// /* (24) VMS-VU option installed - 66B proc:       */ || (1)"0"b
+// /* (25) Type processor (0) CPL, (1) DPSE-NPL:     */ || (1)"0"b
+// /* (26) 6025, 6605 or 6610 type processor:        */ || (1)"0"b
+// /* (27) 2K cache option installed:                */ || (1)"0"b
+// /* (28) Extended memory option installed:         */ || (1)"0"b
+// /* (29-30) cabinet (00) 8/70, (01) 8/52, (10) 862, (11) 846:          */ || (2)"0"b
+// /* (31) EIS option installed:                     */ || (1)"1"b
+// /* (32) (1) slow memory access, (0) fast memory:  */ || (1)"0"b
+// /* (33) (1) no instruction overlap, (0) overlap:  */ || (1)"0"b
+// /* (34-35) Processor number:                      */ ||unspec (mc.cpu_type);
 
                   cpu.rA = 0;
 #ifdef DPS8M
