@@ -1664,6 +1664,7 @@ restart_1:
         cpu.cu.TSN_VALID[1] = 0;
         cpu.cu.TSN_VALID[2] = 0;
 
+#ifndef APPFIX
 // XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
@@ -1671,6 +1672,7 @@ restart_1:
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
           }
+#endif
       }
 
     cpu.du.JMP = (word3) info->ndes;
@@ -1848,9 +1850,9 @@ restart_1:
             if (ci->a)   // if A bit set set-up TPR stuff ...
               {
                 CPT (cpt2U, 34); // B29
-#ifndef APPFIX
+//#ifndef APPFIX
                 doPtrReg ();
-#else
+//#else
                 //word15 offset = GET_OFFSET (IWB_IRODD);
                 //cpu.TPR.CA = (cpu.PAR[n].WORDNO + 
                              //SIGNEXT15_18 (offset)) & 0777777;
@@ -2391,14 +2393,11 @@ restart_1:
         for (int n = 0 ; n < 8 ; n++)
         {
             sim_debug (DBG_REGDUMPPR, &cpu_dev,
-                       "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
+                       "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o ARCHAR:%o ARBITNO:%02o\n",
                        n, PRalias[n], cpu.PR[n].SNR, cpu.PR[n].RNR, 
-                       cpu.PR[n].WORDNO, GET_PR_BITNO (n));
+                       cpu.PR[n].WORDNO, GET_PR_BITNO (n),
+                       GET_AR_CHAR (n), GET_AR_BITNO (n));
         }
-        for (int n = 0 ; n < 8 ; n++)
-            sim_debug (DBG_REGDUMPADR, &cpu_dev,
-                       "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                       n, cpu.AR[n].WORDNO, GET_AR_CHAR (n), GET_AR_BITNO (n));
         sim_debug (DBG_REGDUMPPPR, &cpu_dev,
                    "PRR:%o PSR:%05o P:%o IC:%06o\n",
                    cpu.PPR.PRR, cpu.PPR.PSR, cpu.PPR.P, cpu.PPR.IC);
