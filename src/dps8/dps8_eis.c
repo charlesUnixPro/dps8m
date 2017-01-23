@@ -1230,20 +1230,28 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
 #else
             e -> addr [k - 1] . address = address;
 #endif
+#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-            CPTUR (cptUsePRn + n);
+#else
             e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
                                             cpu . TPR . TRR,
                                             cpu . PPR . PRR);
+#endif
                 
+#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+#else
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
+#endif
           }
         else
           {
+#ifdef EIS_PTR4
             cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+#else
             e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
+#endif
           }
 
         // Address modifier for ADDRESS. All register modifiers except du and
@@ -1269,8 +1277,11 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
     }
     else
     {
+#ifdef EIS_PTR4
           cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+#else
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
+#endif
     }
     setupOperandDescriptorCache (k);
 }
@@ -1383,17 +1394,24 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 //IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
 //IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
+#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-        CPTUR (cptUsePRn + n);
+#else
         e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
+#endif
 
+#ifdef EIS_PTR4
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+#else
         e -> addr [k - 1] . mat = viaPR;   // ARs involved
+#endif
       }
+#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+#endif
 
     PNL (cpu.du.POL = 1);
 
@@ -1586,17 +1604,23 @@ static void parseArgOperandDescriptor (uint k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-        CPTUR (cptUsePRn + n);
+#else
         e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
+#endif
+#ifdef EIS_PTR4
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+#else
         e -> addr [k - 1] . mat = viaPR;
+#endif
       }
+#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-
+#endif
     
     y += ((9u * ARn_CHAR + 36u * r + ARn_BITNO) / 36u);
     y &= AMASK;
@@ -1643,17 +1667,24 @@ static void parseNumericOperandDescriptor (int k)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
+#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-        CPTUR (cptUsePRn + n);
+#else
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+#endif
 
+#ifdef EIS_PTR4
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+#else
         e->addr[k-1].mat = viaPR;   // ARs involved
+#endif
     }
+#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
+#endif
 
     PNL (cpu.du.POL = 1);
 
@@ -1862,17 +1893,23 @@ static void parseBitstringOperandDescriptor (int k)
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
+#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-        CPTUR (cptUsePRn + n);
+#else
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+#endif
+#ifdef EIS_PTR4
         cpu.cu.TSN_VALID[k-1] = 1; // Use PR
+#else
         e->addr[k-1].mat = viaPR;   // ARs involved
+#endif
     }
+#ifdef EIS_PTR4
 // XXX remove when pointers saved correctly
     else
       cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-    
+#endif    
     PNL (cpu.du.POL = 1);
 
     //Operand length. If MFk.RL = 0, this field contains the string length of

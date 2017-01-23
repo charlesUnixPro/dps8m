@@ -983,9 +983,10 @@ typedef struct
                    // 26-29 TSNC     Pointer register number for EIS operand #2
                    //                  26-28 PRNO Pointer register number
                    //                  29       PRNO is valid
-
+#ifdef EIS_PTR4
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
+#endif
 
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
