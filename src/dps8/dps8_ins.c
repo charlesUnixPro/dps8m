@@ -1858,7 +1858,7 @@ restart_1:
                              //SIGNEXT15_18 (offset)) & 0777777;
                 //cpu.TPR.TBR = GET_PR_BITNO (n);
                 set_went_appending ();
-#endif
+//#endif
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
