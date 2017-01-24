@@ -9409,10 +9409,11 @@ void doRCU (void)
 
 // Reworking logic
 
-//#define rework
+#define rework
 #ifdef rework
     if (cpu.cu.FIF) // fault occured during instruction fetch
       {
+//if (cpu.cu.rfi) sim_printf ( "RCU FIF refetch return caught rfi\n");
         // I am misusing this bit; on restart I want a way to tell the
         // CPU state machine to restart the instruction, which is not
         // how Multics uses it. I need to pick a different way to
@@ -9423,14 +9424,27 @@ void doRCU (void)
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
+// RFI means 'refetch this instruction'
     if (cpu.cu.rfi)
       {
+//sim_printf ( "RCU rfi refetch return\n");
         sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi refetch return\n");
 // Setting the to RESTART causes ISOLTS 776 to report unexpected
 // trouble faults.
 // Without clearing rfi, ISOLTS pm776-08i LUFs.
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_REFETCH);
+      }
+
+// The debug command uses MME2 to implement breakpoints, but it is not
+// clear what it does to the MC data to signal RFI behavior.
+
+    if (cpu.cu.FI_ADDR == FAULT_MME2)
+      {
+//sim_printf ("MME2 restart\n");
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        cpu.cu.rfi = 0;
+        longjmp (cpu.jmpMain, JMP_RESTART);
       }
 #else
     if (cpu.cu.rfi || // S/W asked for the instruction to be started
@@ -9454,6 +9468,7 @@ void doRCU (void)
 
     if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
+//sim_printf ("MME2 restart\n");
         sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 1;
         longjmp (cpu.jmpMain, JMP_RESTART);
