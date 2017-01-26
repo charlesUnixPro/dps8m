@@ -9439,7 +9439,12 @@ void doRCU (void)
 // The debug command uses MME2 to implement breakpoints, but it is not
 // clear what it does to the MC data to signal RFI behavior.
 
-    if (cpu.cu.FI_ADDR == FAULT_MME2)
+    if (cpu.cu.FI_ADDR == FAULT_MME ||
+        cpu.cu.FI_ADDR == FAULT_MME2 ||
+        cpu.cu.FI_ADDR == FAULT_MME3 ||
+        cpu.cu.FI_ADDR == FAULT_MME4 ||
+        cpu.cu.FI_ADDR == FAULT_DRL)
+    //if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
         sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
@@ -9495,12 +9500,20 @@ void doRCU (void)
 #endif
     // MME faults resume with the next instruction
 
-    if (cpu.cu.FI_ADDR == FAULT_MME ||
+
+
 #ifdef rework
-        cpu.cu.FI_ADDR == FAULT_MME2 ||
+    if (cpu.cu.FI_ADDR == FAULT_DIV ||
+        cpu.cu.FI_ADDR == FAULT_OFL ||
+        cpu.cu.FI_ADDR == FAULT_IPR)
+      {
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU sync fault return\n");
+        cpu.cu.rfi = 0;
+        longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
+      }
 #else
+    if (cpu.cu.FI_ADDR == FAULT_MME ||
         /* cpu.cu.FI_ADDR == FAULT_MME2 || */
-#endif
         cpu.cu.FI_ADDR == FAULT_MME3 ||
         cpu.cu.FI_ADDR == FAULT_MME4 ||
         cpu.cu.FI_ADDR == FAULT_DRL ||
@@ -9512,6 +9525,12 @@ void doRCU (void)
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
+#endif
+
+
+
+
+
 
     // LUF can happen during fetch or CAF. If fetch, handled above
     if (cpu.cu.FI_ADDR == FAULT_LUF)
