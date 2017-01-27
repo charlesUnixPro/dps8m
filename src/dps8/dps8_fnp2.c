@@ -320,6 +320,7 @@ static struct
 
 static int wcd (void)
   {
+    sim_debug (DBG_TRACE, & fnpDev, "wcd %d (%o)\n", decoded.op_code, decoded.op_code);
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     switch (decoded.op_code)
       {
@@ -376,7 +377,171 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
+            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
+
+
+// call do_line_control (SET_HASP_MODE, 0, 0, 0);    /* switch line to HASP mode */
+// call do_line_control (CONFIGURE, 3, 0, 0);        /* transparent EBCDIC */
+// call do_line_control (SET_MASTER_SLAVE_MODE,      /* indicate if workstation or host */
+//                       binary ((hmd.type = HASP_WORKSTATION), 17, 0), 0, 0);
+// call do_line_control (SET_HASP_TIMERS, hmd.ic_timeout, hmd.receive_timeout, hmd.transmit_timeout);
+// call do_line_control (SET_NAK_LIMIT, hmd.max_naks, 0, 0);   /* maximum # of continous NAKs before line dies */
+// call do_line_control (ACCEPT_BID, 0, 0, 0);       /* start waiting for connection */
+// call channel_manager$control (hmd.devx, "set_input_message_size", addr (hmd.max_block_size), code);
+                                                            /* set maximum block size allowed on input */
+
+//
+// Bisync
+//   bisync_line_data.incl.pl1
+//
+//    /* For line_control order */
+//    
+//    dcl 1 line_ctl aligned,
+//        2 op fixed binary (17) unaligned,  /* indicates action being performed */
+//        2 val (3) fixed binary (17) unaligned;  /* optional arguments with some ops */
+//    
+//    dcl 1 valchar based (addr (line_ctl.val (1))),  /* character overlay of line_ctl.val */
+//        2 data_len fixed binary (9) unaligned unsigned,
+//        2 data character (5) unaligned;
+
+        word18 op = getbits36_18 (command_data0, 0);
+        word18 val1 = getbits36_18 (command_data0, 18);
+        word18 val2 = getbits36_18 (command_data1, 0);
+        word18 val3 = getbits36_18 (command_data1, 18);
+
+        sim_printf ("  op %o %d.\n", op, op);
+        sim_printf ("  val1 %o %d.\n", val1, val1);
+        sim_printf ("  val2 %o %d.\n", val2, val2);
+        sim_printf ("  val3 %o %d.\n", val3, val3);
+
+//  /* Values for line_ctl.op */
+//  
+//  dcl (SET_BID_LIMIT          initial (1),
+//       ACCEPT_BID             initial (2),
+//       CONFIGURE              initial (3),   /* val(1): 0 = non-transparent ASCII, 1 = not-tranparent EBCDIC,
+//                                                        2 = transparent ASCII, 3 = transparent EBCDIC */
+//       SET_TTD_PARAMS         initial (4),   /* val(1): ttd_time;  val(2): ttd_limit */
+//       REPORT_WRITE_STATUS    initial (5),   /* Request FNP to report on output buffers */
+//       SET_3270_MODE          initial (6),
+//       SET_POLLING_ADDR       initial (7),
+//       START_POLL             initial (8),
+//       SET_SELECT_ADDR        initial (9),
+//       STOP_AUTO_POLL         initial (10),
+//       SET_MASTER_SLAVE_MODE  initial (11),  /* val(1): 0 = slave (host), 1 = master (workstation) */
+//       SET_HASP_MODE          initial (12),
+//       SET_NAK_LIMIT          initial (13),  /* val(1): maximum # of NAKs allowed in a row */
+//       SET_HASP_TIMERS        initial (14))  /* val(1): initial connect timeout;  val(2): receive timeout;
+
+        switch (op)
+          {
+            case 1:
+              sim_printf ("op SET_BID_LIMIT\n");
+              break;
+
+            case 2:
+              sim_printf ("op ACCEPT_BID\n");
+              linep->mpxState = mpx_state_accept_bid;
+              break;
+
+            case 3:
+              sim_printf ("op CONFIGURE\n");
+              if (val1 < 4)
+                {
+                  linep->mpxConfig = (enum mpxConfigs) val1;
+                  switch (linep->mpxConfig)
+                    {
+                      case mpx_conf_nt_ASCII:
+                        sim_printf ("  non-transparent ASCII\n");
+                        break;
+                      case mpx_conf_nt_EBCDIC:
+                        sim_printf ("  non-transparent EBCDIC\n");
+                        break;
+                      case mpx_conf_t_ASCII:
+                        sim_printf ("  transparent ASCII\n");
+                        break;
+                      case mpx_conf_t_EBCDIC:
+                        sim_printf ("  transparent EBCDIC\n");
+                        break;
+                    }
+                }
+              else
+                sim_warn ("mpx configure %o\n", val1);
+              break;
+
+            case 4:
+              sim_printf ("op SET_TTD_PARAMS\n");
+              break;
+
+            case 5:
+              sim_printf ("op REPORT_WRITE_STATUS\n");
+              break;
+
+            case 6:
+              sim_printf ("op SET_3270_MODE\n");
+              linep -> mpxMode = mpx_mode_3270;
+              break;
+
+            case 7:
+              sim_printf ("op SET_POLLING_ADDR\n");
+              break;
+
+            case 8:
+              sim_printf ("op START_POLL\n");
+              break;
+
+            case 9:
+              sim_printf ("op SET_SELECT_ADDR\n");
+              break;
+
+            case 10:
+              sim_printf ("op STOP_AUTO_POLL\n");
+              break;
+
+            case 11:
+              sim_printf ("op SET_MASTER_SLAVE_MODE\n");
+              if (val1 < 2)
+                {
+                  linep->mpxMS = (enum mpxMSs) val1;
+                  switch (linep->mpxMS)
+                    {
+                      case mpx_mode_slave:
+                        sim_printf ("  slave\n");
+                        break;
+                      case mpx_mode_master:
+                        sim_printf ("  master\n");
+                        break;
+                    }
+                }
+              else
+                sim_warn ("mpx master slave mode %o\n", val1);
+              break;
+
+            case 12:
+              sim_printf ("op SET_HASP_MODE\n");
+              linep -> mpxMode = mpx_mode_HASP;
+              break;
+
+            case 13:
+              sim_printf ("op SET_NAK_LIMIT\n");
+              linep->mpx_nak_limit = val1;
+              sim_printf ("  nak limit %d\n", linep->mpx_nak_limit);
+              break;
+
+            case 14:
+              sim_printf ("op SET_HASP_TIMERS\n");
+              linep->mpx_connect_timeout = val1;
+              linep->mpx_receive_timeout = val2;
+              linep->mpx_transmit_timeout = val3;
+              sim_printf ("  connect timeout %d\n", linep->mpx_connect_timeout);
+              sim_printf ("  receive timeout %d\n", linep->mpx_receive_timeout);
+              sim_printf ("  transmit timeout %d\n", linep->mpx_transmit_timeout);
+              break;
+
+            default:
+              sim_printf ("op unknown\n");
+              break;
+          }
+
 #if 0
         sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
         sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
@@ -390,8 +555,18 @@ static int wcd (void)
         sim_printf ("  T1 %"PRIo64" %"PRId64".\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
         sim_printf ("  T3 %"PRIo64" %"PRId64".\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
 #endif
-
           }
+          break;
+
+        case 23: // sync_msg_size
+          {
+            // "Inform the FNP that the input messages from a synchronous
+            //  channel are expected to be no larger than a specified size."
+            // Word 2: bits 0...17 message size in characters.
+            word36 command_data0 = decoded.smbxp -> command_data [0];
+            linep->syncMsgSz = getbits36_18 (command_data0, 0);
+          }
+          break;
 
         case 24: // set_echnego_break_table
           {
@@ -578,6 +753,8 @@ static int wcd (void)
                             "Multics is no longer listening to this line\r\n");
                       }
                     if (linep->service == service_slave && ! linep -> client)
+                      fnpuv_open_slave (decoded.devUnitIdx, decoded.slot_no);
+                    if (linep->service == service_multiplexer && ! linep -> client)
                       fnpuv_open_slave (decoded.devUnitIdx, decoded.slot_no);
                   }
                   break;
@@ -835,7 +1012,70 @@ word36 pad;
 //  
         case 36: // report_meters
           {
-            //sim_printf ("fnp report_meters\n");
+
+//  dcl  FNP_CHANNEL_METERS_VERSION_1 fixed bin int static options (constant) init (1);
+//  
+//  dcl 1 fnp_chan_meter_struc based (fnp_chan_meterp) aligned,
+//0:
+//      2 version fixed bin,
+//1:
+//      2 flags,
+//        3 synchronous bit (1) unaligned,
+//        3 reserved bit (35) unaligned,
+// 2-27:
+//      2 current_meters like fnp_channel_meters,
+// 28-53:
+//      2 saved_meters like fnp_channel_meters;
+//
+// 26 words
+//
+//  dcl 1 fnp_channel_meters based aligned,
+//      2 header,
+//0:
+//        3 dia_request_q_len fixed bin (35),                             /* cumulative */
+//1:
+//        3 dia_rql_updates fixed bin (35),                     /* updates to above */
+//2:
+//        3 pending_status fixed bin (35),                      /* cumulative */
+//3:
+//        3 pending_status_updates fixed bin (35),              /* updates to above */
+//4:
+//        3 output_overlaps fixed bin (18) unsigned unaligned,  /* output chained to already-existing chain */
+//        3 parity_errors fixed bin (18) unsigned unaligned,    /* parity on the channel */
+//5:
+//        3 software_status_overflows fixed bin (18) unsigned unaligned,
+//        3 hardware_status_overflows fixed bin (18) unsigned unaligned,
+//6:
+//        3 input_alloc_failures fixed bin (18) unsigned unaligned,
+//        3 dia_current_q_len fixed bin (18) unsigned unaligned,          /* current length of dia request queue */
+//7:
+//        3 exhaust fixed bin (35),
+//8:
+//        3 software_xte fixed bin (18) unsigned unaligned,
+//        3 pad bit (18) unaligned,
+//9-25:
+//      2 sync_or_async (17) fixed bin;                         /* placeholder for meters for sync or async channels */
+//  
+//  dcl 1 fnp_sync_meters based aligned,
+//      2 header like fnp_channel_meters.header,
+//      2 input,
+//        3 message_count fixed bin (35),                       /* total number of messages */
+//        3 cum_length fixed bin (35),                          /* total cumulative length in characters */
+//        3 min_length fixed bin (18) unsigned unaligned,       /* length of shortest message */
+//        3 max_length fixed bin (18) unsigned unaligned,       /* length of longest message */
+//      2 output like fnp_sync_meters.input,
+//      2 counters (8) fixed bin (35),
+//      2 pad (3) fixed bin;
+//  
+//  dcl 1 fnp_async_meters based aligned,
+//      2 header like fnp_channel_meters.header,
+//      2 pre_exhaust fixed bin (35),
+//      2 echo_buf_overflow fixed bin (35),                     /* number of times echo buffer has overflowed */
+//      2 bell_quits fixed bin (18) unsigned unaligned,
+//      2 padb bit (18) unaligned,
+//      2 pad (14) fixed bin;
+//  
+            //sim_printf ("XXX fnp report_meters\n");
 // XXX Do nothing, the requset will timeout...
           }
           break;
@@ -857,7 +1097,8 @@ word36 pad;
         case 19: // dump_mem
         case 20: // patch_mem
         case 21: // fnp_break
-        case 23: // sync_msg_size
+        //case 22: // line_control
+        //case 23: // sync_msg_size
         //case 24: // set_echnego_break_table
         //case 25: // start_negotiated_echo
         //case 26: // stop_negotiated_echo
@@ -896,6 +1137,7 @@ sim_printf ("wcd sets the TIMW??\n");
 
 static void notifyCS (int mbx, int fnpno, int lineno)
   {
+    sim_debug (DBG_TRACE, & fnpDev, "notifyCS %d\n", mbx);
 #ifdef FNPDBG
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
@@ -942,6 +1184,27 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
 
+    notifyCS (mbx, fnpno, lineno);
+  }
+
+static void fnp_rcd_line_status (int mbx, int fnpno, int lineno, word36 line_status_0, word36 line_status_1)
+  {
+    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct t_line * linep = & fudp->MState.line[lineno];
+    struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+sim_printf ("fnp_rcd_line_status %012llo %012llo\n", line_status_0, line_status_1);
+    putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
+    putbits36_9 (& smbxp -> word2, 18, 0124); // op_code line_status
+    putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+
+    smbxp->mystery[0] = line_status_0;
+    smbxp->mystery[1] = line_status_1;
+
+
+    fudp->lineWaiting [mbx] = true;
+    fudp->fnpMBXlineno [mbx] = lineno;
+    linep->waitForMbxDone=true;
     notifyCS (mbx, fnpno, lineno);
   }
 
@@ -1261,6 +1524,7 @@ sim_printf ("\n");
 
 static int wtx (void)
   {
+    sim_debug (DBG_TRACE, & fnpDev, "wtx %d (%o)\n", decoded.op_code, decoded.op_code);
 //sim_printf ("wtx op_code %o (%d.) %c.h%03d\n", decoded.op_code, decoded.op_code, decoded.devUnitIdx+'a', decoded.slot_no);
     if (decoded.op_code != 012 && decoded.op_code != 014)
       {
@@ -1485,6 +1749,7 @@ static int interruptL66_FNP_to_CS (void)
     decoded.slot_no = getbits36_6 (word1, 12);
     //uint terminal_id = getbits36_18 (word1, 18);
 
+    sim_debug (DBG_TRACE, & fnpDev, "interruptL66_FNP_to_CS %d (%o)\n", io_cmd, io_cmd);
     switch (io_cmd)
       {
         case 2: // rtx (read transmission)
@@ -1610,6 +1875,7 @@ static int interruptL66_FNP_to_CS (void)
 static int interruptL66_CS_done (void)
   {
     uint mbx = decoded.cell - 12;
+    sim_debug (DBG_TRACE, & fnpDev, "interruptL66_CS_done %d (%o)\n", mbx, mbx);
     if (! decoded.fudp -> fnpMBXinUse [mbx])
       {
         sim_debug (DBG_ERR, & fnpDev, "odd -- Multics marked an unused mbx as unused? cell %d (mbx %d)\n", decoded.cell, mbx);
@@ -1681,6 +1947,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 //   12-15 Multics is done with mbx 8-11  (n - 4).
 
     decoded.cell = getbits36_6 (dia_pcw, 24);
+    sim_debug (DBG_TRACE, & fnpDev, "interruptL66 %d (%o)\n", decoded.cell, decoded.cell);
 #ifdef FNPDBG
 sim_printf ("CS interrupt %u\n", decoded.cell);
 #endif
@@ -1706,11 +1973,64 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
     return 0;
   }
 
+// Multiplexer
+
+// /* Values for line_stat.op */
+// 
+// dcl (BID_FAILED                    initial (1),
+//      BAD_BLOCK                     initial (2),
+//      REVERSE_INTERRUPT             initial (3),
+//      TOO_MANY_NAKS                 initial (4),
+//      FNP_WRITE_STATUS              initial (5),
+//      IBM3270_WRITE_COMPLETE        initial (6),
+//      IBM3270_WACK_MESSAGE          initial (7),
+//      IBM3270_WRITE_EOT             initial (8),
+//      IBM3270_WRITE_ABORT           initial (9),
+//      IBM3270_SELECT_FAILED         initial (10),
+//      IBM3270_WACK_SELECT           initial (11),
+//      IBM3270_NAK_OUTPUT            initial (12),
+//      HASP_INIT_COMPLETE            initial (13),
+//      HASP_FOREIGN_SWAB_RESET       initial (14))
+//           fixed binary static options (constant);
+
+enum { HASP_INIT_COMPLETE = 13 };
+enum { SYN = 0x32, ENQ = 0x2d };
+
+static bool mpxInputChar (struct t_line * linep, unsigned char kar)
+  { 
+    sim_debug (DBG_TRACE, & fnpDev, "mpxInputChar %x (%o)\n", kar, kar);
+    switch (linep->mpxState)
+      {
+        case mpx_state_accept_bid:
+          if (kar == SYN)
+            return false; // drop
+          if (kar == ENQ)
+            {
+              linep->nPos = 0;
+              linep->buffer[linep->nPos++] = kar;
+              linep->buffer[linep->nPos] = 0;
+sim_printf ("saw bid\n");
+              //return true;
+              linep->line_status_0 = 0;
+              linep->line_status_1 = 0;
+              putbits36_18 (& linep->line_status_0, 0, HASP_INIT_COMPLETE);
+              linep->line_status = true;
+              return false;
+            }
+          sim_err ("accept bid saw %x\n", kar);
+          return false;
+        default:
+          sim_err ("mpxInputChar >mpxState %d\n", linep->mpxState);
+          return false;
+      }
+  }
 // Process an input character according to the line discipline.
 // Return true if buffer should be shipped to the CS
 
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
+    if (linep->service == service_multiplexer) 
+      return mpxInputChar (linep, kar);
 
 // telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
     uvClientData * p = linep->client->data;
@@ -1890,6 +2210,9 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
     if (
         // Dialup or slave and inBuffer exhausted
         (linep->service != service_login && linep->inUsed >= linep->inSize) ||
+        //((linep->service == service_autocall || linep->service == service_slave) &&
+         //linep->inUsed >= linep->inSize) ||
+
 
         // Internal buffer full
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
@@ -2119,6 +2442,13 @@ sim_printf ("input_in_mailbox\n");
                 linep->accept_input --;
               }
 
+            // Need to send an 'line_states' command to CS?
+
+            else if (linep->line_status)
+              {
+                fnp_rcd_line_status (mbx, fnpno, lineno, linep->line_status_0, linep->line_status_1);
+                linep -> line_status = false;
+              }
             else
               {
                 continue;
@@ -2643,14 +2973,21 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
         if (p [0] == '#')  // '#' as first non-white charater is comment line
           continue;
         if (p [0] == 0)          // blank line
-          continue;;
+          continue;
         
         char * first  = trim (Strtok (p, ":"));  // stuff to the left of ':'
         char * second = trim (Strtok (NULL, ":;")); // stuff to the right of ':'
         char dev;
         if (strcmp (first, "name") == 0)
           {
-            int n = sscanf (second, "%c.h%u", & dev, & linenum);
+            havename = false;
+            char rest [1024];
+            int n = sscanf (second, "%c.h%u%s", & dev, & linenum, rest);
+            if (n == 3 && rest [0] == '.')
+              {
+                //sim_printf ("fnpLoad ignoring subchannel '%s'\n", second);
+                continue;
+              }
             if (n != 2 || dev < 'a' || dev > 'h' || linenum > MAX_LINES)
               {
                 sim_printf ("fnpLoad skipping '%s'; n %d dev %c, linenum %u\n", buff, n, dev, linenum);
@@ -2659,7 +2996,7 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
             devnum = (uint) (dev - 'a');
             havename = true;
             // CMF format sets the default service to login
-            fnpUnitData[devnum].MState.line[linenum].service = service_login;                    
+            fnpUnitData[devnum].MState.line[linenum].service = service_login;
           }
         else if (havename && second && strcmp (first, "service") == 0)
           {
@@ -2669,6 +3006,8 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
               fnpUnitData[devnum].MState.line[linenum].service = service_autocall;                   
             else if (strcmp (second, "slave") == 0)
               fnpUnitData[devnum].MState.line[linenum].service = service_slave;                   
+            else if (strcmp (second, "multiplexer") == 0)
+              fnpUnitData[devnum].MState.line[linenum].service = service_multiplexer;                   
             else if (strcmp (second, "offline") == 0)
               fnpUnitData[devnum].MState.line[linenum].service = service_undefined;                   
             else
@@ -2699,20 +3038,21 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
 
 
 // Ingored
-        else if (strcmp (first, "Service") == 0 ||
-                 strcmp (first, "Charge") == 0 ||
-                 strcmp (first, "Terminal_type") == 0 ||
-                 strcmp (first, "Line_type") == 0 ||
-                 strcmp (first, "Baud") == 0 ||
-                 strcmp (first, "FNP_required_up_time") == 0 ||
-                 strcmp (first, "FNP") == 0 ||
-                 strcmp (first, "type") == 0 ||
-                 strcmp (first, "memory") == 0 ||
-                 strcmp (first, "lsla") == 0 ||
-                 strcmp (first, "hsla") == 0 ||
-                 strcmp (first, "image") == 0 ||
-                 strcmp (first, "service") == 0 ||
-                 strcmp (first, "attributes") == 0)
+        else if (strcasecmp (first, "Service") == 0 ||
+                 strcasecmp (first, "Charge") == 0 ||
+                 strcasecmp (first, "Terminal_type") == 0 ||
+                 strcasecmp (first, "Line_type") == 0 ||
+                 strcasecmp (first, "Baud") == 0 ||
+                 strcasecmp (first, "FNP_required_up_time") == 0 ||
+                 strcasecmp (first, "FNP") == 0 ||
+                 strcasecmp (first, "type") == 0 ||
+                 strcasecmp (first, "memory") == 0 ||
+                 strcasecmp (first, "lsla") == 0 ||
+                 strcasecmp (first, "hsla") == 0 ||
+                 strcasecmp (first, "image") == 0 ||
+                 strcasecmp (first, "service") == 0 ||
+                 strcasecmp (first, "attributes") == 0 ||
+                 strcasecmp (first, "multiplexer_type") == 0)
           {
             // Ignored
           }

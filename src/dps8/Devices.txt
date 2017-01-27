@@ -1,3 +1,16 @@
+Service: login;
+Charge: none;
+Terminal_type: none;
+Line_type: none;
+Baud: 9600;
+FNP_required_up_time: 5;
+FNP:      D;
+   type:            DN6670;
+   memory:          64;
+   lsla:            0;
+   hsla:            1;
+   image:           >system_library_unbundled>site_mcs;
+   service:         active;
 name: d.h000;
 name: d.h001;
 name: d.h002;
@@ -27,16 +40,33 @@ name: d.h025;
 name: d.h026;
 name: d.h027;
 name: d.h028;
-name: d.h029;
+name: d.h029; /* HASP workstation */
+  service: multiplexer;
+  multiplexer_type: hasp;
+  line_type: BSC;
+  baud: 4800;
+  terminal_type: IBM3780_FULL;
+  port: 6132;
 
-# Auto call line
-name: d.h030;
+name: d.h029.opr; /* operator's console */
+  service: slave;
+
+name: d.h029.rdr1; /* reader */
+  service: slave;
+
+name: d.h029.prt1; /* printer */
+  service: slave;
+
+name: d.h029.pun1; /* punch */
+  service: slave;
+
+
+name: d.h030; /* Auto call line */
    service: autocall;
 
-# Slave line
-name: d.h031;
+name: d.h031; /* Slave line */
    service: slave;
-   port: 6131
+   port: 6131;
 
 end;
 

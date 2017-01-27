@@ -37,8 +37,12 @@ extern DEVICE mux_dev;
 // 
 
 // memset(0) sets service to serivce_undefined (0)
-enum service_types {service_undefined = 0, service_login, service_autocall, service_slave};
+enum service_types {service_undefined = 0, service_login, service_autocall, service_slave, service_multiplexer};
 
+enum mpxStates { mpx_state_accept_bid };
+enum mpxModes { mpx_mode_3270, mpx_mode_HASP };
+enum mpxConfigs { mpx_conf_nt_ASCII = 0, mpx_conf_nt_EBCDIC = 1, mpx_conf_t_ASCII = 2, mpx_conf_t_EBCDIC = 3 };
+enum mpxMSs { mpx_mode_slave = 0, mpx_mode_master = 1 };
 typedef struct
   {
     t_bool accept_calls;
@@ -119,6 +123,10 @@ typedef struct
         // Part of 'accept_input'
         bool input_break;
 
+        bool line_status; // Need to send line status
+        word36 line_status_0;
+        word36 line_status_1;
+
         // Buffer being assembled for sending to Multics
         unsigned char buffer[1024];   // line buffer for initial device selection and line discipline
         int nPos;           // position where *next* user input is to be stored
@@ -142,6 +150,18 @@ typedef struct
         int tun_fd;
 #endif
 
+        // sync state data
+        word18 syncMsgSz;
+
+        // multiplexer state data
+        enum mpxStates mpxState;
+        enum mpxModes mpxMode;
+        enum mpxConfigs mpxConfig;
+        enum mpxMSs mpxMS;
+        word18 mpx_connect_timeout;
+        word18 mpx_receive_timeout;
+        word18 mpx_transmit_timeout;
+        word18 mpx_nak_limit;
       } line [MAX_LINES];
   } t_MState;
 
