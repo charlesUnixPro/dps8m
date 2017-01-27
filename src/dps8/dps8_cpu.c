@@ -85,6 +85,7 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat cpu_set_initialize_and_clear (UNIT * uptr, int32 value, const char * cptr, void * desc);
 #ifndef SPEED
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, const void *desc);
 #endif
@@ -108,6 +109,20 @@ static MTAB cpu_mod[] = {
       "CONFIG",         /* match string */
       cpu_set_config,         /* validation routine */
       cpu_show_config, /* display routine */
+      NULL,          /* value descriptor */
+      NULL // help
+    },
+    {
+#ifdef ROUND_ROBIN
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+#else
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+#endif
+      0,            /* match */
+      "INITIALIZEANDCLEAR",     /* print string */
+      "INITIALIZEANDCLEAR",         /* match string */
+      cpu_set_initialize_and_clear,         /* validation routine */
+      NULL, /* display routine */
       NULL,          /* value descriptor */
       NULL // help
     },
@@ -968,53 +983,60 @@ void cpu_init (void)
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
+static void cpun_reset2 (uint cpun)
+{
+#ifdef ROUND_ROBIN
+    setCPUnum (cpun);
+#endif
+    cpu.rA = 0;
+    cpu.rQ = 0;
+    
+    cpu.PPR.IC = 0;
+    cpu.PPR.PRR = 0;
+    cpu.PPR.PSR = 0;
+    cpu.PPR.P = 1;
+    cpu.RSDWH_R1 = 0;
+    cpu.rTR = 0;
+#if ISOLTS
+    cpu.shadowTR = 0;
+#endif
+ 
+    set_addr_mode(ABSOLUTE_mode);
+    SET_I_NBAR;
+    
+    cpu.CMR.luf = 3;    // default of 16 mS
+#ifdef WAM
+    cpu.cu.SD_ON = 1;
+    cpu.cu.PT_ON = 1;
+#else
+// If WAM emulation is not enabled lie and say it is...
+    cpu.cu.SD_ON = 1;
+    cpu.cu.PT_ON = 1;
+#endif
+ 
+    setCpuCycle (FETCH_cycle);
+
+    cpu.wasXfer = false;
+    cpu.wasInhibited = false;
+
+    cpu.interrupt_flag = false;
+    cpu.g7_flag = false;
+
+    cpu.faultRegister [0] = 0;
+    cpu.faultRegister [1] = 0;
+
+    memset (& cpu.PPR, 0, sizeof (struct _ppr));
+
+    setup_scbank_map ();
+
+    tidy_cu ();
+}
+
 static void cpu_reset2 (void)
 {
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
-#ifdef ROUND_ROBIN
-        setCPUnum (i);
-#endif
-        cpu.rA = 0;
-        cpu.rQ = 0;
-    
-        cpu.PPR.IC = 0;
-        cpu.PPR.PRR = 0;
-        cpu.PPR.PSR = 0;
-        cpu.PPR.P = 1;
-        cpu.RSDWH_R1 = 0;
-        cpu.rTR = 0;
-#if ISOLTS
-        cpu.shadowTR = 0;
-#endif
- 
-        set_addr_mode(ABSOLUTE_mode);
-        SET_I_NBAR;
-    
-        cpu.CMR.luf = 3;    // default of 16 mS
-#ifdef WAM
-        cpu.cu.SD_ON = 1;
-        cpu.cu.PT_ON = 1;
-#else
-// If WAM emulation is not enabled lie and say it is...
-        cpu.cu.SD_ON = 1;
-        cpu.cu.PT_ON = 1;
-#endif
- 
-        setCpuCycle (FETCH_cycle);
-
-        cpu.wasXfer = false;
-        cpu.wasInhibited = false;
-
-        cpu.interrupt_flag = false;
-        cpu.g7_flag = false;
-
-        cpu.faultRegister [0] = 0;
-        cpu.faultRegister [1] = 0;
-
-        memset (& cpu.PPR, 0, sizeof (struct _ppr));
-
-        setup_scbank_map ();
+        cpun_reset2 (i);
       }
 
 #ifdef ROUND_ROBIN
@@ -1044,7 +1066,6 @@ static void cpu_reset2 (void)
     initializeTheMatrix();
 #endif
 
-    tidy_cu ();
 }
 
 static t_stat cpu_reset (UNUSED DEVICE *dptr)
@@ -3330,6 +3351,31 @@ static config_list_t cpu_config_list [] =
     /* 30 */ { "useMap", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
+
+static t_stat cpu_set_initialize_and_clear (UNIT * uptr, UNUSED int32 value,
+                                            UNUSED const char * cptr, 
+                                            UNUSED void * desc)
+  {
+    long cpu_unit_num = UNIT_NUM (uptr);
+    // Crashes console?
+    //cpun_reset2 ((uint) cpu_unit_num);
+#ifdef ISOLTS
+    cpu_state_t * cpun = cpus + cpu_unit_num;
+    if (cpun->switches.useMap)
+      {
+        for (uint pgnum = 0; pgnum < N_SCBANKS; pgnum ++)
+          {
+            int os = cpun->scbank_pg_os [pgnum];
+            if (os < 0)
+              continue;
+//sim_printf ("clearing @%08o\n", (uint) os);
+            for (uint addr = 0; addr < SCBANK; addr ++)
+              M [addr + (uint) os] = MEM_UNINITIALIZED;
+          }
+      }
+#endif
+    return SCPE_OK;
+  }
 
 static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
                               UNUSED void * desc)
