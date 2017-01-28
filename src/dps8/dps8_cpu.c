@@ -3124,6 +3124,10 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
+#ifdef ROUND_ROBIN
+    uint save = setCPUnum ((uint) unit_num);
+#endif
+
     sim_printf ("CPU unit number %ld\n", unit_num);
 
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
@@ -3162,6 +3166,11 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     //sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
+
+#ifdef ROUND_ROBIN
+    setCPUnum (save);
+#endif
+
     return SCPE_OK;
 }
 
@@ -4016,8 +4025,16 @@ static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
 static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
                            UNUSED int val, UNUSED const void * desc)
   {
+#ifdef ROUND_ROBIN
+    long unit_num = UNIT_NUM (uptr);
+    uint save = setCPUnum ((uint) unit_num);
+#endif
     // FIXME: use FILE *st
-    return cmd_stack_trace(0, NULL);
+    int ret = cmd_stack_trace(0, NULL);
+#ifdef ROUND_ROBIN
+    setCPUnum (save);
+#endif
+    return ret;
   }
 #endif
 
