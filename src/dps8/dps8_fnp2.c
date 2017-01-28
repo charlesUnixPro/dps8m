@@ -951,37 +951,21 @@ static int wcd (void)
 
 
 //  dcl 1 fnp_channel_meters based aligned,
-struct fnp_channel_meters
-  {
 //      2 header,
-struct header
-  {
 //        3 dia_request_q_len fixed bin (35),                             /* cumulative */
-word36 dia_request_q_len;
 //        3 dia_rql_updates fixed bin (35),                     /* updates to above */
-word36 dia_rql_updates;
 //        3 pending_status fixed bin (35),                      /* cumulative */
-word36 pending_status;
 //        3 pending_status_updates fixed bin (35),              /* updates to above */
-word36 pending_status_updates;
 //        3 output_overlaps fixed bin (18) unsigned unaligned,  /* output chained to already-existing chain */
 //        3 parity_errors fixed bin (18) unsigned unaligned,    /* parity on the channel */
-word36 output_overlaps___parity_errors;
 //        3 software_status_overflows fixed bin (18) unsigned unaligned,
 //        3 hardware_status_overflows fixed bin (18) unsigned unaligned,
-word36 software_status_overflows___hardware_status_overflows;
 //        3 input_alloc_failures fixed bin (18) unsigned unaligned,
 //        3 dia_current_q_len fixed bin (18) unsigned unaligned,          /* current length of dia request queue */
-word36 input_alloc_failures___dia_current_q_len;
 //        3 exhaust fixed bin (35),
-word36 exhaust;
 //        3 software_xte fixed bin (18) unsigned unaligned,
 //        3 pad bit (18) unaligned,
-word36 software_xte___sync_or_async;
-  } header;
 //      2 sync_or_async (17) fixed bin;                         /* placeholder for meters for sync or async channels */
-word36 sync_or_async;
-  };
 
 //  
 //  dcl 1 fnp_sync_meters based aligned,
@@ -996,19 +980,12 @@ word36 sync_or_async;
 //      2 pad (3) fixed bin;
 //  
 //  dcl 1 fnp_async_meters based aligned,
-struct fnp_async_meters
-  {
 //      2 header like fnp_channel_meters.header,
 //      2 pre_exhaust fixed bin (35),
-word36 pre_exhaust;
 //      2 echo_buf_overflow fixed bin (35),                     /* number of times echo buffer has overflowed */
-word36 echo_buf_overflow;
 //      2 bell_quits fixed bin (18) unsigned unaligned,
 //      2 padb bit (18) unaligned,
-word36 bell_quits___pad;
 //      2 pad (14) fixed bin;
-word36 pad;
-  };
 //  
         case 36: // report_meters
           {
@@ -1075,8 +1052,130 @@ word36 pad;
 //      2 padb bit (18) unaligned,
 //      2 pad (14) fixed bin;
 //  
-            //sim_printf ("XXX fnp report_meters\n");
+            sim_printf ("XXX fnp report_meters\n");
 // XXX Do nothing, the requset will timeout...
+            word36 command_data0 = decoded.smbxp -> command_data [0];
+            word18 absaddr = getbits36_18 (command_data0, 0);
+            bool sync = linep->service == service_multiplexer;
+
+//sim_printf ("  %06o\n", absaddr);
+
+            M [absaddr +  0] = 1; // FNP_CHANNEL_METERS_VERSION_1
+            M [absaddr +  1] = sync ?  SIGN36 : 0; // flags.synchronous
+
+            // current_meters
+            M [absaddr +  2 +  0] = 0; // dia_request_q_len
+            M [absaddr +  2 +  1] = 0; // dia_rql_updates
+            M [absaddr +  2 +  2] = 0; // pending_status
+            M [absaddr +  2 +  3] = 0; // pending_status_updates
+            M [absaddr +  2 +  4] = 0; // output_overlaps, parity_errors
+            M [absaddr +  2 +  5] = 0; // software_status_overflows, hardware_status_overflows
+            M [absaddr +  2 +  6] = 0; // input_alloc_failures, dia_current_q_len
+            M [absaddr +  2 +  7] = 0; // exhaust
+            M [absaddr +  2 +  8] = 0; // software_xte, pad
+
+
+            if (sync)
+              {
+                // input
+                M [absaddr +  2 +  9 +  0] = 0; // message_count
+                M [absaddr +  2 +  9 +  1] = 0; // cum_length
+                M [absaddr +  2 +  9 +  2] = 0; // min_length, max_length 
+                // output
+                M [absaddr +  2 +  9 +  3] = 0; // message_count
+                M [absaddr +  2 +  9 +  4] = 0; // cum_length
+                M [absaddr +  2 +  9 +  5] = 0; // min_length, max_length 
+
+                M [absaddr +  2 +  9 +  6] = 0; // counters[0]
+                M [absaddr +  2 +  9 +  7] = 0; // counters[1]
+                M [absaddr +  2 +  9 +  8] = 0; // counters[2]
+                M [absaddr +  2 +  9 +  9] = 0; // counters[3]
+                M [absaddr +  2 +  9 + 10] = 0; // counters[4]
+                M [absaddr +  2 +  9 + 11] = 0; // counters[5]
+                M [absaddr +  2 +  9 + 12] = 0; // counters[6]
+                M [absaddr +  2 +  9 + 13] = 0; // counters[7]
+                M [absaddr +  2 +  9 + 14] = 0; // pad[0]
+                M [absaddr +  2 +  9 + 15] = 0; // pad[1]
+                M [absaddr +  2 +  9 + 16] = 0; // pad[2]
+              }
+            else
+              {
+                M [absaddr +  2 +  9 +  0] = 0; // pre_exhaust
+                M [absaddr +  2 +  9 +  1] = 0; // echo_buf_overflow
+                M [absaddr +  2 +  9 +  2] = 0; // bell_quits, bad
+                M [absaddr +  2 +  9 +  3] = 0; // pad[0]
+                M [absaddr +  2 +  9 +  4] = 0; // pad[1]
+                M [absaddr +  2 +  9 +  5] = 0; // pad[2]
+                M [absaddr +  2 +  9 +  6] = 0; // pad[3]
+                M [absaddr +  2 +  9 +  7] = 0; // pad[4]
+                M [absaddr +  2 +  9 +  8] = 0; // pad[5]
+                M [absaddr +  2 +  9 +  9] = 0; // pad[6]
+                M [absaddr +  2 +  9 + 10] = 0; // pad[7]
+                M [absaddr +  2 +  9 + 11] = 0; // pad[8]
+                M [absaddr +  2 +  9 + 12] = 0; // pad[9]
+                M [absaddr +  2 +  9 + 13] = 0; // pad[10]
+                M [absaddr +  2 +  9 + 14] = 0; // pad[11]
+                M [absaddr +  2 +  9 + 15] = 0; // pad[12]
+                M [absaddr +  2 +  9 + 16] = 0; // pad[13]
+              }
+
+            // saved_meters
+            M [absaddr + 28 +  0] = 0; // dia_request_q_len
+            M [absaddr + 28 +  1] = 0; // dia_rql_updates
+            M [absaddr + 28 +  2] = 0; // pending_status
+            M [absaddr + 28 +  3] = 0; // pending_status_updates
+            M [absaddr + 28 +  4] = 0; // output_overlaps, parity_errors
+            M [absaddr + 28 +  5] = 0; // software_status_overflows, hardware_status_overflows
+            M [absaddr + 28 +  6] = 0; // input_alloc_failures, dia_current_q_len
+            M [absaddr + 28 +  7] = 0; // exhaust
+            M [absaddr + 28 +  8] = 0; // software_xte, pad
+
+
+            if (sync)
+              {
+                // input
+                M [absaddr + 28 +  9 +  0] = 0; // message_count
+                M [absaddr + 28 +  9 +  1] = 0; // cum_length
+                M [absaddr + 28 +  9 +  2] = 0; // min_length, max_length 
+                // output
+                M [absaddr + 28 +  9 +  3] = 0; // message_count
+                M [absaddr + 28 +  9 +  4] = 0; // cum_length
+                M [absaddr + 28 +  9 +  5] = 0; // min_length, max_length 
+
+                M [absaddr + 28 +  9 +  6] = 0; // counters[0]
+                M [absaddr + 28 +  9 +  7] = 0; // counters[1]
+                M [absaddr + 28 +  9 +  8] = 0; // counters[2]
+                M [absaddr + 28 +  9 +  9] = 0; // counters[3]
+                M [absaddr + 28 +  9 + 10] = 0; // counters[4]
+                M [absaddr + 28 +  9 + 11] = 0; // counters[5]
+                M [absaddr + 28 +  9 + 12] = 0; // counters[6]
+                M [absaddr + 28 +  9 + 13] = 0; // counters[7]
+                M [absaddr + 28 +  9 + 14] = 0; // pad[0]
+                M [absaddr + 28 +  9 + 15] = 0; // pad[1]
+                M [absaddr + 28 +  9 + 16] = 0; // pad[2]
+              }
+            else
+              {
+                M [absaddr + 28 +  9 +  0] = 0; // pre_exhaust
+                M [absaddr + 28 +  9 +  1] = 0; // echo_buf_overflow
+                M [absaddr + 28 +  9 +  2] = 0; // bell_quits, bad
+                M [absaddr + 28 +  9 +  3] = 0; // pad[0]
+                M [absaddr + 28 +  9 +  4] = 0; // pad[1]
+                M [absaddr + 28 +  9 +  5] = 0; // pad[2]
+                M [absaddr + 28 +  9 +  6] = 0; // pad[3]
+                M [absaddr + 28 +  9 +  7] = 0; // pad[4]
+                M [absaddr + 28 +  9 +  8] = 0; // pad[5]
+                M [absaddr + 28 +  9 +  9] = 0; // pad[6]
+                M [absaddr + 28 +  9 + 10] = 0; // pad[7]
+                M [absaddr + 28 +  9 + 11] = 0; // pad[8]
+                M [absaddr + 28 +  9 + 12] = 0; // pad[9]
+                M [absaddr + 28 +  9 + 13] = 0; // pad[10]
+                M [absaddr + 28 +  9 + 14] = 0; // pad[11]
+                M [absaddr + 28 +  9 + 15] = 0; // pad[12]
+                M [absaddr + 28 +  9 + 16] = 0; // pad[13]
+              }
+
+            //notifyCS (decoded.cell, fnpno, lineno);
           }
           break;
 
