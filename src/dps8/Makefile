@@ -50,7 +50,7 @@ CFLAGS += -DCROSS_MINGW64
 LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32
 endif
 
-CFLAGS += -I../decNumber -I../simhv40-beta
+CFLAGS += -I../decNumber -I$(SIMHx)
 #ifeq ($(CROSS),MINGW64)
 #CFLAGS += -I../gnulib
 #endif
@@ -65,8 +65,11 @@ endif
 
 # Configuration switches
 
-#LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+ifeq ($(CROSS),MINGW64)
+LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+else
 LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a 
+endif
 
 # simh requires -ldl
 # Cygwin seems to need...

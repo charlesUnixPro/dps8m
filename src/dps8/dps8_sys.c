@@ -2288,7 +2288,7 @@ static t_stat launch (int32 UNUSED arg, const char * buf)
      si.cb = sizeof(si);
      memset( &pi, 0, sizeof(pi) );
  
-     if( !CreateProcess( NULL, buf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) 
+     if( !CreateProcess( NULL, (LPSTR)buf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) 
      {
          sim_printf ("fork failed\n");
          return SCPE_ARG;
@@ -2374,10 +2374,14 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set crdrdr nunits=1");
     doIniLine ("set crdpun nunits=1");
     doIniLine ("set prt nunits=17");
+#ifndef __MINGW64__
     doIniLine ("set absi nunits=1");
 
     // ;Create card reader queue directory
     doIniLine ("! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi");
+#else
+    doIniLine ("! mkdir %TEMP%\\rdra");
+#endif
 
     doIniLine ("set cpu config=faultbase=Multics");
 

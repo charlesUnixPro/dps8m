@@ -37,6 +37,10 @@ CFLAGS  = -g -O3
 ifeq ($(OS),Windows_NT)
     CC = gcc
     LD = gcc
+ifeq ($(CROSS),MINGW64)
+    CFLAGS += -I../mingw_include
+    LDFLAGS += -L../mingw_lib  
+endif
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),FreeBSD)
