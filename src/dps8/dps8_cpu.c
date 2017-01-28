@@ -138,7 +138,11 @@ static MTAB cpu_mod[] = {
     },
 #ifndef SPEED
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
+#ifdef ROUND_ROBIN
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+#else
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+#endif
       0, "STACK", NULL,
       NULL, cpu_show_stack, NULL, NULL
     },
