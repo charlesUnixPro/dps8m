@@ -321,6 +321,7 @@ static struct
 static int wcd (void)
   {
     sim_debug (DBG_TRACE, & fnpDev, "wcd %d (%o)\n", decoded.op_code, decoded.op_code);
+    bool sendInterrupt = false;
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     switch (decoded.op_code)
       {
@@ -937,58 +938,9 @@ static int wcd (void)
           }
           break;
 
-//  dcl  fnp_chan_meterp pointer;
-//  dcl  FNP_CHANNEL_METERS_VERSION_1 fixed bin int static options (constant) init (1);
-//  
-//  dcl 1 fnp_chan_meter_struc based (fnp_chan_meterp) aligned,
-//      2 version fixed bin,
-//      2 flags,
-//        3 synchronous bit (1) unaligned,
-//        3 reserved bit (35) unaligned,
-//      2 current_meters like fnp_channel_meters,
-//      2 saved_meters like fnp_channel_meters;
-//  
-
-
-//  dcl 1 fnp_channel_meters based aligned,
-//      2 header,
-//        3 dia_request_q_len fixed bin (35),                             /* cumulative */
-//        3 dia_rql_updates fixed bin (35),                     /* updates to above */
-//        3 pending_status fixed bin (35),                      /* cumulative */
-//        3 pending_status_updates fixed bin (35),              /* updates to above */
-//        3 output_overlaps fixed bin (18) unsigned unaligned,  /* output chained to already-existing chain */
-//        3 parity_errors fixed bin (18) unsigned unaligned,    /* parity on the channel */
-//        3 software_status_overflows fixed bin (18) unsigned unaligned,
-//        3 hardware_status_overflows fixed bin (18) unsigned unaligned,
-//        3 input_alloc_failures fixed bin (18) unsigned unaligned,
-//        3 dia_current_q_len fixed bin (18) unsigned unaligned,          /* current length of dia request queue */
-//        3 exhaust fixed bin (35),
-//        3 software_xte fixed bin (18) unsigned unaligned,
-//        3 pad bit (18) unaligned,
-//      2 sync_or_async (17) fixed bin;                         /* placeholder for meters for sync or async channels */
-
-//  
-//  dcl 1 fnp_sync_meters based aligned,
-//      2 header like fnp_channel_meters.header,
-//      2 input,
-//        3 message_count fixed bin (35),                       /* total number of messages */
-//        3 cum_length fixed bin (35),                          /* total cumulative length in characters */
-//        3 min_length fixed bin (18) unsigned unaligned,       /* length of shortest message */
-//        3 max_length fixed bin (18) unsigned unaligned,       /* length of longest message */
-//      2 output like fnp_sync_meters.input,
-//      2 counters (8) fixed bin (35),
-//      2 pad (3) fixed bin;
-//  
-//  dcl 1 fnp_async_meters based aligned,
-//      2 header like fnp_channel_meters.header,
-//      2 pre_exhaust fixed bin (35),
-//      2 echo_buf_overflow fixed bin (35),                     /* number of times echo buffer has overflowed */
-//      2 bell_quits fixed bin (18) unsigned unaligned,
-//      2 padb bit (18) unaligned,
-//      2 pad (14) fixed bin;
-//  
-        case 36: // report_meters
-          {
+///
+/// report_meters
+///
 
 //  dcl  FNP_CHANNEL_METERS_VERSION_1 fixed bin int static options (constant) init (1);
 //  
@@ -1052,6 +1004,9 @@ static int wcd (void)
 //      2 padb bit (18) unaligned,
 //      2 pad (14) fixed bin;
 //  
+        case 36: // report_meters
+          {
+
             sim_printf ("XXX fnp report_meters\n");
 // XXX Do nothing, the requset will timeout...
             word36 command_data0 = decoded.smbxp -> command_data [0];
@@ -1176,6 +1131,7 @@ static int wcd (void)
               }
 
             //notifyCS (decoded.cell, fnpno, lineno);
+            sendInterrupt = true;
           }
           break;
 
@@ -1228,6 +1184,13 @@ static int wcd (void)
     // Set the TIMW
 
     putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, decoded.cell, 1);
+    if (sendInterrupt)
+      {
+        // XXX This is one of the bogus fnpno == unitIndex assumptions
+        uint fnpno = decoded.devUnitIdx;
+        send_terminate_interrupt ((uint) cables->cablesFromIomToFnp[fnpno].iomUnitIdx,
+                                  (uint) cables->cablesFromIomToFnp[fnpno].chan_num);
+      }
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
 #endif
@@ -2093,7 +2056,7 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
 //           fixed binary static options (constant);
 
 enum { HASP_INIT_COMPLETE = 13 };
-enum { SYN = 0x32, ENQ = 0x2d };
+enum { SYN = 0x32, ENQ = 0x2d, DLE = 0x10, ACK1 = 0x61, ACK0 = 0x70 };
 
 static bool mpxInputChar (struct t_line * linep, unsigned char kar)
   { 
@@ -2105,6 +2068,7 @@ static bool mpxInputChar (struct t_line * linep, unsigned char kar)
             return false; // drop
           if (kar == ENQ)
             {
+#if 0
               linep->nPos = 0;
               linep->buffer[linep->nPos++] = kar;
               linep->buffer[linep->nPos] = 0;
@@ -2114,10 +2078,29 @@ sim_printf ("saw bid\n");
               linep->line_status_1 = 0;
               putbits36_18 (& linep->line_status_0, 0, HASP_INIT_COMPLETE);
               linep->line_status = true;
+#endif
+              if (linep->client)
+                {
+                  char strAck [2] [3] =
+                    {
+                      { DLE, ACK0, 0 },
+                      { DLE, ACK1, 0 }
+                    };
+                  fnpuv_start_write (linep->client, 
+                                     strAck [linep->ackcnt % 2],
+                                     (ssize_t) strlen (strAck [linep->ackcnt % 2]));
+                  linep->ackcnt ++;
+                }
+              linep->mpxState = mpx_state_control;
               return false;
             }
-          sim_err ("accept bid saw %x\n", kar);
+          sim_warn ("accept bid saw %x\n", kar);
           return false;
+
+        case mpx_state_control:
+          sim_warn ("control saw %x\n", kar);
+          return false;
+
         default:
           sim_err ("mpxInputChar >mpxState %d\n", linep->mpxState);
           return false;

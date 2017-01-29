@@ -39,7 +39,7 @@ extern DEVICE mux_dev;
 // memset(0) sets service to serivce_undefined (0)
 enum service_types {service_undefined = 0, service_login, service_autocall, service_slave, service_multiplexer};
 
-enum mpxStates { mpx_state_accept_bid };
+enum mpxStates { mpx_state_accept_bid, mpx_state_control };
 enum mpxModes { mpx_mode_3270, mpx_mode_HASP };
 enum mpxConfigs { mpx_conf_nt_ASCII = 0, mpx_conf_nt_EBCDIC = 1, mpx_conf_t_ASCII = 2, mpx_conf_t_EBCDIC = 3 };
 enum mpxMSs { mpx_mode_slave = 0, mpx_mode_master = 1 };
@@ -162,6 +162,7 @@ typedef struct
         word18 mpx_receive_timeout;
         word18 mpx_transmit_timeout;
         word18 mpx_nak_limit;
+        int ackcnt;
       } line [MAX_LINES];
   } t_MState;
 
