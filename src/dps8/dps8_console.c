@@ -910,7 +910,7 @@ void consoleProcess (void)
               {
 eol:
                 sim_putchar ('\n');
-                //sim_putchar ('\r');
+                sim_putchar ('\r');
                 sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Got EOL\n");
                 sendConsole (04000); // Normal status
                 return;
@@ -995,7 +995,7 @@ eol:
       {
         sim_putchar ('^');
         sim_putchar ('R');
-        //sim_putchar ('\r');
+        sim_putchar ('\r');
         sim_putchar ('\n');
         for (unsigned char * p = console_state . buf; p < console_state . tailp; p ++)
           sim_putchar ((int32) (*p));
@@ -1006,7 +1006,7 @@ eol:
       {
         sim_putchar ('^');
         sim_putchar ('U');
-        //sim_putchar ('\r');
+        sim_putchar ('\r');
         sim_putchar ('\n');
         console_state . tailp = console_state . buf;
         return;
@@ -1014,7 +1014,7 @@ eol:
 
     if (c == '\012' || c == '\015')  // CR/LF
       {
-        //sim_putchar ('\r');
+        sim_putchar ('\r');
         sim_putchar ('\n');
         //sim_printf ("send: <%s>\r\n", console_state . buf);
         sendConsole (04000); // Normal status
@@ -1023,7 +1023,7 @@ eol:
 
     if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
       {
-        //sim_putchar ('\r');
+        sim_putchar ('\r');
         sim_putchar ('\n');
         // Empty input buffer
         console_state . readp = console_state . buf;
