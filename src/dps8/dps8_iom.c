@@ -2612,7 +2612,8 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
         return SCPE_ARG;
       }
     uint iomUnitIdx = (uint) unitNum;
-#if 0
+//#if 0
+#ifdef THREADZ
     // initialize memory with boot program
     initMemoryIOM ((uint)iomUnitIdx);
 

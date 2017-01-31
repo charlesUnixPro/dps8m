@@ -3438,9 +3438,10 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; 6 MIP Processor
     //doIniLine ("set cpu config=trlsb=12");
 
+#ifndef THREADZ
     doIniLine ("set sys config=activate_time=8");
     doIniLine ("set sys config=terminate_time=8");
-
+#endif
 
     doIniLine ("fnpload Devices.txt");
     doIniLine ("fnpserverport 6180");

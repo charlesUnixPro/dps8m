@@ -2828,38 +2828,47 @@ static t_stat DoBasicInstruction (void)
         /// Fixed-Point Data Movement Store
 
         case 0753:  // sreg
-          CPTUR (cptUseE);
-          CPTUR (cptUseRALR);
-          // clear block (changed to memset() per DJ request)
-          //memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
+          {
+            CPTUR (cptUseE);
+            CPTUR (cptUseRALR);
+            // clear block (changed to memset() per DJ request)
+            //memset (cpu.Yblock8, 0, sizeof (cpu.Yblock8));
 #ifdef L68
-          cpu.ou.cycle |= ou_GOS;
-          cpu.ou.eac = 0;
+            cpu.ou.cycle |= ou_GOS;
+            cpu.ou.eac = 0;
 #endif
-          SETHI (cpu.Yblock8[0], cpu.rX[0]);
-          SETLO (cpu.Yblock8[0], cpu.rX[1]);
+            SETHI (cpu.Yblock8[0], cpu.rX[0]);
+            SETLO (cpu.Yblock8[0], cpu.rX[1]);
 #ifdef L68
-          cpu.ou.eac ++;
+            cpu.ou.eac ++;
 #endif
-          SETHI (cpu.Yblock8[1], cpu.rX[2]);
-          SETLO (cpu.Yblock8[1], cpu.rX[3]);
+            SETHI (cpu.Yblock8[1], cpu.rX[2]);
+            SETLO (cpu.Yblock8[1], cpu.rX[3]);
 #ifdef L68
-          cpu.ou.eac ++;
+            cpu.ou.eac ++;
 #endif
-          SETHI (cpu.Yblock8[2], cpu.rX[4]);
-          SETLO (cpu.Yblock8[2], cpu.rX[5]);
+            SETHI (cpu.Yblock8[2], cpu.rX[4]);
+            SETLO (cpu.Yblock8[2], cpu.rX[5]);
 #ifdef L68
-          cpu.ou.eac ++;
+            cpu.ou.eac ++;
 #endif
-          SETHI (cpu.Yblock8[3], cpu.rX[6]);
-          SETLO (cpu.Yblock8[3], cpu.rX[7]);
+            SETHI (cpu.Yblock8[3], cpu.rX[6]);
+            SETLO (cpu.Yblock8[3], cpu.rX[7]);
 #ifdef L68
-          cpu.ou.eac = 0;
+            cpu.ou.eac = 0;
 #endif
-          cpu.Yblock8[4] = cpu.rA;
-          cpu.Yblock8[5] = cpu.rQ;
-          cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
-          cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
+            cpu.Yblock8[4] = cpu.rA;
+            cpu.Yblock8[5] = cpu.rQ;
+            cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
+#ifdef THREADZ
+            word27 ticks;
+            bool ovf;
+            currentTR (& ticks, & ovf);
+            cpu.Yblock8[7] = ((ticks & MASK27) << 9) | (cpu.rRALR & 07);
+#else
+            cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
+#endif
+          }
           break;
 
         case 0755:  // sta
@@ -2994,15 +3003,24 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0454:  // stt
-          CPTUR (cptUseTR);
+          {
+            CPTUR (cptUseTR);
 #ifdef ISOLTS
-          if (currentRunningCPUnum)
-            cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
-          else
-            cpu.CY = (cpu.rTR & MASK27) << 9;
+            if (currentRunningCPUnum)
+              cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
+            else
+              cpu.CY = (cpu.rTR & MASK27) << 9;
 #else
-          cpu.CY = (cpu.rTR & MASK27) << 9;
+#ifdef THREADZ
+            word27 ticks;
+            bool ovf;
+            currentTR (& ticks, & ovf);
+            cpu.CY = (ticks & MASK27) << 9;
+#else
+            cpu.CY = (cpu.rTR & MASK27) << 9;
 #endif
+#endif
+          }
           break;
 
 
@@ -6356,6 +6374,9 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.shadowTR = cpu.rTR;
 //IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
+#ifdef THREADZ
+          clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
+#endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
           // Undocumented feature. return to bce has been observed to
@@ -7504,15 +7525,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
               sys_stats.total_cycles ++;
               //longjmp (cpu.jmpMain, JMP_REFETCH);
-#ifdef ROUND_ROBIN
-#ifdef ISOLTS
-              if (currentRunningCPUnum)
-              {
-//sim_printf ("stopping CPU %c\n", currentRunningCPUnum + 'A');
-                cpu.isRunning = false;
-              }
-#endif
-#endif
               return CONT_DIS;
             }
 

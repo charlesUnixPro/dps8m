@@ -904,6 +904,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     absiProcessEvent ();
 #endif
 
+#ifndef THREADZ
 // Update the TR
 
 // The Timer register runs at 512Khz; in 1/100 of a second it
@@ -921,6 +922,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     cpu.rTR &= MASK27;
 #if ISOLTS
     cpu.shadowTR = cpu.rTR;
+#endif
 #endif
   }
 #endif
@@ -1005,6 +1007,9 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.PPR.P = 1;
     cpu.RSDWH_R1 = 0;
     cpu.rTR = 0;
+#ifdef THREADZ
+    clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
+#endif
 #if ISOLTS
     cpu.shadowTR = 0;
 #endif
@@ -1542,8 +1547,10 @@ static void panelProcessEvent (void)
 // other extant cycles:
 //  ABORT_cycle
 
+#ifndef THREADZ
 #ifdef EV_POLL
 static uint fastQueueSubsample = 0;
+#endif
 #endif
 
 
@@ -2085,6 +2092,19 @@ t_stat sim_instr (void)
 //
 // Neither of these require high resolution or high accuracy.
 //
+
+#ifdef THREADZ
+                    word27 ticks;
+                    bool ovf;
+                    currentTR (& ticks, & ovf);
+                    if (! ovf)
+                      {
+sim_printf ("sleeping for %lu\n", (unsigned long) ticks * 19531 /* 19531.25 */);
+                            sleepCPU ((unsigned long) ticks * 19531 /* 19531.25 */);
+sim_printf ("awake\n");
+                      }
+#else
+
 // The goal of the polling code is sample at about 100Hz; updating the timer
 // register at that rate should suffice.
 //
@@ -2094,7 +2114,6 @@ t_stat sim_instr (void)
 //    force the simh queues to process
 //    continue processing
 //
-
 
 // The usleep logic is not smart enough w.r.t. ROUND_ROBIN/ISOLTS.
 // The sleep should only happen if all running processors are in
@@ -2130,6 +2149,7 @@ t_stat sim_instr (void)
                           setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
+#endif
 #endif
                     break;
                   }

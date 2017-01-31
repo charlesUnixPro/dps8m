@@ -1574,6 +1574,9 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
+#ifdef THREADZ
+    struct timespec rTRTime; // time when rTR was set
+#endif
     word24   rY;     // address operand
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]

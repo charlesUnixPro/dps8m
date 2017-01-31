@@ -900,3 +900,6 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #ifdef EISTESTJIG
 t_stat eisTest (UNUSED int32 arg, char *buf);
 #endif
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result);
+void currentTR (word27 * trunits, bool * ovf);

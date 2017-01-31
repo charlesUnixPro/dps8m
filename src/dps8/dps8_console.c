@@ -733,7 +733,11 @@ sim_printf ("uncomfortable with this\n");
                     //sim_printf ("attn!\n");
                     if (! console_state . once_per_boot)
                       {
+#ifdef THREADZ
+                        sim_activate (& attn_unit, 1000); // 1k ~= 1 sec
+#else
                         sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+#endif
                         console_state . once_per_boot = true;
                       }
                   }
@@ -748,7 +752,11 @@ sim_printf ("uncomfortable with this\n");
                     //sim_printf ("attn!\n");
                     if (! console_state . once_per_boot)
                       {
+#ifdef THREADZ
+                        sim_activate (& attn_unit, 1000); // 1k ~= 1 sec
+#else
                         sim_activate (& attn_unit, 4000000); // 4M ~= 1 sec
+#endif
                         console_state . once_per_boot = true;
                       }
                   }
