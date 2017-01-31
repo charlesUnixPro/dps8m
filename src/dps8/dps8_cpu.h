@@ -1802,14 +1802,22 @@ extern cpu_state_t * cpus;
 #else
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
+
+#ifdef THREADZ
+__thread extern cpu_state_t * restrict cpup;
+__thread extern uint currentRunningCPUnum;
+#else
 extern cpu_state_t * restrict cpup;
+#endif
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
 #ifdef ROUND_ROBIN
 extern uint currentRunningCPUnum;
 #else
+#ifndef THREADZ
 #define currentRunningCPUnum 0
+#endif
 #endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
@@ -2042,4 +2050,7 @@ void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
-
+#ifdef THREADZ
+t_stat threadz_sim_instr (void);
+void * cpuThreadMain (void * arg);
+#endif

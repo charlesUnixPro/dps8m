@@ -58,6 +58,10 @@
 
 #include "sim_defs.h"
 
+#ifdef THREADZ
+#include "threadz.h"
+#endif
+
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
@@ -99,7 +103,7 @@ static uv_timer_t ev_poll_handle;
 
 static MTAB cpu_mod[] = {
     {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
@@ -113,7 +117,7 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
@@ -138,7 +142,7 @@ static MTAB cpu_mod[] = {
     },
 #ifndef SPEED
     {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
@@ -312,7 +316,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 #ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     uint save = currentRunningCPUnum;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
@@ -847,7 +851,7 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
         uint cpun, sn;
         if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
           {
@@ -964,7 +968,7 @@ void cpu_init (void)
 
     setCPUnum (0);
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
 #else
@@ -987,9 +991,9 @@ void cpu_init (void)
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
-static void cpun_reset2 (uint cpun)
+static void cpun_reset2 (UNUSED uint cpun)
 {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     setCPUnum (cpun);
 #endif
     cpu.rA = 0;
@@ -1043,7 +1047,7 @@ static void cpu_reset2 (void)
         cpun_reset2 (i);
       }
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     setCPUnum (0);
 #endif
 
@@ -1118,13 +1122,13 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
  * register stuff ...
  */
 
-#ifdef M_SHARED
+#if defined (M_SHARED) && !defined (THREADZ)
 // simh has to have a statically allocated IC to refer to.
 static word18 dummyIC;
 #endif
 
 static REG cpu_reg[] = {
-#ifdef M_SHARED
+#if defined (M_SHARED) && !defined (THREADZ)
     { ORDATA (IC, dummyIC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
     //{ ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
 #else
@@ -1314,7 +1318,14 @@ cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
-cpu_state_t * restrict cpup; 
+
+
+#ifdef THREADZ
+__thread cpu_state_t * restrict cpup;
+__thread uint currentRunningCPUnum;
+#else
+cpu_state_t * restrict cpup;
+#endif
 
 #ifdef ROUND_ROBIN
 uint currentRunningCPUnum;
@@ -1373,6 +1384,7 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
+#ifndef THREADZ
 // This is needed for BCE_TRAP in install scripts
     // breakpoint? 
     //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
@@ -1386,6 +1398,7 @@ t_stat simh_hooks (void)
 #ifndef SPEED
     if (sim_deb_break && sim_timell () >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
+#endif
 #endif
 
     return reason;
@@ -1427,11 +1440,10 @@ static void setCpuCycle (cycles_t cycle)
     cpu.cycle = cycle;
   }
 
-
 uint setCPUnum (UNUSED uint cpuNum)
   {
     uint prev = currentRunningCPUnum;
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     currentRunningCPUnum = cpuNum;
 #endif
     cpup = & cpus [currentRunningCPUnum];
@@ -1534,54 +1546,82 @@ static void panelProcessEvent (void)
 static uint fastQueueSubsample = 0;
 #endif
 
+
 // This is part of the simh interface
+
+#ifdef THREADZ
+// The hypervisor CPU for the threadz model
 t_stat sim_instr (void)
   {
     t_stat reason = 0;
-#ifdef USE_IDLE
-    sim_rtcn_init (0, 0);
-#endif
-      
-#ifdef FNP2
-#else
-    mux(SLS, 0, 0);
 
-    UNIT *u = &mux_unit;
-    if (u->filename == NULL || strlen(u->filename) == 0)
-        sim_printf("Warning: MUX not attached.\n");
-#endif
- 
+    static bool inited = false;
+    if (! inited)
+      {
+        inited = true;
+        for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+          {
+            createCPUThread (cpuNum);
+            setCPURun (cpuNum, false);
+            //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+          }
+      }
+
+    for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+      setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Copy the placeholder in so the IC can be set by simh.
 
-    setCPUnum (0);
-    cpus [0].PPR.IC = dummyIC;
+    //setCPUnum (0);
+    //cpus [0].PPR.IC = dummyIC;
 #endif
 
-    setCPUnum (0);
-#ifdef ROUND_ROBIN
-    cpu.isRunning = true;
-    setCPUnum (cpu_dev.numunits - 1);
+    do
+      {
+        reason = 0;
+        // Process deferred events and breakpoints
+        reason = simh_hooks ();
+        if (reason)
+          {
+            break;
+          }
 
-setCPU:;
-    uint current = currentRunningCPUnum;
-    uint c;
-    for (c = 0; c < cpu_dev.numunits; c ++)
-      {
-        setCPUnum (c);
-        if (cpu.isRunning)
-          break;
+// Loop runs at 1000Hhz
+
+        uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+        PNL (panelProcessEvent ());
+
+        if (check_attn_key ())
+          console_attn (NULL);
+
+        usleep (1000); // 1000 us == 1 ms == 1/1000 sec.
       }
-    if (c == cpu_dev.numunits)
-      {
-        sim_printf ("All CPUs stopped\n");
-        goto leave;
-      }
-    setCPUnum ((current + 1) % cpu_dev.numunits);
-    if (! cpu . isRunning)
-      goto setCPU;
+    while (reason == 0);
+    return reason;
+  }
+
+void * cpuThreadMain (void * arg)
+  {
+    int myid = * (int *) arg;
+    setCPUnum ((uint) myid);
+    
+    sim_printf("CPU %c thread created\n", 'a' + myid);
+
+    threadz_sim_instr ();
+    return NULL;
+
+  }
 #endif
+
+#ifdef THREADZ
+t_stat threadz_sim_instr (void)
+#else
+t_stat sim_instr (void)
+#endif
+  {
+    t_stat reason = 0;
 
     // This allows long jumping to the top of the state machine
     int val = setjmp(cpu.jmpMain);
@@ -1626,90 +1666,8 @@ setCPU:;
       {
         reason = 0;
 
-        // Process deferred events and breakpoints
-        reason = simh_hooks ();
-        if (reason)
-          {
-            //sim_printf ("reason: %d\n", reason);
-            break;
-          }
-
-#ifdef EV_POLL
-// The event poll is consuming 40% of the CPU according to pprof.
-// We only want to process at 100Hz; yet we are testing at ~1MHz.
-// If we only test every 1000 cycles, we shouldn't miss by more then
-// 10%...
-
-        //static uint fastQueueSubsample = 0;
-        if (fastQueueSubsample ++ > 1024) // ~ 1KHz
-          {
-            fastQueueSubsample = 0;
-            uv_run (ev_poll_loop, UV_RUN_NOWAIT);
-            PNL (panelProcessEvent ());
-          }
-#else
-        static uint slowQueueSubsample = 0;
-        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
-          {
-            slowQueueSubsample = 0;
-            rdrProcessEvent (); 
-          }
-        static uint queueSubsample = 0;
-        if (queueSubsample ++ > 10240) // ~ 100Hz
-          {
-            queueSubsample = 0;
-            scpProcessEvent (); 
-            fnpProcessEvent (); 
-            consoleProcess ();
-#ifdef FNP2
-#else
-            dequeue_fnp_command ();
-#endif
-            absiProcessEvent ();
-            PNL (panelProcessEvent ());
-          }
-#endif
-
-#if 0
-        if (sim_gtime () % 1024 == 0)
-          {
-            t_stat ch = sim_poll_kbd ();
-            if (ch != SCPE_OK)
-              {
-                //sim_printf ("%o\n", ch);
-                if (ch == 010033) // Escape
-                  console_attn (NULL);
-              }
-          }
-#else
-        if (check_attn_key ())
-          console_attn (NULL);
-#endif
-
-#ifndef EV_POLL
-        // Manage the timer register
-             // XXX this should be sync to the EXECUTE cycle, not the
-             // simh clock cycle; move down...
-             // Acutally have FETCH jump to EXECUTE
-             // instead of breaking.
-
-        // Sync. the TR with the emulator clock.
-        cpu.rTRlsb ++;
-        // The emulator clock runs about 7x as fast at the Timer Register;
-        // see wiki page "CAC 08-Oct-2014"
-        if (cpu.rTRlsb >= cpu.switches.trlsb)
-          {
-            cpu.rTRlsb = 0;
-            cpu.rTR = (cpu.rTR - 1) & MASK27;
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
-            if (cpu.rTR == 0) // passing thorugh 0...
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
-                if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
-              }
-          }
-#endif
+        // wait on run/switch
+        cpuRunningWait ();
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -2440,7 +2398,7 @@ leave:
           sim_printf("%s faults = %"PRId64"\n", faultNames [i], sys_stats.total_faults [i]);
      }
     
-#ifdef M_SHARED
+#if defined (M_SHARED) && !defined (THREADZ)
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Update the placeholder in so the IC can be seen by simh, and
 // restarting sim_instr doesn't lose the place.
@@ -3128,7 +3086,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     uint save = setCPUnum ((uint) unit_num);
 #endif
 
@@ -3171,7 +3129,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     //sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     setCPUnum (save);
 #endif
 
@@ -3365,14 +3323,15 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_initialize_and_clear (UNIT * uptr, UNUSED int32 value,
+static t_stat cpu_set_initialize_and_clear (UNUSED UNIT * uptr,
+                                            UNUSED int32 value,
                                             UNUSED const char * cptr, 
                                             UNUSED void * desc)
   {
-    long cpu_unit_num = UNIT_NUM (uptr);
     // Crashes console?
     //cpun_reset2 ((uint) cpu_unit_num);
 #ifdef ISOLTS
+    long cpu_unit_num = UNIT_NUM (uptr);
     cpu_state_t * cpun = cpus + cpu_unit_num;
     if (cpun->switches.useMap)
       {
@@ -3403,7 +3362,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         return SCPE_ARG;
       }
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     uint save = setCPUnum ((uint) cpu_unit_num);
 #endif
 
@@ -3560,7 +3519,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
       } // process statements
     cfgparse_done (& cfg_state);
 
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     setCPUnum (save);
 #endif
 
@@ -4029,13 +3988,13 @@ static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
 static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
                            UNUSED int val, UNUSED const void * desc)
   {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     long unit_num = UNIT_NUM (uptr);
     uint save = setCPUnum ((uint) unit_num);
 #endif
     // FIXME: use FILE *st
     int ret = cmd_stack_trace(0, NULL);
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     setCPUnum (save);
 #endif
     return ret;
