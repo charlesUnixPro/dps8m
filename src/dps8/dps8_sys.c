@@ -1823,127 +1823,6 @@ t_stat parse_sym (UNUSED const char * cptr, UNUSED t_addr addr, UNUSED UNIT * up
     return SCPE_ARG;
 }
 
-// from MM
-
-sysinfo_t sys_opts =
-  {
-    0, /* clock speed */
-    {
-#ifdef FNPDBG
-      4000, /* iom_times.connect */
-#else
-      -1, /* iom_times.connect */
-#endif
-       0,  /* iom_times.chan_activate */
-      10, /* boot_time */
-      10000, /* terminate_time */
-    },
-    {
-      -1, /* mt_times.read */
-      -1  /* mt_times.xfer */
-    },
-    0 /* warn_uninit */
-  };
-
-static char * encode_timing (int timing)
-  {
-    static char buf [64];
-    if (timing < 0)
-      return (char *) "Off";
-    sprintf (buf, "%d", timing);
-    return buf;
-  }
-
-static t_stat sys_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int  val, UNUSED const void * desc)
-  {
-    sim_printf ("IOM connect time:         %s\n",
-                encode_timing (sys_opts . iom_times . connect));
-    sim_printf ("IOM activate time:        %s\n",
-                encode_timing (sys_opts . iom_times . chan_activate));
-    sim_printf ("IOM boot time:            %s\n",
-                encode_timing (sys_opts . iom_times . boot_time));
-    sim_printf ("MT Read time:             %s\n",
-                encode_timing (sys_opts . mt_times . read));
-    sim_printf ("MT Xfer time:             %s\n",
-                encode_timing (sys_opts . mt_times . xfer));
-
-    return SCPE_OK;
-}
-
-static config_value_list_t cfg_timing_list [] =
-  {
-    { "disable", -1 },
-    { NULL, 0 }
-  };
-
-static config_list_t sys_config_list [] =
-  {
-    /*  0 */ { "connect_time", -1, 100000, cfg_timing_list },
-    /*  1 */ { "activate_time", -1, 100000, cfg_timing_list },
-    /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list },
-    /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list },
-    /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list },
-    /*  5 */ { "terminate_time", -1, 100000, cfg_timing_list },
-    { NULL, 0, 0, NULL }
- };
-
-static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value, 
-                              const char * cptr, UNUSED void * desc)
-  {
-    config_state_t cfg_state = { NULL, NULL };
-
-    for (;;)
-      {
-        int64_t v;
-        int rc = cfgparse ("sys_set_config", cptr, sys_config_list, & cfg_state, & v);
-        switch (rc)
-          {
-            case -2: // error
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG;
-
-            case -1: // done
-              break;
-
-            case  0: // CONNECT_TIME
-              sys_opts . iom_times . connect = (int) v;
-              break;
-
-            case  1: // ACTIVATE_TIME
-              sys_opts . iom_times . chan_activate = (int) v;
-              break;
-
-            case  2: // MT_READ_TIME
-              sys_opts . mt_times . read = (int) v;
-              break;
-
-            case  3: // MT_XFER_TIME
-              sys_opts . mt_times . xfer = (int) v;
-              break;
-
-            case  4: // IOM_BOOT_TIME
-              sys_opts . iom_times . boot_time = (int) v;
-              break;
-
-            case  5: // TERMINATE_TIME
-              sys_opts . iom_times . terminate_time = (int) v;
-              break;
-
-            default:
-              sim_debug (DBG_ERR, & iom_dev, "sys_set_config: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: iom_set_config: invalid cfgparse rc <%d>\n", rc);
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG;
-          } // switch
-        if (rc < 0)
-          break;
-      } // process statements
-    cfgparse_done (& cfg_state);
-    return SCPE_OK;
-  }
-
-
 #ifdef DVFDBG
 static t_stat dfx1entry (UNUSED int32 arg, UNUSED const char * buf)
   {
@@ -2142,23 +2021,6 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
   }
 #endif
 
-static MTAB sys_mod [] =
-  {
-    {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-      0,            /* match */
-      (char *) "CONFIG",     /* print string */
-      (char *) "CONFIG",         /* match string */
-      sys_set_config,         /* validation routine */
-      sys_show_config, /* display routine */
-      NULL,          /* value descriptor */
-      NULL,            /* help */
-    },
-    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
-  };
-
-
-
 static t_stat sys_reset (UNUSED DEVICE  * dptr)
   {
     return SCPE_OK;
@@ -2168,7 +2030,7 @@ static DEVICE sys_dev = {
     "SYS",       /* name */
     NULL,        /* units */
     NULL,        /* registers */
-    sys_mod,     /* modifiers */
+    NULL,     /* modifiers */
     0,           /* #units */
     8,           /* address radix */
     PASIZE,      /* address width */

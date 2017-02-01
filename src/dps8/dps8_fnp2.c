@@ -40,6 +40,10 @@
 #include "sim_tmxr.h"
 #include <regex.h>
 
+#ifdef THREADZ
+#include "threadz.h"
+#endif
+
 static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
 static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, const void *desc);

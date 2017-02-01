@@ -1544,32 +1544,8 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
     if (portp -> type == ADEV_IOM)
       {
         int iomUnitNum = portp -> idnum;
-        if (sys_opts . iom_times . connect < 0)
-          {
-            iom_interrupt (scu_unit_num, (uint) iomUnitNum);
-            return 0;
-          }
-        else
-          {
-//sim_printf ("scu_cioc: Queuing an IOM in %d cycles "
-//"(for the connect channel) %u %d\n", 
-//sys_opts . iom_times . connect, scu_unit_num, iomUnitNum);
-            sim_debug (DBG_INFO, & scu_dev, 
-                       "scu_cioc: Queuing an IOM in %d cycles "
-                       "(for the connect channel)\n", 
-                       sys_opts . iom_times . connect);
-            // Stash the iom_interrupt call parameters
-            iom_dev.units[iomUnitNum].u3 = (int32) scu_unit_num;
-            iom_dev.units[iomUnitNum].u4 = (int32) iomUnitNum;
-            int rc;
-            if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
-                sys_opts . iom_times.connect)) != SCPE_OK) 
-              {
-                sim_warn ("sim_activate failed (%d)\n", rc); // Dosen't return
-                return 0;
-              }
-            return 0;
-          }
+        iom_interrupt (scu_unit_num, (uint) iomUnitNum);
+        return 0;
       }
     else if (portp -> type == ADEV_CPU)
       {
