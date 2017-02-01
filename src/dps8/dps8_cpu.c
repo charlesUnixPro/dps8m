@@ -1597,7 +1597,13 @@ t_stat sim_instr (void)
 
 // Loop runs at 1000Hhz
 
+#ifdef THREADZ
+        lock_libuv ();
+#endif
         uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef THREADZ
+        unlock_libuv ();
+#endif
         PNL (panelProcessEvent ());
 
         if (check_attn_key ())

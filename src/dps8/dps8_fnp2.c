@@ -2291,12 +2291,24 @@ sim_printf ("reset??\n");
       }
     else if (command == 072) // bootload
       {
+#ifdef THREADZ
+        lock_libuv ();
+#endif
         fnpcmdBootload (devUnitIdx);
+#ifdef THREADZ
+        unlock_libuv ();
+#endif
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
       {
+#ifdef THREADZ
+        lock_libuv ();
+#endif
         ok = interruptL66 (iomUnitIdx, chan) == 0;
+#ifdef THREADZ
+        unlock_libuv ();
+#endif
       }
     else if (command == 075) // data xfer from L6 to L66
       {
