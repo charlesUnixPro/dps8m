@@ -191,7 +191,6 @@ typedef enum
     idsTypeW36  // Incoming data is array of word36 
   } idsType;
 
-
 int send_special_interrupt (uint iomUnitIdx, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
 //
@@ -216,4 +215,7 @@ void iom_init (void);
 int send_marker_interrupt (uint iomUnitIdx, int chan);
 #ifdef PANEL
 void doBoot (void);
+#endif
+#ifdef THREADZ
+void * iomThreadMain (void * arg);
 #endif

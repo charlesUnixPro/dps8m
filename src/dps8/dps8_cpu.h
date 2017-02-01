@@ -1808,7 +1808,6 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 
 #ifdef THREADZ
 __thread extern cpu_state_t * restrict cpup;
-__thread extern uint currentRunningCPUnum;
 #else
 extern cpu_state_t * restrict cpup;
 #endif

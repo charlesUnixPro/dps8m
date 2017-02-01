@@ -609,6 +609,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         if (cpu . bTroubleFaultCycle)
           {
 #ifndef PANEL
+#ifndef THREADZ
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
                 (sim_qcount () == 0))  // XXX If clk_svc is implemented it will 
@@ -620,6 +621,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
+#endif
 #endif
 #endif
           }

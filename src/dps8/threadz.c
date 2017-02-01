@@ -2,9 +2,12 @@
 
 #include "dps8.h"
 #include "dps8_cpu.h"
+#include "dps8_iom.h"
 
 #include "threadz.h"
 
+__thread uint currentRunningCPUnum;
+__thread uint currentRunningIOMnum;
 //
 // Resource locks
 //
@@ -32,8 +35,6 @@ void unlock_libuv (void)
 // cpu threads
 
 struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
-
-// Create CPU thread
 
 #if 0
 // temp
@@ -92,4 +93,29 @@ void sleepCPU (unsigned long nsec)
                               & abstime);
     cthread_mutex_unlock (& cpuThreadz[currentRunningCPUnum].sleepLock);
     //sim_printf ("cthread_cond_timedwait %lu %d\n", nsec, n);
+  }
+
+// IOM threads
+
+struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
+
+void createIOMThread (uint iomNum)
+  {
+    iomThreadz[iomNum].iomThreadArg = (int) iomNum;
+
+    // initialize interrupt wait
+    iomThreadz[iomNum].intr = false;
+    cthread_mutex_init (& iomThreadz[iomNum].intrLock, NULL);
+    cthread_cond_init (& iomThreadz[iomNum].intrCond, NULL);
+
+    cthread_create (& iomThreadz[iomNum].iomThread, NULL, iomThreadMain, 
+                    & iomThreadz[iomNum].iomThreadArg);
+  }
+
+void setIOMInterrupt (uint iomNum)
+  {
+    cthread_mutex_lock (& iomThreadz[iomNum].intrLock);
+    iomThreadz[iomNum].intr = true;
+    cthread_cond_signal (& iomThreadz[iomNum].intrCond);
+    cthread_mutex_unlock (& iomThreadz[iomNum].intrLock);
   }

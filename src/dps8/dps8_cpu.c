@@ -1327,7 +1327,6 @@ cpu_state_t cpus [N_CPU_UNITS_MAX];
 
 #ifdef THREADZ
 __thread cpu_state_t * restrict cpup;
-__thread uint currentRunningCPUnum;
 #else
 cpu_state_t * restrict cpup;
 #endif
@@ -1571,6 +1570,10 @@ t_stat sim_instr (void)
             createCPUThread (cpuNum);
             setCPURun (cpuNum, false);
             //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+          }
+        for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
+          {
+            createIOMThread (iomNum);
           }
       }
 

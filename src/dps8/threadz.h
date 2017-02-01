@@ -12,6 +12,9 @@ typedef pthread_mutexattr_t cthread_mutexattr_t;
 typedef pthread_cond_t cthread_cond_t;
 typedef pthread_condattr_t cthread_condattr_t;
 
+__thread extern uint currentRunningCPUnum;
+__thread extern uint currentRunningIOMnum;
+
 static inline int cthread_cond_wait (cthread_cond_t * restrict cond,
                                      cthread_mutex_t * restrict mutex)
   {
@@ -105,3 +108,28 @@ static inline void cpuRunningWait (void)
     cthread_mutex_unlock (& cpuThreadz[currentRunningCPUnum].runLock);
   }
 void sleepCPU (unsigned long nsec);
+// IOM threads
+
+struct iomThreadz_t
+  {
+    cthread_t iomThread;
+    int iomThreadArg;
+
+    // interrupt wait
+    bool intr;
+    cthread_cond_t intrCond;
+    cthread_mutex_t intrLock;
+
+  };
+extern struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
+
+void createIOMThread (uint iomNum);
+void setIOMRun (uint iomNum, bool run);
+static inline void iomInterruptWait (void)
+  {
+    cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].intrLock);
+    while (! iomThreadz[currentRunningIOMnum].intr)
+      cthread_cond_wait (& iomThreadz[currentRunningIOMnum].intrCond, & iomThreadz[currentRunningIOMnum].intrLock);
+    cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].intrLock);
+  }
+void setIOMInterrupt (uint iomNum);

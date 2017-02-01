@@ -42,6 +42,9 @@
 #ifdef HDBG
 #include "hdbg.h"
 #endif
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 // Forward declarations
 
