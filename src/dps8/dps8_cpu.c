@@ -2099,9 +2099,16 @@ t_stat sim_instr (void)
                     currentTR (& ticks, & ovf);
                     if (! ovf)
                       {
-sim_printf ("sleeping for %lu\n", (unsigned long) ticks * 19531 /* 19531.25 */);
-                            sleepCPU ((unsigned long) ticks * 19531 /* 19531.25 */);
-sim_printf ("awake\n");
+                        sleepCPU ((unsigned long) ticks * 1953 /* 1953.125 */);
+                        currentTR (& ticks, & ovf);
+                        if (ovf)
+                          {
+                            if (cpu.switches.tro_enable)
+                              {
+                                setG7fault (currentRunningCPUnum, FAULT_TRO,
+                                            (_fault_subtype) {.bits=0});
+                              }
+                          }
                       }
 #else
 

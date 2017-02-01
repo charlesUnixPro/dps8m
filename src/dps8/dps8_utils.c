@@ -2593,9 +2593,10 @@ void currentTR (word27 * trunits, bool * ovf)
         return;
       }
     // difference in nSecs
-    unsigned long dns = (unsigned long) delta.tv_sec * 1000000000 + (unsigned long) delta.tv_nsec;
+    unsigned long dns = (unsigned long) delta.tv_sec * 1000000000 + 
+                        (unsigned long) delta.tv_nsec;
     // in Timer ticks
-    unsigned long ticks = dns / 19531 /* 19531.25 */;
+    unsigned long ticks = dns / 1953 /* 1953.125 */;
 
     // Runout?
     if (ticks >= cpu.rTR)
@@ -2605,5 +2606,6 @@ void currentTR (word27 * trunits, bool * ovf)
         return;
       }
     * trunits = (cpu.rTR - ticks) & MASK27;
+    //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
     * ovf = false;
   }

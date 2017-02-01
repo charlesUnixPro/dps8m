@@ -6375,6 +6375,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
 //IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
 #ifdef THREADZ
+//sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
           clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
 #endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
