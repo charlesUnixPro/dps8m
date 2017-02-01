@@ -1664,11 +1664,14 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
 static void deliverInterrupts (uint scu_unit_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
-#ifdef THREADZ
-    // I think this code was wrong; at this point it doesn't know squat
-    // about which CPU it is delivering to.
+    sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
+#if defined (ROUND_ROBIN) || defined (THREADZ)
+    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
+      {
+        cpus[cpun].events.XIP[scu_unit_num] = false;
+      }
 #else
-    cpu.events.XIP [scu_unit_num] = false;
+    cpu . events . XIP [scu_unit_num] = false;
 #endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)

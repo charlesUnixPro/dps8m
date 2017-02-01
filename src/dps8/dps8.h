@@ -88,6 +88,9 @@
 #undef HDBG
 #endif
 
+// Multi-theaded operation
+#define THREADZ
+
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
 

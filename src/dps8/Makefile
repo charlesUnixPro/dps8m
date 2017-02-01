@@ -45,6 +45,8 @@ CFLAGS += -DFNP2
 LIBS += -luv
 endif
 
+LIBS += -lpthread
+
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -DCROSS_MINGW64
 LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32
@@ -152,9 +154,7 @@ endif
 ifneq ($(CROSS),MINGW64)
 C_SRCS += ./udplib.c
 endif
-ifdef THREADZ
 C_SRCS += ./threadz.c
-endif
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -223,9 +223,7 @@ endif
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
-ifdef THREADZ
 H_SRCS += ./threadz.h
-endif
 
 
 

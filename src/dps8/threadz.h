@@ -130,6 +130,7 @@ static inline void iomInterruptWait (void)
     cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].intrLock);
     while (! iomThreadz[currentRunningIOMnum].intr)
       cthread_cond_wait (& iomThreadz[currentRunningIOMnum].intrCond, & iomThreadz[currentRunningIOMnum].intrLock);
+    iomThreadz[currentRunningIOMnum].intr = false;
     cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].intrLock);
   }
 void setIOMInterrupt (uint iomNum);

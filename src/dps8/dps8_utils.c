@@ -2580,6 +2580,7 @@ void timespec_diff(struct timespec * start, struct timespec * stop,
 
 // Calculate current TR value
 
+#ifdef THREADZ
 void currentTR (word27 * trunits, bool * ovf)
   {
     struct timespec now, delta;
@@ -2609,3 +2610,4 @@ void currentTR (word27 * trunits, bool * ovf)
     //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
     * ovf = false;
   }
+#endif

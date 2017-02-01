@@ -588,7 +588,6 @@ static void setupIOMScbankMap (void)
     
             // Calculate the base address of the memory in words
             uint assignment = p -> configSwPortAddress [port_num];
-            //uint assignment = cpu.switches.assignment [port_num];
             uint base = assignment * sz;
     
             // Now convert to SCBANKs
@@ -2328,6 +2327,7 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
   }
  
 
+#ifdef THREADZ
 void * iomThreadMain (void * arg)
   {     
     int myid = * (int *) arg;
@@ -2337,9 +2337,9 @@ void * iomThreadMain (void * arg)
 
     while (1)
       {
-sim_printf("IOM %c thread waiting\n", 'a' + myid);
+//sim_printf("IOM %c thread waiting\n", 'a' + myid);
         iomInterruptWait ();
-sim_printf("IOM %c thread running\n", 'a' + myid);
+//sim_printf("IOM %c thread running\n", 'a' + myid);
         int ret = doConnectChan (currentRunningIOMnum);
 
         sim_debug (DBG_DEBUG, & iom_dev,
@@ -2347,6 +2347,7 @@ sim_printf("IOM %c thread running\n", 'a' + myid);
                    __func__, 'A' + myid, ret);
        }
   }
+#endif
 
 //
 // iomReset ()
@@ -2661,20 +2662,17 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
         return SCPE_ARG;
       }
     uint iomUnitIdx = (uint) unitNum;
-//#if 0
 #ifdef THREADZ
-#if 0
+    sim_activate (& bootChannelUnit [iomUnitIdx], 1000);
+#else
+    //sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
+    // returning OK from the simh BOOT command causes simh to start the CPU
     // initialize memory with boot program
     initMemoryIOM ((uint)iomUnitIdx);
 
     // simulate $CON
     iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
-#else
-#endif
-    sim_activate (& bootChannelUnit [iomUnitIdx], 1000);
-#else
-    sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
-    // returning OK from the simh BOOT command causes simh to start the CPU
+
 #endif
     return SCPE_OK;
   }

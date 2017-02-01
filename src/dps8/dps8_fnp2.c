@@ -163,6 +163,16 @@ static int telnet_port = 6180;
 
 struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
+static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    * data = M [addr] & DMASK;
+  }
+
+static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    M [addr] = data & DMASK;
+  }
+
 
 //
 // The FNP communicates with Multics with in-memory mailboxes
@@ -209,7 +219,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     uint l66AddressPage = l66Address / 1024u;
 
     word36 ptw;
-    core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+    fnp_core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
     return addr;
@@ -2401,19 +2411,19 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
-        core_write (fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
+        fnp_core_write (fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
+        fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
       }
     else
       {
         dmpmbx (fudp->mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
+        fnp_core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }
   }
 
