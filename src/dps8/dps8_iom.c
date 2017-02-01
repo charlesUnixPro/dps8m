@@ -229,6 +229,28 @@
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
 
+static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    * data = M [addr] & DMASK;
+  }
+
+static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+    * even = M [addr ++] & DMASK;
+    * odd =  M [addr]    & DMASK;
+  }
+
+static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    M [addr] = data & DMASK;
+  }
+
+static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+    M [addr ++] = even;
+    M [addr] =    odd;
+  }
+
 static t_stat iom_action (UNIT *up);
 
 static UNIT iomUnit [N_IOM_UNITS_MAX] =
@@ -731,7 +753,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     uint chanloc = mbxLoc (iomUnitIdx, chan);
     word24 scwAddr = chanloc + 2;
     word36 scw;
-    core_read (scwAddr, & scw, __func__);
+    iom_core_read (scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
                "SCW chan %02o %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
@@ -756,7 +778,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         lq = 0;
       }
 //sim_printf ("status %d %08o %012"PRIo64" %012"PRIo64"\n", chan, addr, word1, word2);
-    core_write2 (addr, word1, word2, __func__);
+    iom_core_write2 (addr, word1, word2, __func__);
 
     if (tally > 0 || (tally == 0 && lq != 0))
       {
@@ -810,7 +832,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
                    __func__, scwAddr);
-        core_write (scwAddr, scw, __func__);
+        iom_core_write (scwAddr, scw, __func__);
       }
 
     // BUG: update SCW in core
@@ -858,7 +880,7 @@ static void fetchDDSPTW (uint iomUnitIdx, int chan, word18 addr)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     word24 pgte = buildDDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
-    core_read (pgte, & p -> PTW_DCW, __func__);
+    iom_core_read (pgte, & p -> PTW_DCW, __func__);
   }
 
 static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
@@ -893,7 +915,7 @@ static void fetchIDSPTW (uint iomUnitIdx, int chan, word18 addr)
     word24 pgte = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
-    core_read (pgte, & p -> PTW_DCW, __func__);
+    iom_core_read (pgte, & p -> PTW_DCW, __func__);
 //sim_printf ("       %08o %012"PRIo64"\n", pgte, p -> PTW_DCW);
   }
 
@@ -928,7 +950,7 @@ static void fetchLPWPTW (uint iomUnitIdx, uint chan)
     word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
                                       (p -> LPW_DCW_PTR >> 10) & MASK6);
-    core_read (addr, & p -> PTW_LPW, __func__);
+    iom_core_read (addr, & p -> PTW_LPW, __func__);
   }
 
 // 'write' means periperal write; i.e. the peripheral is writing to core after
@@ -967,9 +989,9 @@ sim_warn ("iomDirectDataService DCW paged\n");
       }
 
     if (write)
-      core_write (daddr, * data, __func__);
+      iom_core_write (daddr, * data, __func__);
     else
-      core_read (daddr, data, __func__);
+      iom_core_read (daddr, data, __func__);
   }
 
 // 'tally' is the transfer size request by Multics.
@@ -1004,7 +1026,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-                core_write (addr, * data, __func__);
+                iom_core_write (addr, * data, __func__);
 //sim_printf (" %o %08o %08o %012"PRIo64" %012"PRIo64"\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
             else
@@ -1017,7 +1039,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-                core_write (daddr2, * data, __func__);
+                iom_core_write (daddr2, * data, __func__);
               }
             daddr ++;
             data ++;
@@ -1040,14 +1062,14 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-                core_read (addr, data, __func__);
+                iom_core_read (addr, data, __func__);
               }
             else
               {
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-                core_read (daddr2, data, __func__);
+                iom_core_read (daddr2, data, __func__);
               }
             daddr ++;
             p -> tallyResidue --;
@@ -1189,9 +1211,9 @@ static void writeLPW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
-    core_write (chanLoc, p -> LPW, __func__);
+    iom_core_write (chanLoc, p -> LPW, __func__);
     if (chan != IOM_CONNECT_CHAN)
-      core_write (chanLoc + 1, p -> LPWX, __func__);
+      iom_core_write (chanLoc + 1, p -> LPWX, __func__);
   }
 
 static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
@@ -1201,7 +1223,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
 
-    core_read (chanLoc, & p -> LPW, __func__);
+    iom_core_read (chanLoc, & p -> LPW, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -1222,7 +1244,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
       }
     else
       {
-        core_read (chanLoc + 1, & p -> LPWX, __func__);
+        iom_core_read (chanLoc + 1, & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
       }   
@@ -1312,7 +1334,7 @@ static void packLPW (uint iomUnitIdx, uint chan)
 static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
+    iom_core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
 //sim_printf ("%012"PRIo64" %012"PRIo64"\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
@@ -1356,7 +1378,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
           //break;
       }
 
-    core_read (addr, & p -> DCW, __func__);
+    iom_core_read (addr, & p -> DCW, __func__);
 #endif
     switch (p -> chanMode)
       {
@@ -1364,7 +1386,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm1:
         case cm1e:
           {
-            core_read (addr, & p -> DCW, __func__);
+            iom_core_read (addr, & p -> DCW, __func__);
           }
           break;
 
@@ -1372,7 +1394,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm2e:
           {
             addr |= ((word24) p -> LPWX_BOUND << 18);
-            core_read (addr, & p -> DCW, __func__);
+            iom_core_read (addr, & p -> DCW, __func__);
           }
           break;
 
@@ -1399,7 +1421,7 @@ sim_err ("unhandled fetchAndParseDCW\n");
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
 //sim_printf ("addr now %08o\n", addr_);
-            core_read (addr_, & p -> DCW, __func__);
+            iom_core_read (addr_, & p -> DCW, __func__);
 //sim_printf ("dcw now %012"PRIo64"\n", p -> DCW);
           }
           break;
@@ -1453,17 +1475,17 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
       }
     // No address extension or paging nonsense for channels 0-7. 
     uint addr = p -> DDCW_ADDR;
-    core_write (addr, faultWord, __func__);
+    iom_core_write (addr, faultWord, __func__);
 
     send_general_interrupt (iomUnitIdx, 1, imwSystemFaultPic);
 
     word36 ddcw;
-    core_read (mbx, & ddcw, __func__);
+    iom_core_read (mbx, & ddcw, __func__);
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    core_write (mbx, ddcw, __func__);
+    iom_core_write (mbx, ddcw, __func__);
   }
 
 // 0 ok
@@ -2161,7 +2183,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
                __func__, 'A' + iomUnitIdx, chan, chan, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
-    core_read (imw_addr, &imw, __func__);
+    iom_core_read (imw_addr, &imw, __func__);
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -2170,7 +2192,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-    (void) core_write (imw_addr, imw, __func__);
+    (void) iom_core_write (imw_addr, imw, __func__);
     
 // XXX this should call scu_svc
 
@@ -2232,17 +2254,17 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 // we will just assume that everything is set up the way we expect,
 // and update the circular queue.
     word36 lpw;
-    core_read (chanloc + 0, & lpw, __func__);
+    iom_core_read (chanloc + 0, & lpw, __func__);
 
     word36 dcw;
-    core_read (chanloc + 3, & dcw, __func__);
+    iom_core_read (chanloc + 3, & dcw, __func__);
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-    core_write ((dcw >> 18) & MASK18, status, __func__);
+    iom_core_write ((dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
     if (tally > 1)
@@ -2252,7 +2274,7 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-    core_write (chanloc + 3, dcw, __func__);
+    iom_core_write (chanloc + 3, dcw, __func__);
 
     send_general_interrupt (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
     return 0;
