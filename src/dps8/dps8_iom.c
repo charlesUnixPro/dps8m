@@ -364,7 +364,6 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
 
 static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
-#define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
 iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
@@ -2126,6 +2125,7 @@ static int doConnectChan (uint iomUnitIdx)
       {
         // Fetch the next PCW
         int rc = iomListService (iomUnitIdx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
+if (! ptro) sim_printf ("------------------> NO PTRO\n");
         if (rc < 0)
           {
             sim_warn ("connect channel connect failed\n");
@@ -2145,7 +2145,11 @@ static int doConnectChan (uint iomUnitIdx)
             iomChanData_t * q = & iomChanData [iomUnitIdx] [p -> PCW_CHAN];
             q -> DCW = p -> DCW;
             unpackDCW (iomUnitIdx, p -> PCW_CHAN);
+#ifdef THREADZ
+            setChnConnect (iomUnitIdx, p -> PCW_CHAN);
+#else
             doPayloadChan (iomUnitIdx, p -> PCW_CHAN);
+#endif
           }
       } while (! ptro);
     return 0; // XXX
@@ -2328,6 +2332,23 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
  
 
 #ifdef THREADZ
+void * chnThreadMain (void * arg)
+  {     
+    uint myid = (uint) * (int *) arg;
+    currentRunningIOMnum = (uint) myid / MAX_CHANNELS;
+    currentRunningChnNum = (uint) myid % MAX_CHANNELS;
+          
+    sim_printf("IOM %c Channel %u thread created\n", currentRunningIOMnum + 'a', currentRunningChnNum);
+
+    while (1)
+      {
+//sim_printf("IOM %c Channel %u thread waiting\n", currentRunningIOMnum + 'a', currentRunningChnNum);
+        chnConnectWait ();
+//sim_printf("IOM %c Channel %u thread running\n", currentRunningIOMnum + 'a', currentRunningChnNum);
+        doPayloadChan (currentRunningIOMnum, currentRunningChnNum);
+      }
+  }
+
 void * iomThreadMain (void * arg)
   {     
     int myid = * (int *) arg;
@@ -2345,7 +2366,7 @@ void * iomThreadMain (void * arg)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: IOM %c finished; doConnectChan returned %d.\n",
                    __func__, 'A' + myid, ret);
-       }
+      }
   }
 #endif
 

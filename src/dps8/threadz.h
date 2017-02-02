@@ -14,6 +14,7 @@ typedef pthread_condattr_t cthread_condattr_t;
 
 __thread extern uint currentRunningCPUnum;
 __thread extern uint currentRunningIOMnum;
+__thread extern uint currentRunningChnNum;
 
 static inline int cthread_cond_wait (cthread_cond_t * restrict cond,
                                      cthread_mutex_t * restrict mutex)
@@ -120,17 +121,51 @@ struct iomThreadz_t
     cthread_cond_t intrCond;
     cthread_mutex_t intrLock;
 
+    cthread_mutex_t busy;
   };
 extern struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
 
 void createIOMThread (uint iomNum);
-void setIOMRun (uint iomNum, bool run);
 static inline void iomInterruptWait (void)
   {
     cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].intrLock);
+    cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].busy);
     while (! iomThreadz[currentRunningIOMnum].intr)
       cthread_cond_wait (& iomThreadz[currentRunningIOMnum].intrCond, & iomThreadz[currentRunningIOMnum].intrLock);
     iomThreadz[currentRunningIOMnum].intr = false;
+    cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].busy);
     cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].intrLock);
   }
 void setIOMInterrupt (uint iomNum);
+
+// Channel threads
+
+struct chnThreadz_t
+  {
+    bool started;
+
+    cthread_t chnThread;
+    int chnThreadArg;
+
+    // connect wait
+    bool connect;
+    cthread_cond_t connectCond;
+    cthread_mutex_t connectLock;
+
+    cthread_mutex_t busy;
+  };
+extern struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+
+void createChnThread (uint iomNum, uint chnNum);
+static inline void chnConnectWait (void)
+  {
+    cthread_mutex_lock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
+    cthread_mutex_unlock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].busy);
+    while (! chnThreadz[currentRunningIOMnum][currentRunningChnNum].connect)
+      cthread_cond_wait (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectCond, & chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
+    chnThreadz[currentRunningIOMnum][currentRunningChnNum].connect = false;
+    cthread_mutex_lock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].busy);
+    cthread_mutex_unlock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
+  }
+void setChnConnect (uint iomNum, uint chnNum);
+void initThreadz (void);

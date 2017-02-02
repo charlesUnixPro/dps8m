@@ -1565,12 +1565,40 @@ t_stat sim_instr (void)
     if (! inited)
       {
         inited = true;
+        initThreadz ();
         for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
           {
             createCPUThread (cpuNum);
             setCPURun (cpuNum, false);
             //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
           }
+
+        for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
+          {
+            for (uint chnNum = 0; chnNum < MAX_CHANNELS; chnNum ++)
+              {
+                uint devCnt = 0;
+                if (chnNum == IOM_CONNECT_CHAN)
+                  devCnt ++;
+                else
+                  {
+                    for (uint devNum = 0; devNum < N_DEV_CODES; devNum ++)
+                      {
+                        struct device * d = & cables -> cablesFromIomToDev [iomNum] . devices [chnNum] [devNum];   
+                        //if (d->type)
+                          // sim_printf ("iom %u chn %u dev %u type %u\n", iomNum, chnNum, devNum, d->type);
+                        if (d->type)
+                          devCnt ++;
+                      }
+                  }
+                if (devCnt)
+                  {
+                    //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
+                    createChnThread (iomNum, chnNum);
+                  }
+              }
+          }
+
         for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
           {
             createIOMThread (iomNum);

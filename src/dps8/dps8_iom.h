@@ -218,4 +218,5 @@ void doBoot (void);
 #endif
 #ifdef THREADZ
 void * iomThreadMain (void * arg);
+void * chnThreadMain (void * arg);
 #endif
