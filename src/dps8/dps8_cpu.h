@@ -1576,6 +1576,7 @@ typedef struct
     word27   rTR;    // timer [map: TR, 9 0's]
 #ifdef THREADZ
     struct timespec rTRTime; // time when rTR was set
+    uint     rTRsample;
 #endif
     word24   rY;     // address operand
     word6    rTAG;   // instruction tag

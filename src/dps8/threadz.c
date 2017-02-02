@@ -1,6 +1,7 @@
 // Threads wrappers
 
 #include "dps8.h"
+#include "dps8_sys.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 

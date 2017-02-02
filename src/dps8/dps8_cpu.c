@@ -1685,6 +1685,26 @@ t_stat sim_instr (void)
         // wait on run/switch
         cpuRunningWait ();
 
+#ifdef THREADZ
+// Update TR
+
+        // Check every 1024 cycles (Est 12M cps, 24 cycles is 1 timer tick,
+        // approx. 50 ticks).
+
+        if (++cpu.rTRsample > 1024)
+          {
+            cpu.rTRsample = 0;
+            word27 trunits;
+            bool ovf;
+            currentTR (& trunits, & ovf);
+            if (ovf)
+              {
+                setG7fault (currentRunningCPUnum, FAULT_TRO,
+                            (_fault_subtype) {.bits=0});
+              }
+         }
+#endif
+
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
 
