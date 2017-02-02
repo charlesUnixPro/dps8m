@@ -283,8 +283,12 @@ void do_camp (UNUSED word36 Y)
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
-      sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+    //if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
+      //sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+    if ((cpu.TPR.CA & 3) == 02)
+      cpu.cu.PT_ON = 1;
+    else if ((cpu.TPR.CA & 3) == 01)
+      cpu.cu.PT_ON = 0;
   }
 
 /**
@@ -323,8 +327,12 @@ sim_printf ("CAMS cleared it\n");
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
-      sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+    //if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
+      //sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+    if ((cpu.TPR.CA & 3) == 02)
+      cpu.cu.SD_ON = 1;
+    else if ((cpu.TPR.CA & 3) == 01)
+      cpu.cu.SD_ON = 0;
   }
 
     
