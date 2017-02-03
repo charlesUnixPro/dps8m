@@ -408,7 +408,6 @@ static void readOperands (void)
 
 static void scu2words (word36 *words)
   {
-IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.IC);
     CPT (cpt2U, 6); // scu2words
     memset (words, 0, 8 * sizeof (* words));
 
@@ -501,10 +500,12 @@ IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.
 
     // ISOLTS 887 test-03a
     // Adding this makes test03 hang instead of errorign;
-    // presumbbly it's stuck on some later test.
+    // presumably it's stuck on some later test.
     // An 'Add Delta' addressing mode will alter the TALLY bit;
     // restore it.
-    putbits36_1 (& words[4], 25, cpu.currentInstruction.stiTally);
+
+    // Breaks ISOLTS 768
+    //putbits36_1 (& words[4], 25, cpu.currentInstruction.stiTally);
 
 #ifdef ISOLTS
 //testing for ipr fault by attempting execution of
@@ -1486,11 +1487,23 @@ IF1 sim_printf ("trapping opcode match......\n");
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
     // illegal procedure fault.
-    if ((ci->info->flags & PRIV_INS) && ! is_priv_mode ())
-        doFault (FAULT_IPR,
-                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                 "Attempted execution of privileged instruction.");
-
+    if (ci->info->flags & PRIV_INS)
+      {
+        if (get_bar_mode ())
+          {
+            doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                      "Attempted BAR execution of privileged instruction.");
+          }
+        if (! is_priv_mode ())
+          {
+// SLV makes no sense here, but ISOLTS 890 sez so.
+// I think that SLV means append mode, but P not set.
+            doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
+                     "Attempted execution of privileged instruction.");
+          }
+      }
     ///
     /// executeInstruction: Non-restart processing
     ///                     check for illegal addressing mode(s) ...
@@ -5207,10 +5220,13 @@ sim_printf ("do bar attempt\n");
             }
           else 
 #endif
+// Abstracted to CPU state machine
+#if 0
           if (TST_I_ABS && get_went_appending ())
             {
               set_addr_mode (APPEND_mode);
             }
+#endif
 
           return CONT_TRA;
 
@@ -5284,6 +5300,13 @@ sim_printf ("do bar attempt\n");
           cpu.PPR.PSR = cpu.TPR.TSR;
 
           CLR_I_NBAR;
+// Abstracted to CPU state machine
+#if 0
+          if (TST_I_ABS && get_went_appending ())
+            {
+              set_addr_mode (APPEND_mode);
+            }
+#endif
           return CONT_TRA;
 
         case 0700:  // tsx0

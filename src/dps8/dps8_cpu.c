@@ -1847,9 +1847,11 @@ setCPU:;
                     setCpuCycle (FETCH_cycle);
                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
                       {
+sim_debug (DBG_TRACE, & cpu_dev, "setting ABS mode\n");
                         CPT (cpt1U, 10); // temporary absolute mode
                         set_addr_mode (ABSOLUTE_mode);
                       }
+else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     break;
                   }
 
@@ -2068,15 +2070,7 @@ setCPU:;
             case EXEC_cycle:
               {
                 CPT (cpt1U, 22); // exec cycle
-//#define MOLASSES 1
-#ifdef MOLASSES
-        static uint molasses = 0;
-        if (molasses ++ > 6)
-          {
-            molasses = 0;
-            usleep (MOLASSES);
-          }
-#endif
+
                 // The only time we are going to execute out of IRODD is
                 // during RPD, at which time interrupts are automatically
                 // inhibited; so the following can igore RPD harmelessly
@@ -2099,6 +2093,11 @@ setCPU:;
                     cpu.isExec = false;
                     cpu.isXED = false;
                     cpu.wasXfer = true;
+                    if (TST_I_ABS && get_went_appending ())
+                      {
+                        set_addr_mode (APPEND_mode);
+                      }
+
                     setCpuCycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
                   }
@@ -2979,10 +2978,14 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
   {
-    if (cpu.PPR.P)
+sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
+    if (TST_I_NBAR && cpu.PPR.P)
       return 1;
     
-    if (get_addr_mode () == ABSOLUTE_mode)
+// Back when it was ABS/APP/BAR, this test was right; now that
+// it is ABS/APP,BAR/NBAR, check bar mode.
+// Fixes ISOLTS 890 05a.
+    if (get_addr_mode () == ABSOLUTE_mode && ! get_bar_mode ())
       return 1;
 
     return 0;
