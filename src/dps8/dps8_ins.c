@@ -499,6 +499,13 @@ IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.
 
     putbits36_18 (& words[4], 18, cpu.cu.IR);
 
+    // ISOLTS 887 test-03a
+    // Adding this makes test03 hang instead of errorign;
+    // presumbbly it's stuck on some later test.
+    // An 'Add Delta' addressing mode will alter the TALLY bit;
+    // restore it.
+    putbits36_1 (& words[4], 25, cpu.currentInstruction.stiTally);
+
 #ifdef ISOLTS
 //testing for ipr fault by attempting execution of
 //the illegal opcode  000   and bit 27 not set
@@ -1637,6 +1644,11 @@ restart_1:
 
     // XXX this may be wrong; make sure that the right value is used
     // if a page fault occurs. (i.e. this may belong above restart_1.
+    // This is also used by the SCU instruction. ISOLTS tst887 does
+    // a 'SCU n,ad' with a tally of 1; the tally is decremented, setting
+    // the IR tally bit as part of the CA calculation; this is not
+    // the machine conditions that the SCU instruction is saving.
+
     ci->stiTally = TST_I_TALLY;   // for sti instruction
 
 ///
@@ -6598,6 +6610,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
           if (cpu.cycle == EXEC_cycle)
             {
               // T&D behavior
+
+              // An 'Add Delta' addressing mode will alter the TALLY bit;
+              // restore it.
+              //SC_I_TALLY (cpu.currentInstruction.stiTally == 0);
+
               scu2words (cpu.Yblock8);
             }
           else
