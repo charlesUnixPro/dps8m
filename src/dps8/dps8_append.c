@@ -1387,7 +1387,10 @@ E:;
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= cpu . SDW->EB) {
+// EB is word 15; masking address makes no sense; rather 0-extend EB
+// Fixes ISOLTS 880-01
+    //if ((address & 0037777) >= cpu . SDW->EB) {
+    if (address >= (word18) cpu.SDW->EB) {
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
