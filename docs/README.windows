@@ -29,7 +29,7 @@ code, needed libraries and packages by entering:
        pacman -S unzip
        ^D
 
-Start a new MYS2 window and build the code:
+Start a MSYS2 MinGW window and build the code:
 
     Start -> All programs -> MSYS2 64 bit -> MSYS2 MINGW 64 bit
 
@@ -50,9 +50,9 @@ Start a new MYS2 window and build the code:
       wget https://sourceforge.net/projects/dps8m/files/QuickStart_MR12.6e_rc7a1/QuickStart_MR12.6e_rc7a1.zip
       unzip QuickStart_MR12.6e_rc7a1.zip
 
-Running the emualtor:
+Running the emulator:
 
-Start a Windows command shell:
+  Start a Windows command shell:
 
     Start -> All programs -> Accessories -> Command Prompt
 
