@@ -70,9 +70,9 @@ endif
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
-LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
 else
-LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a 
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
 endif
 
 # simh requires -ldl
@@ -262,9 +262,9 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 #all : blinkenLightsCurses
 
-dps8$(EXE) : $(OBJS) $(LOCALLIBS) 
+dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
 	@echo LD dps8$(EXE)
-	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALLIBS) $(LIBS)
+	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 

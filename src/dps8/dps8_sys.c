@@ -89,6 +89,9 @@ static pid_t dps8m_sid; // Session id
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
+#ifdef PANEL
+void panelScraper (void);
+#endif
 
 stats_t sys_stats;
 
@@ -286,6 +289,9 @@ static void dps8_init(void)
     absi_init ();
 #endif
     defaultBaseSystem (0, NULL);
+#ifdef PANEL
+    panelScraper ();
+#endif
 }
 
 uint64 sim_deb_start = 0;
