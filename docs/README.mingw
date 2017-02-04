@@ -1,0 +1,39 @@
+TODO: Update git tag
+
+Building dps8m Under Fedora Linux For Windows ("Cross-compilng")
+================================================================
+
+
+(This example uses Fedora 23)
+
+Install needed packages:
+
+    sudo dnf install git mingw64-gcc mingw64-libgnurx libtool
+    sudo dnf update perl-Errno
+
+
+    git clone https://github.com/libuv/libuv.git
+    cd libuv
+    sh autogen.sh
+    mingw64-configure
+    make
+    sudo make install
+
+Get the dps8m source:
+
+    cd
+    git clone git://git.code.sf.net/p/dps8m/code dps8m-code
+    cd dps8m-code/src/dps8
+    git checkout rc7
+    make CROSS=MINGW64
+
+   <copy 
+      dps8.exe
+      /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll
+      /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libuv-1.dll
+
+   file to your Windows machine>
+
+
+
+
