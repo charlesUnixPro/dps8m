@@ -1912,8 +1912,13 @@ if ((dwStatus >= ERROR_INVALID_STARTING_CODESEG) && (dwStatus <= ERROR_INFLOOP_I
 errno = EINVAL;
 }
 #if defined(__GNUC__)
+#ifdef __MINGW64__
+#include <ntddstor.h>
+#include <ntdddisk.h>
+#else
 #include <ddk/ntddstor.h>
 #include <ddk/ntdddisk.h>
+#endif
 #else
 #include <winioctl.h>
 #endif
