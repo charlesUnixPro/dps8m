@@ -56,7 +56,7 @@ endif
 
 CFLAGS += -I../decNumber -I$(SIMHx)
 #ifeq ($(CROSS),MINGW64)
-#CFLAGS += -I../gnulib
+CFLAGS += -I../gnulib
 #endif
 
 # gcc is reporting completely bogus 'conversion' warnings.
