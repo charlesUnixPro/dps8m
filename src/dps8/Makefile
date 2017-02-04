@@ -39,6 +39,10 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
+ifeq ($(OS),Windows_NT)
+CROSS=MINGW64
+endif
+
 FNP2=1
 ifdef FNP2
 CFLAGS += -DFNP2
@@ -285,7 +289,7 @@ locallibs_then_dps8 :
 	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
 ifeq ($(CROSS),MINGW64)
-	#(cd ../gnulib; $(MAKE))
+	(cd ../gnulib; $(MAKE))
 endif
 	#$(MAKE) zmq
 	$(MAKE) dps8.sha1.txt
