@@ -56,7 +56,7 @@ endif
 
 CFLAGS += -I../decNumber -I$(SIMHx)
 #ifeq ($(CROSS),MINGW64)
-CFLAGS += -I../gnulib
+#CFLAGS += -I../gnulib
 #endif
 
 # gcc is reporting completely bogus 'conversion' warnings.
@@ -70,7 +70,8 @@ endif
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
-LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
+#../gnulib/gnulib.a
 else
 LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
 endif
@@ -289,7 +290,7 @@ locallibs_then_dps8 :
 	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
 ifeq ($(CROSS),MINGW64)
-	(cd ../gnulib; $(MAKE))
+	#(cd ../gnulib; $(MAKE))
 endif
 	#$(MAKE) zmq
 	$(MAKE) dps8.sha1.txt
