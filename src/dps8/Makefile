@@ -50,8 +50,8 @@ LIBS += -luv
 endif
 
 ifeq ($(CROSS),MINGW64)
-CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation
-LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32
+CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
+LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32 -L../../../libuv/.libs
 endif
 
 CFLAGS += -I../decNumber -I$(SIMHx)

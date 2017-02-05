@@ -12,7 +12,7 @@ instructions on the webpage.
 After step 7 ("Now Pacman is fully committed..."), fetch the dps8m
 code, needed libraries and packages by entering:
 
-       git clone ssh://git.code.sf.net/p/dps8m/code dps8m-code
+       git clone git://git.code.sf.net/p/dps8m/code dps8m-code
        git clone https://github.com/libuv/libuv.git
 
        pacman -S mingw-w64-x86_64-gcc
@@ -36,11 +36,10 @@ Start a MSYS2 MinGW window and build the code:
       cd libuv
       sh autogen.sh
       ./configure
+      mingw32-make.exe MAKE=mingw32-make.exe
 
-  <Edit Makefile; at line 4460, change $(MAKE) to mingw32-make.exe>
 
-      mingw32-make.exe
-
+      cd
       cd dps8-code
       git checkout rc7
       git fetch
