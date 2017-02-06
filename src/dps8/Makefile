@@ -45,6 +45,7 @@ CFLAGS += -DFNP2
 LIBS += -luv
 endif
 
+CFLAGS += -pthread
 LIBS += -lpthread
 
 ifeq ($(CROSS),MINGW64)

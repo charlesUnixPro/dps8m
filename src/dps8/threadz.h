@@ -6,6 +6,7 @@
 
 #include <pthread.h>
 
+#if 0
 typedef pthread_t cthread_t;
 typedef pthread_mutex_t cthread_mutex_t;
 typedef pthread_attr_t cthread_attr_t;
@@ -63,7 +64,7 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
   {
     return pthread_cond_timedwait (cond, mutex, abstime);
   }
-
+#endif
 
 
 
@@ -86,18 +87,18 @@ void unlock_simh (void);
 
 struct cpuThreadz_t
   {
-    cthread_t cpuThread;
+    pthread_t cpuThread;
     int cpuThreadArg;
 
     // run/stop switch
     bool run;
-    cthread_cond_t runCond;
-    cthread_mutex_t runLock;
+    pthread_cond_t runCond;
+    pthread_mutex_t runLock;
 
     // DIS sleep
     bool sleep;
-    cthread_cond_t sleepCond;
-    cthread_mutex_t sleepLock;
+    pthread_cond_t sleepCond;
+    pthread_mutex_t sleepLock;
 
   };
 extern struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
@@ -111,13 +112,13 @@ void sleepCPU (unsigned long nsec);
 
 struct iomThreadz_t
   {
-    cthread_t iomThread;
+    pthread_t iomThread;
     int iomThreadArg;
 
     // interrupt wait
     bool intr;
-    cthread_cond_t intrCond;
-    cthread_mutex_t intrLock;
+    pthread_cond_t intrCond;
+    pthread_mutex_t intrLock;
 
 #ifdef tdbg
     // debugging
@@ -138,13 +139,13 @@ struct chnThreadz_t
   {
     bool started;
 
-    cthread_t chnThread;
+    pthread_t chnThread;
     int chnThreadArg;
 
     // connect wait
     bool connect;
-    cthread_cond_t connectCond;
-    cthread_mutex_t connectLock;
+    pthread_cond_t connectCond;
+    pthread_mutex_t connectLock;
 
 #ifdef tdbg
     // debugging
