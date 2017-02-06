@@ -317,7 +317,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 static t_stat dpsCmd_InitSDWAM ()
   {
 #if defined (ROUND_ROBIN) || defined (THREADZ)
-    uint save = currentRunningCPUnum;
+    uint save = thisCPUnum;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
         setCPUnum (i);
@@ -755,7 +755,7 @@ void setup_scbank_map (void)
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
         int scu_unit_num = cables ->
-          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
+          cablesFromScuToCpu[thisCPUnum].ports[port_num].scu_unit_num;
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
@@ -824,7 +824,7 @@ void setup_scbank_map (void)
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
       sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, cpu.scbank_map [pg]);
     //for (uint pg = 0; pg < N_SCBANKS; pg ++)
-      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", currentRunningCPUnum + 'A', pg, cpu.scbank_pg_os [pg]);
+      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", thisCPUnum + 'A', pg, cpu.scbank_pg_os [pg]);
   }
 
 int query_scbank_map (word24 addr)
@@ -916,7 +916,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       {
         //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
         if (cpu.switches.tro_enable)
-        setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+        setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
     cpu.rTR -= 5120;
     cpu.rTR &= MASK27;
@@ -1332,7 +1332,7 @@ cpu_state_t * restrict cpup;
 #endif
 
 #ifdef ROUND_ROBIN
-uint currentRunningCPUnum;
+uint thisCPUnum;
 #endif
 
 // Scan the SCUs; it one has an interrupt present, return the fault pair
@@ -1374,7 +1374,7 @@ t_stat simh_hooks (void)
       return STOP_STOP;
 
 #ifdef ISOLTS
-    if (currentRunningCPUnum == 0)
+    if (thisCPUnum == 0)
 #endif
     // check clock queue 
     if (sim_interval <= 0)
@@ -1446,17 +1446,17 @@ static void setCpuCycle (cycles_t cycle)
 
 uint setCPUnum (UNUSED uint cpuNum)
   {
-    uint prev = currentRunningCPUnum;
+    uint prev = thisCPUnum;
 #if defined (ROUND_ROBIN) || defined (THREADZ)
-    currentRunningCPUnum = cpuNum;
+    thisCPUnum = cpuNum;
 #endif
-    cpup = & cpus [currentRunningCPUnum];
+    cpup = & cpus [thisCPUnum];
     return prev;
   }
 
 uint getCPUnum (void)
   {
-    return currentRunningCPUnum;
+    return thisCPUnum;
   }
 
 #ifdef PANEL
@@ -1492,7 +1492,7 @@ static void panelProcessEvent (void)
           }
          else // EXECUTE FAULT
           {
-            setG7fault (currentRunningCPUnum, FAULT_EXF, (_fault_subtype) {.bits=0});
+            setG7fault (thisCPUnum, FAULT_EXF, (_fault_subtype) {.bits=0});
           }
       }
   }
@@ -1727,7 +1727,7 @@ t_stat sim_instr (void)
             currentTR (& trunits, & ovf);
             if (ovf)
               {
-                setG7fault (currentRunningCPUnum, FAULT_TRO,
+                setG7fault (thisCPUnum, FAULT_TRO,
                             (_fault_subtype) {.bits=0});
               }
          }
@@ -2162,7 +2162,7 @@ t_stat sim_instr (void)
                           {
                             if (cpu.switches.tro_enable)
                               {
-                                setG7fault (currentRunningCPUnum, FAULT_TRO,
+                                setG7fault (thisCPUnum, FAULT_TRO,
                                             (_fault_subtype) {.bits=0});
                               }
                           }
@@ -2210,7 +2210,7 @@ t_stat sim_instr (void)
                     if (cpu.rTR <= 5120)
                       {
                         if (cpu.switches.tro_enable)
-                          setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                          setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
 #endif

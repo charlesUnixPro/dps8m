@@ -1816,10 +1816,10 @@ extern cpu_state_t * restrict cpup;
 
 uint setCPUnum (uint cpuNum);
 #ifdef ROUND_ROBIN
-extern uint currentRunningCPUnum;
+extern uint thisCPUnum;
 #else
 #ifndef THREADZ
-#define currentRunningCPUnum 0
+#define thisCPUnum 0
 #endif
 #endif
 

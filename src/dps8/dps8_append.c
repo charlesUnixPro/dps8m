@@ -307,7 +307,7 @@ void do_cams (UNUSED word36 Y)
         cpu.SDWAM[i].DF = 0;
         cpu.SDWAM[i].USE = (word6) i;
 #ifdef ISOLTS
-if (currentRunningCPUnum)
+if (thisCPUnum)
 sim_printf ("CAMS cleared it\n");
 #endif
       }

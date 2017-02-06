@@ -521,7 +521,7 @@ IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.
 //{
   //putbits36 (& words[4], 31, 1, 0);
 //  putbits36 (& words[4], 31, 1, cpu.PPR.P ? 0 : 1);
-//if (currentRunningCPUnum)
+//if (thisCPUnum)
 //sim_printf ("cleared ABS\n");
 //}
 #endif
@@ -1204,7 +1204,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCPUnum,
+                  thisCPUnum,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1238,7 +1238,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCPUnum,
+                  thisCPUnum,
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (IWB_IRODD),
@@ -1273,7 +1273,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                  "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCPUnum,
+                  thisCPUnum,
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1309,7 +1309,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCPUnum,
+                  thisCPUnum,
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
@@ -3009,7 +3009,7 @@ static t_stat DoBasicInstruction (void)
           {
             CPTUR (cptUseTR);
 #ifdef ISOLTS
-            if (currentRunningCPUnum)
+            if (thisCPUnum)
               cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
             else
               cpu.CY = (cpu.rTR & MASK27) << 9;
@@ -5895,7 +5895,7 @@ sim_printf ("do bar attempt\n");
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
             int scu_unit_num =
-              query_scu_unit_num ((int) currentRunningCPUnum,
+              query_scu_unit_num ((int) thisCPUnum,
                                   (int) cpu_port_num);
             sim_debug (DBG_TRACE, & cpu_dev,
                        "rccl CA %08o cpu port %o scu unit %d\n",
@@ -5903,13 +5903,13 @@ sim_printf ("do bar attempt\n");
             if (scu_unit_num < 0)
               {
                 sim_warn ("rccl on CPU %u port %d has no SCU; faulting\n",
-                          currentRunningCPUnum, cpu_port_num);
+                          thisCPUnum, cpu_port_num);
                 doFault (FAULT_ONC,
                          (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
                          "(rccl)");
               }
 
-            t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum,
+            t_stat rc = scu_rscr ((uint) scu_unit_num, thisCPUnum,
                                   040, & cpu.rA, & cpu.rQ);
             if (rc > 0)
               return rc;
@@ -6710,17 +6710,17 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
             int scu_unit_num =
-              query_scu_unit_num ((int) currentRunningCPUnum, 
+              query_scu_unit_num ((int) thisCPUnum, 
                                   (int) cpu_port_num);
             if (scu_unit_num < 0)
               {
                 sim_warn ("rmcm to non-existent controller on "
                           "cpu %d port %d\n",
-                          currentRunningCPUnum, cpu_port_num);
+                          thisCPUnum, cpu_port_num);
                 break;
               }
             t_stat rc = scu_rmcm ((uint) scu_unit_num,
-                                  currentRunningCPUnum,
+                                  thisCPUnum,
                                   & cpu.rA, & cpu.rQ);
             if (rc)
               return rc;
@@ -6756,7 +6756,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
 #endif
             int scu_unit_num =
-              query_scu_unit_num ((int) currentRunningCPUnum,
+              query_scu_unit_num ((int) thisCPUnum,
                                   (int) cpu_port_num);
 
             if (scu_unit_num < 0)
@@ -6782,7 +6782,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                CPT (cpt13L, function);
             }
 #endif
-            t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum,
+            t_stat rc = scu_rscr ((uint) scu_unit_num, thisCPUnum,
                                   cpu.iefpFinalAddress & MASK15,
                                   & cpu.rA, & cpu.rQ);
             if (rc)
@@ -7266,7 +7266,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                          (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
                          "(cioc)");
               }
-            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
+            int scu_unit_num = query_scu_unit_num ((int) thisCPUnum,
                                                    cpu_port_num);
             if (scu_unit_num < 0)
               {
@@ -7290,7 +7290,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             word8 sub_mask = getbits36_8 (cpu.CY, 0);
             word3 expander_command = getbits36_3 (cpu.CY, 21);
             uint scu_port_num = (uint) getbits36_3 (cpu.CY, 33);
-            scu_cioc (currentRunningCPUnum, (uint) scu_unit_num, scu_port_num, 
+            scu_cioc (thisCPUnum, (uint) scu_unit_num, scu_port_num, 
                       expander_command, sub_mask);
           }
           break;
@@ -7307,7 +7307,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
             int scu_unit_num =
-               query_scu_unit_num ((int) currentRunningCPUnum,
+               query_scu_unit_num ((int) thisCPUnum,
                                    (int) cpu_port_num);
 #if 0 // not on 4MW
             if (scu_unit_num < 0)
@@ -7330,11 +7330,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               {
                 sim_warn ("smcm to non-existent controller on "
                           "cpu %d port %d\n", 
-                          currentRunningCPUnum, cpu_port_num);
+                          thisCPUnum, cpu_port_num);
                 break;
               }
             t_stat rc = scu_smcm ((uint) scu_unit_num,
-                                  currentRunningCPUnum, cpu.rA, cpu.rQ);
+                                  thisCPUnum, cpu.rA, cpu.rQ);
             if (rc)
               return rc;
           }
@@ -7356,7 +7356,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
-            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
+            int scu_unit_num = query_scu_unit_num ((int) thisCPUnum,
                                                    (int) cpu_port_num);
 
             if (scu_unit_num < 0)
@@ -7381,7 +7381,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                          "(smic)");
 #endif
               }
-            t_stat rc = scu_smic ((uint) scu_unit_num, currentRunningCPUnum, 
+            t_stat rc = scu_smic ((uint) scu_unit_num, thisCPUnum, 
                                   cpu_port_num, cpu.rA);
             if (rc)
               return rc;
@@ -7399,7 +7399,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
 #endif
-            int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
+            int scu_unit_num = query_scu_unit_num ((int) thisCPUnum,
                                                    (int) cpu_port_num);
             if (scu_unit_num < 0)
               {
@@ -7417,7 +7417,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                            {.fault_cmd_subtype=flt_cmd_not_control},
                          "(sscr)");
               }
-            t_stat rc = scu_sscr ((uint) scu_unit_num, currentRunningCPUnum,
+            t_stat rc = scu_sscr ((uint) scu_unit_num, thisCPUnum,
                                   cpu_port_num, cpu.iefpFinalAddress & MASK15,
                                   cpu.rA, cpu.rQ);
 

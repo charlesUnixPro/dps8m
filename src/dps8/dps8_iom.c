@@ -2335,17 +2335,17 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
 void * chnThreadMain (void * arg)
   {     
     uint myid = (uint) * (int *) arg;
-    currentRunningIOMnum = (uint) myid / MAX_CHANNELS;
-    currentRunningChnNum = (uint) myid % MAX_CHANNELS;
+    thisIOMnum = (uint) myid / MAX_CHANNELS;
+    thisChnNum = (uint) myid % MAX_CHANNELS;
           
-    sim_printf("IOM %c Channel %u thread created\n", currentRunningIOMnum + 'a', currentRunningChnNum);
+    sim_printf("IOM %c Channel %u thread created\n", thisIOMnum + 'a', thisChnNum);
 
     while (1)
       {
-//sim_printf("IOM %c Channel %u thread waiting\n", currentRunningIOMnum + 'a', currentRunningChnNum);
+//sim_printf("IOM %c Channel %u thread waiting\n", thisIOMnum + 'a', thisChnNum);
         chnConnectWait ();
-//sim_printf("IOM %c Channel %u thread running\n", currentRunningIOMnum + 'a', currentRunningChnNum);
-        doPayloadChan (currentRunningIOMnum, currentRunningChnNum);
+//sim_printf("IOM %c Channel %u thread running\n", thisIOMnum + 'a', thisChnNum);
+        doPayloadChan (thisIOMnum, thisChnNum);
         chnConnectDone ();
       }
   }
@@ -2353,7 +2353,7 @@ void * chnThreadMain (void * arg)
 void * iomThreadMain (void * arg)
   {     
     int myid = * (int *) arg;
-    currentRunningIOMnum = (uint) myid;
+    thisIOMnum = (uint) myid;
           
     sim_printf("IOM %c thread created\n", 'a' + myid);
 
@@ -2362,7 +2362,7 @@ void * iomThreadMain (void * arg)
 //sim_printf("IOM %c thread waiting\n", 'a' + myid);
         iomInterruptWait ();
 //sim_printf("IOM %c thread running\n", 'a' + myid);
-        int ret = doConnectChan (currentRunningIOMnum);
+        int ret = doConnectChan (thisIOMnum);
 
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: IOM %c finished; doConnectChan returned %d.\n",

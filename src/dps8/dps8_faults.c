@@ -333,11 +333,11 @@ bit-28 tp inhibit interrupts
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
-//if (currentRunningCPUnum)
+//if (thisCPUnum)
     //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 
                //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-//if (currentRunningCPUnum)
+//if (thisCPUnum)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
@@ -484,7 +484,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 #endif
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
+//if (thisCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
 #endif
     if (faultNumber == FAULT_ACV)
       {

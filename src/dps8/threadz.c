@@ -7,9 +7,9 @@
 
 #include "threadz.h"
 
-__thread uint currentRunningCPUnum;
-__thread uint currentRunningIOMnum;
-__thread uint currentRunningChnNum;
+__thread uint thisCPUnum;
+__thread uint thisIOMnum;
+__thread uint thisChnNum;
 
 //
 // Resource locks
@@ -88,13 +88,13 @@ void sleepCPU (unsigned long nsec)
     abstime.tv_nsec += nsec;
     abstime.tv_sec += abstime.tv_nsec / 1000000000;
     abstime.tv_nsec %= 1000000000;
-    cthread_mutex_lock (& cpuThreadz[currentRunningCPUnum].sleepLock);
-    //cpuThreadz[currentRunningCPUnum].sleep = false;
-    //while (! cpuThreadz[currentRunningCPUnum].sleep)
-      int n = cthread_cond_timedwait (& cpuThreadz[currentRunningCPUnum].sleepCond,
-                              & cpuThreadz[currentRunningCPUnum].sleepLock,
+    cthread_mutex_lock (& cpuThreadz[thisCPUnum].sleepLock);
+    //cpuThreadz[thisCPUnum].sleep = false;
+    //while (! cpuThreadz[thisCPUnum].sleep)
+      int n = cthread_cond_timedwait (& cpuThreadz[thisCPUnum].sleepCond,
+                              & cpuThreadz[thisCPUnum].sleepLock,
                               & abstime);
-    cthread_mutex_unlock (& cpuThreadz[currentRunningCPUnum].sleepLock);
+    cthread_mutex_unlock (& cpuThreadz[thisCPUnum].sleepLock);
     //sim_printf ("cthread_cond_timedwait %lu %d\n", nsec, n);
   }
 
