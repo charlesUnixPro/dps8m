@@ -2346,6 +2346,7 @@ void * chnThreadMain (void * arg)
         chnConnectWait ();
 //sim_printf("IOM %c Channel %u thread running\n", currentRunningIOMnum + 'a', currentRunningChnNum);
         doPayloadChan (currentRunningIOMnum, currentRunningChnNum);
+        chnConnectDone ();
       }
   }
 
@@ -2366,6 +2367,7 @@ void * iomThreadMain (void * arg)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: IOM %c finished; doConnectChan returned %d.\n",
                    __func__, 'A' + myid, ret);
+        iomInterruptDone ();
       }
   }
 #endif

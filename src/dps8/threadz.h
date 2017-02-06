@@ -1,5 +1,6 @@
 // 
 
+#define tdbg
 
 // Wrapper around pthreads
 
@@ -11,10 +12,6 @@ typedef pthread_attr_t cthread_attr_t;
 typedef pthread_mutexattr_t cthread_mutexattr_t;
 typedef pthread_cond_t cthread_cond_t;
 typedef pthread_condattr_t cthread_condattr_t;
-
-__thread extern uint currentRunningCPUnum;
-__thread extern uint currentRunningIOMnum;
-__thread extern uint currentRunningChnNum;
 
 static inline int cthread_cond_wait (cthread_cond_t * restrict cond,
                                      cthread_mutex_t * restrict mutex)
@@ -66,6 +63,14 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
   {
     return pthread_cond_timedwait (cond, mutex, abstime);
   }
+
+
+
+
+
+__thread extern uint currentRunningCPUnum;
+__thread extern uint currentRunningIOMnum;
+__thread extern uint currentRunningChnNum;
 
 // libuv resource lock
 
@@ -121,7 +126,11 @@ struct iomThreadz_t
     cthread_cond_t intrCond;
     cthread_mutex_t intrLock;
 
-    cthread_mutex_t busy;
+#ifdef tdbg
+    // debugging
+    int inCnt;
+    int outCnt;
+#endif
   };
 extern struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
 
@@ -129,11 +138,20 @@ void createIOMThread (uint iomNum);
 static inline void iomInterruptWait (void)
   {
     cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].intrLock);
-    cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].busy);
     while (! iomThreadz[currentRunningIOMnum].intr)
       cthread_cond_wait (& iomThreadz[currentRunningIOMnum].intrCond, & iomThreadz[currentRunningIOMnum].intrLock);
     iomThreadz[currentRunningIOMnum].intr = false;
-    cthread_mutex_lock (& iomThreadz[currentRunningIOMnum].busy);
+#ifdef tdbg
+    iomThreadz[currentRunningIOMnum].outCnt++;
+    if (iomThreadz[currentRunningIOMnum].inCnt != iomThreadz[currentRunningIOMnum].outCnt)
+      sim_printf ("iom thread %d in %d out %d\n", currentRunningIOMnum,
+        iomThreadz[currentRunningIOMnum].inCnt,
+        iomThreadz[currentRunningChnNum].outCnt);
+#endif
+  }
+
+static inline void iomInterruptDone (void)
+  {
     cthread_mutex_unlock (& iomThreadz[currentRunningIOMnum].intrLock);
   }
 void setIOMInterrupt (uint iomNum);
@@ -152,7 +170,11 @@ struct chnThreadz_t
     cthread_cond_t connectCond;
     cthread_mutex_t connectLock;
 
-    cthread_mutex_t busy;
+#ifdef tdbg
+    // debugging
+    int inCnt;
+    int outCnt;
+#endif
   };
 extern struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
@@ -160,11 +182,19 @@ void createChnThread (uint iomNum, uint chnNum);
 static inline void chnConnectWait (void)
   {
     cthread_mutex_lock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
-    cthread_mutex_unlock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].busy);
     while (! chnThreadz[currentRunningIOMnum][currentRunningChnNum].connect)
       cthread_cond_wait (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectCond, & chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
     chnThreadz[currentRunningIOMnum][currentRunningChnNum].connect = false;
-    cthread_mutex_lock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].busy);
+#ifdef tdbg
+    chnThreadz[currentRunningIOMnum][currentRunningChnNum].outCnt++;
+    if (chnThreadz[currentRunningIOMnum][currentRunningChnNum].inCnt != chnThreadz[currentRunningIOMnum][currentRunningChnNum].outCnt)
+      sim_printf ("chn thread %d in %d out %d\n", currentRunningChnNum,
+        chnThreadz[currentRunningIOMnum][currentRunningChnNum].inCnt, 
+        chnThreadz[currentRunningIOMnum][currentRunningChnNum].outCnt);
+#endif
+  }
+static inline void chnConnectDone (void)
+  {
     cthread_mutex_unlock (& chnThreadz[currentRunningIOMnum][currentRunningChnNum].connectLock);
   }
 void setChnConnect (uint iomNum, uint chnNum);

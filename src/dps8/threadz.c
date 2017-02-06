@@ -104,14 +104,16 @@ struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
 
 void createIOMThread (uint iomNum)
   {
+#ifdef tdbg
+    iomThreadz[iomNum].inCnt = 0;
+    iomThreadz[iomNum].outCnt = 0;
+#endif
     iomThreadz[iomNum].iomThreadArg = (int) iomNum;
 
     // initialize interrupt wait
     iomThreadz[iomNum].intr = false;
     cthread_mutex_init (& iomThreadz[iomNum].intrLock, NULL);
     cthread_cond_init (& iomThreadz[iomNum].intrCond, NULL);
-    cthread_mutex_init (& iomThreadz[iomNum].busy, NULL);
-    cthread_mutex_lock (& iomThreadz[iomNum].busy);
 
     cthread_create (& iomThreadz[iomNum].iomThread, NULL, iomThreadMain, 
                     & iomThreadz[iomNum].iomThreadArg);
@@ -119,12 +121,13 @@ void createIOMThread (uint iomNum)
 
 void setIOMInterrupt (uint iomNum)
   {
-    cthread_mutex_lock (& iomThreadz[iomNum].busy);
     cthread_mutex_lock (& iomThreadz[iomNum].intrLock);
+#ifdef tdbg
+    iomThreadz[iomNum].inCnt++;
+#endif
     iomThreadz[iomNum].intr = true;
     cthread_cond_signal (& iomThreadz[iomNum].intrCond);
     cthread_mutex_unlock (& iomThreadz[iomNum].intrLock);
-    cthread_mutex_unlock (& iomThreadz[iomNum].busy);
   }
 
 // Channel threads
@@ -135,12 +138,14 @@ void createChnThread (uint iomNum, uint chnNum)
   {
     chnThreadz[iomNum][chnNum].chnThreadArg = (int) (chnNum + iomNum * MAX_CHANNELS);
 
+#ifdef tdbg
+    chnThreadz[iomNum][chnNum].inCnt = 0;
+    chnThreadz[iomNum][chnNum].outCnt = 0;
+#endif
     // initialize interrupt wait
     chnThreadz[iomNum][chnNum].connect = false;
     cthread_mutex_init (& chnThreadz[iomNum][chnNum].connectLock, NULL);
     cthread_cond_init (& chnThreadz[iomNum][chnNum].connectCond, NULL);
-    cthread_mutex_init (& chnThreadz[iomNum][chnNum].busy, NULL);
-    cthread_mutex_lock (& chnThreadz[iomNum][chnNum].busy);
 
     cthread_create (& chnThreadz[iomNum][chnNum].chnThread, NULL, chnThreadMain, 
                     & chnThreadz[iomNum][chnNum].chnThreadArg);
@@ -148,12 +153,13 @@ void createChnThread (uint iomNum, uint chnNum)
 
 void setChnConnect (uint iomNum, uint chnNum)
   {
-    cthread_mutex_lock (& chnThreadz[iomNum][chnNum].busy);
     cthread_mutex_lock (& chnThreadz[iomNum][chnNum].connectLock);
     chnThreadz[iomNum][chnNum].connect = true;
+#ifdef tdbg
+    chnThreadz[iomNum][chnNum].inCnt++;
+#endif
     cthread_cond_signal (& chnThreadz[iomNum][chnNum].connectCond);
     cthread_mutex_unlock (& chnThreadz[iomNum][chnNum].connectLock);
-    cthread_mutex_unlock (& chnThreadz[iomNum][chnNum].busy);
   }
 
 void initThreadz (void)
