@@ -1578,10 +1578,12 @@ t_stat sim_instr (void)
             for (uint chnNum = 0; chnNum < MAX_CHANNELS; chnNum ++)
               {
                 uint devCnt = 0;
+#if 0
                 if (chnNum == IOM_CONNECT_CHAN)
                   devCnt ++;
                 else
                   {
+#endif
                     for (uint devNum = 0; devNum < N_DEV_CODES; devNum ++)
                       {
                         struct device * d = & cables -> cablesFromIomToDev [iomNum] . devices [chnNum] [devNum];   
@@ -1590,7 +1592,9 @@ t_stat sim_instr (void)
                         if (d->type)
                           devCnt ++;
                       }
+#if 0
                   }
+#endif
                 if (devCnt)
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);

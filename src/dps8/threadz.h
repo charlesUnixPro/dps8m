@@ -140,7 +140,6 @@ static inline void iomInterruptWait (void)
     cthread_mutex_lock (& iomThreadz[thisIOMnum].intrLock);
     while (! iomThreadz[thisIOMnum].intr)
       cthread_cond_wait (& iomThreadz[thisIOMnum].intrCond, & iomThreadz[thisIOMnum].intrLock);
-    iomThreadz[thisIOMnum].intr = false;
 #ifdef tdbg
     iomThreadz[thisIOMnum].outCnt++;
     if (iomThreadz[thisIOMnum].inCnt != iomThreadz[thisIOMnum].outCnt)
@@ -152,6 +151,7 @@ static inline void iomInterruptWait (void)
 
 static inline void iomInterruptDone (void)
   {
+    iomThreadz[thisIOMnum].intr = false;
     cthread_mutex_unlock (& iomThreadz[thisIOMnum].intrLock);
   }
 void setIOMInterrupt (uint iomNum);
@@ -184,7 +184,6 @@ static inline void chnConnectWait (void)
     cthread_mutex_lock (& chnThreadz[thisIOMnum][thisChnNum].connectLock);
     while (! chnThreadz[thisIOMnum][thisChnNum].connect)
       cthread_cond_wait (& chnThreadz[thisIOMnum][thisChnNum].connectCond, & chnThreadz[thisIOMnum][thisChnNum].connectLock);
-    chnThreadz[thisIOMnum][thisChnNum].connect = false;
 #ifdef tdbg
     chnThreadz[thisIOMnum][thisChnNum].outCnt++;
     if (chnThreadz[thisIOMnum][thisChnNum].inCnt != chnThreadz[thisIOMnum][thisChnNum].outCnt)
@@ -195,6 +194,7 @@ static inline void chnConnectWait (void)
   }
 static inline void chnConnectDone (void)
   {
+    chnThreadz[thisIOMnum][thisChnNum].connect = false;
     cthread_mutex_unlock (& chnThreadz[thisIOMnum][thisChnNum].connectLock);
   }
 void setChnConnect (uint iomNum, uint chnNum);
