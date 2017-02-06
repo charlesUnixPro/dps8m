@@ -188,6 +188,9 @@ void iomInterruptDone (void)
     int rc;
     struct iomThreadz_t * p = & iomThreadz[thisIOMnum];
     p->intr = false;
+    rc = pthread_cond_signal (& p->intrCond);
+    if (rc)
+      sim_printf ("iomInterruptDone pthread_cond_signal %d\n", rc);
     rc = pthread_mutex_unlock (& p->intrLock);
     if (rc)
       sim_printf ("iomInterruptDone pthread_mutex_unlock %d\n", rc);
@@ -200,6 +203,12 @@ void setIOMInterrupt (uint iomNum)
     rc = pthread_mutex_lock (& p->intrLock);
     if (rc)
       sim_printf ("setIOMInterrupt pthread_mutex_lock %d\n", rc);
+    while (p->intr)
+      {
+        rc = pthread_cond_wait(&p->intrCond, &p->intrLock);
+        if (rc)
+          sim_printf ("setIOMInterrupt pthread_cond_wait intrLock %d\n", rc);
+      }
 #ifdef tdbg
     p->inCnt++;
 #endif
@@ -267,6 +276,9 @@ void chnConnectDone (void)
     int rc;
     struct chnThreadz_t * p = & chnThreadz[thisIOMnum][thisChnNum];
     p->connect = false;
+    rc = pthread_cond_signal (& p->connectCond);
+    if (rc)
+      sim_printf ("chnInterruptDone pthread_cond_signal %d\n", rc);
     rc = pthread_mutex_unlock (& p->connectLock);
     if (rc)
       sim_printf ("chnConnectDone pthread_mutex_unlock %d\n", rc);
@@ -279,10 +291,16 @@ void setChnConnect (uint iomNum, uint chnNum)
     rc = pthread_mutex_lock (& p->connectLock);
     if (rc)
       sim_printf ("setChnConnect pthread_mutex_lock %d\n", rc);
-    p->connect = true;
+    while (p->connect)
+      {
+        rc = pthread_cond_wait(&p->connectCond, &p->connectLock);
+        if (rc)
+          sim_printf ("setChnInterrupt pthread_cond_wait connectLock %d\n", rc);
+      }
 #ifdef tdbg
     p->inCnt++;
 #endif
+    p->connect = true;
     rc = pthread_cond_signal (& p->connectCond);
     if (rc)
       sim_printf ("setChnConnect pthread_cond_signal %d\n", rc);
