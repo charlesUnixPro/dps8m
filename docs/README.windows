@@ -57,7 +57,6 @@ Running the emulator:
 
 
       cd c:\msys64\home\Admin\dps8m-code\QuickStart_MR12.6e_rc7a1
-      ..\dps
       ..\dps8m-code\src\dps8\dps8.exe MR12.6e_boot.ini
 
 
