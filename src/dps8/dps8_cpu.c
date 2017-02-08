@@ -1610,18 +1610,19 @@ t_stat sim_instr (void)
 
 // Create CPU threads
 
-        for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+        //for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+        for (uint cpuNum = 0; cpuNum < cpu_dev.numunits; cpuNum ++)
           {
             createCPUThread (cpuNum);
             setCPURun (cpuNum, false);
             //cpuRdyWait (cpuNum);
-            //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+            setCPURun (cpuNum, true);
           }
 
       }
 
-    for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
-      setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+    //for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+      //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
 
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
