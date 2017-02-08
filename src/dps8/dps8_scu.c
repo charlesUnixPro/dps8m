@@ -1712,7 +1712,7 @@ static void deliverInterrupts (uint scu_unit_num)
 #ifdef THREADZ
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
 #else
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
                     uint save = setCPUnum ((uint) cpu_unit_num);
 //if (cpu_unit_num && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
                     cpu.isRunning = true;

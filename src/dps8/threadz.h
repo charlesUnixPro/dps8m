@@ -83,6 +83,10 @@ void unlock_libuv (void);
 void lock_simh (void);
 void unlock_simh (void);
 
+// atomic memory lock
+void lock_mem (void);
+void unlock_mem (void);
+
 // CPU threads
 
 struct cpuThreadz_t

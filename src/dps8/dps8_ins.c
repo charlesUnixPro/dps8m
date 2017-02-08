@@ -1200,7 +1200,7 @@ force:;
           {
             if (isBAR)
               {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1234,7 +1234,7 @@ force:;
               }
             else
               {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1269,7 +1269,7 @@ force:;
           {
             if (isBAR)
               {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                  "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1305,7 +1305,7 @@ force:;
               }
             else
               {
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",

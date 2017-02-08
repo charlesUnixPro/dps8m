@@ -1725,6 +1725,8 @@ t_stat sim_instr (void)
       {
         reason = 0;
 
+        unlock_mem ();
+
         // wait on run/switch
         cpuRunningWait ();
 
@@ -2559,6 +2561,17 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
         Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH, b29);
         return SCPE_OK;
     }
+
+    if (cyctyp == OPERAND_READ)
+      {
+        if ((i -> opcode == 0034 && ! i -> opcodeX) ||  // ldac
+            (i -> opcode == 0032 && ! i -> opcodeX) ||  // ldqc
+            (i -> opcode == 0354 && ! i -> opcodeX) ||  // stac
+            (i -> opcode == 0654 && ! i -> opcodeX))    // stacq
+          {
+            lock_mem ();
+          }
+      }
 
     switch (OPSIZE ())
     {

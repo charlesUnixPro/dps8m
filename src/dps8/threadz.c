@@ -41,6 +41,18 @@ void unlock_libuv (void)
     pthread_mutex_unlock (& libuv_lock);
   }
 
+static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void lock_mem (void)
+  {
+    pthread_mutex_lock (& mem_lock);
+  }
+
+void unlock_mem (void)
+  {
+    pthread_mutex_unlock (& mem_lock);
+  }
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // CPU threads

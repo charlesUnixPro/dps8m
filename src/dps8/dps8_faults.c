@@ -825,7 +825,7 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %"PRId64" %"PRIo64"\n", 
                cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
-#ifdef ROUND_ROBIN
+#if defined (ROUND_ROBIN) || defined (THREADZ)
     uint save = setCPUnum (cpuNo);
     cpu.g7FaultsPreset |= (1u << faultNo);
     //cpu.g7SubFaultsPreset [faultNo] = subFault;
