@@ -1799,6 +1799,8 @@ typedef struct
 #ifdef ISOLTS
     uint shadowTR;
 #endif
+    // Set if this thread has set memlock
+    bool havelock; // Vetinari 
   } cpu_state_t;
 
 #ifdef M_SHARED

@@ -1726,7 +1726,11 @@ t_stat sim_instr (void)
       {
         reason = 0;
 
-        unlock_mem ();
+        if (cpu.havelock)
+          {
+            unlock_mem ();
+            cpu.havelock = false;
+          }
 
         // wait on run/switch
         cpuRunningWait ();
@@ -2571,6 +2575,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
             (i -> opcode == 0654 && ! i -> opcodeX))    // stacq
           {
             lock_mem ();
+            cpu.havelock = true;
           }
       }
 
