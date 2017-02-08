@@ -2320,6 +2320,7 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
 
 #ifdef THREADZ
     setIOMInterrupt (iomUnitIdx);
+    iomDoneWait (iomUnitIdx);
 #else
     int ret = doConnectChan (iomUnitIdx);
 

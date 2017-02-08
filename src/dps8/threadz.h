@@ -90,6 +90,8 @@ struct cpuThreadz_t
     pthread_t cpuThread;
     int cpuThreadArg;
 
+    //volatile bool ready;
+
     // run/stop switch
     bool run;
     pthread_cond_t runCond;
@@ -104,6 +106,7 @@ struct cpuThreadz_t
 extern struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
 
 void createCPUThread (uint cpuNum);
+void cpuRdyWait (uint cpuNum);
 void setCPURun (uint cpuNum, bool run);
 void cpuRunningWait (void);
 void sleepCPU (unsigned long nsec);
@@ -114,6 +117,8 @@ struct iomThreadz_t
   {
     pthread_t iomThread;
     int iomThreadArg;
+
+    volatile bool ready;
 
     // interrupt wait
     bool intr;
@@ -131,7 +136,9 @@ extern struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
 void createIOMThread (uint iomNum);
 void iomInterruptWait (void);
 void iomInterruptDone (void);
+void iomDoneWait (uint iomNum);
 void setIOMInterrupt (uint iomNum);
+void iomRdyWait (uint iomNum);
 
 // Channel threads
 
@@ -141,6 +148,9 @@ struct chnThreadz_t
 
     pthread_t chnThread;
     int chnThreadArg;
+
+    // waiting at the gate
+    volatile bool ready;
 
     // connect wait
     bool connect;
@@ -159,4 +169,5 @@ void createChnThread (uint iomNum, uint chnNum);
 void chnConnectWait (void);
 void chnConnectDone (void);
 void setChnConnect (uint iomNum, uint chnNum);
+void chnRdyWait (uint iomNum, uint chnNum);
 void initThreadz (void);

@@ -1,5 +1,7 @@
 // Threads wrappers
 
+#include <unistd.h>
+
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_cpu.h"
@@ -39,9 +41,15 @@ void unlock_libuv (void)
     pthread_mutex_unlock (& libuv_lock);
   }
 
-// cpu threads
+////////////////////////////////////////////////////////////////////////////////
+//
+// CPU threads
+//
+////////////////////////////////////////////////////////////////////////////////
 
 struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
+
+// Create CPU thread
 
 void createCPUThread (uint cpuNum)
   {
@@ -56,6 +64,7 @@ void createCPUThread (uint cpuNum)
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init runCond %d\n", rc);
     p->run = false;
+    //p->ready = false;
 
     // initialize DIS sleep
     rc = pthread_mutex_init (& p->sleepLock, NULL);
@@ -70,6 +79,17 @@ void createCPUThread (uint cpuNum)
     if (rc)
       sim_printf ("createCPUThread pthread_create %d\n", rc);
   }
+
+#if 0
+void cpuRdyWait (uint cpuNum)
+  {
+    struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
+    while (! p -> ready)
+      usleep (10000);
+   }
+#endif
+
+// Set CPU thread run/sleep
 
 void setCPURun (uint cpuNum, bool run)
   {
@@ -86,6 +106,8 @@ void setCPURun (uint cpuNum, bool run)
     if (rc)
       sim_printf ("setCPUrun pthread_mutex_unlock %d\n", rc);
   }
+
+// Called by CPU thread to block on run/sleep
 
 void cpuRunningWait (void)
   {
@@ -106,6 +128,8 @@ void cpuRunningWait (void)
     if (rc)
       sim_printf ("cpuRunningWait pthread_mutex_unlock %d\n", rc);
   }
+
+// Called by CPU thread to sleep until time up or signaled
 
 void sleepCPU (unsigned long nsec)
   {
@@ -133,9 +157,15 @@ void sleepCPU (unsigned long nsec)
     //sim_printf ("pthread_cond_timedwait %lu %d\n", nsec, n);
   }
 
+////////////////////////////////////////////////////////////////////////////////
+//
 // IOM threads
+//
+////////////////////////////////////////////////////////////////////////////////
 
 struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
+
+// Create IOM thread
 
 void createIOMThread (uint iomNum)
   {
@@ -147,6 +177,7 @@ void createIOMThread (uint iomNum)
 #endif
     p->iomThreadArg = (int) iomNum;
 
+    p->ready = false;
     // initialize interrupt wait
     p->intr = false;
     rc = pthread_mutex_init (& p->intrLock, NULL);
@@ -162,6 +193,8 @@ void createIOMThread (uint iomNum)
       sim_printf ("createIOMThread pthread_create %d\n", rc);
   }
 
+// Called by IOM thread to block until CIOC call
+
 void iomInterruptWait (void)
   {
     int rc;
@@ -169,6 +202,7 @@ void iomInterruptWait (void)
     rc = pthread_mutex_lock (& p->intrLock);
     if (rc)
       sim_printf ("iomInterruptWait pthread_mutex_lock %d\n", rc);
+    p -> ready = true;
     while (! p->intr)
       {
         rc = pthread_cond_wait (& p->intrCond, & p->intrLock);
@@ -183,6 +217,8 @@ void iomInterruptWait (void)
 #endif
   }
 
+// Called by IOM thread to signal CIOC complete
+
 void iomInterruptDone (void)
   {
     int rc;
@@ -195,6 +231,29 @@ void iomInterruptDone (void)
     if (rc)
       sim_printf ("iomInterruptDone pthread_mutex_unlock %d\n", rc);
   }
+
+// Called by CPU thread to wait for iomInterruptDone
+
+void iomDoneWait (uint iomNum)
+  {
+    int rc;
+    struct iomThreadz_t * p = & iomThreadz[iomNum];
+    rc = pthread_mutex_lock (& p->intrLock);
+    if (rc)
+      sim_printf ("iomDoneWait pthread_mutex_lock %d\n", rc);
+    while (p->intr)
+      {
+        rc = pthread_cond_wait (& p->intrCond, & p->intrLock);
+        if (rc)
+          sim_printf ("iomDoneWait pthread_cond_wait %d\n", rc);
+      }
+    rc = pthread_mutex_unlock (& p->intrLock);
+    if (rc)
+      sim_printf ("iomDoneWait pthread_mutex_unlock %d\n", rc);
+  }
+
+
+// Signal CIOC to IOM thread
 
 void setIOMInterrupt (uint iomNum)
   {
@@ -221,9 +280,25 @@ void setIOMInterrupt (uint iomNum)
       sim_printf ("setIOMInterrupt pthread_mutex_unlock %d\n", rc);
   }
 
+// Wait for IOM thread to initialize
+
+void iomRdyWait (uint iomNum)
+  {
+    struct iomThreadz_t * p = & iomThreadz[iomNum];
+    while (! p -> ready)
+      usleep (10000);
+   }
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // Channel threads
+//
+////////////////////////////////////////////////////////////////////////////////
 
 struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+
+// Create channel thread
 
 void createChnThread (uint iomNum, uint chnNum)
   {
@@ -235,6 +310,7 @@ void createChnThread (uint iomNum, uint chnNum)
     p->inCnt = 0;
     p->outCnt = 0;
 #endif
+    p->ready = false;
     // initialize interrupt wait
     p->connect = false;
     rc = pthread_mutex_init (& p->connectLock, NULL);
@@ -250,13 +326,18 @@ void createChnThread (uint iomNum, uint chnNum)
       sim_printf ("createChnThread pthread_create %d\n", rc);
   }
 
+// Called by channel thread to block until I/O command presented
+
 void chnConnectWait (void)
   {
     int rc;
     struct chnThreadz_t * p = & chnThreadz[thisIOMnum][thisChnNum];
+
+   
     rc = pthread_mutex_lock (& p->connectLock);
     if (rc)
       sim_printf ("chnConnectWait pthread_mutex_lock %d\n", rc);
+    p -> ready = true;
     while (! p->connect)
       {
         rc = pthread_cond_wait (& p->connectCond, & p->connectLock);
@@ -271,6 +352,8 @@ void chnConnectWait (void)
 #endif
   }
 
+// Called by channel thread to signal I/O complete
+
 void chnConnectDone (void)
   {
     int rc;
@@ -283,6 +366,8 @@ void chnConnectDone (void)
     if (rc)
       sim_printf ("chnConnectDone pthread_mutex_unlock %d\n", rc);
   }
+
+// Signal I/O presented to channel thread
 
 void setChnConnect (uint iomNum, uint chnNum)
   {
@@ -308,6 +393,15 @@ void setChnConnect (uint iomNum, uint chnNum)
     if (rc)
       sim_printf ("setChnConnect pthread_mutex_unlock %d\n", rc);
   }
+
+// Block until channel thread ready
+
+void chnRdyWait (uint iomNum, uint chnNum)
+  {
+    struct chnThreadz_t * p = & chnThreadz[iomNum][chnNum];
+    while (! p -> ready)
+      usleep (10000);
+   }
 
 void initThreadz (void)
   {

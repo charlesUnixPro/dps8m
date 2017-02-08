@@ -1566,12 +1566,8 @@ t_stat sim_instr (void)
       {
         inited = true;
         initThreadz ();
-        for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
-          {
-            createCPUThread (cpuNum);
-            setCPURun (cpuNum, false);
-            //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
-          }
+
+// Create channel threads
 
         for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
           {
@@ -1599,14 +1595,29 @@ t_stat sim_instr (void)
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
                     createChnThread (iomNum, chnNum);
+                    chnRdyWait (iomNum, chnNum);
                   }
               }
           }
 
+// Create IOM threads
+
         for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
           {
             createIOMThread (iomNum);
+            iomRdyWait (iomNum);
           }
+
+// Create CPU threads
+
+        for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
+          {
+            createCPUThread (cpuNum);
+            setCPURun (cpuNum, false);
+            //cpuRdyWait (cpuNum);
+            //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
+          }
+
       }
 
     for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
