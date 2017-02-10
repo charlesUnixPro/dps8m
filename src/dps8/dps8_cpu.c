@@ -33,11 +33,7 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_console.h"
-#ifdef FNP2
 #include "dps8_fnp2.h"
-#else
-#include "dps8_fnp.h"
-#endif
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
@@ -49,12 +45,6 @@
 #include "hdbg.h"
 #endif
 #include "dps8_opcodetable.h"
-
-#ifdef FNP2
-#else
-#include "fnp_defs.h"
-#include "fnp_cmds.h"
-#endif
 
 #include "sim_defs.h"
 
@@ -897,9 +887,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     scpProcessEvent (); 
     fnpProcessEvent (); 
     consoleProcess ();
-#ifndef FNP2
-    dequeue_fnp_command ();
-#endif
 #ifndef __MINGW64__
     absiProcessEvent ();
 #endif
