@@ -2350,7 +2350,6 @@ t_stat sim_instr (void)
                     CPTUR (cptUseMR);
                     // The high 15 bits
                     fltAddress = (cpu.MR.FFV & MASK15) << 3;
-//IF1 sim_printf ("fltAddress %06o\n", fltAddress);
                   }
 #endif
 
@@ -4246,8 +4245,6 @@ void addCUhist (void)
     if (! cpu.MR_cache.ihr)
       return;
 
-//IF1 if (cpu.MR.hrhlt) sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
-//IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
 
     // 0 PIA
@@ -4312,7 +4309,6 @@ void addCUhist (void)
           {
             cpu.MR.ihr = 0;
           }
-//IF1 sim_printf ("trapping......\n");
         set_FFV_fault (4);
         return;
       }

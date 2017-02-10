@@ -411,7 +411,6 @@ static void readOperands (void)
 
 static void scu2words (word36 *words)
   {
-IF1 if (cpu.cu.FI_ADDR == FAULT_LUF) sim_printf ("scu2words IC %06o\n", cpu.PPR.IC);
     CPT (cpt2U, 6); // scu2words
     memset (words, 0, 8 * sizeof (* words));
 
@@ -1459,7 +1458,6 @@ t_stat executeInstruction (void)
                 cpu.MR.ihr = 0;
               }
             CPT (cpt2U, 14); // opcode trap
-IF1 sim_printf ("trapping opcode match......\n");
             //set_FFV_fault (2); // XXX According to AL39
             do_FFV_fault (1, "OC TRAP");
           }
@@ -5525,7 +5523,6 @@ sim_printf ("do bar attempt\n");
               cpu.PR[n].SNR = (cpu.Ypair[0] >> 18) & MASK15;
               cpu.PR[n].WORDNO = GETHI (cpu.Ypair[1]);
               word6 bitno = (GETLO (cpu.Ypair[1]) >> 9) & 077;
-//IF1 sim_printf ("LPRI n %u bitno 0%o %u.\n", n, bitno, bitno);
 // According to ISOLTS, loading a 077 into bitno results in 037
 // pa851    test-04b    lpri test       bar-100176
 // test start 105321   patch 105461   subtest loop point 105442
@@ -6100,7 +6097,6 @@ sim_printf ("do bar attempt\n");
           // remainder -> C(A)
 
           {
-//IF1 sim_printf("BCD A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36, cpu.CY); 
             word36 tmp1 = cpu.rA & SIGN36; // A0
             word36 tmp36 = (cpu.rA << 3) & DMASK;
             word36 tmp36q = tmp36 / cpu.CY; // this may be more than 4 bits, keep it for remainder calculation
@@ -6125,8 +6121,6 @@ sim_printf ("do bar attempt\n");
             cpu.rQ |= (tmp36q & 017);
 
             cpu.rA = tmp36r & DMASK;    // remainder -> C(A)
-
-//IF1 sim_printf("BCD final A %012"PRIo64" Q %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
 
             SC_I_ZERO (cpu.rA == 0);  // If C(A) = 0, then ON;
                                             // otherwise OFF
@@ -6173,7 +6167,6 @@ sim_printf ("do bar attempt\n");
 
         case 0674:  // lcpr
           // DPS8M interpratation
-//IF1 sim_printf ("lcpr %d\n", i->tag);
           switch (i->tag)
             {
               // Extract bits from 'from' under 'mask' shifted to where (where
@@ -6247,9 +6240,7 @@ sim_printf ("do bar attempt\n");
 #ifdef DPS8M
                   cpu.MR.hexfp = getbits36_1 (cpu.CY, 33);
 #endif
-//IF1 sim_printf ("hrhlt %u ihr %u emr %u\n", cpu.MR.hrhlt, cpu.MR.ihr, cpu.MR.emr);
 #else
-IF1 sim_printf ("set mode register %012"PRIo64"\n", cpu.CY);
 #ifdef L68
                   cpu.MR.FFV = getbits36_15 (cpu.CY, 0);
                   cpu.MR.isolts_tracks = getbits36_1 (cpu.CY, 15);
@@ -6331,7 +6322,6 @@ IF1 sim_printf ("set mode register %012"PRIo64"\n", cpu.CY);
 
               case 03: // 0's -> history
                 {
-IF1 sim_printf ("0-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                   for (uint i = 0; i < N_HIST_SETS; i ++)
                     addHistForce (i, 0, 0);
 // XXX ISOLTS pm700 test-01n 
@@ -6346,7 +6336,6 @@ IF1 sim_printf ("0-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
 
               case 07: // 1's -> history
                 {
-IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                   for (uint i = 0; i < N_HIST_SETS; i ++)
                     addHistForce (i, MASK36, MASK36);
 // XXX ISOLTS pm700 test-01n 
@@ -6375,7 +6364,6 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
-//IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
 #ifdef THREADZ
 //sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
@@ -6416,7 +6404,6 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
         case 0452:  // scpr
           {
             uint tag = (i->tag) & MASK6;
-//IF1 sim_printf ("scpr %d\n", i->tag);
             switch (tag)
               {
                 case 000: // C(APU history register#1) -> C(Y-pair)
@@ -6513,7 +6500,6 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                     putbits36_1 (& cpu.Ypair[0], 33, cpu.MR.hexfp);
 #endif
                     putbits36_1 (& cpu.Ypair[0], 35, cpu.MR.emr);
-IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #endif
                     CPTUR (cptUseCMR);
                     cpu.Ypair[1] = 0;
@@ -6536,7 +6522,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                                  cpu.CMR.bypass_cache);
 #endif
                     putbits36_2 (& cpu.Ypair[1], 70 - 36, cpu.CMR.luf);
-//IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[1]);
                   }
                   break;
 
@@ -6573,7 +6558,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                     cpu.Ypair[1] =
                       cpu.history[CU_HIST_REG]
                                  [cpu.history_cyclic[CU_HIST_REG]][1];
-//IF1 sim_printf ("scpr cu %u %012"PRIo64" %012"PRIo64"\n", cpu.history_cyclic[CU_HIST_REG], cpu.Ypair[0], cpu.Ypair[1]);
                     cpu.history_cyclic[CU_HIST_REG] =
                       (cpu.history_cyclic[CU_HIST_REG] + 1) % N_HIST_SIZE;
                   }

@@ -134,13 +134,6 @@
 #define DPS8M_(x)
 #endif
 
-// debugging tool
-#ifdef ISOLTS
-#define IF1 if (thisCPUnum)
-#else
-#define IF1 if (0)
-#endif
-
 #define OSCAR
 
 // DPS8-M support Hex Mode Floating Point

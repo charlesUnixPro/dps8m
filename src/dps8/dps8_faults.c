@@ -333,12 +333,6 @@ bit-28 tp inhibit interrupts
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
-//if (thisCPUnum)
-    //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
-               //faultNumber, faultNumber, subFault, subFault, 
-               //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-//if (thisCPUnum)
-    //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault.bits, subFault.bits, 
@@ -483,9 +477,6 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         cpu . currentInstruction . info -> ndes > 0);
 #endif
 
-#ifdef ISOLTS
-//if (thisCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
-#endif
     if (faultNumber == FAULT_ACV)
       {
         // This is annoyingly inefficent since the subFault value 
@@ -652,7 +643,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Floating fault %d '%s'\n", 
                fault_number, fault_msg);
-//IF1 sim_printf ("Floating fault %d '%s'\n", fault_number, fault_msg);
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
