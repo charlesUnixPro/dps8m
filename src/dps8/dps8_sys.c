@@ -37,7 +37,6 @@
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_iom.h"
-#include "dps8_loader.h"
 #include "dps8_math.h"
 #include "dps8_scu.h"
 #include "dps8_mt.h"
@@ -108,10 +107,6 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 
 static CTAB dps8_cmds[] =
 {
-    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL, NULL},
-    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL, NULL},
-    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL, NULL},
-    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL, NULL},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL, NULL},
     {"CABLE_RIPOUT",    sys_cable_ripout,       0, "cable Unstring all cables\n" , NULL, NULL},
     {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL, NULL},
@@ -376,149 +371,8 @@ static t_stat sbreak (int32 arg, const char * buf)
   }
 
 
-static struct PRtab {
-    char *alias;    ///< pr alias
-    int   n;        ///< number alias represents ....
-} _prtab[] = {
-    {"pr0", 0}, ///< pr0 - 7
-    {"pr1", 1},
-    {"pr2", 2},
-    {"pr3", 3},
-    {"pr4", 4},
-    {"pr5", 5},
-    {"pr6", 6},
-    {"pr7", 7},
-
-    {"pr[0]", 0}, ///< pr0 - 7
-    {"pr[1]", 1},
-    {"pr[2]", 2},
-    {"pr[3]", 3},
-    {"pr[4]", 4},
-    {"pr[5]", 5},
-    {"pr[6]", 6},
-    {"pr[7]", 7},
-    
-    // from: ftp://ftp.stratus.com/vos/multics/pg/mvm.html
-    {"ap",  0},
-    {"ab",  1},
-    {"bp",  2},
-    {"bb",  3},
-    {"lp",  4},
-    {"lb",  5},
-    {"sp",  6},
-    {"sb",  7},
-    
-    {0,     0}
-    
-};
-
 static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **optr)
 {
-    // a segment reference?
-    if (strchr(cptr, '|'))
-    {
-        static char addspec[256];
-        strcpy(addspec, cptr);
-        
-        *strchr(addspec, '|') = ' ';
-        
-        char seg[256], off[256];
-        int params = sscanf(addspec, "%s %s", seg, off);
-        if (params != 2)
-        {
-            sim_printf("parse_addr(): illegal number of parameters\n");
-            *optr = cptr;   // signal error
-            return 0;
-        }
-        
-        // determine if segment is numeric or symbolic...
-        char *endp;
-        word18 PRoffset = 0;   // offset from PR[n] register (if any)
-        int segno = (int)strtoll(seg, &endp, 8);
-        if (endp == seg)
-        {
-            // not numeric...
-            // 1st, see if it's a PR or alias thereof
-            struct PRtab *prt = _prtab;
-            while (prt->alias)
-            {
-                if (strcasecmp(seg, prt->alias) == 0)
-                {
-                    segno = cpu . PR[prt->n].SNR;
-                    PRoffset = cpu . PR[prt->n].WORDNO;
-                    break;
-                }
-                
-                prt += 1;
-            }
-            
-            if (!prt->alias)    // not a PR or alias
-            {
-                segment *s = findSegmentNoCase(seg);
-                if (s == NULL)
-                {
-                    sim_printf("parse_addr(): segment '%s' not found\n", seg);
-                    *optr = cptr;   // signal error
-                    
-                    return 0;
-                }
-                segno = s->segno;
-            }
-        }
-        
-        // determine if offset is numeric or symbolic entry point/segdef...
-        uint offset = (uint)strtoll(off, &endp, 8);
-        if (endp == off)
-        {
-            // not numeric...
-            segdef *s = findSegdefNoCase(seg, off);
-            if (s == NULL)
-            {
-                sim_printf("parse_addr(): entrypoint '%s' not found in segment '%s'", off, seg);
-                *optr = cptr;   // signal error
-
-                return 0;
-            }
-            offset = (uint) s->value;
-        }
-        
-        // if we get here then seg contains a segment# and offset.
-        // So, fetch the actual address given the segment & offset ...
-        // ... and return this absolute, 24-bit address
-        
-        word24 absAddr = (word24) getAddress(segno, (int) (offset + PRoffset));
-        
-        // TODO: only luckily does this work FixMe
-        *optr = endp;   //cptr + strlen(cptr);
-        
-        return absAddr;
-    }
-    else
-    {
-        // a PR or alias thereof
-        int segno = 0;
-        word24 offset = 0;
-        struct PRtab *prt = _prtab;
-        while (prt->alias)
-        {
-            if (strncasecmp(cptr, prt->alias, strlen(prt->alias)) == 0)
-            {
-                segno = cpu . PR[prt->n].SNR;
-                offset = cpu . PR[prt->n].WORDNO;
-                break;
-            }
-            
-            prt += 1;
-        }
-        if (prt->alias)    // a PR or alias
-        {
-            word24 absAddr = (word24) getAddress(segno, (int) offset);
-            *optr = cptr + strlen(prt->alias);
-        
-            return absAddr;
-        }
-    }
-    
     // No, determine absolute address given by cptr
     return (t_addr)strtol(cptr, (char **) optr, 8);
 }
@@ -526,12 +380,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
 
 static void fprint_addr (FILE * stream, UNUSED DEVICE *  dptr, t_addr simh_addr)
 {
-    char temp[256];
-    bool bFound = getSegmentAddressString((int)simh_addr, temp);
-    if (bFound)
-        fprintf(stream, "%s (%08o)", temp, simh_addr);
-    else
-        fprintf(stream, "%06o", simh_addr);
+    fprintf(stream, "%06o", simh_addr);
 }
  
 // This is part of the simh interface
@@ -2692,3 +2541,10 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
   }
   
+
+// This is part of the simh interface
+t_stat sim_load (UNUSED FILE *fileref, UNUSED const char *cptr, UNUSED const char *fnam, UNUSED int flag)
+  {
+    return SCPE_IERR;
+  }
+
