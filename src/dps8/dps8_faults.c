@@ -31,9 +31,6 @@
 #ifdef HDBG
 #include "hdbg.h"
 #endif
-#ifndef QUIET_UNUSED
-static uint64 FR;
-#endif
 
 /*
  FAULT RECOGNITION
@@ -197,10 +194,6 @@ char * faultNames [N_FAULTS] =
   };
 //bool pending_fault = false;     // true when a fault has been signalled, but not processed
 
-
-#ifndef QUIET_UNUSED
-static bool port_interrupts[8] = {false, false, false, false, false, false, false, false };
-#endif
 
 //-----------------------------------------------------------------------------
 // ***  Constants, unchanging lookup tables, etc

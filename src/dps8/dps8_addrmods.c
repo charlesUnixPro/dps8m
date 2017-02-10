@@ -176,37 +176,6 @@ static char * opDescSTR (void)
     return temp;    //"opDescSTR(???)";
   }
 
-#ifndef QUIET_UNUSED
-static char * operandSTR (void)
-  {
-    DCDstruct * i = & cpu . currentInstruction;
-    if (i -> info -> ndes > 0)
-      return "operandSTR(): MWEIS not handled yet";
-
-    static char temp [1024];
-
-    int n = OPSIZE ();
-    switch (n)
-      {
-        case 1:
-          sprintf (temp, "CY=%012"PRIo64"", cpu.CY);
-          break;
-        case 2:
-          sprintf (temp, "CYpair[0]=%012"PRIo64" CYpair[1]=%012"PRIo64"",
-                   cpu.Ypair [0], cpu.Ypair [1]);
-          break;
-        case 8:
-        case 16:
-        case 32:
-        default:
-          sprintf (temp, "Unhandled size: %d", n);
-          break;
-      }
-    return temp;
-}
-#endif
-
-
 // Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
 static word36 itxPair[2];
 

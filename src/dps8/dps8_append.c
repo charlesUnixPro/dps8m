@@ -905,68 +905,6 @@ static void modifyPTW(_sdw *sdw, word18 offset)
 
 
 
-/**
- * Is the instruction a SToRage OPeration ?
- */
-#ifndef QUIET_UNUSED
-static bool isAPUDataMovement(word36 inst)
-{
-    // XXX: implement - when we figure out what it is
-    return false;
-}
-#endif
-
-#ifndef QUIET_UNUSED
-static char *strAccessType(MemoryAccessType accessType)
-{
-    switch (accessType)
-    {
-        case UnknownMAT:        return "Unknown";
-        case InstructionFetch:  return "InstructionFetch";
-        case IndirectRead:      return "IndirectRead";
-        //case DataRead:          return "DataRead";
-        //case DataWrite:         return "DataWrite";
-        case OperandRead:       return "Operand/Data-Read";
-        case OperandWrite:      return "Operand/Data-Write";
-        case Call6Operand:      return "Call6Operand";
-        case RTCDOperand:       return "RTCDOperand";
-        default:                return "???";
-    }
-}
-#endif
-
-#ifndef QUIET_UNUSED
-static char *strACV(_fault_subtype acv)
-{
-    switch (acv)
-    {
-        case ACV0:  return "Illegal ring order (ACV0=IRO)";
-        case ACV1:  return "Not in execute bracket (ACV1=OEB)";
-        case ACV2:  return "No execute permission (ACV2=E-OFF)";
-        case ACV3:  return "Not in read bracket (ACV3=ORB)";
-        case ACV4:  return "No read permission (ACV4=R-OFF)";
-        case ACV5:  return "Not in write bracket (ACV5=OWB)";
-        case ACV6:  return "No write permission (ACV6=W-OFF)";
-        case ACV7:  return "Call limiter fault (ACV7=NO GA)";
-        case ACV8:  return "Out of call brackets (ACV8=OCB)";
-        case ACV9:  return "Outward call (ACV9=OCALL)";
-        case ACV10: return "Bad outward call (ACV10=BOC)";
-        case ACV11: return "Inward return (ACV11=INRET) XXX ??";
-        case ACV12: return "Invalid ring crossing (ACV12=CRT)";
-        case ACV13: return "Ring alarm (ACV13=RALR)";
-        case ACV14: return "Associative memory error XXX ??";
-        case ACV15: return "Out of segment bounds (ACV15=OOSB)";
-        //case ACDF0: return "Directed fault 0";
-        //case ACDF1: return "Directed fault 1";
-        //case ACDF2: return "Directed fault 2";
-        //case ACDF3: return "Directed fault 3";
-        default:
-            break;
-    }
-  return "unhandled acv in strACV";
-}
-#endif
-
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
     PNL (L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;))

@@ -2916,47 +2916,6 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
 }
 #endif
 
-//#define MM
-#if 1   //def MM
-
-
-#ifndef QUIET_UNUSED
-//=============================================================================
-
-/*
- * encode_instr()
- *
- * Convert an instr_t struct into a  36-bit word.
- *
- */
-
-void encode_instr(const instr_t *ip, word36 *wordp)
-{
-    *wordp = 0;
-    putbits36_18 (wordp, 0, ip->addr);
-#if 1
-    putbits36_10 (wordp, 18, ip->opcode);
-#else
-    putbits36_9 (*wordp, 18, ip->opcode & 0777);
-    putbits36_1 (*wordp, 27, ip->opcode >> 9);
-#endif
-    putbits36_1 (wordp, 28, ip->inhibit);
-    if (! is_eis[ip->opcode&MASKBITS(10)]) {
-        putbits36_1 (wordp, 29, ip->mods.single.pr_bit);
-        putbits36_6 (wordp, 30, ip->mods.single.tag);
-    } else {
-        putbits36_1 (wordp, 29, ip->mods.mf1.ar);
-        putbits36_1 (wordp, 30, ip->mods.mf1.rl);
-        putbits36_1 (wordp, 31, ip->mods.mf1.id);
-        putbits36_4 (wordp, 32, ip->mods.mf1.reg);
-    }
-}
-#endif
-
-
-#endif // MM
-    
-
 /*
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
