@@ -1160,41 +1160,7 @@ void traceInstruction (uint flag)
     if_sim_debug (flag, &cpu_dev)
       {
 force:;
-        char * compname;
-        word18 compoffset;
-        char * where = lookupAddress (cpu.PPR.PSR, cpu.PPR.IC, & compname,
-                                      & compoffset);
         bool isBAR = TST_I_NBAR ? false : true;
-        if (where)
-          {
-            if (get_addr_mode () == ABSOLUTE_mode)
-              {
-                if (isBAR)
-                  {
-                    sim_debug (flag, &cpu_dev, "%06o|%06o %s\n",
-                               cpu.BAR.BASE, cpu.PPR.IC, where);
-                  }
-                else
-                  {
-                    sim_debug (flag, &cpu_dev, "%06o %s\n", cpu.PPR.IC, where);
-                  }
-              }
-            else if (get_addr_mode () == APPEND_mode)
-              {
-                if (isBAR)
-                  {
-                    sim_debug (flag, &cpu_dev, "%05o:%06o|%06o %s\n",
-                               cpu.PPR.PSR,
-                               cpu.BAR.BASE, cpu.PPR.IC, where);
-                  }
-                else
-                  {
-                    sim_debug (flag, &cpu_dev, "%05o:%06o %s\n",
-                               cpu.PPR.PSR, cpu.PPR.IC, where);
-                  }
-              }
-            listSource (compname, compoffset, flag);
-          }
         if (get_addr_mode () == ABSOLUTE_mode)
           {
             if (isBAR)
@@ -2373,7 +2339,7 @@ restart_1:
 /// executeInstruction: simh hooks
 ///
 
-    sys_stats.total_cycles += 1; // bump cycle counter
+    cpu.sys_stats.total_cycles += 1; // bump cycle counter
 
     if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
@@ -7446,7 +7412,7 @@ sim_printf ("do bar attempt\n");
               sim_printf ("DIS@0%06o with no interrupts pending and"
                           " no events in queue\n", cpu.PPR.IC);
               sim_printf ("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
-              sim_printf ("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+              sim_printf ("\ncpuCycles = %"PRId64"\n", cpu.sys_stats.total_cycles);
               longjmp (cpu.jmpMain, JMP_STOP);
             }
 
@@ -7511,7 +7477,7 @@ sim_printf ("do bar attempt\n");
           else
             {
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
-              sys_stats.total_cycles ++;
+              cpu.sys_stats.total_cycles ++;
               //longjmp (cpu.jmpMain, JMP_REFETCH);
               return CONT_DIS;
             }

@@ -80,9 +80,6 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat cpu_set_initialize_and_clear (UNIT * uptr, int32 value, const char * cptr, void * desc);
-#ifndef SPEED
-static int cpu_show_stack(FILE *st, UNIT *uptr, int val, const void *desc);
-#endif
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
@@ -130,17 +127,6 @@ static MTAB cpu_mod[] = {
       NULL,          /* value descriptor */
       NULL // help
     },
-#ifndef SPEED
-    {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
-      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
-      0, "STACK", NULL,
-      NULL, cpu_show_stack, NULL, NULL
-    },
-#endif
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
@@ -1030,6 +1016,8 @@ static void cpun_reset2 (UNUSED uint cpun)
     setup_scbank_map ();
 
     tidy_cu ();
+
+    memset (& cpu.sys_stats, 0, sizeof (cpu.sys_stats));
 }
 
 static void cpu_reset2 (void)
@@ -1045,11 +1033,6 @@ static void cpu_reset2 (void)
 
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
-    sys_stats.total_cycles = 0;
-    for (int i = 0; i < N_FAULTS; i ++)
-      sys_stats.total_faults [i] = 0;
-    
-    
     // XXX free up previous deferred segments (if any)
     
     
@@ -1060,7 +1043,6 @@ static void cpu_reset2 (void)
 
     // TODO: reset *all* other structures to zero
     
-    memset(&sys_stats, 0, sizeof(sys_stats));
     
 #ifdef MATRIX
     initializeTheMatrix();
@@ -2487,11 +2469,11 @@ sim_printf ("cpu %u leaves; reason %d\n", thisCPUnum, reason);
     hdbgPrint ();
 #endif
     sim_printf("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
-    //sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+    sim_printf("\ncpuCycles = %"PRId64"\n", cpu.sys_stats.total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
       {
-        if (sys_stats.total_faults [i])
-          sim_printf("%s faults = %"PRId64"\n", faultNames [i], sys_stats.total_faults [i]);
+        if (cpu.sys_stats.total_faults [i])
+          sim_printf("%s faults = %"PRId64"\n", faultNames [i], cpu.sys_stats.total_faults [i]);
      }
     
 #if defined (M_SHARED) && !defined (THREADZ)
@@ -3636,480 +3618,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
     return SCPE_OK;
   }
 
-#ifndef SPEED
-static int words2its (word36 word1, word36 word2, struct _par * prp)
-  {
-    if ((word1 & MASKBITS(6)) != 043)
-      {
-        return 1;
-      }
-    prp->SNR = getbits36_15 (word1, 3);
-    prp->WORDNO = getbits36_18 (word2, 0);
-    prp->RNR = getbits36_3 (word2, 18);  // not strictly correct; normally merged with other ring regs
-    //prp->BITNO = getbits36_6(word2, 57 - 36);
-    prp->PR_BITNO = getbits36_6 (word2, 57 - 36);
-    prp->AR_BITNO = getbits36_6 (word2, 57 - 36) % 9;
-    prp->AR_CHAR = getbits36_6 (word2, 57 - 36) / 9;
-    return 0;
-  }   
 
-static int stack_to_entry (unsigned abs_addr, struct _par * prp)
-  {
-    // Looks into the stack frame maintained by Multics and
-    // returns the "current" entry point address that's
-    // recorded in the stack frame.  Abs_addr should be a 24-bit
-    // absolute memory location.
-    return words2its (M [abs_addr + 026], M [abs_addr + 027], prp);
-  }
-
-
-static void print_frame (
-    int seg,        // Segment portion of frame pointer address.
-    int offset,     // Offset portion of frame pointer address.
-    int addr)       // 24-bit address corresponding to above seg|offset
-  {
-    // Print a single stack frame for walk_stack()
-    // Frame pointers can be found in PR[6] or by walking a process's stack segment
-
-    struct _par  entry_pr;
-    sim_printf ("stack trace: ");
-    if (stack_to_entry ((uint) addr, & entry_pr) == 0)
-      {
-         sim_printf ("\t<TODO> entry %o|%o  ", entry_pr.SNR, entry_pr.WORDNO);
-
-//---        const seginfo& seg = segments(entry_pr.PR.snr);
-//---        map<int,linkage_info>::const_iterator li_it = seg.find_entry(entry_pr.wordno);
-//---        if (li_it != seg.linkage.end()) {
-//---            const linkage_info& li = (*li_it).second;
-//---            sim_printf ("\t%s  ", li.name.c_str());
-//---        } else
-//---            sim_printf ("\tUnknown entry %o|%o  ", entry_pr.PR.snr, entry_pr.wordno);
-      }
-    else
-      sim_printf ("\tUnknowable entry {%"PRIo64",%"PRIo64"}  ", M [addr + 026], M [addr + 027]);
-    sim_printf ("\n");
-    sim_printf ("(stack frame at %03o|%06o)\n", seg, offset);
-
-#if 0
-    char buf[80];
-    out_msg("prev_sp: %s; ",    its2text(buf, addr+020));
-    out_msg("next_sp: %s; ",    its2text(buf, addr+022));
-    out_msg("return_ptr: %s; ", its2text(buf, addr+024));
-    out_msg("entry_ptr: %s\n",  its2text(buf, addr+026));
-#endif
-}
-#endif
-
-#if 0
-static int dsLookupAddress (word18 segno, word18 offset, word24 * finalAddress, char * ctx)
-  {
-    char * msg;
-    int rc = dbgLookupAddress (segno, offset, finalAddress, & msg);
-    if (rc)
-      {
-        sim_printf ("Cannot convert %s %5o|%6o to absolute memory address because %s.\n",
-            ctx, segno, offset, msg);
-        * finalAddress = 0;
-        return 1;
-      }
-    return 0;
-  }
-#endif
-
-#if 0
-static int dumpStack (uint stkBase, uint stkNo)
-  {
-    word36 w0, w1;
-    word24 addr;
-    int rc;
-    sim_printf ("Stack %o, segment %05o\n", stkNo, stkBase);
-    word24 hdrPage;
-    rc = dsLookupAddress (stkBase, 0, & hdrPage, "stack base");
-    if (rc)
-      return 1;
-
-    sim_printf ("  segment header page at absolute location %08o\n", hdrPage);
-
-    w0 = M [hdrPage + 022];
-    w1 = M [hdrPage + 023];
-    sim_printf ("  stack_begin_ptr  %012"PRIo64" %012"PRIo64" %05o:%08o\n",
-                w0, w1,
-                (word15) getbits36_15 (w0,  3),
-                (word18) getbits36_18 (w1,  0));
-
-    w0 = M [hdrPage + 024];
-    w1 = M [hdrPage + 025];
-    sim_printf ("  stack_end_ptr    %012"PRIo64" %012"PRIo64" %05o:%08o\n",
-                w0, w1,
-                (word15) getbits36_15 (w0,  3),
-                (word18) getbits36_18 (w1,  0));
-
-    if (getbits36_6 (M [hdrPage + 022], 30) != 043)
-      {
-        sim_printf("stack_begin_ptr is not an ITS\n");
-        return 1;
-      }
-    word15 stkBeginSegno = getbits36_15 (M [hdrPage + 022], 3);
-
-    if (stkBeginSegno != stkBase)
-      {
-        sim_printf("stack_begin_ptr segno (%o) is wrong\n", stkBeginSegno);
-        return 1;
-      }
-    word18 stkBeginOffset = getbits36_18 (M [hdrPage + 023], 0);
-
-
-
-    if (getbits36_6 (M [hdrPage + 024], 30) != 043)
-      {
-        sim_printf("stack_end_ptr is not an ITS\n");
-        return 1;
-      }
-
-    word15 stkEndSegno = getbits36_15 (M [hdrPage + 024], 3);
-    if (stkBeginSegno != stkBase)
-      {
-        sim_printf("stack_end_ptr segno (%o) is wrong\n", stkEndSegno);
-        return 1;
-      }
-    word18 stkEndOffset = getbits36_18 (M [hdrPage + 025], 0);
-
-    word18 currentFrame = stkBeginOffset;
-    int currentFrameNumber = 1;
-
-    for (;;)
-      {
-        if (currentFrame > stkEndOffset)
-          break;
-        sim_printf ("  Frame %d, offset %06o\n", currentFrameNumber, currentFrame);
-        for (uint n = 0; n < 8; n ++)
-          {
-            rc = dsLookupAddress (stkBase, currentFrame + 2 * n, & addr, "PR address");
-            if (rc)
-              return 1;
-            w0 = M [addr + 0];
-            w1 = M [addr + 1];
-            sim_printf ("    PR%o               %012"PRIo64" %012"PRIo64" %05o:%06o BITNO %02o RNG %o\n",
-                        n,
-                        w0, w1,
-                        (word15) getbits36_15 (w0,  3),
-                        (word18) getbits36_18 (w1,  0),
-                                 getbits36_6 (w1, 21),
-                                 getbits36_3 (w0, 18));
-          }
-
-        rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "prev_sp");
-        if (rc)
-          return 1;
-        w0 = M [addr + 0];
-        w1 = M [addr + 1];
-        sim_printf ("    prev_sp         %012"PRIo64" %012"PRIo64" %05o:%08o\n",
-                    w0, w1,
-                    (word15) getbits36_15 (w0,  3),
-                    (word18) getbits36_18 (w1,  0));
-
-        rc = dsLookupAddress (stkBase, currentFrame + 020, & addr, "next_sp");
-        if (rc)
-          return 1;
-        w0 = M [addr + 0];
-        w1 = M [addr + 1];
-
-        word15 nextSpSegno  = (word15) getbits36_15 (w0,  3);
-        word18 nextSpOffset = (word18) getbits36_18 (w1,  3);
-        sim_printf ("    next_sp         %012"PRIo64" %012"PRIo64" %05o:%08o\n",
-                    w0, w1, nextSpSegno, nextSpOffset);
-
-      
-        if (nextSpSegno != stkBase)
-          {
-            sim_printf("    nextsp segno (%o) is wrong\n", nextSpSegno);
-            return 1;
-          }
-
-        if (nextSpOffset > stkEndOffset)
-          {
-            sim_printf("    nextsp offset is past end of stack\n");
-            break;
-          }
-
-        if (nextSpOffset < currentFrame)
-          {
-            sim_printf("    nextsp offset is less then the current frame\n");
-            break;
-          }
-
-        currentFrame = nextSpOffset;
-        currentFrameNumber ++;
-        sim_printf ("\n");
-      }
-    return 0;
-    
-  }
-#endif
-
-#if 0
-int dumpStacks (void)
-  {
-    sim_printf ("DSBR.STACK %04u\n", cpu.DSBR.STACK);
-    uint stkBase = (uint) cpu.DSBR.STACK << 3;
-    for (uint stkNo = 0; stkNo <= 5; stkNo ++)
-      {
-        dumpStack (stkBase + stkNo, stkNo);
-      }
-    return 0;
-  }
-#endif
-
-#ifndef SPEED
-static int walk_stack (int output, UNUSED void * frame_listp /* list<seg_addr_t>* frame_listp */)
-    // Trace through the Multics stack frames
-    // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
-{
-
-    if (cpu.PAR [6].SNR == 077777 || (cpu.PAR [6].SNR == 0 && cpu.PAR [6].WORDNO == 0)) {
-        sim_printf ("%s: Null PR[6]\n", __func__);
-        return 1;
-    }
-
-    // PR6 should point to the current stack frame.  That stack frame
-    // should be within the stack segment.
-    int seg = cpu.PAR [6].SNR;
-
-    uint curr_frame;
-    char * msg;
-    //t_stat rc = computeAbsAddrN (& curr_frame, seg, cpu.PAR [6].WORDNO);
-    int rc = dbgLookupAddress ((word18) seg, cpu.PAR [6].WORDNO, & curr_frame, & msg);
-    if (rc)
-      {
-        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address because %s.\n",
-            __func__, cpu.PAR [6].SNR, cpu.PAR [6].WORDNO, msg);
-        return 1;
-      }
-
-    // The stack header will be at offset 0 within the stack segment.
-    int offset = 0;
-    word24 hdr_addr;  // 24bit main memory address
-    //if (computeAbsAddrN (& hdr_addr, seg, offset))
-    if (dbgLookupAddress ((word18) seg, (word18) offset, & hdr_addr, & msg))
-      {
-        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address becuase %s.\n", __func__, seg, msg);
-        return 1;
-      }
-
-    struct _par stack_begin_pr;
-    if (words2its (M [hdr_addr + 022], M [hdr_addr + 023], & stack_begin_pr))
-      {
-        sim_printf ("%s: Stack header seems invalid; no stack_begin_ptr at %03o|22\n", __func__, seg);
-        if (output)
-            sim_printf ("%s: Stack Trace: Stack header seems invalid; no stack_begin_ptr at %03o|22\n", __func__, seg);
-        return 1;
-      }
-
-    struct _par stack_end_pr;
-    if (words2its (M [hdr_addr + 024], M [hdr_addr + 025], & stack_end_pr))
-      {
-        //if (output)
-          sim_printf ("%s: Stack Trace: Stack header seems invalid; no stack_end_ptr at %03o|24\n", __func__, seg);
-        return 1;
-      }
-
-    if (stack_begin_pr.SNR != seg || stack_end_pr.SNR != seg)
-      {
-        //if (output)
-            sim_printf ("%s Stack Trace: Stack header seems invalid; stack frames are in another segment.\n", __func__);
-        return 1;
-      }
-
-    struct _par lot_pr;
-    if (words2its (M [hdr_addr + 026], M [hdr_addr + 027], & lot_pr))
-      {
-        //if (output)
-          sim_printf ("%s: Stack Trace: Stack header seems invalid; no LOT ptr at %03o|26\n", __func__, seg);
-        return 1;
-      }
-    // TODO: sanity check LOT ptr
-
-    if (output)
-      sim_printf ("%s: Stack Trace via back-links in current stack frame:\n", __func__);
-    uint framep = stack_begin_pr.WORDNO;
-    uint prev = 0;
-    int finished = 0;
-#if 0
-    int need_hist_msg = 0;
-#endif
-    // while(framep <= stack_end_pr.WORDNO)
-    for (;;)
-      {
-        // Might find ourselves in a different page while moving from frame to frame...
-        // BUG: We assume a stack frame doesn't cross page boundries
-        uint addr;
-        //if (computeAbsAddrN (& addr, seg, framep))
-        if (dbgLookupAddress ((word18) seg, (word18) offset, & addr, & msg))
-          {
-            if (finished)
-              break;
-            //if (output)
-              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address because %s.\n", __func__, seg, framep, msg);
-            return 1;
-          }
-
-        // Sanity check
-        if (prev != 0)
-          {
-            struct _par prev_pr;
-            if (words2its (M [addr + 020], M [addr + 021], & prev_pr) == 0)
-              {
-                if (prev_pr.WORDNO != prev)
-                  {
-                    if (output)
-                      sim_printf ("%s: STACK Trace: Stack frame's prior ptr, %03o|%o is bad; expected %o.\n", __func__, seg, prev_pr.WORDNO, prev);
-                    break;
-                  }
-              }
-          }
-        prev = framep;
-        // Print the current frame
-        if (finished && M [addr + 022] == 0 && M [addr + 024] == 0 && M [addr + 026] == 0)
-          break;
-#if 0
-        if (need_hist_msg) {
-            need_hist_msg = 0;
-            out_msg("stack trace: ");
-            out_msg("Recently popped frames (aka where we recently returned from):\n");
-        }
-#endif
-        if (output)
-          print_frame (seg, (int) framep, (int) addr);
-//---        if (frame_listp)
-//---            (*frame_listp).push_back(seg_addr_t(seg, framep));
-
-        // Get the next one
-        struct _par next;
-        if (words2its (M [addr + 022], M [addr + 023], & next))
-          {
-            if (! finished)
-              if (output)
-                sim_printf ("STACK Trace: no next frame.\n");
-            break;
-          }
-        if (next.SNR != seg)
-          {
-            if (output)
-              sim_printf ("STACK Trace: next frame is in a different segment (next is in %03o not %03o.\n", next.SNR, seg);
-            break;
-          }
-        if (next.WORDNO == stack_end_pr.WORDNO)
-          {
-            finished = 1;
-            break;
-#if 0
-            need_hist_msg = 1;
-            if (framep != cpu.PAR [6].WORDNO)
-                out_msg("Stack Trace: Stack may be garbled...\n");
-            // BUG: Infinite loop if enabled and garbled stack with "Unknowable entry {0,0}", "Unknown entry 15|0  (stack frame at 062|000000)", etc
-#endif
-          }
-        if (next.WORDNO < stack_begin_pr.WORDNO || next.WORDNO > stack_end_pr.WORDNO)
-          {
-            if (! finished)
-              //if (output)
-                sim_printf ("STACK Trace: DEBUG: next frame at %#o is outside the expected range of %#o .. %#o for stack frames.\n", next.WORDNO, stack_begin_pr.WORDNO, stack_end_pr.WORDNO);
-            if (! output)
-              return 1;
-          }
-
-        // Use the return ptr in the current frame to print the source line.
-        if (! finished && output)
-          {
-            struct _par return_pr;
-            if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
-              {
-//---                 where_t where;
-                uint offset = return_pr.WORDNO;
-                if (offset > 0)
-                    -- offset;      // call was from an instr prior to the return point
-                char * compname;
-                word18 compoffset;
-                char * where = lookupAddress (return_pr.SNR, (word18) offset, & compname, & compoffset);
-                if (where)
-                  {
-                    sim_printf ("%s\n", where);
-                    listSource (compname, compoffset, 0);
-                  }
-
-//---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {
-//---                     out_msg("stack trace: ");
-//---                     if (where.line_no >= 0) {
-//---                         // Note that if we have a source line, we also expect to have a "proc" entry and file name
-//---                         out_msg("\t\tNear %03o|%06o in %s\n",
-//---                             return_pr.SNR, return_pr.WORDNO, where.entry);
-//---                         // out_msg("\t\tSource:  %s, line %5d:\n", where.file_name, where.line_no);
-//---                         out_msg("stack trace: ");
-//---                         out_msg("\t\tLine %d of %s:\n", where.line_no, where.file_name);
-//---                         out_msg("stack trace: ");
-//---                         out_msg("\t\tSource:  %s\n", where.line);
-//---                     } else
-//---                         if (where.entry_offset < 0)
-//---                             out_msg("\t\tNear %03o|%06o", return_pr.SNR, return_pr.WORDNO);
-//---                         else {
-//---                             int off = return_pr.WORDNO - where.entry_offset;
-//---                             char sign = (off < 0) ? '-' : '+';
-//---                             if (sign == '-')
-//---                                 off = - off;
-//---                             out_msg("\t\tNear %03o|%06o %s %c%#o\n", return_pr.SNR, return_pr.WORDNO, where.entry, sign, off);
-//---                         }
-//---                 }
-              }
-          }
-        // Advance
-        framep = next.WORDNO;
-    }
-
-//---    if (output)
-//---      {
-//---        out_msg("stack trace: ");
-//---        out_msg("Current Location:\n");
-//---        out_msg("stack trace: ");
-//---        print_src_loc("\t", get_addr_mode(), cpu.PPR.PSR, cpu.PPR.IC, &cpu.cu.IR);
-//---
-//---        log_any_io(0);      // Output of source/location info doesn't count towards requiring re-display of source
-//---    }
-
-    return 0;
-}
-
-static int cmd_stack_trace (UNUSED int32 arg, UNUSED char * buf)
-  {
-    walk_stack (1, NULL);
-    sim_printf ("\n");
-//---     trace_all_stack_hist ();
-//---     sim_printf ("\n");
-//---     dump_autos ();
-//---     sim_printf ("\n");
-
-    //float secs = (float) sys_stats.total_msec / 1000;
-    //out_msg("Stats: %.1f seconds: %"PRIo64" cycles at %.0f cycles/sec, %"PRIo64" instructions at %.0f instr/sec\n",
-        //secs, sys_stats.total_cycles, sys_stats.total_cycles/secs, sys_stats.total_instr, sys_stats.total_instr/secs);
-
-    return 0;
-  }
-
-
-static int cpu_show_stack (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                           UNUSED int val, UNUSED const void * desc)
-  {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
-    long unit_num = UNIT_NUM (uptr);
-    uint save = setCPUnum ((uint) unit_num);
-#endif
-    // FIXME: use FILE *st
-    int ret = cmd_stack_trace(0, NULL);
-#if defined (ROUND_ROBIN) || defined (THREADZ)
-    setCPUnum (save);
-#endif
-    return ret;
-  }
-#endif
 
 static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
