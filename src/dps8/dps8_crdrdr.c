@@ -215,13 +215,13 @@ void crdrdr_init (void)
 #endif
   }
 
-static t_stat crdrdr_reset (DEVICE * dptr)
+static t_stat crdrdr_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_crdrdr_reset (& crdrdr_unit [i]);
-        sim_cancel (& crdrdr_unit [i]);
-      }
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //// sim_crdrdr_reset (& crdrdr_unit [i]);
+        //sim_cancel (& crdrdr_unit [i]);
+      //}
     return SCPE_OK;
   }
 

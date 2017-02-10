@@ -1614,13 +1614,14 @@ t_stat sim_instr (void)
         for (uint cpuNum = 0; cpuNum < cpu_dev.numunits; cpuNum ++)
           {
             createCPUThread (cpuNum);
-            setCPURun (cpuNum, false);
+            //setCPURun (cpuNum, false);
             //cpuRdyWait (cpuNum);
-            setCPURun (cpuNum, true);
+            //setCPURun (cpuNum, true);
           }
 
       }
 
+    setCPURun (0, true);
     //for (uint cpuNum = 0; cpuNum < N_CPU_UNITS_MAX; cpuNum ++)
       //setCPURun (cpuNum, cpuNum < cpu_dev.numunits);
 
@@ -2493,6 +2494,7 @@ t_stat sim_instr (void)
 
 leave:
 
+sim_printf ("cpu %u leaves; reason %d\n", thisCPUnum, reason);
 #ifdef HDBG
     hdbgPrint ();
 #endif
@@ -3197,7 +3199,8 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
                                UNUSED int val, UNUSED const void * desc)
 {
     long unit_num = UNIT_NUM (uptr);
-    if (unit_num < 0 || unit_num >= (int) cpu_dev.numunits)
+    //if (unit_num < 0 || unit_num >= (int) cpu_dev.numunits)
+    if (unit_num < 0 || unit_num >= N_CPU_UNITS_MAX)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: invalid unit number %ld\n", unit_num);
@@ -3473,7 +3476,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 // XXX Minor bug; this code doesn't check for trailing garbage
 
     long cpu_unit_num = UNIT_NUM (uptr);
-    if (cpu_unit_num < 0 || cpu_unit_num >= (long) cpu_dev.numunits)
+    //if (cpu_unit_num < 0 || cpu_unit_num >= (long) cpu_dev.numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= N_CPU_UNITS_MAX)
       {
         //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
         sim_printf ("error: cpu_set_config: invalid unit number %ld\n", cpu_unit_num);

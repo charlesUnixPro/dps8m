@@ -69,9 +69,6 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
 
 
 
-__thread extern uint thisCPUnum;
-__thread extern uint thisIOMnum;
-__thread extern uint thisChnNum;
 
 // libuv resource lock
 

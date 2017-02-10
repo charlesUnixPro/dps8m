@@ -170,13 +170,13 @@ void urp_init (void)
       //urp_state [i] . urpfile = -1;
   }
 
-static t_stat urp_reset (DEVICE * dptr)
+static t_stat urp_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_urp_reset (& urp_unit [i]);
-        sim_cancel (& urp_unit [i]);
-      }
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //// sim_urp_reset (& urp_unit [i]);
+        //sim_cancel (& urp_unit [i]);
+      //}
     return SCPE_OK;
   }
 

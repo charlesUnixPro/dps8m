@@ -2730,7 +2730,8 @@ static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
                              UNUSED const void * desc)
   {
     uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
-    if (iomUnitIdx >= iom_dev . numunits)
+    //if (iomUnitIdx >= iom_dev . numunits)
+    if (iomUnitIdx >= N_IOM_UNITS_MAX)
       {
         sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
         return SCPE_ARG;
@@ -2890,7 +2891,8 @@ static config_list_t iom_config_list [] =
 static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
-    if (iomUnitIdx >= iom_dev . numunits)
+    //if (iomUnitIdx >= iom_dev . numunits)
+    if (iomUnitIdx >= N_IOM_UNITS_MAX)
       {
         sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
         return SCPE_ARG;

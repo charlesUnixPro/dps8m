@@ -538,6 +538,7 @@
 #include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "threadz.h"
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, const char * cptr, 
@@ -1711,6 +1712,7 @@ static void deliverInterrupts (uint scu_unit_num)
                   {
 #ifdef THREADZ
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
+                    setCPURun ((uint) cpu_unit_num, true);
 #else
 #if defined (ROUND_ROBIN) || defined (THREADZ)
                     uint save = setCPUnum ((uint) cpu_unit_num);
@@ -1787,7 +1789,8 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
                               UNUSED const void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_show_state: Invalid unit number %ld\n", 
@@ -1851,7 +1854,8 @@ static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
         "0", "1", "2", "3", "4", "5", "6", "7" 
       };
     long scu_unit_num = UNIT_NUM (uptr);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_show_config: Invalid unit number %ld\n", 
@@ -2003,7 +2007,8 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
                               UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_set_config: Invalid unit number %ld\n", scu_unit_num);

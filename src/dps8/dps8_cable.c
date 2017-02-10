@@ -59,7 +59,8 @@ static t_stat cable_to_iom (uint iomUnitIdx, int chanNum, int dev_code,
                             uint devUnitIdx, DEVICE * devp, UNIT * unitp, 
                             iomCmd * iomCmd)
   {
-    if (iomUnitIdx >= iom_dev . numunits)
+    //if (iomUnitIdx >= iom_dev . numunits)
+    if (iomUnitIdx >= N_IOM_UNITS_MAX)
       {
         sim_printf ("cable_to_iom: iomUnitIdx out of range <%u>\n", iomUnitIdx);
         return SCPE_ARG;
@@ -105,7 +106,8 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
                             int scu_unit_num, int scu_port_num,
                             int scu_subport_num)
   {
-    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
+    //if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= N_CPU_UNITS_MAX)
       {
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", 
                     cpu_unit_num);
@@ -155,7 +157,8 @@ static t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num,
 static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
-    if (crdrdr_unit_num < 0 || crdrdr_unit_num >= (int) crdrdr_dev . numunits)
+    //if (crdrdr_unit_num < 0 || crdrdr_unit_num >= (int) crdrdr_dev . numunits)
+    if (crdrdr_unit_num < 0 || crdrdr_unit_num >= N_CRDRDR_UNITS_MAX)
       {
         sim_printf ("cable_crdrdr: crdrdr_unit_num out of range <%d>\n", 
                     crdrdr_unit_num);
@@ -188,7 +191,8 @@ static t_stat cable_crdrdr (int crdrdr_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
-    if (crdpun_unit_num < 0 || crdpun_unit_num >= (int) crdpun_dev . numunits)
+    //if (crdpun_unit_num < 0 || crdpun_unit_num >= (int) crdpun_dev . numunits)
+    if (crdpun_unit_num < 0 || crdpun_unit_num >= N_CRDPUN_UNITS_MAX)
       {
         sim_printf ("cable_crdpun: crdpun_unit_num out of range <%d>\n", 
                     crdpun_unit_num);
@@ -221,7 +225,8 @@ static t_stat cable_crdpun (int crdpun_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
-    if (prt_unit_num < 0 || prt_unit_num >= (int) prt_dev . numunits)
+    //if (prt_unit_num < 0 || prt_unit_num >= (int) prt_dev . numunits)
+    if (prt_unit_num < 0 || prt_unit_num >= N_PRT_UNITS_MAX)
       {
         sim_printf ("cable_prt: prt_unit_num out of range <%d>\n", 
                     prt_unit_num);
@@ -254,7 +259,8 @@ static t_stat cable_prt (int prt_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num, 
                             int dev_code)
   {
-    if (urp_unit_num < 0 || urp_unit_num >= (int) urp_dev . numunits)
+    //if (urp_unit_num < 0 || urp_unit_num >= (int) urp_dev . numunits)
+    if (urp_unit_num < 0 || urp_unit_num >= N_URP_UNITS_MAX)
       {
         sim_printf ("cable_urp: urp_unit_num out of range <%d>\n", 
                     urp_unit_num);
@@ -287,7 +293,8 @@ static t_stat cable_urp (int urp_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num, 
                         int dev_code)
   {
-    if (fnpUnitNum < 0 || fnpUnitNum >= (int) fnpDev . numunits)
+    //if (fnpUnitNum < 0 || fnpUnitNum >= (int) fnpDev . numunits)
+    if (fnpUnitNum < 0 || fnpUnitNum >= N_FNP_UNITS_MAX)
       {
         sim_printf ("cableFNP: fnpUnitNum out of range <%d>\n", fnpUnitNum);
         return SCPE_ARG;
@@ -319,7 +326,8 @@ static t_stat cableFNP (int fnpUnitNum, int iomUnitIdx, int chan_num,
 static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num, 
                           int dev_code)
   {
-    if (disk_unit_num < 0 || disk_unit_num >= (int) disk_dev . numunits)
+    //if (disk_unit_num < 0 || disk_unit_num >= (int) disk_dev . numunits)
+    if (disk_unit_num < 0 || disk_unit_num >= N_DISK_UNITS_MAX)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
         sim_printf ("cable_disk: disk_unit_num out of range <%d>\n", 
@@ -353,7 +361,8 @@ static t_stat cable_disk (int disk_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cable_opcon (int con_unit_num, int iomUnitIdx, int chan_num, 
                            int dev_code)
   {
-    if (con_unit_num < 0 || con_unit_num >= (int) opcon_dev . numunits)
+    //if (con_unit_num < 0 || con_unit_num >= (int) opcon_dev . numunits)
+    if (con_unit_num < 0 || con_unit_num >= N_OPCON_UNITS_MAX)
       {
         sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", 
                     con_unit_num);
@@ -390,7 +399,8 @@ static t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num,
                "cable_scu: scu_unit_num: %d, scu_port_num: %d, "
                "cpu_unit_num: %d, cpu_port_num: %d\n", 
                scu_unit_num, scu_port_num, cpu_unit_num, cpu_port_num);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_printf ("cable_scu: scu_unit_num out of range <%d>\n", 
                     scu_unit_num);
@@ -468,7 +478,8 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
                "iomUnitIdx: %d, iom_port_num: %d\n", 
                scu_unit_num, scu_port_num, iomUnitIdx, iom_port_num);
 
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_printf ("cable_to_scu: scu_unit_num out of range <%d>\n", 
                     scu_unit_num);
@@ -499,7 +510,8 @@ static t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iomUnitIdx,
 static t_stat cable_iom (uint iomUnitIdx, int iomPortNum, int scuUnitNum, 
                          int scuPortNum)
   {
-    if (iomUnitIdx >= iom_dev . numunits)
+    //if (iomUnitIdx >= iom_dev . numunits)
+    if (iomUnitIdx >= N_IOM_UNITS_MAX)
       {
         sim_printf ("cable_iom: iomUnitIdx out of range <%d>\n", iomUnitIdx);
         return SCPE_ARG;
@@ -542,7 +554,8 @@ static t_stat cable_iom (uint iomUnitIdx, int iomPortNum, int scuUnitNum,
 static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num, 
                         int dev_code)
   {
-    if (mt_unit_num < 0 || mt_unit_num >= (int) tape_dev . numunits)
+    //if (mt_unit_num < 0 || mt_unit_num >= (int) tape_dev . numunits)
+    if (mt_unit_num < 0 || mt_unit_num >= N_MT_UNITS_MAX)
       {
         sim_printf ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
         return SCPE_ARG;
@@ -582,7 +595,8 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
 static t_stat cable_absi (int absi_unit_num, int iomUnitIdx, int chan_num, 
                           int dev_code)
   {
-    if (absi_unit_num < 0 || absi_unit_num >= (int) absi_dev . numunits)
+    //if (absi_unit_num < 0 || absi_unit_num >= (int) absi_dev . numunits)
+    if (absi_unit_num < 0 || absi_unit_num >= N_ABSI_UNITS_MAX)
       {
         sim_printf ("cable_absi: absi_unit_num out of range <%d>\n", absi_unit_num);
         return SCPE_ARG;

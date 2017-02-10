@@ -173,13 +173,13 @@ void crdpun_init (void)
       crdpun_state [i] . crdpunfile = -1;
   }
 
-static t_stat crdpun_reset (DEVICE * dptr)
+static t_stat crdpun_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_crdpun_reset (& crdpun_unit [i]);
-        sim_cancel (& crdpun_unit [i]);
-      }
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //// sim_crdpun_reset (& crdpun_unit [i]);
+        //sim_cancel (& crdpun_unit [i]);
+      //}
     return SCPE_OK;
   }
 

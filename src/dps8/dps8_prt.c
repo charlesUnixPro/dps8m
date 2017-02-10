@@ -173,13 +173,13 @@ void prt_init (void)
       prt_state [i] . prtfile = -1;
   }
 
-static t_stat prt_reset (DEVICE * dptr)
+static t_stat prt_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_prt_reset (& prt_unit [i]);
-        sim_cancel (& prt_unit [i]);
-      }
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //// sim_prt_reset (& prt_unit [i]);
+        //sim_cancel (& prt_unit [i]);
+      //}
     return SCPE_OK;
   }
 

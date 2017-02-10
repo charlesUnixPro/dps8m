@@ -251,12 +251,12 @@ void fnpInit(void)
     fnpTelnetInit ();
   }
 
-static t_stat fnpReset (DEVICE * dptr)
+static t_stat fnpReset (UNUSED DEVICE * dptr)
   {
-    for (int i = 0; i < (int) dptr -> numunits; i ++)
-      {
-        sim_cancel (& fnp_unit [i]);
-      }
+    //for (int i = 0; i < (int) dptr -> numunits; i ++)
+      //{
+        //sim_cancel (& fnp_unit [i]);
+      //}
     return SCPE_OK;
   }
 
@@ -2583,7 +2583,8 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
                              UNUSED const void * desc)
   {
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
-    if (fnpUnitIdx >= (long) fnpDev.numunits)
+    //if (fnpUnitIdx >= (long) fnpDev.numunits)
+    if (fnpUnitIdx >= (long) N_FNP_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & fnpDev, 
                    "fnpShowConfig: Invalid unit number %ld\n", fnpUnitIdx);
@@ -2609,7 +2610,8 @@ static config_list_t fnp_config_list [] =
 static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint fnpUnitIdx = (uint) FNP_UNIT_IDX (uptr);
-    if (fnpUnitIdx >= fnpDev . numunits)
+    //if (fnpUnitIdx >= fnpDev . numunits)
+    if (fnpUnitIdx >= N_FNP_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitIdx);
         sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitIdx);

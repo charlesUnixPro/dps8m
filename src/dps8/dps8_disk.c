@@ -287,13 +287,13 @@ void disk_init (void)
     memset (disk_states, 0, sizeof (disk_states));
   }
 
-static t_stat disk_reset (DEVICE * dptr)
+static t_stat disk_reset (UNUSED DEVICE * dptr)
   {
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_disk_reset (& disk_unit [i]);
-        sim_cancel (& disk_unit [i]);
-      }
+    //for (uint i = 0; i < dptr -> numunits; i ++)
+      //{
+        //// sim_disk_reset (& disk_unit [i]);
+        //sim_cancel (& disk_unit [i]);
+      //}
     return SCPE_OK;
   }
 
