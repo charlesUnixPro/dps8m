@@ -7445,7 +7445,7 @@ sim_printf ("do bar attempt\n");
             {
               sim_printf ("DIS@0%06o with no interrupts pending and"
                           " no events in queue\n", cpu.PPR.IC);
-              sim_printf ("\nsimCycles = %"PRId64"\n", sim_timell ());
+              sim_printf ("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
               sim_printf ("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
               longjmp (cpu.jmpMain, JMP_STOP);
             }

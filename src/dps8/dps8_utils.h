@@ -863,7 +863,7 @@ int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed,
 int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 void print_int128 (__int128_t n, char * p);
-uint64 sim_timell (void);
+//uint64 sim_timell (void);
 void sim_puts (char * str);
 #if 0
 void sim_err (const char * format, ...) NO_RETURN

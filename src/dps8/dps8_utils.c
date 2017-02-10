@@ -2556,11 +2556,11 @@ void print_int128 (__int128_t n, char * p)
     print_uint128_r ((__uint128_t) n, p);
   }
 
-// Return simh's gtime as a long long.
-uint64 sim_timell (void)
-  {
-    return (uint64) sim_gtime ();
-  }
+//// Return simh's gtime as a long long.
+//uint64 sim_timell (void)
+//  {
+//    return (uint64) sim_gtime ();
+//  }
 
 // https://gist.github.com/diabloneo/9619917
 
