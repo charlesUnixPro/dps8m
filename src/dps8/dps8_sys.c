@@ -89,19 +89,7 @@ static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf);
 
 static t_stat sbreak (int32 arg, const char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf);
-#define LAUNCH
-#ifdef LAUNCH
-static t_stat launch (int32 arg, const char * buf);
-#endif
 static t_stat defaultBaseSystem (int32 arg, const char * buf);
-#ifdef DVFDBG
-static t_stat dfx1entry (int32 arg, const char * buf);
-static t_stat dfx1exit (int32 arg, const char * buf);
-static t_stat dv2scale (int32 arg, const char * buf);
-static t_stat dfx2entry (int32 arg, const char * buf);
-static t_stat mdfx3entry (int32 arg, const char * buf);
-static t_stat smfx1entry (int32 arg, const char * buf);
-#endif
 static t_stat searchMemory (UNUSED int32 arg, const char * buf);
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 
@@ -128,33 +116,15 @@ static CTAB dps8_cmds[] =
     {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL, NULL},
     {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL, NULL},
     {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL, NULL},
-#ifdef DVFDBG
-    // dvf debugging
-    {"DFX1ENTRY", dfx1entry, 0, "", NULL, NULL},
-    {"DFX2ENTRY", dfx2entry, 0, "", NULL, NULL},
-    {"DFX1EXIT", dfx1exit, 0, "", NULL, NULL},
-    {"DV2SCALE", dv2scale, 0, "", NULL, NULL},
-    {"MDFX3ENTRY", mdfx3entry, 0, "", NULL, NULL},
-    {"SMFX1ENTRY", smfx1entry, 0, "", NULL, NULL},
-#endif
-    // doesn't work
-    //{"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
     {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL, NULL},
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL, NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
     {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL, NULL},
-#ifdef LAUNCH
-    {"LAUNCH", launch, 0, "start subprocess\n", NULL, NULL},
-#endif
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
     {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
-#ifdef EISTESTJIG
-    // invoke EIS test jig.......∫
-    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL, NULL}, 
-#endif
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
@@ -446,203 +416,6 @@ t_stat parse_sym (UNUSED const char * cptr, UNUSED t_addr addr, UNUSED UNIT * up
     return SCPE_ARG;
 }
 
-#ifdef DVFDBG
-static t_stat dfx1entry (UNUSED int32 arg, UNUSED const char * buf)
-  {
-// divide_fx1, divide_fx3
-    sim_printf ("dfx1entry\n");
-    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    // Figure out the caller's text segment, according to pli_operators.
-    // sp:tbp -> PR[6].SNR:046
-    word24 pa;
-    char * msg;
-    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
-      {
-        sim_printf ("text segment number lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
-//dbgStackTrace ();
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
-      {
-        sim_printf ("return address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
-      {
-        sim_printf ("divisor address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-    return SCPE_OK;
-  }
-
-static t_stat dfx1exit (UNUSED int32 arg, UNUSED const char * buf)
-  {
-    sim_printf ("dfx1exit\n");
-    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    return SCPE_OK;
-  }
-
-static t_stat dv2scale (UNUSED int32 arg, UNUSED const char * buf)
-  {
-    sim_printf ("dv2scale\n");
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    return SCPE_OK;
-  }
-
-static t_stat dfx2entry (UNUSED int32 arg, UNUSED const char * buf)
-  {
-// divide_fx2
-    sim_printf ("dfx2entry\n");
-    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    // Figure out the caller's text segment, according to pli_operators.
-    // sp:tbp -> PR[6].SNR:046
-    word24 pa;
-    char * msg;
-    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
-      {
-        sim_printf ("text segment number lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-#if 0
-sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
-//dbgStackTrace ();
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
-      {
-        sim_printf ("return address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("scale ptr %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-        if ((M [pa] & 077) == 043)
-          {
-            word15 segno = (M [pa] >> 18u) & MASK15;
-            word18 offset = (M [pa + 1] >> 18u) & MASK18;
-            word24 ipa;
-            if (dbgLookupAddress (segno, offset, & ipa, & msg))
-              {
-                sim_printf ("divisor address lookup failed because %s\n", msg);
-              }
-            else
-              {
-                sim_printf ("scale %012"PRIo64" (%llu)\n", M [ipa], M [ipa]);
-              }
-          }
-      }
-#endif
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
-      {
-        sim_printf ("divisor address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa + 1], M [pa + 1]);
-      }
-    return SCPE_OK;
-  }
-
-static t_stat mdfx3entry (UNUSED int32 arg, UNUSED const char * buf)
-  {
-// operator to form mod(fx2,fx1)
-// entered with first arg in q, bp pointing at second
-
-// divide_fx1, divide_fx2
-    sim_printf ("mdfx3entry\n");
-    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    // Figure out the caller's text segment, according to pli_operators.
-    // sp:tbp -> PR[6].SNR:046
-    word24 pa;
-    char * msg;
-    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
-      {
-        sim_printf ("text segment number lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-//sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
-//dbgStackTrace ();
-#if 0
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
-      {
-        sim_printf ("return address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-#endif
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
-      {
-        sim_printf ("divisor address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-    return SCPE_OK;
-  }
-
-static t_stat smfx1entry (UNUSED int32 arg, UNUSED const char * buf)
-  {
-// operator to form mod(fx2,fx1)
-// entered with first arg in q, bp pointing at second
-
-// divide_fx1, divide_fx2
-    sim_printf ("smfx1entry\n");
-    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
-    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
-    // Figure out the caller's text segment, according to pli_operators.
-    // sp:tbp -> PR[6].SNR:046
-    word24 pa;
-    char * msg;
-    if (dbgLookupAddress (cpu . PR [6] . SNR, 046, & pa, & msg))
-      {
-        sim_printf ("text segment number lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
-//dbgStackTrace ();
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . rX [0], & pa, & msg))
-      {
-        sim_printf ("return address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-    if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
-      {
-        sim_printf ("divisor address lookup failed because %s\n", msg);
-      }
-    else
-      {
-        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
-      }
-    return SCPE_OK;
-  }
-#endif
 
 static t_stat sys_reset (UNUSED DEVICE  * dptr)
   {
@@ -702,81 +475,6 @@ DEVICE * sim_devices [] =
 #endif
     NULL
   };
-
-//#ifdef LAUNCH
-#define MAX_CHILDREN 256
-static int nChildren = 0;
-static pid_t childrenList [MAX_CHILDREN];
-
-static void cleanupChildren (void)
-  {
-    printf ("cleanupChildren\n");
-    for (int i = 0; i < nChildren; i ++)
-      {
-#ifndef __MINGW64__
-        printf ("  kill %d\n", childrenList [i]);
-        kill (childrenList [i], SIGHUP);
-#else
-        TerminateProcess((HANDLE)childrenList [i], 1);
-        CloseHandle((HANDLE)childrenList [i]);
-#endif
-      }
-  }
-
-static void addChild (pid_t pid)
-  {
-    if (nChildren >= MAX_CHILDREN)
-      return;
-    childrenList [nChildren ++] = pid;
-    if (nChildren == 1)
-     atexit (cleanupChildren);
-  }
-
-#ifdef LAUNCH
-static t_stat launch (int32 UNUSED arg, const char * buf)
-  {
-#ifndef __MINGW64__
-    wordexp_t p;
-    int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
-    if (rc)
-      {
-        sim_printf ("wordexp failed %d\n", rc);
-        return SCPE_ARG;
-      }
-    //for (uint i = 0; i < p . we_wordc; i ++)
-      //sim_printf ("    %s\n", p . we_wordv [i]);
-    pid_t pid = fork ();
-    if (pid == -1) // parent, fork failed
-      {
-        sim_printf ("fork failed\n");
-        return SCPE_ARG;
-      }
-    if (pid == 0)  // child
-      {
-        execv (p . we_wordv [0], & p . we_wordv [1]);
-        sim_printf ("exec failed\n");
-        exit (1);
-      }
-    addChild (pid);
-    wordfree (& p);
-#else
-     STARTUPINFO si;
-     PROCESS_INFORMATION pi;
- 
-     memset( &si, 0, sizeof(si) );
-     si.cb = sizeof(si);
-     memset( &pi, 0, sizeof(pi) );
- 
-     if( !CreateProcess( NULL, (LPSTR)buf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) 
-     {
-         sim_printf ("fork failed\n");
-         return SCPE_ARG;
-     }
-     addChild ((pid_t)pi.hProcess);
-#endif
-    return SCPE_OK;
-  }
-#endif
 
 static void doIniLine (char * text)
   {
@@ -2436,104 +2134,6 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     return SCPE_OK;
   }
 
-// SCP message queue; when IPC messages come in, they are append to this
-// queue. The sim_instr loop will poll the queue for messages for delivery 
-// to the simh code.
-
-static pthread_mutex_t scpMQlock;
-typedef struct scpQueueElement scpQueueElement;
-struct scpQueueElement
-  {
-    char * msg;
-    scpQueueElement * prev, * next;
-  };
-
-static scpQueueElement * scpQueue = NULL;
-
-static void scpQueueMsg (char * msg)
-  {
-    pthread_mutex_lock (& scpMQlock);
-    scpQueueElement * element = malloc (sizeof (scpQueueElement));
-    if (! element)
-      {
-         sim_debug (DBG_ERR, & sys_dev, "couldn't malloc scpQueueElement\n");
-      }
-    else
-      {
-        element -> msg = strdup (msg);
-        DL_APPEND (scpQueue, element);
-      }
-    pthread_mutex_unlock (& scpMQlock);
-  }
-
-static bool scpPollQueue (void)
-  {
-    return !! scpQueue;
-  }
-
-
-static char * scpDequeueMsg (void)
-  {
-    if (! scpQueue)
-      return NULL;
-    pthread_mutex_lock (& scpMQlock);
-    scpQueueElement * rv = scpQueue;
-    DL_DELETE (scpQueue, rv);
-    pthread_mutex_unlock (& scpMQlock);
-    char * msg = rv -> msg;
-    free (rv);
-    return msg;
-  }
-
-//
-//   "attach <device> <filename>"
-//   "attachr <device> <filename>"
-//   "detach <device>
-
-
-void scpProcessEvent (void)
-  {
-    // Queue empty?
-    if (! scpPollQueue ())
-      return;
-    char * msg = scpDequeueMsg ();
-    if (msg)
-      {
-        sim_printf ("dia dequeued %s\n", msg);
-
-        size_t msg_len = strlen (msg);
-        char keyword [msg_len];
-        sscanf (msg, "%s", keyword);
-
-
-        // "crdrdy %d"  -- Input hopper is ready on card reader sim unit n
-        if (strcmp(keyword, "crdrdy") == 0)
-          {
-            int unitNum;
-            int n = sscanf(msg, "%*s %d", & unitNum);
-            if (n != 1)
-              {
-                sim_printf ("illformatted crdrdy message; dropping\n");  
-                goto done;
-              }
-sim_printf ("dia thinks crdrdy %d\n", unitNum);
-            crdrdrCardReady (unitNum);
-            goto done;
-          }
-          
-        sim_printf ("dia dequeued and ignored%s\n", msg);
-
-done:
-        free (msg);
-      }
-  }
-
-t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
-  {
-    // ASSUME0 XXX parse nodename to get unit #
-    scpQueueMsg (arg3);
-    return SCPE_OK;
-  }
 
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
   {

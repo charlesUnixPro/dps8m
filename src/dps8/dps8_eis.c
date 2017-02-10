@@ -12498,12 +12498,3 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
     }
 }
 
-/*
- * EIS test jig .....
- */
-#ifdef EISTESTJIG
-t_stat eisTest (UNUSED int32 arg, char *buf)
-{
-    return SCPE_OK;
-}
-#endif

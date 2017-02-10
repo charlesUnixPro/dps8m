@@ -492,7 +492,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
         oneHz = 0;
         rdrProcessEvent (); 
       }
-    scpProcessEvent (); 
+    //scpProcessEvent (); 
     fnpProcessEvent (); 
     consoleProcess ();
 #ifndef __MINGW64__
