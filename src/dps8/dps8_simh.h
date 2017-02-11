@@ -24,10 +24,13 @@ extern DEVICE scu_dev;
 
 #else
 #ifdef THREADZ
+      // ((dptr != & cpu_dev) || thisCPUnum == 1) && 
+
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
+      ((dptr != & cpu_dev) || ((1 << thisCPUnum) & dbgCPUMask)) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \
       ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TST_I_NBAR)) && \
@@ -56,9 +59,12 @@ extern DEVICE scu_dev;
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
   if_sim_debug((dbits), dptr) \
-    _sim_debug ((dbits), dptr, __VA_ARGS__); \
+    xsim_debug ((dbits), dptr, __VA_ARGS__); \
   else \
     (void) 0
+
+void xsim_debug (uint32 dbits, DEVICE* vdptr, const char* fmt, ...);
+
 
 /* scp Debug flags */
 
@@ -121,7 +127,7 @@ extern DEVICE scu_dev;
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
-void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
+void _xsim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
 #ifdef __GNUC__
   __attribute__ ((format (printf, 3, 4)))
 #endif

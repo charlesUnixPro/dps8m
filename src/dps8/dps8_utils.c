@@ -2377,3 +2377,119 @@ void currentTR (word27 * trunits, bool * ovf)
     * ovf = false;
   }
 #endif
+
+/* Finds debug phrase matching bitmask from from device DEBTAB table */
+
+static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
+  {
+    static const char * debtab_none    = "DEBTAB_ISNULL";
+    static const char * debtab_nomatch = "DEBTAB_NOMATCH";
+    const char * some_match = NULL;
+    int32 offset = 0;
+
+    if (dptr -> debflags == 0)
+      return debtab_none;
+
+    dbits &= dptr -> dctrl; /* Look for just the bits tha matched */
+
+    /* Find matching words for bitmask */
+
+    while (dptr -> debflags[offset].name && (offset < 32))
+      {
+        if (dptr -> debflags[offset].mask == dbits)   /* All Bits Match */
+          return dptr -> debflags[offset].name;
+        if (dptr -> debflags[offset].mask & dbits)
+          some_match = dptr -> debflags[offset].name;
+        offset ++;
+      }
+    return some_match ? some_match : debtab_nomatch;
+  }
+
+
+static __thread char debug_line_prefix[256];
+static __thread int32 debug_unterm  = 0;
+
+/* Prints standard debug prefix unless previous call unterminated */
+
+static const char * sim_debug_prefix (uint32 dbits, DEVICE * dptr)
+  {
+    const char * debug_type = get_dbg_verb (dbits, dptr);
+
+    sprintf(debug_line_prefix, "DBG(%llu)> %s %s: ", cpu.cycleCnt, dptr->name, debug_type);
+return debug_line_prefix;
+  }
+
+void xsim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
+  {
+    if (sim_deb && dptr && (dptr -> dctrl & dbits))
+      {
+        char stackbuf [STACKBUFSIZE];
+        int32 bufsize = sizeof (stackbuf);
+        char * buf = stackbuf;
+        va_list arglist;
+        int32 i, j, len;
+        const char * debug_prefix = sim_debug_prefix (dbits, dptr);   /* prefix to print if required */
+
+        buf [bufsize - 1] = '\0';
+
+        while (1)
+          {   /* format passed string, args */
+            va_start (arglist, fmt);
+            len = vsnprintf (buf, (unsigned long) (bufsize - 1), fmt, arglist);
+            va_end (arglist);
+
+/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
+
+            if ((len < 0) || (len >= bufsize - 1))
+              {
+                if (buf != stackbuf)
+                  free (buf);
+                bufsize = bufsize * 2;
+                if (bufsize < len + 2)
+                  bufsize = len + 2;
+                buf = (char *) malloc ((unsigned long) bufsize);
+                if (buf == NULL)                            /* out of memory */
+                  return;
+                buf [bufsize - 1] = '\0';
+                continue;
+              }
+            break;
+          }
+
+/* Output the formatted data expanding newlines where they exist */
+
+        for (i = j = 0; i < len; ++ i)
+          {
+            if ('\n' == buf [i])
+              {
+                if (i >= j)
+                  {
+                    if ((i != j) || (i == 0))
+                      {
+                        if (debug_unterm)
+                          fprintf (sim_deb, "%.*s\r\n", i-j, & buf [j]);
+                        else                                /* print prefix when required */
+                          fprintf (sim_deb, "%s%.*s\r\n", debug_prefix, i - j, & buf [j]);
+                      }
+                    debug_unterm = 0;
+                  }
+                j = i + 1;
+              }
+          }
+        if (i > j)
+          {
+            if (debug_unterm)
+              fprintf (sim_deb, "%.*s", i - j, & buf [j]);
+            else                                        /* print prefix when required */
+              fprintf (sim_deb, "%s%.*s", debug_prefix, i - j, & buf [j]);
+          }
+
+/* Set unterminated flag for next time */
+
+        debug_unterm = len ? (((buf [len - 1] == '\n')) ? 0 : 1) : debug_unterm;
+        if (buf != stackbuf)
+          free (buf);
+      }
+    return;
+  }
+
