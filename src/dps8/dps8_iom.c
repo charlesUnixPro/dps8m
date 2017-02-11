@@ -221,10 +221,7 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_scu.h"
-
-#ifdef THREADZ
 #include "threadz.h"
-#endif
 
 #define ASSUME_CPU_0 0
 
@@ -2145,11 +2142,7 @@ if (! ptro) sim_printf ("------------------> NO PTRO\n");
             iomChanData_t * q = & iomChanData [iomUnitIdx] [p -> PCW_CHAN];
             q -> DCW = p -> DCW;
             unpackDCW (iomUnitIdx, p -> PCW_CHAN);
-#ifdef THREADZ
             setChnConnect (iomUnitIdx, p -> PCW_CHAN);
-#else
-            doPayloadChan (iomUnitIdx, p -> PCW_CHAN);
-#endif
           }
       } while (! ptro);
     return 0; // XXX
@@ -2318,21 +2311,11 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
 
     iomUnitData [iomUnitIdx] . invokingScuUnitNum = scuUnitNum;
 
-#ifdef THREADZ
     setIOMInterrupt (iomUnitIdx);
     iomDoneWait (iomUnitIdx);
-#else
-    int ret = doConnectChan (iomUnitIdx);
-
-    sim_debug (DBG_DEBUG, & iom_dev,
-               "%s: IOM %c finished; doConnectChan returned %d.\n",
-               __func__, 'A' + iomUnitIdx, ret);
-    // XXX doConnectChan return value ignored
-#endif
   }
  
 
-#ifdef THREADZ
 void * chnThreadMain (void * arg)
   {     
     uint myid = (uint) * (int *) arg;
@@ -2371,7 +2354,6 @@ void * iomThreadMain (void * arg)
         iomInterruptDone ();
       }
   }
-#endif
 
 //
 // iomReset ()
@@ -2686,18 +2668,7 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
         return SCPE_ARG;
       }
     uint iomUnitIdx = (uint) unitNum;
-#ifdef THREADZ
     sim_activate (& bootChannelUnit [iomUnitIdx], 1000);
-#else
-    //sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
-    // returning OK from the simh BOOT command causes simh to start the CPU
-    // initialize memory with boot program
-    initMemoryIOM ((uint)iomUnitIdx);
-
-    // simulate $CON
-    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
-
-#endif
     return SCPE_OK;
   }
 

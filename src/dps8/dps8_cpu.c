@@ -41,12 +41,8 @@
 #include "hdbg.h"
 #endif
 #include "dps8_opcodetable.h"
-
 #include "sim_defs.h"
-
-#ifdef THREADZ
 #include "threadz.h"
-#endif
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -86,11 +82,7 @@ static uv_timer_t ev_poll_handle;
 
 static MTAB cpu_mod[] = {
     {
-#if defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
       0,            /* match */
       "CONFIG",     /* print string */
       "CONFIG",         /* match string */
@@ -100,11 +92,7 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
-#if defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
       0,            /* match */
       "INITIALIZEANDCLEAR",     /* print string */
       "INITIALIZEANDCLEAR",         /* match string */
@@ -250,7 +238,6 @@ void init_opcodes (void)
 #ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
-#if defined (THREADZ)
     uint save = thisCPUnum;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
@@ -258,9 +245,6 @@ static t_stat dpsCmd_InitSDWAM ()
         memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
       }
     setCPUnum (save);
-#else
-    memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
-#endif
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");
@@ -446,7 +430,6 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-#if defined (THREADZ)
         uint cpun, sn;
         if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
           {
@@ -459,13 +442,6 @@ static void getSerialNumber (void)
                 havesn = true;
               }
           }
-#else
-        if (sscanf (buffer, "sn: %u", & cpu.switches.serno) == 1)
-          {
-            sim_printf ("Serial number is %u\n", cpu.switches.serno);
-            havesn = true;
-          }
-#endif
       }
     if (! havesn)
       {
@@ -495,27 +471,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #ifndef __MINGW64__
     absiProcessEvent ();
 #endif
-
-#ifndef THREADZ
-// Update the TR
-
-// The Timer register runs at 512Khz; in 1/100 of a second it
-// decrements 5120.
-
-// Will it pass through zero?
-
-    if (cpu.rTR <= 5120)
-      {
-        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
-        if (cpu.switches.tro_enable)
-        setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
-      }
-    cpu.rTR -= 5120;
-    cpu.rTR &= MASK27;
-#if ISOLTS
-    cpu.shadowTR = cpu.rTR;
-#endif
-#endif
   }
 #endif
 
@@ -543,13 +498,8 @@ void cpu_init (void)
 
     setCPUnum (0);
 
-#if defined (THREADZ)
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
-#else
-    memset (& cpu, 0, sizeof (cpu));
-    cpu.switches.FLT_BASE = 2; // Some of the UnitTests assume this
-#endif
     cpu_init_array ();
 
     getSerialNumber ();
@@ -568,9 +518,7 @@ void cpu_init (void)
 
 static void cpun_reset2 (UNUSED uint cpun)
 {
-#if defined (THREADZ)
     setCPUnum (cpun);
-#endif
     cpu.rA = 0;
     cpu.rQ = 0;
     
@@ -580,9 +528,7 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.PPR.P = 1;
     cpu.RSDWH_R1 = 0;
     cpu.rTR = 0;
-#ifdef THREADZ
     clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
-#endif
 #if ISOLTS
     cpu.shadowTR = 0;
 #endif
@@ -625,9 +571,7 @@ static void cpu_reset2 (void)
         cpun_reset2 (i);
       }
 
-#if defined (THREADZ)
     setCPUnum (0);
-#endif
 
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
@@ -738,11 +682,7 @@ DEVICE cpu_dev = {
 
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 
-#ifdef THREADZ
 __thread cpu_state_t * restrict cpup;
-#else
-cpu_state_t * restrict cpup;
-#endif
 
 // Scan the SCUs; it one has an interrupt present, return the fault pair
 // address for the highest numbered interrupt on that SCU. If no interrupts
@@ -797,23 +737,6 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
-#ifndef THREADZ
-// This is needed for BCE_TRAP in install scripts
-    // breakpoint? 
-    //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
-    // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
-    // PPR.PSR into the high 12
-    if (sim_brk_summ &&
-        sim_brk_test ((cpu.PPR.IC & 0777777) |
-                      ((((t_addr) cpu.PPR.PSR) & 037777) << 18),
-                      SWMASK ('E')))  /* breakpoint? */
-      return STOP_BKPT; /* stop simulation */
-#ifndef SPEED
-    if (sim_deb_break && cpu.cycleCnt >= sim_deb_break)
-      return STOP_BKPT; /* stop simulation */
-#endif
-#endif
-
     return reason;
   }       
 
@@ -856,9 +779,7 @@ static void setCpuCycle (cycles_t cycle)
 uint setCPUnum (UNUSED uint cpuNum)
   {
     uint prev = thisCPUnum;
-#if defined (THREADZ)
     thisCPUnum = cpuNum;
-#endif
     cpup = & cpus [thisCPUnum];
     return prev;
   }
@@ -955,16 +876,9 @@ static void panelProcessEvent (void)
 // other extant cycles:
 //  ABORT_cycle
 
-#ifndef THREADZ
-#ifdef EV_POLL
-static uint fastQueueSubsample = 0;
-#endif
-#endif
-
 
 // This is part of the simh interface
 
-#ifdef THREADZ
 // The hypervisor CPU for the threadz model
 t_stat sim_instr (void)
   {
@@ -1046,13 +960,9 @@ t_stat sim_instr (void)
 
 // Loop runs at 1000Hhz
 
-#ifdef THREADZ
         lock_libuv ();
-#endif
         uv_run (ev_poll_loop, UV_RUN_NOWAIT);
-#ifdef THREADZ
         unlock_libuv ();
-#endif
         PNL (panelProcessEvent ());
 
         if (check_attn_key ())
@@ -1075,13 +985,8 @@ void * cpuThreadMain (void * arg)
     return NULL;
 
   }
-#endif
 
-#ifdef THREADZ
 t_stat threadz_sim_instr (void)
-#else
-t_stat sim_instr (void)
-#endif
   {
     t_stat reason = 0;
 
@@ -1139,7 +1044,6 @@ t_stat sim_instr (void)
         // wait on run/switch
         cpuRunningWait ();
 
-#ifdef THREADZ
 // Update TR
 
         // Check every 1024 cycles (Est 12M cps, 24 cycles is 1 timer tick,
@@ -1157,7 +1061,6 @@ t_stat sim_instr (void)
                             (_fault_subtype) {.bits=0});
               }
          }
-#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -1576,7 +1479,6 @@ t_stat sim_instr (void)
 // Neither of these require high resolution or high accuracy.
 //
 
-#ifdef THREADZ
                     word27 ticks;
                     bool ovf;
                     currentTR (& ticks, & ovf);
@@ -1593,52 +1495,6 @@ t_stat sim_instr (void)
                               }
                           }
                       }
-#else
-
-// The goal of the polling code is sample at about 100Hz; updating the timer
-// register at that rate should suffice.
-//
-//    sleep for 1/100 of a second
-//    update the polling state to trigger a poll
-//    update the timer register by 1/100 of a second
-//    force the simh queues to process
-//    continue processing
-//
-
-// The usleep logic is not smart enough w.r.t. ROUND_ROBIN/ISOLTS.
-// The sleep should only happen if all running processors are in
-// DIS mode.
-                    // 1/100 is .01 secs.
-                    // *1000 is 10  milliseconds
-                    // *1000 is 10000 microseconds
-                    // in uSec;
-                    usleep (10000);
-#ifdef EV_POLL
-                    // Trigger I/O polling
-                    uv_run (ev_poll_loop, UV_RUN_NOWAIT);
-                    fastQueueSubsample = 0;
-#endif
-
-#ifndef EV_POLL
-                    // this ignores the amount of time since the last poll;
-                    // worst case is the poll delay of 1/50th of a second.
-                    slowQueueSubsample += 10240; // ~ 1Hz
-                    queueSubsample += 10240; // ~100Hz
-#endif
-
-                    sim_interval = 0;
-                    // Timer register runs at 512 KHz
-                    // 512000 is 1 second
-                    // 512000/100 -> 5120  is .01 second
-         
-                    // Would we have underflowed while sleeping?
-                    if (cpu.rTR <= 5120)
-                      {
-                        if (cpu.switches.tro_enable)
-                          setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
-                      }
-                    cpu.rTR = (cpu.rTR - 5120) & MASK27;
-#endif
                     break;
                   }
 
@@ -2551,9 +2407,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
-#if defined (THREADZ)
     uint save = setCPUnum ((uint) unit_num);
-#endif
 
     sim_printf ("CPU unit number %ld\n", unit_num);
 
@@ -2577,9 +2431,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
 
-#if defined (THREADZ)
     setCPUnum (save);
-#endif
 
     return SCPE_OK;
 }
@@ -2782,9 +2634,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         return SCPE_ARG;
       }
 
-#if defined (THREADZ)
     uint save = setCPUnum ((uint) cpu_unit_num);
-#endif
 
     static int port_num = 0;
 
@@ -2848,9 +2698,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
       } // process statements
     cfgparse_done (& cfg_state);
 
-#if defined (THREADZ)
     setCPUnum (save);
-#endif
 
     return SCPE_OK;
   }

@@ -1666,14 +1666,10 @@ static void deliverInterrupts (uint scu_unit_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
-#if defined (THREADZ)
     for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
       {
         cpus[cpun].events.XIP[scu_unit_num] = false;
       }
-#else
-    cpu . events . XIP [scu_unit_num] = false;
-#endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
@@ -1710,20 +1706,8 @@ static void deliverInterrupts (uint scu_unit_num)
                   }
                 else
                   {
-#ifdef THREADZ
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
                     setCPURun ((uint) cpu_unit_num, true);
-#else
-#if defined (THREADZ)
-                    uint save = setCPUnum ((uint) cpu_unit_num);
-//if (cpu_unit_num && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
-                    cpu.isRunning = true;
-                    cpu.events.XIP[scu_unit_num] = true;
-                    setCPUnum (save);
-#else
-                    cpu.events.XIP[scu_unit_num] = true;
-#endif
-#endif
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
 #ifdef RCFDBG
 if (cpu_unit_num || scu_unit_num) sim_printf ("interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);

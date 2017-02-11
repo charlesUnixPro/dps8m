@@ -216,7 +216,5 @@ int send_marker_interrupt (uint iomUnitIdx, int chan);
 #ifdef PANEL
 void doBoot (void);
 #endif
-#ifdef THREADZ
 void * iomThreadMain (void * arg);
 void * chnThreadMain (void * arg);
-#endif

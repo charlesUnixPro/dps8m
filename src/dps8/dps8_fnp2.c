@@ -35,14 +35,10 @@
 #include "fnpuv.h"
 #include "utlist.h"
 #include "uthash.h"
-
 #include "sim_defs.h"
 #include "sim_tmxr.h"
 #include <regex.h>
-
-#ifdef THREADZ
 #include "threadz.h"
-#endif
 
 static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
@@ -2305,24 +2301,16 @@ sim_printf ("reset??\n");
       }
     else if (command == 072) // bootload
       {
-#ifdef THREADZ
         lock_libuv ();
-#endif
         fnpcmdBootload (devUnitIdx);
-#ifdef THREADZ
         unlock_libuv ();
-#endif
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
       {
-#ifdef THREADZ
         lock_libuv ();
-#endif
         ok = interruptL66 (iomUnitIdx, chan) == 0;
-#ifdef THREADZ
         unlock_libuv ();
-#endif
       }
     else if (command == 075) // data xfer from L6 to L66
       {

@@ -23,7 +23,6 @@ extern DEVICE scu_dev;
 #define if_sim_debug(dbits, dptr) if ((0))
 
 #else
-#ifdef THREADZ
       // ((dptr != & cpu_dev) || thisCPUnum == 1) && 
 
 #define if_sim_debug(dbits, dptr) \
@@ -39,21 +38,6 @@ extern DEVICE scu_dev;
       (sim_deb_mme_cntdwn == 0) && \
       ((dptr != & cpu_dev) | (((dbits) & DBG_TRACE) ? (sim_deb_skip_cnt ++ >= sim_deb_skip_limit) : (sim_deb_skip_cnt >= sim_deb_skip_limit))) \
     ) 
-#else
-#define if_sim_debug(dbits, dptr) \
-  if ( \
-      sim_deb && \
-      (isISOLTS == 0 || thisCPUnum != 0) && \
-      (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
-      ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
-      ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \
-      ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TST_I_NBAR)) && \
-      cpu.cycleCnt >= sim_deb_start && \
-      (sim_deb_stop == 0 || cpu.cycleCnt < sim_deb_stop) && \
-      (sim_deb_mme_cntdwn == 0) && \
-      ((dptr != & cpu_dev) | (((dbits) & DBG_TRACE) ? (sim_deb_skip_cnt ++ >= sim_deb_skip_limit) : (sim_deb_skip_cnt >= sim_deb_skip_limit))) \
-    ) 
-#endif
 #endif
 
 #undef sim_debug

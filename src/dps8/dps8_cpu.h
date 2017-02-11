@@ -1567,10 +1567,8 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
-#ifdef THREADZ
     struct timespec rTRTime; // time when rTR was set
     uint     rTRsample;
-#endif
     word24   rY;     // address operand
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
@@ -1795,20 +1793,13 @@ typedef struct
 
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 
-#ifdef THREADZ
 __thread extern cpu_state_t * restrict cpup;
 __thread extern uint thisCPUnum;
 __thread extern uint thisIOMnum;
 __thread extern uint thisChnNum;
-#else
-extern cpu_state_t * restrict cpup;
-#endif
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
-#ifndef THREADZ
-#define thisCPUnum 0
-#endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
 
@@ -2040,7 +2031,5 @@ void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
-#ifdef THREADZ
 t_stat threadz_sim_instr (void);
 void * cpuThreadMain (void * arg);
-#endif

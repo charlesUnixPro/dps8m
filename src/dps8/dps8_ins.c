@@ -42,9 +42,7 @@
 #ifdef HDBG
 #include "hdbg.h"
 #endif
-#ifdef THREADZ
 #include "threadz.h"
-#endif
 
 // Forward declarations
 
@@ -1165,7 +1163,6 @@ force:;
           {
             if (isBAR)
               {
-#if defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1181,25 +1178,9 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.BAR.BASE,
-                  cpu.PPR.IC,
-                  IWB_IRODD,
-                  disAssemble (IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
             else
               {
-#if defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1214,27 +1195,12 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.IC,
-                  IWB_IRODD,
-                  disAssemble (IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
           }
         else if (get_addr_mode () == APPEND_mode)
           {
             if (isBAR)
               {
-#if defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                  "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1251,26 +1217,9 @@ force:;
                   cpu.currentInstruction.a, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                 "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.PSR,
-                  cpu.BAR.BASE,
-                  cpu.PPR.IC,
-                  cpu.PPR.PRR,
-                  IWB_IRODD,
-                  disAssemble (IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a, cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
             else
               {
-#if defined (THREADZ)
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1287,22 +1236,6 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.PSR,
-                  cpu.PPR.IC,
-                  cpu.PPR.PRR,
-                  IWB_IRODD,
-                  disAssemble (IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
           }
       }
@@ -2827,14 +2760,10 @@ static t_stat DoBasicInstruction (void)
             cpu.Yblock8[4] = cpu.rA;
             cpu.Yblock8[5] = cpu.rQ;
             cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
-#ifdef THREADZ
             word27 ticks;
             bool ovf;
             currentTR (& ticks, & ovf);
             cpu.Yblock8[7] = ((ticks & MASK27) << 9) | (cpu.rRALR & 07);
-#else
-            cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
-#endif
           }
           break;
 
@@ -2976,14 +2905,10 @@ static t_stat DoBasicInstruction (void)
             else
               cpu.CY = (cpu.rTR & MASK27) << 9;
 #else
-#ifdef THREADZ
             word27 ticks;
             bool ovf;
             currentTR (& ticks, & ovf);
             cpu.CY = (ticks & MASK27) << 9;
-#else
-            cpu.CY = (cpu.rTR & MASK27) << 9;
-#endif
 #endif
           }
           break;
@@ -6329,10 +6254,8 @@ sim_printf ("do bar attempt\n");
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
 #endif
-#ifdef THREADZ
 //sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
           clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
-#endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
           // Undocumented feature. return to bce has been observed to

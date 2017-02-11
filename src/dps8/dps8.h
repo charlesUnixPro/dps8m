@@ -84,9 +84,6 @@
 #undef HDBG
 #endif
 
-// Multi-theaded operation
-#define THREADZ
-
 // Enable ISOLTS support
 //#define ISOLTS
 
