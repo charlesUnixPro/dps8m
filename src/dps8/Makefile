@@ -17,7 +17,6 @@
 #
 
 SIMHx = ../simh-master
-#SIMHx = ../simhv40-beta
 
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
@@ -245,7 +244,6 @@ slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 : 
-	#(cd ../simhv40-beta; $(MAKE))
 	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
 ifeq ($(CROSS),MINGW64)
@@ -288,7 +286,7 @@ zyre : ../lib/libzyre.so
 
 tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
 	@echo TAGS
-	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+	-@ctags $(C_SRCS) $(H_SRCS) $(SIMHx)/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 
@@ -302,7 +300,6 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 
 clean:
 	@echo CLEAN
-	#(cd ../simhv40-beta; $(MAKE) clean)
 	@$(MAKE) -C $(SIMHx) -f Makefile clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
