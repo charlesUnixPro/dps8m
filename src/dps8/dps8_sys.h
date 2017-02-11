@@ -32,11 +32,5 @@ extern uint64 sim_deb_skip_cnt;
 extern bool sim_deb_bar;
 extern DEVICE *sim_devices[];
 extern uint dbgCPUMask;
-char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
-void listSource (char * compname, word18 offset, uint dflag);
-//t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset);
-
 t_stat brkbrk (int32 arg, const char * buf);
-void scpProcessEvent (void);
-t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3);
 
