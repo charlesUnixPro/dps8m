@@ -2961,8 +2961,6 @@ static t_stat DoBasicInstruction (void)
           SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
 #endif
           SCF (i->stiTally, cpu.CY, I_TALLY);
-          if (cpu.switches.invert_absolute)
-            cpu.CY ^= 020;
           break;
 
         case 0756: // stq
