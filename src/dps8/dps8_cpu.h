@@ -1762,9 +1762,6 @@ typedef struct
 #if 0
     bool bar_attempt;
 #endif
-#ifdef ROUND_ROBIN
-    bool isRunning;
-#endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
     int scbank_pg_os [N_SCBANKS];
@@ -1813,12 +1810,8 @@ extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
-#ifdef ROUND_ROBIN
-extern uint thisCPUnum;
-#else
 #ifndef THREADZ
 #define thisCPUnum 0
-#endif
 #endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO

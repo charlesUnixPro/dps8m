@@ -89,7 +89,7 @@ static uv_timer_t ev_poll_handle;
 
 static MTAB cpu_mod[] = {
     {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
@@ -103,7 +103,7 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
@@ -253,7 +253,7 @@ void init_opcodes (void)
 #ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     uint save = thisCPUnum;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
@@ -449,7 +449,7 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
         uint cpun, sn;
         if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
           {
@@ -565,7 +565,7 @@ void cpu_init (void)
 
     setCPUnum (0);
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
 #else
@@ -590,7 +590,7 @@ void cpu_init (void)
 
 static void cpun_reset2 (UNUSED uint cpun)
 {
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     setCPUnum (cpun);
 #endif
     cpu.rA = 0;
@@ -647,7 +647,7 @@ static void cpu_reset2 (void)
         cpun_reset2 (i);
       }
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     setCPUnum (0);
 #endif
 
@@ -920,10 +920,6 @@ __thread cpu_state_t * restrict cpup;
 cpu_state_t * restrict cpup;
 #endif
 
-#ifdef ROUND_ROBIN
-uint thisCPUnum;
-#endif
-
 // Scan the SCUs; it one has an interrupt present, return the fault pair
 // address for the highest numbered interrupt on that SCU. If no interrupts
 // are found, return 1.
@@ -1036,7 +1032,7 @@ static void setCpuCycle (cycles_t cycle)
 uint setCPUnum (UNUSED uint cpuNum)
   {
     uint prev = thisCPUnum;
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     thisCPUnum = cpuNum;
 #endif
     cpup = & cpus [thisCPUnum];
@@ -1796,7 +1792,6 @@ t_stat sim_instr (void)
 // The usleep logic is not smart enough w.r.t. ROUND_ROBIN/ISOLTS.
 // The sleep should only happen if all running processors are in
 // DIS mode.
-#ifndef ROUND_ROBIN
                     // 1/100 is .01 secs.
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
@@ -1827,7 +1822,6 @@ t_stat sim_instr (void)
                           setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
-#endif
 #endif
                     break;
                   }
@@ -2074,13 +2068,7 @@ t_stat sim_instr (void)
 #endif
           }  // switch (cpu.cycle)
       } 
-#ifdef ROUND_ROBIN
-    while (0);
-   if (reason == 0)
-     goto setCPU;
-#else
     while (reason == 0);
-#endif
 
 leave:
 
@@ -2756,7 +2744,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     uint save = setCPUnum ((uint) unit_num);
 #endif
 
@@ -2782,7 +2770,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     setCPUnum (save);
 #endif
 
@@ -2987,7 +2975,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         return SCPE_ARG;
       }
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     uint save = setCPUnum ((uint) cpu_unit_num);
 #endif
 
@@ -3053,7 +3041,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
       } // process statements
     cfgparse_done (& cfg_state);
 
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     setCPUnum (save);
 #endif
 

@@ -1666,7 +1666,7 @@ static void deliverInterrupts (uint scu_unit_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
     for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
       {
         cpus[cpun].events.XIP[scu_unit_num] = false;
@@ -1714,7 +1714,7 @@ static void deliverInterrupts (uint scu_unit_num)
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
                     setCPURun ((uint) cpu_unit_num, true);
 #else
-#if defined (ROUND_ROBIN) || defined (THREADZ)
+#if defined (THREADZ)
                     uint save = setCPUnum ((uint) cpu_unit_num);
 //if (cpu_unit_num && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_num + 'A');
                     cpu.isRunning = true;

@@ -91,20 +91,10 @@
 // Multi-theaded operation
 #define THREADZ
 
-// Enable round-robin multi-CPU
-//#define ROUND_ROBIN
-
 // Enable ISOLTS support
 //#define ISOLTS
 
 // Dependencies
-
-// ISOLTS requires multiple CPU support
-#ifdef ISOLTS
-#ifndef ROUND_ROBIN
-#define ROUND_ROBIN
-#endif
-#endif
 
 // PANEL only works on L68
 #ifdef PANEL
