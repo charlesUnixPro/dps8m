@@ -1540,7 +1540,8 @@ typedef struct
     jmp_buf jmpMain; // This is the entry to the CPU state machine
     cycles_t cycle;
     unsigned long long cycleCnt;
-    stats_t sys_stats;
+    unsigned long long instrCnt;
+    unsigned long faultCnt [N_FAULTS];
 
     // The following are all from the control unit history register:
 

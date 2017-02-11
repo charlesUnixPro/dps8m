@@ -358,7 +358,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 
     cpu.faultNumber = faultNumber;
     cpu.subFault = subFault;
-    cpu.sys_stats.total_faults [faultNumber] ++;
+    cpu.faultCnt [faultNumber] ++;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
     CPTUR (cptUseCMR);
@@ -600,9 +600,6 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu . PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
-                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats . total_cycles);
-                //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 #endif
@@ -620,12 +617,7 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
         cpu . bTroubleFaultCycle = false;
       }
     
-    // If doInstruction faults, the instruction cycle counter doesn't get 
-    // bumped.
-    if (cpu.cycle == EXEC_cycle)
-      cpu.sys_stats.total_cycles += 1; // bump cycle counter
-
-    cpu . cycle = FAULT_cycle;
+    cpu.cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
     longjmp (cpu.jmpMain, JMP_REENTRY);
 }
@@ -739,9 +731,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu.PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", cpu.cyccleCnt ());
-                sim_printf("\ncpuCycles = %"PRId64"\n", cpu.sys_stats.total_cycles);
-                //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 #endif
@@ -757,11 +746,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
       }
     cpu.bTroubleFaultCycle = false;
     
-    // If doInstruction faults, the instruction cycle counter doesn't get 
-    // bumped.
-    if (cpu . cycle == EXEC_cycle)
-      cpu.sys_stats.total_cycles += 1; // bump cycle counter
-
     cpu.is_FFV = true;
     cpu.cycle = FAULT_cycle;
     longjmp (cpu.jmpMain, JMP_REENTRY);

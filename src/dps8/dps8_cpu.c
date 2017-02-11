@@ -638,8 +638,6 @@ static void cpun_reset2 (UNUSED uint cpun)
     setup_scbank_map ();
 
     tidy_cu ();
-
-    memset (& cpu.sys_stats, 0, sizeof (cpu.sys_stats));
 }
 
 static void cpu_reset2 (void)
@@ -2090,12 +2088,12 @@ sim_printf ("cpu %u leaves; reason %d\n", thisCPUnum, reason);
 #ifdef HDBG
     hdbgPrint ();
 #endif
-    sim_printf("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
-    sim_printf("\ncpuCycles = %"PRId64"\n", cpu.sys_stats.total_cycles);
+    sim_printf("\nsimCycles = %llu\n", cpu.cycleCnt);
+    sim_printf("\ninstructions = %llu\n", cpu.instrCnt);
     for (int i = 0; i < N_FAULTS; i ++)
       {
-        if (cpu.sys_stats.total_faults [i])
-          sim_printf("%s faults = %"PRId64"\n", faultNames [i], cpu.sys_stats.total_faults [i]);
+        if (cpu.faultCnt [i])
+          sim_printf("%s faults = %lu\n", faultNames [i], cpu.faultCnt [i]);
      }
     
 #if defined (M_SHARED) && !defined (THREADZ)

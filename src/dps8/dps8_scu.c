@@ -792,7 +792,7 @@ static uint64 getSCUclock (uint scu_unit_num)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
-        __uint128_t big = cpu.sys_stats.total_cycles;
+        __uint128_t big = cpu.cycleCnt;
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;

@@ -1430,6 +1430,8 @@ t_stat executeInstruction (void)
       }
 #endif // L68
 
+    cpu.instrCnt ++;
+
 ///
 /// executeInstruction: Non-restart processing
 ///
@@ -2338,8 +2340,6 @@ restart_1:
 ///
 /// executeInstruction: simh hooks
 ///
-
-    cpu.sys_stats.total_cycles += 1; // bump cycle counter
 
     if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
@@ -7411,8 +7411,6 @@ sim_printf ("do bar attempt\n");
             {
               sim_printf ("DIS@0%06o with no interrupts pending and"
                           " no events in queue\n", cpu.PPR.IC);
-              sim_printf ("\nsimCycles = %"PRId64"\n", cpu.cycleCnt);
-              sim_printf ("\ncpuCycles = %"PRId64"\n", cpu.sys_stats.total_cycles);
               longjmp (cpu.jmpMain, JMP_STOP);
             }
 
@@ -7477,8 +7475,6 @@ sim_printf ("do bar attempt\n");
           else
             {
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
-              cpu.sys_stats.total_cycles ++;
-              //longjmp (cpu.jmpMain, JMP_REFETCH);
               return CONT_DIS;
             }
 

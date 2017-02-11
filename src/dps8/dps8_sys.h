@@ -11,39 +11,10 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-// System-wide info and options not tied to a specific CPU, IOM, or SCU
-typedef struct {
-    int clock_speed;
-    // Instructions rccl and rscr allow access to a hardware clock.
-    // If zero, the hardware clock returns the real time of day.
-    // If non-zero, the clock starts at an arbitrary date and ticks at
-    // a rate approximately equal to the given number of instructions
-    // per second.
-    // Delay times are in cycles; negative for immediate
-    struct {
-        int connect;    // Delay between CIOC instr & connect channel operation
-        int chan_activate;  // Time for a list service to send a DCW
-        int boot_time; // delay between CPU start and IOM starting boot process
-        int terminate_time; // delay between CPU start and IOM starting boot process
-    } iom_times;
-    struct {
-        int read;
-        int xfer;
-    } mt_times;
-    bool warn_uninit; // Warn when reading uninitialized memory
-} sysinfo_t;
-
 // Statistics
 typedef struct {
-    struct {
-        uint nexec;
-        uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
-    } instr[1024];
     uint64 total_cycles;      // Used for statistics and for simulated clock
     uint64 total_faults [N_FAULTS];
-    uint64 total_instr;
-    uint64 total_msec;
-    uint n_instr;       // Reset to zero on each call to sim_instr()
 } stats_t;
 
 
