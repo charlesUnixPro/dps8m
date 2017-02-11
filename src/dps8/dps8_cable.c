@@ -29,10 +29,6 @@
 #endif
 #include "dps8_cable.h"
 #include "dps8_utils.h"
-#ifdef M_SHARED
-#include <unistd.h>
-#include "shm.h"
-#endif
 struct cables_t * cables = NULL;
 
 //
@@ -795,11 +791,7 @@ void sysCableInit (void)
   {
     if (! cables)
       {
-#ifdef M_SHARED
-        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
-#else
         cables = (struct cables_t *) malloc (sizeof (struct cables_t));
-#endif
         if (cables == NULL)
           {
             sim_printf ("create_shm cables failed\n");

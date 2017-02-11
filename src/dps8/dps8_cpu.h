@@ -1793,11 +1793,7 @@ typedef struct
     bool havelock; // Vetinari 
   } cpu_state_t;
 
-#ifdef M_SHARED
-extern cpu_state_t * cpus;
-#else
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
-#endif
 
 #ifdef THREADZ
 __thread extern cpu_state_t * restrict cpup;

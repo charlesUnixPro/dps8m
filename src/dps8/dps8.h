@@ -57,10 +57,6 @@
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
 
-// Enable M[] as shared memory segment
-//#define M_SHARED
-//LDFLAGS += -lrt
-
 // Enable IPC
 #define VM_DPS8
 
