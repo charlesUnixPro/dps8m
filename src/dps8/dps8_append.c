@@ -113,7 +113,7 @@ void setAPUStatus (apuStatusBits status)
 static char *strSDW(_sdw *SDW);
 #endif
 
-static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNOWN;
+//static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNOWN;
 
 /**
 
@@ -587,7 +587,7 @@ static char *strSDW(_sdw *SDW)
 /**
  * dump SDWAM...
  */
-t_stat dumpSDWAM (void)
+static t_stat dumpSDWAM (void)
 {
     for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
@@ -1442,7 +1442,7 @@ G:;
 #else
     if (!fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
     {
-        appendingUnitCycleType = apuCycle_PTWfetch;
+        //appendingUnitCycleType = apuCycle_PTWfetch;
         //fetchPTW(cpu . SDW, cpu . TPR.CA);
         fetchPTW(cpu . SDW, address);
         if (!cpu . PTW0.DF)
@@ -1483,18 +1483,18 @@ H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
     PNL (L68_ (cpu.apu.state |= apu_FANP;))
 #if 0
-    appendingUnitCycleType = apuCycle_FANP;
+    //appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
 #else
     // ISOLTS pa865 test-01a 101232
     if (get_bar_mode ())
       {
-        appendingUnitCycleType = apuCycle_FANP;
+        //appendingUnitCycleType = apuCycle_FANP;
         setAPUStatus (apuStatus_FABS);
       }
     else
       {
-        appendingUnitCycleType = apuCycle_FANP;
+        //appendingUnitCycleType = apuCycle_FANP;
         setAPUStatus (apuStatus_FANP);
       }
 #endif
@@ -1523,7 +1523,7 @@ I:;
     {
 #if 0
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
-        appendingUnitCycleType = MPTW;
+        //appendingUnitCycleType = MPTW;
         cpu . PTW->M = 1;
         
 #else
@@ -1532,7 +1532,7 @@ I:;
     }
     
     // final address paged
-    appendingUnitCycleType = apuCycle_FAP;
+    //appendingUnitCycleType = apuCycle_FAP;
     setAPUStatus (apuStatus_FAP);
     PNL (L68_ (cpu.apu.state |= apu_FAP;))
     
@@ -1611,153 +1611,6 @@ Exit:;
     return finalAddress;    // or 0 or -1???
 }
 
-// Translate a segno:offset to a absolute address.
-// Return 0 if successful.
-
-int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
-                      char * * msg)
-  {
-    // Local copies so we don't disturb machine state
-
-    _ptw0 PTW1;
-    _sdw0 SDW1;
-
-   if (2u * segno >= 16u * (cpu . DSBR.BND + 1u))
-     {
-       if (msg)
-         * msg = "DSBR boundary violation.";
-       return 1;
-     }
-
-    if (cpu . DSBR . U == 0)
-      {
-        // fetchDSPTW
-
-        word24 y1 = (2 * segno) % 1024;
-        word24 x1 = (2 * segno - y1) / 1024;
-
-        word36 PTWx1;
-        core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
-        
-        PTW1 . ADDR = GETHI (PTWx1);
-        PTW1 . U = TSTBIT (PTWx1, 9);
-        PTW1 . M = TSTBIT (PTWx1, 6);
-        PTW1 . DF = TSTBIT (PTWx1, 2);
-        PTW1 . FC = PTWx1 & 3;
-    
-        if (! PTW1 . DF)
-          {
-            if (msg)
-              * msg = "!PTW0.F";
-            return 2;
-          }
-
-        // fetchPSDW
-
-        y1 = (2 * segno) % 1024;
-    
-        word36 SDWeven, SDWodd;
-    
-        core_read2 (((PTW1 .  ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
-    
-        // even word
-        SDW1 . ADDR = (SDWeven >> 12) & 077777777;
-        SDW1 . R1 = (SDWeven >> 9) & 7;
-        SDW1 . R2 = (SDWeven >> 6) & 7;
-        SDW1 . R3 = (SDWeven >> 3) & 7;
-        SDW1 . DF = TSTBIT(SDWeven, 2);
-        SDW1 . FC = SDWeven & 3;
-    
-        // odd word
-        SDW1 . BOUND = (SDWodd >> 21) & 037777;
-        SDW1 . R = TSTBIT (SDWodd, 20);
-        SDW1 . E = TSTBIT (SDWodd, 19);
-        SDW1 . W = TSTBIT (SDWodd, 18);
-        SDW1 . P = TSTBIT (SDWodd, 17);
-        SDW1 . U = TSTBIT (SDWodd, 16);
-        SDW1 . G = TSTBIT (SDWodd, 15);
-        SDW1 . C = TSTBIT (SDWodd, 14);
-        SDW1 . EB = SDWodd & 037777;
-      }
-    else // ! DSBR . U
-      {
-        // fetchNSDW
-
-        word36 SDWeven, SDWodd;
-        
-        core_read2 ((cpu . DSBR . ADDR + 2 * segno) & PAMASK, & SDWeven, & SDWodd, __func__);
-        
-        // even word
-        SDW1 . ADDR = (SDWeven >> 12) & 077777777;
-        SDW1 . R1 = (SDWeven >> 9) & 7;
-        SDW1 . R2 = (SDWeven >> 6) & 7;
-        SDW1 . R3 = (SDWeven >> 3) & 7;
-        SDW1 . DF = TSTBIT (SDWeven, 2);
-        SDW1 . FC = SDWeven & 3;
-        
-        // odd word
-        SDW1 . BOUND = (SDWodd >> 21) & 037777;
-        SDW1 . R = TSTBIT(SDWodd, 20);
-        SDW1 . E = TSTBIT(SDWodd, 19);
-        SDW1 . W = TSTBIT(SDWodd, 18);
-        SDW1 . P = TSTBIT(SDWodd, 17);
-        SDW1 . U = TSTBIT(SDWodd, 16);
-        SDW1 . G = TSTBIT(SDWodd, 15);
-        SDW1 . C = TSTBIT(SDWodd, 14);
-        SDW1 . EB = SDWodd & 037777;
-    
-      }
-
-    if (SDW1 . DF == 0)
-      {
-        if (msg)
-          * msg = "!SDW0.F != 0";
-        return 3;
-      }
-
-    if (((offset >> 4) & 037777) > SDW1 . BOUND)
-      {
-        if (msg)
-          * msg = "C(TPR.CA)0,13 > SDW.BOUND";
-        return 4;
-      }
-
-    // is segment C(TPR.TSR) paged?
-    if (SDW1 . U)
-      {
-        * finalAddress = (SDW1 . ADDR + offset) & PAMASK;
-      }
-    else
-      {
-        // fetchPTW
-        word24 y2 = offset % 1024;
-        word24 x2 = (offset - y2) / 1024;
-    
-        word36 PTWx2;
-    
-        core_read ((SDW1 . ADDR + x2) & PAMASK, & PTWx2, __func__);
-    
-        PTW1 . ADDR = GETHI (PTWx2);
-        PTW1 . U = TSTBIT (PTWx2, 9);
-        PTW1 . M = TSTBIT (PTWx2, 6);
-        PTW1 . DF = TSTBIT (PTWx2, 2);
-        PTW1 . FC = PTWx2 & 3;
-
-        if ( !PTW1 . DF)
-          {
-            if (msg)
-              * msg = "!PTW0.F";
-            return 5;
-          }
-
-        y2 = offset % 1024;
-    
-        * finalAddress = (((PTW1 . ADDR & 0777777) << 6) + y2) & PAMASK;
-      }
-    if (msg)
-      * msg = "";
-    return 0;
-  }
 
 
 

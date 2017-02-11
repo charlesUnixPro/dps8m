@@ -38,6 +38,7 @@
 // main memory access to update page status bits (PTW.U and PTW.M) in a PTW.
 // The cycles are defined in Table 5-1.
 
+#if 0
 enum _appendingUnit_cycle_type {
     apuCycle_APPUNKNOWN = 0,    // unknown
     
@@ -84,6 +85,8 @@ enum _appendingUnit_cycle_type {
                 // Sets the page modified bit (PTW.M) in the PTW for a page 
                 // in other than a descriptor segment page table.
 };
+#endif
+
 
 // These bits are aligned to match the CU word 0 APU status bit positions.
 // This produces some oddness in the scu save/restore code.
@@ -110,14 +113,11 @@ typedef enum apuStatusBits
 void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
-t_stat dumpSDWAM (void);
 word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
 void do_camp (word36 Y);
 void do_cams (word36 Y);
-int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
-                      char * * msg);
 _sdw0 * getSDW (word15 segno);
 
 
