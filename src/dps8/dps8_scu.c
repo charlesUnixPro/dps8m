@@ -762,11 +762,6 @@ t_stat scu_reset (UNUSED DEVICE * dptr)
         up -> lwr = sw -> lwr;
 
    
-// CAC - These settings were reversed engineer from the code instead
-// of from the documentation. In case of issues, try fixing these, not the
-// code.
-
-
         for (int i = 0; i < N_ASSIGNMENTS; i ++)
           {
 // XXX Hack for t4d
@@ -788,7 +783,7 @@ static uint64 getSCUclock (uint scu_unit_num)
 // allowing reproducible behavior. In real, the clock is
 // coupled to the actual time-of-day.
 
-    if (scu [0] . steady_clock)
+    if (scu [0].steady_clock)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
@@ -796,10 +791,10 @@ static uint64 getSCUclock (uint scu_unit_num)
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;
-        if (scu [0] . bullet_time)
+        if (scu [0].bullet_time)
           big *= 10000;
 
-        big += scu [0] . elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+        big += scu [0].elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
         // Boot time
 
 // load_fnp is complaining that FNP core image is more than 5 years old; try 
@@ -814,20 +809,20 @@ static uint64 getSCUclock (uint scu_unit_num)
         // now determine uSecs since Jan 1, 1901 ...
         uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 
-        // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
-        // is <0, it will come out in the wash ok.
-        MulticsuSecs += (uint64) scu [scu_unit_num] . userCorrection;
+        // The casting to uint show be okay; both are 64 bit, so if if
+        // userCorrection is <0, it will come out in the wash ok.
+        MulticsuSecs += (uint64) scu [scu_unit_num].userCorrection;
 
         // The get calendar clock function is guaranteed to return
         // different values on successive calls. 
 
-        if (scu [scu_unit_num] . lastTime >= MulticsuSecs)
+        if (scu [scu_unit_num].lastTime >= MulticsuSecs)
           {
             sim_debug (DBG_TRACE, & scu_dev, "finagle clock\n");
-            MulticsuSecs = scu [scu_unit_num] . lastTime + 1;
+            MulticsuSecs = scu [scu_unit_num].lastTime + 1;
           }
-        scu [scu_unit_num] . lastTime = MulticsuSecs;
-        return scu [scu_unit_num] . lastTime;
+        scu [scu_unit_num].lastTime = MulticsuSecs;
+        return scu [scu_unit_num].lastTime;
       }
 
     // The calendar clock consists of a 52-bit register which counts
@@ -846,7 +841,7 @@ static uint64 getSCUclock (uint scu_unit_num)
     struct timeval now;
     gettimeofday(& now, NULL);
                 
-    if (scu [0] . y2k) // subtract 20 years....
+    if (scu [0].y2k) // subtract 20 years....
       {
         // Back the clock up to just after the MR12.3 release (12/89
         // according to http://www.multicians.org/chrono.html
@@ -864,14 +859,14 @@ static uint64 getSCUclock (uint scu_unit_num)
         // date --date='25 years ago' +%s; date +%s
         // 645852697
         // 1434771097
-        now . tv_sec -= (1434771097 - 645852697);
+        now.tv_sec -= (1434771097 - 645852697);
 #else
         // 12.5 release was 22 years ago
 
         // date --date='22 years ago' +%s ; date +%s
         // 744420783
         // 1438644783
-        now . tv_sec -= (1438644783 - 744420783);
+        now.tv_sec -= (1438644783 - 744420783);
 #endif
 
       }
@@ -891,15 +886,15 @@ static uint64 getSCUclock (uint scu_unit_num)
  
     // Correction factor from the set time command
 
-    // The casting to uint show be okay; both are 64 bit, so if if userCorrection 
-    // is <0, it will come out in the wash ok.
-    MulticsuSecs += (uint64) scu [scu_unit_num] . userCorrection;
+    // The casting to uint show be okay; both are 64 bit, so if if
+    // userCorrection is <0, it will come out in the wash ok.
+    MulticsuSecs += (uint64) scu [scu_unit_num].userCorrection;
 
-    if (scu [scu_unit_num] . lastTime >= MulticsuSecs)
-        MulticsuSecs = scu [scu_unit_num] . lastTime + 1;
-    scu [scu_unit_num] . lastTime = MulticsuSecs;
+    if (scu [scu_unit_num].lastTime >= MulticsuSecs)
+        MulticsuSecs = scu [scu_unit_num].lastTime + 1;
+    scu [scu_unit_num].lastTime = MulticsuSecs;
 
-    return scu [scu_unit_num] . lastTime;
+    return scu [scu_unit_num].lastTime;
 
   }
 
@@ -909,7 +904,7 @@ static char * pcells (uint scu_unit_num)
   {
     for (uint i = 0; i < N_CELL_INTERRUPTS; i ++)
       {
-        if (scu [scu_unit_num] . cells [i])
+        if (scu [scu_unit_num].cells [i])
           pcellb [i] = '1';
         else
           pcellb [i] = '0';
@@ -926,7 +921,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num,
       {
         for (uint i = 0; i < 16; i ++)
           {
-            scu [scu_unit_num] . cells [i + 16] = getbits36_1 (rega, i) ? 1 : 0;
+            scu [scu_unit_num].cells [i + 16] = getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC low: Unit %u Cells: %s\n", 
@@ -936,7 +931,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num,
       {
         for (uint i = 0; i < 16; i ++)
           {
-            scu [scu_unit_num] . cells [i] = 
+            scu [scu_unit_num].cells [i] = 
               getbits36_1 (rega, i) ? 1 : 0;
           }
         sim_debug (DBG_TRACE, & scu_dev,
@@ -987,7 +982,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
 
     // Only valid for a 4MW SCU
 
-    if (scu_unit_num >= scu_dev . numunits)
+    if (scu_unit_num >= scu_dev.numunits)
       {
 // XXX should this be a store fault?
         sim_warn ("%s: scu_unit_num out of range %d\n",
@@ -1002,7 +997,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
 
     // See scs.incl.pl1
     
-    if (config_switches [scu_unit_num] . mode != MODE_PROGRAM)
+    if (config_switches [scu_unit_num].mode != MODE_PROGRAM)
       {
         sim_warn ("%s: SCU mode is 'MANUAL', not 'PROGRAM' -- sscr "
                    "not allowed to set switches.\n", 
@@ -1018,15 +1013,17 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
       {
         case 00000: // Set system controller mode register
           {
-            scu [scu_unit_num] . id = (word4) getbits36_4 (regq, 50 - 36);
-            scu [scu_unit_num] . modeReg = getbits36_18 (regq, 54 - 36);
+            scu [scu_unit_num].id = (word4) getbits36_4 (regq, 50 - 36);
+            scu [scu_unit_num].modeReg = getbits36_18 (regq, 54 - 36);
           }
           break;
 
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
-            sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, rega, regq);
+            sim_debug (DBG_DEBUG, & scu_dev, 
+                       "sscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", 
+                       scu_unit_num, rega, regq);
             scu_t * up = scu + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1034,12 +1031,16 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
                 if (mask & 01)
                   {
                     up -> mask_enable [maskab] = 0;
-                    sim_debug (DBG_DEBUG, & scu_dev, "sscr %u mask disable  %d\n", scu_unit_num, maskab);
+                    sim_debug (DBG_DEBUG, & scu_dev,
+                               "sscr %u mask disable  %d\n",
+                               scu_unit_num, maskab);
                   }
                 else
                   {
                     up -> mask_enable [maskab] = 1;
-                    sim_debug (DBG_DEBUG, & scu_dev, "sscr %u mask enable  %d\n", scu_unit_num, maskab);
+                    sim_debug (DBG_DEBUG, & scu_dev,
+                               "sscr %u mask enable  %d\n",
+                               scu_unit_num, maskab);
                     for (int pn = 0; pn < N_SCU_PORTS; pn ++)
                       {
                         if ((2 << (N_SCU_PORTS - 1 - pn)) & mask)
@@ -1051,7 +1052,8 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
          
                   }
               }
-            // AN87-00A, pg 2-5, 2-6 specifiy which fields are and are not settable.
+	  // AN87-00A, pg 2-5, 2-6 specifiy which fields are and are not
+	  // settable.
  
             //if (up -> lower_store_size != ((rega >> 24) & 07))
               //sim_printf ("??? The CPU tried to change the SCU store size\n");
@@ -1070,7 +1072,8 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
             up -> port_enable [6] = (regq >> 1) & 01;
             up -> port_enable [7] = (regq >> 0) & 01;
 
-            // XXX A, A1, B, B1, INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
+	  // XXX A, A1, B, B1, INT, LWR not implemented. (AG87-00A pgs 2-5.
+	  // 2-6)
             break;
           }
 
@@ -1093,11 +1096,11 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
             uint n_masks_found = 0;
             for (int p = 0; p < N_ASSIGNMENTS; p ++)
               {
-                //if (scup -> interrupts [p] . mask_assign . unassigned)
-                if (scu [scu_unit_num] . mask_enable [p] == 0)
+                //if (scup -> interrupts [p].mask_assign.unassigned)
+                if (scu [scu_unit_num].mask_enable [p] == 0)
                   continue;
-                //if (scup -> interrupts [p] . mask_assign . port == port_num)
-                if (scu [scu_unit_num ] . mask_assignment [p] == port_num)
+                //if (scup -> interrupts [p].mask_assign.port == port_num)
+                if (scu [scu_unit_num ].mask_assignment [p] == port_num)
                   {
                     if (n_masks_found == 0)
                       mask_num = p;
@@ -1124,25 +1127,25 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
     
             // See AN87
             //scup -> interrupts[mask_num].exec_intr_mask = 0;
-            scu [scu_unit_num] . exec_intr_mask [mask_num] = 0;
-            scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
+            scu [scu_unit_num].exec_intr_mask [mask_num] = 0;
+            scu [scu_unit_num].exec_intr_mask [mask_num] |= 
               ((word32) getbits36_16(rega, 0) << 16);
-            scu [scu_unit_num] . exec_intr_mask [mask_num] |= 
+            scu [scu_unit_num].exec_intr_mask [mask_num] |= 
               getbits36_16(regq, 0);
             sim_debug (DBG_DEBUG, & scu_dev,
                        "%s: PIMA %c: EI mask set to %s\n", 
                        __func__, mask_num + 'A', 
-                       bin2text(scu [scu_unit_num] . exec_intr_mask [mask_num], 
+                       bin2text(scu [scu_unit_num].exec_intr_mask [mask_num], 
                        N_CELL_INTERRUPTS));
             //sim_printf ("sscr  exec_intr_mask %012o\n", 
-                          //scu [scu_unit_num] . exec_intr_mask [mask_num]);
+                          //scu [scu_unit_num].exec_intr_mask [mask_num]);
             sim_debug (DBG_TRACE, & scu_dev, 
                        "SSCR Set mask unit %u port %u mask_num %u "
                        "mask 0x%08x\n", 
                        scu_unit_num, port_num, mask_num, 
-                       scu [scu_unit_num] . exec_intr_mask [mask_num]);
+                       scu [scu_unit_num].exec_intr_mask [mask_num]);
             dumpIR ("sscr set mask", scu_unit_num);
-            scu [scu_unit_num] . mask_enable [mask_num] = 1;
+            scu [scu_unit_num].mask_enable [mask_num] = 1;
             deliverInterrupts (scu_unit_num);
           }
           break;
@@ -1151,9 +1154,9 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
           {
             for (uint i = 0; i < 16; i ++)
               {
-                scu [scu_unit_num] . cells [i] = 
+                scu [scu_unit_num].cells [i] = 
                   getbits36_1 (rega, i) ? 1 : 0;
-                scu [scu_unit_num] . cells [i + 16] = 
+                scu [scu_unit_num].cells [i + 16] = 
                   getbits36_1 (regq, i) ? 1 : 0;
               }
             sim_debug (DBG_TRACE, & scu_dev, 
@@ -1168,10 +1171,10 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
         case 00005: 
           {
             // AQ: 20-35 clock bits 0-15, 36-71 clock bits 16-51
-            word16 b0_15 = (word16) getbits36_16 (cpu . rA, 20);
-            word36 b16_51 = cpu . rQ;
+            word16 b0_15 = (word16) getbits36_16 (cpu.rA, 20);
+            word36 b16_51 = cpu.rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
-            scu [scu_unit_num] . userCorrection = (int64) (newClk - getSCUclock (scu_unit_num));
+            scu [scu_unit_num].userCorrection = (int64) (newClk - getSCUclock (scu_unit_num));
             //sim_printf ("sscr %o\n", function);
           }
           break;
@@ -1199,7 +1202,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
   {
     // Only valid for a 4MW SCU
 
-    if (scu_unit_num >= scu_dev . numunits)
+    if (scu_unit_num >= scu_dev.numunits)
       {
         sim_warn ("%s: scu_unit_num out of range %d\n", 
                    __func__, scu_unit_num);
@@ -1233,8 +1236,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
             * rega = 0;
             //* regq = 0000002000000; // ID = 0010
             * regq = 0;
-            putbits36_4 (regq, 50 - 36, scu [scu_unit_num] . id);
-            putbits36_18 (regq, 54 - 36, scu [scu_unit_num] . modeReg);
+            putbits36_4 (regq, 50 - 36, scu [scu_unit_num].id);
+            putbits36_18 (regq, 54 - 36, scu [scu_unit_num].modeReg);
             break;
           }
 
@@ -1291,7 +1294,8 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr,
               {
                 for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
                   {
-                    if (cables -> cablesFromCpus [scu_unit_num] [pn] [sn] . cpu_unit_num == (int) cpu_unit_num)
+                    if (cables -> cablesFromCpus [scu_unit_num] [pn] [sn].
+                        cpu_unit_num == (int) cpu_unit_num)
                      {
                         scu_port_num = pn;
                         goto gotit;
@@ -1346,7 +1350,9 @@ gotit:;
             putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 
-            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, * rega, * regq);
+            sim_debug (DBG_DEBUG, & scu_dev,
+                       "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n",
+                       scu_unit_num, * rega, * regq);
             break;
           }
 
@@ -1407,8 +1413,8 @@ gotit:;
         case 00005: 
           {
             uint64 clk = getSCUclock (scu_unit_num);
-            cpu . rQ =  clk & 0777777777777;     // lower 36-bits of clock
-            cpu . rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
+            cpu.rQ =  clk & 0777777777777;     // lower 36-bits of clock
+            cpu.rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
           }
         break;
 
@@ -1476,19 +1482,22 @@ gotit:;
 
 //#define RCFDBG
 
-int scu_cioc (uint cpu_num, uint scu_unit_num, uint scu_port_num, uint expander_command, uint sub_mask)
+int scu_cioc (uint cpu_num, uint scu_unit_num, uint scu_port_num,
+              uint expander_command, uint sub_mask)
   {
     sim_debug (DBG_DEBUG, & scu_dev, 
-               "scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", 
+               "scu_cioc: Connect from %o sent to unit %o port %o exp %o "
+               "mask %03o\n", 
                cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
 #ifdef RCFDBG
-if (scu_unit_num || (scu_port_num != 0 /* && scu_port_num != 7*/)) sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", 
-               cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
+if (scu_unit_num || (scu_port_num != 0 /* && scu_port_num != 7*/))
+sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o "
+"mask %03o\n", cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
 #endif
 
-    struct ports * portp = & scu [scu_unit_num] . ports [scu_port_num];
+    struct ports * portp = & scu [scu_unit_num].ports [scu_port_num];
 
-    if (! scu [scu_unit_num] . port_enable [scu_port_num])
+    if (! scu [scu_unit_num].port_enable [scu_port_num])
       {
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_cioc: Connect sent to disabled port; dropping\n");
@@ -1510,7 +1519,9 @@ if (scu_unit_num || (scu_port_num != 0 /* && scu_port_num != 7*/)) sim_printf ("
 int cnt = 0;
 sim_printf ("enb");
 for (uint i = 0; i < N_SCU_SUBPORTS; i++)
-if (portp->subport_enables[i]) { sim_printf (" %o (%o)", i, cables->cablesFromCpus[scu_unit_num][scu_port_num][i].cpu_unit_num); cnt ++;}
+if (portp->subport_enables[i])
+{ sim_printf (" %o (%o)", i, 
+cables->cablesFromCpus[scu_unit_num][scu_port_num][i].cpu_unit_num); cnt ++;}
 sim_printf (" [%d]\n", cnt);
 }
 #endif
@@ -1550,12 +1561,7 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
       }
     else if (portp -> type == ADEV_CPU)
       {
-#ifdef RCFDBG
-//sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", 
-             //cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
-#endif
 
-#if 1
 // by subport_enables
         int cpu_unit_num = -1;
         if (portp->is_exp)
@@ -1564,62 +1570,40 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
               {
                 if (portp->subport_enables[sn])
                   {
-                    cpu_unit_num = cables->cablesFromCpus[scu_unit_num][scu_port_num][sn].cpu_unit_num;
+                    cpu_unit_num = cables->cablesFromCpus
+                      [scu_unit_num][scu_port_num][sn].cpu_unit_num;
                     if (cpu_unit_num < 0)
                       {
                         sim_warn ("Can't find CPU to interrupt\n");
-//sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
-//sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
                         continue;
                       }
 #ifdef RCFDBG
 if (cpu_num != 0 || cpu_unit_num != 0)
-sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpu_num, cpu_unit_num, scu_port_num, sn);
+sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpu_num, cpu_unit_num,
+ scu_port_num, sn);
 #endif
-                    setG7fault ((uint) cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
+                    setG7fault ((uint) cpu_unit_num, FAULT_CON,
+                                (_fault_subtype) {.bits=0});
                   }
               }
           }
         else
           {
-            cpu_unit_num = cables ->cablesFromCpus[scu_unit_num][scu_port_num][0].cpu_unit_num;
+            cpu_unit_num = cables ->cablesFromCpus
+              [scu_unit_num][scu_port_num][0].cpu_unit_num;
             if (cpu_unit_num < 0)
               {
                 sim_warn ("Can't find CPU to interrupt\n");
-//sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
-//sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
                 return 1;
               }
 #ifdef RCFDBG
 if (cpu_num != 0 || cpu_unit_num != 0)
-sim_printf ("cpu %o interrupts cpu %d on %d\n", cpu_num, cpu_unit_num, scu_port_num);
+sim_printf ("cpu %o interrupts cpu %d on %d\n", cpu_num, cpu_unit_num, 
+scu_port_num);
 #endif
-            setG7fault ((uint) cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
+            setG7fault ((uint) cpu_unit_num, FAULT_CON,
+                        (_fault_subtype) {.bits=0});
           }
-#else
-// by xipmaskval
-        int cpu_unit_num = -1;
-        if (portp->is_exp)
-          {
-            cpu_unit_num = cables ->cablesFromCpus[scu_unit_num][scu_port_num][portp->xipmaskval].cpu_unit_num;
-          }
-        else
-          {
-            cpu_unit_num = cables ->cablesFromCpus[scu_unit_num][scu_port_num][0].cpu_unit_num;
-          }
-        if (cpu_unit_num < 0)
-          {
-            sim_warn ("Can't find CPU to interrupt\n");
-sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpu_num, scu_unit_num, scu_port_num, expander_command, sub_mask);
-sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
-            return 1;
-          }
-#ifdef RCFDBG
-if (cpu_num != 0 || cpu_unit_num != 0)
-sim_printf ("cpu %o interrupts cpu %d\n", cpu_num, cpu_unit_num);
-#endif
-        setG7fault (cpu_unit_num, FAULT_CON, (_fault_subtype) {.bits=0});
-#endif
         return 0;
       }
     else
@@ -1653,7 +1637,7 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
         return 1;
       }
     
-    scu [scu_unit_num] . cells [inum] = 1;
+    scu [scu_unit_num].cells [inum] = 1;
     dumpIR ("scu_set_interrupt", scu_unit_num);
     deliverInterrupts (scu_unit_num);
     return 0;
@@ -1673,19 +1657,17 @@ static void deliverInterrupts (uint scu_unit_num)
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
-        if (! scu [scu_unit_num] . cells [inum])
+        if (! scu [scu_unit_num].cells [inum])
           continue; //
         sim_debug (DBG_DEBUG, & scu_dev, "trying to deliver %d\n", inum);
 
 
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
           {
-            //sim_debug (DBG_DEBUG, & scu_dev, "trying inum %u pima %u enable %u\n", inum, pima, scu [scu_unit_num] . mask_enable [pima]);
-            if (scu [scu_unit_num] . mask_enable [pima] == 0)
+            if (scu [scu_unit_num].mask_enable [pima] == 0)
               continue;
-            uint mask = scu [scu_unit_num] . exec_intr_mask [pima];
-            uint port = scu [scu_unit_num] . mask_assignment [pima];
-            //sim_debug (DBG_DEBUG, & scu_dev, "mask %u port %u type %u cells %o\n", mask, port, scu [scu_unit_num] . ports [port] . type, scu [scu_unit_num] . cells [inum]);
+            uint mask = scu [scu_unit_num].exec_intr_mask [pima];
+            uint port = scu [scu_unit_num].mask_assignment [pima];
             if (scu [scu_unit_num].ports [port].type != ADEV_CPU)
               continue;
             if ((mask & (1u << (31 - inum))) != 0)
@@ -1693,14 +1675,16 @@ static void deliverInterrupts (uint scu_unit_num)
                 int cpu_unit_num = -1;
                 if (scu[scu_unit_num].ports[port].is_exp)
                   {
-                    cpu_unit_num = cables->cablesFromCpus[scu_unit_num][port][scu[scu_unit_num].ports[port].xipmaskval].cpu_unit_num;
+                    cpu_unit_num = cables->cablesFromCpus
+                      [scu_unit_num][port][scu[scu_unit_num].ports[port].
+                      xipmaskval].cpu_unit_num;
                   }
                 else
                   {
-                    cpu_unit_num = cables->cablesFromCpus[scu_unit_num][port][0].cpu_unit_num;
+                    cpu_unit_num = cables->cablesFromCpus
+                      [scu_unit_num][port][0].cpu_unit_num;
                   }
-                //sim_debug (DBG_DEBUG, & scu_dev, "mask set; cpu_unit_num %u\n", cpu_unit_num);
-                if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
+                if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev.numunits)
                   {
                     sim_err ("bad cpu_unit_num %u\n", cpu_unit_num);
                   }
@@ -1708,9 +1692,12 @@ static void deliverInterrupts (uint scu_unit_num)
                   {
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
                     setCPURun ((uint) cpu_unit_num, true);
-sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
+                    sim_debug (DBG_DEBUG, & scu_dev,
+                               "interrupt set for CPU %d SCU %d\n",
+                               cpu_unit_num, scu_unit_num);
 #ifdef RCFDBG
-if (cpu_unit_num || scu_unit_num) sim_printf ("interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
+if (cpu_unit_num || scu_unit_num) 
+sim_printf ("interrupt set for CPU %d SCU %d\n", cpu_unit_num, scu_unit_num);
 #endif
                   }
               }
@@ -1731,16 +1718,16 @@ uint scuGetHighestIntr (uint scuUnitNum)
       {
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
           {
-            if (scu [scuUnitNum] . mask_enable [pima] == 0)
+            if (scu [scuUnitNum].mask_enable [pima] == 0)
               continue;
-            uint mask = scu [scuUnitNum] . exec_intr_mask [pima];
-            uint port = scu [scuUnitNum] . mask_assignment [pima];
-            if (scu [scuUnitNum] . ports [port] . type != ADEV_CPU)
+            uint mask = scu [scuUnitNum].exec_intr_mask [pima];
+            uint port = scu [scuUnitNum].mask_assignment [pima];
+            if (scu [scuUnitNum].ports [port].type != ADEV_CPU)
               continue;
-            if (scu [scuUnitNum] . cells [inum] &&
+            if (scu [scuUnitNum].cells [inum] &&
                 (mask & (1u << (31 - inum))) != 0)
               {
-                scu [scuUnitNum] . cells [inum] = false;
+                scu [scuUnitNum].cells [inum] = false;
                 dumpIR ("scuGetHighestIntr", scuUnitNum);
                 deliverInterrupts (scuUnitNum);
                 return (uint) inum * 2;
@@ -1755,7 +1742,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
 static t_stat scu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                                UNUSED int val, const UNUSED void * desc)
   {
-    sim_printf("Number of SCU units in system is %d\n", scu_dev . numunits);
+    sim_printf("Number of SCU units in system is %d\n", scu_dev.numunits);
     return SCPE_OK;
   }
 
@@ -1765,7 +1752,7 @@ static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
       return SCPE_ARG;
-    scu_dev . numunits = (uint) n;
+    scu_dev.numunits = (uint) n;
     return SCPE_OK;
   }
 
@@ -1773,7 +1760,7 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
                               UNUSED const void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
-    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev.numunits)
     if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
@@ -1838,7 +1825,7 @@ static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
         "0", "1", "2", "3", "4", "5", "6", "7" 
       };
     long scu_unit_num = UNIT_NUM (uptr);
-    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev.numunits)
     if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
@@ -1872,7 +1859,9 @@ static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
       {
         sim_printf ("Mask %c:                   %s\n", 
                     'A' + i, 
-                    sw -> mask_enable [i] ? (map [sw -> mask_assignment [i]]) : "Off");
+                    sw -> mask_enable [i] ?
+                      (map [sw -> mask_assignment [i]]) :
+                      "Off");
       }
     sim_printf ("Lower Store Size:        %o\n", sw -> lower_store_size);
     sim_printf ("Cyclic:                  %03o\n", sw -> cyclic);
@@ -1973,7 +1962,8 @@ static config_list_t scu_config_list [] =
     /* 11 */ { "lwrstoresize", 0, 7, cfg_size_list },
     /* 12 */ { "cyclic", 0, 0177, NULL },
     /* 13 */ { "nea", 0, 0377, NULL },
-    /* 14 */ { "onl", 0, 017, NULL }, // mask: 8 a_online, 4 a1_online, 2 b_online, 1, b1_online
+    /* 14 */ { "onl", 0, 017, NULL }, // mask: 8 a_online, 4 a1_online, 
+                                      // 2 b_online, 1, b1_online
     /* 15 */ { "int", 0, 1, NULL },
     /* 16 */ { "lwr", 0, 1, NULL },
 
@@ -1987,11 +1977,11 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
-                              UNUSED void * desc)
+static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value,
+                              const char * cptr, UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
-    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    //if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev.numunits)
     if (scu_unit_num < 0 || scu_unit_num >= N_SCU_UNITS_MAX)
       {
         sim_debug (DBG_ERR, & scu_dev, 
@@ -2010,104 +2000,90 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         int64_t v;
         int rc = cfgparse ("scu_set_config", cptr, scu_config_list, 
                            & cfg_state, & v);
-        switch (rc)
-          {
-            case -2: // error
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-
-            case -1: // done
-              break;
-
-            case 0: // MODE
-              sw -> mode = (uint) v;
-              break;
-
-            case 1: // MASKA
-            case 2: // MASKB
-              {
-                int m = rc - 1;
-                if (v == -1)
-                  sw -> mask_enable [m] = false;
-                else
-                  {
-                    sw -> mask_enable [m] = true;
-                    sw -> mask_assignment [m] = (uint) v;
-                  }
-              }
-              break;
-
-            case  3: // PORT0
-            case  4: // PORT1
-            case  5: // PORT2
-            case  6: // PORT3
-            case  7: // PORT4
-            case  8: // PORT5
-            case  9: // PORT6
-            case 10: // PORT7
-              {
-                int n = rc - 3;
-                sw -> port_enable [n] = (uint) v;
-                break;
-              } 
-
-            case 11: // LWRSTORESIZE
-              sw -> lower_store_size = (uint) v;
-              break;
-
-            case 12: // CYCLIC
-              sw -> cyclic = (uint) v;
-              break;
-
-            case 13: // NEA
-              sw -> nea = (uint) v;
-              break;
-
-            case 14: // ONL
-              sw -> onl = (uint) v;
-              break;
-
-            case 15: // INT
-              sw -> interlace = (uint) v;
-              break;
-
-            case 16: // LWR
-              sw -> lwr = (uint) v;
-              break;
-
-            case 17: // ELAPSED_DAYS
-              scu [scu_unit_num] . elapsed_days = (uint) v;
-              break;
-
-            case 18: // STEADY_CLOCK
-              scu [scu_unit_num] . steady_clock = (uint) v;
-              break;
-
-            case 19: // BULLET_TIME
-              scu [scu_unit_num] . bullet_time = (uint) v;
-              break;
-
-            case 20: // y2k
-              scu [scu_unit_num] . y2k = (uint) v;
-              break;
-
-            default:
-              sim_debug (DBG_ERR, & scu_dev, 
-                         "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", 
-                           rc);
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-          } // switch
-        if (rc < 0)
+        if (rc == -1) // done
           break;
+
+        if (rc == -2) // error
+          {
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
+
+        const char * p = scu_config_list [rc] . name;
+        if (strcmp (p, "mode") == 0)
+          sw -> mode = (uint) v;
+        else if (strcmp (p, "maska") == 0)
+          {
+            if (v == -1)
+              sw -> mask_enable [0] = false;
+            else
+              {
+                sw -> mask_enable [0] = true;
+                sw -> mask_assignment [0] = (uint) v;
+              }
+          }
+        else if (strcmp (p, "maskb") == 0)
+          {
+            if (v == -1)
+              sw -> mask_enable [1] = false;
+            else
+              {
+                sw -> mask_enable [1] = true;
+                sw -> mask_assignment [1] = (uint) v;
+              }
+          }
+        else if (strcmp (p, "port0") == 0)
+          sw -> port_enable [0] = (uint) v;
+        else if (strcmp (p, "port1") == 0)
+          sw -> port_enable [1] = (uint) v;
+        else if (strcmp (p, "port2") == 0)
+          sw -> port_enable [2] = (uint) v;
+        else if (strcmp (p, "port3") == 0)
+          sw -> port_enable [3] = (uint) v;
+        else if (strcmp (p, "port4") == 0)
+          sw -> port_enable [4] = (uint) v;
+        else if (strcmp (p, "port5") == 0)
+          sw -> port_enable [5] = (uint) v;
+        else if (strcmp (p, "port6") == 0)
+          sw -> port_enable [6] = (uint) v;
+        else if (strcmp (p, "port7") == 0)
+          sw -> port_enable [7] = (uint) v;
+        else if (strcmp (p, "lwrstoresize") == 0)
+          sw -> lower_store_size = (uint) v;
+        else if (strcmp (p, "cyclic") == 0)
+          sw -> cyclic = (uint) v;
+        else if (strcmp (p, "nea") == 0)
+          sw -> nea = (uint) v;
+        else if (strcmp (p, "onl") == 0)
+          sw -> onl = (uint) v;
+        else if (strcmp (p, "int") == 0)
+          sw -> interlace = (uint) v;
+        else if (strcmp (p, "lwr") == 0)
+          sw -> lwr = (uint) v;
+        else if (strcmp (p, "elapsed_days") == 0)
+          scu [scu_unit_num].elapsed_days = (uint) v;
+        else if (strcmp (p, "steady_clock") == 0)
+          scu [scu_unit_num].steady_clock = (uint) v;
+        else if (strcmp (p, "bullet_time") == 0)
+          scu [scu_unit_num].bullet_time = (uint) v;
+        else if (strcmp (p, "y2k") == 0)
+          scu [scu_unit_num].y2k = (uint) v;
+        else
+          {
+            sim_debug (DBG_ERR, & scu_dev, 
+                       "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
+            sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", 
+                         rc);
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
       } // process statements
     cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
 
-t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
-                       UNUSED void * desc)
+t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value,
+                       UNUSED const char * cptr, UNUSED void * desc)
   {
     uint scu_unit_num = (uint) (uptr - scu_unit);
     scu_t * up = scu + scu_unit_num;
@@ -2155,9 +2131,9 @@ void scu_init (void)
         //  ID: 0000  8034, 8035
         //      0001  Level 68 SC
         //      0010  Level 66 SCU
-        scu [u] . id = 0b0010;
-        scu [u] . modeReg = 0; // used by T&D
-        scu [u] . elapsed_days = 0;
+        scu [u].id = 0b0010;
+        scu [u].modeReg = 0; // used by T&D
+        scu [u].elapsed_days = 0;
       }
 
   }
@@ -2212,17 +2188,20 @@ gotit:;
     //  0          15  16           31  32       35
     //    IER 16-32       00000000        PER 4-7 
 
-    sim_debug (DBG_TRACE, & scu_dev, "rmcm selected scu port %u\n", scu_port_num);
+    sim_debug (DBG_TRACE, & scu_dev, "rmcm selected scu port %u\n",
+               scu_port_num);
     uint maskContents = 0;
     if (up -> mask_assignment [0] == (uint) scu_port_num)
       {
         maskContents = up -> exec_intr_mask [0];
-        sim_debug (DBG_TRACE, & scu_dev, "rmcm got mask %011o from pima A\n", maskContents);
+        sim_debug (DBG_TRACE, & scu_dev, "rmcm got mask %011o from pima A\n",
+                   maskContents);
       }
     else if (up -> mask_assignment [1] == (uint) scu_port_num)
       {
         maskContents = up -> exec_intr_mask [1];
-        sim_debug (DBG_TRACE, & scu_dev, "rmcm got mask %011o from pima B\n", maskContents);
+        sim_debug (DBG_TRACE, & scu_dev, "rmcm got mask %011o from pima B\n",
+                   maskContents);
       }
     maskContents &= MASK32;
 
@@ -2240,13 +2219,15 @@ gotit:;
     putbits36_1 (regq, 34,  (word1) up -> port_enable [6]);
     putbits36_1 (regq, 35,  (word1) up -> port_enable [7]);
 
-    sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
+    sim_debug (DBG_TRACE, & scu_dev,
+               "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
                * rega, * regq);
     dumpIR ("rmcm", scu_unit_num);
     return SCPE_OK;
   }
 
-t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
+t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega,
+                 word36 regq)
   {
     sim_debug (DBG_TRACE, & scu_dev, 
               "SMCM SCU unit %d CPU unit %d A %012"PRIo64" Q %012"PRIo64"\n",
@@ -2263,7 +2244,8 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
       {
         for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
           {
-            if (cables->cablesFromCpus[scu_unit_num][pn][sn].cpu_unit_num == (int) cpu_unit_num)
+            if (cables->cablesFromCpus[scu_unit_num][pn][sn].cpu_unit_num == 
+                (int) cpu_unit_num)
               {
                 scu_port_num = pn;
                 goto gotit;
@@ -2307,14 +2289,14 @@ gotit:;
                    imask);
       }
 
-    scu [scu_unit_num] . port_enable [0] = (uint) getbits36_1 (rega, 32);
-    scu [scu_unit_num] . port_enable [1] = (uint) getbits36_1 (rega, 33);
-    scu [scu_unit_num] . port_enable [2] = (uint) getbits36_1 (rega, 34);
-    scu [scu_unit_num] . port_enable [3] = (uint) getbits36_1 (rega, 35);
-    scu [scu_unit_num] . port_enable [4] = (uint) getbits36_1 (regq, 32);
-    scu [scu_unit_num] . port_enable [5] = (uint) getbits36_1 (regq, 33);
-    scu [scu_unit_num] . port_enable [6] = (uint) getbits36_1 (regq, 34);
-    scu [scu_unit_num] . port_enable [7] = (uint) getbits36_1 (regq, 35);
+    scu [scu_unit_num].port_enable [0] = (uint) getbits36_1 (rega, 32);
+    scu [scu_unit_num].port_enable [1] = (uint) getbits36_1 (rega, 33);
+    scu [scu_unit_num].port_enable [2] = (uint) getbits36_1 (rega, 34);
+    scu [scu_unit_num].port_enable [3] = (uint) getbits36_1 (rega, 35);
+    scu [scu_unit_num].port_enable [4] = (uint) getbits36_1 (regq, 32);
+    scu [scu_unit_num].port_enable [5] = (uint) getbits36_1 (regq, 33);
+    scu [scu_unit_num].port_enable [6] = (uint) getbits36_1 (regq, 34);
+    scu [scu_unit_num].port_enable [7] = (uint) getbits36_1 (regq, 35);
 
     dumpIR ("smcm", scu_unit_num);
     deliverInterrupts (scu_unit_num);
