@@ -2531,7 +2531,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
             CPT (cpt1L, 11); // 32 words
             addr &= 0777760;   // make on 16-word boundary // XXX don't know
             for (uint j = 0 ; j < 32 ; j += 1)
-                Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
+                Read (addr + j, cpu.Yblock32 + j, cyctyp, b29);
             
             break;
     }

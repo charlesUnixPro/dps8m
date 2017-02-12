@@ -8190,19 +8190,21 @@ static t_stat DoEISInstruction (void)
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.SDWAM[i].USE;
-                cpu.SDWAM[m].ADDR =    getbits36_24 (cpu.Yblock16[i],  0);
-                cpu.SDWAM[m].R1 =      getbits36_3  (cpu.Yblock16[i], 24);
-                cpu.SDWAM[m].R2 =      getbits36_3  (cpu.Yblock16[i], 27);
-                cpu.SDWAM[m].R3 =      getbits36_3  (cpu.Yblock16[i], 30);
-                cpu.SDWAM[m].BOUND =   getbits36_14 (cpu.Yblock16[i], 37);
-                cpu.SDWAM[m].R =       getbits36_1  (cpu.Yblock16[i], 51);
-                cpu.SDWAM[m].E =       getbits36_1  (cpu.Yblock16[i], 52);
-                cpu.SDWAM[m].W =       getbits36_1  (cpu.Yblock16[i], 53);
-                cpu.SDWAM[m].P =       getbits36_1  (cpu.Yblock16[i], 54);
-                cpu.SDWAM[m].U =       getbits36_1  (cpu.Yblock16[i], 55);
-                cpu.SDWAM[m].G =       getbits36_1  (cpu.Yblock16[i], 56);
-                cpu.SDWAM[m].C =       getbits36_1  (cpu.Yblock16[i], 57);
-                cpu.SDWAM[m].EB =      getbits36_14 (cpu.Yblock16[i], 58);
+                uint j = m * 2;
+                cpu.SDWAM[m].ADDR =    getbits36_24 (cpu.Yblock16[j],  0);
+                cpu.SDWAM[m].R1 =      getbits36_3  (cpu.Yblock16[j], 24);
+                cpu.SDWAM[m].R2 =      getbits36_3  (cpu.Yblock16[j], 27);
+                cpu.SDWAM[m].R3 =      getbits36_3  (cpu.Yblock16[j], 30);
+
+                cpu.SDWAM[m].BOUND =   getbits36_14 (cpu.Yblock16[j + 1], 37 - 36);
+                cpu.SDWAM[m].R =       getbits36_1  (cpu.Yblock16[j + 1], 51 - 36);
+                cpu.SDWAM[m].E =       getbits36_1  (cpu.Yblock16[j + 1], 52 - 36);
+                cpu.SDWAM[m].W =       getbits36_1  (cpu.Yblock16[j + 1], 53 - 36);
+                cpu.SDWAM[m].P =       getbits36_1  (cpu.Yblock16[j + 1], 54 - 36);
+                cpu.SDWAM[m].U =       getbits36_1  (cpu.Yblock16[j + 1], 55 - 36);
+                cpu.SDWAM[m].G =       getbits36_1  (cpu.Yblock16[j + 1], 56 - 36);
+                cpu.SDWAM[m].C =       getbits36_1  (cpu.Yblock16[j + 1], 57 - 36);
+                cpu.SDWAM[m].EB =      getbits36_14 (cpu.Yblock16[j + 1], 58 - 36);
               }
 #endif
           }
