@@ -1385,10 +1385,12 @@ t_stat executeInstruction (void)
 // Decode the instruction
 //
 // If not restart
-//     check for priviledge
-//     chcck for illegal modifiers
+//     if xec/xed
+//         check for illegal execute
 //     if rpt/rpd
 //         check for illegal rpt/rpd modifiers
+//     check for illegal modifiers
+//     check for privilege
 //     initialize CA
 //
 // Save tally
@@ -1485,119 +1487,41 @@ IF1 sim_printf ("trapping opcode match......\n");
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
 
-    // check for priv ins - Attempted execution in normal or BAR modes causes a
-    // illegal procedure fault.
-    if (ci->info->flags & PRIV_INS)
-      {
-#ifdef DPS8M
-        // multics illegal instructions lptp,lptr,lsdp,lsdr
-        if (((ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
-           || (ci->opcode == 0257))
-        {
-            doFault (FAULT_IPR,
-                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
-                "Attempted execution of multics privileged instruction.");
-        }
-#endif		
-        if (! ((get_addr_mode () == ABSOLUTE_mode) ||
-                            is_priv_mode ()) || get_bar_mode())
-          {
-#ifdef DPS8M
-            // multics privileged instructions: absa,ldbr,lra,rcu,scu,sdbr,ssdp,ssdr,sptp,sptr
-            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
-               || ((ci->opcode == 0254 || ci->opcode == 0774) && ci->opcodeX ) 
-               || (ci->opcode == 0557 || ci->opcode == 0154))
-            {
-                if ((!is_priv_mode () && !get_bar_mode())) {
-                    // SLV makes no sense here, but ISOLTS 890 sez so.
-                    doFault (FAULT_IPR,
-                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
-                        "Attempted execution of multics privileged instruction.");
-                } else {
-                    doFault (FAULT_IPR,
-                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
-                        "Attempted execution of multics privileged instruction.");
-                }
-            }
-#endif
-            doFault (FAULT_IPR,
-                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
-                "Attempted execution of privileged instruction.");
-          }
-      }
-
-    if (get_bar_mode())
-      if (ci->info->flags & NO_BAR) {
-#ifdef DPS8M
-          if (ci->opcode == 0230 && !ci->opcodeX) {
-            // lbar
-            doFault (FAULT_IPR,
-                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
-                "Attempted BAR execution of nonprivileged instruction.");
-          } else
-#endif
-            doFault (FAULT_IPR,
-                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
-                "Attempted BAR execution of nonprivileged instruction.");
-      }
-    ///
-    /// executeInstruction: Non-restart processing
-    ///                     check for illegal addressing mode(s) ...
-    ///
-
-    // No CI/SC/SCR allowed
-    if (ci->info->mods == NO_CSS)
-    {
-        if (_nocss[ci->tag])
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                     "Illegal CI/SC/SCR modification");
-    }
-    // No DU/DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DDCSS)
-    {
-        if (_noddcss[ci->tag])
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                     "Illegal DU/DL/CI/SC/SCR modification");
-    }
-    // No DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DLCSS)
-    {
-        if (_nodlcss[ci->tag])
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, 
-                    "Illegal DL/CI/SC/SCR modification");
-    }
-    // No DU/DL allowed
-    else if (ci->info->mods == NO_DUDL)
-    {
-        if (_nodudl[ci->tag])
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                     "Illegal DU/DL modification");
-    }
-    else if (ci->info->mods == ONLY_AU_QU_AL_QL_XN)
-    {
-        if (_onlyaqxn[ci->tag])
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                     "Illegal DU/DL/IC modification");
-    }
-
     // If executing the target of XEC/XED, check the instruction is allowed
     if (cpu.isXED)
     {
-        if (ci->info->flags & NO_XED)
+		if (ci->info->flags & NO_XED)
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "Instruction not allowed in XEC/XED");
         // The even instruction from C(Y-pair) must not alter
         // C(Y-pair)36,71, and must not be another xed instruction.
-        if (ci->opcode == 0717 && ci->opcodeX == 0)
+        if (ci->opcode == 0717 && !ci->opcodeX && cpu.cu.xdo /* even instruction being executed */)
             doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "XED of XED on even word");
+        // ISOLTS 791 03k, 792 03k
+        if (ci->opcode == 0560 && !ci->opcodeX) {
+            // To Execute Double (XED) the RPD instruction, the RPD must be the second
+            // instruction at an odd-numbered address.
+            if (cpu.cu.xdo /* even instr being executed */)
+                doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     "XED of RPD on even word");
+            // To execute an instruction pair having an rpd instruction as the odd
+            // instruction, the xed instruction must be located at an odd address.
+            if (!cpu.cu.xdo /* odd instr being executed */ && !(cpu.PPR.IC & 1))
+                doFault (FAULT_IPR,
+                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     "XED of RPD on odd word, even IC");
+        }
+    } else if (cpu.isExec) {
+        // To execute a rpd instruction, the xec instruction must be in an odd location.
+        // ISOLTS 768 01w
+        if (ci->opcode == 0560 && !ci->opcodeX && !cpu.cu.xde && !(cpu.PPR.IC & 1)) 
+            doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                 "XEC of RPx on even word");
     }
 
     // ISOLTS wants both the not allowed in RPx and RPx illegal modifier 
@@ -1611,24 +1535,6 @@ IF1 sim_printf ("trapping opcode match......\n");
       if (ci->info->flags & NO_BAR)
         RPx_fault |= FR_ILL_SLV;
 #endif
-
-    // Instruction not allowed in RPx?
-
-    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
-      {
-        if (ci->info->flags & NO_RPT)
-          {
-            RPx_fault |= FR_ILL_PROC;
-          }
-      }
-
-    if (cpu.cu.rl)
-      {
-        if (ci->info->flags & NO_RPL)
-          {
-            RPx_fault |= FR_ILL_PROC;
-          }
-      }
 
     // RPT/RPD illegal modifiers
     // a:AL39/rpd3
@@ -1665,6 +1571,46 @@ IF1 sim_printf ("trapping opcode match......\n");
                 RPx_fault |= FR_ILL_MOD;
               }
           }
+
+#ifdef DPS8M
+        // ISOLTS 792 03e
+        // this is really strange. possibly a bug in DPS8M HW (L68 handles it the same as all other instructions)
+        if (RPx_fault && !ci->opcodeX && ci->opcode==0413) // rscr
+          {
+              doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
+                 "DPS8M rscr early raise");
+          }
+#endif
+
+    // Instruction not allowed in RPx?
+
+    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+      {
+        if (ci->info->flags & NO_RPT)
+          {
+            RPx_fault |= FR_ILL_PROC;
+          }
+      }
+
+    if (cpu.cu.rl)
+      {
+        if (ci->info->flags & NO_RPL)
+          {
+            RPx_fault |= FR_ILL_PROC;
+          }
+      }
+
+#ifdef L68
+        // ISOLTS 791 03d, 792 03d
+        // L68 wants ILL_MOD here - stca,stcq,stba,stbq,scpr,lcpr
+        // all these instructions have a nonstandard TAG field interpretation. probably a HW bug in decoder
+        if (RPx_fault && !ci->opcodeX && (ci->opcode==0751 || ci->opcode==0752 || ci->opcode==0551 
+            || ci->opcode==0552 || ci->opcode==0452 || ci->opcode==0674))
+          {
+            RPx_fault |= FR_ILL_MOD;
+          }
+#endif
       }
 
     if (RPx_fault)
@@ -1673,6 +1619,124 @@ IF1 sim_printf ("trapping opcode match......\n");
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
                  "RPx test fail");
       }
+
+    ///                     check for illegal addressing mode(s) ...
+    ///
+    // ISOLTS wants both the IPR and illegal modifier tested.
+    fault_ipr_subtype_ mod_fault = 0;
+
+    // No CI/SC/SCR allowed
+    if (ci->info->mods == NO_CSS)
+    {
+        if (_nocss[ci->tag])
+            mod_fault |= FR_ILL_MOD; // "Illegal CI/SC/SCR modification"
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[ci->tag])
+            mod_fault |= FR_ILL_MOD; // "Illegal DU/DL/CI/SC/SCR modification"
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[ci->tag])
+            mod_fault |= FR_ILL_MOD; // "Illegal DL/CI/SC/SCR modification"
+    }
+    // No DU/DL allowed
+    else if (ci->info->mods == NO_DUDL)
+    {
+        if (_nodudl[ci->tag])
+            mod_fault |= FR_ILL_MOD; // "Illegal DU/DL modification"
+    }
+    else if (ci->info->mods == ONLY_AU_QU_AL_QL_XN)
+    {
+        if (_onlyaqxn[ci->tag])
+            mod_fault |= FR_ILL_MOD; // "Illegal DU/DL/IC modification"
+    }
+
+#ifdef L68
+    // L68 raises it immediately
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
+#endif
+
+    // check for priv ins - Attempted execution in normal or BAR modes causes a
+    // illegal procedure fault.
+    if (ci->info->flags & PRIV_INS)
+      {
+#ifdef DPS8M
+        // DPS8M illegal instructions lptp,lptr,lsdp,lsdr
+        // ISOLTS 890 05abc
+        if (((ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
+           || (ci->opcode == 0257))
+        {
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault},
+                "Attempted execution of multics privileged instruction.");
+        }
+#endif
+        if (! ((get_addr_mode () == ABSOLUTE_mode) ||
+                            is_priv_mode ()) || get_bar_mode())
+          {
+            // "multics" privileged instructions: absa,ldbr,lra,rcu,scu,sdbr,ssdp,ssdr,sptp,sptr
+            // ISOLTS 890 05abc,06abc
+#ifdef DPS8M
+            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
+               || ((ci->opcode == 0254 || ci->opcode == 0774) && ci->opcodeX ) 
+               || (ci->opcode == 0557 || ci->opcode == 0154))
+#else // L68
+            // on L68, lptp,lptr,lsdp,lsdr instructions are not illegal, so handle them here
+            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
+               || ((ci->opcode == 0254 || ci->opcode == 0774 || ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
+               || (ci->opcode == 0557 || ci->opcode == 0154 || ci->opcode == 0257))
+#endif
+            {
+                if ((!is_priv_mode () && !get_bar_mode())) {
+                    // SLV makes no sense here, but ISOLTS 890 sez so.
+                    doFault (FAULT_IPR,
+                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
+                        "Attempted execution of multics privileged instruction.");
+                } else {
+                    doFault (FAULT_IPR,
+                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault},
+                        "Attempted execution of multics privileged instruction.");
+                }
+            }
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
+                "Attempted execution of privileged instruction.");
+          }
+      }
+
+    if (get_bar_mode())
+      if (ci->info->flags & NO_BAR) {
+          // lbar
+		  // ISOLTS 890 06a
+		  // ISOLTS says that L68 handles this in the same way
+          if (ci->opcode == 0230 && !ci->opcodeX) {
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
+                "Attempted BAR execution of nonprivileged instruction.");
+          } else
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault},
+                "Attempted BAR execution of nonprivileged instruction.");
+      }
+
+#ifdef DPS8M
+    // DPS8M raises it delayed
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
+#endif
 
     ///
     /// executeInstruction: Non-restart processing
@@ -2293,13 +2357,17 @@ restart_1:
 // This implies that rpt and rpl are handled differently; as a test
 // trying:
 
+#ifdef DPS8M
         if (cpu.cu.rl && cpu.dlyFlt)
+#else // L68
+        if ((cpu.cu.rl || cpu.cu.rpt || cpu.cu.rd) && cpu.dlyFlt)
+#endif
           {
             CPT (cpt2L, 14); // Delayed fault
             doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
           }
 
-// Sadly, it fixes ISOLTS 759 test 02a and 02b.
+// Sadly, it fixes ISOLTS 769 test 02a and 02b.
 //
 ///////
 
