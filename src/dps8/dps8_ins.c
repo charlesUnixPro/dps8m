@@ -6779,10 +6779,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
         case 0413:  // rscr
           {
-            // For the rscr instruction, the first 2 or 3 bits of the addr
-            // field of the instruction are used to specify which SCU.
-            // 2 bits for the DPS8M.
-
+	  // For the rscr instruction, the first 2 (DPS8M) or 3 (L68) bits of
+	  // the addr field of the instruction are used to specify which SCU.
+	  // (2 bits for the DPS8M. (Expect for x6x and x7x below, where 
+            // the selected SCU is the one holding the addressed memory).
+            
             // According to DH02:
             //   XXXXXX0X  SCU Mode Register (Level 66 only)
             //   XXXXXX1X  Configuration switches
@@ -6796,20 +6797,42 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             // According to privileged_mode_ut,
             //   port*1024 + scr_input*8
 
-// Looking at privileged_mode_ut.alm, shift 10 bits...
+            // privileged_mode_ut makes no reference to the special case
+            // of x6x and x7x.
+
+
+            // According to DH02, RSCR in Slave Mode does the CAF
+            // without BAR correction, and then forces the CA to 040,
+            // resulting in a Clock Read from the SCU on port 0.
+
+            // According to AL93, RSCR in BAR mode is IPR.
+
+
+//
+// Implementing privileged_mode_ut.alm algorithm
+//
+
+           // Extract port number
 #ifdef DPS8M
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 03;
 #endif
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
 #endif
+
+
+            // Trace the cable from the port to find the SCU number
+            // connected to that port
             int scu_unit_num =
               query_scu_unit_num ((int) currentRunningCPUnum,
                                   (int) cpu_port_num);
 
+            // If none such, fault...
             if (scu_unit_num < 0)
               {
                 // CPTUR (cptUseFR) -- will be set by doFault
+
+                // Set IAn in Fault register
                 if (cpu_port_num == 0)
                   putbits36 (& cpu.faultRegister[0], 16, 4, 010);
                 else if (cpu_port_num == 1)
@@ -6818,6 +6841,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                   putbits36 (& cpu.faultRegister[0], 24, 4, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
+
                 doFault (FAULT_CMD,
                          (_fault_subtype)
                           {.fault_cmd_subtype=flt_cmd_not_control},
