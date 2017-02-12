@@ -359,7 +359,7 @@ static word36 getCrAR (word4 reg)
 //  1n        xn      xn          xn                      xn
 //
 
-static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC)
+static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype_ *mod_fault)
   {
     switch (n)
       {
@@ -367,7 +367,8 @@ static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC)
           if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 n");
+              *mod_fault |= FR_ILL_MOD;
+              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 n");
             }
           return 0;
 
@@ -396,7 +397,8 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
                 }
 #endif
               //sim_printf ("getMFReg18 du\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
+              *mod_fault |= FR_ILL_MOD;
+              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
             }
           return 0;
 
@@ -408,7 +410,8 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
           if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
+              *mod_fault |= FR_ILL_MOD;
+              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
             }
           return cpu . PPR . IC;
 
@@ -419,7 +422,9 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
           return GETLO (cpu . rQ);
 
         case 7: // dl
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 dl");
+          *mod_fault |= FR_ILL_MOD;
+          //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 dl");
+          return 0;
 
         case 8:
         case 9:
@@ -435,7 +440,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
     return 0;
   }
 
-static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
+static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype_ *mod_fault)
   {
     switch (n)
       {
@@ -443,7 +448,8 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
          if (! allowNIC)
            {
              //sim_printf ("getMFReg36 n\n");
-             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 n");
+             *mod_fault |= FR_ILL_MOD;
+             //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 n");
            }
           return 0;
         case 1: // au
@@ -455,7 +461,8 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
         case 3: // du
           // du is a special case for SCD, SCDR, SCM, and SCMR
           if (! allowDU)
-           doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 du");
+           *mod_fault |= FR_ILL_MOD;
+           //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 du");
           return 0;
 
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
@@ -466,7 +473,8 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
           if (! allowNIC)
             {
               //sim_printf ("getMFReg36 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 ic");
+              *mod_fault |= FR_ILL_MOD;
+              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 ic");
             }
           return cpu . PPR . IC;
 
@@ -477,7 +485,9 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
             return cpu . rQ;
 
         case 7: // dl
-             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 dl");
+             *mod_fault |= FR_ILL_MOD;
+             //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 dl");
+             return 0;
 
         case 8:
         case 9:
@@ -1115,7 +1125,7 @@ static void setupOperandDescriptorCache (int k)
 // generated effective address in item 6.
 //
 
-static void setupOperandDescriptor (int k)
+static void setupOperandDescriptor (int k, fault_ipr_subtype_ *mod_fault)
   {
     EISstruct * e = & cpu . currentEISinstruction;
     switch (k)
@@ -1182,7 +1192,8 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
         // RJ78 p. 5-39, ISOLTS 840 07a,07b
         if (opDesc & 060)
           {
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 30,31 MBZ");
+            *mod_fault |= FR_ILL_MOD;
+            //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 30,31 MBZ");
           }
 
         // fill operand according to MFk....
@@ -1261,7 +1272,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
 
         uint reg = opDesc & 017;
         // XXX RH03/RJ78 say a,q modifiers are also available here. AL39 says al/ql only
-        address += getMFReg18 (reg, false, true); // ID=1: disallow du, allow n,ic
+        address += getMFReg18 (reg, false, true, mod_fault); // ID=1: disallow du, allow n,ic
         address &= AMASK;
 
         PNL (cpu.du.Dk_PTR_W[k-1] = address);
@@ -1302,7 +1313,7 @@ void setupEISoperands (void)
 #endif
   }
 
-static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU)
+static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU, fault_ipr_subtype_ *mod_fault)
   {
     EISstruct * e = & cpu . currentEISinstruction;
     word18 MFk = e -> MF [k - 1];
@@ -1424,7 +1435,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
     {
         uint reg = opDesc & 017;
 // XXX Handle N too big intelligently....
-        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false); // RL=1: disallow du,n,ic
+        e -> N [k - 1] = (uint) getMFReg36 (reg, false, false, mod_fault); // RL=1: disallow du,n,ic
 #ifdef EIS_PTR3
         switch (cpu.du.TAk[k-1])
 #else
@@ -1441,9 +1452,10 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
               break;
 
             default:
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA 3");
+              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA 3");
+              *mod_fault |= FR_ILL_PROC;
               //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
-              //break;
+              break;
           }
       }
     else
@@ -1454,7 +1466,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "N%u %o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36 (MFk & 017, allowDU, true); // allow du based on instruction, allow n,ic
+    word36 r = getMFReg36 (MFk & 017, allowDU, true, mod_fault); // allow du based on instruction, allow n,ic
     
     if ((MFk & 017) == 4)   // reg == IC ?
       {
@@ -1505,7 +1517,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
         case CTA6:
           if (CN >= 6)
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
+            *mod_fault |= FR_ILL_PROC;
+            //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
           effBITNO = (9u * ARn_CHAR + 6u * r + ARn_BITNO) % 9u;
           effCHAR = ((6u * CN +
                       9u * ARn_CHAR +
@@ -1525,7 +1538,8 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
         case CTA9:
           if (CN & 01)
-            doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
+            *mod_fault |= FR_ILL_PROC;
+            //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
           CN = (CN >> 1);
             
           effBITNO = 0;
@@ -1547,9 +1561,10 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           break;
 
         default:
-           doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA1 3");
+          *mod_fault |= FR_ILL_PROC;
+          //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA1 3");
           //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
-            //break;
+          break;
     }
     
     EISaddr * a = & e -> addr [k - 1];
@@ -1568,7 +1583,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 #endif
   }
 
-static void parseArgOperandDescriptor (uint k)
+static void parseArgOperandDescriptor (uint k, fault_ipr_subtype_ *mod_fault)
   {
     PNL (L68_ (if (k == 1)
       DU_CYCLE_NLD1;
@@ -1584,7 +1599,7 @@ static void parseArgOperandDescriptor (uint k)
 
     uint yREG = opDesc & 0xf;
     
-    word36 r = getMFReg36 (yREG, false, true); // disallow du, allow n,ic
+    word36 r = getMFReg36 (yREG, false, true, mod_fault); // disallow du, allow n,ic
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -1634,7 +1649,7 @@ static void parseArgOperandDescriptor (uint k)
 #endif
   }
 
-static void parseNumericOperandDescriptor (int k)
+static void parseNumericOperandDescriptor (int k, fault_ipr_subtype_ *mod_fault)
 {
     PNL (L68_ (if (k == 1)
       DU_CYCLE_NLD1;
@@ -1713,14 +1728,14 @@ static void parseNumericOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e->N[k-1] = getMFReg18(reg, false, false) & 077; // RL=1: disallow du,n,ic
+        e->N[k-1] = getMFReg18(reg, false, false, mod_fault) & 077; // RL=1: disallow du,n,ic
     }
     else
         e->N[k-1] = opDesc & 077;
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "parseNumericOperandDescriptor(): N%u %0o\n", k, e->N[k-1]);
 
-    word36 r = getMFReg36(MFk & 017, false, true); // disallow du, allow n, ic
+    word36 r = getMFReg36(MFk & 017, false, true, mod_fault); // disallow du, allow n, ic
     if ((MFk & 017) == 4)   // reg == IC ?
     {
         address += r;
@@ -1815,7 +1830,8 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
         case CTN9:
             if (CN & 1u)
-              doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
+              *mod_fault |= FR_ILL_PROC;
+              //doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
             CN = (CN >> 1u) & 03u;
 
             effBITNO = 0;
@@ -1856,7 +1872,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
 }
 
-static void parseBitstringOperandDescriptor (int k)
+static void parseBitstringOperandDescriptor (int k, fault_ipr_subtype_ *mod_fault)
 {
     PNL (L68_ (if (k == 1)
       DU_CYCLE_ANLD1;
@@ -1919,7 +1935,7 @@ static void parseBitstringOperandDescriptor (int k)
     if (MFk & MFkRL)
     {
         uint reg = opDesc & 017;
-        e->N[k-1] = getMFReg36(reg, false, false) & 077777777;  // RL=1: disallow du,n,ic
+        e->N[k-1] = getMFReg36(reg, false, false, mod_fault) & 077777777;  // RL=1: disallow du,n,ic
         sim_debug (DBG_TRACEEXT, & cpu_dev, "bitstring k %d RL reg %u val %"PRIo64"\n", k, reg, (word36)e->N[k-1]);
     }
     else
@@ -1935,9 +1951,10 @@ static void parseBitstringOperandDescriptor (int k)
     word2 C = getbits36_2 (opDesc, 18);     // char# from descriptor
 
     if (B >= 9)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
+      *mod_fault |= FR_ILL_PROC;
+      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
      
-    word36 r = getMFReg36(MFk & 017, false, true);  // disallow du, allow n,ic
+    word36 r = getMFReg36(MFk & 017, false, true, mod_fault);  // disallow du, allow n,ic
     if ((MFk & 017) == 4)   // reg == IC ?
     {
         // If reg == IC, then R is in words, not bits.
@@ -3132,23 +3149,25 @@ void cmpc (void)
     //
     // Instruction execution proceeds until an inequality is found or the
     // larger string length count is exhausted.
+
+    fault_ipr_subtype_ mod_fault = 0;
     
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
 #endif
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseAlphanumericOperandDescriptor (2, 1, false);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 1, false, &mod_fault);
     
 //IF1 sim_printf ("CMPC instr %012"PRIo64" op1 %012"PRIo64" op2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpc 9-10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "cmpc 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "cmpc op1 23 MBZ");
 
 // ISOLTS ps846    test-07a    dec add test
 // Sets TA2 to the same as TA1. AL39 says TA2 ignored.
@@ -3158,9 +3177,16 @@ void cmpc (void)
     // // Bits 21-23 of OP2 MBZ
     // if (e -> op [1]  & 0000000070000)
     // Bit 23 of OP2 MBZ
-    if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op2 23 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "cmpc op2 23 MBZ");
 #endif
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
     
@@ -3248,31 +3274,40 @@ void scd ()
     // SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
-    
+
+    fault_ipr_subtype_ mod_fault = 0;
+
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseAlphanumericOperandDescriptor (2, 1, true); // use TA1
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 1, true, &mod_fault); // use TA1
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
       {
         //sim_printf ("scd %12"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scd 0-10 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "scd 0-10 MBZ");
       }
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scd op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scd op1 23 MBZ");
 
     // Bits 18-28. 30-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scd op3 18-28. 30-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scd op3 18-28. 30-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3410,31 +3445,40 @@ void scdr (void)
     // SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
+
+    fault_ipr_subtype_ mod_fault = 0;
     
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
     setupOperandDescriptorCache(3);
 #endif
 
-    parseAlphanumericOperandDescriptor(1, 1, false);
-    parseAlphanumericOperandDescriptor(2, 1, true); // Use TA1
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor(1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor(2, 1, true, &mod_fault); // Use TA1
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
       {
         //sim_printf ("scdr %12"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scdr 0-10 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "scdr 0-10 MBZ");
       }
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scdr op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scdr op1 23 MBZ");
 
     // Bits 18-28. 30-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scdr op3 18-28. 30-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scdr op3 18-28. 30-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3592,27 +3636,36 @@ void scm (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     setupOperandDescriptorCache (3);
 #endif
 
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseAlphanumericOperandDescriptor (2, 1, true);
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 1, true, &mod_fault);
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scm 9-10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "scm 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scm op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scm op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scm op3 18-28, 39-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scm op3 18-28, 39-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3738,31 +3791,40 @@ void scmr (void)
     // the character or characters are arranged within the 18 bits of the word
     // address portion of the operand descriptor.
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     setupOperandDescriptorCache (3);
 #endif
 
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseAlphanumericOperandDescriptor (2, 1, true);
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 1, true, &mod_fault);
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scmr 9-10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "scmr 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scmr op1 23 MBZ");
 
     // Bits 18 of OP3 MBZ
-    if (e -> op [2]  & 0000000400000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op3 18 MBZ");
+    //if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000400000)
+    //  doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scmr op3 18 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op3 18-28, 39-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "scmr op3 18-28, 39-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3898,31 +3960,40 @@ void tct (void)
     // on a word boundary.
     
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
+    setupOperandDescriptor (1, &mod_fault);
     setupOperandDescriptorCache (2);
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseArgOperandDescriptor (2);
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseArgOperandDescriptor (2, &mod_fault);
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 0-17 MBZ
     if (IWB_IRODD & 0777777000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "tct 0-17 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "tct 0-17 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tct op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP2 MBZ
-    if (e -> op [1]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op2 18-28, 39-31 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tct op2 18-28, 39-31 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op3 18-28, 39-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tct op3 18-28, 39-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
 #ifdef EIS_PTR3
     sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -4070,31 +4141,40 @@ void tctr (void)
     // on a word boundary.
  
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
+    setupOperandDescriptor (1, &mod_fault);
     setupOperandDescriptorCache (2);
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseArgOperandDescriptor (2);
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseArgOperandDescriptor (2, &mod_fault);
+    parseArgOperandDescriptor (3, &mod_fault);
     
     // Bits 0-17 MBZ
     if (IWB_IRODD & 0777777000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "tctr 0-17 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "tctr 0-17 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tctr op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP2 MBZ
-    if (e -> op [1]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op2 18-28, 39-31 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tctr op2 18-28, 39-31 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
-    if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op3 18-28, 39-31 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777660)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "tctr op3 18-28, 39-31 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
 #ifdef EIS_PTR3
     sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -4286,28 +4366,37 @@ void mlr (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     //setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1, false);
-    parseAlphanumericOperandDescriptor(2, 2, false);
+    parseAlphanumericOperandDescriptor(1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor(2, 2, false, &mod_fault);
     
 //IF1 sim_printf ("IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
 
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mlr 10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mlr 10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mlr op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mlr op1 23 MBZ");
 
     // Bit 23 of OP2 MBZ
-    if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mlr op2 23 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mlr op2 23 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     int srcSZ = 0, dstSZ = 0;
 
@@ -4670,27 +4759,36 @@ void mrl (void)
     //    C(FILL) → C(Y-charn2)N2-i
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     //setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1, false);
-    parseAlphanumericOperandDescriptor(2, 2, false);
+    parseAlphanumericOperandDescriptor(1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor(2, 2, false, &mod_fault);
     
 //IF1 sim_printf ("MRL IWB %012"PRIo64" OP1 %012"PRIo64" OP2 %012"PRIo64"\n", IWB_IRODD, e -> op [0], e -> op [1]);
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mrl 10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mrl 10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mrl op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mrl op1 23 MBZ");
 
     // Bit 23 of OP2 MBZ
-    if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mrl op2 23 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mrl op2 23 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     int srcSZ = 0, dstSZ = 0;
 
@@ -6651,37 +6749,46 @@ void mve (void)
 
     sim_debug(DBG_TRACEEXT, & cpu_dev, "mve\n");
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
-    setupOperandDescriptor(3);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
+    setupOperandDescriptor(3, &mod_fault);
 #endif
     
-    parseAlphanumericOperandDescriptor(1, 1, false);
-    parseAlphanumericOperandDescriptor(2, 2, false);
-    parseAlphanumericOperandDescriptor(3, 3, false);
+    parseAlphanumericOperandDescriptor(1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor(2, 2, false, &mod_fault);
+    parseAlphanumericOperandDescriptor(3, 3, false, &mod_fault);
     
     // Bits 0, 1, 9, and 10 MBZ
     // According to RJ78, bit 9 is T, but is not mentioned in the text.
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mve: 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mve: 0, 1, 9, 10 MBZ");
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mve op1 23 MBZ");
 
 #if 0
     // Bits 21-23 of OP1 MBZ
-    if (e -> op [1]  & 0000000070000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 21-23 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000070000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mve op2 21-23 MBZ");
 #endif
     // only bit 23 according to RH03. this was fixed in DPS9000
-    if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 23 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mve op2 23 MBZ");
 
     // Bit 23 of OP3 MBZ
-    if (e -> op [2]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mve op3 23 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6756,19 +6863,52 @@ static int testno = 0;
 IF1 sim_printf ("mvne test no %d\n", ++testno);
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
-    setupOperandDescriptor (3);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
+    setupOperandDescriptor (3, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor (1);
-    parseAlphanumericOperandDescriptor (2, 2, false);
-    parseAlphanumericOperandDescriptor (3, 3, false);
+    parseNumericOperandDescriptor (1, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 2, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (3, 3, false, &mod_fault);
     
     // Bits 0, 1, 9, and 10 MBZ
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvne: 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mvne: 0, 1, 9, 10 MBZ");
+
+
+    // Bit 24-29 of OP1 MBZ
+    // Multics has been observed to use 600162017511, cf RJ78
+    //if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000007700)
+      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvne op1 24-29 MBZ");
+
+#if 0
+    // Bits 21-29 of OP1 MBZ
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000077700)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvne op2 21-29 MBZ");
+#endif
+    // only bits 21-23 according to RJ78, maybe even less on DPS8
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000070000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvne op2 21-23 MBZ");
+
+#if 0
+    // Bits 23-29 of OP3 MBZ
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000017700)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvne op3 23-29 MBZ");
+#endif
+    // only bit 23 according to RJ78
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvne op3 23 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     uint srcTN = e -> TN1;    // type of chars in src
 
@@ -6834,28 +6974,6 @@ IF1 sim_printf ("mvne test no %d\n", ++testno);
 
 
 
-    // Bit 24-29 of OP1 MBZ
-    // Multics has been observed to use 600162017511, cf RJ78
-    //if (e -> op [0]  & 0000000007700)
-      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op1 24-29 MBZ");
-
-#if 0
-    // Bits 21-29 of OP1 MBZ
-    if (e -> op [1]  & 0000000077700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-29 MBZ");
-#endif
-    // only bits 21-23 according to RJ78, maybe even less on DPS8
-    if (e -> op [1]  & 0000000070000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-23 MBZ");
-
-#if 0
-    // Bits 23-29 of OP3 MBZ
-    if (e -> op [2]  & 0000000017700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23-29 MBZ");
-#endif
-    // only bit 23 according to RJ78
-    if (e -> op [2]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6967,15 +7085,17 @@ void mvt (void)
     
     // Indicators: Truncation. If N1 > N2 then ON; otherwise OFF
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor (1);
-    setupOperandDescriptor (2);
+    setupOperandDescriptor (1, &mod_fault);
+    setupOperandDescriptor (2, &mod_fault);
     setupOperandDescriptorCache (3);
 #endif
     
-    parseAlphanumericOperandDescriptor (1, 1, false);
-    parseAlphanumericOperandDescriptor (2, 2, false);
-    parseArgOperandDescriptor (3);
+    parseAlphanumericOperandDescriptor (1, 1, false, &mod_fault);
+    parseAlphanumericOperandDescriptor (2, 2, false, &mod_fault);
+    parseArgOperandDescriptor (3, &mod_fault);
 
 // ISOLTS 808 test-03b sets bit 0, 1    
 // ISOLTS 808 test-03b sets bit 0, 1, 9
@@ -6984,31 +7104,38 @@ void mvt (void)
     if (IWB_IRODD & 0000200000000)
       {
         //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 10 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mvt 10 MBZ");
       }
 #else
     // Bits 0,1,9,10 MBZ 
     if (IWB_IRODD & 0600600000000)
       {
         //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 0,1,9,10 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mvt 0,1,9,10 MBZ");
       }
 #endif
 
     // Bit 23 of OP1 MBZ
-    if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op1 23 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000010000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvt op1 23 MBZ");
 
 // This breaks eis_tester mvt 110
 #if 0
     // Bits 18 of OP2 MBZ
-    if (e -> op [1]  & 0000000400000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op2 18 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000400000)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvt op2 18 MBZ");
 #endif
 
     // Bits 18-28 of OP3 MBZ
-    if (e -> op [2]  & 0000000777600)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op3 18-28 MBZ");
+    if (!(e->MF[2] & MFkID) && e -> op [2]  & 0000000777600)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "mvt op3 18-28 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
 #ifdef EIS_PTR3
     e->srcTA = (int) TA1;
@@ -7238,17 +7365,26 @@ void cmpn (void)
     // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
     // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpn 0-10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "cmpn 0-10 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7523,17 +7659,26 @@ void mvn (void)
 
     EISstruct * e = & cpu . currentEISinstruction;
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 2-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvn 2-8 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mvn 2-8 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
@@ -7829,17 +7974,26 @@ void csl (bool isSZTL)
 // 1 1 1 0  a NAND b
 // 1 1 1 1  Set
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
-    parseBitstringOperandDescriptor(1);
-    parseBitstringOperandDescriptor(2);
+    parseBitstringOperandDescriptor(1, &mod_fault);
+    parseBitstringOperandDescriptor(2, &mod_fault);
     
     // Bits 1-4 and 10 MBZ
     if (IWB_IRODD & 0360200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "csl 1-4,10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "csl 1-4,10 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->ADDR1.cPos = (int) e->C1;
     e->ADDR2.cPos = (int) e->C2;
@@ -8121,17 +8275,26 @@ void csr (bool isSZTR)
     // Invert           1      1      0      0
     //
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
-    parseBitstringOperandDescriptor(1);
-    parseBitstringOperandDescriptor(2);
+    parseBitstringOperandDescriptor(1, &mod_fault);
+    parseBitstringOperandDescriptor(2, &mod_fault);
     
     // Bits 1-4 and 10 MBZ
     if (IWB_IRODD & 0360200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "csr 1-4,10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "csr 1-4,10 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->ADDR1.cPos = (int) e->C1;
     e->ADDR2.cPos = (int) e->C2;
@@ -8369,17 +8532,26 @@ void cmpb (void)
     //    Zero:  If C(Y-bit1)i = C(Y-bit2)i for all i, then ON; otherwise, OFF
     //    Carry: If C(Y-bit1)i < C(Y-bit2)i for any i, then OFF; otherwise ON
     
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
-    parseBitstringOperandDescriptor(1);
-    parseBitstringOperandDescriptor(2);
+    parseBitstringOperandDescriptor(1, &mod_fault);
+    parseBitstringOperandDescriptor(2, &mod_fault);
     
     // Bits 1-8 and 10 MBZ
     if (IWB_IRODD & 0377200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpb 1-8,10 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "cmpb 1-8,10 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     int charPosn1 = (int) e->C1;
     int charPosn2 = (int) e->C2;
@@ -8959,35 +9131,44 @@ void btd (void)
     // results are stored using octal 13 as the plus sign. If P=0, positive
     // signed 4-bit results are stored with octal 14 as the plus sign.
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
 
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
 
     // Bits 1-10 MBZ 
     if (IWB_IRODD & 0377600000000)
       {
         //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "btd 0-8 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "btd 0-8 MBZ");
       }
 
     // Bits 21-29 of OP1 MBZ
-    if (e -> op [0]  & 0000000077700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op1 21-29 MBZ");
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000077700)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "btd op1 21-29 MBZ");
 
     // Bits 24-29 of OP2 MBZ
-    if (e -> op [1]  & 0000000007700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op2 24-29 MBZ");
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000007700)
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "btd op2 24-29 MBZ");
 
     if (e->S[1] == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op2 S=0");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "btd op2 S=0");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
-    
+
     if (e->N1 == 0 || e->N1 > 8)
         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd(1): N1 == 0 || N1 > 8"); 
 
@@ -9344,36 +9525,57 @@ void dtb (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
 #endif
     
     PNL (L68_ (DU_CYCLE_DGDB;))
 
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
    
     // Bits 0 to 10 of the instruction Must Be Zero. So Say We ISOLTS.
     uint mbz = (uint) getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "dtb(): 0-10 MBZ");
+      }
+
+    // Bits 24-29 of OP1 MBZ
+    if (!(e->MF[0] & MFkID) && e -> op [0]  & 0000000007700)
+      {
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "dtb op1 24-29 MBZ");
       }
 
     // Bits 21-29 of OP2 MBZ
-    if (e -> op [1]  & 0000000077700)
+    if (!(e->MF[1] & MFkID) && e -> op [1]  & 0000000077700)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "dtb op2 21-29 MBZ");
        }
 
-    // Attempted conversion of a floating-point number (S1 = 0) or attempted
+    // Attempted conversion of a floating-point number (S1 = 0) or attempted 
     // use of a scaling factor (SF1 ≠ 0) causes an illegal procedure fault.
-    // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
-    if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
+    if (e->S1 == 0 || e->SF1 != 0)
     {
-        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8 etc.");
+        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC|mod_fault}, "dtb():  S1=0 or SF1!=0");
     }
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
+
+    // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
+    if (e->N2 == 0 || e->N2 > 8)
+    {
+        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8");
+    }
+
 
     int n1 = 0;
     
@@ -9476,18 +9678,28 @@ sim_printf("dtb: N1 %d N2 %d nin %d CN1 %d CN2 %d msk %012"PRIo64" %012"PRIo64"\
 void ad2d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
+
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
     setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 1-8 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "ad2d 1-8 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -9566,7 +9778,7 @@ void ad2d (void)
 
     if (n2 < 1)
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n2<1");
-    
+
 
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
@@ -9804,19 +10016,28 @@ void ad3d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
-    setupOperandDescriptor(3);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
+    setupOperandDescriptor(3, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
-    parseNumericOperandDescriptor(3);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
+    parseNumericOperandDescriptor(3, &mod_fault);
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad3d(): 1 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "ad3d(): 1 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     // initialize mop flags. Probably best done elsewhere.
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
@@ -10122,20 +10343,29 @@ void sb2d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
     setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 1-8 MBZ 
     if (IWB_IRODD & 0377000000000)
       {
         //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
+        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "sb2d 0-8 MBZ");
+      }
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
       }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
@@ -10413,19 +10643,28 @@ void sb3d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
-    setupOperandDescriptor(3);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
+    setupOperandDescriptor(3, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
-    parseNumericOperandDescriptor(3);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
+    parseNumericOperandDescriptor(3, &mod_fault);
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb3d(): 1 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "sb3d(): 1 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -10721,18 +10960,27 @@ void mp2d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
     setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 1-8 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mp2d 1-8 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -10968,19 +11216,28 @@ void mp3d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
-    setupOperandDescriptor(3);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
+    setupOperandDescriptor(3, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
-    parseNumericOperandDescriptor(3);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
+    parseNumericOperandDescriptor(3, &mod_fault);
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp3d(): 1 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mp3d(): 1 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -12016,19 +12273,28 @@ void dv2d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
     setupOperandDescriptorCache(3);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
     
     // Bits 1-8 MBZ
     // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ as well
     if (IWB_IRODD & 0377400000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 1-9 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "dv2d 1-9 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -12384,20 +12650,29 @@ void dv3d (void)
 {
     EISstruct * e = & cpu . currentEISinstruction;
 
+    fault_ipr_subtype_ mod_fault = 0;
+    
 #ifndef EIS_SETUP
-    setupOperandDescriptor(1);
-    setupOperandDescriptor(2);
-    setupOperandDescriptor(3);
+    setupOperandDescriptor(1, &mod_fault);
+    setupOperandDescriptor(2, &mod_fault);
+    setupOperandDescriptor(3, &mod_fault);
 #endif
     
-    parseNumericOperandDescriptor(1);
-    parseNumericOperandDescriptor(2);
-    parseNumericOperandDescriptor(3);
+    parseNumericOperandDescriptor(1, &mod_fault);
+    parseNumericOperandDescriptor(2, &mod_fault);
+    parseNumericOperandDescriptor(3, &mod_fault);
     
     // Bit 1 MBZ
     // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ
     if (IWB_IRODD & 0200400000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv3d(): 1,9 MBZ");
+      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "dv3d(): 1,9 MBZ");
+
+    if (mod_fault)
+      {
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=mod_fault},
+                 "Illegal modifier");
+      }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit

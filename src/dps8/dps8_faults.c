@@ -544,11 +544,11 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
       {
         if (subFault.fault_ipr_subtype & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_MOD)
+        if (subFault.fault_ipr_subtype & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_SLV)
+        if (subFault.fault_ipr_subtype & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_DIG)
+        if (subFault.fault_ipr_subtype & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
       }
     else if (faultNumber == FAULT_CMD)

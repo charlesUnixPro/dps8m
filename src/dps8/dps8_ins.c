@@ -1489,20 +1489,56 @@ IF1 sim_printf ("trapping opcode match......\n");
     // illegal procedure fault.
     if (ci->info->flags & PRIV_INS)
       {
-        if (get_bar_mode ())
-          {
+#ifdef DPS8M
+        // multics illegal instructions lptp,lptr,lsdp,lsdr
+        if (((ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
+           || (ci->opcode == 0257))
+        {
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
-                      "Attempted BAR execution of privileged instruction.");
-          }
-        if (! is_priv_mode ())
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                "Attempted execution of multics privileged instruction.");
+        }
+#endif		
+        if (! ((get_addr_mode () == ABSOLUTE_mode) ||
+                            is_priv_mode ()) || get_bar_mode())
           {
-// SLV makes no sense here, but ISOLTS 890 sez so.
-// I think that SLV means append mode, but P not set.
+#ifdef DPS8M
+            // multics privileged instructions: absa,ldbr,lra,rcu,scu,sdbr,ssdp,ssdr,sptp,sptr
+            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
+               || ((ci->opcode == 0254 || ci->opcode == 0774) && ci->opcodeX ) 
+               || (ci->opcode == 0557 || ci->opcode == 0154))
+            {
+                if ((!is_priv_mode () && !get_bar_mode())) {
+                    // SLV makes no sense here, but ISOLTS 890 sez so.
+                    doFault (FAULT_IPR,
+                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
+                        "Attempted execution of multics privileged instruction.");
+                } else {
+                    doFault (FAULT_IPR,
+                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                        "Attempted execution of multics privileged instruction.");
+                }
+            }
+#endif
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
-                     "Attempted execution of privileged instruction.");
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
+                "Attempted execution of privileged instruction.");
           }
+      }
+
+    if (get_bar_mode())
+      if (ci->info->flags & NO_BAR) {
+#ifdef DPS8M
+          if (ci->opcode == 0230 && !ci->opcodeX) {
+            // lbar
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV},
+                "Attempted BAR execution of nonprivileged instruction.");
+          } else
+#endif
+            doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                "Attempted BAR execution of nonprivileged instruction.");
       }
     ///
     /// executeInstruction: Non-restart processing
@@ -6402,11 +6438,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
 
         case 0257:  // lsdp
 #ifdef DPS8M
-          // Not clear what the subfault should be; see Fault Register in
-          //  AL39.
-          doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
-                   "lsdp is illproc on DPS8M");
+          break;
 #endif
 #ifdef L68
           {
@@ -6416,6 +6448,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
             //   C(Y-block16+m)17 -> C(SDWAM(m).P)
             sim_warn ("lsdp not implemented\n");
           }
+          break;
 #endif
 
         case 0613:  // rcu
@@ -7991,11 +8024,7 @@ static t_stat DoEISInstruction (void)
 
         case 0257:  // lptp
 #ifdef DPS8M
-            // Not clear what the subfault should be; see Fault Register in
-            // AL39.
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                     "lptp is illproc on DPS8M");
+          break;
 #endif
 #ifdef L68
           {
@@ -8006,14 +8035,11 @@ static t_stat DoEISInstruction (void)
             //   C(Y-block16+m)27 -> C(PTWAM(m).F)
             sim_warn ("lptp not implemented\n");
           }
+          break;
 #endif
         case 0173:  // lptr
 #ifdef DPS8M
-            // Not clear what the subfault should be; see Fault Register in
-            // AL39.
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                     "lptr is illproc on DPS8M");
+          break;
 #endif
 #ifdef L68
           {
@@ -8023,6 +8049,7 @@ static t_stat DoEISInstruction (void)
             //   C(Y-block16+m)29 -> C(PTWAM(m).M)
             sim_warn ("lptr not implemented\n");
           }
+          break;
 #endif
 
         case 0774:  // lra
@@ -8033,11 +8060,7 @@ static t_stat DoEISInstruction (void)
 
         case 0232:  // lsdr
 #ifdef DPS8M
-            // Not clear what the subfault should be; see Fault Register in
-            // AL39.
-            doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                     "lsdr is illproc on DPS8M");
+          break;
 #endif
 #ifdef L68
           {
@@ -8050,6 +8073,7 @@ static t_stat DoEISInstruction (void)
             //   C(Y-block16+m)58,71 -> C(SDWAM(m).CL)
             sim_warn ("lsdr not implemented\n");
           }
+          break;
 #endif
 
         case 0557:  // sptp
