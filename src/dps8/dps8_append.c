@@ -189,7 +189,7 @@ void do_ldbr (word36 * Ypair)
     //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
     for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
-        cpu . SDWAM [i] . DF = 0;
+        cpu . SDWAM [i] . FE = 0;
         cpu . SDWAM [i] . USE = (word6) i;
       }
 
@@ -308,7 +308,7 @@ void do_cams (UNUSED word36 Y)
 #ifdef WAM
     for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
-        cpu.SDWAM[i].DF = 0;
+        cpu.SDWAM[i].FE = 0;
         cpu.SDWAM[i].USE = (word6) i;
 #ifdef ISOLTS
 if (currentRunningCPUnum)
@@ -431,7 +431,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
     {
         // make certain we initialize SDWAM prior to use!!!
         //if (SDWAM[_n]._initialized && segno == SDWAM[_n].POINTER)
-        if (cpu . SDWAM[_n].DF && segno == cpu . SDWAM[_n].POINTER)
+        if (cpu . SDWAM[_n].FE && segno == cpu . SDWAM[_n].POINTER)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
@@ -568,10 +568,10 @@ static char *strSDW(_sdw *SDW)
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
     //if (!SDW->_initialized)
-    if (!SDW->DF)
+    if (!SDW->FE)
         sprintf(buff, "*** SDW Uninitialized ***");
     else
-        sprintf(buff, "ADDR:%06o R1:%o R2:%o R3:%o BOUND:%o R:%o E:%o W:%o P:%o U:%o G:%o C:%o CL:%o POINTER=%o USE=%d",
+        sprintf(buff, "ADDR:%06o R1:%o R2:%o R3:%o BOUND:%o R:%o E:%o W:%o P:%o U:%o G:%o C:%o CL:%o DF:%o FC:%o POINTER=%o USE=%d",
                 SDW->ADDR,
                 SDW->R1,
                 SDW->R2,
@@ -585,6 +585,8 @@ static char *strSDW(_sdw *SDW)
                 SDW->G,
                 SDW->C,
                 SDW->EB,
+                SDW->DF,
+                SDW->FC,
                 SDW->POINTER,
                 SDW->USE);
     return buff;
@@ -602,7 +604,7 @@ t_stat dumpSDWAM (void)
         _sdw *p = &cpu . SDWAM[_n];
         
         //if (p->_initialized)
-        if (p->DF)
+        if (p->FE)
             sim_printf("SDWAM n:%d %s\n", _n, strSDW(p));
     }
     return SCPE_OK;
@@ -666,7 +668,7 @@ static void loadSDWAM(word15 segno)
         p->USE = 0;
             
         //p->_initialized = true;     // in use by SDWAM
-        p->DF = true;     // in use by SDWAM
+        p->FE = true;     // in use by SDWAM
             
         cpu . SDW = p;
             
@@ -679,7 +681,7 @@ static void loadSDWAM(word15 segno)
     {
         _sdw *p = &cpu . SDWAM[_n];
         //if (!p->_initialized || p->USE == 0)
-        if (!p->DF || p->USE == 0)
+        if (!p->FE || p->USE == 0)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] p->USE=0\n", _n);
             
@@ -704,13 +706,13 @@ static void loadSDWAM(word15 segno)
             p->USE = 0;
             
             //p->_initialized = true;     // in use by SDWAM
-            p->DF = true;     // in use by SDWAM
+            p->FE = true;     // in use by SDWAM
             
             for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
             {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
-                if (!q->DF)
+                if (!q->FE)
                     continue;
                 
                 q->USE -= 1;

@@ -1716,8 +1716,8 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (get_bar_mode())
       if (ci->info->flags & NO_BAR) {
           // lbar
-		  // ISOLTS 890 06a
-		  // ISOLTS says that L68 handles this in the same way
+          // ISOLTS 890 06a
+          // ISOLTS says that L68 handles this in the same way
           if (ci->opcode == 0230 && !ci->opcodeX) {
             doFault (FAULT_IPR,
                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
@@ -6513,13 +6513,13 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
             // For i = 0, 1, ..., 15
             //   m = C(SDWAM(i).USE)
             //   C(Y-block16+m)0,14 -> C(SDWAM(m).POINTER)
-            //   C(Y-block16+m)17 -> C(SDWAM(m).P)
+            //   C(Y-block16+m)27 -> C(SDWAM(m).F) Note: typo in AL39, P(17) should be F(27)
 #ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.SDWAM[i].USE;
                 cpu.SDWAM[m].POINTER = getbits36_15 (cpu.Yblock16[i],  0);
-                cpu.SDWAM[m].P =       getbits36_1  (cpu.Yblock16[i], 17);
+                cpu.SDWAM[m].FE =      getbits36_1  (cpu.Yblock16[i], 27);
               }
 #endif
           }
@@ -6782,7 +6782,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 putbits36_15 (& cpu.Yblock16[j], 0,
                            cpu.SDWAM[toffset + j].POINTER);
                 putbits36_1 (& cpu.Yblock16[j], 27,
-                           cpu.SDWAM[toffset + j].DF);
+                           cpu.SDWAM[toffset + j].FE);
 #ifdef DPS8M
                 putbits36_6 (& cpu.Yblock16[j], 30,
                            cpu.SDWAM[toffset + j].USE);
@@ -6854,9 +6854,9 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
         case 0413:  // rscr
           {
-	  // For the rscr instruction, the first 2 (DPS8M) or 3 (L68) bits of
-	  // the addr field of the instruction are used to specify which SCU.
-	  // (2 bits for the DPS8M. (Expect for x6x and x7x below, where 
+            // For the rscr instruction, the first 2 (DPS8M) or 3 (L68) bits of
+            // the addr field of the instruction are used to specify which SCU.
+            // (2 bits for the DPS8M. (Expect for x6x and x7x below, where 
             // the selected SCU is the one holding the addressed memory).
             
             // According to DH02:
@@ -8181,30 +8181,30 @@ static t_stat DoEISInstruction (void)
           {
             // For i = 0, 1, ..., 15
             //   m = C(SDWAM(i).USE)
-            //   C(Y-block16+m)0,23 -> C(SDWAM(m).ADDR)
-            //   C(Y-block16+m)24,32 -> C(SDWAM(m).R1, R2, R3)
-            //   C(Y-block16+m)37,50 -> C(SDWAM(m).BOUND)
-            //   C(Y-block16+m)52,57 -> C(SDWAM(m).R, E, W, P, U, G, C)
-            //   C(Y-block16+m)58,71 -> C(SDWAM(m).CL)
+            //   C(Y-block32+2m)0,23 -> C(SDWAM(m).ADDR)
+            //   C(Y-block32+2m)24,32 -> C(SDWAM(m).R1, R2, R3)
+            //   C(Y-block32+2m)37,50 -> C(SDWAM(m).BOUND)
+            //   C(Y-block32+2m)51,57 -> C(SDWAM(m).R, E, W, P, U, G, C) Note: typo in AL39, 52 should be 51
+            //   C(Y-block32+2m)58,71 -> C(SDWAM(m).CL)
 #ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.SDWAM[i].USE;
-                uint j = m * 2;
-                cpu.SDWAM[m].ADDR =    getbits36_24 (cpu.Yblock16[j],  0);
-                cpu.SDWAM[m].R1 =      getbits36_3  (cpu.Yblock16[j], 24);
-                cpu.SDWAM[m].R2 =      getbits36_3  (cpu.Yblock16[j], 27);
-                cpu.SDWAM[m].R3 =      getbits36_3  (cpu.Yblock16[j], 30);
+                uint j = (uint)m * 2;
+                cpu.SDWAM[m].ADDR =    getbits36_24 (cpu.Yblock32[j],  0);
+                cpu.SDWAM[m].R1 =      getbits36_3  (cpu.Yblock32[j], 24);
+                cpu.SDWAM[m].R2 =      getbits36_3  (cpu.Yblock32[j], 27);
+                cpu.SDWAM[m].R3 =      getbits36_3  (cpu.Yblock32[j], 30);
 
-                cpu.SDWAM[m].BOUND =   getbits36_14 (cpu.Yblock16[j + 1], 37 - 36);
-                cpu.SDWAM[m].R =       getbits36_1  (cpu.Yblock16[j + 1], 51 - 36);
-                cpu.SDWAM[m].E =       getbits36_1  (cpu.Yblock16[j + 1], 52 - 36);
-                cpu.SDWAM[m].W =       getbits36_1  (cpu.Yblock16[j + 1], 53 - 36);
-                cpu.SDWAM[m].P =       getbits36_1  (cpu.Yblock16[j + 1], 54 - 36);
-                cpu.SDWAM[m].U =       getbits36_1  (cpu.Yblock16[j + 1], 55 - 36);
-                cpu.SDWAM[m].G =       getbits36_1  (cpu.Yblock16[j + 1], 56 - 36);
-                cpu.SDWAM[m].C =       getbits36_1  (cpu.Yblock16[j + 1], 57 - 36);
-                cpu.SDWAM[m].EB =      getbits36_14 (cpu.Yblock16[j + 1], 58 - 36);
+                cpu.SDWAM[m].BOUND =   getbits36_14 (cpu.Yblock32[j + 1], 37 - 36);
+                cpu.SDWAM[m].R =       getbits36_1  (cpu.Yblock32[j + 1], 51 - 36);
+                cpu.SDWAM[m].E =       getbits36_1  (cpu.Yblock32[j + 1], 52 - 36);
+                cpu.SDWAM[m].W =       getbits36_1  (cpu.Yblock32[j + 1], 53 - 36);
+                cpu.SDWAM[m].P =       getbits36_1  (cpu.Yblock32[j + 1], 54 - 36);
+                cpu.SDWAM[m].U =       getbits36_1  (cpu.Yblock32[j + 1], 55 - 36);
+                cpu.SDWAM[m].G =       getbits36_1  (cpu.Yblock32[j + 1], 56 - 36);
+                cpu.SDWAM[m].C =       getbits36_1  (cpu.Yblock32[j + 1], 57 - 36);
+                cpu.SDWAM[m].EB =      getbits36_14 (cpu.Yblock32[j + 1], 58 - 36);
               }
 #endif
           }
@@ -8344,7 +8344,7 @@ static t_stat DoEISInstruction (void)
               {
                 cpu.Yblock32[j * 2] = 0;
 #ifdef WAM
-                putbits36_23 (& cpu.Yblock32[j * 2],  0,
+                putbits36_24 (& cpu.Yblock32[j * 2],  0,
                            cpu.SDWAM[toffset + j].ADDR);
                 putbits36_3 (& cpu.Yblock32[j * 2], 24,
                            cpu.SDWAM[toffset + j].R1);
@@ -8378,7 +8378,7 @@ static t_stat DoEISInstruction (void)
 #ifndef WAM
             if (level == 0)
               {
-                putbits36 (& cpu.Yblock32[0],  0, 23,
+                putbits36 (& cpu.Yblock32[0],  0, 24,
                            cpu.SDWAM0.ADDR);
                 putbits36 (& cpu.Yblock32[0], 24,  3,
                            cpu.SDWAM0.R1);

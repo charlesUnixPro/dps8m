@@ -382,9 +382,9 @@ char * strSDW0 (_sdw0 * SDW)
     static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (! SDW -> DF) 
-      sprintf (buff, "*** Uninitialized ***");
-    else
+    //if (! SDW -> DF) 
+    //  sprintf (buff, "*** Uninitialized ***");
+    //else
       sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
                SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> DF,
                SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
@@ -426,8 +426,8 @@ static t_stat dpsCmd_DumpSegmentTable()
             PTW1.DF = TSTBIT(PTWx1, 2);
             PTW1.FC = PTWx1 & 3;
            
-            if (PTW1.DF == 0)
-                continue;
+            //if (PTW1.DF == 0)
+            //    continue;
             sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
                         segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
             sim_printf ("    Target segment page table\n");
@@ -455,8 +455,8 @@ static t_stat dpsCmd_DumpSegmentTable()
                 SDW0.C = TSTBIT(SDWodd, 14);
                 SDW0.EB = SDWodd & 037777;
 
-                if (SDW0.DF == 0)
-                    continue;
+                //if (SDW0.DF == 0)
+                //    continue;
                 sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
                           tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
                 //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0.BOUND; offset += 1024)
@@ -2529,7 +2529,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
             break;
         case 32:
             CPT (cpt1L, 11); // 32 words
-            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
                 Read (addr + j, cpu.Yblock32 + j, cyctyp, b29);
             
@@ -2570,7 +2570,7 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
             break;
         case 32:
             CPT (cpt1L, 16); // 32 words
-            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
                 Write (addr + j, cpu.Yblock32[j], OPERAND_STORE, b29);
             break;
