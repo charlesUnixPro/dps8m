@@ -34,9 +34,9 @@
  * misc utility routines used by simulator
  */
 
-char * dumpFlags(word18 flags)
+char * dumpFlags(char * buffer, word18 flags)
 {
-    static char buffer[256] = "";
+    //static char buffer[256] = "";
     
     sprintf(buffer, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 #ifdef DPS8M
@@ -89,7 +89,7 @@ struct opCode *getIWBInfo(DCDstruct *i)
     return p->mne ? p : &UnImp;
 }
 
-char *disAssemble(word36 instruction)
+char *disAssemble(char * result, word36 instruction)
 {
     word9  opcode  = GET_OP(instruction);   ///< get opcode
     int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
@@ -98,7 +98,7 @@ char *disAssemble(word36 instruction)
     //int32 i       = GET_I(instruction);
     word6  tag     = GET_TAG(instruction);
 
-    static char result[132] = "???";
+    //static char result[132] = "???";
     strcpy(result, "???");
     
     // get mnemonic ...
@@ -162,9 +162,9 @@ char *disAssemble(word36 instruction)
  *
  */
 
-char *getModString(word6 tag)
+char *getModString(char * msg, word6 tag)
 {
-    static char msg[256];
+    //static char msg[256];
     strcpy(msg, "none");
     
     if (tag >= 0100)
@@ -1631,7 +1631,7 @@ int bitfieldReverse(int x)
 #endif
 
 
-
+#if 0
 /*
  * bin2text()
  *
@@ -1662,6 +1662,7 @@ char *bin2text(uint64 word, int n)
     }
     return str;
 }
+#endif
 
 #include <ctype.h>
 

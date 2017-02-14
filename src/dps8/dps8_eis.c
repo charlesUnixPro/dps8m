@@ -7375,7 +7375,8 @@ void mvn (void)
    
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op1, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
     
 #ifndef SPEED
     if_sim_debug (DBG_CAC, & cpu_dev)
@@ -8773,7 +8774,8 @@ void btd (void)
 
     bool Ovr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, 0, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op1, n2, (int) e->S2, e->SF2, 0, &Ovr, &Trunc);
 
     // now write to memory in proper format.....
 
@@ -9351,7 +9353,8 @@ void ad2d (void)
 
     bool Ovr = false, EOvr = false, Trunc = false;
 
-    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
 
     Ovr |= iOvr;
 
@@ -9707,7 +9710,8 @@ void ad3d (void)
 
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
 
     Ovr |= iOvr;
 
@@ -9998,7 +10002,8 @@ void sb2d (void)
 
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
 
     Ovr |= iOvr;
     
@@ -10308,7 +10313,8 @@ void sb3d (void)
     
     bool Ovr = false, EOvr = false, Trunc = false;
 
-    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
 
     Ovr |= iOvr;
     
@@ -10557,7 +10563,8 @@ void mp2d (void)
     
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
     
     if (decNumberIsZero(op3))
         op3->exponent = 127;
@@ -10838,7 +10845,8 @@ void mp3d (void)
     
     bool Ovr = false, EOvr = false, Trunc = false;
     
-    char *res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+    uint8_t out [256];
+    char *res = formatDecimal(out, &set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
 //    sim_printf("res:<%s>\n", res);
     
     if (decNumberIsZero(op3))
@@ -11416,7 +11424,7 @@ static char * formatDecimalDIV (decContext * set, decNumber * r, int tn,
     
     int scale;
     
-    static uint8_t out[256];
+    uint8_t out[256];
     
     memset (out, 0, sizeof (out));
     
@@ -11922,6 +11930,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
     }
     
     bool Ovr = false, EOvr = false, Trunc = false;
+    uint8_t out [256];
     
     // CSFL: If the divisor is greater than the dividend after operand
     // alignment, the leading zero digit produced is counted and the effective
@@ -11956,7 +11965,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
 
         if (decCompareMAG(&_1a, &_2a, &set) > 0) {
             // shorten the result field to get proper rounding
-            res = formatDecimal(&set, op3, n2 -1, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+            res = formatDecimal(out, &set, op3, n2 -1, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
 
             // prepend zero digit
             // ET 458,483 float=float/float, ET 461,486 float=fixed/fixed
@@ -11966,11 +11975,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
             sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d: addzero n2 %d %s exp %d\n",n2,res,op3->exponent);
         } else {
             // full n2 digits are retured
-            res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+            res = formatDecimal(out, &set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
         }
     } else {
         // same as all other decimal instructions
-        res = formatDecimal(&set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+        res = formatDecimal(out, &set, op3, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
     }
     
     if (decNumberIsZero(op3))
@@ -12329,6 +12338,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
     }
 
     bool Ovr = false, EOvr = false, Trunc = false;
+    uint8_t out [256];
 
     // CSFL: If the divisor is greater than the dividend after operand
     // alignment, the leading zero digit produced is counted and the effective
@@ -12363,7 +12373,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
 
         if (decCompareMAG(&_1a, &_2a, &set) > 0) {
             // shorten the result field to get proper rounding
-            res = formatDecimal(&set, op3, n3 -1, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+            res = formatDecimal(out, &set, op3, n3 -1, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
 
             // prepend zero digit
             // ET 458,483 float=float/float, ET 461,486 float=fixed/fixed
@@ -12373,11 +12383,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
             sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d: addzero n3 %d %s exp %d\n",n3,res,op3->exponent);
         } else {
             // full n3 digits are retured
-            res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+            res = formatDecimal(out, &set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
         }
     } else {
         // same as all other decimal instructions
-        res = formatDecimal(&set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
+        res = formatDecimal(out, &set, op3, n3, (int) e->S3, e->SF3, R, &Ovr, &Trunc);
     }
     
     if (decNumberIsZero(op3))

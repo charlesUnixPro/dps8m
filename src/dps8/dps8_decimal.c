@@ -715,7 +715,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
 } 
 #endif
 
-char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+char *formatDecimal(uint8_t * out, decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     decNumber _sf;
     decNumber _r2;
@@ -796,7 +796,7 @@ char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool
 
     // write out the digits
     // note that even CSFL is aligned right - ISOLTS-810 05d
-    static uint8_t out[256];
+    //static uint8_t out[256];
     uint8_t tmp[256];
     //int scale;
     //decBCDFromNumber(out, nout, &scale, r);

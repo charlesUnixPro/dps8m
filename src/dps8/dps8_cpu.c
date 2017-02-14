@@ -286,9 +286,9 @@ _sdw0 *fetchSDW (word15 segno)
     return SDW;
   }
 
-char * strSDW0 (_sdw0 * SDW)
+char * strSDW0 (char * buff, _sdw0 * SDW)
   {
-    static char buff [256];
+    //static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
     if (! SDW -> DF) 

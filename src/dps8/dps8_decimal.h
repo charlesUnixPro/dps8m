@@ -40,7 +40,7 @@
 decContext * decContextDefaultDPS8(decContext *context);
 decContext * decContextDefaultDPS8Mul(decContext *context);
 decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn);
-char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC);
+char *formatDecimal(uint8_t * out, decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC);
 //uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
 //unsigned char *getBCD(decNumber *a);
 //char *getBCDn(decNumber *a, int digits);

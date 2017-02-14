@@ -110,7 +110,7 @@ void setAPUStatus (apuStatusBits status)
   }
 
 #ifdef WAM
-static char *strSDW(_sdw *SDW);
+static char *strSDW(char * buff, _sdw *SDW);
 #endif
 
 //static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNOWN;
@@ -440,7 +440,8 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
             }
             cpu . SDW->USE = N_WAM_ENTRIES - 1;
             
-            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(cpu . SDW));
+            char buff [256];
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(buff, cpu . SDW));
             return cpu . SDW;
         }
     }
@@ -544,13 +545,14 @@ static void fetchNSDW(word15 segno)
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (0 /* No fetch no paged bit */);
 #endif
-    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&cpu . SDW0));
+    char buff [256];
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(buff, &cpu . SDW0));
 }
 
 #ifdef WAM
-static char *strSDW(_sdw *SDW)
+static char *strSDW(char * buff, _sdw *SDW)
 {
-    static char buff[256];
+    //static char buff[256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
     //if (!SDW->_initialized)
@@ -583,13 +585,14 @@ static char *strSDW(_sdw *SDW)
  */
 static t_stat dumpSDWAM (void)
 {
+    char buff [256];
     for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _sdw *p = &cpu . SDWAM[_n];
         
         //if (p->_initialized)
         if (p->DF)
-            sim_printf("SDWAM n:%d %s\n", _n, strSDW(p));
+            sim_printf("SDWAM n:%d %s\n", _n, strSDW(buf, p));
     }
     return SCPE_OK;
 }
@@ -674,7 +677,8 @@ static void loadSDWAM(word15 segno)
             
             cpu . SDW = p;
             
-            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(p));
+            char buff [256];
+            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(buff,p));
             
             return;
         }

@@ -2008,7 +2008,7 @@ t_stat memWatch (int32 arg, const char * buf);
 //_sdw0 *fetchSDW (word15 segno);
 _sdw *fetchSDW (word15 segno);
 //char *strSDW0 (_sdw0 *SDW);
-char *strSDW0 (_sdw *SDW);
+char *strSDW0 (char * buff, _sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);

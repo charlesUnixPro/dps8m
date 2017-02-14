@@ -1132,6 +1132,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
               ((word32) getbits36_16(rega, 0) << 16);
             scu [scu_unit_num].exec_intr_mask [mask_num] |= 
               getbits36_16(regq, 0);
+#if 0
             sim_debug (DBG_DEBUG, & scu_dev,
                        "%s: PIMA %c: EI mask set to %s\n", 
                        __func__, mask_num + 'A', 
@@ -1139,6 +1140,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
                        N_CELL_INTERRUPTS));
             //sim_printf ("sscr  exec_intr_mask %012o\n", 
                           //scu [scu_unit_num].exec_intr_mask [mask_num]);
+#endif
             sim_debug (DBG_TRACE, & scu_dev, 
                        "SSCR Set mask unit %u port %u mask_num %u "
                        "mask 0x%08x\n", 

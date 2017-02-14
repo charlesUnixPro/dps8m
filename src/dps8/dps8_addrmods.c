@@ -92,11 +92,9 @@ static word18 getCr (word4 Tdes)
     return 0;
   }
 
-// Warning: returns ptr to static buffer.
-
-static char * opDescSTR (void)
+static char * opDescSTR (char * temp)
   {
-    static char temp [256];
+    //static char temp [256];
     DCDstruct * i = & cpu . currentInstruction;
 
     strcpy (temp, "");
@@ -177,9 +175,8 @@ static char * opDescSTR (void)
   }
 
 // Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
-static word36 itxPair[2];
 
-static void doITP (void)
+static void doITP (word36 * itxPair)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n",
@@ -216,7 +213,7 @@ static void doITP (void)
     return;
 }
 
-static void doITS(void)
+static void doITS (word36 * itxPair)
  {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITS Pair: SEGNO=%o RN=%o WORDNO=%o BITNO=%o MOD=%o\n",
@@ -260,6 +257,7 @@ static void doITS(void)
 // CANFAULT
 static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
   {
+    word36 itxPair[2];
     DCDstruct * i = & cpu . currentInstruction;
     word6 indTag = GET_TAG  (indword);
 
@@ -304,9 +302,9 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
                itxPair [0], itxPair [1]);
 
     if (ISITS (indTag))
-        doITS ();
+        doITS (itxPair);
     else
-        doITP ();
+        doITP (itxPair);
 
     * newtag = GET_TAG (itxPair [1]);
     //didITSITP = true;
@@ -357,9 +355,10 @@ static void updateIWB (word18 addr, word6 tag)
 
 t_stat doComputedAddressFormation (void)
   {
+    char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
-                __func__, opDescSTR (), cpu . TPR . CA);
+                __func__, opDescSTR (buf), cpu . TPR . CA);
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): CT_HOLD %o\n",
                 __func__, cpu . cu  . CT_HOLD);
@@ -408,7 +407,7 @@ startCA:;
       }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, cpu . rTAG, getModString (cpu . rTAG), Tm, Td);
+               __func__, cpu . rTAG, getModString (buf, cpu . rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -638,7 +637,7 @@ startCA:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD1: indword=%012"PRIo64" TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
-                   indword, cpu . TPR . CA, Tm, Td, getModString (GET_TAG (indword)));
+                   indword, cpu . TPR . CA, Tm, Td, getModString (buf, GET_TAG (indword)));
 
         switch (Tm)
           {

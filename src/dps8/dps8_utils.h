@@ -36,9 +36,9 @@ int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config
 void cfgparse_done (config_state_t * state);
 
 struct opCode *getIWBInfo(DCDstruct *i);
-char * dumpFlags(word18 flags);
-char *disAssemble(word36 instruction);
-char *getModString(word6 tag);
+char * dumpFlags(char * buffer, word18 flags);
+char *disAssemble(char * result, word36 instruction);
+char *getModString(char * msg, word6 tag);
 word72 convertToWord72(word36 even, word36 odd);
 void convertToWord36(word72 src, word36 *even, word36 *odd);
 
@@ -71,7 +71,7 @@ char *rtrim(char *s);
 
 //int bitfieldInsert(int a, int b, int c, int d);
 //int bitfieldExtract(int a, int b, int c);
-char *bin2text(uint64 word, int n);
+//char *bin2text(uint64 word, int n);
 void sim_printf( const char * format, ... )    // not really simh, by my impl
 #ifdef __GNUC__
   __attribute__ ((format (printf, 1, 2)))
