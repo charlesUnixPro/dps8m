@@ -1793,10 +1793,10 @@ typedef struct
 
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 
-__thread extern cpu_state_t * restrict cpup;
-__thread extern uint thisCPUnum;
-__thread extern uint thisIOMnum;
-__thread extern uint thisChnNum;
+extern __thread cpu_state_t * restrict cpup;
+extern __thread uint thisCPUnum;
+extern __thread uint thisIOMnum;
+extern __thread uint thisChnNum;
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
