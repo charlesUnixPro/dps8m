@@ -1014,86 +1014,6 @@ static bool _illmod[] = {
 
 //=============================================================================
 
-#ifdef MATRIX
-
-static long long theMatrix[1024] // 1024 opcodes (2^10)
-                          [2]    // opcode extension
-                          [2]    // bit 29
-                          [64];  // Tag
-
-void initializeTheMatrix (void)
-{
-    memset (theMatrix, 0, sizeof (theMatrix));
-}
-
-void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
-{
-    // safety
-    uint _opcode = opcode & 01777;
-    int _opcodeX = opcodeX ? 1 : 0;
-    int _a = a ? 1 : 0;
-    int _tag = tag & 077;
-    theMatrix[_opcode][_opcodeX][_a][_tag] ++;
-}
-#endif
-
-t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
-{
-#ifdef MATRIX
-    long long count;
-    for (int opcode = 0; opcode < 01000; opcode ++)
-    for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
-    for (int a = 0; a < 2; a ++)
-    for (int tag = 0; tag < 64; tag ++)
-    if ((count = theMatrix[opcode][opcodeX][a][tag]))
-    {
-        // disAssemble doesn't quite do what we want so copy the good bits
-        static char result[132] = "???";
-        strcpy (result, "???");
-        // get mnemonic ...
-        // non-EIS first
-        if (!opcodeX)
-        {
-            if (NonEISopcodes[opcode].mne)
-                strcpy (result, NonEISopcodes[opcode].mne);
-        }
-        else
-        {
-            // EIS second...
-            if (EISopcodes[opcode].mne)
-                strcpy (result, EISopcodes[opcode].mne);
-
-            if (EISopcodes[opcode].ndes > 0)
-            {
-                // XXX need to reconstruct multi-word EIS instruction.
-
-            }
-        }
-
-        if (a)
-            strcat (result, " prn|nnnn");
-        else
-            strcat (result, " nnnn");
-
-        // get mod
-        if (extMods[tag].mod)
-        {
-            strcat (result, ",");
-            strcat (result, extMods[tag].mod);
-        }
-        if (result[0] == '?')
-            sim_printf ("%20"PRId64": ? opcode 0%04o X %d a %d tag 0%02do\n",
-                        count, opcode, opcodeX, a, tag);
-        else
-            sim_printf ("%20"PRId64": %s\n", count, result);
-    }
-#else
-    sim_printf ("matrix code not enabled\n");
-#endif
-    return SCPE_OK;
-}
-
-
 // fetch instrcution at address
 // CANFAULT
 void fetchInstruction (word18 addr)
@@ -1326,19 +1246,6 @@ t_stat executeInstruction (void)
 
     const opCode *info = ci->info;       // opCode *
     const word18 address = ci->address;  // bits 0-17 of instruction
-
-#ifdef MATRIX
-    const uint32  opcode = ci->opcode;   // opcode
-    const bool   opcodeX = ci->opcodeX;  // opcode extension
-                                         // XXX replace with rY
-    const bool   a = ci->a;              // bit-29 - addressing via pointer
-                                         // register
-    const word6  tag = ci->tag;          // instruction tag
-                                         //  XXX replace withrTAG
-
-
-    addToTheMatrix (opcode, opcodeX, a, tag);
-#endif
 
 #ifdef L68
     CPTUR (cptUseMR);

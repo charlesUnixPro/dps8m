@@ -106,7 +106,6 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
-    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL, NULL},
     {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */

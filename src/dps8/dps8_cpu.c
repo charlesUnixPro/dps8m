@@ -582,11 +582,6 @@ static void cpu_reset2 (void)
 
     // TODO: reset *all* other structures to zero
     
-    
-#ifdef MATRIX
-    initializeTheMatrix();
-#endif
-
 }
 
 static t_stat cpu_reset (UNUSED DEVICE *dptr)

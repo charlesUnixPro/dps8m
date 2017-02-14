@@ -113,10 +113,6 @@
 #define HEX_MODE
 #endif
 
-// Instruction profiler
-// #define MATRIX
-
-
 // Fix glibc incompatibility with new simh code.
 
 #if __WORDSIZE == 64
