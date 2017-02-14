@@ -1584,23 +1584,6 @@ t_stat threadz_sim_instr (void)
                 //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%"PRId64"]\n", cpu.cycleCnt);
     
 
-#if EMULATOR_ONLY
-                if (cpu.switches.report_faults == 1 ||
-                    (cpu.switches.report_faults == 2 &&
-                     cpu.faultNumber == FAULT_OFL))
-                  {
-#ifdef TESTING
-                    emCallReportFault ();
-#endif
-                    clearFaultCycle ();
-                    cpu.wasXfer = false; 
-                    setCpuCycle (FETCH_cycle);
-                    cpu.PPR.IC += ci->info->ndes;
-                    cpu.PPR.IC ++;
-                    break;
-                  }
-#endif
-
                 cu_safe_store ();
                 CPT (cpt1U, 31); // safe store complete
 

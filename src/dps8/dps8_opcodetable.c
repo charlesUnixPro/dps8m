@@ -857,49 +857,6 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
-#if EMULATOR_ONLY 
-     /* 420 - 437 */
-    {"emcall", IGN_B29, 0, 0, 0},  // 420 we add a emulator call instruction for SIMH use ONLY! (opcode 0420(1))
-    {"fxe",  0, 0, 0, 0}, // 421 fxe fault handler
-  
-#ifdef DEPRECIATED
-    // with the lack of a stack it makes it very cumbersome to write decent code for reentrant subroutines.
-    // Yes, I *might* be able to use the DI, ID tally modifications, but you need to setup a indirect stack word to reference -
-    // and you couldn't easily do stack offsets, w/o another indirect word, etc.
-
-    // I spoze' that if I added macro's to the assembler I probably could do this utilizing the native ISA,
-    // but that *ain't* happening any time soon.
-
-    // So, let's add some instructions.
-
-    {"callx", READ_OPERAND | TRANSFER_INS, 0, 0, 0},// 422 and in the spirit of AIM-072...
-    {"exit",                 TRANSFER_INS, 0, 0, 0}, // 423
-    
-    // how 'bout push/pop a/q
-    {"pusha", 0, 0, 0, 0}, // 424 push A onto stack via Xn
-    {"popa",  0, 0, 0, 0}, // 425 pop word from stack via Xn into A
-    {"pushq", 0, 0, 0, 0}, // 426 push Q onto stack via Xn
-    {"popq",  0, 0, 0, 0}, // 427 pop word from stack via Xn into Q
-#else // !DEPRECIATED
-    {NULL, 0, 0, 0, 0}, // 422
-    {NULL, 0, 0, 0, 0}, // 423
-    {NULL, 0, 0, 0, 0}, // 424
-    {NULL, 0, 0, 0, 0}, // 425
-    {NULL, 0, 0, 0, 0}, // 426
-    {NULL, 0, 0, 0, 0}, // 427
-#endif
-    
-    {NULL, 0, 0, 0, 0}, // 430
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0},
-    {NULL, 0, 0, 0, 0}, // 437
-    
-    
-#else
      /* 420 - 437 */ 
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
@@ -917,7 +874,6 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
-#endif
      /* 440 - 457 */ 
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},

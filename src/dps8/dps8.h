@@ -36,8 +36,6 @@
 #include <libgen.h> // needed for OS/X and Android
 #endif
 
-//#define EMULATOR_ONLY 1
-
 // Define to emulate Level 68 instead of DPS8M
 
 //#define L68 
