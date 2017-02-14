@@ -385,9 +385,6 @@ float36 IEEEdoubleTofloat36(double f0)
  */
 
 
-#ifdef HEX_MODE
-//#define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69 | BIT68)
-//#define HEX_MSB  (         BIT71 | BIT70 | BIT69 | BIT68)
 #define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69)
 #define HEX_MSB  (         BIT71 | BIT70 | BIT69)
 #define HEX_NORM (         BIT71 | BIT70 | BIT69 | BIT68)
@@ -396,7 +393,6 @@ static inline bool isHex (void)
   {
     return (!!cpu.MR.hexfp) && (!!TST_I_HEX);
   }
-#endif
 
 /*!
  * unnormalized floating single-precision add
@@ -420,12 +416,7 @@ void ufa (bool sub)
     // * C(E) is increased by one.
 
     CPTUR (cptUseE);
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-    //uint shift_msk = isHex() ? 017 : 1;
-    //word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
-    //word72 sign_msb = isHex() ? HEX_MSB  : BIT71;
-#endif
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     // 28-bit mantissa (incl sign)
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; // 28-bit mantissa (incl sign)
@@ -445,13 +436,8 @@ void ufa (bool sub)
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
-#ifdef HEX_MODE
            m2 >>= shift_amt;
            e2 += 1;
-#else
-           m2 >>= 1;
-           e2 += 1;
-#endif
        } else
            m2 = (-m2) & MASK72;
     }
@@ -473,11 +459,7 @@ void ufa (bool sub)
     }
     else if (e1 < e2)
     {
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -489,24 +471,15 @@ void ufa (bool sub)
                 m1 |= SIGN72;
         }
         
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
         e3 = e2;
     }
     else
     {
         // e2 < e1;
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -517,13 +490,8 @@ void ufa (bool sub)
             if (sign)
                 m2 |= SIGN72;
         }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         e3 = e1;
     }
@@ -539,12 +507,6 @@ void ufa (bool sub)
 
     if (ovf)
     {
-#ifdef HEX_MODE
-//        word72 signbit = m3 & sign_msk;
-//        m3 >>= shift_amt;
-//        m3 = (m3 & MASK71) | signbit;
-//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-//        e3 += 1;
         word72 s = m3 & SIGN72; // save the sign bit
         if (isHex ())
           {
@@ -564,13 +526,6 @@ void ufa (bool sub)
             m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
           }
         e3 += 1;
-#else
-        word72 signbit = m3 & SIGN72;
-        m3 >>= 1;
-        m3 = (m3 & MASK71) | signbit;
-        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-        e3 += 1;
-#endif
     }
 
     cpu . rA = (m3 >> 36) & MASK36;
@@ -635,12 +590,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
 #ifdef L68
     cpu.ou.cycle |= ou_GON;
 #endif
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-    //uint shift_msk = isHex() ? 017 : 1;
-    //word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
-    //word72 sign_msb = isHex() ? HEX_NORM  : BIT71;
-#endif
     *A &= DMASK;
     *Q &= DMASK;
     float72 m = ((word72)(*A) << 36) | (word72)(*Q);
@@ -648,7 +598,6 @@ void fno (word8 * E, word36 * A, word36 * Q)
     {
         CLR_I_OFLOW;
         word72 s = m & SIGN72; // save the sign bit
-#ifdef HEX_MODE
         if (isHex ())
           {
             m >>= shift_amt; // renormalize the mantissa
@@ -665,11 +614,6 @@ void fno (word8 * E, word36 * A, word36 * Q)
             m |= SIGN72; // set the sign bit
             m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
           }
-#else
-        m >>= 1; // renormalize the mantissa
-        m |= SIGN72; // set the sign bit
-        m ^= s; // if the was 0, leave it 1; if it was 1, make it 0
-#endif
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
         if (m == 0)
@@ -711,7 +655,6 @@ void fno (word8 * E, word36 * A, word36 * Q)
     int e = SIGNEXT8_int ((*E) & MASK8);
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
 
-#ifdef HEX_MODE
 // Normalized in Hex Mode: If sign is 0, bits 1-4 != 0; if sign is 1,
 // bits 1-4 != 017.
     if (isHex ())
@@ -762,20 +705,6 @@ void fno (word8 * E, word36 * A, word36 * Q)
         if (s)
           m |= SIGN72;
       }
-#else
-    while (s  == !! (m & BIT71)) // until C(AQ)0 != C(AQ)1?
-    {
-        m <<= 1;
-        e -= 1;
-        //if (m == 0) // XXX: necessary??
-        //    break;
-    }
-
-    m &= MASK71;
-        
-    if (s)
-      m |= SIGN72;
-#endif
       
     if (e < -128)
     {
@@ -1091,9 +1020,7 @@ static void fdvX(bool bInvert)
     //! 00...0 → C(Q)
   
     CPTUR (cptUseE);
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
     word72 m1;
     int    e1;
     
@@ -1148,11 +1075,7 @@ static void fdvX(bool bInvert)
         SET_I_NEG; // in case of divide fault
         if (m1 == SIGN72)
         {
-#ifdef HEX_MODE
             m1 >>= shift_amt;
-#else
-            m1 >>= 1;
-#endif
             e1 += 1;
         } else
             m1 = (~m1 + 1) & MASK72;
@@ -1165,11 +1088,7 @@ static void fdvX(bool bInvert)
     {
         if (m2 == SIGN72)
         {
-#ifdef HEX_MODE
             m2 >>= shift_amt;
-#else
-            m2 >>= 1;
-#endif
             e2 += 1;
         } else
             m2 = (~m2 + 1) & MASK72;
@@ -1200,11 +1119,7 @@ static void fdvX(bool bInvert)
                      // dividend exponent C(E) increased accordingly until | C(AQ)0,71 | < | C(Y)8,35 with zero fill |
     // We have already taken the absolute value so just shift it
     {
-#ifdef HEX_MODE
         m1 >>= shift_amt;
-#else
-        m1 >>= 1;
-#endif
         e1 += 1;
     }
 
@@ -1467,9 +1382,7 @@ void fcmp(void)
 #ifdef L68
     cpu.ou.cycle = ou_GOE;
 #endif
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
     int shift_count = -1;
     word1 notallzeros = 0;
     
@@ -1482,11 +1395,7 @@ void fcmp(void)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
@@ -1495,13 +1404,8 @@ void fcmp(void)
             if (s)
               m1 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
       }
     else
@@ -1510,11 +1414,7 @@ void fcmp(void)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1523,13 +1423,8 @@ void fcmp(void)
             if (s)
               m2 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         //e3 = e1;
       }
@@ -1567,9 +1462,7 @@ void fcmg ()
 #ifdef L68
    cpu.ou.cycle = ou_GOS;
 #endif
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
 #if 1
     // C(AQ)0,27
     word72 m1 = ((word72)cpu.rA & 0777777777400LL) << 36;
@@ -1601,11 +1494,7 @@ void fcmg ()
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1615,13 +1504,8 @@ void fcmg ()
               m1 |= SIGN72;
           }
 
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
         //e3 = e2;
       }
@@ -1631,11 +1515,7 @@ void fcmg ()
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1644,13 +1524,8 @@ void fcmg ()
             if (s)
               m2 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         //e3 = e1;
     }
@@ -1778,9 +1653,7 @@ void dufa (bool subtract)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
 
     word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
@@ -1798,13 +1671,8 @@ void dufa (bool subtract)
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {
-#ifdef HEX_MODE
            m2 >>= shift_amt;
            e2 += 1;
-#else
-           m2 >>= 1;
-           e2 += 1;
-#endif
        } else
            m2 = (-m2) & MASK72;
     }
@@ -1829,11 +1697,7 @@ void dufa (bool subtract)
 #ifdef L68
         cpu.ou.cycle |= ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool s = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1842,13 +1706,8 @@ void dufa (bool subtract)
             if (s)
               m1 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
         e3 = e2;
       }
@@ -1858,11 +1717,7 @@ void dufa (bool subtract)
 #ifdef L68
         cpu.ou.cycle |= ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool s = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
           {
@@ -1871,13 +1726,8 @@ void dufa (bool subtract)
             if (s)
               m2 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         e3 = e1;
       }
@@ -1891,12 +1741,6 @@ void dufa (bool subtract)
 
     if (ovf)
       {
-#ifdef HEX_MODE
-//        word72 signbit = m3 & sign_msk;
-//        m3 >>= shift_amt;
-//        m3 = (m3 & MASK71) | signbit;
-//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-//        e3 += 1;
         word72 s = m3 & SIGN72; // save the sign bit
         if (isHex ())
           {
@@ -1916,13 +1760,6 @@ void dufa (bool subtract)
             m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
           }
         e3 += 1;
-#else
-        word72 signbit = m3 & SIGN72;
-        m3 >>= 1;
-        m3 = (m3 & MASK71) | signbit;
-        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
-        e3 += 1;
-#endif
       }
 
     cpu.rA = (m3 >> 36) & MASK36;
@@ -2193,9 +2030,7 @@ static void dfdvX (bool bInvert)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
     word72 m1;
     int    e1;
     
@@ -2258,11 +2093,7 @@ static void dfdvX (bool bInvert)
         SET_I_NEG; // in case of divide fault
         if (m1 == SIGN72)
         {
-#ifdef HEX_MODE
             m1 >>= shift_amt;
-#else
-            m1 >>= 1;
-#endif
             e1 += 1;
         } else
             m1 = (~m1 + 1) & MASK72;
@@ -2275,11 +2106,7 @@ static void dfdvX (bool bInvert)
     {
         if (m2 == SIGN72)
         {
-#ifdef HEX_MODE
             m2 >>= shift_amt;
-#else
-            m2 >>= 1;
-#endif
             e2 += 1;
         } else
             m2 = (~m2 + 1) & MASK72;
@@ -2312,11 +2139,7 @@ static void dfdvX (bool bInvert)
 #endif
     while (m1 >= m2)
       {
-#ifdef HEX_MODE
         m1 >>= shift_amt;
-#else
-        m1 >>= 1;
-#endif
         e1 += 1;
       }
 
@@ -2960,9 +2783,7 @@ void dfcmp (void)
     
     // C(AQ)0,63
     CPTUR (cptUseE);
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
     word72 m1 = ((word72) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
@@ -2985,11 +2806,7 @@ void dfcmp (void)
     }
     else if (e1 < e2)
     {
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -2999,24 +2816,15 @@ void dfcmp (void)
                 m1 |= SIGN72;
         }
         
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
         //e3 = e2;
     }
     else
     {
         // e2 < e1;
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -3025,13 +2833,8 @@ void dfcmp (void)
             if (s)
                 m2 |= SIGN72;
         }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         //e3 = e1;
     }
@@ -3064,9 +2867,7 @@ void dfcmg (void)
     // values.
     
     CPTUR (cptUseE);
-#ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
-#endif
     // C(AQ)0,63
     word72 m1 = ((word72) (cpu.rA & MASK36) << 36) |
                 ((cpu.rQ) & 0777777777400LL);
@@ -3096,11 +2897,7 @@ void dfcmg (void)
 #ifdef L68
         cpu.ou.cycle = ou_GOA;
 #endif
-#ifdef HEX_MODE
         shift_count = abs(e2 - e1) * (int) shift_amt;
-#else
-        shift_count = abs(e2 - e1);
-#endif
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for( int n = 0; n < shift_count; n += 1)
           {
@@ -3109,24 +2906,15 @@ void dfcmg (void)
             if (s)
               m1 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
-#else
-        if (m1 == MASK72 && notallzeros == 1 && shift_count > 71)
-            m1 = 0;
-#endif
         m1 &= MASK72;
         //e3 = e2;
       }
     else
       {
         // e2 < e1;
-#ifdef HEX_MODE
         shift_count = abs(e1 - e2) * (int) shift_amt;
-#else
-        shift_count = abs(e1 - e2);
-#endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
@@ -3135,13 +2923,8 @@ void dfcmg (void)
             if (s)
               m2 |= SIGN72;
           }
-#ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
-#else
-        if (m2 == MASK72 && notallzeros == 1 && shift_count > 71)
-          m2 = 0;
-#endif
         m2 &= MASK72;
         //e3 = e1;
       }

@@ -108,11 +108,6 @@
 
 #define OSCAR
 
-// DPS8-M support Hex Mode Floating Point
-#ifdef DPS8M
-#define HEX_MODE
-#endif
-
 // Fix glibc incompatibility with new simh code.
 
 #if __WORDSIZE == 64
