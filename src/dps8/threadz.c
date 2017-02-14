@@ -90,6 +90,10 @@ void createCPUThread (uint cpuNum)
                     & p->cpuThreadArg);
     if (rc)
       sim_printf ("createCPUThread pthread_create %d\n", rc);
+
+    char nm [17];
+    sprintf (nm, "CPU %c", 'a' + cpuNum);
+    pthread_setname_np (p->cpuThread, nm);
   }
 
 #if 0
@@ -203,6 +207,10 @@ void createIOMThread (uint iomNum)
                     & p->iomThreadArg);
     if (rc)
       sim_printf ("createIOMThread pthread_create %d\n", rc);
+
+    char nm [17];
+    sprintf (nm, "IOM %c", 'a' + iomNum);
+    pthread_setname_np (p->iomThread, nm);
   }
 
 // Called by IOM thread to block until CIOC call
@@ -336,6 +344,10 @@ void createChnThread (uint iomNum, uint chnNum)
                     & p->chnThreadArg);
     if (rc)
       sim_printf ("createChnThread pthread_create %d\n", rc);
+
+    char nm [17];
+    sprintf (nm, "chn %u/%u", iomNum, chnNum);
+    pthread_setname_np (p->chnThread, nm);
   }
 
 // Called by channel thread to block until I/O command presented
