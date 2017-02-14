@@ -152,14 +152,14 @@ static FILE * hdbgOut = NULL;
 
 static void printMRead (struct hevt * p)
   {
-    fprintf (hdbgOut, "DBG(%lld)> CPU FINAL: Read %08o %012llo\n",
+    fprintf (hdbgOut, "DBG(%"PRId64")> CPU FINAL: Read %08o %012"PRIo64"\n",
                 p -> time, 
                 p -> memref . addr, p -> memref . data);
   }
 
 static void printMWrite (struct hevt * p)
   {
-    fprintf (hdbgOut, "DBG(%lld)> CPU FINAL: Write %08o %012llo\n",
+    fprintf (hdbgOut, "DBG(%"PRId64")> CPU FINAL: Write %08o %012"PRIo64"\n",
                 p -> time, 
                 p -> memref . addr, p -> memref . data);
   }
@@ -168,14 +168,14 @@ static void printTrace (struct hevt * p)
   {
     if (p -> trace . addrMode == ABSOLUTE_mode)
       {
-        fprintf (hdbgOut, "DBG(%lld)> CPU TRACE: %06o %o %012llo (%s)\n",
+        fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %06o %o %012"PRIo64" (%s)\n",
                     p -> time, 
                     p -> trace . ic, p -> trace . ring,
                     p -> trace . inst, disAssemble (p -> trace . inst));
       }
     else
       {
-        fprintf (hdbgOut, "DBG(%lld)> CPU TRACE: %05o:%06o %o %012llo (%s)\n",
+        fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %05o:%06o %o %012"PRIo64" (%s)\n",
                     p -> time, p -> trace . segno,
                     p -> trace . ic, p -> trace . ring,
                     p -> trace . inst, disAssemble (p -> trace . inst));
@@ -184,7 +184,7 @@ static void printTrace (struct hevt * p)
 
 static void printFault (struct hevt * p)
   {
-    fprintf (hdbgOut, "DBG(%lld)> CPU FAULT: Fault %d(0%o), sub %lld(0%llo), '%s'\n",
+    fprintf (hdbgOut, "DBG(%"PRId64")> CPU FAULT: Fault %d(0%o), sub %"PRId64"(0%"PRIo64"), '%s'\n",
                 p -> time, 
                 p -> fault.faultNumber, p -> fault.faultNumber,
                 p -> fault.subFault.bits, p -> fault.subFault.bits,
@@ -247,7 +247,7 @@ void hdbgPrint (void)
   }
 
 // set buffer size 
-t_stat hdbg_size (UNUSED int32 arg, char * buf)
+t_stat hdbg_size (UNUSED int32 arg, const char * buf)
   {
     hdbgSize = strtoul (buf, NULL, 0);
     sim_printf ("hdbg size set to %ld\n", hdbgSize);
@@ -256,7 +256,7 @@ t_stat hdbg_size (UNUSED int32 arg, char * buf)
   }
 #else
 #include "dps8_utils.h"
-t_stat hdbg_size (UNUSED int32 arg, UNUSED char * buf)
+t_stat hdbg_size (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("hdbg not enabled; ignoring\n");
     return SCPE_OK;

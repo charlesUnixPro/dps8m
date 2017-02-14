@@ -1,3 +1,76 @@
+2016-12-13
+
+Building under MSYS2 
+
+    Downloaded https://msys2.github.io/ x86_64 installer
+
+       pacman -Sy pacman
+       ^D
+
+    Start -> All programs -> MSYS2 64 bit -> MSYS2 MSYS
+
+       pacman -Syu
+        ^D
+
+    Start -> All programs -> MSYS2 64 bit -> MSYS2 MSYS
+
+       pacman -Su
+
+       pacman -S git
+
+       git clone ssh://git.code.sf.net/p/dps8m/code dps8m-code
+       git clone https://github.com/libuv/libuv.git
+
+       pacman -S mingw-w64-x86_64-gcc
+       pacman -S mingw-w64-x86_64-binutils
+       pacman -S mingw-w64-x86_64-libtool
+       pacman -S mingw-w64-x86_64-make
+       pacman -S mingw-w64-x86_64-dlfcn
+       pacman -S mingw-w64-x86_64-diffutils
+       pacman -S mingw-w64-x86_64-gettext
+       pacman -S mingw-w64-x86_64-libgnurx
+       pacman -S mingw-w64-x86_64-binutils
+       pacman -S automake
+       pacman -S autoconf
+       ^D
+
+    Start -> All programs -> MSYS2 64 bit -> MSYS2 MINGW 64 bit
+
+      cd libuv
+      sh autogen.sh
+      ./configure
+      <Edit Makefile; at line 4460, change $(MAKE) to mingw32-make.exe>
+      mingw32-make.exe
+
+      cd dps8-code
+      git checkout rc7
+      git pull
+      mingw32-make.exe
+
+    In a Command shell:
+
+      cd <wherever>\QuickStart_MR12.6e_rc7a1
+      c:\msys64\home\Admin\dps8m-code\src\dps8\dps8.exe MR12.6e_boot.ini
+
+
+
+2016-12-08
+
+Crossbuild for MinGW64 from Fedora 23
+
+   git clone git@github.com:libuv/libuv.git
+   cd libuv
+   sh autogen.sh
+   #./configure --build=x86_64-w64-mingw32-gcc
+   mingw64-configure
+   sudo make install
+
+   cd
+   git clone ssh://git.code.sf.net/p/dps8m/code dps8m-code
+   cd dps8m-code
+   make clean all CROSS=MINGW64
+
+
 2014-11-11
 
 Alpha 1.0

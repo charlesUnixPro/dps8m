@@ -94,5 +94,6 @@ struct cables_t
 
 extern struct cables_t * cables;
 
-t_stat sys_cable (UNUSED int32 arg, char * buf);
+t_stat sys_cable (UNUSED int32 arg, const char * buf);
+t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf);
 void sysCableInit (void);

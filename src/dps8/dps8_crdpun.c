@@ -49,44 +49,44 @@
 #define N_CRDPUN_UNITS 1 // default
 
 static t_stat crdpun_reset (DEVICE * dptr);
-static t_stat crdpun_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdpun_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat crdpun_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdpun_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat crdpun_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat crdpun_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat crdpun_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat crdpun_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT crdpun_unit [N_CRDPUN_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
 #define CRDPUN_UNIT_NUM(uptr) ((uptr) - crdpun_unit)
 
 static DEBTAB crdpun_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 #define UNIT_WATCH UNIT_V_UF
@@ -146,7 +146,8 @@ DEVICE crdpun_dev = {
     NULL,         // help
     NULL,         // attach help
     NULL,         // attach context
-    NULL          // description
+    NULL,         // description
+    NULL
 };
 
 #define MAX_DEV_NAME_LEN 64
@@ -491,7 +492,7 @@ static int crdpun_cmd (uint iomUnitIdx, uint chan)
 #if 1
 sim_printf ("tally %d\n", p-> DDCW_TALLY);
 for (uint i = 0; i < p -> DDCW_TALLY; i ++)
-  sim_printf ("  %012llo\n", buffer [i]);
+  sim_printf ("  %012"PRIo64"\n", buffer [i]);
 sim_printf ("\n");
 
 for (uint row = 0; row < 12; row ++)
@@ -596,13 +597,13 @@ int crdpun_iom_cmd (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static t_stat crdpun_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat crdpun_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of CRDPUN units in system is %d\n", crdpun_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDPUN_UNITS_MAX)
@@ -612,7 +613,7 @@ static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * 
   }
 
 static t_stat crdpun_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED void * desc)
+                                       UNUSED int val, UNUSED const void * desc)
   {
     long n = CRDPUN_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDPUN_UNITS_MAX)
@@ -622,7 +623,7 @@ static t_stat crdpun_show_device_name (UNUSED FILE * st, UNIT * uptr,
   }
 
 static t_stat crdpun_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED char * cptr, UNUSED void * desc)
+                                    UNUSED const char * cptr, UNUSED void * desc)
   {
     long n = CRDPUN_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDPUN_UNITS_MAX)

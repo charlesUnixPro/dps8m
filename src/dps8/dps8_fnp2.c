@@ -40,13 +40,13 @@
 #include "sim_tmxr.h"
 #include <regex.h>
 
-static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetConfig (UNIT * uptr, int value, char * cptr, void * desc);
-static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetNUnits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat fnpSetIPCname (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat fnpAttach (UNIT * uptr, char * cptr);
+static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
+static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetNUnits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetIPCname (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpAttach (UNIT * uptr, const char * cptr);
 static t_stat fnpDetach (UNIT *uptr);
 
 static int findMbx (uint fnpUnitIdx);
@@ -54,34 +54,34 @@ static int findMbx (uint fnpUnitIdx);
 #define N_FNP_UNITS 1 // default
 
 UNIT fnp_unit [N_FNP_UNITS_MAX] = {
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
 };
 
 static DEBTAB fnpDT [] =
   {
-    { "TRACE", DBG_TRACE },
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "TRACE", DBG_TRACE, NULL },
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 static MTAB fnpMod [] =
@@ -152,11 +152,23 @@ DEVICE fnpDev = {
     NULL,             // help
     NULL,             // help context
     NULL,             // device description
+    NULL
 };
 
 static int telnet_port = 6180;
 
 struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+
+static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    * data = M [addr] & DMASK;
+  }
+
+static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    M [addr] = data & DMASK;
+  }
+
 
 
 //
@@ -204,7 +216,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     uint l66AddressPage = l66Address / 1024u;
 
     word36 ptw;
-    core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+    fnp_core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
     return addr;
@@ -252,21 +264,34 @@ static t_stat fnpReset (DEVICE * dptr)
 static void dmpmbx (uint mailboxAddress)
   {
     struct mailbox * mbxp = (struct mailbox *) & M [mailboxAddress];
-    sim_printf ("dia_pcw          %012llo\n", mbxp -> dia_pcw);
-    sim_printf ("term_inpt_mpx_wd %012llo\n", mbxp -> term_inpt_mpx_wd);
-    sim_printf ("num_in_use       %012llo\n", mbxp -> num_in_use);
-    sim_printf ("mbx_used_flags   %012llo\n", mbxp -> mbx_used_flags);
+    sim_printf ("dia_pcw            %012"PRIo64"\n", mbxp -> dia_pcw);
+    sim_printf ("mailbox_requests   %012"PRIo64"\n", mbxp -> mailbox_requests);
+    sim_printf ("term_inpt_mpx_wd   %012"PRIo64"\n", mbxp -> term_inpt_mpx_wd);
+    sim_printf ("last_mbx_req_count %012"PRIo64"\n", mbxp -> last_mbx_req_count);
+    sim_printf ("num_in_use         %012"PRIo64"\n", mbxp -> num_in_use);
+    sim_printf ("mbx_used_flags     %012"PRIo64"\n", mbxp -> mbx_used_flags);
     for (uint i = 0; i < 8; i ++)
       {
-        sim_printf ("mbx %d\n", i);
+        sim_printf ("CS  mbx %d\n", i);
         struct dn355_submailbox * smbxp = & (mbxp -> dn355_sub_mbxes [i]);
-        sim_printf ("    word1        %012llo\n", smbxp -> word1);
-        sim_printf ("    word2        %012llo\n", smbxp -> word2);
-        sim_printf ("    command_data %012llo\n", smbxp -> command_data [0]);
-        sim_printf ("                 %012llo\n", smbxp -> command_data [1]);
-        sim_printf ("                 %012llo\n", smbxp -> command_data [2]);
-        sim_printf ("    word6        %012llo\n", smbxp -> word6);
+        sim_printf ("    word1        %012"PRIo64"\n", smbxp -> word1);
+        sim_printf ("    word2        %012"PRIo64"\n", smbxp -> word2);
+        sim_printf ("    command_data %012"PRIo64"\n", smbxp -> command_data [0]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> command_data [1]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> command_data [2]);
+        sim_printf ("    word6        %012"PRIo64"\n", smbxp -> word6);
       }
+    for (uint i = 0; i < 4; i ++)
+      {
+        sim_printf ("FNP mbx %d\n", i);
+        struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [i]);
+        sim_printf ("    word1        %012"PRIo64"\n", smbxp -> word1);
+        sim_printf ("    word2        %012"PRIo64"\n", smbxp -> word2);
+        sim_printf ("    mystery      %012"PRIo64"\n", smbxp -> mystery [0]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> mystery [1]);
+        sim_printf ("                 %012"PRIo64"\n", smbxp -> mystery [2]);
+      }
+        
   }
 
 //
@@ -352,7 +377,7 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            //sim_printf ("XXX dial_out %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            //sim_printf ("XXX dial_out %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
             fnpuv_dial_out (decoded.devUnitIdx, decoded.slot_no, command_data0, command_data1, command_data2);
           }
           break;
@@ -362,19 +387,19 @@ static int wcd (void)
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX line_control %d %012llo %012llo %012llo", decoded.slot_no, command_data0, command_data1, command_data2);
+            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
 #if 0
-        sim_printf ("received line_control %d %012llo %012llo %012llo\n", p1, d1, d2, d3);
-        sim_printf ("  dce_or_dte  %llo\n", getbits36 (d1, 0, 1));
-        sim_printf ("  lap_or_lapb %llo\n", getbits36 (d1, 1, 1));
-        sim_printf ("  disc_first  %llo\n", getbits36 (d1, 2, 1));
-        sim_printf ("  trace_off   %llo\n", getbits36 (d1, 3, 1));
-        sim_printf ("  activation_order %09llo\n", getbits36 (d1, 9, 9));
-        sim_printf ("  frame_size %llo %lld.\n", getbits36 (d1, 18, 18), getbits36 (d1, 18, 18));
-        sim_printf ("  K  %llo %lld.\n", getbits36 (d2,  0, 9), getbits36 (d2,  0, 9));
-        sim_printf ("  N2 %llo %lld.\n", getbits36 (d2,  9, 9), getbits36 (d2,  9, 9));
-        sim_printf ("  T1 %llo %lld.\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
-        sim_printf ("  T3 %llo %lld.\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
+        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
+        sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
+        sim_printf ("  lap_or_lapb %"PRIo64"\n", getbits36 (d1, 1, 1));
+        sim_printf ("  disc_first  %"PRIo64"\n", getbits36 (d1, 2, 1));
+        sim_printf ("  trace_off   %"PRIo64"\n", getbits36 (d1, 3, 1));
+        sim_printf ("  activation_order %09"PRIo64"\n", getbits36 (d1, 9, 9));
+        sim_printf ("  frame_size %"PRIo64" %"PRId64".\n", getbits36 (d1, 18, 18), getbits36 (d1, 18, 18));
+        sim_printf ("  K  %"PRIo64" %"PRId64".\n", getbits36 (d2,  0, 9), getbits36 (d2,  0, 9));
+        sim_printf ("  N2 %"PRIo64" %"PRId64".\n", getbits36 (d2,  9, 9), getbits36 (d2,  9, 9));
+        sim_printf ("  T1 %"PRIo64" %"PRId64".\n", getbits36 (d2, 18, 9), getbits36 (d2, 18, 9));
+        sim_printf ("  T3 %"PRIo64" %"PRId64".\n", getbits36 (d2, 27, 9), getbits36 (d2, 27, 9));
 #endif
 
           }
@@ -410,7 +435,7 @@ static int wcd (void)
                 for (uint i = 0; i < echoTableLen; i ++)
                   {
                     echoTable [i] = M [dataAddrPhys + i];
-                    //sim_printf ("   %012llo\n", echoTable [i]);
+                    //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
                   }
               }
             for (int i = 0; i < 256; i ++)
@@ -418,7 +443,7 @@ static int wcd (void)
                 int wordno = i / 32;
                 int bitno = i % 32;
                 int bitoffset = bitno > 16 ? 35 - bitno : 33 - bitno; 
-                linep->echnego[i] = !!(echoTable[wordno] & (1 << bitoffset));
+                linep->echnego[i] = !!(echoTable[wordno] & (1u << bitoffset));
               }
             linep->echnego_len = data_len;
           }
@@ -438,7 +463,8 @@ static int wcd (void)
 
         case 27: // init_echo_negotiation
           {
-            linep -> send_output = true;
+            //linep -> send_output = true;
+            linep -> send_output = SEND_OUTPUT_DELAY;
             linep -> ack_echnego_init = true;
           }
           break;
@@ -536,7 +562,8 @@ static int wcd (void)
                   {
                     //sim_printf ("fnp dumpoutput\n");
                     // XXX ignored
-                    linep -> send_output = true;
+                    //linep -> send_output = true;
+                    linep -> send_output = SEND_OUTPUT_DELAY;
                   }
                   break;
 
@@ -872,7 +899,31 @@ word36 pad;
     // Set the TIMW
 
     putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, decoded.cell, 1);
+#ifdef FNPDBG
+sim_printf ("wcd sets the TIMW??\n");
+#endif
     return 0;
+  }
+
+static void notifyCS (int mbx, int fnpno, int lineno)
+  {
+#ifdef FNPDBG
+sim_printf ("notifyCS mbx %d\n", mbx);
+#endif
+    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+
+    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
+    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
+    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
+    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
+    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
+
+    fudp->fnpMBXinUse [mbx] = true;
+    // Set the TIMW
+    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
+    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
   }
 
 static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
@@ -882,21 +933,12 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
-
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
     putbits36_9 (& smbxp -> word2, 18, 70); // op_code ack_echnego_init
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
 
-    fudp->fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
@@ -906,21 +948,12 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
-
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
     putbits36_9 (& smbxp -> word2, 18, 0101); // op_code cmd_data_len
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
 
-    fudp->fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
@@ -929,13 +962,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
-
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
-
+//sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
     putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
     putbits36_9 (& smbxp -> word2, 18, 0102); // op_code input_in_mailbox
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
@@ -968,7 +995,7 @@ sim_printf ("\n");
           putbits36_9 (& v, 18, linep->buffer [i + 2]);
         if (i + 3 < linep->nPos)
           putbits36_9 (& v, 27, linep->buffer [i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         smbxp -> mystery [j ++] = v;
       }
 
@@ -982,20 +1009,17 @@ sim_printf ("\n");
 
 
 #if 0
-    sim_printf ("    %012llo\n", smbxp -> word1);
-    sim_printf ("    %012llo\n", smbxp -> word2);
+    sim_printf ("    %012"PRIo64"\n", smbxp -> word1);
+    sim_printf ("    %012"PRIo64"\n", smbxp -> word2);
     for (int i = 0; i < 26; i ++)
-      sim_printf ("    %012llo\n", smbxp -> mystery [i]);
+      sim_printf ("    %012"PRIo64"\n", smbxp -> mystery [i]);
     sim_printf ("interrupting!\n"); 
 #endif
 
-    fudp->fnpMBXinUse [mbx] = true;
     fudp->lineWaiting [mbx] = true;
     fudp->fnpMBXlineno [mbx] = lineno;
     linep->waitForMbxDone=true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
@@ -1005,12 +1029,6 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     //sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
-
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0112); // op_code accept_input
@@ -1033,11 +1051,8 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
     putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
 
-    fudp -> fnpMBXinUse [mbx] = true;
     fudp -> fnpMBXlineno [mbx] = lineno;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
@@ -1047,43 +1062,28 @@ static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
-
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0113); // op_code line_break
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    fudp -> fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
   {
+#ifdef FNPDBG
+sim_printf ("send_output\n");
+#endif
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
-
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0105); // op_code send_output
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    fudp -> fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
@@ -1094,19 +1094,11 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 82); // op_code acu_dial_failure
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    fudp -> fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
@@ -1117,11 +1109,6 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 64); // op_code accept_new_terminal
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
@@ -1129,10 +1116,7 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     smbxp -> mystery [0] = 1; // (word36) termType;  XXX
     smbxp -> mystery [1] = 0; // (word36) chanBaud;  XXX
 
-    fudp -> fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
@@ -1143,19 +1127,11 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
-    putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
-    putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
     putbits36_9 (& smbxp -> word2, 18, 0114); // op_code wru_timeout
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    fudp -> fnpMBXinUse [mbx] = true;
-    // Set the TIMW
-    putbits36_1 (& mbxp -> term_inpt_mpx_wd, (uint) mbx + 8, 1);
-    send_terminate_interrupt ((uint) cables -> cablesFromIomToFnp [fnpno] . iomUnitIdx, (uint) cables -> cablesFromIomToFnp [fnpno] . chan_num);
+    notifyCS (mbx, fnpno, lineno);
   }
 
 static void fnp_wtx_output (uint tally, uint dataAddr)
@@ -1176,7 +1152,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     {
       uint wordAddr = virtToPhys (ptPtr, dataAddr + i);
       word = M [wordAddr];
-      sim_printf (" %012llo\n", word);
+      sim_printf (" %012"PRIo64"\n", word);
     }
 }
 #endif
@@ -1204,7 +1180,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
       bcnt ++;
       if (bcnt == 9)
         {
-          sim_printf ("%012llo\n%012llo\n", hi, lo);
+          sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", hi, lo);
           hi = lo = bcnt = 0;
         }
     }
@@ -1230,7 +1206,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
       bcnt ++;
       if (bcnt == 9)
         {
-          sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+          sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
           ac = bcnt = 0;
         }
     }
@@ -1241,7 +1217,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
           ac <<= 8;
           bcnt ++;
         }
-      sim_printf ("%012llo\n%012llo\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
+      sim_printf ("%012"PRIo64"\n%012"PRIo64"\n", (word36) ((ac >> 36)) & MASK36, (word36) (ac & MASK36));
     }
  }
 #endif
@@ -1258,7 +1234,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
              lastWordOff = wordOff;
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
              word = M [wordAddr];
-//sim_printf ("   %012llo\n", M [wordAddr]);
+//sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
@@ -1307,6 +1283,7 @@ static int wtx (void)
 // op_code is 012
     uint dcwAddr = getbits36_18 (decoded.smbxp -> word6, 0);
     uint dcwCnt = getbits36_9 (decoded.smbxp -> word6, 27);
+    //uint sent = 0;
 
     // For each dcw
     for (uint i = 0; i < dcwCnt; i ++)
@@ -1317,7 +1294,7 @@ static int wtx (void)
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw = M [dcwAddrPhys];
-        //sim_printf ("  %012llo\n", dcw);
+        //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1326,14 +1303,25 @@ static int wtx (void)
         if (! tally)
           continue;
         fnp_wtx_output (tally, dataAddr);
+        //sent += tally;
       } // for each dcw
 
     // Set the TIMW
 
     putbits36_1 (& decoded.mbxp -> term_inpt_mpx_wd, decoded.cell, 1);
 
-    decoded.fudp->MState.line[decoded.slot_no].send_output = true;
-
+#if 0
+    //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+    // send is the number of characters sent; 9600 baud is 100 cps, and
+    // the FNP is polled at about 100HZ, or about the rate it takes to send
+    // a character.
+    // 100 CPS is too slow; bump up to 1000 CPS
+    sent /= 10;
+    sent ++; // Make sure it isn't zero.
+    decoded.fudp->MState.line[decoded.slot_no].send_output = sent;
+#else
+    decoded.fudp->MState.line[decoded.slot_no].send_output = SEND_OUTPUT_DELAY;
+#endif
     return 0;
   }
 
@@ -1383,7 +1371,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         M [addr0 ++] = v;
       }
 
@@ -1398,7 +1386,7 @@ static void fnp_rtx_input_accepted (void)
           putbits36_9 (& v, 18, data [tally0 + i + 2]);
         if (i + 3 < tally1)
           putbits36_9 (& v, 27, data [tally0 + i + 3]);
-//sim_printf ("%012llo\n", v);
+//sim_printf ("%012"PRIo64"\n", v);
         M [addr1 ++] = v;
       }
 
@@ -1433,7 +1421,9 @@ static int interruptL66_CS_to_FNP (void)
     word36 word1 = decoded.smbxp -> word1;
     decoded.slot_no = getbits36_6 (word1, 12);
 
-
+#ifdef FNPDBG
+sim_printf ("io_cmd %u\n", io_cmd);
+#endif
     switch (io_cmd)
       {
 #if 0
@@ -1488,11 +1478,11 @@ static int interruptL66_FNP_to_CS (void)
     decoded.fsmbxp = & (decoded.mbxp -> fnp_sub_mbxes [mbx]);
 #if 0
     sim_printf ("fnp smbox %d update\n", decoded.cell);
-    sim_printf ("    word1 %012llo\n", decoded.fsmbxp -> word1);
-    sim_printf ("    word2 %012llo\n", decoded.fsmbxp -> word2);
-    sim_printf ("    word3 %012llo\n", decoded.fsmbxp -> mystery[0]);
-    sim_printf ("    word4 %012llo\n", decoded.fsmbxp -> mystery[1]);
-    sim_printf ("    word5 %012llo\n", decoded.fsmbxp -> mystery[2]);
+    sim_printf ("    word1 %012"PRIo64"\n", decoded.fsmbxp -> word1);
+    sim_printf ("    word2 %012"PRIo64"\n", decoded.fsmbxp -> word2);
+    sim_printf ("    word3 %012"PRIo64"\n", decoded.fsmbxp -> mystery[0]);
+    sim_printf ("    word4 %012"PRIo64"\n", decoded.fsmbxp -> mystery[1]);
+    sim_printf ("    word5 %012"PRIo64"\n", decoded.fsmbxp -> mystery[2]);
 #endif
     word36 word2 = decoded.fsmbxp -> word2;
     //uint cmd_data_len = getbits36_9 (word2, 9);
@@ -1535,7 +1525,8 @@ static int interruptL66_FNP_to_CS (void)
                     //sim_printf ("  outputBufferThreshold %d\n", outputBufferThreshold);
 
                     // Prime the pump
-                    decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+                    //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
+                    decoded.fudp->MState.line[decoded.slot_no].send_output = SEND_OUTPUT_DELAY;
                   }
                   break;
 
@@ -1637,15 +1628,21 @@ static int interruptL66_CS_done (void)
       }
     else
       {
+#ifdef FNPDBG
+sim_printf ("Multics marked cell %d (mbx %d) as unused; was %o\n", decoded.cell, mbx, decoded.fudp -> fnpMBXinUse [mbx]);
+#endif
         decoded.fudp -> fnpMBXinUse [mbx] = false;
-        //sim_printf ("Multics marked cell %d (mbx %d) as unused\n", decoded.cell, mbx);
         if (decoded.fudp->lineWaiting[mbx])
           {
             struct t_line * linep = & fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
-            //sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
+#ifdef FNPDBG
+sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
+#endif
             linep->waitForMbxDone = false;
           }
-        //sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpMBXinUse [1], decoded.fudp->fnpMBXinUse [2], decoded.fudp->fnpMBXinUse [3]);
+#ifdef FNPDBG
+sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpMBXinUse [1], decoded.fudp->fnpMBXinUse [2], decoded.fudp->fnpMBXinUse [3]);
+#endif
       }
     return 0;
   }
@@ -1695,6 +1692,9 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 //   12-15 Multics is done with mbx 8-11  (n - 4).
 
     decoded.cell = getbits36_6 (dia_pcw, 24);
+#ifdef FNPDBG
+sim_printf ("CS interrupt %u\n", decoded.cell);
+#endif
     if (decoded.cell < 8)
       {
         interruptL66_CS_to_FNP ();
@@ -2010,8 +2010,10 @@ void fnpProcessEvent (void)
 
             if (linep -> send_output)
               {
-                fnp_rcd_send_output (mbx, fnpno, lineno);
-                linep -> send_output = false;
+                //linep -> send_output = false;
+                linep->send_output --;
+                if (linep->send_output == 0)
+                  fnp_rcd_send_output (mbx, fnpno, lineno);
               }
 
             // Need to send a 'line_break' command to CS?
@@ -2050,7 +2052,8 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_ack_echnego_init (mbx, fnpno, lineno);
                 linep -> ack_echnego_init = false;
-                linep -> send_output = true;
+                //linep -> send_output = true;
+                linep -> send_output = SEND_OUTPUT_DELAY;
               }
 
             // Need to send an 'line_disconnected' command to CS?
@@ -2106,6 +2109,9 @@ void fnpProcessEvent (void)
                     if (linep->nPos > 100)
                       {
                         fnp_rcd_accept_input (mbx, fnpno, lineno);
+#ifdef FNPDBG
+sim_printf ("accept_input\n");
+#endif
                         //linep->input_break = false;
                         linep->input_reply_pending = true;
                         // accept_input cleared below
@@ -2113,6 +2119,9 @@ void fnpProcessEvent (void)
                     else
                       {
                         fnp_rcd_input_in_mailbox (mbx, fnpno, lineno);
+#ifdef FNPDBG
+sim_printf ("input_in_mailbox\n");
+#endif
                         linep->nPos = 0;
                         // accept_input cleared below
                       }
@@ -2154,7 +2163,7 @@ static void fnpcmdBootload (uint devUnitIdx)
               "The FNP has been restarted\r\n");
           }
       }
-
+    fnpuvInit (telnet_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
@@ -2177,7 +2186,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
-//sim_printf ("mbx %08o:%012llo\n", fudp -> mailboxAddress, dia_pcw);
+//sim_printf ("mbx %08o:%012"PRIo64"\n", fudp -> mailboxAddress, dia_pcw);
 
 // Mailbox word 0:
 //
@@ -2287,6 +2296,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     if (command == 000) // reset
       {
+#ifdef FNPDBG
+sim_printf ("reset??\n");
+#endif
       }
     else if (command == 072) // bootload
       {
@@ -2330,9 +2342,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
         //word24 L66Addr = (word24) getbits36_18 (dia_pcw, 0);
         //sim_printf ("L66 xfer\n");
-        //sim_printf ("PCW  %012llo\n", dia_pcw);
+        //sim_printf ("PCW  %012"PRIo64"\n", dia_pcw);
         //sim_printf ("L66Addr %08o\n", L66Addr);
-        //sim_printf ("M[] %012llo\n", M[L66Addr]);
+        //sim_printf ("M[] %012"PRIo64"\n", M[L66Addr]);
 
         // 'dump_mpx d'
         //L66 xfer
@@ -2368,6 +2380,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
         // Since the data is marked 'paged', and I don't understand the
         // the paging mechanism or parameters, I'm going to punt here and
         // not actually transfer any data.
+#ifdef FNPDBG
+sim_printf ("data xfer??\n");
+#endif
 
       }
     else
@@ -2378,19 +2393,22 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     if (ok)
       {
-        core_write (fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
+#ifdef FNPDBG
+dmpmbx (fudp->mailboxAddress);
+#endif
+        fnp_core_write (fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
+        fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
       }
     else
       {
         dmpmbx (fudp->mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
+        fnp_core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
       }
   }
 
@@ -2422,6 +2440,9 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
             p -> stati = 04501;
             sim_debug (DBG_ERR, & fnpDev,
                        "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+#ifdef FNPDBG
+sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+#endif
             break;
           }
       }
@@ -2461,14 +2482,14 @@ int fnpIOMCmd (uint iomUnitIdx, uint chan)
 
 
 static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of FNP units in system is %d\n", fnpDev . numunits);
     return SCPE_OK;
   }
 
 static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             char * cptr, UNUSED void * desc)
+                             const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_FNP_UNITS_MAX)
@@ -2480,7 +2501,7 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
 
 //    ATTACH FNPn llll:w.x.y.z:rrrr - connect via UDP to an external FNP
 
-static t_stat fnpAttach (UNIT * uptr, char * cptr)
+static t_stat fnpAttach (UNIT * uptr, const char * cptr)
   {
     char * pfn;
 
@@ -2518,7 +2539,7 @@ static t_stat fnpDetach (UNIT * uptr)
 
 
 static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
-                              UNUSED int val, UNUSED void * desc)
+                              UNUSED int val, UNUSED const void * desc)
   {   
     long n = FNP_UNIT_IDX (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
@@ -2528,7 +2549,7 @@ static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
   }   
 
 static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
-                             UNUSED char * cptr, UNUSED void * desc)
+                             UNUSED const char * cptr, UNUSED void * desc)
   {
     long n = FNP_UNIT_IDX (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
@@ -2544,10 +2565,10 @@ static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
-                             UNUSED void * desc)
+                             UNUSED const void * desc)
   {
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
-    if (fnpUnitIdx >= fnpDev . numunits)
+    if (fnpUnitIdx >= (long) fnpDev.numunits)
       {
         sim_debug (DBG_ERR, & fnpDev, 
                    "fnpShowConfig: Invalid unit number %ld\n", fnpUnitIdx);
@@ -2570,7 +2591,7 @@ static config_list_t fnp_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED void * desc)
+static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint fnpUnitIdx = (uint) FNP_UNIT_IDX (uptr);
     if (fnpUnitIdx >= fnpDev . numunits)
@@ -2614,7 +2635,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, char * cptr, UNUSED v
     return SCPE_OK;
   }
 
-t_stat fnpLoad (UNUSED int32 arg, char * buf)
+t_stat fnpLoad (UNUSED int32 arg, const char * buf)
   {
     FILE * fileref = fopen (buf, "r");
     if (! fileref)
@@ -2659,10 +2680,12 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
               fnpUnitData[devnum].MState.line[linenum].service = service_autocall;                   
             else if (strcmp (second, "slave") == 0)
               fnpUnitData[devnum].MState.line[linenum].service = service_slave;                   
+            else if (strcmp (second, "offline") == 0)
+              fnpUnitData[devnum].MState.line[linenum].service = service_undefined;                   
             else
               sim_printf ("service type '%s' not recognized; skipping\n", second);
           }
-// This is not part of the CMF language, but I need away to set some addition
+// This is not part of the CMF language, but I need away to set some additional
 // parameters
         else if (havename && second && strcmp(first, "port") == 0)
         {
@@ -2684,6 +2707,26 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
           {
             break;
           }
+
+
+// Ingored
+        else if (strcmp (first, "Service") == 0 ||
+                 strcmp (first, "Charge") == 0 ||
+                 strcmp (first, "Terminal_type") == 0 ||
+                 strcmp (first, "Line_type") == 0 ||
+                 strcmp (first, "Baud") == 0 ||
+                 strcmp (first, "FNP_required_up_time") == 0 ||
+                 strcmp (first, "FNP") == 0 ||
+                 strcmp (first, "type") == 0 ||
+                 strcmp (first, "memory") == 0 ||
+                 strcmp (first, "lsla") == 0 ||
+                 strcmp (first, "hsla") == 0 ||
+                 strcmp (first, "image") == 0 ||
+                 strcmp (first, "service") == 0 ||
+                 strcmp (first, "attributes") == 0)
+          {
+            // Ignored
+          }
         else
           sim_printf ("fnpLoad '%s' not recognized; skipping\n", buff);
       }     
@@ -2691,16 +2734,24 @@ t_stat fnpLoad (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-t_stat fnpServerPort (UNUSED int32 arg, char * buf)
+t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 1 || n > 65535)
       return SCPE_ARG;
     telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
+    //fnpuvInit (telnet_port);
+    return SCPE_OK;
+  }
+
+t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf)
+  {
+    sim_printf ("FNP force start\n");
     fnpuvInit (telnet_port);
     return SCPE_OK;
   }
+
 
 #define PROMPT  "HSLA Port ("
 

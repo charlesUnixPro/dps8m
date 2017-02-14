@@ -28,7 +28,9 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#ifndef __MINGW64__
 #include "dps8_absi.h"
+#endif
 #include "dps8_cable.h"
 #include "dps8_utils.h"
 #ifdef M_SHARED
@@ -569,6 +571,7 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
  
+#ifndef __MINGW64__
 //
 // String a cable from a ABSI to an IOM
 //
@@ -607,7 +610,7 @@ static t_stat cable_absi (int absi_unit_num, int iomUnitIdx, int chan_num,
 
     return SCPE_OK;
   }
- 
+#endif 
 
 static int getval (char * * save, char * text)
   {
@@ -648,7 +651,7 @@ static int getval (char * * save, char * text)
 //
 
 
-t_stat sys_cable (UNUSED int32 arg, char * buf)
+t_stat sys_cable (UNUSED int32 arg, const char * buf)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
@@ -723,10 +726,12 @@ t_stat sys_cable (UNUSED int32 arg, char * buf)
       {
         rc = cable_urp (n1, n2, n3, n4);
       }
+#ifndef __MINGW64__
     else if (strcasecmp (name, "ABSI") == 0)
       {
         rc = cable_absi (n1, n2, n3, n4);
       }
+#endif
     else
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
@@ -739,22 +744,8 @@ exit:
     return rc;
   }
 
-void sysCableInit (void)
+static void cable_init (void)
   {
-    if (! cables)
-      {
-#ifdef M_SHARED
-        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
-#else
-        cables = (struct cables_t *) malloc (sizeof (struct cables_t));
-#endif
-        if (cables == NULL)
-          {
-            sim_printf ("create_shm cables failed\n");
-            sim_err ("create_shm cables failed\n");
-          }
-      }
-
     // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (cables, 0, sizeof (struct cables_t));
     for (int i = 0; i < N_MT_UNITS_MAX; i ++)
@@ -779,4 +770,33 @@ void sysCableInit (void)
       cables -> cablesFromIomToUrp [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_ABSI_UNITS_MAX; i ++)
       cables -> cablesFromIomToAbsi [i] . iomUnitIdx = -1;
+    for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
+      cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
+  }
+
+t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf)
+  {
+    cable_init ();
+    scu_init ();
+    return SCPE_OK;
+  }
+
+void sysCableInit (void)
+  {
+    if (! cables)
+      {
+#ifdef M_SHARED
+        cables = (struct cables_t *) create_shm ("cables", getsid (0), sizeof (struct cables_t));
+#else
+        cables = (struct cables_t *) malloc (sizeof (struct cables_t));
+#endif
+        if (cables == NULL)
+          {
+            sim_printf ("create_shm cables failed\n");
+            sim_err ("create_shm cables failed\n");
+          }
+      }
+
+    // Initialize data structures
+    cable_init ();
   }

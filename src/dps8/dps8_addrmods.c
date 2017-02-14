@@ -37,9 +37,9 @@
 // return contents of register indicated by Td
 //
 
-static word18 getCr (word4 Tdes, bool * directOperandFlag, word36 * directOperand)
+static word18 getCr (word4 Tdes)
   {
-    * directOperandFlag = false;
+    cpu.ou.directOperandFlag = false;
 
     if (Tdes == 0)
       return 0;
@@ -59,13 +59,13 @@ static word18 getCr (word4 Tdes, bool * directOperandFlag, word36 * directOperan
           return GETHI (cpu . rQ);
 
         case TD_DU: // none; operand has the form y || (00...0)18
-          * directOperand = 0;
-          SETHI (* directOperand, cpu . rY);
-          * directOperandFlag = true;
+          cpu.ou.directOperand = 0;
+          SETHI (cpu.ou.directOperand, cpu . rY);
+          cpu.ou.directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
-                    "getCr(TD_DU): rY=%06o directOperand=%012llo\n",
-                    cpu . rY, * directOperand);
+                    "getCr(TD_DU): rY=%06o directOperand=%012"PRIo64"\n",
+                    cpu . rY, cpu.ou.directOperand);
 
           return 0;
 
@@ -79,13 +79,13 @@ static word18 getCr (word4 Tdes, bool * directOperandFlag, word36 * directOperan
             return GETLO (cpu . rQ);
 
         case TD_DL: // none; operand has the form (00...0)18 || y
-            * directOperand = 0;
-            SETLO (* directOperand, cpu . rY);
-            * directOperandFlag = true;
+            cpu.ou.directOperand = 0;
+            SETLO (cpu.ou.directOperand, cpu . rY);
+            cpu.ou.directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "getCr(TD_DL): rY=%06o directOperand=%012llo\n",
-                       cpu . rY, * directOperand);
+                       "getCr(TD_DL): rY=%06o directOperand=%012"PRIo64"\n",
+                       cpu . rY, cpu.ou.directOperand);
 
             return 0;
       }
@@ -189,10 +189,10 @@ static char * operandSTR (void)
     switch (n)
       {
         case 1:
-          sprintf (temp, "CY=%012llo", cpu.CY);
+          sprintf (temp, "CY=%012"PRIo64"", cpu.CY);
           break;
         case 2:
-          sprintf (temp, "CYpair[0]=%012llo CYpair[1]=%012llo",
+          sprintf (temp, "CYpair[0]=%012"PRIo64" CYpair[1]=%012"PRIo64"",
                    cpu.Ypair [0], cpu.Ypair [1]);
           break;
         case 8:
@@ -234,6 +234,7 @@ static void doITP (void)
     //
 
     word3 n = GET_ITP_PRNUM (itxPair);
+    CPTUR (cptUsePRn + n);
     cpu . TPR . TSR = cpu . PR [n] . SNR;
     //cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, SDW -> R1, cpu . TPR . TRR);
     cpu . TPR . TRR = max3 (cpu . PR [n] . RNR, cpu . RSDWH_R1, cpu . TPR . TRR);
@@ -294,7 +295,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
     word6 indTag = GET_TAG  (indword);
 
     sim_debug  (DBG_APPENDING, &  cpu_dev,
-                "doITS/ITP: indword:%012llo Tag:%o\n",
+                "doITS/ITP: indword:%012"PRIo64" Tag:%o\n",
                 indword, Tag);
 
     if (! ((GET_TM (Tag) == TM_IR || GET_TM (Tag) == TM_RI) &&
@@ -330,7 +331,7 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
     Read (address + 1, & itxPair [1], INDIRECT_WORD_FETCH, i -> a);
 
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doITS/ITP: YPair= %012llo %012llo\n",
+               "doITS/ITP: YPair= %012"PRIo64" %012"PRIo64"\n",
                itxPair [0], itxPair [1]);
 
     if (ISITS (indTag))
@@ -352,16 +353,18 @@ static void updateIWB (word18 addr, word6 tag)
     else
       wb = & cpu.cu.IWB;
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "updateIWB: IWB was %012llo %06o %s\n",
+               "updateIWB: IWB was %012"PRIo64" %06o %s\n",
                * wb, GET_ADDR (* wb),
                extMods [GET_TAG (* wb)] . mod);
 
     putbits36_18 (wb,  0, addr);
     putbits36_6 (wb, 30, tag);
+#ifndef APPFIX
     putbits36_1 (wb, 29,  0);
+#endif
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "updateIWB: IWB now %012llo %06o %s\n",
+               "updateIWB: IWB now %012"PRIo64" %06o %s\n",
                * wb, GET_ADDR (* wb),
                extMods [GET_TAG (* wb)] . mod);
 
@@ -385,9 +388,6 @@ static void updateIWB (word18 addr, word6 tag)
 
 t_stat doComputedAddressFormation (void)
   {
-    bool directOperandFlag;
-    word36 directOperand;
-
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
                 __func__, opDescSTR (), cpu . TPR . CA);
@@ -402,7 +402,7 @@ t_stat doComputedAddressFormation (void)
 
     word6 iTAG;   // tag of word preceeding an indirect fetch
 
-    directOperandFlag = false;
+    cpu.ou.directOperandFlag = false;
 
     if (i -> info -> flags & NO_TAG) // for instructions line STCA/STCQ
       cpu . rTAG = 0;
@@ -470,16 +470,16 @@ startCA:;
             return SCPE_OK;
           }
 
-        word18 Cr = getCr (Td, & directOperandFlag, & directOperand);
+        word18 Cr = getCr (Td);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: Cr=%06o\n", Cr);
 
-        if (directOperandFlag)
+        if (cpu.ou.directOperandFlag)
           {
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "R_MOD: directOperand = %012llo\n", directOperand);
+                       "R_MOD: directOperand = %012"PRIo64"\n", cpu.ou.directOperand);
 
-            //cpu . TPR . CA = directOperand;
+            //cpu . TPR . CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
             return SCPE_OK;
           }
@@ -491,6 +491,7 @@ startCA:;
             if (i -> a)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
+                CPTUR (cptUsePRn + PRn);
                 cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
                 cpu.TPR.CA &= AMASK;
               }
@@ -528,7 +529,7 @@ startCA:;
 
         if (Td != 0)
           {
-            word18 Cr = getCr (Td, & directOperandFlag, & directOperand);  // C(r)
+            word18 Cr = getCr (Td);  // C(r)
 
             // We don''t need to worry about direct operand here, since du
             // and dl are disallowed above
@@ -604,7 +605,7 @@ startCA:;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
+                   "RI_MOD: indword=%012"PRIo64" TPR.CA=%06o rTAG=%02o\n",
                    indword, cpu . TPR . CA, cpu . rTAG);
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
@@ -667,7 +668,7 @@ startCA:;
         // IR_MOD_2:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IR_MOD1: indword=%012llo TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
+                   "IR_MOD1: indword=%012"PRIo64" TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
                    indword, cpu . TPR . CA, Tm, Td, getModString (GET_TAG (indword)));
 
         switch (Tm)
@@ -698,17 +699,17 @@ startCA:;
             case TM_R:
               {
 //if (currentRunningCPUnum) sim_printf ("TM_R\n");
-                word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD), & directOperandFlag, & directOperand);
+                word18 Cr = getCr (GET_TD (cpu . cu  . CT_HOLD));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n", GET_TD (cpu . cu  . CT_HOLD), Cr);
 
-                if (directOperandFlag)
+                if (cpu.ou.directOperandFlag)
                   {
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
-                               "IR_MOD(TM_R): CT_HOLD DO %012llo\n", directOperand);
-                    //cpu.TPR.CA += directOperand;
-                    //cpu.TPR.CA = directOperand;
+                               "IR_MOD(TM_R): CT_HOLD DO %012"PRIo64"\n", cpu.ou.directOperand);
+                    //cpu.TPR.CA += cpu.ou.directOperand;
+                    //cpu.TPR.CA = cpu.ou.directOperand;
                     //cpu.TPR.CA &= MASK18;   // keep to 18-bits
 
                     //sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -736,16 +737,16 @@ startCA:;
             case TM_RI:
               {
 //if (currentRunningCPUnum) sim_printf ("TM_RI\n");
-                word18 Cr = getCr(Td, & directOperandFlag, & directOperand);
+                word18 Cr = getCr(Td);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",
                            Td, Cr, cpu . TPR . CA);
 
-                if (directOperandFlag)
+                if (cpu.ou.directOperandFlag)
                   {
-                    //cpu . TPR . CA += directOperand;
-                    cpu . TPR . CA = (word18) directOperand & MASK18; // keep to 18-bits
+                    //cpu . TPR . CA += cpu.ou.directOperand;
+                    cpu . TPR . CA = (word18) cpu.ou.directOperand & MASK18; // keep to 18-bits
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_RI): DO TPR.CA=%06o\n", cpu . TPR . CA);
@@ -793,7 +794,6 @@ startCA:;
         //    IT_DIC        = 015,
         //    IT_ID     = 016,
         //    IT_IDC        = 017
-        word12 tally;
         word6 idwtag, delta;
         word24 Yi = (word24) -1;
 
@@ -834,19 +834,19 @@ startCA:;
 #if 0
             case IT_CI: ///< Character indirect (Td = 10)
               {
-//sim_printf ("IT_CI [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
+//sim_printf ("IT_CI [%"PRId64"] %05o:%06o %012"PRIo64"\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
                } // IT_CI
 
             case IT_SC: ///< Sequence character (Td = 12)
               {
-//sim_printf ("IT_SC [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
+//sim_printf ("IT_SC [%"PRId64"] %05o:%06o %012"PRIo64"\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
               } // IT_SC
 
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-//sim_printf ("IT_SCR [%lld] %05o:%06o %012llo\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
+//sim_printf ("IT_SCR [%"PRId64"] %05o:%06o %012"PRIo64"\n", sim_timell (), cpu . PPR . PSR, cpu . PPR . IC, cpu . cu  . IWB);
                 return SCPE_OK;
               } // IT_SCR
 #endif
@@ -874,27 +874,27 @@ startCA:;
                 Read (indwordAddress, & indword, OPERAND_READ, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD CI/SC/SCR indword=%012llo\n", indword);
+                           "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
 
                 //
                 // Parse and validate the indirect word
                 //
 
                 word18 Yi_ = GET_ADDR (indword);
-                word6 characterOperandSize = GET_TB (GET_TAG (indword));
-                word6 characterOperandOffset = GET_CF (GET_TAG (indword));
+                cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
+                cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
-                           characterOperandSize, characterOperandOffset,
+                           cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
                            Yi_);
 
-                if (characterOperandSize == TB6 && characterOperandOffset > 5)
+                if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB6 && offset > 5");
 
-                if (characterOperandSize == TB9 && characterOperandOffset > 3)
+                if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                            "co size == TB9 && offset > 3");
@@ -922,18 +922,18 @@ startCA:;
 		// character position count, cf, field of the indirect
 		// word.
 
-                    if (characterOperandOffset == 0)
+                    if (cpu.ou.characterOperandOffset == 0)
                       {
-                        if (characterOperandSize == TB6)
-                            characterOperandOffset = 5;
+                        if (cpu.ou.characterOperandSize == TB6)
+                            cpu.ou.characterOperandOffset = 5;
                         else
-                            characterOperandOffset = 3;
+                            cpu.ou.characterOperandOffset = 3;
                         Yi_ -= 1;
                         Yi_ &= MASK18;
                       }
                         else
                       {
-                        characterOperandOffset -= 1;
+                        cpu.ou.characterOperandOffset -= 1;
                       }
                   }
 
@@ -946,7 +946,7 @@ startCA:;
                 word36 data;
                 Read (Yi_, & data, OPERAND_READ, i -> a);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD CI/SC/SCR data=%012llo\n", data);
+                   "IT_MOD CI/SC/SCR data=%012"PRIo64"\n", data);
 
                 cpu . cu  . pot = 0;
 
@@ -969,7 +969,7 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, INDIRECT_WORD_FETCH, 0);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_I): indword=%012llo\n",
+                           "IT_MOD(IT_I): indword=%012"PRIo64"\n",
                            indword);
 
                 cpu . TPR . CA = GET_ADDR (indword);
@@ -999,16 +999,16 @@ startCA:;
                 word36 indword;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
                 Yi = GETHI (indword);        // from where data live
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_AD): indword=%012llo\n",
+                           "IT_MOD(IT_AD): indword=%012"PRIo64"\n",
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n",
-                           Yi, tally, delta);
+                           Yi, cpu.AM_tally, delta);
 
                 cpu . TPR . CA = Yi;
                 word18 computedAddress = cpu . TPR . CA;
@@ -1016,23 +1016,23 @@ startCA:;
                 Yi += delta;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 #if 1
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
 #else
 // This breaks emacs
-                if (tally == 0)
+                if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 #endif
 
                 indword = (word36) (((word36) Yi << 18) |
-                                    (((word36) tally & 07777) << 6) |
+                                    (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n",
+                           "IT_MOD(IT_AD): wrote tally word %012"PRIo64" to %06o\n",
                             indword, saveCA);
 
                 cpu . TPR . CA = computedAddress;
@@ -1061,35 +1061,35 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
                            cpu . TPR . CA);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
                 Yi    = GETHI (indword);     // from where data live
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_SD): indword=%012llo\n",
+                           "IT_MOD(IT_SD): indword=%012"PRIo64"\n",
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n",
-                           Yi, tally, delta);
+                           Yi, cpu.AM_tally, delta);
 
                 Yi -= delta;
                 Yi &= MASK18;
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (tally == 0);
-                if (tally == 0)
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
+                //SC_I_TALLY (cpu.AM_tally == 0);
+                if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    (((word36) tally & 07777) << 6) |
+                                    (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n",
+                           "IT_MOD(IT_SD): wrote tally word %012"PRIo64" to %06o\n",
                            indword, saveCA);
 
 
@@ -1119,34 +1119,34 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 word6 junk = GET_TAG (indword); // get tag field, but ignore it
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_DI): indword=%012llo\n",
+                           "IT_MOD(IT_DI): indword=%012"PRIo64"\n",
                            indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DI): address:%06o tally:%04o\n",
-                           Yi, tally);
+                           Yi, cpu.AM_tally);
 
                 Yi -= 1;
                 Yi &= MASK18;
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
-                SC_I_TALLY (tally == 0);
-                //if (tally == 0)
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
+                SC_I_TALLY (cpu.AM_tally == 0);
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
 
                 // write back out indword
 
                 indword = (word36) (((word36) cpu . TPR . CA << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_DI): writing indword=%012llo to "
+                           "IT_MOD(IT_DI): writing indword=%012"PRIo64" to "
                            "addr %06o\n",
                            indword, saveCA);
 
@@ -1179,12 +1179,12 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 // get tag field, but ignore it
                 word6 junk = GET_TAG (indword);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n",
-                           indword, Yi, tally);
+                           "IT_MOD(IT_ID): indword=%012"PRIo64" Yi=%06o tally=%04o\n",
+                           indword, Yi, cpu.AM_tally);
 
                 cpu . TPR . CA = Yi;
                 word18 computedAddress = cpu . TPR . CA;
@@ -1192,21 +1192,21 @@ startCA:;
                 Yi += 1;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 
                 // XXX Breaks boot?
-                //if (tally == 0)
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     junk);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_ID): writing indword=%012llo to "
+                           "IT_MOD(IT_ID): writing indword=%012"PRIo64" to "
                            "addr %06o\n",
                            indword, saveCA);
 
@@ -1250,13 +1250,13 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 idwtag = GET_TAG (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_DIC): indword=%012llo Yi=%06o "
+                           "IT_MOD(IT_DIC): indword=%012"PRIo64" Yi=%06o "
                            "tally=%04o idwtag=%02o\n", 
-                           indword, Yi, tally, idwtag);
+                           indword, Yi, cpu.AM_tally, idwtag);
 
                 Yi -= 1;
                 Yi &= MASK18;
@@ -1265,20 +1265,20 @@ startCA:;
 
                 cpu . TPR.CA = Yi;
 
-                tally += 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally += 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
-                //SC_I_TALLY (tally == 0);
-                //if (tally == 0)
+                //SC_I_TALLY (cpu.AM_tally == 0);
+                //if (cpu.AM_tally == 0)
                   //SET_I_TALLY;
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                          ((word36) tally << 6) | idwtag);
+                          ((word36) cpu.AM_tally << 6) | idwtag);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_DIC): writing indword=%012llo to "
+                           "IT_MOD(IT_DIC): writing indword=%012"PRIo64" to "
                            "addr %06o\n", indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE, i->a);
@@ -1315,7 +1315,7 @@ startCA:;
 #endif
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_DIC
@@ -1352,32 +1352,32 @@ startCA:;
                 Read (cpu . TPR . CA, & indword, OPERAND_READ, i -> a);
 
                 Yi = GETHI (indword);
-                tally = GET_TALLY (indword); // 12-bits
+                cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 idwtag = GET_TAG (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_IDC): indword=%012llo Yi=%06o "
+                           "IT_MOD(IT_IDC): indword=%012"PRIo64" Yi=%06o "
                            "tally=%04o idwtag=%02o\n",
-                           indword, Yi, tally, idwtag);
+                           indword, Yi, cpu.AM_tally, idwtag);
 
                 word24 YiSafe = Yi; // save indirect address for later use
 
                 Yi += 1;
                 Yi &= MASK18;
 
-                tally -= 1;
-                tally &= 07777; // keep to 12-bits
+                cpu.AM_tally -= 1;
+                cpu.AM_tally &= 07777; // keep to 12-bits
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
-                //SC_I_TALLY (tally == 0);
+                //SC_I_TALLY (cpu.AM_tally == 0);
 
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) |
-                                    ((word36) tally << 6) |
+                                    ((word36) cpu.AM_tally << 6) |
                                     idwtag);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                           "IT_MOD(IT_IDC): writing indword=%012llo"
+                           "IT_MOD(IT_IDC): writing indword=%012"PRIo64""
                            " to addr %06o\n",
                            indword, saveCA);
 
@@ -1418,7 +1418,7 @@ startCA:;
 #endif
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
-                SC_I_TALLY (tally == 0);
+                SC_I_TALLY (cpu.AM_tally == 0);
                 updateIWB (cpu . TPR . CA, cpu . rTAG);
                 goto startCA;
               } // IT_IDC

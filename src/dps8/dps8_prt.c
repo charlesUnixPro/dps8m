@@ -49,44 +49,44 @@
 #define N_PRT_UNITS 1 // default
 
 static t_stat prt_reset (DEVICE * dptr);
-static t_stat prt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat prt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat prt_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat prt_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat prt_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat prt_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat prt_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat prt_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT prt_unit [N_PRT_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
 #define PRT_UNIT_NUM(uptr) ((uptr) - prt_unit)
 
 static DEBTAB prt_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 #define UNIT_WATCH UNIT_V_UF
@@ -146,7 +146,8 @@ DEVICE prt_dev = {
     NULL,         // help
     NULL,         // attach help
     NULL,         // attach context
-    NULL          // description
+    NULL,         // description
+    NULL
 };
 
 #define MAX_DEV_NAME_LEN 64
@@ -234,6 +235,83 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
     return 1;
   }
 
+#ifdef __MINGW64__
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+// Copied from https://searchcode.com/codesearch/view/32512650/
+static int mkstemps (char *pattern, int suffix_len)
+{
+  static const char letters[]
+    = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  static uint64_t value;
+//#ifdef HAVE_GETTIMEOFDAY
+  struct timeval tv;
+//#endif
+  char *XXXXXX;
+  size_t len;
+  int count;
+
+  len = strlen (pattern);
+
+  if ((int) len < 6 + suffix_len
+      || strncmp (&pattern[((int) len) - 6 - suffix_len], "XXXXXX", 6))
+    {
+      return -1;
+    }
+
+  XXXXXX = &pattern[((int) len) - 6 - suffix_len];
+
+//#ifdef HAVE_GETTIMEOFDAY
+  /* Get some more or less random data.  */
+  gettimeofday (&tv, NULL);
+  value += ((uint64_t) tv.tv_usec << 16) ^ (uint64_t) tv.tv_sec ^ (uint64_t) getpid ();
+//#else
+//  value += getpid ();
+//#endif
+
+  for (count = 0; count < TMP_MAX; ++count)
+    {
+      uint64_t v = value;
+      int fd;
+
+      /* Fill in the random bits.  */
+      XXXXXX[0] = letters[v % 62];
+      v /= 62;
+      XXXXXX[1] = letters[v % 62];
+      v /= 62;
+      XXXXXX[2] = letters[v % 62];
+      v /= 62;
+      XXXXXX[3] = letters[v % 62];
+      v /= 62;
+      XXXXXX[4] = letters[v % 62];
+      v /= 62;
+      XXXXXX[5] = letters[v % 62];
+
+      fd = open (pattern, O_BINARY|O_RDWR|O_CREAT|O_EXCL, 0600);
+      if (fd >= 0)
+	/* The file does not exist.  */
+	return fd;
+      if (errno != EEXIST
+//#ifdef EISDIR
+	  && errno != EISDIR
+//#endif
+	 )
+	/* Fatal error (EPERM, ENOSPC etc).  Doesn't make sense to loop.  */
+	break;
+
+      /* This is a random value.  It is only necessary that the next
+	 TMP_MAX values generated by adding 7777 to VALUE are different
+	 with (module 2^32).  */
+      value += 7777;
+    }
+
+  /* We return the null string if we can't find a unique file name.  */
+  pattern[0] = '\0';
+  return -1;
+}
+#endif
 
 static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
   {
@@ -244,7 +322,7 @@ static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
 // The first (spooled) write is a formfeed; special case it and delay opening until
 // the next line
 
-//sim_printf ("openPrtFile 2 %012llo\n", buffer [0]);
+//sim_printf ("openPrtFile 2 %012"PRIo64"\n", buffer [0]);
     if (tally == 1 && buffer [0] == 0014013000000llu)
       {
         prt_state [prt_unit_num] . cachedFF = true;
@@ -479,7 +557,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
 #if 0
 for (uint i = 0; i < tally; i ++)
-   sim_printf (" %012llo", buffer [i]);
+   sim_printf (" %012"PRIo64"", buffer [i]);
 sim_printf ("\n");
 #endif
 
@@ -612,13 +690,13 @@ int prt_iom_cmd (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static t_stat prt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat prt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of PRT units in system is %d\n", prt_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_PRT_UNITS_MAX)
@@ -628,7 +706,7 @@ static t_stat prt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cpt
   }
 
 static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED void * desc)
+                                       UNUSED int val, UNUSED const void * desc)
   {
     int n = (int) PRT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_PRT_UNITS_MAX)
@@ -638,7 +716,7 @@ static t_stat prt_show_device_name (UNUSED FILE * st, UNIT * uptr,
   }
 
 static t_stat prt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED char * cptr, UNUSED void * desc)
+                                    const UNUSED char * cptr, UNUSED void * desc)
   {
     int n = (int) PRT_UNIT_NUM (uptr);
     if (n < 0 || n >= N_PRT_UNITS_MAX)

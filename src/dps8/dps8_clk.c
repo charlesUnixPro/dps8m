@@ -27,16 +27,16 @@
 
 #define N_CLK_UNITS 1
 static t_stat clk_svc(UNIT *up);
-UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }};
+UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL , NULL}};
 
 static DEBTAB clk_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
     { NULL, 0 }
   };
 
@@ -92,7 +92,7 @@ static int activate_timer (void)
 {
     uint32 t;
     sim_debug (DBG_DEBUG, & clk_dev, "clk_svc: TR has %d time units left\n", t);
-    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %lld %#llo.\n", rTR, rTR);
+    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %"PRId64" %#"PRIo64".\n", rTR, rTR);
     if (bit_is_neg(rTR, 27)) {
         if ((t = sim_is_active(&TR_clk_unit[0])) != 0)
             sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR cancelled with %d time units left.\n", t);

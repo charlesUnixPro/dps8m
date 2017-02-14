@@ -1,4 +1,5 @@
 # Copyright 2014-2016 by Charles Anthony
+# Copyright 2016 by Michal Tomek
 #
 # All rights reserved.
 #
@@ -7,39 +8,67 @@
 # See the LICENSE file at the top-level directory of this distribution and
 # at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
 
+msys_version := $(if $(findstring Msys, $(shell uname -o)),$(word 1, $(subst ., ,$(shell uname -r))),0)
+ifeq ($(msys_version),0)
+else
+  CROSS=MINGW64
+endif
+ifeq ($(CROSS),MINGW64)
+  CC = x86_64-w64-mingw32-gcc
+  LD = x86_64-w64-mingw32-gcc
+ifeq ($(msys_version),0)
+  AR = x86_64-w64-mingw32-ar
+else
+  AR = ar
+endif
+  EXE = .exe
+else
 #CC = gcc
 #LD = gcc
 CC = clang
 LD = clang
-
-# Our Cygwin users are using gcc.
-ifeq ($(OS),Windows_NT)
-    CC = gcc
-    LD = gcc
 endif
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 #CFLAGS  = -g -O0
 CFLAGS  = -g -O3
 
+# Our Cygwin users are using gcc.
+ifeq ($(OS),Windows_NT)
+    CC = gcc
+    LD = gcc
+ifeq ($(CROSS),MINGW64)
+    CFLAGS += -I../mingw_include
+    LDFLAGS += -L../mingw_lib  
+endif
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),FreeBSD)
+      CFLAGS += -I /usr/local/include
+      LDFLAGS += -L/usr/local/lib
+    endif
+endif
+
 #CFLAGS = -m32
 #CFLAGS = -m64
 
-CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 
+#CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 
+CFLAGS += -I../decNumber -I../simh-master -I ../include 
 
-CFLAGS += -std=c99 -U__STRICT_ANSI__  
-#CFLAGS += -std=c99 -U__STRICT_ANSI__  -Wconversion
-
-# CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
-
-CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
+CFLAGS += -std=c99
+CFLAGS += -U__STRICT_ANSI__  
+CFLAGS += -D_GNU_SOURCE
+CFLAGS += -DUSE_READER_THREAD
 CFLAGS += -DUSE_INT64
-#CFLAGS += -DMULTIPASS
+
+ifneq ($(CROSS),MINGW64)
+CFLAGS += -DHAVE_DLOPEN=so
+endif
+
 # Clang generates warning messages for code it generates itself...
 CFLAGS += -Wno-array-bounds
+
 LDFLAGS += -g
-#CFLAGS += -pg
-#LDFLAGS += -pg
 
 MAKEFLAGS += --no-print-directory
 

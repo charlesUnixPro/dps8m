@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -11,8 +12,14 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+//#ifdef __MINGW64__
+//#ifndef SRWLOCK
+//typedef PVOID RTL_SRWLOCK;
+//typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
+//#endif 
+//#endif
 #include <uv.h>
-#include <libtelnet.h>
+#include "libtelnet.h"
 
 #define encodeline(fnp,line) ((fnp) * MAX_LINES + (line))
 #define decodefnp(coded) ((coded) / MAX_LINES)
@@ -89,7 +96,12 @@ typedef struct
         uint echnego_len;
         // Pending requests
         bool line_break;
-        bool send_output;
+#ifdef FNPDBG
+#define SEND_OUTPUT_DELAY 100
+#else
+#define SEND_OUTPUT_DELAY 2
+#endif
+        uint send_output;
         bool accept_new_terminal;
         bool line_disconnected;
         bool ack_echnego_init;
@@ -162,8 +174,9 @@ void fnpProcessEvent (void);
 t_stat diaCommand (int fnpUnitNum, char *arg3);
 void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
 int fnpIOMCmd (uint iomUnitIdx, uint chan);
-t_stat fnpServerPort (int32 arg, char * buf);
+t_stat fnpServerPort (int32 arg, const char * buf);
+t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
-t_stat fnpLoad (UNUSED int32 arg, char * buf);
+t_stat fnpLoad (UNUSED int32 arg, const char * buf);

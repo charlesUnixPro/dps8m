@@ -1,0 +1,62 @@
+TODO: Update QuickStart file name
+TODO: Update 'git fetch' to correct tag
+
+Building dps8m Under Windows With MSYS2
+=======================================
+
+In your browser, go to "https://msys2.github.io/"
+
+Download and run the msys2 x86_64 installer. Follow the installation
+instructions on the webpage.
+
+After step 7 ("Now Pacman is fully committed..."), fetch the dps8m
+code, needed libraries and packages by entering:
+
+       git clone git://git.code.sf.net/p/dps8m/code dps8m-code
+       git clone https://github.com/libuv/libuv.git
+
+       pacman -S mingw-w64-x86_64-gcc
+       pacman -S mingw-w64-x86_64-binutils
+       pacman -S mingw-w64-x86_64-libtool
+       pacman -S mingw-w64-x86_64-make
+       pacman -S mingw-w64-x86_64-dlfcn
+       pacman -S mingw-w64-x86_64-diffutils
+       pacman -S mingw-w64-x86_64-gettext
+       pacman -S mingw-w64-x86_64-libgnurx
+       pacman -S mingw-w64-x86_64-binutils
+       pacman -S automake
+       pacman -S autoconf
+       pacman -S unzip
+       ^D
+
+Start a MSYS2 MinGW window and build the code:
+
+    Start -> All programs -> MSYS2 64 bit -> MSYS2 MINGW 64 bit
+
+      cd libuv
+      sh autogen.sh
+      ./configure
+      mingw32-make.exe MAKE=mingw32-make.exe
+
+
+      cd
+      cd dps8-code
+      git checkout rc7
+      git fetch
+      mingw32-make.exe
+
+      cd
+      wget https://sourceforge.net/projects/dps8m/files/QuickStart_MR12.6e_rc7a1/QuickStart_MR12.6e_rc7a1.zip
+      unzip QuickStart_MR12.6e_rc7a1.zip
+
+Running the emulator:
+
+  Start a Windows command shell:
+
+    Start -> All programs -> Accessories -> Command Prompt
+
+
+      cd c:\msys64\home\Admin\dps8m-code\QuickStart_MR12.6e_rc7a1
+      ..\dps8m-code\src\dps8\dps8.exe MR12.6e_boot.ini
+
+

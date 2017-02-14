@@ -81,7 +81,7 @@ enum { N_DEV_CODES = 64 };
 // NB. these 2 use the wrong bit number convention
 #define BIT19          01000000U                 // carry out bit from 18 bit arithmetic
 #define BIT20          02000000U                 // carry out bit from 19 bit arithmetic
-#define MASK36          0777777777777LLU         // data mask 
+#define MASK36         0777777777777LLU          // data mask 
 #define DMASK           MASK36
 #define MASK10          0001777U                 // 10-bit data mask
 #define MASK14          0037777U                 // 14-bit data mask
@@ -117,9 +117,13 @@ enum { N_DEV_CODES = 64 };
 #define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
 #define SIGN72          ((word72)1U << 71)
 // NB. these use the wrong bit number convention
+#define BIT68           ((word72)1U << 67)
+#define BIT69           ((word72)1U << 68)
+#define BIT70           ((word72)1U << 69)
 #define BIT71           ((word72)1U << 70)  // next to the sign bit
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
+#define MASK68          (((word72)1U << 68) - 1U) // Hex mode mantissa normalization mask
 #define MASK71          (((word72)1U << 71) - 1U)
 #define MASK72          ZEROEXT72
 
@@ -135,6 +139,8 @@ enum { N_DEV_CODES = 64 };
 #define SIGN8           0200U                    // sign mask 8-bit number
 #define MASK8           0377U                    // 8-bit mask
 #define MASK9           0777U                    // 9-bit mask
+
+#define MASK11          03777U
 
 #define SIGN12          0x800U                   // sign mask 12-bit number
 #define MASK12          07777U
@@ -170,7 +176,7 @@ enum { N_DEV_CODES = 64 };
 #define MASK27          0777777777llu
 
 
-// Sign extend DPS8 words into host words
+// Sign extend DPS8M words into host words
 
 static inline int SIGNEXT6_int (word6 w)
   {
@@ -289,10 +295,10 @@ static inline int128 SIGNEXT72_128 (word72 w)
     return w & MASK72;
   }
 
-// Sign extend DPS8 words into DPS8 words
+// Sign extend DPS8M words into DPS8M words
 // NB: The high order bits in the host container will
 // set to 0; you cannot do host math with
-// there results.
+// these results.
 
 static inline word18 SIGNEXT15_18 (word15 w)
   {
@@ -487,7 +493,9 @@ enum {
 #define F_N             (1LLU << F_V_N)
 #define F_O             (1LLU << F_V_O)
 
+#ifdef DPS8M
 #define I_HEX   F_O     // base-16 exponent                 0000010
+#endif
 #define I_ABS   F_N     // absolute mode                    0000020
 #define I_MIF   F_M     // mid-instruction interrupt fault  0000040
 #define I_TRUNC F_L     // truncation                       0000100
@@ -543,8 +551,11 @@ enum {
 #define TST_I_CARRY TSTF (cpu.cu.IR, I_CARRY)
 #define TST_I_NEG   TSTF (cpu.cu.IR, I_NEG)
 #define TST_I_ZERO  TSTF (cpu.cu.IR, I_ZERO)
+#define TST_I_HEX   TSTF (cpu.cu.IR, I_HEX)
 
+#ifdef DPS8M
 #define SC_I_HEX(v)   SCF (v, cpu.cu.IR, I_HEX)
+#endif
 #define SC_I_MIF(v)   SCF (v, cpu.cu.IR, I_MIF)
 #define SC_I_TALLY(v) SCF (v, cpu.cu.IR, I_TALLY)
 #define SC_I_NEG(v)   SCF (v, cpu.cu.IR, I_NEG)
@@ -714,10 +725,10 @@ typedef enum fault_acv_subtype_
     ACV8  = (1U <<  7),   ///< 16.Out of call brackets (ACV8=OCB)
     ACV9  = (1U <<  6),   ///< 9. Outward call (ACV9=OCALL)
     ACV10 = (1U <<  5),   ///< 10.Bad outward call (ACV10=BOC)
-    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET) XXX ??
+    ACV11 = (1U <<  4),   ///< 11.Inward return (ACV11=INRET)
     ACV12 = (1U <<  3),   ///< 7. Invalid ring crossing (ACV12=CRT)
     ACV13 = (1U <<  2),   ///< 12.Ring alarm (ACV13=RALR)
-    ACV14 = (1U <<  1), ///< 13.Associative memory error XXX ??
+    ACV14 = (1U <<  1), ///< 13.Associative memory error 
     ACV15 = (1U <<  0), ///< 14.Out of segment bounds (ACV15=OOSB)
     flt_acv_FORCE  = 0400000000000llu // Force enum size to 36 bits.
   } fault_acv_subtype_;
@@ -728,7 +739,7 @@ typedef enum fault_ipr_subtype_
     FR_ILL_MOD   = 0200000000000llu, //  1 b ILL MOD
     FR_ILL_SLV   = 0100000000000llu, //  2 c ILL SLV
     FR_ILL_PROC  = 0040000000000llu, //  3 d ILL PROC
-      FR_ILL_PROC_MOD  = 0240000000000llu, //  1,3 d ILL PROC | ILL MOD
+    FR_ILL_PROC_MOD  = 0240000000000llu, //  1,3 d ILL PROC | ILL MOD
     FR_NEM       = 0020000000000llu, //  4 e NEM
     FR_OOB       = 0010000000000llu, //  5 f OOB
     FR_ILL_DIG   = 0004000000000llu, //  6 g ILL DIG
@@ -1396,7 +1407,12 @@ typedef enum {
 //
 
 enum { N_HIST_SETS = 4 };
+#ifdef DPS8M
 enum { N_HIST_SIZE = 64 };
+#endif
+#ifdef L68
+enum { N_HIST_SIZE = 16 };
+#endif
 
 // Bit in CU history register word 0
 
@@ -1511,7 +1527,12 @@ enum
   };
 
 
+#ifdef DPS8M
 enum { CU_HIST_REG = 0, DU_OU_HIST_REG = 1, APU_HIST_REG = 2, EAPU_HIST_REG = 3 };
+#endif
+#ifdef L68
+enum { CU_HIST_REG = 0, DU_HIST_REG = 1, OU_HIST_REG = 2, APU_HIST_REG = 3 };
+#endif
 
 
 #endif // DPS8_HW_CONSTS_H

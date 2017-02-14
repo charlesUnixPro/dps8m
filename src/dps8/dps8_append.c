@@ -109,7 +109,7 @@ void setAPUStatus (apuStatusBits status)
 #endif
   }
 
-#ifndef SPEED
+#ifdef WAM
 static char *strSDW(_sdw *SDW);
 #endif
 
@@ -132,6 +132,7 @@ void doPtrReg(void)
 {
     word3 n = GET_PRN(IWB_IRODD);  // get PRn
     word15 offset = GET_OFFSET(IWB_IRODD);
+    CPTUR (cptUsePRn + n);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
     cpu . TPR.TSR = cpu . PAR[n].SNR;
@@ -151,21 +152,21 @@ void doPtrReg(void)
 #ifdef do_selftestPTWAM
 static void selftestPTWAM (void)
   {
-    int usages [64];
-    for (int i = 0; i < 64; i ++)
+    int usages [N_WAM_ENTRIES];
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       usages [i] = -1;
 
-    for (int i = 0; i < 64; i ++)
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       {
         _ptw * p = cpu . PTWAM + i;
-        if (p -> USE > 63)
-          sim_printf ("PTWAM[%d].USE is %d; > 63!\n", i, p -> USE);
+        if (p -> USE > N_WAM_ENTRIES - 1)
+          sim_printf ("PTWAM[%d].USE is %d; > %d!\n", i, p -> USE, N_WAM_ENTRIES - 1);
         if (usages [p -> USE] != -1)
           sim_printf ("PTWAM[%d].USE is equal to PTWAM[%d].USE; %d\n",
                       i, usages [p -> USE], p -> USE);
         usages [p -> USE] = i;
       }
-    for (int i = 0; i < 64; i ++)
+    for (int i = 0; i < N_WAM_ENTRIES; i ++)
       {
         if (usages [i] == -1)
           sim_printf ("No PTWAM had a USE of %d\n", i);
@@ -179,14 +180,14 @@ static void selftestPTWAM (void)
 
 void do_ldbr (word36 * Ypair)
   {
-#ifndef SPEED
+    CPTUR (cptUseDSBR);
+#ifdef WAM
     // XXX is it enabled?
-    // XXX Assuming 16 is 64 for the DPS8M
 
     // If SDWAM is enabled, then
     //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu . SDWAM [i] . DF = 0;
         cpu . SDWAM [i] . USE = (word6) i;
@@ -195,7 +196,7 @@ void do_ldbr (word36 * Ypair)
     // If PTWAM is enabled, then
     //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
     //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < 64; i ++)
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu . PTWAM [i] . FE = 0;
         cpu . PTWAM [i] . USE = (word6) i;
@@ -208,7 +209,7 @@ void do_ldbr (word36 * Ypair)
     cpu.SDWAM0.USE = 0;
     cpu.PTWAM0.FE = 0;
     cpu.PTWAM0.USE = 0;
-#endif // SPEED
+#endif // WAM
 
     // If cache is enabled, reset all cache column and level full flags
     // XXX no cache
@@ -225,7 +226,7 @@ void do_ldbr (word36 * Ypair)
     // C(Y-pair) 60,71 → C(DSBR.STACK)
     cpu . DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
     sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
-    //sim_printf ("ldbr %012llo %012llo\n", Ypair [0], Ypair [1]);
+    //sim_printf ("ldbr %012"PRIo64" %012"PRIo64"\n", Ypair [0], Ypair [1]);
     //sim_printf ("ldbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
   }
 
@@ -235,6 +236,7 @@ void do_ldbr (word36 * Ypair)
 
 void do_sdbr (word36 * Ypair)
   {
+    CPTUR (cptUseDSBR);
     // C(DSBR.ADDR) → C(Y-pair) 0,23
     // 00...0 → C(Y-pair) 24,36
     Ypair [0] = ((word36) (cpu . DSBR . ADDR & PAMASK)) << (35 - 23); 
@@ -248,7 +250,7 @@ void do_sdbr (word36 * Ypair)
                 ((word36) (cpu . DSBR . U & 1)) << (71 - 55) |
                 ((word36) (cpu . DSBR . STACK & 07777)) << (71 - 71);
     //sim_printf ("sdbr DSBR.ADDR %08o, DSBR.BND %05o, DSBR.U %o, DSBR.STACK %04o\n", cpu . DSBR.ADDR, cpu . DSBR.BND, cpu . DSBR.U, cpu . DSBR.STACK); 
-    //sim_printf ("sdbr %012llo %012llo\n", Ypair [0], Ypair [1]);
+    //sim_printf ("sdbr %012"PRIo64" %012"PRIo64"\n", Ypair [0], Ypair [1]);
   }
 
 /**
@@ -263,8 +265,8 @@ void do_camp (UNUSED word36 Y)
     // counters are initialized.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #1
-#ifndef SPEED
-    for (uint i = 0; i < 64; i ++)
+#ifdef WAM
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.PTWAM[i].FE = 0;
         cpu.PTWAM[i].USE = (word6) i;
@@ -281,8 +283,12 @@ void do_camp (UNUSED word36 Y)
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
-      sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+    //if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
+      //sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+    if ((cpu.TPR.CA & 3) == 02)
+      cpu.cu.PT_ON = 1;
+    else if ((cpu.TPR.CA & 3) == 01)
+      cpu.cu.PT_ON = 0;
   }
 
 /**
@@ -299,12 +305,12 @@ void do_cams (UNUSED word36 Y)
     // This may be done to either or both halves.
     // XXX enable/disable and LRU don't seem to be implemented; punt
     // XXX ticket #2
-#ifndef SPEED
-    for (uint i = 0; i < 64; i ++)
+#ifdef WAM
+    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
       {
         cpu.SDWAM[i].DF = 0;
         cpu.SDWAM[i].USE = (word6) i;
-#ifdef ISOSLTS
+#ifdef ISOLTS
 if (currentRunningCPUnum)
 sim_printf ("CAMS cleared it\n");
 #endif
@@ -321,8 +327,12 @@ sim_printf ("CAMS cleared it\n");
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
-      sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+    //if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
+      //sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+    if ((cpu.TPR.CA & 3) == 02)
+      cpu.cu.SD_ON = 1;
+    else if ((cpu.TPR.CA & 3) == 01)
+      cpu.cu.SD_ON = 0;
   }
 
     
@@ -333,14 +343,22 @@ sim_printf ("CAMS cleared it\n");
 static void fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
+    PNL (L68_ (cpu.apu.state |= apu_FDPT;))
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
+      {
         // generate access violation, out of segment bounds fault
+        PNL (cpu.acvFaults |= ACV15;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
-        
+      }
     setAPUStatus (apuStatus_DSPTW);
 
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
+    word24 y1 = (2u * segno) % 1024u;
+    word24 x1 = (2u * segno - y1) / 1024u;
+
+    PNL (cpu.lastPTWOffset = segno;)
+    PNL (cpu.lastPTWIsDS = true;)
 
     word36 PTWx1;
     core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
@@ -351,7 +369,12 @@ static void fetchDSPTW(word15 segno)
     cpu . PTW0.DF = TSTBIT(PTWx1, 2);
     cpu . PTW0.FC = PTWx1 & 3;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FDSPTW);
+#endif
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 
@@ -361,14 +384,21 @@ static void fetchDSPTW(word15 segno)
 // CANFAULT
 static void modifyDSPTW(word15 segno)
 {
+
+    PNL (L68_ (cpu.apu.state |= apu_MDPT;))
+
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
+      {
         // generate access violation, out of segment bounds fault
+        PNL (cpu.acvFaults |= ACV15;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
+      }
 
     setAPUStatus (apuStatus_MDSPTW); 
 
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
+    word24 y1 = (2u * segno) % 1024u;
+    word24 x1 = (2u * segno - y1) / 1024u;
     
     word36 PTWx1;
     core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
@@ -376,16 +406,20 @@ static void modifyDSPTW(word15 segno)
     core_write((cpu . DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
     
     cpu . PTW0.U = 1;
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_MDSPTW);
+#endif
 }
 
 
-#ifndef SPEED
+#ifdef WAM
 // XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
 static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
-    int nwam = 64;
+    int nwam = N_WAM_ENTRIES;
     if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
@@ -401,6 +435,13 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
+            cpu.cu.SDWAMM = 1;
+#ifdef L68
+            cpu.SDWAMR = (word4) _n;
+#endif
+#ifdef DPS8M
+            cpu.SDWAMR = (word6) _n;
+#endif
             cpu . SDW = &cpu . SDWAM[_n];
             
             /*
@@ -411,16 +452,17 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
                 if (cpu . SDWAM[_h].USE > cpu . SDW->USE)
                     cpu . SDWAM[_h].USE -= 1;
             }
-            cpu . SDW->USE = 63;
+            cpu . SDW->USE = N_WAM_ENTRIES - 1;
             
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(cpu . SDW));
             return cpu . SDW;
         }
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
+    cpu.cu.SDWAMM = 0;
     return NULL;    // segment not referenced in SDWAM
 }
-#endif // SPEED
+#endif // WAM
 /**
  * Fetches an SDW from a paged descriptor segment.
  */
@@ -428,7 +470,9 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
 static void fetchPSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
-    
+
+    PNL (L68_ (cpu.apu.state |= apu_FSDP;))
+
     setAPUStatus (apuStatus_SDWP);
     word24 y1 = (2 * segno) % 1024;
     
@@ -457,7 +501,11 @@ static void fetchPSDW(word15 segno)
     
     //cpu . PPR.P = (cpu . SDW0.P && cpu . PPR.PRR == 0);   // set priv bit (if OK)
 
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FSDWP);
+#endif
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012"PRIo64" 0%012"PRIo64" ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, cpu . PTW0.ADDR, SDWeven, SDWodd, cpu . SDW0.ADDR, cpu . SDW0.BOUND, cpu . SDW0.U, cpu . SDW0.DF);
 }
 
@@ -468,18 +516,22 @@ static void fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
 
+    PNL (L68_ (cpu.apu.state |= apu_FSDN;))
+
     setAPUStatus (apuStatus_SDWNP);
 
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, cpu . DSBR.BND);
         // generate access violation, out of segment bounds fault
+        PNL (cpu.acvFaults |= ACV15;)
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
     }
-    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2 * segno);
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2u * segno);
     word36 SDWeven, SDWodd;
     
-    core_read2((cpu . DSBR.ADDR + 2 * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2((cpu . DSBR.ADDR + 2u * segno) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     cpu . SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -502,10 +554,14 @@ static void fetchNSDW(word15 segno)
     
     //cpu . PPR.P = (cpu . SDW0.P && cpu . PPR.PRR == 0);   // set priv bit (if OK)
     
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (0 /* No fetch no paged bit */);
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&cpu . SDW0));
 }
 
-#ifndef SPEED
+#ifdef WAM
 static char *strSDW(_sdw *SDW)
 {
     static char buff[256];
@@ -535,13 +591,13 @@ static char *strSDW(_sdw *SDW)
 }
 #endif
 
-#ifndef SPEED
+#ifdef WAM
 /**
  * dump SDWAM...
  */
 t_stat dumpSDWAM (void)
 {
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _sdw *p = &cpu . SDWAM[_n];
         
@@ -559,7 +615,7 @@ t_stat dumpSDWAM (void)
  */
 static void loadSDWAM(word15 segno)
 {
-#ifdef SPEED
+#ifndef WAM
 #if 0
     cpu . SDWAM0 . ADDR = cpu . SDW0.ADDR;
     cpu . SDWAM0 . R1 = cpu . SDW0.R1;
@@ -619,7 +675,7 @@ static void loadSDWAM(word15 segno)
     
     /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63?), and the newly loaded register is read out into the address preparation circuitry.
      */
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _sdw *p = &cpu . SDWAM[_n];
         //if (!p->_initialized || p->USE == 0)
@@ -650,7 +706,7 @@ static void loadSDWAM(word15 segno)
             //p->_initialized = true;     // in use by SDWAM
             p->DF = true;     // in use by SDWAM
             
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
             {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
@@ -658,7 +714,7 @@ static void loadSDWAM(word15 segno)
                     continue;
                 
                 q->USE -= 1;
-                q->USE &= 077;
+                q->USE &= N_WAM_MASK;
             }
             
             cpu . SDW = p;
@@ -675,10 +731,10 @@ static void loadSDWAM(word15 segno)
 #endif
 }
 
-#ifndef SPEED
+#ifdef WAM
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
-    int nwam = 64;
+    int nwam = N_WAM_ENTRIES;
     if (cpu . switches . disable_wam)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
@@ -690,6 +746,13 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     {
         if (((CA >> 10) & 0377) == ((cpu . PTWAM[_n].PAGENO >> 4) & 0377) && cpu . PTWAM[_n].POINTER == segno && cpu . PTWAM[_n].FE)   //_initialized)
         {
+            cpu.cu.PTWAMM = 1;
+#ifdef L68
+            cpu.PTWAMR = (word4) _n;
+#endif
+#ifdef DPS8M
+            cpu.PTWAMR = (word6) _n;
+#endif
             cpu . PTW = &cpu . PTWAM[_n];
             
             /*
@@ -700,20 +763,21 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
                 if (cpu . PTWAM[_h].USE > cpu . PTW->USE)
                     cpu . PTWAM[_h].USE -= 1; //PTW->USE -= 1;
             }
-            cpu . PTW->USE = 63;
+            cpu . PTW->USE = N_WAM_ENTRIES - 1;
 #ifdef do_selftestPTWAM
             selftestPTWAM ();
 #endif
             return cpu . PTW;
         }
     }
+    cpu.cu.PTWAMM = 0;
     return NULL;    // segment not referenced in SDWAM
 }
 #endif
 
 static void fetchPTW(_sdw *sdw, word18 offset)
 {
-
+    PNL (L68_ (cpu.apu.state |= apu_FPTW;))
     setAPUStatus (apuStatus_PTW);
 
     word24 y2 = offset % 1024;
@@ -723,6 +787,9 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     
     sim_debug (DBG_APPENDING,& cpu_dev, "fetchPTW address %08o\n", sdw->ADDR + x2);
 
+    PNL (cpu.lastPTWOffset = offset;)
+    PNL (cpu.lastPTWIsDS = false;)
+
     core_read((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
     
     cpu . PTW0.ADDR = GETHI(PTWx2);
@@ -731,12 +798,17 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     cpu . PTW0.DF = TSTBIT(PTWx2, 2);
     cpu . PTW0.FC = PTWx2 & 3;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FPTW);
+#endif
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
 static void loadPTWAM(word15 segno, word18 offset)
 {
-#ifdef SPEED
+#ifndef WAM
 #if 0
     cpu . PTWAM0 . ADDR = cpu . PTW0.ADDR;
     cpu . PTWAM0 . M = cpu . PTW0.M;
@@ -772,7 +844,7 @@ static void loadPTWAM(word15 segno, word18 offset)
     /*
      * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63), and the newly loaded register is read out into the address preparation circuitry.
      */
-    for(int _n = 0 ; _n < 64 ; _n++)
+    for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
         _ptw *p = &cpu . PTWAM[_n];
         //if (!p->_initialized || p->USE == 0)
@@ -789,7 +861,7 @@ static void loadPTWAM(word15 segno, word18 offset)
             p->USE = 0;
             p->FE = true;
             
-            for(int _h = 0 ; _h < 64 ; _h++)
+            for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
             {
                 _ptw *q = &cpu . PTWAM[_h];
                 //if (!q->_initialized)
@@ -797,7 +869,7 @@ static void loadPTWAM(word15 segno, word18 offset)
                     //continue;
                 
                 q->USE -= 1;
-                q->USE &= 077;
+                q->USE &= N_WAM_MASK;
             }
             
             cpu . PTW = p;
@@ -808,7 +880,7 @@ static void loadPTWAM(word15 segno, word18 offset)
         }
     }
     sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
-#endif // SPEED
+#endif // WAM
 }
 
 /**
@@ -816,6 +888,7 @@ static void loadPTWAM(word15 segno, word18 offset)
  */
 static void modifyPTW(_sdw *sdw, word18 offset)
 {
+    PNL (L68_ (cpu.apu.state |= apu_MPTW;))
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
     
@@ -827,11 +900,15 @@ static void modifyPTW(_sdw *sdw, word18 offset)
     PTWx2 = SETBIT(PTWx2, 6);
     core_write((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
 //if_sim_debug (DBG_TRACE, & cpu_dev)
-//sim_printf ("modifyPTW 0%o %012llo ADDR %o U %llo M %llo F %llo FC %llo\n",
+//sim_printf ("modifyPTW 0%o %012"PRIo64" ADDR %o U %"PRIo64" M %"PRIo64" F %"PRIo64" FC %"PRIo64"\n",
             //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 
             //TSTBIT(PTWx2, 6), TSTBIT(PTWx2, 2), PTWx2 & 3);
    
     cpu . PTW->M = 1;
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_MPTW);
+#endif
 }
 
 
@@ -852,7 +929,7 @@ static char *strAccessType(MemoryAccessType accessType)
 {
     switch (accessType)
     {
-        case Unknown:           return "Unknown";
+        case UnknownMAT:        return "Unknown";
         case InstructionFetch:  return "InstructionFetch";
         case IndirectRead:      return "IndirectRead";
         //case DataRead:          return "DataRead";
@@ -898,14 +975,13 @@ static char *strACV(_fault_subtype acv)
 }
 #endif
 
-static fault_acv_subtype_  acvFaults;   ///< pending ACV faults
-
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
-    acvFaults |= acvfault;
+    PNL (L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;))
+    cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
-              "doAppendCycle(acvFault): acvFault=%llo acvFaults=%llo: %s",
-              (word36) acvfault, (word36) acvFaults, msg);
+              "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s",
+              (word36) acvfault, (word36) cpu.acvFaults, msg);
 }
 
 static char *strPCT(_processor_cycle_type t)
@@ -991,22 +1067,65 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
-    
+#ifdef APPFIX
+    bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
+    bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+#endif
+
+    PNL (L68_ (cpu.apu.state = 0;))
+
     cpu . RSDWH_R1 = 0;
     
-    acvFaults = 0;
-    char * acvFaultsMsg = "<unknown>";
+    cpu.acvFaults = 0;
+
+//#define FMSG(x) x
+#define FMSG(x) 
+    FMSG (char * acvFaultsMsg = "<unknown>";)
 
     word24 finalAddress = (word24) -1;  // not everything requires a final address
     
+#ifdef APPFIX
+// START APPEND
+
+    if (indirectFetch)
+      goto A;
+
+    if (rtcdOperandFetch)
+      goto A;
+
+    if (! instructionFetch && i -> a)
+      {
+        PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
+        word3 n = GET_PRN(IWB_IRODD);  // get PRn
+        CPTUR (cptUsePRn + n);
+sim_printf ("saw bit 29; n %o\n", n);
+        if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+          {
+            cpu.TPR.TRR = cpu.PAR[n].RNR;
+          }
+        else
+         {
+            cpu.TPR.TRR = cpu.PPR.PRR;
+         }
+        cpu.TPR.TSR = cpu.PAR[n].SNR;
+sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
+        goto A;
+      }
+
+    cpu.TPR.TRR = cpu.PPR.PRR;
+    cpu.TPR.TSR = cpu.PPR.PSR;
+    goto A;
+
 //
 //  A:
 //    Get SDW
-#ifndef QUIET_UNUSED
 A:;
 #endif
 
     cpu . TPR . CA = address;
+
+    PNL (cpu.APUMemAddr = address;)
+
 //
 // Phase 1:
 //
@@ -1075,7 +1194,7 @@ A:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
-#ifdef SPEED
+#ifndef WAM
     if (cpu . DSBR.U == 0)
     {
         fetchDSPTW(cpu . TPR.TSR);
@@ -1099,6 +1218,7 @@ A:;
     }
     loadSDWAM(cpu . TPR.TSR);
 #else
+
     // is SDW for C(TPR.TSR) in SDWAM?
     if (!fetchSDWfromSDWAM(cpu . TPR.TSR))
     {
@@ -1196,8 +1316,9 @@ A:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (cpu . TPR.TRR > cpu . SDW->R2) {
             //Set fault ACV3 = ORB
-            acvFaults |= ACV3;
-            acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
+            cpu.acvFaults |= ACV3;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";)
         }
         
         if (cpu . SDW->R == 0)
@@ -1205,8 +1326,9 @@ A:;
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu . PPR.PSR != cpu . TPR.TSR) {
                 //Set fault ACV4 = R-OFF
-                acvFaults |= ACV4;
-                acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+                cpu.acvFaults |= ACV4;
+                PNL (L68_ (cpu.apu.state |= apu_FLT;))
+                FMSG (acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";)
             }
         }
         
@@ -1231,8 +1353,9 @@ D:;
     if (!(cpu . PPR.PRR < cpu . rRALR)) {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
-        acvFaults |= ACV13;
-        acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
+        cpu.acvFaults |= ACV13;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";)
     }
     
     goto G;
@@ -1248,8 +1371,9 @@ E:;
     //SDW .E set ON?
     if (!cpu . SDW->E) {
         // Set fault ACV2 = E-OFF
-        acvFaults |= ACV2;
-        acvFaultsMsg = "acvFaults(E) SDW .E set OFF";
+        cpu.acvFaults |= ACV2;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(E) SDW .E set OFF";)
     }
     
     //SDW .G set ON?
@@ -1263,10 +1387,14 @@ E:;
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= cpu . SDW->EB) {
+// EB is word 15; masking address makes no sense; rather 0-extend EB
+// Fixes ISOLTS 880-01
+    //if ((address & 0037777) >= cpu . SDW->EB) {
+    if (address >= (word18) cpu.SDW->EB) {
         // Set fault ACV7 = NO GA
-        acvFaults |= ACV7;
-        acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
+        cpu.acvFaults |= ACV7;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";)
     }
     
 E1:
@@ -1275,15 +1403,17 @@ E1:
     // C(TPR.TRR) > SDW.R3?
     if (cpu . TPR.TRR > cpu . SDW->R3) {
         //Set fault ACV8 = OCB
-        acvFaults |= ACV8;
-        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
+        cpu.acvFaults |= ACV8;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";)
     }
     
     // C(TPR.TRR) < SDW.R1?
     if (cpu . TPR.TRR < cpu . SDW->R1) {
         // Set fault ACV9 = OCALL
-        acvFaults |= ACV9;
-        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";
+        cpu.acvFaults |= ACV9;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";)
     }
     
     
@@ -1292,8 +1422,9 @@ E1:
         // C(PPR.PRR) < SDW.R2?
         if (cpu . PPR.PRR < cpu . SDW->R2) {
             // Set fault ACV10 = BOC
-            acvFaults |= ACV10;
-            acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
+            cpu.acvFaults |= ACV10;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";)
         }
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
@@ -1306,36 +1437,40 @@ E1:
     goto G;
     
 F:;
-    
+    PNL (L68_ (cpu.apu.state |= apu_PIAU;))
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
     if (cpu . TPR.TRR < cpu . SDW->R1) {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, cpu . SDW -> R1);
-        acvFaults |= ACV1;
-        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
+        cpu.acvFaults |= ACV1;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";)
     }
     
     //C(TPR.TRR) > C(SDW .R2)?
     if (cpu . TPR.TRR > cpu . SDW->R2) {
         sim_debug (DBG_TRACE, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
-        acvFaults |= ACV1;
-        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
+        cpu.acvFaults |= ACV1;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";)
     }
     
     //SDW .E set ON?
     if (!cpu . SDW->E) {
-        acvFaults |= ACV2;
-        acvFaultsMsg = "acvFaults(F) SDW .E set OFF";
+        cpu.acvFaults |= ACV2;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
     }
     
     //C(PPR.PRR) = C(TPR.TRR)?
     if (cpu . PPR.PRR != cpu . TPR.TRR) {
         //Set fault ACV12 = CRT
-        acvFaults |= ACV12;
-        acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";
+        cpu.acvFaults |= ACV12;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";)
     }
     
     goto D;
@@ -1347,16 +1482,19 @@ G:;
     //C(TPR.CA)0,13 > SDW.BOUND?
     //if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
     if (((address >> 4) & 037777) > cpu . SDW->BOUND) {
-        acvFaults |= ACV15;
-        acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";
+        cpu.acvFaults |= ACV15;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
         sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
                     address, ((address >> 4) & 037777), cpu . SDW->BOUND);
     }
     
-    if (acvFaults)
+    if (cpu.acvFaults)
+      {
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
         // Initiate an access violation fault
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=acvFaults}, "ACV fault");
-    
+        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults}, "ACV fault");
+      }
     // is segment C(TPR.TSR) paged?
     if (cpu . SDW->U)
         goto H; // Not paged
@@ -1364,7 +1502,7 @@ G:;
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
-#ifdef SPEED
+#ifndef WAM
     fetchPTW(cpu . SDW, address);
     if (!cpu . PTW0.DF)
     {
@@ -1395,7 +1533,12 @@ G:;
     // is prepage mode???
     // XXX: don't know what todo with this yet ...
     // XXX: ticket #11
-    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
+    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size
+    // of the translate table is determined by the TA1 data type as shown in
+    // the table below. Before the instruction is executed, a check is made for
+    // allocation in memory for the page for the translate table. If the page
+    // is not in memory, a Missing Page fault occurs before execution of the
+    // instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
 #if 0
     if (bPrePageMode)
     {
@@ -1411,7 +1554,8 @@ G:;
     
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
-#if 1
+    PNL (L68_ (cpu.apu.state |= apu_FANP;))
+#if 0
     appendingUnitCycleType = apuCycle_FANP;
     setAPUStatus (apuStatus_FANP);
 #else
@@ -1431,7 +1575,12 @@ H:;
 
     finalAddress = cpu . SDW->ADDR + address;
     finalAddress &= 0xffffff;
+    PNL (cpu.APUMemAddr = finalAddress;)
     
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FANP);
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     
     goto HI;
@@ -1458,13 +1607,19 @@ I:;
     // final address paged
     appendingUnitCycleType = apuCycle_FAP;
     setAPUStatus (apuStatus_FAP);
+    PNL (L68_ (cpu.apu.state |= apu_FAP;))
     
     //word24 y2 = TPR.CA % 1024;
     word24 y2 = address % 1024;
     
     finalAddress = ((cpu . PTW->ADDR & 0777777) << 6) + y2;
     finalAddress &= 0xffffff;
+    PNL (cpu.APUMemAddr = finalAddress;)
     
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FAP);
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     goto HI;
 
@@ -1500,8 +1655,11 @@ KL:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
     if (cpu . TPR.TRR == 0)
+      {
         // C(SDW.P) → C(PPR.P)
         cpu . PPR.P = cpu . SDW->P;
+        PNL (L68_ (cpu.apu.state |= apu_TP_P;))
+      }
     else
         // 0 → C(PPR.P)
         cpu . PPR.P = 0;
@@ -1516,6 +1674,11 @@ KL:;
    
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
+
+    PNL (cpu.APUDataBusOffset = address;)
+    PNL (cpu.APUDataBusAddr = finalAddress;)
+
+    PNL (L68_ (cpu.apu.state |= apu_FA;))
 
     cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???

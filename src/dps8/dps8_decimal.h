@@ -1,6 +1,7 @@
 /*
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -37,8 +38,11 @@
 
 
 decContext * decContextDefaultDPS8(decContext *context);
-decContext * decContextDefaultDPS8_80(decContext *context);
+decContext * decContextDefaultDPS8Mul(decContext *context);
 decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn);
-char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC);
-
-
+char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC);
+//uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
+//unsigned char *getBCD(decNumber *a);
+//char *getBCDn(decNumber *a, int digits);
+//int decCompare(decNumber *lhs, decNumber *rhs, decContext *set);
+int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set);

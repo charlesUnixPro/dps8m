@@ -214,3 +214,6 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                              uint * cnt, bool write);
 void iom_init (void);
 int send_marker_interrupt (uint iomUnitIdx, int chan);
+#ifdef PANEL
+void doBoot (void);
+#endif

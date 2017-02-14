@@ -62,7 +62,7 @@ typedef enum
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
-    FETCH_cycle = INSTRUCTION_FETCH,
+    FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
@@ -257,7 +257,13 @@ struct _sdw
                      //  register is valid. If this bit is set OFF, a hit is
                      //  not possible. All SDWAM . F bits are set OFF by the
                      //  instructions that clear the SDWAM.
-    word6   USE;     // Usage count for the register. The SDWAM . USE field is
+#ifdef DPS8M
+    word6   USE;
+#endif
+#ifdef L68
+    word4   USE;
+#endif
+                     // Usage count for the register. The SDWAM . USE field is
                      //  used to maintain a strict FIFO queue order among the
                      //  SDWs. When an SDW is matched, its USE value is set to
                      //  15 (newest) on the DPS/L68 and to 63 on the DPS 8M,
@@ -349,7 +355,14 @@ struct _ptw
                      //  the register is valid. If this bit is set OFF, a
                      //  hit is not possible. All PTWAM . F bits are set OFF
                      //  by the instructions that clear the PTWAM.
-    word6   USE;     // Usage count for the register. The PTWAM . USE field
+#ifdef DPS8M
+    word6   USE;
+#endif
+
+#ifdef L68
+    word4   USE;
+#endif
+                     // Usage count for the register. The PTWAM . USE field
                      //  is used to maintain a strict FIFO queue order
                      //  among the PTWs. When an PTW is matched its USE 
                      // value is set to 15 (newest) on the DPS/L68 and to
@@ -393,7 +406,9 @@ struct _cache_mode_register
     word1    lev_ful;
     word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
     word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
-    //word1    opnd_on; // DPS8, but not DPS8M
+#ifdef L68
+    word1    opnd_on; // 1: The cache memory (if active) is used for operands.
+#endif
     word1    inst_on; // 1: The cache memory (if active) is used for instructions.
     // When the cache-to-register mode flag (bit 59 of the cache mode register) is set ON, the
     // processor is forced to fetch the operands of all double-precision operations unit load operations
@@ -403,7 +418,9 @@ struct _cache_mode_register
     word1    str_asd;
     word1    col_ful;
     word2    rro_AB;
+#ifdef DPS8M
     word1    bypass_cache;
+#endif
     word2    luf;       // LUF value
                         // 0   1   2   3
                         // Lockup time
@@ -414,22 +431,68 @@ struct _cache_mode_register
 
 typedef struct _cache_mode_register _cache_mode_register;
 
-typedef struct mode_registr
+#if 1
+typedef struct mode_register
   {
+    word36 r;
+#ifdef L68
+    word15 FFV;
+    word1 OC_TRAP;
+    word1 ADR_TRAP;
+    word9 OPCODE;
+    word1 OPCODEX;
+#endif
+    word1 sdpap;
+    word1 separ;
+    word1 emr;
+    word1 hrhlt;
+#ifdef DPS8M
+    word1 hrxfr;
+#endif
+    word1 ihr;
+    word1 ihrrs;
+#ifdef DPS8M
+    word1 hexfp;
+#endif
+  } _mode_register;
+#else
+typedef struct mode_register
+  {
+#ifdef L68
+    word15 FFV;
+#ifdef L68
+    word1 isolts_tracks;
+#endif
+    word1 OC_TRAP;
+    word1 ADR_TRAP;
+    word10 OPCODE;
+#endif
     word1 cuolin;
     word1 solin;
     word1 sdpap;
     word1 separ;
     word2 tm;
     word2 vm;
+#ifdef L68
+    word2 isolts_tracks2;
+#endif
     word1 hrhlt;
+#ifdef DPS8M
     word1 hrxfr;
+#endif
+#ifdef L68
+    word1 hropc;
+#endif
     word1 ihr;
     word1 ihrrs;
-    word1 mrgctl;
+// XXX This bit is used to track the position of the NORMAL/TEST switch
+//    word1 mrgctl;
+#ifdef DPS8M
     word1 hexfp;
+#endif
     word1 emr;
   } _mode_register;
+#endif
 
 extern DEVICE cpu_dev;
 
@@ -438,7 +501,9 @@ typedef struct MOPstruct MOPstruct;
 // address of an EIS operand
 typedef struct EISaddr
 {
+#ifndef EIS_PTR
     word18  address;    // 18-bit virtual address
+#endif
     //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
     word36  data;
@@ -451,11 +516,14 @@ typedef struct EISaddr
     
     // eisDataType _type;   // type of data - alphunumeric/numeric
     
+#ifndef EIS_PTR3
     int     TA;   // type of Alphanumeric chars in src
+#endif
     int     TN;   // type of Numeric chars in src
     int     cPos;
     int     bPos;
     
+#ifndef EIS_PTR4
     // for when using AR/PR register addressing
     word15  SNR;        // The segment number of the segment containing the data item described by the pointer register.
     word3   RNR;        // The effective ring number value calculated during execution of the instruction that last loaded
@@ -463,6 +531,7 @@ typedef struct EISaddr
     //bool    bUsesAR;    // true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
     
     MemoryAccessType    mat;    // memory access type for operation
+#endif
 
     // Cache
 
@@ -531,10 +600,16 @@ typedef struct EISstruct
 #define TN2 TN [1]
 #define TN3 TN [2]
 
+#ifdef EIS_PTR3
+#define TA1 cpu.du.TAk[0]
+#define TA2 cpu.du.TAk[1]
+#define TA3 cpu.du.TAk[2]
+#else
     uint   TA [3];          // type alphanumeric
 #define TA1 TA [0]
 #define TA2 TA [1]
 #define TA3 TA [2]
+#endif
 
     uint   S [3];           // Sign and decimal type of number
 #define S1  S [0]
@@ -560,13 +635,18 @@ typedef struct EISstruct
     
     word9   inBuffer [64];  // decimal unit input buffer
     word9   *in;            // pointer to current read position in inBuffer
+    uint    inBufferCnt;    // number of characters in inBuffer
     word9   outBuffer [64]; // output buffer
     word9   *out;           // pointer to current write position in outBuffer;
     
     int     exponent;       // For decimal floating-point (evil)
     int     sign;           // For signed decimal (1, -1)
     
+#ifdef EIS_PTR2
+#define KMOP 1
+#else
     EISaddr *mopAddress;    // mopAddress, pointer to addr [0], [1], or [2]
+#endif
     
     int     mopTally;       // number of micro-ops
     int     mopPos;         // current mop char posn
@@ -588,6 +668,9 @@ typedef struct EISstruct
                             //  digits are zero, the data is assumed positive
                             //  and the SN flag is set OFF, even when the
                             //  sign is negative.
+    bool    mopZ;           // Zero flag; initially set ON. It is set OFF 
+                            //  whenever a sending string character that is not
+                            //  decimal zero is moved into the receiving string.
     bool    mopBZ;          // Blank-when-zero flag; initially set OFF and
                             //  set ON by either the ENF or SES micro
                             //  operation. If, at the completion of a move
@@ -680,7 +763,105 @@ typedef struct
     bool useMap;
   } switches_t;
 
-// Control unit data (288 bits) 
+#ifdef L68
+enum ou_cycle_e
+  {
+    ou_GIN = 0400,
+    ou_GOS = 0200,
+    ou_GD1 = 0100,
+    ou_GD2 = 0040,
+    ou_GOE = 0020,
+    ou_GOA = 0010,
+    ou_GOM = 0004,
+    ou_GON = 0002,
+    ou_GOF = 0001
+  };
+#endif
+
+typedef struct
+  {
+    // Operations Unit/Address Modification
+    bool directOperandFlag;
+    word36 directOperand;
+    word6 characterOperandSize;
+    word6 characterOperandOffset;
+    bool crflag;
+#ifdef L68
+    word2 eac;
+    word1 RB1_FULL;
+    word1 RP_FULL;
+    word1 RS_FULL;
+    word9 cycle;
+    word1 STR_OP;
+#endif
+#ifdef PANEL
+    word9 RS;
+    word4 opsz;
+    word10 reguse;
+#endif
+  } ou_unit_data_t;
+
+// APU history operation parameter
+
+enum APUH_e
+  {
+    APUH_FDSPTW = 1llu << (35 - 17),
+    APUH_MDSPTW = 1llu << (35 - 18),
+    APUH_FSDWP =  1llu << (35 - 19),
+    APUH_FPTW =   1llu << (35 - 20),
+    APUH_FPTW2 =  1llu << (35 - 21),
+    APUH_MPTW =   1llu << (35 - 22),
+    APUH_FANP =   1llu << (35 - 23),
+    APUH_FAP =    1llu << (35 - 24)
+  };
+
+enum { 
+//   AL39 pg 64 APU hist.
+    apu_FLT = 1ll << (33 - 0),    //  0   l FLT Access violation or directed fault on this cycle
+                                  //  1-2 a BSY    Data source for ESN
+    apu_ESN_PSR = 0,              //                  00 PPR.PSR
+    apu_ESN_SNR = 1ll << (33- 1), //                  01 PRn.SNR
+    apu_ESN_TSR = 1ll << (33- 2), //                  10 TPR.TSR
+                                  //                  11 not used
+                                  //  3     PRAP
+    apu_HOLD = 1ll <<  (33- 4),   //  4     HOLD  An access violation or directed fault is waiting
+                                  //  5     FRIW
+                                  //  6     XSF
+                                  //  7     STF
+    apu_TP_P = 1ll <<  (33- 8),   //  8     TP P    Guessing PPR.p set from SDW.P
+    apu_PP_P = 1ll <<  (33- 9),   //  9     PP P    PPR.P?
+                                  // 10     ?
+                                  // 11     S-ON   Segment on?
+                                  // 12     ZMAS
+                                  // 13     SDMF   Seg. Descr. Modify?
+                                  // 14     SFND
+                                  // 15     ?
+                                  // 16     P-ON   Page on?
+                                  // 17     ZMAP
+                                  // 18     PTMF
+                                  // 19     PFND  
+    apu_FDPT = 1ll << (33-20),    // 20   b FDPT   Fetch descriptor segment PTW
+    apu_MDPT = 1ll << (33-21),    // 21   c MDPT   Modify descriptor segment PTW
+    apu_FSDP = 1ll << (33-22),    // 22   d FSDP   Fetch SDW paged descr. seg.
+    apu_FSDN = 1ll << (33-23),    // 23     FSDN   Fetch SDW non-paged 
+    apu_FPTW = 1ll << (33-24),    // 24   e FPTW   Fetch PTW
+    apu_MPTW = 1ll << (33-25),    // 25   g MPTW   Modify PTW
+                                  // 26   f FPT2 // Fetch prepage
+    apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from paged seg.
+    apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from non-paged segment
+                                  // 29     FAAB   Final address absolute?
+    apu_FA   = 1ll << (33-30),    // 30     FA     Final address?
+                                  // 31     EAAU
+    apu_PIAU = 1ll << (33-32)     // 32     PIAU   Instruction fetch?
+                                  // 33     TGAU
+  };
+
+typedef struct
+  {
+#ifdef PANEL
+    word34 state;
+#endif
+  } apu_unit_data_t;
 
 typedef struct
   {
@@ -712,9 +893,9 @@ typedef struct
                    // 3-17  PSR is stored in PPR
                    // 18    P   is stored in PPR
     word1 XSF;     // 19    XSF External segment flag
-                   // 20    SDWAMM Match on SDWAM -- not implemented
+    word1 SDWAMM;  // 20    SDWAMM Match on SDWAM
     word1 SD_ON;   // 21    SDWAM enabled
-                   // 22    PTWAMM Match on PTWAM -- not implemented
+    word1 PTWAMM;  // 22    PTWAMM Match on PTWAM
     word1 PT_ON;   // 23    PTWAM enabled
 
 #if 0
@@ -756,10 +937,12 @@ typedef struct
     word1 OCB;     //  8    OCB       AVF Out of call bracket
     word1 OCALL;   //  9    OCALL     AVF Outward call
     word1 BOC;     // 10    BOC       AVF Bad outward call
-    word1 PTWAM_ER;// 11    PTWAM_ER  AVF PTWAM error
+// PTWAM error is DPS8M only
+    word1 PTWAM_ER;// 11    PTWAM_ER  AVF PTWAM error // inward return
     word1 CRT;     // 12    CRT       AVF Cross ring transfer
     word1 RALR;    // 13    RALR      AVF Ring alarm
-    word1 SWWAM_ER;// 14    SWWAM_ER  AVF SDWAM error
+// On DPS8M a SDWAM error, on DP8/L68 a WAM error
+    word1 SDWAM_ER;// 14    SWWAM_ER  AVF SDWAM error
     word1 OOSB;    // 15    OOSB      AVF Out of segment bounds
     word1 PARU;    // 16    PARU      Parity fault - processor parity upper
     word1 PARL;    // 17    PARL      Parity fault - processor parity lower
@@ -790,8 +973,8 @@ typedef struct
     
     /* word 3 */
                    //  0-17          0
-                   // 18-21 TSNA     Pointer register number for non-EIS operands or
-                   //                EIS Operand #1
+                   // 18-21 TSNA     Pointer register number for non-EIS 
+                   //                operands or EIS Operand #1
                    //                  18-20 PRNO Pointer register number
                    //                  21       PRNO is valid
                    // 22-25 TSNB     Pointer register number for EIS operand #2
@@ -800,6 +983,11 @@ typedef struct
                    // 26-29 TSNC     Pointer register number for EIS operand #2
                    //                  26-28 PRNO Pointer register number
                    //                  29       PRNO is valid
+#ifdef EIS_PTR4
+    word3 TSN_PRNO [3];
+    word1 TSN_VALID [3];
+#endif
+
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
     /* word 4 */
@@ -852,13 +1040,322 @@ typedef struct
 
     /* word 7 */
     word36 IRODD; /* Instr holding register; odd word of last pair fetched */
-    
  } ctl_unit_data_t;
 
 #define USE_IRODD (cpu.cu.rd && ((cpu. PPR.IC & 1) != 0)) 
 #define IWB_IRODD (USE_IRODD ? cpu.cu.IRODD : cpu.cu.IWB)
 
-// Control unit data (288 bits) 
+#ifdef L68
+enum du_cycle1_e
+  {
+    //  0 -FPOL Prepare operand length
+    du1_nFPOL        = 0400000000000ll,
+    //  1 -FPOP Prepare operand pointer
+    du1_nFPOP        = 0200000000000ll,
+    //  2 -NEED-DESC Need descriptor 
+    du1_nNEED_DESC   = 0100000000000ll,
+    //  3 -SEL-ADR Select address register
+    du1_nSEL_DIR     = 0040000000000ll,
+    //  4 -DLEN=DIRECT Length equals direct
+    du1_nDLEN_DIRECT = 0020000000000ll,
+    //  5 -DFRST Descriptor processed for first time
+    du1_nDFRST       = 0010000000000ll,
+    //  6 -FEXR Extended register modification
+    du1_nFEXR        = 0004000000000ll,
+    //  7 -DLAST-FRST Last cycle of DFRST
+    du1_nLAST_DFRST  = 0002000000000ll,
+    //  8 -DDU-LDEA Decimal unit load  (lpl?)
+    du1_nDDU_LDEA    = 0001000000000ll,
+    //  9 -DDU-STAE Decimal unit store (spl?)
+    du1_nDDU_STEA    = 0000400000000ll,
+    // 10 -DREDO Redo operation without pointer and length update
+    du1_nDREDO       = 0000200000000ll,
+    // 11 -DLVL<WD-SZ Load with count less than word size
+    du1_nDLVL_WD_SZ  = 0000100000000ll,
+    // 12 -EXH Exhaust
+    du1_nEXH         = 0000040000000ll,
+    // 13 DEND-SEQ End of sequence
+    du1_DEND_SEQ     = 0000020000000ll,
+    // 14 -DEND End of instruction
+    du1_nEND         = 0000010000000ll,
+    // 15 -DU=RD+WRT Decimal unit write-back
+    du1_nDU_RD_WRT   = 0000004000000ll,
+    // 16 -PTRA00 PR address bit 0
+    du1_nPTRA00      = 0000002000000ll,
+    // 17 -PTRA01 PR address bit 1
+    du1_nPTRA01      = 0000001000000ll,
+    // 18 FA/Il Descriptor l active
+    du1_FA_I1        = 0000000400000ll,
+    // 19 FA/I2 Descriptor 2 active
+    du1_FA_I2        = 0000000200000ll,
+    // 20 FA/I3 Descriptor 3 active
+    du1_FA_I3        = 0000000100000ll,
+    // 21 -WRD Word operation
+    du1_nWRD         = 0000000040000ll,
+    // 22 -NINE 9-bit character operation
+    du1_nNINE        = 0000000020000ll,
+    // 23 -SIX 6-bit character operation
+    du1_nSIX         = 0000000010000ll,
+    // 24 -FOUR 4-bit character operation
+    du1_nFOUR        = 0000000004000ll,
+    // 25 -BIT Bit operation
+    du1_nBIT         = 0000000002000ll,
+    // 26 Unused
+    //               = 0000000001000ll,
+    // 27 Unused
+    //               = 0000000000400ll,
+    // 28 Unused
+    //               = 0000000000200ll,
+    // 29 Unused
+    //               = 0000000000100ll,
+    // 30 FSAMPL Sample for mid-instruction interrupt
+    du1_FSAMPL       = 0000000000040ll,
+    // 31 -DFRST-CT Specified first count of a sequence
+    du1_nDFRST_CT    = 0000000000020ll,
+    // 32 -ADJ-LENGTH Adjust length
+    du1_nADJ_LENTGH  = 0000000000010ll,
+    // 33 -INTRPTD Mid-instruction interrupt
+    du1_nINTRPTD     = 0000000000004ll,
+    // 34 -INHIB Inhibit STC1 (force "STC0")
+    du1_nINHIB       = 0000000000002ll,
+    // 35 Unused
+    //               = 0000000000001ll,
+  };
+
+enum du_cycle2_e
+  {
+    // 36 DUD Decimal unit idle
+    du2_DUD          = 0400000000000ll,
+    // 37 -GDLDA Descriptor load gate A
+    du2_nGDLDA       = 0200000000000ll,
+    // 38 -GDLDB Descriptor load gate B
+    du2_nGDLDB       = 0100000000000ll,
+    // 39 -GDLDC Descriptor load gate C
+    du2_nGDLDC       = 0040000000000ll,
+    // 40 NLD1 Prepare alignment count for first numeric operand load
+    du2_NLD1         = 0020000000000ll,
+    // 41 GLDP1 Numeric operand one load gate
+    du2_GLDP1        = 0010000000000ll,
+    // 42 NLD2 Prepare alignment count for second numeric operand load
+    du2_NLD2         = 0004000000000ll,
+    // 43 GLDP2 Numeric operand two load gate
+    du2_GLDP2        = 0002000000000ll,
+    // 44 ANLD1 Alphanumeric operand one load gate
+    du2_ANLD1        = 0001000000000ll,
+    // 45 ANLD2 Alphanumeric operand two load gate
+    du2_ANLD2        = 0000400000000ll,
+    // 46 LDWRT1 Load rewrite register one gate (XXX Guess indirect desc. MFkID)
+    du2_LDWRT1       = 0000200000000ll,
+    // 47 LDWRT2 Load rewrite register two gate (XXX Guess indirect desc. MFkID)
+    du2_LDWRT2       = 0000100000000ll,
+    // 50 -DATA-AVLDU Decimal unit data available
+    du2_nDATA_AVLDU  = 0000040000000ll,
+    // 49 WRT1 Rewrite register one loaded
+    du2_WRT1         = 0000020000000ll,
+    // 50 GSTR Numeric store gate
+    du2_GSTR         = 0000010000000ll,
+    // 51 ANSTR Alphanumeric store gate
+    du2_ANSTR        = 0000004000000ll,
+    // 52 FSTR-OP-AV Operand available to be stored
+    du2_FSTR_OP_AV   = 0000002000000ll,
+    // 53 -FEND-SEQ End sequence flag
+    du2_nFEND_SEQ    = 0000001000000ll,
+    // 54 -FLEN<128 Length less than 128
+    du2_nFLEN_128    = 0000000400000ll,
+    // 55 FGCH Character operation gate
+    du2_FGCH         = 0000000200000ll,
+    // 56 FANPK Alphanumeric packing cycle gate
+    du2_FANPK        = 0000000100000ll,
+    // 57 FEXMOP Execute MOP gate
+    du2_FEXOP        = 0000000040000ll,
+    // 58 FBLNK Blanking gate
+    du2_FBLNK        = 0000000020000ll,
+    // 59 Unused
+    //               = 0000000010000ll,
+    // 60 DGBD Binary to decimal execution gate
+    du2_DGBD         = 0000000004000ll,
+    // 61 DGDB Decimal to binary execution gate
+    du2_DGDB         = 0000000002000ll,
+    // 62 DGSP Shift procedure gate
+    du2_DGSP         = 0000000001000ll,
+    // 63 FFLTG Floating result flag
+    du2_FFLTG        = 0000000000400ll,
+    // 64 FRND Rounding flag
+    du2_FRND         = 0000000000200ll,
+    // 65 DADD-GATE Add/subtract execute gate
+    du2_DADD_GATE    = 0000000000100ll,
+    // 66 DMP+DV-GATE Multiply/divide execution gate
+    du2_DMP_DV_GATE  = 0000000000040ll,
+    // 67 DXPN-GATE Exponent network execution gate
+    du2_DXPN_GATE    = 0000000000020ll,
+    // 68 Unused
+    //               = 0000000000010ll,
+    // 69 Unused
+    //               = 0000000000004ll,
+    // 70 Unused
+    //               = 0000000000002ll,
+    // 71 Unused
+    //               = 0000000000001ll,
+  };
+
+#define DU_CYCLE_GDLDA { clrmask (& cpu.du.cycle2, du2_nGDLDA); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDB | du2_nGDLDC); }
+#define DU_CYCLE_GDLDB { clrmask (& cpu.du.cycle2, du2_nGDLDB); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDA | du2_nGDLDC); }
+#define DU_CYCLE_GDLDC { clrmask (& cpu.du.cycle2, du2_nGDLDC); \
+                    setmask (& cpu.du.cycle2, du2_nGDLDA | du2_nGDLDB); }
+#define DU_CYCLE_FA_I1 setmask (& cpu.du.cycle1, du1_FA_I1)
+#define DU_CYCLE_FA_I2 setmask (& cpu.du.cycle1, du1_FA_I2)
+#define DU_CYCLE_FA_I3 setmask (& cpu.du.cycle1, du1_FA_I3)
+#define DU_CYCLE_ANLD1 setmask (& cpu.du.cycle2, du2_ANLD1)
+#define DU_CYCLE_ANLD2 setmask (& cpu.du.cycle2, du2_ANLD2)
+#define DU_CYCLE_NLD1  setmask (& cpu.du.cycle2, du2_NLD1)
+#define DU_CYCLE_NLD2  setmask (& cpu.du.cycle2, du2_NLD2)
+#define DU_CYCLE_FRND  setmask (& cpu.du.cycle2, du2_FRND)
+#define DU_CYCLE_DGBD  setmask (& cpu.du.cycle2, du2_DGBD)
+#define DU_CYCLE_DGDB  setmask (& cpu.du.cycle2, du2_DGDB)
+#define DU_CYCLE_DDU_LDEA clrmask (& cpu.du.cycle1, du1_nDDU_LDEA)
+#define DU_CYCLE_DDU_STEA clrmask (& cpu.du.cycle1, du1_nDDU_STEA)
+#define DU_CYCLE_END clrmask (& cpu.du.cycle1, du1_nEND)
+#define DU_CYCLE_LDWRT1  setmask (& cpu.du.cycle2, du2_LDWRT1)
+#define DU_CYCLE_LDWRT2  setmask (& cpu.du.cycle2, du2_LDWRT2)
+#define DU_CYCLE_FEXOP  setmask (& cpu.du.cycle2, du2_FEXOP)
+#define DU_CYCLE_ANSTR  setmask (& cpu.du.cycle2, du2_ANSTR)
+#define DU_CYCLE_GSTR  setmask (& cpu.du.cycle2, du2_GSTR)
+#define DU_CYCLE_FLEN_128  clrmask (& cpu.du.cycle2, du2_nFLEN_128)
+#define DU_CYCLE_FDUD  { cpu.du.cycle1 = \
+                      du1_nFPOL | \
+                      du1_nFPOP | \
+                      du1_nNEED_DESC | \
+                      du1_nSEL_DIR | \
+                      du1_nDLEN_DIRECT | \
+                      du1_nDFRST | \
+                      du1_nFEXR | \
+                      du1_nLAST_DFRST | \
+                      du1_nDDU_LDEA | \
+                      du1_nDDU_STEA | \
+                      du1_nDREDO | \
+                      du1_nDLVL_WD_SZ | \
+                      du1_nEXH | \
+                      du1_nEND | \
+                      du1_nDU_RD_WRT | \
+                      du1_nWRD | \
+                      du1_nNINE | \
+                      du1_nSIX | \
+                      du1_nFOUR | \
+                      du1_nBIT | \
+                      du1_nINTRPTD | \
+                      du1_nINHIB; \
+                    cpu.du.cycle2 = \
+                      du2_DUD | \
+                      du2_nGDLDA | \
+                      du2_nGDLDB | \
+                      du2_nGDLDC | \
+                      du2_nDATA_AVLDU | \
+                      du2_nFEND_SEQ | \
+                      du2_nFLEN_128; \
+                  }
+#define DU_CYCLE_nDUD clrmask (& cpu.du.cycle2, du2_DUD) 
+#endif
+
+#ifdef PANEL
+// Control points
+
+#define CPT(R,C) cpu.cpt[R][C]=1
+#define CPTUR(C) cpu.cpt[cpt5L][C]=1
+#else
+#define CPT(R,C)
+#define CPTUR(C)
+#endif
+
+#if 0
+#ifdef PANEL
+// 6180 panel DU control flags with guessed meanings based on DU history 
+// register bits.
+// 
+enum du_cycle1_e
+  {
+    du1_FDUD  = 01000000000000ll, // Decimal Unit Idle
+    du1_GDLD  = 00400000000000ll, // Decimal Unit Load
+    du1_GLP1  = 00200000000000ll, // PR address bit 0
+    du1_GLP2  = 00100000000000ll, // PR address bit 1
+    du1_GEA1  = 00040000000000ll, // Descriptor 1 active
+    du1_GEM1  = 00020000000000ll, // 
+    du1_GED1  = 00010000000000ll, // Prepare alignment count for first numeric operand load
+    du1_GDB   = 00004000000000ll, // Decimal to binary gate
+    du1_GBD   = 00002000000000ll, // Binary to decimal gate
+    du1_GSP   = 00001000000000ll, // Shift procedure gate
+    du1_GED2  = 00000400000000ll, // Prepare alignment count for second numeric operand load
+    du1_GEA2  = 00000200000000ll, // Descriptor 2 active
+    du1_GADD  = 00000100000000ll, // Add subtract execute gate
+    du1_GCMP  = 00000040000000ll, // 
+    du1_GMSY  = 00000020000000ll, // 
+    du1_GMA   = 00000010000000ll, // 
+    du1_GMS   = 00000004000000ll, // 
+    du1_GQDF  = 00000002000000ll, // 
+    du1_GQPA  = 00000001000000ll, // 
+    du1_GQR1  = 00000000400000ll, // Load rewrite register one gate
+    du1_GQR2  = 00000000200000ll, // Load rewrite register two gate
+    du1_GRC   = 00000000100000ll, // 
+    du1_GRND  = 00000000040000ll, // 
+    du1_GCLZ  = 00000000020000ll, // Load with count less than word size
+    du1_GEDJ  = 00000000010000ll, // ? is the GED3?
+    du1_GEA3  = 00000000004000ll, // Descriptor 3 active
+    du1_GEAM  = 00000000002000ll, // 
+    du1_GEDC  = 00000000001000ll, // 
+    du1_GSTR  = 00000000000400ll, // Decimal unit store
+    du1_GSDR  = 00000000000200ll, // 
+    du1_NSTR  = 00000000000100ll, // Numeric store gate
+    du1_SDUD  = 00000000000040ll, //
+    du1_U32   = 00000000000020ll, // ?
+    du1_U33   = 00000000000010ll, // ?
+    du1_U34   = 00000000000004ll, // ?
+    du1_FLTG  = 00000000000002ll, // Floating result flag
+    du1_FRND  = 00000000000001ll  // Rounding flag
+  };
+
+enum du_cycle2_e
+  {
+    du2_ALD1  = 01000000000000ll, // Alphanumeric operand one load gate
+    du2_ALD2  = 00400000000000ll, // Alphanumeric operand two load gate
+    du2_NLD1  = 00200000000000ll, // Numeric operand one load gate
+    du2_NLD2  = 00100000000000ll, // Numeric operand two load gate
+    du2_LWT1  = 00040000000000ll, // Load rewrite register one gate
+    du2_LWT2  = 00020000000000ll, // Load rewrite register two gate
+    du2_ASTR  = 00010000000000ll, // Alphanumeric store gate
+    du2_ANPK  = 00004000000000ll, // Alphanumeric packing cycle gate
+    du2_FGCH  = 00002000000000ll, // Character operation gate
+    du2_XMOP  = 00001000000000ll, // Execute MOP
+    du2_BLNK  = 00000400000000ll, // Blanking gate
+    du2_U11   = 00000200000000ll, // 
+    du2_U12   = 00000100000000ll, // 
+    du2_CS_0  = 00000040000000ll, // 
+    du2_CU_0  = 00000020000000ll, //  CS=0
+    du2_FI_0  = 00000010000000ll, //  CU=0
+    du2_CU_V  = 00000004000000ll, //  CU=V
+    du2_UM_V  = 00000002000000ll, //  UM<V
+    du2_U18   = 00000001000000ll, // ?
+    du2_U19   = 00000000400000ll, // ?
+    du2_U20   = 00000000200000ll, // ?
+    du2_U21   = 00000000100000ll, // ?
+    du2_U22   = 00000000040000ll, // ?
+    du2_U23   = 00000000020000ll, // ?
+    du2_U24   = 00000000010000ll, // ?
+    du2_U25   = 00000000004000ll, // ?
+    du2_U26   = 00000000002000ll, // ?
+    du2_U27   = 00000000001000ll, // ?
+    du2_L128  = 00000000000400ll, // L<128 Length less than 128
+    du2_END_SEQ = 00000000000200ll, // End sequence flag
+    du2_U29   = 00000000000100ll, // ?
+    du2_U31   = 00000000000040ll, // ?
+    du2_U32   = 00000000000020ll, // ?
+    du2_U33   = 00000000000010ll, // ?
+    du2_U34   = 00000000000004ll, // ?
+    du2_U35   = 00000000000002ll, // ?
+    du2_U36   = 00000000000001ll  // ?
+  };
+#endif
+#endif
 
 typedef struct du_unit_data_t
   {
@@ -997,7 +1494,28 @@ typedef struct du_unit_data_t
     word36 image [8];
 #endif
 
+#ifdef PANEL
+    word37 cycle1;
+    word37 cycle2;
+    word1 POL; // Prepare operand length
+    word1 POP; // Prepare operand pointer
+#endif
   } du_unit_data_t;
+
+#ifdef PANEL
+// prepare_state bits
+enum
+  {
+    ps_PIA = 0200,
+    ps_POA = 0100,
+    ps_RIW = 0040,
+    ps_SIW = 0020,
+    ps_POT = 0010,
+    ps_PON = 0004,
+    ps_RAW = 0002,
+    ps_SAW = 0001
+  };
+#endif
 
 // History registers
 
@@ -1007,6 +1525,15 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
        CUH_MSTO = 04, CUH_PIB = 02 };
 
 #define N_CPU_UNITS_MAX 8
+
+#ifdef DPS8M
+#define N_WAM_ENTRIES 64
+#define N_WAM_MASK 077
+#endif
+#ifdef L68
+#define N_WAM_ENTRIES 16
+#define N_WAM_MASK 017
+#endif
 
 typedef struct
   {
@@ -1037,6 +1564,8 @@ typedef struct
     switches_t switches;
     ctl_unit_data_t cu;
     du_unit_data_t du;
+    ou_unit_data_t ou;
+    apu_unit_data_t apu;
     word36 faultRegister [2];
 
     word36   rA;     // accumulator
@@ -1049,33 +1578,175 @@ typedef struct
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
     word3    RSDWH_R1; // Track the ring number of the last SDW
+    fault_acv_subtype_  acvFaults;   // pending ACV faults
+
+    word18 lnk;  // rpl link value
+
     struct _tpr TPR;   // Temporary Pointer Register
     struct _ppr PPR;   // Procedure Pointer Register
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
-#ifdef SPEED
+#ifndef WAM
     _sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
-    _sdw SDWAM [64]; // Segment Descriptor Word Associative Memory
+    _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+#ifdef L68
+    word4 SDWAMR;
+#endif
+#ifdef DPS8M
+    word6 SDWAMR;
+#endif
 #endif
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
     _sdw _s;
-#ifdef SPEED
+#ifdef PANEL
+    // Intermediate data collection for APU SCROLL 
+    word18 lastPTWOffset;
+// The L68 APU SCROLL 4U has an entry "ACSD"; I am interpreting it as
+//  on: lastPTRAddr was a DSPTW
+//  off: lastPTRAddr was a PTW
+    bool lastPTWIsDS;
+    word18 APUDataBusOffset;
+    word24 APUDataBusAddr;
+    word24 APUMemAddr;
+    word1 panel4_red_ready_light_state;
+    word1 panel7_enabled_light_state;
+// The state of the panel switches
+    volatile word15 APU_panel_segno_sw;
+    volatile word1  APU_panel_enable_match_ptw_sw;
+    volatile word1  APU_panel_enable_match_sdw_sw;
+    volatile word1  APU_panel_scroll_select_ul_sw;
+    volatile word4  APU_panel_scroll_select_n_sw;
+    volatile word4  APU_panel_scroll_wheel_sw;
+    volatile word18 APU_panel_addr_sw;
+    volatile word18 APU_panel_enter_sw;
+    volatile word18 APU_panel_display_sw;
+    volatile word4  CP_panel_wheel_sw;
+    volatile word4  DATA_panel_ds_sw;
+    volatile word4  DATA_panel_d1_sw;
+    volatile word4  DATA_panel_d2_sw;
+    volatile word4  DATA_panel_d3_sw;
+    volatile word4  DATA_panel_d4_sw;
+    volatile word4  DATA_panel_d5_sw;
+    volatile word4  DATA_panel_d6_sw;
+    volatile word4  DATA_panel_d7_sw;
+    volatile word4  DATA_panel_wheel_sw;
+    volatile word4  DATA_panel_addr_stop_sw;
+    volatile word1  DATA_panel_enable_sw;
+    volatile word1  DATA_panel_validate_sw;
+    volatile word1  DATA_panel_auto_fast_sw;
+    volatile word1  DATA_panel_auto_slow_sw;
+    volatile word4  DATA_panel_cycle_sw;
+    volatile word1  DATA_panel_step_sw;
+    volatile word1  DATA_panel_s_trig_sw;
+    volatile word1  DATA_panel_execute_sw;
+    volatile word1  DATA_panel_scope_sw;
+    volatile word1  DATA_panel_init_sw;
+    volatile word1  DATA_panel_exec_sw;
+    volatile word4  DATA_panel_hr_sel_sw;
+    volatile word4  DATA_panel_trackers_sw;
+    volatile bool panelInitialize;
+
+    // Intermediate data collection for DATA SCROLL
+    bool portBusy;
+    word2 portSelect;
+    word36 portAddr [N_CPU_PORTS];
+    word36 portData [N_CPU_PORTS];
+    // Intermediate data collection for CU
+    word36 IWRAddr;
+    word7 dataMode; // 0100  9 bit
+                    // 0040  6 bit
+                    // 0020  4 bit
+                    // 0010  1 bit
+                    // 0004  36 bit
+                    // 0002  alphanumeric
+                    // 0001  numeric
+    word8 prepare_state;
+    bool DACVpDF;
+    bool AR_F_E;
+    bool INS_FETCH;
+    // Control Points data acquisition
+    word1 cpt [28] [36];
+#endif
+#define cpt1U  0  // Instruction processing tracking
+#define cpt1L  1  // Instruction processing tracking
+#define cpt2U  2  // Instruction execution tracking
+#define cpt2L  3  // Instruction execution tracking
+#define cpt3U  4  // Register usage
+#define cpt3L  5  // Register usage
+#define cpt4U  6
+#define cpt4L  7
+#define cpt5U  8
+#define cpt5L  9
+#define cpt6U  10
+#define cpt6L  11
+#define cpt7U  12
+#define cpt7L  13
+#define cpt8U  14
+#define cpt8L  15
+#define cpt9U  16
+#define cpt9L  17
+#define cpt10U 18
+#define cpt10L 19
+#define cpt11U 20
+#define cpt11L 21
+#define cpt12U 22
+#define cpt12L 23
+#define cpt13U 24
+#define cpt13L 25
+#define cpt14U 26
+#define cpt14L 27
+
+#define cptUseE    0
+#define cptUseBAR  1
+#define cptUseTR   2
+#define cptUseRALR 3
+#define cptUsePRn  4 // 4 - 11
+#define cptUseDSBR 12
+#define cptUseFR   13
+#define cptUseMR   14
+#define cptUseCMR  15
+#define cptUseIR   16
+
+
+    // Address Modification tally
+    word12 AM_tally;
+
+#ifndef WAM
     _ptw PTWAM0;
 #else
-    _ptw PTWAM [64];
+    _ptw PTWAM [N_WAM_ENTRIES];
+#ifdef L68
+    word4 PTWAMR;
+#endif
+#ifdef DPS8M
+    word6 PTWAMR;
+#endif
 #endif
     _ptw * PTW;
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
     _cache_mode_register CMR;
     _mode_register MR;
+
+    // G7 faults
+
     bool bTroubleFaultCycle;
     uint g7FaultsPreset;
     uint g7Faults;
     //_fault_subtype  g7SubFaultsPreset [N_FAULTS];
     _fault_subtype  g7SubFaults [N_FAULTS];
+
+#ifdef L68
+    // FFV faults
+
+     uint FFV_faults_preset;
+     uint FFV_faults;
+     uint FFV_fault_number;
+     bool is_FFV;
+#endif
+
     word24 iefpFinalAddress;
     word36 CY;              // C(Y) operand data from memory
     word36 Ypair[2];        // 2-words
@@ -1091,6 +1762,9 @@ typedef struct
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....
+#if 0
+    bool bar_attempt;
+#endif
 #ifdef ROUND_ROBIN
     bool isRunning;
 #endif
@@ -1101,6 +1775,14 @@ typedef struct
     uint history_cyclic [N_HIST_SETS]; // 0..63
     word36 history [N_HIST_SETS] [N_HIST_SIZE] [2];
 
+    // Used by LCPR to prevent the LCPR instruction from being recorded
+    // in the CU.
+    bool skip_cu_hist;
+    // Changes to the mode register history bits do not take affect until
+    // the next instruction (ISOLTS 700 2a). Cache the values here so
+    // that post register updates can see the old values.
+    _mode_register MR_cache;
+    
     // If the instruction wants overflow thrown after operand write
     bool dlyFlt;
 
@@ -1110,6 +1792,9 @@ typedef struct
     _fault_subtype dlySubFltNum;
     const char * dlyCtx;
 
+#ifdef ISOLTS
+    uint shadowTR;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1152,9 +1837,22 @@ int OPSIZE (void);
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
 t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 
+#ifdef PANEL
+static inline void trackport (word24 a, word36 d)
+  {
+    // Simplifying assumption: 4 * 4MW SCUs
+    word2 port = (a >> 22) & MASK2;
+    cpu.portSelect = port;
+    cpu.portAddr [port] = a;
+    cpu.portData [port] = d;
+    cpu.portBusy = false;
+  }
+#endif
+
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1167,11 +1865,28 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     *data = M[addr] & DMASK;
+    PNL (trackport (addr, * data);)
     return 0;
   }
+
 static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1182,13 +1897,27 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
             doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
           }
         addr = (uint) os + addr % SCBANK;
+      }
+#endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
       }
 #endif
     M[addr] = data & DMASK;
+    PNL (trackport (addr, data);)
     return 0;
   }
 static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1201,12 +1930,29 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#if 0 // XXX Controlled by TEST/NORMAL switch
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#endif
     *even = M[addr++] & DMASK;
+    PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
+    PNL (trackport (addr, * odd);)
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+    PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
     if (cpu.switches.useMap)
       {
@@ -1219,8 +1965,22 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         addr = (uint) os + addr % SCBANK;
       }
 #endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
     M[addr++] = even;
+    PNL (trackport (addr - 1, even);)
     M[addr] = odd;
+    PNL (trackport (addr, odd);)
     return 0;
   }
 #else
@@ -1228,7 +1988,6 @@ int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
-int core_read72 (word24 addr, word72 *dst, const char * ctx);
 #endif
 static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
@@ -1251,12 +2010,12 @@ void set_addr_mode (addr_modes_t mode);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
-t_stat dpsCmd_Dump (int32 arg, char *buf);
-t_stat dpsCmd_Init (int32 arg, char *buf);
-t_stat dpsCmd_Segment (int32 arg, char *buf);
-t_stat dpsCmd_Segments (int32 arg, char *buf);
+t_stat dpsCmd_Dump (int32 arg, const char *buf);
+t_stat dpsCmd_Init (int32 arg, const char *buf);
+t_stat dpsCmd_Segment (int32 arg, const char *buf);
+t_stat dpsCmd_Segments (int32 arg, const char *buf);
 //t_stat dumpKST (int32 arg, char * buf);
-t_stat memWatch (int32 arg, char * buf);
+t_stat memWatch (int32 arg, const char * buf);
 //_sdw0 *fetchSDW (word15 segno);
 _sdw *fetchSDW (word15 segno);
 //char *strSDW0 (_sdw0 *SDW);
@@ -1264,10 +2023,21 @@ char *strSDW0 (_sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
-void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+#ifdef DPS8M
+//void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
+void addCUhist (void);
 void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
+#endif
+#ifdef L68
+//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
+void addCUhist (void);
+// XXX addDUhist
+void addOUhist (void);
+void addDUhist (void);
+void addAPUhist (enum APUH_e op);
+#endif
 void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);

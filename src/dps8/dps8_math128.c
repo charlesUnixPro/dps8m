@@ -12,11 +12,13 @@
 #ifndef DPS8_MATH128
 #define DPS8_MATH128
 
-#if __SIZEOF_LONG__ < 8
+#if __SIZEOF_LONG__ < 8 && ! defined (__MINGW64__)
 
 #include "dps8_math128.h"
 
 void __udivmodti3(UTItype div, UTItype dvd,UTItype *result,UTItype *remain);
+UTItype __udivti3(UTItype div, UTItype dvd);
+UTItype __udivti3(UTItype div, UTItype dvd);
 
 UTItype __umodti3(UTItype div, UTItype dvd);
 

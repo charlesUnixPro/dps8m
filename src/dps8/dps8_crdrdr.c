@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -53,44 +54,44 @@
 #define N_CRDRDR_UNITS 1 // default
 
 static t_stat crdrdr_reset (DEVICE * dptr);
-static t_stat crdrdr_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat crdrdr_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
 #define CRDRDR_UNIT_NUM(uptr) ((uptr) - crdrdr_unit)
 
 static DEBTAB crdrdr_dt [] =
   {
-    { "NOTIFY", DBG_NOTIFY },
-    { "INFO", DBG_INFO },
-    { "ERR", DBG_ERR },
-    { "WARN", DBG_WARN },
-    { "DEBUG", DBG_DEBUG },
-    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 #define UNIT_WATCH UNIT_V_UF
@@ -151,7 +152,8 @@ DEVICE crdrdr_dev = {
     NULL,         // help
     NULL,         // attach help
     NULL,         // attach context
-    NULL          // description
+    NULL,         // description
+    NULL
 };
 
 #define MAX_DEV_NAME_LEN 64
@@ -160,6 +162,10 @@ DEVICE crdrdr_dev = {
 
 enum deckFormat { sevenDeck, cardDeck, streamDeck };
 
+// Windows cannot unlink an open file; rework the code to unlink the
+// submitted card deck after closing it.
+//  -- Add fname tp crdrdr_state
+//  -- Add unlink calls at eof close
 static struct crdrdr_state
   {
     char device_name [MAX_DEV_NAME_LEN];
@@ -168,6 +174,7 @@ static struct crdrdr_state
     bool running;
     enum { deckStart = 0, eof1Sent, uid1Sent, inputSent, eof2Sent } deckState;
     enum deckFormat deckFormat;
+    char fname [PATH_MAX+1];
   } crdrdr_state [N_CRDRDR_UNITS_MAX];
 
 
@@ -415,7 +422,7 @@ static int getCardLine (int fd, unsigned char * buffer)
           return 0;
         buffer [n ++] = ch;
         buffer [n] = 0;
-        if (n >= 79)
+        if (n > 79)
          return 0;
      }
   }
@@ -466,7 +473,8 @@ sim_printf ("hopper empty\n");
     unsigned char cardImage [80] = "";
     uint8_t rawCardImage [rawCardImageBytes + 2 ];
     size_t l = 0;
-    enum deckFormat thisCard;
+    // initialize to quiet compiler
+    enum deckFormat thisCard = cardDeck;
 
     static int jobNo = 0;
 
@@ -497,6 +505,10 @@ sim_printf ("hopper empty\n");
             if (rc)
               {
                 close (crdrdr_state [unitIdx] . deckfd);
+// Windows can't unlink open files; do it now...
+                rc = unlink (crdrdr_state [unitIdx] . fname);
+                if (rc)
+                  perror ("crdrdr deck unlink\n");
                 crdrdr_state [unitIdx] . deckfd = -1;
                 crdrdr_state [unitIdx] . deckState = deckStart;
                 goto empty;
@@ -572,6 +584,10 @@ sim_printf ("hopper empty\n");
             thisCard = cardDeck;
             crdrdr_state [unitIdx] . deckState = deckStart;
             close (crdrdr_state [unitIdx] . deckfd);
+// Windows can't unlink open files; do it now...
+            int rc = unlink (crdrdr_state [unitIdx] . fname);
+            if (rc)
+              perror ("crdrdr deck unlink\n");
             crdrdr_state [unitIdx] . deckfd = -1;
           }
           break;
@@ -605,7 +621,7 @@ sim_printf ("\n");
             // because Multics will ignore the last 12 bits.
             for (uint i = 0; i < 27; i ++)
               buffer [i] = extr36 ((uint8 *) rawCardImage, i);
-//sim_printf ("7deck %012llo %012llo %012llo %012llo\n", buffer [0], buffer [1], buffer [2], buffer [3]);
+//sim_printf ("7deck %012"PRIo64" %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", buffer [0], buffer [1], buffer [2], buffer [3]);
           }
           break;
         case streamDeck:
@@ -623,7 +639,7 @@ sim_printf ("\n");
           {
             if (l > 80)
               {
-                sim_warn ("Whups. crdrdr l %d > 80; truncating.\n", l);
+                sim_warn ("Whups. crdrdr l %lu > 80; truncating.\n", l);
                 l = 80;
                 //cardImage [l] = 0;
               }
@@ -659,7 +675,7 @@ sim_printf ("\n");
 sim_printf ("\n");
 for (uint i = 0; i < 27; i ++)
   {
-    sim_printf ("  %012llo     \n", buffer [i]);
+    sim_printf ("  %012"PRIo64"     \n", buffer [i]);
 #define B(n) bit_rep [(buffer [i] >> n) & 0x0f]
     for (int j = 32; j >= 0; j -= 4)
       sim_printf ("%s", B(j));
@@ -767,10 +783,10 @@ static void submit (enum deckFormat fmt, char * fname)
     int deckfd = open (fname, O_RDONLY);
     if (deckfd < 0)
       perror ("crdrdr deck open\n");
-    int rc = unlink (fname);
-    if (rc)
-      perror ("crdrdr deck unlink\n");
+// Windows can't unlink open files; save the file name and unlink on close.
+    // int rc = unlink (fname); // this only works on UNIX
     sim_printf ("submit %s\n", fname);
+    strcpy (crdrdr_state [0 /* ASSUME0 */] . fname, fname);
     crdrdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
     crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
     crdrdr_state [0 /* ASSUME0 */] . deckFormat = fmt;
@@ -780,7 +796,13 @@ static void submit (enum deckFormat fmt, char * fname)
 
 void rdrProcessEvent ()
   {
+#ifndef __MINGW64__
     char * qdir = "/tmp/rdra";
+#else
+    char qdir[260];
+    strcpy(qdir,getenv("TEMP"));
+    strcat(qdir,"/rdra");
+#endif
     if (! crdrdr_state [0 /* ASSUME0 */] . running)
       return;
 #if 0
@@ -796,10 +818,10 @@ void rdrProcessEvent ()
         return;
       }
     struct dirent * entry;
+    char fqname [PATH_MAX+1];
     while ((entry = readdir (dp)))
       {
         //printf ("%s\n", entry -> d_name);
-        char fqname [strlen (entry -> d_name) + strlen (qdir) + 64];
         strcpy (fqname, qdir);
         strcat (fqname, "/");
         strcat (fqname, entry -> d_name);
@@ -823,12 +845,16 @@ void rdrProcessEvent ()
           }
         if (strcmp (entry -> d_name, "discard") == 0)
           {
+// Windows can't unlink open files; do it now...
             int rc = unlink (fqname);
             if (rc)
-              perror ("crdrdr discark unlink\n");
+              perror ("crdrdr discard unlink\n");
             if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
               {
                 close (crdrdr_state [0 /* ASSUME0 */] . deckfd);
+                rc = unlink (crdrdr_state [0 /* ASSUME0 */] . fname);
+                if (rc)
+                  perror ("crdrdr deck unlink\n");
                 crdrdr_state [0 /* ASSUME0 */] . deckfd = -1;
                 crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
                 break;
@@ -860,13 +886,13 @@ int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)
     return -1;
   }
 
-static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED void * desc)
+static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     sim_printf("Number of CRDRDR units in system is %d\n", crdrdr_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
+static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDRDR_UNITS_MAX)
@@ -876,7 +902,7 @@ static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, char * 
   }
 
 static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED void * desc)
+                                       UNUSED int val, UNUSED const void * desc)
   {
     long n = CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
@@ -886,7 +912,7 @@ static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
   }
 
 static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED char * cptr, UNUSED void * desc)
+                                    UNUSED const char * cptr, UNUSED void * desc)
   {
     long n = CRDRDR_UNIT_NUM (uptr);
     if (n < 0 || n >= N_CRDRDR_UNITS_MAX)

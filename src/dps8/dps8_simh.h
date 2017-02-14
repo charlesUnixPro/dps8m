@@ -53,12 +53,13 @@ extern DEVICE scu_dev;
 #define DBG_REGDUMPAQI  (1U << 2)    ///< A/Q/IR register dump
 #define DBG_REGDUMPIDX  (1U << 3)    ///< index register dump
 #define DBG_REGDUMPPR   (1U << 4)    ///< pointer registers dump
-#define DBG_REGDUMPADR  (1U << 5)    ///< address registers dump
+//#define DBG_REGDUMPADR  (1U << 5)    ///< address registers dump
 #define DBG_REGDUMPPPR  (1U << 6)    ///< PPR register dump
 #define DBG_REGDUMPDSBR (1U << 7)    ///< descritptor segment base register dump
 #define DBG_REGDUMPFLT  (1U << 8)    ///< C(EAQ) floating-point register dump
 
-#define DBG_REGDUMP     (DBG_REGDUMPAQI | DBG_REGDUMPIDX | DBG_REGDUMPPR | DBG_REGDUMPADR | DBG_REGDUMPPPR | DBG_REGDUMPDSBR | DBG_REGDUMPFLT)
+//#define DBG_REGDUMP     (DBG_REGDUMPAQI | DBG_REGDUMPIDX | DBG_REGDUMPPR | DBG_REGDUMPADR | DBG_REGDUMPPPR | DBG_REGDUMPDSBR | DBG_REGDUMPFLT)
+#define DBG_REGDUMP     (DBG_REGDUMPAQI | DBG_REGDUMPIDX | DBG_REGDUMPPR | DBG_REGDUMPPPR | DBG_REGDUMPDSBR | DBG_REGDUMPFLT)
 
 #define DBG_ADDRMOD     (1U << 9)    ///< follow address modifications
 #define DBG_APPENDING   (1U << 10)   ///< follow appending unit operations

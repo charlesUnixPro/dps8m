@@ -1,6 +1,7 @@
 # Copyright 2013-2016 by Harry Reed
 # Copyright 2013-2016 by Charles Anthony
 # Copyright 2016 Jean-Michel Merliot
+# Copyright 2016 by Michal Tomek
 #
 # All rights reserved.
 #
@@ -14,6 +15,9 @@
 #
 #  TESTING=1    Enables sim_debug and additional runtime checks
 #
+
+SIMHx = ../simh-master
+#SIMHx = ../simhv40-beta
 
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
@@ -35,219 +39,61 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
-FNP2=1
-ifdef FNP2
-$(warning ####)
-$(warning #### FNP2 mode)
-$(warning ####)
-CFLAGS += -DFNP2
-LDFLAGS += -luv -ltelnet
+ifeq ($(OS),Windows_NT)
+CROSS=MINGW64
 endif
 
-#CFLAGS += -Wall 
+FNP2=1
+ifdef FNP2
+CFLAGS += -DFNP2
+LIBS += -luv
+endif
 
-#CFLAGS += -Wunused-argument \
-#-Wunused-function \
-#-Wunused-label \
-#-Wunused-parameter \
-#-Wunused-value \
-#-Wunused-variable \
-#-Wunused \
-#-Wextra \
-#-Wno-parentheses-equality -Wno-array-bounds
+ifeq ($(CROSS),MINGW64)
+CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
+LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32 -L../../../libuv/.libs
+endif
 
-#CFLAGS += \
-#-Wsign-conversion \
-#-Wconversion \
-#-Wshorten-64-to-32 \
-#-Wmissing-prototypes \
-#-Wmissing-variable-declarations 
+CFLAGS += -I../decNumber -I$(SIMHx)
+#ifeq ($(CROSS),MINGW64)
+#CFLAGS += -I../gnulib
+#endif
 
-#CFLAGS += -Wunreachable-code
+# gcc is reporting completely bogus 'conversion' warnings.
 
-#CFLAGS += -Wsign-conversion
-#zzzCFLAGS += \
-#-Wabi \
-#-Waddress-of-temporary \
-#-Waddress \
-#-Waggregate-return \
-#-Wall \
-#-Wambiguous-member-template \
-#-Warc-abi \
-#-Warc-non-pod-memaccess \
-#-Warc-retain-cycles \
-#-Warc-unsafe-retained-assign \
-#-Warc \
-#-Watomic-properties \
-#-Wattributes \
-#-Wavailability \
-#-Wbad-function-cast \
-#-Wbind-to-temporary-copy \
-#-Wbitwise-op-parentheses \
-#-Wbool-conversions \
-#-Wbuiltin-macro-redefined \
-#-Wc++-compat \
-#-Wc++0x-compat \
-#-Wc++0x-extensions \
-#-Wcast-align \
-#-Wcast-qual \
-#-Wchar-align \
-#-Wchar-subscripts \
-#-Wcomment \
-#-Wcomments \
-#-Wconditional-uninitialized \
-#-Wconversion \
-#-Wctor-dtor-privacy \
-#-Wcustom-atomic-properties \
-#-Wdeclaration-after-statement \
-#-Wdelegating-ctor-cycles \
-#-Wdelete-non-virtual-dtor \
-#-Wdeprecated-declarations \
-#-Wdeprecated-implementations \
-#-Wdeprecated-writable-strings \
-#-Wdeprecated \
-#-Wdisabled-optimization \
-#-Wdiscard-qual \
-#-Wdiv-by-zero \
-#-Wduplicate-method-arg \
-#-Weffc++ \
-#-Wempty-body \
-#-Wendif-labels \
-#-Wexit-time-destructors \
-#-Wextra-tokens \
-#-Wextra \
-#-Wformat-extra-args \
-#-Wformat-nonliteral \
-#-Wformat-zero-length \
-#-Wformat \
-#-Wformat=2 \
-#-Wfour-char-constants \
-#-Wglobal-constructors \
-#-Wgnu-designator \
-#-Wgnu \
-#-Wheader-hygiene \
-#-Widiomatic-parentheses \
-#-Wignored-qualifiers \
-#-Wimplicit-atomic-properties \
-#-Wimplicit-function-declaration \
-#-Wimplicit-int \
-#-Wimplicit \
-#-Wimport \
-#-Wincompatible-pointer-types \
-#-Winit-self \
-#-Winitializer-overrides \
-#-Winline \
-#-Wint-to-pointer-cast \
-#-Winvalid-offsetof \
-#-Winvalid-pch \
-#-Wlarge-by-value-copy \
-#-Wliteral-range \
-#-Wlocal-type-template-args \
-#-Wlogical-op-parentheses \
-#-Wlong-long \
-#-Wmain \
-#-Wmicrosoft \
-#-Wmismatched-tags \
-#-Wmissing-braces \
-#-Wmissing-declarations \
-#-Wmissing-field-initializers \
-#-Wmissing-format-attribute \
-#-Wmissing-include-dirs \
-#-Wmissing-noreturn \
-#-Wmost \
-#-Wmultichar \
-#-Wnested-externs \
-#-Wnewline-eof \
-#-Wnon-gcc \
-#-Wnon-virtual-dtor \
-#-Wnonnull \
-#-Wnonportable-cfstrings \
-#-Wnull-dereference \
-#-Wobjc-nonunified-exceptions \
-#-Wold-style-cast \
-#-Wold-style-definition \
-#-Wout-of-line-declaration \
-#-Woverflow \
-#-Woverlength-strings \
-#-Woverloaded-virtual \
-#-Wpacked \
-#-Wparentheses \
-#-Wpointer-arith \
-#-Wpointer-to-int-cast \
-#-Wprotocol \
-#-Wreadonly-setter-attrs \
-#-Wredundant-decls \
-#-Wreorder \
-#-Wreturn-type \
-#-Wself-assign \
-#-Wsemicolon-before-method-body \
-#-Wsequence-point \
-#-Wshadow \
-#-Wshorten-64-to-32 \
-#-Wsign-compare \
-#-Wsign-promo \
-#-Wsizeof-array-argument \
-#-Wstack-protector \
-#-Wstrict-aliasing \
-#-Wstrict-overflow \
-#-Wstrict-prototypes \
-#-Wstrict-selector-match \
-#-Wsuper-class-method-mismatch \
-#-Wswitch-default \
-#-Wswitch-enum \
-#-Wswitch \
-#-Wsynth \
-#-Wtautological-compare \
-#-Wtrigraphs \
-#-Wtype-limits \
-#-Wundeclared-selector \
-#-Wuninitialized \
-#-Wunknown-pragmas \
-#-Wunnamed-type-template-args \
-#-Wunneeded-internal-declaration \
-#-Wunneeded-member-function \
-#-Wunused-argument \
-#-Wunused-exception-parameter \
-#-Wunused-function \
-#-Wunused-label \
-#-Wunused-member-function \
-#-Wunused-parameter \
-#-Wunused-value \
-#-Wunused-variable \
-#-Wunused \
-#-Wused-but-marked-unused \
-#-Wvariadic-macros \
-#-Wvector-conversions \
-#-Wvla \
-#-Wvolatile-register-var \
-#-Wwrite-strings
- 
-
- 
-
-#LDFLAGS += -Wl,--cref -Wl,-Map=dps8.map
+ifeq ($(CC),clang)
+CFLAGS += -Wall -Wconversion -Wsign-conversion
+else
+CFLAGS += -Wall -Wno-conversion -Wsign-conversion
+endif
 
 # Configuration switches
 
-LOCALLIBS = ../simhv40-beta/simh.a ../decNumber/decNumber.a 
+ifeq ($(CROSS),MINGW64)
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
+#../gnulib/gnulib.a
+else
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
+endif
 
 # simh requires -ldl
 # Cygwin seems to need...
 ifeq ($(OS),Windows_NT)
-    LIBS += $(LOCALLIBS) -lgcc -lm -ldl -lrt
+    LIBS += -lgcc -lm  -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lpthread -lgnurx -lpsapi -liphlpapi  -luserenv
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)
-    LIBS += $(LOCALLIBS) -lm
+    LIBS += -lm
   endif
   ifeq ($(OSTYPE),Linux)
-    LIBS += $(LOCALLIBS)  -lm -ldl
-#    M_SHARED = 1
-#    CFLAGS += -DM_SHARED
-#    LDFLAGS += -lrt
+    ifeq ($(CROSS),MINGW64)
+      LIBS += -lm
+    else
+      LIBS += -lm -ldl
+    endif
   endif
 endif
-LIBS ?= $(LOCALLIBS) -lm -ldl
+#LIBS += -lm -ldl
 
 # efence is Electric Fence, a malloc debugger.
 #LIBS +- -lefence
@@ -255,9 +101,9 @@ LIBS ?= $(LOCALLIBS) -lm -ldl
 # link in gperftools 
 # LIBS += -lprofiler
 
-#LIBS = -lrt -lpthread 
-
+ifneq ($(CROSS),MINGW64)
 C_SRCS  = ./dps8_absi.c
+endif
 C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
 C_SRCS += ./dps8_bar.c
@@ -292,6 +138,7 @@ C_SRCS += ./dps8_utils.c
 ifdef FNP2
 C_SRCS += ./fnpuv.c
 C_SRCS += ./fnptelnet.c
+C_SRCS += libtelnet.c
 else
 C_SRCS += ./fnp_1.c
 C_SRCS += ./fnp_2.c
@@ -307,11 +154,15 @@ C_SRCS += ./hdbg.c
 ifeq ($(M_SHARED),1)
 C_SRCS += ./shm.c
 endif
+ifneq ($(CROSS),MINGW64)
 C_SRCS += ./udplib.c
+endif
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
+ifneq ($(CROSS),MINGW64)
 H_SRCS  = dps8_absi.h
+endif
 H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
 H_SRCS += dps8_bar.h
@@ -328,6 +179,7 @@ H_SRCS += dps8_em_consts.h
 H_SRCS += dps8_faults.h
 ifdef FNP2
 H_SRCS += dps8_fnp2.h
+H_SRCS += libtelnet.h
 else
 H_SRCS += dps8_fnp.h
 endif
@@ -367,14 +219,16 @@ H_SRCS += hdbg.h
 ifeq ($(M_SHARED),1)
 H_SRCS += shm.h
 endif
+ifneq ($(CROSS),MINGW64)
 H_SRCS += udplib.h
+endif
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
 
 
 
-all: locallibs_then_dps8 utils
+all: utils $(TAGS) locallibs_then_dps8 
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
@@ -383,7 +237,7 @@ all: locallibs_then_dps8 utils
 #	$(CC) remote.c -o remote fnp_udplib.o
 
 install: all
-	cp dps8 $(INSTALL_BIN)/dps8
+	cp dps8$(EXE) $(INSTALL_BIN)/dps8$(EXE)
 
 cscope:
 	cscope $(C_SRCS)
@@ -409,10 +263,10 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 #all : blinkenLightsCurses
 
-dps8 : tags $(OBJS) $(LOCALLIBS) 
-	@echo LD dps8
-	@$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
-	
+dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
+	@echo LD dps8$(EXE)
+	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
+
 .PHONY: FORCE
 
 dps8.sha1.txt : FORCE
@@ -432,11 +286,15 @@ slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 : 
-	(cd ../simhv40-beta; $(MAKE))
+	#(cd ../simhv40-beta; $(MAKE))
+	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
+ifeq ($(CROSS),MINGW64)
+	#(cd ../gnulib; $(MAKE))
+endif
 	#$(MAKE) zmq
 	$(MAKE) dps8.sha1.txt
-	$(MAKE) dps8
+	$(MAKE) dps8$(EXE)
 
 
 # Other Targets
@@ -469,11 +327,9 @@ zyre : ../lib/libzyre.so
 # If you do not have ctags in your build environment, change 'ctags' to 
 # '#ctags' below.
 
-#tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
-#	@echo TAGS
-#	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
-
-tags :
+tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
+	@echo TAGS
+	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 
@@ -488,7 +344,7 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 clean:
 	@echo CLEAN
 	#(cd ../simhv40-beta; $(MAKE) clean)
-	@$(MAKE) -C ../simhv40-beta clean
+	@$(MAKE) -C $(SIMHx) -f Makefile clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
 	@$(MAKE) -C ../utils clean
@@ -498,7 +354,7 @@ clean:
 
 clean_dps8:
 	@echo CLEAN dps8
-	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
+	-@$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8$(EXE) tags $(C_SRCS:.c=.d) $(wildcard $(C_SRCS:.c=.d.[0-9]*)) dps8.sha1.txt
 
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt

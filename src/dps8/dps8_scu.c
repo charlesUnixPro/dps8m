@@ -539,12 +539,12 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
-static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, 
+static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_set_nunits (UNIT * uptr, int32 value, const char * cptr, 
                               void * desc);
-static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
-static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, 
+static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat scu_set_config (UNIT * uptr, int32 value, const char * cptr, 
                               void * desc);
 static void deliverInterrupts (uint scu_unit_num);
 
@@ -554,10 +554,10 @@ scu_t scu [N_SCU_UNITS_MAX];
 
 static UNIT scu_unit [N_SCU_UNITS_MAX] =
   {
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 
 #define UNIT_NUM(uptr) ((uptr) - scu_unit)
@@ -614,14 +614,14 @@ static MTAB scu_mod [] =
 
 static DEBTAB scu_dt [] =
   {
-    { (char *) "TRACE", DBG_TRACE },
-    { (char *) "NOTIFY", DBG_NOTIFY },
-    { (char *) "INFO", DBG_INFO },
-    { (char *) "ERR", DBG_ERR },
-    { (char *) "WARN", DBG_WARN },
-    { (char *) "DEBUG", DBG_DEBUG },
-    { (char *) "ALL", DBG_ALL }, // don't move as it messes up DBG message
-    { NULL, 0 }
+    { (char *) "TRACE", DBG_TRACE, NULL },
+    { (char *) "NOTIFY", DBG_NOTIFY, NULL },
+    { (char *) "INFO", DBG_INFO, NULL },
+    { (char *) "ERR", DBG_ERR, NULL },
+    { (char *) "WARN", DBG_WARN, NULL },
+    { (char *) "DEBUG", DBG_DEBUG, NULL },
+    { (char *) "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
   };
 
 DEVICE scu_dev = {
@@ -650,7 +650,8 @@ DEVICE scu_dev = {
     NULL,            /* help */
     NULL,            /* attach_help */
     NULL,            /* help_ctx */
-    NULL             /* description */
+    NULL,            /* description */
+    NULL
 };
 
 enum { MODE_MANUAL = 0, MODE_PROGRAM = 1 };
@@ -879,7 +880,7 @@ static uint64 getSCUclock (uint scu_unit_num)
     static uint64 lastUnixuSecs = 0;
     if (UnixuSecs < lastUnixuSecs)
       {
-        sim_warn ("gettimeofday() went backwards %ld uS\n", 
+        sim_warn ("gettimeofday() went backwards %llu uS\n", 
                   lastUnixuSecs - UnixuSecs);
       }
     lastUnixuSecs = UnixuSecs;
@@ -1024,7 +1025,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
-            sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, rega, regq);
+            sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, rega, regq);
             scu_t * up = scu + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1083,7 +1084,7 @@ t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num,
           {
             uint port_num = (addr >> 6) & 07;
             sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to "
-                       "%012llo,%012llo\n", 
+                       "%012"PRIo64",%012"PRIo64"\n", 
                        port_num, rega, regq);
 
             // Find mask reg assigned to specified port
@@ -1344,7 +1345,7 @@ gotit:;
             putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 
-            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012llo Q: %012llo\n", scu_unit_num, * rega, * regq);
+            sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scu_unit_num, * rega, * regq);
             break;
           }
 
@@ -1500,7 +1501,7 @@ if (scu_unit_num || (scu_port_num != 0 /* && scu_port_num != 7*/)) sim_printf ("
       {
         for (uint i = 0; i < N_SCU_SUBPORTS; i++)
           {
-            portp->subport_enables [i] = !! (sub_mask & (0200 >> i));
+            portp->subport_enables [i] = !! (sub_mask & (0200u >> i));
           }
 
 #ifdef RCFDBG
@@ -1521,7 +1522,7 @@ sim_printf (" [%d]\n", cnt);
         int val = -1;
         for (uint i = 0; i < N_SCU_SUBPORTS; i++)
           {
-            portp->xipmask [i] = !! (sub_mask & (0200 >> i));
+            portp->xipmask [i] = !! (sub_mask & (0200u >> i));
             if (portp->xipmask [i])
               {
                 val = (int) i;
@@ -1687,7 +1688,14 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
 static void deliverInterrupts (uint scu_unit_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
+#ifdef ROUND_ROBIN
+    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
+      {
+        cpus[cpun].events.XIP[scu_unit_num] = false;
+      }
+#else
     cpu . events . XIP [scu_unit_num] = false;
+#endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
@@ -1706,7 +1714,7 @@ static void deliverInterrupts (uint scu_unit_num)
             //sim_debug (DBG_DEBUG, & scu_dev, "mask %u port %u type %u cells %o\n", mask, port, scu [scu_unit_num] . ports [port] . type, scu [scu_unit_num] . cells [inum]);
             if (scu [scu_unit_num].ports [port].type != ADEV_CPU)
               continue;
-            if ((mask & (1 << (31 - inum))) != 0)
+            if ((mask & (1u << (31 - inum))) != 0)
               {
                 int cpu_unit_num = -1;
                 if (scu[scu_unit_num].ports[port].is_exp)
@@ -1763,7 +1771,7 @@ uint scuGetHighestIntr (uint scuUnitNum)
             if (scu [scuUnitNum] . ports [port] . type != ADEV_CPU)
               continue;
             if (scu [scuUnitNum] . cells [inum] &&
-                (mask & (1 << (31 - inum))) != 0)
+                (mask & (1u << (31 - inum))) != 0)
               {
                 scu [scuUnitNum] . cells [inum] = false;
                 dumpIR ("scuGetHighestIntr", scuUnitNum);
@@ -1778,14 +1786,14 @@ uint scuGetHighestIntr (uint scuUnitNum)
 // ============================================================================
 
 static t_stat scu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int val, UNUSED void * desc)
+                               UNUSED int val, const UNUSED void * desc)
   {
     sim_printf("Number of SCU units in system is %d\n", scu_dev . numunits);
     return SCPE_OK;
   }
 
 static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                              char * cptr, UNUSED void * desc)
+                              const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
@@ -1795,7 +1803,7 @@ static t_stat scu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
   }
 
 static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val, 
-                              UNUSED void * desc)
+                              UNUSED const void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
@@ -1855,7 +1863,7 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
   }
 
 static t_stat scu_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int val, UNUSED void * desc)
+                               UNUSED int val, UNUSED const void * desc)
 {
     static const char * map [N_SCU_PORTS] = 
       {
@@ -2010,7 +2018,7 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr, 
+static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
                               UNUSED void * desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
@@ -2128,7 +2136,7 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, char * cptr,
     return SCPE_OK;
   }
 
-t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED char * cptr, 
+t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
                        UNUSED void * desc)
   {
     uint scu_unit_num = (uint) (uptr - scu_unit);
@@ -2262,7 +2270,7 @@ gotit:;
     putbits36_1 (regq, 34,  (word1) up -> port_enable [6]);
     putbits36_1 (regq, 35,  (word1) up -> port_enable [7]);
 
-    sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012llo %012llo\n", 
+    sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
                * rega, * regq);
     dumpIR ("rmcm", scu_unit_num);
     return SCPE_OK;
@@ -2271,7 +2279,7 @@ gotit:;
 t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
   {
     sim_debug (DBG_TRACE, & scu_dev, 
-              "SMCM SCU unit %d CPU unit %d A %012llo Q %012llo\n",
+              "SMCM SCU unit %d CPU unit %d A %012"PRIo64" Q %012"PRIo64"\n",
                scu_unit_num, cpu_unit_num, rega, regq);
 
     scu_t * up = scu + scu_unit_num;

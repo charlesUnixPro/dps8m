@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <sys/time.h>
 
@@ -36,6 +37,16 @@
 #endif
 
 //#define EMULATOR_ONLY 1
+
+// Define to emulate Level 68 instead of DPS8M
+
+//#define L68 
+
+#ifndef L68
+#ifndef DPS8M
+#define DPS8M
+#endif
+#endif
 
 #ifndef USE_INT64
 #define USE_INT64
@@ -62,6 +73,12 @@
 #define SPEED
 #endif
 
+// Enable WAM
+//#define WAM
+
+// Enable panel support
+//#define PANEL
+
 // Enable history debugger
 //#define HDBG
 
@@ -77,8 +94,41 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+// Dependencies
+
+// ISOLTS requires multiple CPU support
 #ifdef ISOLTS
+#ifndef ROUND_ROBIN
 #define ROUND_ROBIN
+#endif
+#endif
+
+// PANEL only works on L68
+#ifdef PANEL
+#ifdef DPS8M
+#error "PANEL works with L68, not DPS8M"
+#endif
+#ifndef L68
+#define L68
+#endif
+#endif
+
+#ifdef PANEL
+#define PNL(x) x
+#else
+#define PNL(x)
+#endif
+
+#ifdef L68
+#define L68_(x) x
+#else
+#define L68_(x)
+#endif
+
+#ifdef DPS8M
+#define DPS8M_(x) x
+#else
+#define DPS8M_(x)
 #endif
 
 // debugging tool
@@ -90,9 +140,25 @@
 
 #define OSCAR
 
+// DPS8-M support Hex Mode Floating Point
+#ifdef DPS8M
+#define HEX_MODE
+#endif
+
 // Instruction profiler
 // #define MATRIX
 
+
+// Fix glibc incompatibility with new simh code.
+
+#if __WORDSIZE == 64
+#undef PRIu64
+#define PRIu64 "llu"
+#undef PRId64
+#define PRId64 "lld"
+#undef PRIo64
+#define PRIo64 "llo"
+#endif
 #include "sim_defs.h"                                   /* simulator defns */
 
 #include "sim_tape.h"
@@ -118,6 +184,7 @@ typedef uint8       word8;
 typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
 typedef uint16      word10;
+typedef uint16      word11;
 typedef uint16      word12;
 typedef uint16      word13;
 typedef uint16      word14;
@@ -135,6 +202,7 @@ typedef uint32      word24;
 typedef uint32      word27;
 typedef uint32      word28;
 typedef uint32      word32;
+typedef uint64      word34;
 typedef uint64      word36;
 typedef uint64      word37;
 typedef uint64      word38;
@@ -193,9 +261,10 @@ enum _processor_cycle_type {
 };
 typedef enum _processor_cycle_type _processor_cycle_type;
 
+#ifndef EIS_PTR4
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
-    Unknown          = 0,
+    UnknownMAT       = 0,
     InstructionFetch,
     IndirectRead,
     //IndirectWrite,
@@ -219,6 +288,7 @@ enum eMemoryAccessType {
 };
 
 typedef enum eMemoryAccessType MemoryAccessType;
+#endif
 
 #define MA_IF  0   /* fetch */
 #define MA_ID  1   /* indirect */
@@ -235,11 +305,15 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define GET_TALLY(src) (((src) >> 6) & MASK12)   // 12-bits
 #define GET_DELTA(src)  ((src) & MASK6)           // 6-bits
 
+#ifndef max
 #define max(a,b)    max2((a),(b))
+#endif
 #define max2(a,b)   ((a) > (b) ? (a) : (b))
 #define max3(a,b,c) max((a), max((b),(c)))
 
+#ifndef min
 #define min(a,b)    min2((a),(b))
+#endif
 #define min2(a,b)   ((a) < (b) ? (a) : (b))
 #define min3(a,b,c) min((a), min((b),(c)))
 
@@ -329,12 +403,41 @@ typedef enum opc_mod
 /*! just dl or css */
 #define IS_DCSS(tag) (((_TM(tag) != 040U) && (_TD(tag) == 007U)) || IS_CSS(tag))
 
-//! Basic + EIS opcodes .....
+// !%WRD  ~0200000  017
+// !%9    ~0100000  027
+// !%6    ~0040000  033
+// !%4    ~0020000  035
+// !%1    ~0010000  036
+enum reg_use { is_WRD =  0174000,
+               is_9  =   0274000,
+               is_6  =   0334000,
+               is_4  =   0354000,
+               is_1  =   0364000,
+               is_DU =   04000,
+               is_OU =   02000,
+               ru_A  =   02000 | 01000,
+               ru_Q  =   02000 |  0400,
+               ru_X0 =   02000 |  0200,
+               ru_X1 =   02000 |  0100,
+               ru_X2 =   02000 |   040,
+               ru_X3 =   02000 |   020,
+               ru_X4 =   02000 |   010,
+               ru_X5 =   02000 |    04,
+               ru_X6 =   02000 |    02,
+               ru_X7 =   02000 |    01,
+               ru_none = 02000 |     0 };
+//, ru_notou = 1024 };
+
+#define ru_AQ (ru_A | ru_Q)
+#define ru_Xn(n) (1 << (7 - (n)))
+
+// Basic + EIS opcodes .....
 struct opCode {
-    const char *mne;    ///< mnemonic
-    opc_flag flags;        ///< various and sundry flags
-    opc_mod mods;         ///< disallowed addr mods
-    uint ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+    const char *mne;    // mnemonic
+    opc_flag flags;     // various and sundry flags
+    opc_mod mods;       // disallowed addr mods
+    uint ndes;          // number of operand descriptor words for instruction (mw EIS)
+    enum reg_use reg_use;            // register usage
 };
 typedef struct opCode opCode;
 
@@ -463,6 +566,9 @@ typedef struct DCDstruct DCDstruct;
 #define ARRAY_SIZE(a) ( sizeof(a) / sizeof((a)[0]) )
 
 #ifdef __GNUC__
+#define NO_RETURN   __attribute__ ((noreturn))
+#define UNUSED      __attribute__ ((unused))
+#elif defined (__MINGW64__)
 #define NO_RETURN   __attribute__ ((noreturn))
 #define UNUSED      __attribute__ ((unused))
 #else

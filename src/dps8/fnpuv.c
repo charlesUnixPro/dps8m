@@ -1,5 +1,6 @@
 /*
  Copyright 2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -177,7 +178,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <uv.h>
+//#include <uv.h>
 #ifdef TUN
 #include <string.h>
 #include <fcntl.h>
@@ -387,7 +388,8 @@ static void fuv_write_cb (uv_write_t * req, int status)
   {
     if (status < 0)
       {
-        if (status == -ECONNRESET || status == -ECANCELED)
+        if (status == -ECONNRESET || status == -ECANCELED ||
+            status == -EPIPE)
           {
             // This occurs when the other end disconnects; not an "error"
           }
@@ -654,7 +656,11 @@ sim_printf ("dropping 2nd slave\n");
 
 void fnpuvInit (int telnet_port)
   {
-
+    // Ignore multiple calls; this means that once the listen port is
+    // opened, it can't be changed. Fixing this requires non-trivial
+    // changes.
+    if (loop)
+      return;
     // Initialize the server socket
     loop = uv_default_loop ();
     uv_tcp_init (loop, & du_server);
@@ -770,7 +776,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
     if (! loop)
       return;
-    sim_printf ("received dial_out %c.h%03d %012llo %012llo %012llo\n", fnpno+'a', lineno, d1, d2, d3);
+    sim_printf ("received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uint d01 = (d1 >> 30) & 017;
     uint d02 = (d1 >> 24) & 017;
@@ -933,7 +939,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (& linep->server, (const struct sockaddr *) & addr, 0);
 sim_printf ("listening on port %d\n", linep->port);
-    int r = uv_listen ((uv_stream_t *) & linep->server, 0, 
+    int r = uv_listen ((uv_stream_t *) & linep->server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
@@ -964,7 +970,7 @@ sim_printf ("listening on port %d\n", linep->port);
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (linep->client, (const struct sockaddr *) & addr, 0);
 sim_printf ("listening on port %d\n", linep->port);
-    int r = uv_listen ((uv_stream_t *) linep->client, 0, 
+    int r = uv_listen ((uv_stream_t *) linep->client, DEFAULT_BACKLOG, 
                        on_slave_connect);
     if (r)
      {

@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2016 by Michal Tomek
 
  All rights reserved.
 
@@ -19,8 +20,10 @@
 */
 
 #include <stdio.h>
+#ifndef __MINGW64__
 #include <wordexp.h>
 #include <signal.h>
+#endif
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -48,6 +51,7 @@
 #include "dps8_fnp2.h"
 #else
 #include "dps8_fnp.h"
+#include "fnp.h"
 #endif
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
@@ -57,7 +61,6 @@
 #include "dps8_absi.h"
 #include "utlist.h"
 #include "hdbg.h"
-#include "fnp.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -70,114 +73,134 @@ word36 *M = NULL;                                          /*!< memory */
 
 
 // These are part of the simh interface
-char sim_name[] = "dps-8/m";
+#ifdef DPS8M
+char sim_name[] = "DPS8M";
+#endif
+#ifdef L68
+char sim_name[] = "L68";
+#endif
 int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
+#ifndef __MINGW64__
 static pid_t dps8m_sid; // Session id
+#endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
+#ifdef PANEL
+void panelScraper (void);
+#endif
 
 stats_t sys_stats;
 
-static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf);
-static t_stat dps_debug_skip (int32 arg, char * buf);
-static t_stat dps_debug_start (int32 arg, char * buf);
-static t_stat dps_debug_stop (int32 arg, char * buf);
-static t_stat dps_debug_break (int32 arg, char * buf);
-static t_stat dps_debug_segno (int32 arg, char * buf);
-static t_stat dps_debug_ringno (int32 arg, char * buf);
-static t_stat dps_debug_bar (int32 arg, UNUSED char * buf);
-static t_stat loadSystemBook (int32 arg, char * buf);
-static t_stat addSystemBookEntry (int32 arg, char * buf);
-static t_stat lookupSystemBook (int32 arg, char * buf);
-static t_stat absAddr (int32 arg, char * buf);
-static t_stat setSearchPath (int32 arg, char * buf);
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf);
+static t_stat dps_debug_skip (int32 arg, const char * buf);
+static t_stat dps_debug_start (int32 arg, const char * buf);
+static t_stat dps_debug_stop (int32 arg, const char * buf);
+static t_stat dps_debug_break (int32 arg, const char * buf);
+static t_stat dps_debug_segno (int32 arg, const char * buf);
+static t_stat dps_debug_ringno (int32 arg, const char * buf);
+static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf);
+static t_stat loadSystemBook (int32 arg, const char * buf);
+static t_stat addSystemBookEntry (int32 arg, const char * buf);
+static t_stat lookupSystemBook (int32 arg, const char * buf);
+static t_stat absAddr (int32 arg, const char * buf);
+static t_stat setSearchPath (int32 arg, const char * buf);
 static t_stat absAddrN (int segno, uint offset);
 //static t_stat virtAddrN (uint address);
-static t_stat virtAddr (int32 arg, char * buf);
-static t_stat sbreak (int32 arg, char * buf);
-static t_stat stackTrace (int32 arg, char * buf);
-static t_stat listSourceAt (int32 arg, char * buf);
-static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf);
-static t_stat launch (int32 arg, char * buf);
-#ifdef DVFDBG
-static t_stat dfx1entry (int32 arg, char * buf);
-static t_stat dfx1exit (int32 arg, char * buf);
-static t_stat dv2scale (int32 arg, char * buf);
-static t_stat dfx2entry (int32 arg, char * buf);
-static t_stat mdfx3entry (int32 arg, char * buf);
-static t_stat smfx1entry (int32 arg, char * buf);
+
+static t_stat virtAddr (int32 arg, const char * buf);
+static t_stat sbreak (int32 arg, const char * buf);
+static t_stat stackTrace (int32 arg, const char * buf);
+static t_stat listSourceAt (int32 arg, const char * buf);
+static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf);
+#define LAUNCH
+#ifdef LAUNCH
+static t_stat launch (int32 arg, const char * buf);
 #endif
-static t_stat searchMemory (UNUSED int32 arg, char * buf);
-static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf);
+static t_stat defaultBaseSystem (int32 arg, const char * buf);
+#ifdef DVFDBG
+static t_stat dfx1entry (int32 arg, const char * buf);
+static t_stat dfx1exit (int32 arg, const char * buf);
+static t_stat dv2scale (int32 arg, const char * buf);
+static t_stat dfx2entry (int32 arg, const char * buf);
+static t_stat mdfx3entry (int32 arg, const char * buf);
+static t_stat smfx1entry (int32 arg, const char * buf);
+#endif
+static t_stat searchMemory (UNUSED int32 arg, const char * buf);
+static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 
 static CTAB dps8_cmds[] =
 {
-    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL},
-    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL},
-    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
-    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
-    {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
-    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL},
-    {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL},
-    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
-    {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
-    {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL},
-    {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL},
-    {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL},
-    {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL},
-    {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL},
-    {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL},
-    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
-    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
-    {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL},
-    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL},
-    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL},
-    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL},
-    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL},
-    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
-    {"TEST", brkbrk, 0, "test: internal testing\n", NULL},
+    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL, NULL},
+    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL, NULL},
+    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL, NULL},
+    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL, NULL},
+    {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL, NULL},
+    {"CABLE_RIPOUT",    sys_cable_ripout,       0, "cable Unstring all cables\n" , NULL, NULL},
+    {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL, NULL},
+    {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL, NULL},
+    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL, NULL},
+    {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL, NULL},
+    {"DBGBREAK", dps_debug_break, 0, "dbgstop Break when N >= Cycle count\n", NULL, NULL},
+    {"DBGSEGNO", dps_debug_segno, 0, "dbgsegno Limit debugging to PSR == segno\n", NULL, NULL},
+    {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
+    {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL, NULL},
+    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL, NULL},
+    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL, NULL},
+    {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL, NULL},
+    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL, NULL},
+    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL, NULL},
+    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL, NULL},
+    {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
 #define SSH_SH          1                               /* show */
 #define SSH_CL          2                               /* clear */
-    {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
-    {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL},
-    {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL},
-    {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL},
-    {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL},
+    {"SBREAK", sbreak, SSH_ST, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL, NULL},
+    {"NOSBREAK", sbreak, SSH_CL, "nosbreak: Unset an SBREAK\n", NULL, NULL},
+    {"STK", stackTrace, 0, "stk: print a stack trace\n", NULL, NULL},
+    {"LIST", listSourceAt, 0, "list segno:offet: list source for an address\n", NULL, NULL},
+    {"XF", doEXF, 0, "Execute fault: Press the execute fault button\n", NULL, NULL},
 #ifdef DVFDBG
     // dvf debugging
-    {"DFX1ENTRY", dfx1entry, 0, "", NULL},
-    {"DFX2ENTRY", dfx2entry, 0, "", NULL},
-    {"DFX1EXIT", dfx1exit, 0, "", NULL},
-    {"DV2SCALE", dv2scale, 0, "", NULL},
-    {"MDFX3ENTRY", mdfx3entry, 0, "", NULL},
-    {"SMFX1ENTRY", smfx1entry, 0, "", NULL},
+    {"DFX1ENTRY", dfx1entry, 0, "", NULL, NULL},
+    {"DFX2ENTRY", dfx2entry, 0, "", NULL, NULL},
+    {"DFX1EXIT", dfx1exit, 0, "", NULL, NULL},
+    {"DV2SCALE", dv2scale, 0, "", NULL, NULL},
+    {"MDFX3ENTRY", mdfx3entry, 0, "", NULL, NULL},
+    {"SMFX1ENTRY", smfx1entry, 0, "", NULL, NULL},
 #endif
     // doesn't work
     //{"DUMPKST", dumpKST, 0, "dumpkst: dump the Known Segment Table\n", NULL},
-    {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL},
-    {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL},
-    {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL},
-    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL},
-    {"LAUNCH", launch, 0, "start subprocess\n", NULL},
+    {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL, NULL},
+    {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL, NULL},
+    {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL, NULL},
+#ifdef LAUNCH
+    {"LAUNCH", launch, 0, "start subprocess\n", NULL, NULL},
+#endif
     
-    {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL},
+    {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
-    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL},
+    {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
 #ifdef FNP2
-    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL},
+    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
 #endif
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫
-    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL}, 
+    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL, NULL}, 
 #endif
-    {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL},
-    { NULL, NULL, 0, NULL, NULL}
+    {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
+    {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
+    {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
+    { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
 /*!
@@ -189,9 +212,10 @@ static CTAB dps8_cmds[] =
  Guess I shouldn't use these then :)
  */
 
-static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
+static t_addr parse_addr(DEVICE *dptr, const char *cptr, const char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
+#ifndef __MINGW64__
 static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
@@ -199,13 +223,19 @@ static void usr1SignalHandler (UNUSED int sig)
     setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
     return;
   }
+#endif
 
 // Once-only initialization
 
 static void dps8_init(void)
 {
 #include "dps8.sha1.txt"
+#ifdef DPS8M
     sim_printf ("DPS8/M emulator (git %8.8s)\n", COMMIT_ID);
+#endif
+#ifdef L68
+    sim_printf ("L68 emulator (git %8.8s)\n", COMMIT_ID);
+#endif
 #ifdef TESTING
     sim_printf ("#### TESTING BUILD ####\n");
 #else
@@ -223,14 +253,23 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+#ifndef __MINGW64__
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
     if (dps8m_sid == (pid_t) -1)
       dps8m_sid = getsid (0);
+#ifdef DPS8M
     sim_printf ("DPS8M system session id is %d\n", dps8m_sid);
+#endif
+#ifdef L68
+    sim_printf ("L68 system session id is %d\n", dps8m_sid);
+#endif
+#endif
 
+#ifndef __MINGW64__
     // Wire the XF button to signal USR1
     signal (SIGUSR1, usr1SignalHandler);
+#endif
 
     init_opcodes();
     sysCableInit ();
@@ -246,7 +285,13 @@ static void dps8_init(void)
     crdpun_init ();
     prt_init ();
     urp_init ();
+#ifndef __MINGW64__
     absi_init ();
+#endif
+    defaultBaseSystem (0, NULL);
+#ifdef PANEL
+    panelScraper ();
+#endif
 }
 
 uint64 sim_deb_start = 0;
@@ -260,63 +305,63 @@ uint64 sim_deb_mme_cntdwn = 0;
 
 bool sim_deb_bar = false;
 
-static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf)
   {
     sim_deb_mme_cntdwn = strtoull (buf, NULL, 0);
-    sim_printf ("Debug MME countdown set to %lld\n", sim_deb_mme_cntdwn);
+    sim_printf ("Debug MME countdown set to %"PRId64"\n", sim_deb_mme_cntdwn);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_skip (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_skip (UNUSED int32 arg, const char * buf)
   {
     sim_deb_skip_cnt = 0;
     sim_deb_skip_limit = strtoull (buf, NULL, 0);
-    sim_printf ("Debug skip set to %lld\n", sim_deb_skip_limit);
+    sim_printf ("Debug skip set to %"PRId64"\n", sim_deb_skip_limit);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_start (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_start (UNUSED int32 arg, const char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
+    sim_printf ("Debug set to start at cycle: %"PRId64"\n", sim_deb_start);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_stop (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_stop (UNUSED int32 arg, const char * buf)
   {
     sim_deb_stop = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to stop at cycle: %lld\n", sim_deb_stop);
+    sim_printf ("Debug set to stop at cycle: %"PRId64"\n", sim_deb_stop);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_break (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_break (UNUSED int32 arg, const char * buf)
   {
     sim_deb_break = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to break at cycle: %lld\n", sim_deb_break);
+    sim_printf ("Debug set to break at cycle: %"PRId64"\n", sim_deb_break);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_segno (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_segno (UNUSED int32 arg, const char * buf)
   {
     sim_deb_segno = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to segno %llo\n", sim_deb_segno);
+    sim_printf ("Debug set to segno %"PRIo64"\n", sim_deb_segno);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_ringno (UNUSED int32 arg, char * buf)
+static t_stat dps_debug_ringno (UNUSED int32 arg, const char * buf)
   {
     sim_deb_ringno = strtoull (buf, NULL, 0);
-    sim_printf ("Debug set to ringno %llo\n", sim_deb_ringno);
+    sim_printf ("Debug set to ringno %"PRIo64"\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
-static t_stat dps_debug_bar (int32 arg, UNUSED char * buf)
+static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf)
   {
     sim_deb_bar = arg;
     if (arg)
-      sim_printf ("Debug set BAR %llo\n", sim_deb_ringno);
+      sim_printf ("Debug set BAR %"PRIo64"\n", sim_deb_ringno);
     else
-      sim_printf ("Debug unset BAR %llo\n", sim_deb_ringno);
+      sim_printf ("Debug unset BAR %"PRIo64"\n", sim_deb_ringno);
     return SCPE_OK;
   }
 
@@ -526,7 +571,7 @@ static int lookupSystemBookName (char * segname, char * compname, long * segno, 
         if (strcmp (bookComponents [j] . compname, compname) == 0)
           {
             * segno = bookSegments [i] . segno;
-            * offset = bookComponents [j] . txt_start;
+            * offset = (long) bookComponents[j].txt_start;
             return 0;
           }
       }
@@ -538,7 +583,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
+static t_stat setSearchPath (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -549,13 +594,13 @@ static t_stat setSearchPath (UNUSED int32 arg, UNUSED char * buf)
     return SCPE_OK;
   }
 
-t_stat brkbrk (UNUSED int32 arg, UNUSED char *  buf)
+t_stat brkbrk (UNUSED int32 arg, UNUSED const char *  buf)
   {
     //listSource (buf, 0);
     return SCPE_OK;
   }
 
-static t_stat listSourceAt (UNUSED int32 arg, UNUSED char *  buf)
+static t_stat listSourceAt (UNUSED int32 arg, UNUSED const char *  buf)
   {
     // list seg:offset
     int segno;
@@ -621,7 +666,7 @@ void listSource (char * compname, word18 offset, uint dflag)
                 while (! feof (listing))
                   {
                     fgets (line, 1024, listing);
-                    if (strncmp (line, offset_str, offset_str_len) == 0)
+                    if (strncmp (line, offset_str, (size_t) offset_str_len) == 0)
                       {
                         if (! dflag)
                           sim_printf ("%s", line);
@@ -772,10 +817,10 @@ fileDone:
 
 // SEARCHMEMORY valye
 
-static t_stat searchMemory (UNUSED int32 arg, char * buf)
+static t_stat searchMemory (UNUSED int32 arg, const char * buf)
   {
     word36 value;
-    if (sscanf (buf, "%llo", & value) != 1)
+    if (sscanf (buf, "%"PRIo64"", & value) != 1)
       return SCPE_ARG;
     
     uint i;
@@ -788,7 +833,7 @@ static t_stat searchMemory (UNUSED int32 arg, char * buf)
 
 // ABS segno:offset
 
-static t_stat absAddr (UNUSED int32 arg, char * buf)
+static t_stat absAddr (UNUSED int32 arg, const char * buf)
   {
     int segno;
     uint offset;
@@ -1016,7 +1061,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 // EXF
 
-static t_stat doEXF (UNUSED int32 arg,  UNUSED char * buf)
+static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf)
   {
     // Assume bootload CPU
     setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
@@ -1032,7 +1077,7 @@ t_stat dbgStackTrace (void)
   }
 #endif 
 
-static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
+static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
   {
     char * msg;
 
@@ -1178,7 +1223,7 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED char * buf)
                     continue;
                   }
                 word36 argv = M [argnop];
-                sim_printf ("arg%d value   %05o:%06o [%08o] %012llo (%llu)\n", 
+                sim_printf ("arg%d value   %05o:%06o [%08o] %012"PRIo64" (%"PRIu64")\n", 
                             argno, argSegno, argOffset, argnop, argv, argv);
                 sim_printf ("\n");
              }
@@ -1197,7 +1242,7 @@ skipArgs:;
 
 // SBREAK segno:offset
 
-static t_stat sbreak (int32 arg, char * buf)
+static t_stat sbreak (int32 arg, const char * buf)
   {
     //printf (">> <%s>\n", buf);
     int segno, offset;
@@ -1218,7 +1263,7 @@ t_stat virtAddrN (uint address);
 
 // VIRTUAL address
 
-static t_stat virtAddr (UNUSED int32 arg, char * buf)
+static t_stat virtAddr (UNUSED int32 arg, const char * buf)
   {
     uint address;
     if (sscanf (buf, "%o", & address) != 1)
@@ -1229,17 +1274,17 @@ static t_stat virtAddr (UNUSED int32 arg, char * buf)
 t_stat virtAddrN (uint address)
   {
     if (cpu . DSBR.U) {
-        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 1)
+        for(word15 segno = 0; 2u * segno < 16u * (cpu . DSBR.BND + 1u); segno += 1)
         {
             _sdw0 *s = fetchSDW(segno);
-            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16)
+            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16u)
               sim_printf ("  %06o:%06o\n", segno, address - s -> ADDR);
         }
     } else {
-        for(word15 segno = 0; 2 * segno < 16 * (cpu . DSBR.BND + 1); segno += 512)
+        for(word15 segno = 0; 2u * segno < 16u * (cpu . DSBR.BND + 1u); segno += 512u)
         {
-            word24 y1 = (2 * segno) % 1024;
-            word24 x1 = (2 * segno - y1) / 1024;
+            word24 y1 = (2u * segno) % 1024u;
+            word24 x1 = (2u * segno - y1) / 1024u;
             word36 PTWx1;
             core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
 
@@ -1255,18 +1300,18 @@ t_stat virtAddrN (uint address)
             //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
             //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
             //sim_printf ("    Target segment page table\n");
-            for (word15 tspt = 0; tspt < 512; tspt ++)
+            for (word15 tspt = 0; tspt < 512u; tspt ++)
             {
                 word36 SDWeven, SDWodd;
-                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd, __func__);
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2u) & PAMASK, & SDWeven, & SDWodd, __func__);
                 _sdw0 SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-                SDW0.R1 = (SDWeven >> 9) & 7;
-                SDW0.R2 = (SDWeven >> 6) & 7;
-                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.R1 = (SDWeven >> 9) & 7u;
+                SDW0.R2 = (SDWeven >> 6) & 7u;
+                SDW0.R3 = (SDWeven >> 3) & 7u;
                 SDW0.DF = TSTBIT(SDWeven, 2);
-                SDW0.FC = SDWeven & 3;
+                SDW0.FC = SDWeven & 3u;
 
                 // odd word
                 SDW0.BOUND = (SDWodd >> 21) & 037777;
@@ -1311,7 +1356,7 @@ t_stat virtAddrN (uint address)
                   }
                 else
                   {
-                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16)
+                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16u)
                       sim_printf ("  %06o:%06o\n", tspt, address - SDW0.ADDR);
                   }
             }
@@ -1328,7 +1373,7 @@ t_stat virtAddrN (uint address)
 //           given a segment name, component name and offset, return
 //           the segment number and offset
    
-static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
+static t_stat lookupSystemBook (UNUSED int32  arg, const char * buf)
   {
     char w1 [strlen (buf)];
     char w2 [strlen (buf)];
@@ -1400,7 +1445,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
+static t_stat addSystemBookEntry (UNUSED int32 arg, const char * buf)
   {
     // asbe segname compname seg txt_start txt_len intstat_start intstat_length symbol_start symbol_length
     char segname [bookSegmentNameLen];
@@ -1427,7 +1472,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, UNUSED char * buf)
+static t_stat loadSystemBook (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED
@@ -1600,7 +1645,7 @@ static struct PRtab {
     
 };
 
-static t_addr parse_addr (UNUSED DEVICE * dptr, char *cptr, char **optr)
+static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **optr)
 {
     // a segment reference?
     if (strchr(cptr, '|'))
@@ -1708,7 +1753,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, char *cptr, char **optr)
     }
     
     // No, determine absolute address given by cptr
-    return (t_addr)strtol(cptr, optr, 8);
+    return (t_addr)strtol(cptr, (char **) optr, 8);
 }
 
 static void fprint_addr (FILE * stream, UNUSED DEVICE *  dptr, t_addr simh_addr)
@@ -1761,14 +1806,14 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
             // XXX Need to complete MW EIS support in disAssemble()
             
             for(uint n = 0 ; n < p->info->ndes; n += 1)
-                fprintf(ofile, " %012llo", val[n + 1]);
+                fprintf(ofile, " %012"PRIo64"", val[n + 1]);
           
             return (t_stat) -p->info->ndes;
         }
         
         return SCPE_OK;
 
-        //fprintf(ofile, "%012llo", *val);
+        //fprintf(ofile, "%012"PRIo64"", *val);
         //return SCPE_OK;
     }
     return SCPE_ARG;
@@ -1778,7 +1823,7 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
 /*!  – Based on the switch variable, parse character string cptr for a symbolic value val at the specified addr
  in unit uptr.
  */
-t_stat parse_sym (UNUSED char * cptr, UNUSED t_addr addr, UNUSED UNIT * uptr, 
+t_stat parse_sym (UNUSED const char * cptr, UNUSED t_addr addr, UNUSED UNIT * uptr, 
                   UNUSED t_value * val, UNUSED int32 sswitch)
 {
     return SCPE_ARG;
@@ -1790,22 +1835,16 @@ sysinfo_t sys_opts =
   {
     0, /* clock speed */
     {
-// I get too much jitter in cpuCycles when debugging 20184; try turning queing
-// off here (changing 0 to -1)
-// still get a little jitter, and once a hang in DIS. very strange
+#ifdef FNPDBG
+      4000, /* iom_times.connect */
+#else
       -1, /* iom_times.connect */
+#endif
        0,  /* iom_times.chan_activate */
       10, /* boot_time */
       10000, /* terminate_time */
     },
     {
-// XXX This suddenly started working when I reworked the iom code for multiple units.
-// XXX No idea why. However, setting it to zero queues the boot tape read instead of
-// XXX performing it immediately. This makes the boot code fail because iom_boot 
-// XXX returns before the read is dequeued, causing the CPU to start before the
-// XXX tape is read into memory. 
-// XXX Need to fix the cpu code to either do actual fault loop on unitialized memory, or force it into the wait for interrupt sate; and respond to the interrupt from the IOM's completion of the read.
-//
       -1, /* mt_times.read */
       -1  /* mt_times.xfer */
     },
@@ -1822,7 +1861,7 @@ static char * encode_timing (int timing)
   }
 
 static t_stat sys_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int  val, UNUSED void * desc)
+                               UNUSED int  val, UNUSED const void * desc)
   {
     sim_printf ("IOM connect time:         %s\n",
                 encode_timing (sys_opts . iom_times . connect));
@@ -1856,7 +1895,7 @@ static config_list_t sys_config_list [] =
  };
 
 static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value, 
-                              char * cptr, UNUSED void * desc)
+                              const char * cptr, UNUSED void * desc)
   {
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1912,12 +1951,12 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 
 
 #ifdef DVFDBG
-static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx1entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // divide_fx1, divide_fx3
     sim_printf ("dfx1entry\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -1928,7 +1967,7 @@ static t_stat dfx1entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -1938,7 +1977,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
@@ -1946,32 +1985,32 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
 
-static t_stat dfx1exit (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx1exit (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("dfx1exit\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     return SCPE_OK;
   }
 
-static t_stat dv2scale (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dv2scale (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("dv2scale\n");
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     return SCPE_OK;
   }
 
-static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat dfx2entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // divide_fx2
     sim_printf ("dfx2entry\n");
-    sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -1982,7 +2021,7 @@ static t_stat dfx2entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 #if 0
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
@@ -1993,7 +2032,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale ptr %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale ptr %012"PRIo64" (%llu)\n", M [pa], M [pa]);
         if ((M [pa] & 077) == 043)
           {
             word15 segno = (M [pa] >> 18u) & MASK15;
@@ -2005,7 +2044,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
               }
             else
               {
-                sim_printf ("scale %012llo (%llu)\n", M [ipa], M [ipa]);
+                sim_printf ("scale %012"PRIo64" (%llu)\n", M [ipa], M [ipa]);
               }
           }
       }
@@ -2016,21 +2055,21 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
-        sim_printf ("divisor %012llo (%llu)\n", M [pa + 1], M [pa + 1]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa + 1], M [pa + 1]);
       }
     return SCPE_OK;
   }
 
-static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat mdfx3entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // operator to form mod(fx2,fx1)
 // entered with first arg in q, bp pointing at second
 
 // divide_fx1, divide_fx2
     sim_printf ("mdfx3entry\n");
-    //sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -2041,7 +2080,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 //sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -2052,7 +2091,7 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 #endif
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
@@ -2061,20 +2100,20 @@ static t_stat mdfx3entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
 
-static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
+static t_stat smfx1entry (UNUSED int32 arg, UNUSED const char * buf)
   {
 // operator to form mod(fx2,fx1)
 // entered with first arg in q, bp pointing at second
 
 // divide_fx1, divide_fx2
     sim_printf ("smfx1entry\n");
-    //sim_printf ("rA %012llo (%llu)\n", rA, rA);
-    sim_printf ("rQ %012llo (%llu)\n", rQ, rQ);
+    //sim_printf ("rA %012"PRIo64" (%llu)\n", rA, rA);
+    sim_printf ("rQ %012"PRIo64" (%llu)\n", rQ, rQ);
     // Figure out the caller's text segment, according to pli_operators.
     // sp:tbp -> PR[6].SNR:046
     word24 pa;
@@ -2085,7 +2124,7 @@ static t_stat smfx1entry (UNUSED int32 arg, UNUSED char * buf)
       }
     else
       {
-        sim_printf ("text segno %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("text segno %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
 sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
 //dbgStackTrace ();
@@ -2095,7 +2134,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("scale %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("scale %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     if (dbgLookupAddress (cpu . PR [2] . SNR, cpu . PR [2] . WORDNO, & pa, & msg))
       {
@@ -2103,7 +2142,7 @@ sim_printf ("%05o:%06o\n", cpu . PR [2] . SNR, cpu . rX [0]);
       }
     else
       {
-        sim_printf ("divisor %012llo (%llu)\n", M [pa], M [pa]);
+        sim_printf ("divisor %012"PRIo64" (%llu)\n", M [pa], M [pa]);
       }
     return SCPE_OK;
   }
@@ -2157,7 +2196,8 @@ static DEVICE sys_dev = {
     NULL,        /* help */
     NULL,        /* attach_help */
     NULL,        /* help_ctx */
-    NULL         /* description */
+    NULL,        /* description */
+    NULL
 };
 
 
@@ -2184,10 +2224,13 @@ DEVICE * sim_devices [] =
     & crdrdr_dev,
     & crdpun_dev,
     & prt_dev,
+#ifndef __MINGW64__
     & absi_dev,
+#endif
     NULL
   };
 
+//#ifdef LAUNCH
 #define MAX_CHILDREN 256
 static int nChildren = 0;
 static pid_t childrenList [MAX_CHILDREN];
@@ -2197,8 +2240,13 @@ static void cleanupChildren (void)
     printf ("cleanupChildren\n");
     for (int i = 0; i < nChildren; i ++)
       {
+#ifndef __MINGW64__
         printf ("  kill %d\n", childrenList [i]);
         kill (childrenList [i], SIGHUP);
+#else
+        TerminateProcess((HANDLE)childrenList [i], 1);
+        CloseHandle((HANDLE)childrenList [i]);
+#endif
       }
   }
 
@@ -2211,8 +2259,10 @@ static void addChild (pid_t pid)
      atexit (cleanupChildren);
   }
 
-static t_stat launch (int32 UNUSED arg, char * buf)
+#ifdef LAUNCH
+static t_stat launch (int32 UNUSED arg, const char * buf)
   {
+#ifndef __MINGW64__
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
     if (rc)
@@ -2236,6 +2286,1170 @@ static t_stat launch (int32 UNUSED arg, char * buf)
       }
     addChild (pid);
     wordfree (& p);
+#else
+     STARTUPINFO si;
+     PROCESS_INFORMATION pi;
+ 
+     memset( &si, 0, sizeof(si) );
+     si.cb = sizeof(si);
+     memset( &pi, 0, sizeof(pi) );
+ 
+     if( !CreateProcess( NULL, (LPSTR)buf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) 
+     {
+         sim_printf ("fork failed\n");
+         return SCPE_ARG;
+     }
+     addChild ((pid_t)pi.hProcess);
+#endif
+    return SCPE_OK;
+  }
+#endif
+
+static void doIniLine (char * text)
+  {
+    //sim_printf ("<%s?\n", text);
+    char gbuf [257];
+    const char * cptr = get_glyph (text, gbuf, 0); /* get command glyph */
+    CTAB *cmdp;
+    if ((cmdp = find_cmd (gbuf)))            /* lookup command */
+      {
+        t_stat stat = cmdp->action (cmdp->arg, cptr); /* if found, exec */
+        if (stat != SCPE_OK)
+          sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
+      }
+    else
+      sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
+  }
+
+static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
+  {
+
+    // ;
+    // ; Configure test system
+    // ;
+    // ; CPU, IOM * 2, MPC, TAPE * 16, DISK * 16, SCU * 4, OPCON, FNP, URP * 3,
+    // ; PRT, RDR, PUN
+    // ;
+    // ;
+    // ; From AN70-1 System Initialization PLM May 84, pg 8-4:
+    // ;
+    // ; All CPUs and IOMs must share the same layout of port assignments to
+    // ; SCUs. Thus, if memory port B of CPU C goes to SCU D, the memory port
+    // ; B of all other CPUs and IOMs must go to SCU D. All CPUs and IOMs must
+    // ; describe this SCU the same; all must agree in memory sizes. Also, all
+    // ; SCUs must agree on port assignments of CPUs and IOMs. This, if port 3 
+    // ; of SCU C goes to CPU A, the port 3 of all other SCUs must also go to
+    // ; CPU A.
+    // ;
+    // ; Pg. 8-6:
+    // ;
+    // ; The actual memory size of the memory attached to the SCU attached to
+    // ; the processor port in questions is 32K * 2 ** (encoded memory size).
+    // ; The port assignment couples with the memory size to determine the base 
+    // ; address of the SCU connected to the specified CPU port (absoulte
+    // ; address of the first location in the memory attached to that SCU). The 
+    // ; base address of the SCU is the (actual memory size) * (port assignment).
+    // ;
+    // ; Pg. 8-6
+    // ;
+    // ; [bits 09-11 lower store size]
+    // ;
+    // ; A DPS-8 SCU may have up to four store units attached to it. If this is
+    // ; the case, two stores units form a pair of units. The size of a pair of
+    // ; units (or a single unit) is 32K * 2 ** (lower store size) above.
+    // ;
+    // ;
+    // ;
+    // ; Looking at bootload_io, it would appear that Multics is happier with
+    // ; IOM0 being the bootload IOM, despite suggestions elsewhere that was
+    // ; not a requirement.
+
+    // ; Disconnect everything...
+    doIniLine ("cable_ripout");
+
+    doIniLine ("set cpu nunits=8");
+    doIniLine ("set iom nunits=2");
+    // ; 16 drives plus the controller
+    doIniLine ("set tape nunits=17");
+    // ; 16 drives; no controller
+    doIniLine ("set disk nunits=16");
+    doIniLine ("set scu nunits=4");
+    doIniLine ("set opcon nunits=1");
+    doIniLine ("set fnp nunits=8");
+    doIniLine ("set urp nunits=3");
+    doIniLine ("set crdrdr nunits=1");
+    doIniLine ("set crdpun nunits=1");
+    doIniLine ("set prt nunits=17");
+#ifndef __MINGW64__
+    doIniLine ("set absi nunits=1");
+
+    // ;Create card reader queue directory
+    doIniLine ("! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi");
+#else
+    doIniLine ("! mkdir %TEMP%\\rdra");
+#endif
+
+    doIniLine ("set cpu config=faultbase=Multics");
+
+    doIniLine ("set cpu config=num=0");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu config=port=A");
+    doIniLine ("set cpu   config=assignment=0");
+    doIniLine ("set cpu   config=interlace=0");
+    doIniLine ("set cpu   config=enable=1");
+    doIniLine ("set cpu   config=init_enable=1");
+    doIniLine ("set cpu   config=store_size=4M");
+ 
+    doIniLine ("set cpu config=port=B");
+    doIniLine ("set cpu   config=assignment=1");
+    doIniLine ("set cpu   config=interlace=0");
+    doIniLine ("set cpu   config=enable=1");
+    doIniLine ("set cpu   config=init_enable=1");
+    doIniLine ("set cpu   config=store_size=4M");
+
+    doIniLine ("set cpu config=port=C");
+    doIniLine ("set cpu   config=assignment=2");
+    doIniLine ("set cpu   config=interlace=0");
+    doIniLine ("set cpu   config=enable=1");
+    doIniLine ("set cpu   config=init_enable=1");
+    doIniLine ("set cpu   config=store_size=4M");
+
+    doIniLine ("set cpu config=port=D");
+    doIniLine ("set cpu   config=assignment=3");
+    doIniLine ("set cpu   config=interlace=0");
+    doIniLine ("set cpu   config=enable=1");
+    doIniLine ("set cpu   config=init_enable=1");
+    doIniLine ("set cpu   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu config=speed=0");
+
+    // ;echo
+    // ;show cpu config
+    // ;echo
+
+    // ;;;---set cpu0 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu0 config=num=0
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu0 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu0 config=port=A
+    // ;;;---set cpu0   config=assignment=0
+    // ;;;---set cpu0   config=interlace=0
+    // ;;;---set cpu0   config=enable=1
+    // ;;;---set cpu0   config=init_enable=1
+    // ;;;---set cpu0   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu0 config=port=B
+    // ;;;---set cpu0   config=assignment=1
+    // ;;;---set cpu0   config=interlace=0
+    // ;;;---set cpu0   config=enable=1
+    // ;;;---set cpu0   config=init_enable=1
+    // ;;;---set cpu0   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu0 config=port=C
+    // ;;;---set cpu0   config=assignment=2
+    // ;;;---set cpu0   config=interlace=0
+    // ;;;---set cpu0   config=enable=1
+    // ;;;---set cpu0   config=init_enable=1
+    // ;;;---set cpu0   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu0 config=port=D
+    // ;;;---set cpu0   config=assignment=3
+    // ;;;---set cpu0   config=interlace=0
+    // ;;;---set cpu0   config=enable=1
+    // ;;;---set cpu0   config=init_enable=1
+    // ;;;---set cpu0   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu0 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu0 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu0 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---
+    // ;;;---set cpu1 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu1 config=num=1
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu1 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu1 config=port=A
+    // ;;;---set cpu1   config=assignment=0
+    // ;;;---set cpu1   config=interlace=0
+    // ;;;---set cpu1   config=enable=1
+    // ;;;---set cpu1   config=init_enable=1
+    // ;;;---set cpu1   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu1 config=port=B
+    // ;;;---set cpu1   config=assignment=1
+    // ;;;---set cpu1   config=interlace=0
+    // ;;;---set cpu1   config=enable=1
+    // ;;;---set cpu1   config=init_enable=1
+    // ;;;---set cpu1   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu1 config=port=C
+    // ;;;---set cpu1   config=assignment=2
+    // ;;;---set cpu1   config=interlace=0
+    // ;;;---set cpu1   config=enable=1
+    // ;;;---set cpu1   config=init_enable=1
+    // ;;;---set cpu1   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu1 config=port=D
+    // ;;;---set cpu1   config=assignment=3
+    // ;;;---set cpu1   config=interlace=0
+    // ;;;---set cpu1   config=enable=1
+    // ;;;---set cpu1   config=init_enable=1
+    // ;;;---set cpu1   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu1 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu1 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu1 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu2 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu2 config=num=2
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu2 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu2 config=port=A
+    // ;;;---set cpu2   config=assignment=0
+    // ;;;---set cpu2   config=interlace=0
+    // ;;;---set cpu2   config=enable=1
+    // ;;;---set cpu2   config=init_enable=1
+    // ;;;---set cpu2   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu2 config=port=B
+    // ;;;---set cpu2   config=assignment=1
+    // ;;;---set cpu2   config=interlace=0
+    // ;;;---set cpu2   config=enable=1
+    // ;;;---set cpu2   config=init_enable=1
+    // ;;;---set cpu2   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu2 config=port=C
+    // ;;;---set cpu2   config=assignment=2
+    // ;;;---set cpu2   config=interlace=0
+    // ;;;---set cpu2   config=enable=1
+    // ;;;---set cpu2   config=init_enable=1
+    // ;;;---set cpu2   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu2 config=port=D
+    // ;;;---set cpu2   config=assignment=3
+    // ;;;---set cpu2   config=interlace=0
+    // ;;;---set cpu2   config=enable=1
+    // ;;;---set cpu2   config=init_enable=1
+    // ;;;---set cpu2   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu2 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu2 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu2 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu3 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu3 config=num=3
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu3 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu3 config=port=A
+    // ;;;---set cpu3   config=assignment=0
+    // ;;;---set cpu3   config=interlace=0
+    // ;;;---set cpu3   config=enable=1
+    // ;;;---set cpu3   config=init_enable=1
+    // ;;;---set cpu3   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu3 config=port=B
+    // ;;;---set cpu3   config=assignment=1
+    // ;;;---set cpu3   config=interlace=0
+    // ;;;---set cpu3   config=enable=1
+    // ;;;---set cpu3   config=init_enable=1
+    // ;;;---set cpu3   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu3 config=port=C
+    // ;;;---set cpu3   config=assignment=2
+    // ;;;---set cpu3   config=interlace=0
+    // ;;;---set cpu3   config=enable=1
+    // ;;;---set cpu3   config=init_enable=1
+    // ;;;---set cpu3   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu3 config=port=D
+    // ;;;---set cpu3   config=assignment=3
+    // ;;;---set cpu3   config=interlace=0
+    // ;;;---set cpu3   config=enable=1
+    // ;;;---set cpu3   config=init_enable=1
+    // ;;;---set cpu3   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu3 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu3 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu3 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu4 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu4 config=num=4
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu4 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu4 config=port=A
+    // ;;;---set cpu4   config=assignment=0
+    // ;;;---set cpu4   config=interlace=0
+    // ;;;---set cpu4   config=enable=1
+    // ;;;---set cpu4   config=init_enable=1
+    // ;;;---set cpu4   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu4 config=port=B
+    // ;;;---set cpu4   config=assignment=1
+    // ;;;---set cpu4   config=interlace=0
+    // ;;;---set cpu4   config=enable=1
+    // ;;;---set cpu4   config=init_enable=1
+    // ;;;---set cpu4   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu4 config=port=C
+    // ;;;---set cpu4   config=assignment=2
+    // ;;;---set cpu4   config=interlace=0
+    // ;;;---set cpu4   config=enable=1
+    // ;;;---set cpu4   config=init_enable=1
+    // ;;;---set cpu4   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu4 config=port=D
+    // ;;;---set cpu4   config=assignment=3
+    // ;;;---set cpu4   config=interlace=0
+    // ;;;---set cpu4   config=enable=1
+    // ;;;---set cpu4   config=init_enable=1
+    // ;;;---set cpu4   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu4 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu4 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu4 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu5 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu5 config=num=5
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu5 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu5 config=port=A
+    // ;;;---set cpu5   config=assignment=0
+    // ;;;---set cpu5   config=interlace=0
+    // ;;;---set cpu5   config=enable=1
+    // ;;;---set cpu5   config=init_enable=1
+    // ;;;---set cpu5   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu5 config=port=B
+    // ;;;---set cpu5   config=assignment=1
+    // ;;;---set cpu5   config=interlace=0
+    // ;;;---set cpu5   config=enable=1
+    // ;;;---set cpu5   config=init_enable=1
+    // ;;;---set cpu5   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu5 config=port=C
+    // ;;;---set cpu5   config=assignment=2
+    // ;;;---set cpu5   config=interlace=0
+    // ;;;---set cpu5   config=enable=1
+    // ;;;---set cpu5   config=init_enable=1
+    // ;;;---set cpu5   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu5 config=port=D
+    // ;;;---set cpu5   config=assignment=3
+    // ;;;---set cpu5   config=interlace=0
+    // ;;;---set cpu5   config=enable=1
+    // ;;;---set cpu5   config=init_enable=1
+    // ;;;---set cpu5   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu5 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu5 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu5 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu6 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu6 config=num=6
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu6 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu6 config=port=A
+    // ;;;---set cpu6   config=assignment=0
+    // ;;;---set cpu6   config=interlace=0
+    // ;;;---set cpu6   config=enable=1
+    // ;;;---set cpu6   config=init_enable=1
+    // ;;;---set cpu6   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu6 config=port=B
+    // ;;;---set cpu6   config=assignment=1
+    // ;;;---set cpu6   config=interlace=0
+    // ;;;---set cpu6   config=enable=1
+    // ;;;---set cpu6   config=init_enable=1
+    // ;;;---set cpu6   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu6 config=port=C
+    // ;;;---set cpu6   config=assignment=2
+    // ;;;---set cpu6   config=interlace=0
+    // ;;;---set cpu6   config=enable=1
+    // ;;;---set cpu6   config=init_enable=1
+    // ;;;---set cpu6   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu6 config=port=D
+    // ;;;---set cpu6   config=assignment=3
+    // ;;;---set cpu6   config=interlace=0
+    // ;;;---set cpu6   config=enable=1
+    // ;;;---set cpu6   config=init_enable=1
+    // ;;;---set cpu6   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu6 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu6 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu6 config
+    // ;;;---;echo
+    // ;;;---
+    // ;;;---set cpu7 config=faultbase=Multics
+    // ;;;---
+    // ;;;---set cpu7 config=num=4M
+    // ;;;---; As per GB61-01 Operators Guide, App. A
+    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    // ;;;---set cpu7 config=data=024000717200
+    // ;;;---
+    // ;;;---; enable ports 0 and 1 (scu connections)
+    // ;;;---; portconfig: ABCD
+    // ;;;---;   each is 3 bits addr assignment
+    // ;;;---;           1 bit enabled 
+    // ;;;---;           1 bit sysinit enabled
+    // ;;;---;           1 bit interlace enabled (interlace?)
+    // ;;;---;           3 bit memory size
+    // ;;;---;              0 - 32K
+    // ;;;---;              1 - 64K
+    // ;;;---;              2 - 128K
+    // ;;;---;              3 - 256K
+    // ;;;---;              4 - 512K
+    // ;;;---;              5 - 1M
+    // ;;;---;              6 - 2M
+    // ;;;---;              7 - 4M  
+    // ;;;---
+    // ;;;---set cpu7 config=port=A
+    // ;;;---set cpu7   config=assignment=0
+    // ;;;---set cpu7   config=interlace=0
+    // ;;;---set cpu7   config=enable=1
+    // ;;;---set cpu7   config=init_enable=1
+    // ;;;---set cpu7   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu7 config=port=B
+    // ;;;---set cpu7   config=assignment=1
+    // ;;;---set cpu7   config=interlace=0
+    // ;;;---set cpu7   config=enable=1
+    // ;;;---set cpu7   config=init_enable=1
+    // ;;;---set cpu7   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu7 config=port=C
+    // ;;;---set cpu7   config=assignment=2
+    // ;;;---set cpu7   config=interlace=0
+    // ;;;---set cpu7   config=enable=1
+    // ;;;---set cpu7   config=init_enable=1
+    // ;;;---set cpu7   config=store_size=4M
+    // ;;;---
+    // ;;;---set cpu7 config=port=D
+    // ;;;---set cpu7   config=assignment=3
+    // ;;;---set cpu7   config=interlace=0
+    // ;;;---set cpu7   config=enable=1
+    // ;;;---set cpu7   config=init_enable=1
+    // ;;;---set cpu7   config=store_size=4M
+    // ;;;---
+    // ;;;---; 0 = GCOS 1 = VMS
+    // ;;;---set cpu7 config=mode=Multics
+    // ;;;---; 0 = 8/70
+    // ;;;---set cpu7 config=speed=0
+    // ;;;---
+    // ;;;---;echo
+    // ;;;---;show cpu7 config
+    // ;;;---;echo
+
+
+    doIniLine ("set iom0 config=iom_base=Multics");
+    doIniLine ("set iom0 config=multiplex_base=0120");
+    doIniLine ("set iom0 config=os=Multics");
+    doIniLine ("set iom0 config=boot=tape");
+    doIniLine ("set iom0 config=tapechan=012");
+    doIniLine ("set iom0 config=cardchan=011");
+    doIniLine ("set iom0 config=scuport=0");
+
+    doIniLine ("set iom0 config=port=0");
+    doIniLine ("set iom0   config=addr=0");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=1");
+    doIniLine ("set iom0   config=addr=1");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=2");
+    doIniLine ("set iom0   config=addr=2");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=3");
+    doIniLine ("set iom0   config=addr=3");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=4");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=5");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=6");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=7");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom1 config=iom_base=Multics2");
+    doIniLine ("set iom1 config=multiplex_base=0121");
+    doIniLine ("set iom1 config=os=Multics");
+    doIniLine ("set iom1 config=boot=tape");
+    doIniLine ("set iom1 config=tapechan=012");
+    doIniLine ("set iom1 config=cardchan=011");
+    doIniLine ("set iom1 config=scuport=0");
+
+    doIniLine ("set iom1 config=port=0");
+    doIniLine ("set iom1   config=addr=0");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0;");
+
+    doIniLine ("set iom1 config=port=1");
+    doIniLine ("set iom1   config=addr=1");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0;");
+
+    doIniLine ("set iom1 config=port=2");
+    doIniLine ("set iom1   config=enable=0");
+    doIniLine ("set iom1 config=port=3");
+    doIniLine ("set iom1   config=enable=0");
+    doIniLine ("set iom1 config=port=4");
+    doIniLine ("set iom1   config=enable=0");
+    doIniLine ("set iom1 config=port=5");
+    doIniLine ("set iom1   config=enable=0");
+    doIniLine ("set iom1 config=port=6");
+    doIniLine ("set iom1   config=enable=0");
+    doIniLine ("set iom1 config=port=7");
+    doIniLine ("set iom1   config=enable=0");
+
+    // ;echo
+    // ;show iom0 config
+    // ;echo
+    // ;show iom1 config
+    // ;echo
+
+    doIniLine ("set scu0 config=mode=program");
+    doIniLine ("set scu0 config=port0=enable");
+    doIniLine ("set scu0 config=port1=enable");
+    doIniLine ("set scu0 config=port2=enable");
+    doIniLine ("set scu0 config=port3=enable");
+    doIniLine ("set scu0 config=port4=enable");
+    doIniLine ("set scu0 config=port5=enable");
+    doIniLine ("set scu0 config=port6=enable");
+    doIniLine ("set scu0 config=port7=enable");
+    doIniLine ("set scu0 config=maska=7");
+    doIniLine ("set scu0 config=maskb=off");
+    doIniLine ("set scu0 config=lwrstoresize=7");
+    doIniLine ("set scu0 config=cyclic=0040");
+    doIniLine ("set scu0 config=nea=0200");
+    doIniLine ("set scu0 config=onl=014");
+    doIniLine ("set scu0 config=int=0");
+    doIniLine ("set scu0 config=lwr=0");
+
+    doIniLine ("set scu1 config=mode=program");
+    doIniLine ("set scu1 config=port0=enable");
+    doIniLine ("set scu1 config=port1=enable");
+    doIniLine ("set scu1 config=port2=enable");
+    doIniLine ("set scu1 config=port3=enable");
+    doIniLine ("set scu1 config=port4=enable");
+    doIniLine ("set scu1 config=port5=enable");
+    doIniLine ("set scu1 config=port6=enable");
+    doIniLine ("set scu1 config=port7=enable");
+    doIniLine ("set scu1 config=maska=off");
+    doIniLine ("set scu1 config=maskb=off");
+    doIniLine ("set scu1 config=lwrstoresize=7");
+    doIniLine ("set scu1 config=cyclic=0040");
+    doIniLine ("set scu1 config=nea=0200");
+    doIniLine ("set scu1 config=onl=014");
+    doIniLine ("set scu1 config=int=0");
+    doIniLine ("set scu1 config=lwr=0");
+
+    doIniLine ("set scu2 config=mode=program");
+    doIniLine ("set scu2 config=port0=enable");
+    doIniLine ("set scu2 config=port1=enable");
+    doIniLine ("set scu2 config=port2=enable");
+    doIniLine ("set scu2 config=port3=enable");
+    doIniLine ("set scu2 config=port4=enable");
+    doIniLine ("set scu2 config=port5=enable");
+    doIniLine ("set scu2 config=port6=enable");
+    doIniLine ("set scu2 config=port7=enable");
+    doIniLine ("set scu2 config=maska=off");
+    doIniLine ("set scu2 config=maskb=off");
+    doIniLine ("set scu2 config=lwrstoresize=7");
+    doIniLine ("set scu2 config=cyclic=0040");
+    doIniLine ("set scu2 config=nea=0200");
+    doIniLine ("set scu2 config=onl=014");
+    doIniLine ("set scu2 config=int=0");
+    doIniLine ("set scu2 config=lwr=0");
+
+    doIniLine ("set scu3 config=mode=program");
+    doIniLine ("set scu3 config=port0=enable");
+    doIniLine ("set scu3 config=port1=enable");
+    doIniLine ("set scu3 config=port2=enable");
+    doIniLine ("set scu3 config=port3=enable");
+    doIniLine ("set scu3 config=port4=enable");
+    doIniLine ("set scu3 config=port5=enable");
+    doIniLine ("set scu3 config=port6=enable");
+    doIniLine ("set scu3 config=port7=enable");
+    doIniLine ("set scu3 config=maska=off");
+    doIniLine ("set scu3 config=maskb=off");
+    doIniLine ("set scu3 config=lwrstoresize=7");
+    doIniLine ("set scu3 config=cyclic=0040");
+    doIniLine ("set scu3 config=nea=0200");
+    doIniLine ("set scu3 config=onl=014");
+    doIniLine ("set scu3 config=int=0");
+    doIniLine ("set scu3 config=lwr=0");
+
+    // ; There are bugs in the FNP code that require sim unit number
+    // ; to be the same as the Multics unit number; ie fnp0 == fnpa, etc.
+    // ;
+    // ; fnp a 3400
+    // ; fnp b 3700
+    // ; fnp c 4200
+    // ; fnp d 4500
+    // ; fnp e 5000
+    // ; fnp f 5300
+    // ; fnp g 5600
+    // ; fnp h 6100
+
+    doIniLine ("set fnp0 config=mailbox=03400");
+    doIniLine ("set fnp0 ipc_name=fnp-a");
+    doIniLine ("set fnp1 config=mailbox=03700");
+    doIniLine ("set fnp1 ipc_name=fnp-b");
+    doIniLine ("set fnp2 config=mailbox=04200");
+    doIniLine ("set fnp2 ipc_name=fnp-c");
+    doIniLine ("set fnp3 config=mailbox=04500");
+    doIniLine ("set fnp3 ipc_name=fnp-d");
+    doIniLine ("set fnp4 config=mailbox=05000");
+    doIniLine ("set fnp4 ipc_name=fnp-e");
+    doIniLine ("set fnp5 config=mailbox=05300");
+    doIniLine ("set fnp5 ipc_name=fnp-f");
+    doIniLine ("set fnp6 config=mailbox=05600");
+    doIniLine ("set fnp6 ipc_name=fnp-g");
+    doIniLine ("set fnp7 config=mailbox=06100");
+    doIniLine ("set fnp7 ipc_name=fnp-h");
+
+
+    // ;echo
+    // ;show scu0 config
+    // ;echo
+    // ;show scu1 config
+    // ;echo
+    // ;echo
+    // ;show fnp0 config
+
+    doIniLine ("set tape0 boot_drive");
+
+    // ;cable ripout
+
+    // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
+    doIniLine ("cable tape,0,0,012,0");
+    doIniLine ("set tape0 device_name=mpca");
+    // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
+    doIniLine ("cable tape,1,0,012,1");
+    doIniLine ("set tape1 device_name=tapa_01");
+    doIniLine ("cable tape,2,0,012,2");
+    doIniLine ("set tape2 device_name=tapa_02");
+    doIniLine ("cable tape,3,0,012,3");
+    doIniLine ("set tape3 device_name=tapa_03");
+    doIniLine ("cable tape,4,0,012,4");
+    doIniLine ("set tape4 device_name=tapa_04");
+    doIniLine ("cable tape,5,0,012,5");
+    doIniLine ("set tape5 device_name=tapa_05");
+    doIniLine ("cable tape,6,0,012,6");
+    doIniLine ("set tape6 device_name=tapa_06");
+    doIniLine ("cable tape,7,0,012,7");
+    doIniLine ("set tape7 device_name=tapa_07");
+    doIniLine ("cable tape,8,0,012,8");
+    doIniLine ("set tape8 device_name=tapa_08");
+    doIniLine ("cable tape,9,0,012,9");
+    doIniLine ("set tape9 device_name=tapa_09");
+    doIniLine ("cable tape,10,0,012,10");
+    doIniLine ("set tape10 device_name=tapa_10");
+    doIniLine ("cable tape,11,0,012,11");
+    doIniLine ("set tape11 device_name=tapa_11");
+    doIniLine ("cable tape,12,0,012,12");
+    doIniLine ("set tape12 device_name=tapa_12");
+    doIniLine ("cable tape,13,0,012,13");
+    doIniLine ("set tape13 device_name=tapa_13");
+    doIniLine ("cable tape,14,0,012,14");
+    doIniLine ("set tape14 device_name=tapa_14");
+    doIniLine ("cable tape,15,0,012,15");
+    doIniLine ("set tape15 device_name=tapa_15");
+    doIniLine ("cable tape,16,0,012,16");
+    doIniLine ("set tape16 device_name=tapa_16");
+
+    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
+    doIniLine ("cable disk,0,0,013,0");
+    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
+    doIniLine ("cable disk,1,0,013,1");
+    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
+    doIniLine ("cable disk,2,0,013,2");
+    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
+    doIniLine ("cable disk,3,0,013,3");
+    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
+    doIniLine ("cable disk,4,0,013,4");
+    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
+    doIniLine ("cable disk,5,0,013,5");
+    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
+    doIniLine ("cable disk,6,0,013,6");
+    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
+    doIniLine ("cable disk,7,0,013,7");
+    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
+    doIniLine ("cable disk,8,0,013,8");
+    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
+    doIniLine ("cable disk,9,0,013,9");
+    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
+    doIniLine ("cable disk,10,0,013,10");
+    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
+    doIniLine ("cable disk,11,0,013,11");
+    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
+    doIniLine ("cable disk,12,0,013,12");
+    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
+    doIniLine ("cable disk,13,0,013,13");
+    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
+    doIniLine ("cable disk,14,0,013,14");
+    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
+    doIniLine ("cable disk,15,0,013,15");
+
+    // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
+    doIniLine ("cable opcon,0,0,036,0");
+
+    // ;;;
+    // ;;; FNP
+    // ;;;
+
+    // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
+    doIniLine ("cable fnp,3,0,020,0");
+
+    // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
+    doIniLine ("cable fnp,0,0,021,0");
+
+    // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
+    doIniLine ("cable fnp,1,0,022,0");
+
+    // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
+    doIniLine ("cable fnp,2,0,023,0");
+
+    // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
+    doIniLine ("cable fnp,4,0,024,0");
+
+    // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
+    doIniLine ("cable fnp,5,0,025,0");
+
+    // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
+    doIniLine ("cable fnp,6,0,026,0");
+
+    // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
+    doIniLine ("cable fnp,7,0,027,0");
+
+    // ;;;
+    // ;;; MPC
+    // ;;;
+
+    // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
+    doIniLine ("cable urp,0,0,015, 0");
+    doIniLine ("set urp0 device_name=urpa");
+
+    // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
+    doIniLine ("cable crdrdr,0,0,015,1");
+    doIniLine ("set crdrdr0 device_name=rdra");
+
+    // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
+    doIniLine ("cable urp,1,0,016, 0");
+    doIniLine ("set urp1 device_name=urpb");
+
+    // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
+    doIniLine ("cable crdpun,0,0,016,1");
+    doIniLine ("set crdpun0 device_name=puna");
+
+    // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
+    doIniLine ("cable urp,2,0,017,0");
+    doIniLine ("set urp2 device_name=urpc");
+
+    // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
+    doIniLine ("cable prt,0,0,017,1");
+    doIniLine ("set prt0 device_name=prta");
+
+    // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
+    doIniLine ("cable prt,1,0,017,2");
+    doIniLine ("set prt1 device_name=prtb");
+
+    // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
+    doIniLine ("cable prt,2,0,017,3");
+    doIniLine ("set prt2 device_name=prtc");
+
+    // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
+    doIniLine ("cable prt,3,0,017,4");
+    doIniLine ("set prt3 device_name=prtd");
+
+    // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
+    doIniLine ("cable prt,4,0,017,5");
+    doIniLine ("set prt4 device_name=prte");
+
+    // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
+    doIniLine ("cable prt,5,0,017,6");
+    doIniLine ("set prt5 device_name=prtf");
+
+    // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
+    doIniLine ("cable prt,6,0,017,7");
+    doIniLine ("set prt6 device_name=prtg");
+
+    // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
+    doIniLine ("cable prt,7,0,017,8");
+    doIniLine ("set prt7 device_name=prth");
+
+    // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
+    doIniLine ("cable prt,8,0,017,9");
+    doIniLine ("set prt8 device_name=prti");
+
+    // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
+    doIniLine ("cable prt,9,0,017,10");
+    doIniLine ("set prt9 device_name=prtj");
+
+    // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
+    doIniLine ("cable prt,10,0,017,11");
+    doIniLine ("set prt10 device_name=prtk");
+
+    // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
+    doIniLine ("cable prt,11,0,017,12");
+    doIniLine ("set prt11 device_name=prtl");
+
+    // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
+    doIniLine ("cable prt,12,0,017,13");
+    doIniLine ("set prt12 device_name=prtm");
+
+    // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
+    doIniLine ("cable prt,13,0,017,14");
+    doIniLine ("set prt13 device_name=prtn");
+
+    // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
+    doIniLine ("cable prt,14,0,017,15");
+    doIniLine ("set prt14 device_name=prto");
+
+    // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
+    doIniLine ("cable prt,15,0,017,16");
+    doIniLine ("set prt15 device_name=prtp");
+
+    // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
+    doIniLine ("cable prt,16,0,017,17");
+    doIniLine ("set prt16 device_name=prtq");
+
+
+    // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
+    doIniLine ("cable absi,0,0,032,0");
+
+
+    // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
+    doIniLine ("cable iom,0,0,0,0");
+
+    // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
+    doIniLine ("cable iom,0,1,1,0");
+
+    // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
+    doIniLine ("cable iom,0,2,2,0");
+
+    // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
+    doIniLine ("cable iom,0,3,3,0");
+
+    // ; Attach IOM unit 1 port A (0) to SCU unit 0, port 1
+    doIniLine ("cable iom,1,0,0,1");
+
+    // ; Attach IOM unit 1 port B (1) to SCU unit 1, port 1
+    doIniLine ("cable iom,1,1,1,1");
+
+    // ; Attach IOM unit 1 port C (2) to SCU unit 2, port 1
+    doIniLine ("cable iom,1,2,2,1");
+
+    // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
+    doIniLine ("cable iom,1,3,3,1");
+
+
+    // ;;;
+    // ;;; SCU 0 --> CPUs
+    // ;;;
+
+    // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
+    doIniLine ("cable scu,0,7,0,0");
+
+    // ; Attach SCU unit 0 port 6 to CPU unit B (1), port 0
+    doIniLine ("cable scu,0,6,1,0");
+
+    // ; Attach SCU unit 0 port 5 to CPU unit C (2), port 0
+    doIniLine ("cable scu,0,5,2,0");
+
+    // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
+    doIniLine ("cable scu,0,4,3,0");
+
+    // ;;;
+    // ;;; SCU 1 --> CPUs
+    // ;;;
+
+    // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
+    doIniLine ("cable scu,1,7,0,1");
+
+    // ; Attach SCU unit 1 port 6 to CPU unit B (1), port 1
+    doIniLine ("cable scu,1,6,1,1");
+
+    // ; Attach SCU unit 1 port 5 to CPU unit C (2), port 1
+    doIniLine ("cable scu,1,5,2,1");
+
+    // ; Attach SCU unit 1 port 4 to CPU unit D (3), port 1
+    doIniLine ("cable scu,1,4,3,1");
+
+
+    // ;;;
+    // ;;; SCU 2 --> CPUs
+    // ;;;
+
+    // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
+    doIniLine ("cable scu,2,7,0,2");
+
+    // ; Attach SCU unit 2 port 6 to CPU unit B (1), port 2
+    doIniLine ("cable scu,2,6,1,2");
+
+    // ; Attach SCU unit 2 port 5 to CPU unit C (2), port 2
+    doIniLine ("cable scu,2,5,2,2");
+
+    // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
+    doIniLine ("cable scu,2,4,3,2");
+
+    // ;;;
+    // ;;; SCU 3 --> CPUs
+    // ;;;
+
+    // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
+    doIniLine ("cable scu,3,7,0,3");
+
+    // ; Attach SCU unit 3 port 6 to CPU unit B (1), port 3
+    doIniLine ("cable scu,3,6,1,3");
+
+    // ; Attach SCU unit 3 port 5 to CPU unit C (2), port 3
+    doIniLine ("cable scu,3,5,2,3");
+
+    // ; Attach SCU unit 3 port 4 to CPU unit D (3), port 3
+    doIniLine ("cable scu,3,4,3,3");
+
+    // ;cable show
+    // ;cable verify
+
+    doIniLine ("set cpu config=b29test=enable");
+    doIniLine ("set cpu config=dis_enable=enable");
+    doIniLine ("set cpu config=lprp_highonly=enable");
+    doIniLine ("set cpu config=steady_clock=disable");
+    doIniLine ("set cpu config=append_after=enable");
+    //doIniLine ("set cpu config=super_user=disable");
+    doIniLine ("set cpu config=epp_hack=enable");
+    doIniLine ("set cpu config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu config=disable_wam=enable");
+    doIniLine ("set cpu config=tro_enable=enable");
+    doIniLine ("set cpu config=bullet_time=disable");
+    doIniLine ("set cpu config=y2k=disable");
+    // ; 6 MIP Processor
+    //doIniLine ("set cpu config=trlsb=12");
+
+    doIniLine ("set sys config=activate_time=8");
+    doIniLine ("set sys config=terminate_time=8");
+
+
+    doIniLine ("fnpload Devices.txt");
+    doIniLine ("fnpserverport 6180");
 
     return SCPE_OK;
   }
@@ -2339,7 +3553,7 @@ t_stat scpCommand (UNUSED char *nodename, UNUSED char *id, char *arg3)
     return SCPE_OK;
   }
 
-static t_stat bootSkip (int32 UNUSED arg, char * UNUSED buf)
+static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
   {
     uint32 skipped;
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);

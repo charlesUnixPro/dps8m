@@ -71,6 +71,7 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <errno.h>
+#include <netinet/in.h>
 
 
 #include "udplib.h"
@@ -216,7 +217,7 @@ static int udp_find_free_link (void)
 // 0: ok
 // -1: out of links
 
-int udp_create (char * premote, int * pln)
+int udp_create (const char * premote, int * pln)
   {
     int rc;
     //   Create a logical UDP link to the specified remote system.  The "remote"
@@ -237,7 +238,7 @@ int udp_create (char * premote, int * pln)
       return -1; // out of links
 
     // Parse the remote name and set up the ipaddr and port ...
-    if (udp_parse_remote (link, premote) != 0)
+    if (udp_parse_remote (link, (char *) premote) != 0)
       return -2;
 #if 0
   // Create the socket connection to the destination ...

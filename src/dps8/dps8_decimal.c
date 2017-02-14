@@ -1,6 +1,7 @@
 /*
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -63,7 +64,7 @@ decContext * decContextDefaultDPS8(decContext *context)
 /* dps8 simulators mpXd instructions                                  */
 /* */
 /* ------------------------------------------------------------------ */
-decContext * decContextDefaultDPS8_80(decContext *context)
+decContext * decContextDefaultDPS8Mul(decContext *context)
 {
     decContextDefault(context, DEC_INIT_BASE);
     context->traps=0;
@@ -193,6 +194,7 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
     return dn;
 } // decBCD9ToNumber
 
+#if 0
 /* ------------------------------------------------------------------ */
 /* HWR 2/07 15:49 derived from ......                                 */
 /*                                                                    */
@@ -320,10 +322,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     if (r->digits > 63 || r->digits > n)
     {
         static char out1 [132];
-        bzero(out1, sizeof(out1));
+        memset (out1, 0, sizeof (out1));
         
         static char out2 [132];
-        bzero(out2, sizeof(out2));
+        memset (out2, 0, sizeof (out2));
         
         int scale, adjLen = n;
         
@@ -362,10 +364,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     if (r->digits > 63 || r->digits > n)
     {
         static char out1 [132];
-        bzero(out1, sizeof(out1));
+        memset (out1, 0, sizeof (out1));
         
         static char out2 [132];
-        bzero(out2, sizeof(out2));
+        memset (out2, 0, sizeof (out2));
         
         int scale, adjLen = n;
         
@@ -459,8 +461,8 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
         
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
         {
-            bzero(out, sizeof(out));
-            bzero(out2, sizeof(out2));
+            memset (out, 0, sizeof (out));
+            memset (out2, 0, sizeof (out2));
             
             decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
             for(int i = 0 ; i < r->digits ; i += 1 )
@@ -499,7 +501,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     
     static uint8_t out[256];
     
-    bzero(out, sizeof(out));
+    memset (out, 0, sizeof (out));
     
     //bool ovr = (r->digits-sf) > adjLen;     // is integer portion too large to fit?
     bool ovr = r2->digits > adjLen;          // is integer portion too large to fit?
@@ -624,7 +626,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                 decNumber _i;
                 decNumber *i = decNumberToIntegralValue(&_i, ro, set);
                 char outi[256];
-                bzero(outi, sizeof(outi));
+                memset (outi, 0, sizeof (outi));
                 decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
                 for(int j = 0 ; j < adjLen; j += 1 )
                     outi[j] += '0';
@@ -710,7 +712,109 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     
     decNumberCopy(r, r2);
     return (char *) out;
+} 
+#endif
+
+char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+{
+    decNumber _sf;
+    decNumber _r2;
+    decNumber *r2 = &_r2;
+    enum rounding safeR = decContextGetRounding(set);         // save rounding mode
+    int safe = set->digits;
+
+    //char pr[256];
+
+    *OVR = false;
+    *TRUNC = false;
+
+    // CSFL isn't rescaled and can't overflow
+    if (s != CSFL) {
+
+        // rescale to sf first
+        // AL39: If N2 is not large enough to hold the integer part of C(Y-charn1) _as rescaled by SF2_, an overflow condition exists
+        // ET 336
+        if (sf != r->exponent) {
+            if (!R) {
+                decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation). ISOLTS 815 09b 
+                if (sf > r->exponent) // ET 330: truncation due to: output sf > input sf or exponent
+                    *TRUNC = true;
+            }
+            decNumberFromInt32(&_sf, sf);
+            decNumberRescale(r, r, &_sf, set);
+
+            //decNumberToString(r,pr); sim_printf("rescaled: %s %d\n",pr,r->digits);
+
+            //decContextSetRounding(set, safeR);              // restore rounding mode
+        }
+
+        // check for overflow and if it occurs, adjust the operand
+
+        decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+        decNumberToIntegralValue(r2, r, set);
+
+        //decNumberToString(r2,pr); sim_printf("integral: %s\n",pr);
+
+        // if sf< 0, this reduces number of integer slots available
+        // if sf>=0, this doesn't change anything, nout integer slots are available
+        // ET 275, ET 336
+        if (nout + min(sf,0) < r2 -> digits) {
+
+            // discard overflowing digits
+            // note that this may set zero flag: ISOLTS-810 01l
+            set->digits = r2 -> digits - (nout + min(sf,0));
+            decNumberPlus(r2, r, set);
+            set->digits = safe;
+
+            //decNumberToString(r2,pr); sim_printf("subtracting: %s\n",pr);
+
+            decNumberSubtract(r, r, r2, set);
+
+            //decNumberToString(r,pr); sim_printf("discarded: %s\n",pr);
+
+            *OVR = true;
+
+        }
+        decContextSetRounding(set, safeR);
+
+    } 
+    if (nout < r->digits) { // not enough space to move all digits
+        // round or truncate
+        if (!R) {
+            decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
+            // truncation flag is independent of whether overflow occurred: ISOLTS-810 01k, 815 09b
+            *TRUNC = true;
+        }
+        set->digits = nout;
+        decNumberPlus(r, r, set);
+       	set->digits = safe;
+
+        //decNumberToString(r,pr); sim_printf("r/trunc: %s\n",pr);
+
+        decContextSetRounding(set, safeR);              // restore rounding mode
+    }
+
+    // write out the digits
+    // note that even CSFL is aligned right - ISOLTS-810 05d
+    static uint8_t out[256];
+    uint8_t tmp[256];
+    //int scale;
+    //decBCDFromNumber(out, nout, &scale, r);
+    decNumberGetBCD(r,tmp);
+    int	justif = nout - r->digits;
+    //decNumberToString(r,pr); sim_printf("justif: %d %d %d\n",nout,r->digits,justif);
+    for (int i=0;i<nout;i++) {
+        if (i<justif)
+            out[i]='0';
+        else
+            out[i]=tmp[i-justif]+'0';
+    }
+    out[nout]=0;
+
+    return (char*)out;
+
 }
+
 
 #ifndef QUIET_UNUSED
 // If the lhs is less than the rhs in the total order then the number will be set to the value -1. If they are equal, then number is set to 0. If the lhs is greater than the rhs then the number will be set to the value 1.
@@ -727,6 +831,7 @@ int decCompare(decNumber *lhs, decNumber *rhs, decContext *set)
     
     return 1;       // lhs > rhs
 }
+#endif
 
 int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
 {
@@ -741,7 +846,6 @@ int decCompareMAG(decNumber *lhs, decNumber *rhs, decContext *set)
     
     return 1;       // lhs > rhs
 }
-#endif
 
 #if 0
 int findFirstDigit(unsigned char *bcd)
