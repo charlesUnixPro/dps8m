@@ -125,7 +125,6 @@ C_SRCS += ./dps8_utils.c
 C_SRCS += ./fnpuv.c
 C_SRCS += ./fnptelnet.c
 C_SRCS += libtelnet.c
-C_SRCS += ./hdbg.c
 ifeq ($(M_SHARED),1)
 C_SRCS += ./shm.c
 endif
@@ -171,7 +170,6 @@ H_SRCS += dps8_utils.h
 H_SRCS += fnpuv.h
 H_SRCS += fnptelnet.h
 H_SRCS += h316_imp.h
-H_SRCS += hdbg.h
 ifeq ($(M_SHARED),1)
 H_SRCS += shm.h
 endif

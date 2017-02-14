@@ -37,9 +37,6 @@
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 #include "dps8_opcodetable.h"
 #include "sim_defs.h"
 #include "threadz.h"
@@ -1728,9 +1725,6 @@ t_stat threadz_sim_instr (void)
 leave:
 
 sim_printf ("cpu %u leaves; reason %d\n", thisCPUnum, reason);
-#ifdef HDBG
-    hdbgPrint ();
-#endif
     sim_printf("\nsimCycles = %llu\n", cpu.cycleCnt);
     sim_printf("\ninstructions = %llu\n", cpu.instrCnt);
     for (int i = 0; i < N_FAULTS; i ++)

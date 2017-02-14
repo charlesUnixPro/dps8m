@@ -39,9 +39,6 @@
 #include "dps8_iefp.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 #include "threadz.h"
 
 // Forward declarations
@@ -1549,9 +1546,6 @@ restart_1:
 
       {
         traceInstruction (DBG_TRACE);
-#ifdef HDBG
-        hdbgTrace ();
-#endif
       }
 #endif
 

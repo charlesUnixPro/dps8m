@@ -73,15 +73,6 @@
 // Enable panel support
 //#define PANEL
 
-// Enable history debugger
-//#define HDBG
-
-// XXX FixMe
-// history debugger wont build under XCode just yet.
-#ifdef __APPLE__
-#undef HDBG
-#endif
-
 // Enable ISOLTS support
 //#define ISOLTS
 

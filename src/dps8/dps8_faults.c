@@ -28,9 +28,6 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 
 /*
  FAULT RECOGNITION
@@ -330,9 +327,6 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
                "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
                faultNumber, faultNumber, subFault.bits, subFault.bits, 
                cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-#ifdef HDBG
-    hdbgFault (faultNumber, subFault, faultMsg);
-#endif
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
