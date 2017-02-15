@@ -1199,7 +1199,7 @@ t_stat threadz_sim_instr (void)
                   {
                     // ISOLTS does this....
                     CPT (cpt1U, 11); // dis in interrupt pair
-                    sim_warn ("DIS in interrupt cycle\n");
+                    //sim_warn ("DIS in interrupt cycle\n");
                     break;
                   }
 
@@ -1673,7 +1673,7 @@ t_stat threadz_sim_instr (void)
                   {
                     CPT (cpt1L, 3); // DIS in fault pait
                     // ISOLTS does this....
-                    sim_warn ("DIS in fault cycle\n");
+                    //sim_warn ("DIS in fault cycle\n");
                     break;
                   }
 
