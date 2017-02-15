@@ -334,6 +334,21 @@ bit-28 tp inhibit interrupts
 #include <time.h>
 void elapsedtime (void);
 #endif
+
+const _fault_subtype fst_zero = (_fault_subtype) {.bits=0};
+const _fault_subtype fst_acv9 = (_fault_subtype) {.fault_acv_subtype=ACV9};
+const _fault_subtype fst_acv15 = (_fault_subtype) {.fault_acv_subtype=ACV15};
+const _fault_subtype fst_ill_mod = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD};
+const _fault_subtype fst_ill_proc = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC};
+const _fault_subtype fst_ill_dig = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG};
+const _fault_subtype fst_ill_op = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP};
+const _fault_subtype fst_str_oob = (_fault_subtype) {.fault_str_subtype=flt_str_oob};
+const _fault_subtype fst_str_nea = (_fault_subtype) {.fault_str_subtype=flt_str_nea};
+const _fault_subtype fst_str_ptr = (_fault_subtype) {.fault_str_subtype=flt_str_ill_ptr};
+const _fault_subtype fst_cmd_lprpn = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_lprpn_bits};
+const _fault_subtype fst_cmd_ctl = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control};
+const _fault_subtype fst_onc_nem = (_fault_subtype) {.fault_onc_subtype=flt_onc_nem};
+ 
 // CANFAULT 
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
@@ -889,7 +904,7 @@ void doG7Fault (bool allowTR)
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
          //sim_printf("timer runout %12o\n",cpu.PPR.IC);
-         doFault (FAULT_TRO, (_fault_subtype) {.bits=0}, "Timer runout"); 
+         doFault (FAULT_TRO, fst_zero, "Timer runout"); 
        }
 
      if (cpu.g7Faults & (1u << FAULT_CON))
@@ -907,7 +922,7 @@ void doG7Fault (bool allowTR)
        {
          cpu . g7Faults &= ~(1u << FAULT_EXF);
 
-         doFault (FAULT_EXF, (_fault_subtype) {.bits=0}, "Execute fault");
+         doFault (FAULT_EXF, fst_zero, "Execute fault");
        }
 
 #ifdef L68

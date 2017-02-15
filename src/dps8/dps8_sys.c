@@ -227,7 +227,7 @@ static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
     // Assume the bootload CPU
-    setG7fault (ASSUME0, FAULT_EXF, (_fault_subtype) {.bits=0});
+    setG7fault (0, FAULT_EXF, fst_zero);
     return;
   }
 #endif
@@ -1071,7 +1071,7 @@ static t_stat absAddrN (int segno, uint offset)
 static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf)
   {
     // Assume bootload CPU
-    setG7fault (0, FAULT_EXF, (_fault_subtype) {.bits=0});
+    setG7fault (0, FAULT_EXF, fst_zero);
     return SCPE_OK;
   }
 

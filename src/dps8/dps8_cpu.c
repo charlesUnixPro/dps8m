@@ -1489,7 +1489,7 @@ static void panelProcessEvent (void)
           }
          else // EXECUTE FAULT
           {
-            setG7fault (currentRunningCPUnum, FAULT_EXF, (_fault_subtype) {.bits=0});
+            setG7fault (currentRunningCPUnum, FAULT_EXF, fst_zero);
           }
       }
   }
@@ -1688,7 +1688,7 @@ setCPU:;
                   {
                     //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.shadowTR);
                     if (cpu.switches.tro_enable)
-                      setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                      setG7fault (currentRunningCPUnum, FAULT_TRO, fst_zero);
                   }
               }
           }
@@ -1895,7 +1895,7 @@ elapsedtime ();
                   {
                     CPT (cpt1U, 16); // LUF
                     cpu.lufCounter = 0;
-                    doFault (FAULT_LUF, (_fault_subtype) {.bits=0}, "instruction cycle lockup");
+                    doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
                   }
 
                 // If we have done the even of an XED, do the odd
@@ -2104,7 +2104,7 @@ elapsedtime ();
                       {
                         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
-                          setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                          setG7fault (currentRunningCPUnum, FAULT_TRO, fst_zero);
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
 #endif
@@ -2494,7 +2494,7 @@ static void nem_check (word24 addr, char * context)
     if (query_scbank_map (addr) < 0)
       {
         //sim_printf ("nem %o [%"PRId64"]\n", addr, sim_timell ());
-        doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  context);
+        doFault (FAULT_STR, fst_str_nea,  context);
       }
   }
 #endif
@@ -2511,7 +2511,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 //sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
         if (os < 0)
           { 
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
+            doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -2563,7 +2563,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           { 
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
+            doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -2613,7 +2613,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 //sim_printf ("%s addr %08o pgnum %06o os %6d new %08o\n", __func__, addr, pgnum, os, os + addr % SCBANK);
         if (os < 0)
           { 
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
+            doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -2699,7 +2699,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           { 
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea},  __func__);
+            doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (word24)os + addr % SCBANK;
       }

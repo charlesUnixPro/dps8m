@@ -159,13 +159,13 @@ static void writeOperands (void)
         if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB6 && offset > 5");
 
         if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -358,13 +358,13 @@ static void readOperands (void)
         if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB6 && offset > 5");
 
         if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -1557,13 +1557,13 @@ IF1 sim_printf ("trapping opcode match......\n");
     {
 		if (ci->info->flags & NO_XED)
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "Instruction not allowed in XEC/XED");
         // The even instruction from C(Y-pair) must not alter
         // C(Y-pair)36,71, and must not be another xed instruction.
         if (ci->opcode == 0717 && !ci->opcodeX && cpu.cu.xdo /* even instruction being executed */)
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "XED of XED on even word");
         // ISOLTS 791 03k, 792 03k
         if (ci->opcode == 0560 && !ci->opcodeX) {
@@ -2665,9 +2665,9 @@ static inline void overflow (bool ovf, bool dly, const char * msg)
                 SET_I_TALLY;
               }
             if (dly)
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, msg);
+              dlyDoFault (FAULT_OFL, fst_zero, msg);
             else
-              doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, msg);
+              doFault (FAULT_OFL, fst_zero, msg);
           }
       }
   }
@@ -4100,7 +4100,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rQ = (- cpu.rQ) & MASK36;
 
               dlyDoFault (FAULT_DIV,
-                          (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                          fst_ill_op,
                           "div divide check");
             }
           else
@@ -5101,16 +5101,14 @@ static t_stat DoBasicInstruction (void)
               {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                  doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                           "ade exp overflow fault");
+                  doFault (FAULT_OFL, fst_zero, "ade exp overflow fault");
               }
 
             if (e < -128)
               {
                 SET_I_EUFL;
                 if (tstOVFfault ())
-                  doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                           "ade exp underflow fault");
+                  doFault (FAULT_OFL, fst_zero, "ade exp underflow fault");
               }
           }
           break;
@@ -5362,9 +5360,7 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseBAR);
           if (cpu.TPR.CA >= ((word18) cpu.BAR.BOUND) << 9)
             {
-              doFault (FAULT_ACV,
-                       (_fault_subtype) {.fault_acv_subtype=ACV15},
-                       "TSS boundary violation");
+              doFault (FAULT_ACV, fst_acv15, "TSS boundary violation");
             }
           ReadTraOp ();
           CLR_I_NBAR;
@@ -5659,10 +5655,7 @@ static t_stat DoBasicInstruction (void)
                     // Therefore the subfault well no illegal action, and
                     // Multics will peek it the instruction to deduce that it
                     // is a lprpn fault.
-                  doFault (FAULT_CMD,
-                           (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_lprpn_bits},
-                           "lprpn");
+                  doFault (FAULT_CMD, fst_cmd_lprpn, "lprpn");
                 }
 // The SPRPn instruction stores only the low 12 bits of the 15 bit SNR.
 // A special case is made for an SNR of all ones; it is stored as 12 1's.
@@ -5878,10 +5871,7 @@ static t_stat DoBasicInstruction (void)
             // be changed.
 
             if ((cpu.PR[n].SNR & 070000) != 0 && cpu.PR[n].SNR != MASK15)
-              doFault (FAULT_STR,
-                       (_fault_subtype)
-                       {.fault_str_subtype=flt_str_ill_ptr},
-                       "sprpn");
+              doFault (FAULT_STR, fst_str_ptr, "sprpn");
 
             cpu.CY  =  ((word36) (GET_PR_BITNO(n) & 077)) << 30;
             // lower 12- of 15-bits
@@ -5974,9 +5964,7 @@ static t_stat DoBasicInstruction (void)
               {
                 sim_warn ("rccl on CPU %u port %d has no SCU; faulting\n",
                           currentRunningCPUnum, cpu_port_num);
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(rccl)");
+                doFault (FAULT_ONC, fst_onc_nem, "(rccl)");
               }
 
             t_stat rc = scu_rscr ((uint) scu_unit_num, currentRunningCPUnum,
@@ -6019,7 +6007,7 @@ static t_stat DoBasicInstruction (void)
             {
               return STOP_HALT;
             }
-          doFault (FAULT_DRL, (_fault_subtype) {.bits=0}, "drl");
+          doFault (FAULT_DRL, fst_zero, "drl");
 
         case 0716:  // xec
           cpu.cu.xde = 1;
@@ -6082,32 +6070,28 @@ static t_stat DoBasicInstruction (void)
           // instruction pair at main memory location C+4. The value of C is
           // obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry (mme)");
+          doFault (FAULT_MME, fst_zero, "Master Mode Entry (mme)");
 
         case 0004:   // mme2
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(52)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME2, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 2 (mme2)");
+          doFault (FAULT_MME2, fst_zero, "Master Mode Entry 2 (mme2)");
 
         case 0005:   // mme3
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(54)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME3, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 3 (mme3)");
+          doFault (FAULT_MME3, fst_zero, "Master Mode Entry 3 (mme3)");
 
         case 0007:   // mme4
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(56)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME4, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 4 (mme4)");
+          doFault (FAULT_MME4, fst_zero, "Master Mode Entry 4 (mme4)");
 
         case 0011:   // nop
           break;
@@ -6123,9 +6107,7 @@ static t_stat DoBasicInstruction (void)
         case 0560:  // rpd
           {
             if ((cpu.PPR.IC & 1) == 0)
-              doFault (FAULT_IPR,
-                       (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                       "rpd odd");
+              doFault (FAULT_IPR, fst_ill_proc, "rpd odd");
             cpu.cu.delta = i->tag;
             // a:AL39/rpd1
             word1 c = (i->address >> 7) & 1;
@@ -6436,7 +6418,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
 
               default:
                 doFault (FAULT_IPR,
-                         (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                         fst_ill_mod,
                          "lcpr tag invalid");
 
             }
@@ -6688,7 +6670,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 default:
                   {
                     doFault (FAULT_IPR,
-                             (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                             fst_ill_mod,
                              "SCPR Illegal register select value");
                   }
               }
@@ -6892,10 +6874,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
 
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                          {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(rscr)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(rscr)");
               }
 
 #ifdef PANEL
@@ -7365,7 +7344,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                   // XXX Guessing values; also don't know if this is actually
                   //  a fault
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                           fst_ill_mod,
                            "Illegal register select value");
               }
             SC_I_ZERO (cpu.rA == 0);
@@ -7384,17 +7363,13 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             // If the there is no port to that memory location, fault
             if (cpu_port_num < 0)
               {
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(cioc)");
+                doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
             int scu_unit_num = query_scu_unit_num ((int) currentRunningCPUnum,
                                                    cpu_port_num);
             if (scu_unit_num < 0)
               {
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(cioc)");
+                doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
 
 // expander word
@@ -7442,10 +7417,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                   putbits36_4 (& cpu.faultRegister[0], 24, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(smcm)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(smcm)");
               }
 #endif
             if (scu_unit_num < 0)
@@ -7497,10 +7469,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 else if (cpu_port_num == 3)
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
 // XXX What if the port is > 3?
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(smic)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(smic)");
 #endif
               }
             t_stat rc = scu_smic ((uint) scu_unit_num, currentRunningCPUnum, 
@@ -7534,10 +7503,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                   putbits36_4 (& cpu.faultRegister[0], 24, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(sscr)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(sscr)");
               }
             t_stat rc = scu_sscr ((uint) scu_unit_num, currentRunningCPUnum,
                                   cpu_port_num, cpu.iefpFinalAddress & MASK15,
@@ -7666,7 +7632,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
           if (cpu.switches.halt_on_unimp)
             return STOP_ILLOP;
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                   fst_ill_op,
                    "Illegal instruction");
       }
 #ifdef L68
@@ -8407,7 +8373,7 @@ elapsedtime ();
 
             if (getbits36_1 (cpu.CY, 23) != 0)
               doFault (FAULT_IPR,
-                       (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                       fst_ill_proc,
                        "aarn C(Y)23 != 0");
 
             uint32 n = opcode & 07;  // get
@@ -8459,10 +8425,7 @@ elapsedtime ();
                     {
                       cpu.AR[n].WORDNO = 0;
                       SET_AR_CHAR_BITNO (n, 0, 0);
-                      doFault (FAULT_IPR,
-                               (_fault_subtype)
-                                 {.fault_ipr_subtype=FR_ILL_PROC},
-                               "aarn TN > 5");
+                      doFault (FAULT_IPR, fst_ill_proc, "aarn TN > 5");
                     }
 
                   // If C(Y)21,22 = 01 (TA code = 1), then
@@ -8485,10 +8448,7 @@ elapsedtime ();
                   // fault occurs.
                   cpu.AR[n].WORDNO = 0;
                   SET_AR_CHAR_BITNO (n, 0, 0);
-                  doFault (FAULT_IPR,
-                           (_fault_subtype)
-                           {.fault_ipr_subtype=FR_ILL_PROC},
-                           "aarn TA = 3");
+                  doFault (FAULT_IPR, fst_ill_proc, "aarn TA = 3");
               }
           }
           break;
@@ -8591,10 +8551,7 @@ elapsedtime ();
                   // If C(Y)21 = 0 (TN code = 0) and C(Y)20 = 1 an
                   // illegal procedure fault occurs.
                   if ((CN & 1) != 0)
-                    doFault (FAULT_IPR,
-                             (_fault_subtype)
-                               {.fault_ipr_subtype=FR_ILL_PROC},
-                             "narn N9 and CN odd");
+                    doFault (FAULT_IPR, fst_ill_proc, "narn N9 and CN odd");
                   // The character number is in bits 18-19; recover it
                   CN >>= 1;
                   // If C(Y)21 = 0 (TN code = 0), then
@@ -8627,11 +8584,11 @@ elapsedtime ();
                 // an illegal procedure fault occurs.
                 if (TA == 03)
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                           fst_ill_proc,
                            "ARAn tag == 3");
                 if (getbits36_1 (cpu.CY, 23) != 0)
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                           fst_ill_proc,
                            "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get
@@ -8969,7 +8926,7 @@ elapsedtime ();
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                     fst_ill_op,
                      "Illegal instruction");
     }
     PNL (L68_ (DU_CYCLE_END;))

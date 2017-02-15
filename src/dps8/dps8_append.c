@@ -408,7 +408,7 @@ static void fetchDSPTW(word15 segno)
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
+        doFault(FAULT_ACV, fst_acv15, "acvFault: fetchDSPTW out of segment bounds fault");
       }
     setAPUStatus (apuStatus_DSPTW);
 
@@ -451,7 +451,7 @@ static void modifyDSPTW(word15 segno)
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
+        doFault(FAULT_ACV, fst_acv15, "acvFault: modifyDSPTW out of segment bounds fault");
       }
 #endif
 
@@ -639,7 +639,7 @@ static void fetchNSDW(word15 segno)
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
+        doFault(FAULT_ACV, fst_acv15, "acvFault fetchNSDW: out of segment bounds fault");
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2u * segno);
     word36 SDWeven, SDWodd;
@@ -1205,7 +1205,7 @@ static void doPTW2(_sdw *sdw, word18 offset)
        //Is PTW2.F set ON?
        if (!PTW2.DF)
            // initiate a directed fault
-           doFault(FAULT_DF0 + PTW2.FC, (_fault_subtype) {.bits=0}, "PTW2.F == 0");
+           doFault(FAULT_DF0 + PTW2.FC, fst_zero, "PTW2.F == 0");
 
 }
 
@@ -1310,8 +1310,7 @@ _sdw0 * getSDW (word15 segno)
         fetchDSPTW (segno);
             
         if (! cpu . PTW0 . DF)
-          doFault (FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "getSDW PTW0.F == 0");
-            
+          doFault (FAULT_DF0 + cpu . PTW0.FC, fst_zero, "getSDW PTW0.F == 0"); 
         if (! cpu . PTW0 . U)
           modifyDSPTW (segno);
             
@@ -1324,7 +1323,7 @@ _sdw0 * getSDW (word15 segno)
       {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "getSDW SDW0.F == 0! Initiating directed fault\n");
-        doFault (FAULT_DF0 + cpu . SDW0 . FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
+        doFault (FAULT_DF0 + cpu . SDW0 . FC, fst_zero, "SDW0.F == 0");
      }
    return & cpu . SDW0;
   }
@@ -1617,7 +1616,7 @@ A:;
         
         if (! cpu.PTW0.DF)
          {
-          doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
+          doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
          }
         
         if (! cpu.PTW0.U)
@@ -1640,8 +1639,7 @@ A:;
                        "doAppendCycle(A): SDW0.F == 0! "
                        "Initiating directed fault\n");
             // initiate a directed fault ...
-            doFault (FAULT_DF0 + cpu.SDW0.FC, (_fault_subtype) {.bits=0},
-                     "SDW0.F == 0");
+            doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
           }
       }
 
@@ -1665,8 +1663,7 @@ A:;
             fetchDSPTW (cpu.TPR.TSR);
             
             if (! cpu.PTW0.DF)
-              doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                       "doAppendCycle(A): PTW0.F == 0");
+              doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
             
             if (! cpu.PTW0.U)
               modifyDSPTW (cpu.TPR.TSR);
@@ -1684,8 +1681,7 @@ A:;
                            "doAppendCycle(A): SDW0.F == 0! "
                            "Initiating directed fault\n");
                 // initiate a directed fault ...
-                doFault (FAULT_DF0 + cpu.SDW0.FC, (_fault_subtype) {.bits=0},
-                         "SDW0.F == 0");
+                doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
               }
           }
         // load SDWAM .....
@@ -2095,8 +2091,7 @@ G:;
         if (thisCycle != ABSA_CYCLE)
           {
             // initiate a directed fault
-            doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                     "PTW0.F == 0");
+            doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "PTW0.F == 0");
           }
       } 
     // load PTW0 POINTER, always bypass PTWAM

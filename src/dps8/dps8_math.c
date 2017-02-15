@@ -623,7 +623,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -631,7 +631,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "ufa exp underflow fault");
     }
 
 IF1 sim_printf ("UFA returning E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
@@ -726,7 +726,7 @@ IF1 sim_printf ("FNO OVF\n");
             {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                    dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
+                    dlyDoFault (FAULT_OFL, fst_zero, "fno exp overflow fault");
             }
             (*E) ++;
             *E &= MASK8;
@@ -830,7 +830,7 @@ IF1 sim_printf ("FNO NOW %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMAS
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "fno exp underflow fault");
     }
 
     *E = (word8) e & MASK8;
@@ -1017,7 +1017,7 @@ void fneg (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fneg exp overflow fault");
+                dlyDoFault (FAULT_OFL, fst_zero, "fneg exp overflow fault");
         }
         cpu . rE ++;
         cpu . rE &= MASK8;
@@ -1075,13 +1075,13 @@ IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "ufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "ufm exp underflow fault");
     }
 
     // RJ78: This multiplication is executed in the following way:
@@ -1103,7 +1103,7 @@ IF1 sim_printf ("UFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word
         {
           SET_I_EOFL;
           if (tstOVFfault ())
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+              dlyDoFault (FAULT_OFL, fst_zero, "ufm exp overflow fault");
         }
         m3a >>= 1;
         e3 += 1;
@@ -1253,7 +1253,7 @@ IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (
             cpu . rQ = m1 & MASK36;
         }
 
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "FDV: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "FDV: divide check fault");
     }
 
     while (m1 >= m2) // DH02 (equivalent but perhaps clearer description):
@@ -1276,13 +1276,13 @@ IF1 sim_printf ("FDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word3
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp overflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "fdvX exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "fdvX exp underflow fault");
     }
     
     // We need 35 bits quotient + sign. Divisor is at most 28 bits.
@@ -2054,7 +2054,7 @@ IF1 sim_printf ("DUFA e3 now %d\n", e3);
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufa exp overflow fault");
       }
     
     // EUFL: If exponent is less than -128, then ON
@@ -2062,7 +2062,7 @@ IF1 sim_printf ("DUFA e3 now %d\n", e3);
       {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "dufa exp underflow fault");
       }
   }
 
@@ -2105,7 +2105,7 @@ void dufs (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
+                doFault (FAULT_OFL, fst_zero, "dufs exp overflow fault");
         }
         e2 += 1;
     }
@@ -2186,13 +2186,13 @@ IF1 sim_printf ("DUFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufm exp underflow fault");
     }
 
     // RJ78: This multiplication is executed in the following way:
@@ -2264,7 +2264,7 @@ IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (wor
         {
           SET_I_EOFL;
           if (tstOVFfault ())
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+              dlyDoFault (FAULT_OFL, fst_zero, "dufm exp overflow fault");
         }
         m3a >>= 1;
         e3 += 1;
@@ -2425,8 +2425,7 @@ IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) 
             cpu . rQ = m1 & MASK36;
         }
          
-        doFault (FAULT_DIV, (_fault_subtype) {.bits=0},
-                 "DFDV: divide check fault");
+        doFault (FAULT_DIV, fst_zero, "DFDV: divide check fault");
       }
     
 #ifdef L68
@@ -2449,15 +2448,13 @@ IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                   "dfdvX exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dfdvX exp overflow fault");
        }
     if (e3 < -128)
       {
         SET_I_EUFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                   "dfdvX exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dfdvX exp underflow fault");
       }
 
 #ifdef L68
@@ -2580,7 +2577,7 @@ void dvf (void)
 //HWR--        SET_I_ZERO;
 //HWR--        SC_I_NEG (cpu . rA & SIGN36);
 //HWR--        
-//HWR--        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+//HWR--        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
 //HWR--    }
 //HWR--    
 //HWR--    uint128 dividend = (uint128)m1 << 63;
@@ -2675,7 +2672,7 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
       }
 
 #ifdef L68
@@ -2723,7 +2720,7 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
         SC_I_ZERO (cpu.rA == 0);
         SC_I_NEG (cpu.rA & SIGN36);
         
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
       }
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
@@ -2821,7 +2818,7 @@ IF1 sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
         return;
       }
 
@@ -2883,7 +2880,7 @@ IF1 sim_printf ("incr. A\n");
         SC_I_ZERO (AQzero);
         SC_I_NEG (Aneg);
         
-        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
         return;
       }
     //char buf3 [128] = "";
