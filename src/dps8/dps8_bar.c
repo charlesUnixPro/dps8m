@@ -57,7 +57,7 @@ word18 getBARaddress(word18 addr)
     // sim_printf ("BAR.BOUND %03o (%06o) addr %06o\n", BAR.BOUND, BAR.BOUND << 9, addr);
     if (cpu . BAR.BOUND == 0)
         // store fault, out of bounds.
-        doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_oob}, "BAR store fault; out of bounds");
+        doFault (FAULT_STR, fst_str_oob, "BAR store fault; out of bounds");
 
     // A program is kept within certain limits by subtracting the
     // unrelocated computed address from the address bound. If the result
@@ -71,7 +71,7 @@ word18 getBARaddress(word18 addr)
     //if ((addr & 0777000) >= (((word18) cpu . BAR.BOUND) << 9))
     if (addr >= (((word18) cpu . BAR.BOUND) << 9))
         // store fault, out of bounds.
-        doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_oob}, "BAR store fault; out of bounds");
+        doFault (FAULT_STR, fst_str_oob, "BAR store fault; out of bounds");
     
     word18 barAddr = (addr + (((word18) cpu . BAR.BASE) << 9)) & 0777777;
     //finalAddress = barAddr;

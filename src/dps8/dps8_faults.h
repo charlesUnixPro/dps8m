@@ -81,6 +81,20 @@ void cu_safe_restore (void);
 
 void doG7Fault(void) NO_RETURN;
 
+extern const _fault_subtype fst_zero;
+extern const _fault_subtype fst_acv9;
+extern const _fault_subtype fst_acv15;
+extern const _fault_subtype fst_ill_mod;
+extern const _fault_subtype fst_ill_proc;
+extern const _fault_subtype fst_ill_dig;
+extern const _fault_subtype fst_ill_op;
+extern const _fault_subtype fst_str_oob;
+extern const _fault_subtype fst_str_nea;
+extern const _fault_subtype fst_str_ptr;
+extern const _fault_subtype fst_cmd_lprpn;
+extern const _fault_subtype fst_cmd_ctl;
+extern const _fault_subtype fst_onc_nem;
+ 
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
 void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 

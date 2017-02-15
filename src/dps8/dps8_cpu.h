@@ -1849,7 +1849,7 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1883,7 +1883,7 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1914,7 +1914,7 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1949,7 +1949,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }

@@ -117,13 +117,13 @@ static void writeOperands (void)
         if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB6 && offset > 5");
 
         if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -316,13 +316,13 @@ static void readOperands (void)
         if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB6 && offset > 5");
 
         if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
           // generate an illegal procedure, illegal modifier fault
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                   fst_ill_mod,
                    "co size == TB9 && offset > 3");
 
         if (Td == IT_SCR)
@@ -1285,7 +1285,7 @@ t_stat executeInstruction (void)
     // illegal procedure fault.
     if ((ci->info->flags & PRIV_INS) && ! is_priv_mode ())
         doFault (FAULT_IPR,
-                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                 fst_ill_proc,
                  "Attempted execution of privileged instruction.");
 
     ///
@@ -1298,7 +1298,7 @@ t_stat executeInstruction (void)
     {
         if (_nocss[ci->tag])
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                     fst_ill_mod,
                      "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
@@ -1306,7 +1306,7 @@ t_stat executeInstruction (void)
     {
         if (_noddcss[ci->tag])
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                     fst_ill_mod,
                      "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
@@ -1314,7 +1314,7 @@ t_stat executeInstruction (void)
     {
         if (_nodlcss[ci->tag])
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, 
+                     fst_ill_mod, 
                     "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
@@ -1322,14 +1322,14 @@ t_stat executeInstruction (void)
     {
         if (_nodudl[ci->tag])
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                     fst_ill_mod,
                      "Illegal DU/DL modification");
     }
     else if (ci->info->mods == ONLY_AU_QU_AL_QL_XN)
     {
         if (_onlyaqxn[ci->tag])
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                     fst_ill_mod,
                      "Illegal DU/DL/IC modification");
     }
 
@@ -1338,13 +1338,13 @@ t_stat executeInstruction (void)
     {
         if (ci->info->flags & NO_XED)
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "Instruction not allowed in XEC/XED");
         // The even instruction from C(Y-pair) must not alter
         // C(Y-pair)36,71, and must not be another xed instruction.
         if (ci->opcode == 0717 && ci->opcodeX == 0)
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "XED of XED on even word");
     }
 
@@ -2240,9 +2240,9 @@ static inline void overflow (bool ovf, bool dly, const char * msg)
                 SET_I_TALLY;
               }
             if (dly)
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, msg);
+              dlyDoFault (FAULT_OFL, fst_zero, msg);
             else
-              doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, msg);
+              doFault (FAULT_OFL, fst_zero, msg);
           }
       }
   }
@@ -3668,7 +3668,7 @@ static t_stat DoBasicInstruction (void)
                 cpu.rQ = (- cpu.rQ) & MASK36;
 
               dlyDoFault (FAULT_DIV,
-                          (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                          fst_ill_op,
                           "div divide check");
             }
           else
@@ -4669,16 +4669,14 @@ static t_stat DoBasicInstruction (void)
               {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                  doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                           "ade exp overflow fault");
+                  doFault (FAULT_OFL, fst_zero, "ade exp overflow fault");
               }
 
             if (e < -128)
               {
                 SET_I_EUFL;
                 if (tstOVFfault ())
-                  doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                           "ade exp underflow fault");
+                  doFault (FAULT_OFL, fst_zero, "ade exp underflow fault");
               }
           }
           break;
@@ -4721,7 +4719,7 @@ static t_stat DoBasicInstruction (void)
           {
               sim_debug (DBG_APPENDING, & cpu_dev,
                          "call6 access violation fault (outward call)");
-              doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV9},
+              doFault (FAULT_ACV, fst_acv9,
                        "call6 access violation fault (outward call)");
           }
           if (cpu.TPR.TRR < cpu.PPR.PRR)
@@ -5068,9 +5066,7 @@ sim_printf ("do bar attempt\n");
           CPTUR (cptUseBAR);
           if (cpu.TPR.CA >= ((word18) cpu.BAR.BOUND) << 9)
             {
-              doFault (FAULT_ACV,
-                       (_fault_subtype) {.fault_acv_subtype=ACV15},
-                       "TSS boundary violation");
+              doFault (FAULT_ACV, fst_acv15, "TSS boundary violation");
             }
           // AL39 is misleading; the BAR base is added in by the
           // instruction fetch.
@@ -5375,10 +5371,7 @@ sim_printf ("do bar attempt\n");
                     // Therefore the subfault well no illegal action, and
                     // Multics will peek it the instruction to deduce that it
                     // is a lprpn fault.
-                  doFault (FAULT_CMD,
-                           (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_lprpn_bits},
-                           "lprpn");
+                  doFault (FAULT_CMD, fst_cmd_lprpn, "lprpn");
                 }
 // The SPRPn instruction stores only the low 12 bits of the 15 bit SNR.
 // A special case is made for an SNR of all ones; it is stored as 12 1's.
@@ -5594,10 +5587,7 @@ sim_printf ("do bar attempt\n");
             // be changed.
 
             if ((cpu.PR[n].SNR & 070000) != 0 && cpu.PR[n].SNR != MASK15)
-              doFault (FAULT_STR,
-                       (_fault_subtype)
-                       {.fault_str_subtype=flt_str_ill_ptr},
-                       "sprpn");
+              doFault (FAULT_STR, fst_str_ptr, "sprpn");
 
             cpu.CY  =  ((word36) (GET_PR_BITNO(n) & 077)) << 30;
             // lower 12- of 15-bits
@@ -5690,9 +5680,7 @@ sim_printf ("do bar attempt\n");
               {
                 sim_warn ("rccl on CPU %u port %d has no SCU; faulting\n",
                           thisCPUnum, cpu_port_num);
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(rccl)");
+                doFault (FAULT_ONC, fst_onc_nem, "(rccl)");
               }
 
             t_stat rc = scu_rscr ((uint) scu_unit_num, thisCPUnum,
@@ -5735,7 +5723,7 @@ sim_printf ("do bar attempt\n");
             {
               return STOP_HALT;
             }
-          doFault (FAULT_DRL, (_fault_subtype) {.bits=0}, "drl");
+          doFault (FAULT_DRL, fst_zero, "drl");
 
         case 0716:  // xec
           cpu.cu.xde = 1;
@@ -5789,32 +5777,28 @@ sim_printf ("do bar attempt\n");
           // instruction pair at main memory location C+4. The value of C is
           // obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry (mme)");
+          doFault (FAULT_MME, fst_zero, "Master Mode Entry (mme)");
 
         case 0004:   // mme2
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(52)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME2, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 2 (mme2)");
+          doFault (FAULT_MME2, fst_zero, "Master Mode Entry 2 (mme2)");
 
         case 0005:   // mme3
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(54)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME3, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 3 (mme3)");
+          doFault (FAULT_MME3, fst_zero, "Master Mode Entry 3 (mme3)");
 
         case 0007:   // mme4
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+(56)8. The value of C
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
-          doFault (FAULT_MME4, (_fault_subtype) {.bits=0},
-                   "Master Mode Entry 4 (mme4)");
+          doFault (FAULT_MME4, fst_zero, "Master Mode Entry 4 (mme4)");
 
         case 0011:   // nop
           break;
@@ -5831,7 +5815,7 @@ sim_printf ("do bar attempt\n");
           {
             if ((cpu.PPR.IC & 1) == 0)
               doFault (FAULT_IPR,
-                       (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                       fst_ill_proc,
                        "lcpr tag invalid");
             cpu.cu.delta = i->tag;
             // a:AL39/rpd1
@@ -6138,7 +6122,7 @@ sim_printf ("do bar attempt\n");
 
               default:
                 doFault (FAULT_IPR,
-                         (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                         fst_ill_mod,
                          "lcpr tag invalid");
 
             }
@@ -6170,7 +6154,7 @@ sim_printf ("do bar attempt\n");
           // Not clear what the subfault should be; see Fault Register in
           //  AL39.
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                   fst_ill_op,
                    "lsdp is illproc on DPS8M");
 #endif
 #ifdef L68
@@ -6378,7 +6362,7 @@ sim_printf ("do bar attempt\n");
                 default:
                   {
                     doFault (FAULT_IPR,
-                             (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                             fst_ill_mod,
                              "SCPR Illegal register select value");
                   }
               }
@@ -6541,10 +6525,7 @@ sim_printf ("do bar attempt\n");
                   putbits36 (& cpu.faultRegister[0], 24, 4, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                          {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(rscr)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(rscr)");
               }
 
 #ifdef PANEL
@@ -7014,7 +6995,7 @@ sim_printf ("do bar attempt\n");
                   // XXX Guessing values; also don't know if this is actually
                   //  a fault
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                           fst_ill_mod,
                            "Illegal register select value");
               }
             SC_I_ZERO (cpu.rA == 0);
@@ -7033,17 +7014,13 @@ sim_printf ("do bar attempt\n");
             // If the there is no port to that memory location, fault
             if (cpu_port_num < 0)
               {
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(cioc)");
+                doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
             int scu_unit_num = query_scu_unit_num ((int) thisCPUnum,
                                                    cpu_port_num);
             if (scu_unit_num < 0)
               {
-                doFault (FAULT_ONC,
-                         (_fault_subtype) {.fault_onc_subtype=flt_onc_nem},
-                         "(cioc)");
+                doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
 
 // expander word
@@ -7091,10 +7068,7 @@ sim_printf ("do bar attempt\n");
                   putbits36_4 (& cpu.faultRegister[0], 24, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(smcm)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(smcm)");
               }
 #endif
             if (scu_unit_num < 0)
@@ -7146,10 +7120,7 @@ sim_printf ("do bar attempt\n");
                 else if (cpu_port_num == 3)
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
 // XXX What if the port is > 3?
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(smic)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(smic)");
 #endif
               }
             t_stat rc = scu_smic ((uint) scu_unit_num, thisCPUnum, 
@@ -7183,10 +7154,7 @@ sim_printf ("do bar attempt\n");
                   putbits36_4 (& cpu.faultRegister[0], 24, 010);
                 else
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
-                doFault (FAULT_CMD,
-                         (_fault_subtype)
-                           {.fault_cmd_subtype=flt_cmd_not_control},
-                         "(sscr)");
+                doFault (FAULT_CMD, fst_cmd_ctl, "(sscr)");
               }
             t_stat rc = scu_sscr ((uint) scu_unit_num, thisCPUnum,
                                   cpu_port_num, cpu.iefpFinalAddress & MASK15,
@@ -7303,7 +7271,7 @@ sim_printf ("do bar attempt\n");
           if (cpu.switches.halt_on_unimp)
             return STOP_ILLOP;
           doFault (FAULT_IPR,
-                   (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                   fst_ill_op,
                    "Illegal instruction");
       }
 #ifdef L68
@@ -7737,7 +7705,7 @@ static t_stat DoEISInstruction (void)
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "lptp is illproc on DPS8M");
 #endif
 #ifdef L68
@@ -7755,7 +7723,7 @@ static t_stat DoEISInstruction (void)
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "lptr is illproc on DPS8M");
 #endif
 #ifdef L68
@@ -7779,7 +7747,7 @@ static t_stat DoEISInstruction (void)
             // Not clear what the subfault should be; see Fault Register in
             // AL39.
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                     fst_ill_proc,
                      "lsdr is illproc on DPS8M");
 #endif
 #ifdef L68
@@ -8016,7 +7984,7 @@ static t_stat DoEISInstruction (void)
 
             if (getbits36_1 (cpu.CY, 23) != 0)
               doFault (FAULT_IPR,
-                       (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                       fst_ill_proc,
                        "aarn C(Y)23 != 0");
 
             uint32 n = opcode & 07;  // get
@@ -8068,10 +8036,7 @@ static t_stat DoEISInstruction (void)
                     {
                       cpu.AR[n].WORDNO = 0;
                       SET_AR_CHAR_BITNO (n, 0, 0);
-                      doFault (FAULT_IPR,
-                               (_fault_subtype)
-                                 {.fault_ipr_subtype=FR_ILL_PROC},
-                               "aarn TN > 5");
+                      doFault (FAULT_IPR, fst_ill_proc, "aarn TN > 5");
                     }
 
                   // If C(Y)21,22 = 01 (TA code = 1), then
@@ -8094,10 +8059,7 @@ static t_stat DoEISInstruction (void)
                   // fault occurs.
                   cpu.AR[n].WORDNO = 0;
                   SET_AR_CHAR_BITNO (n, 0, 0);
-                  doFault (FAULT_IPR,
-                           (_fault_subtype)
-                           {.fault_ipr_subtype=FR_ILL_PROC},
-                           "aarn TA = 3");
+                  doFault (FAULT_IPR, fst_ill_proc, "aarn TA = 3");
               }
           }
           break;
@@ -8200,10 +8162,7 @@ static t_stat DoEISInstruction (void)
                   // If C(Y)21 = 0 (TN code = 0) and C(Y)20 = 1 an
                   // illegal procedure fault occurs.
                   if ((CN & 1) != 0)
-                    doFault (FAULT_IPR,
-                             (_fault_subtype)
-                               {.fault_ipr_subtype=FR_ILL_PROC},
-                             "narn N9 and CN odd");
+                    doFault (FAULT_IPR, fst_ill_proc, "narn N9 and CN odd");
                   // The character number is in bits 18-19; recover it
                   CN >>= 1;
                   // If C(Y)21 = 0 (TN code = 0), then
@@ -8236,11 +8195,11 @@ static t_stat DoEISInstruction (void)
                 // an illegal procedure fault occurs.
                 if (TA == 03)
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                           fst_ill_proc,
                            "ARAn tag == 3");
                 if (getbits36_1 (cpu.CY, 23) != 0)
                   doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                           fst_ill_proc,
                            "ARAn b23 == 1");
 
                 uint32 n = opcode & 07;  // get
@@ -8564,7 +8523,7 @@ static t_stat DoEISInstruction (void)
             if (cpu.switches.halt_on_unimp)
                 return STOP_ILLOP;
             doFault (FAULT_IPR,
-                     (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP},
+                     fst_ill_op,
                      "Illegal instruction");
     }
     PNL (L68_ (DU_CYCLE_END;))
@@ -8594,7 +8553,7 @@ static int doABSA (word36 * result)
         //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         // Not clear what the subfault should be; see Fault Register in AL39.
         //doFault (FAULT_IPR,
-                 //(_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, 
+                 //fst_ill_proc, 
                  //"ABSA in absolute mode.");
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
@@ -8614,9 +8573,7 @@ static int doABSA (word36 * result)
 
         if (2 * (uint) cpu.TPR.TSR >= 16 * ((uint) cpu.DSBR.BND + 1))
           {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in DSBR boundary violation.");
+            doFault (FAULT_ACV, fst_acv15, "ABSA in DSBR boundary violation.");
           }
 
         // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
@@ -8651,9 +8608,7 @@ static int doABSA (word36 * result)
         word14 BOUND = (SDWo >> (35u - 14u)) & 037777u;
         if (cpu.TPR.CA >= 16u * (BOUND + 1u))
           {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in SDW boundary violation.");
+            doFault (FAULT_ACV, fst_acv15, "ABSA in SDW boundary violation.");
           }
 
         // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are
@@ -8690,9 +8645,7 @@ static int doABSA (word36 * result)
 
         if (2 * (uint) segno >= 16 * ((uint) cpu.DSBR.BND + 1))
           {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in DSBR boundary violation.");
+            doFault (FAULT_ACV, fst_acv15, "ABSA in DSBR boundary violation.");
           }
 
         // 2. Form the quantities:
@@ -8734,9 +8687,7 @@ static int doABSA (word36 * result)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
             // initiate a directed fault
-            doFault (FAULT_DF0 + PTW1.FC,
-                     (_fault_subtype) {.bits=0},
-                     "ABSA !PTW1.F");
+            doFault (FAULT_DF0 + PTW1.FC, fst_zero, "ABSA !PTW1.F");
           }
 
         // 5. Fetch the target segment SDW, SDW(segno), from the
@@ -8789,9 +8740,7 @@ static int doABSA (word36 * result)
         if (!SDW0.DF)
           {
             sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
-            doFault (FAULT_DF0 + SDW0.FC,
-                     (_fault_subtype) {.bits=0},
-                     "ABSA !SDW0.F");
+            doFault (FAULT_DF0 + SDW0.FC, fst_zero, "ABSA !SDW0.F");
           }
 
         // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an
@@ -8806,9 +8755,7 @@ static int doABSA (word36 * result)
           {
             sim_debug (DBG_APPENDING, & cpu_dev,
                        "absa SDW boundary violation\n");
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in SDW boundary violation.");
+            doFault (FAULT_ACV, fst_acv15, "ABSA in SDW boundary violation.");
           }
 
         // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the
@@ -9124,7 +9071,7 @@ void doRCU (void)
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);
-    doFault (FAULT_TRB,
+    doFault (FAULT_TRB, 
              (_fault_subtype) {.bits=cpu.cu.FI_ADDR},
              "doRCU dies with unhandled fault number");
   }

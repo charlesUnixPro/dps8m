@@ -367,7 +367,7 @@ static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC)
           if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 n");
+              doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 n");
             }
           return 0;
 
@@ -396,7 +396,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
                 }
 #endif
               //sim_printf ("getMFReg18 du\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
+              doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 du");
             }
           return 0;
 
@@ -408,7 +408,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
           if (! allowNIC)
             {
               //sim_printf ("getMFReg18 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
+              doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 ic");
             }
           return cpu . PPR . IC;
 
@@ -419,7 +419,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
           return GETLO (cpu . rQ);
 
         case 7: // dl
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 dl");
+          doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 dl");
 
         case 8:
         case 9:
@@ -443,7 +443,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
          if (! allowNIC)
            {
              //sim_printf ("getMFReg36 n\n");
-             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 n");
+             doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 n");
            }
           return 0;
         case 1: // au
@@ -455,7 +455,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
         case 3: // du
           // du is a special case for SCD, SCDR, SCM, and SCMR
           if (! allowDU)
-           doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 du");
+           doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 du");
           return 0;
 
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
@@ -466,7 +466,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
           if (! allowNIC)
             {
               //sim_printf ("getMFReg36 n\n");
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 ic");
+              doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 ic");
             }
           return cpu . PPR . IC;
 
@@ -477,7 +477,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC)
             return cpu . rQ;
 
         case 7: // dl
-             doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 dl");
+             doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 dl");
 
         case 8:
         case 9:
@@ -1173,7 +1173,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
                   "setupOperandDescriptor 18-28,30, 31 MBZ");
               }
 #endif
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 18-28,30, 31 MBZ");
+            doFault (FAULT_IPR, fst_ill_mod, "setupOperandDescriptor 18-28,30, 31 MBZ");
           }
 #endif 
 
@@ -1181,7 +1181,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
         // RJ78 p. 5-39, ISOLTS 840 07a,07b
         if (opDesc & 060)
           {
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 30,31 MBZ");
+            doFault (FAULT_IPR, fst_ill_mod, "setupOperandDescriptor 30,31 MBZ");
           }
 
         // fill operand according to MFk....
@@ -1437,7 +1437,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
               break;
 
             default:
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA 3");
+              doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TA 3");
               //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
               //break;
           }
@@ -1499,7 +1499,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
         case CTA6:
           if (CN >= 6)
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
+            doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
           effBITNO = (9u * ARn_CHAR + 6u * r + ARn_BITNO) % 9u;
           effCHAR = ((6u * CN +
                       9u * ARn_CHAR +
@@ -1519,7 +1519,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 
         case CTA9:
           if (CN & 01)
-            doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
+            doFault(FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
           CN = (CN >> 1);
             
           effBITNO = 0;
@@ -1541,7 +1541,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
           break;
 
         default:
-           doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA1 3");
+           doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TA1 3");
           //sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
             //break;
     }
@@ -1735,7 +1735,7 @@ static void parseNumericOperandDescriptor (int k)
 
     if (N == 0)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=0");
+        doFault (FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor N=0");
       }
 #endif
 
@@ -1753,7 +1753,7 @@ static void parseNumericOperandDescriptor (int k)
     if (N == 1 && (S == 0 || S == 1 || S == 2))
       {
 sim_printf ("k %d N %d S %d\n", k, N, S);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=1 S=0|1|2");
+        doFault (FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor N=1 S=0|1|2");
       }
 #endif
 
@@ -1761,7 +1761,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 #if 0
     if (N == 2 && S == 0)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=2 S=0");
+        doFault (FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor N=2 S=0");
       }
 #endif
 
@@ -1769,7 +1769,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 #if 0
     if (N == 3 && S == 0 && TN == 1)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor N=3 S=0 TN 1");
+        doFault (FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor N=3 S=0 TN 1");
       }
 #endif
 #endif
@@ -1809,7 +1809,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
 
         case CTN9:
             if (CN & 1u)
-              doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
+              doFault(FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor CTA9 & CN odd");
             CN = (CN >> 1u) & 03u;
 
             effBITNO = 0;
@@ -1929,7 +1929,7 @@ static void parseBitstringOperandDescriptor (int k)
     word2 C = getbits36_2 (opDesc, 18);     // char# from descriptor
 
     if (B >= 9)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
+      doFault (FAULT_IPR, fst_ill_proc, "parseBitstringOperandDescriptor B >= 9");
      
     word36 r = getMFReg36(MFk & 017, false, true);  // disallow du, allow n,ic
     if ((MFk & 017) == 4)   // reg == IC ?
@@ -2916,11 +2916,11 @@ void cmpc (void)
     
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpc 9-10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "cmpc 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "cmpc op1 23 MBZ");
 
 // ISOLTS ps846    test-07a    dec add test
 // Sets TA2 to the same as TA1. AL39 says TA2 ignored.
@@ -2931,7 +2931,7 @@ void cmpc (void)
     // if (e -> op [1]  & 0000000070000)
     // Bit 23 of OP2 MBZ
     if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpc op2 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "cmpc op2 23 MBZ");
 #endif
 
     word9 fill = getbits36_9 (cpu . cu . IWB, 0);
@@ -3035,16 +3035,16 @@ void scd ()
     if (IWB_IRODD & 0777600000000)
       {
         //sim_printf ("scd %12"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scd 0-10 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "scd 0-10 MBZ");
       }
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scd op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scd op1 23 MBZ");
 
     // Bits 18-28. 30-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scd op3 18-28. 30-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scd op3 18-28. 30-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3197,16 +3197,16 @@ void scdr (void)
     if (IWB_IRODD & 0777600000000)
       {
         //sim_printf ("scdr %12"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scdr 0-10 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "scdr 0-10 MBZ");
       }
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scdr op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scdr op1 23 MBZ");
 
     // Bits 18-28. 30-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scdr op3 18-28. 30-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scdr op3 18-28. 30-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3376,15 +3376,15 @@ void scm (void)
     
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scm 9-10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "scm 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scm op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scm op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scm op3 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scm op3 18-28, 39-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3522,19 +3522,19 @@ void scmr (void)
     
     // Bits 9-10 MBZ
     if (IWB_IRODD & 0000600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "scmr 9-10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "scmr 9-10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scmr op1 23 MBZ");
 
     // Bits 18 of OP3 MBZ
     if (e -> op [2]  & 0000000400000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op3 18 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scmr op3 18 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "scmr op3 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "scmr op3 18-28, 39-31 MBZ");
 
     // Both the string and the test character pair are treated as the data type
     // given for the string, TA1. A data type given for the test character
@@ -3682,19 +3682,19 @@ void tct (void)
     
     // Bits 0-17 MBZ
     if (IWB_IRODD & 0777777000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "tct 0-17 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "tct 0-17 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tct op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP2 MBZ
     if (e -> op [1]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op2 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tct op2 18-28, 39-31 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tct op3 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tct op3 18-28, 39-31 MBZ");
 
 #ifdef EIS_PTR3
     sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -3854,19 +3854,19 @@ void tctr (void)
     
     // Bits 0-17 MBZ
     if (IWB_IRODD & 0777777000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "tctr 0-17 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "tctr 0-17 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tctr op1 23 MBZ");
 
     // Bits 18-28, 39-31 of OP2 MBZ
     if (e -> op [1]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op2 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tctr op2 18-28, 39-31 MBZ");
 
     // Bits 18-28, 39-31 of OP3 MBZ
     if (e -> op [2]  & 0000000777660)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "tctr op3 18-28, 39-31 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "tctr op3 18-28, 39-31 MBZ");
 
 #ifdef EIS_PTR3
     sim_debug (DBG_TRACEEXT, & cpu_dev,
@@ -4069,15 +4069,15 @@ void mlr (void)
     
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mlr 10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mlr 10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mlr op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mlr op1 23 MBZ");
 
     // Bit 23 of OP2 MBZ
     if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mlr op2 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mlr op2 23 MBZ");
 
     int srcSZ = 0, dstSZ = 0;
 
@@ -4420,7 +4420,7 @@ void mlr (void)
       {
         SET_I_TRUNC;
         if (T && ! TST_I_OMASK)
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "mlr truncation fault");
+          doFault (FAULT_OFL, fst_zero, "mlr truncation fault");
       }
     else
       CLR_I_TRUNC;
@@ -4448,15 +4448,15 @@ void mrl (void)
     
     // Bit 10 MBZ
     if (IWB_IRODD & 0000200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mrl 10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mrl 10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mrl op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mrl op1 23 MBZ");
 
     // Bit 23 of OP2 MBZ
     if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mrl op2 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mrl op2 23 MBZ");
 
     int srcSZ = 0, dstSZ = 0;
 
@@ -4701,7 +4701,7 @@ void mrl (void)
       {
         SET_I_TRUNC;
         if (T && ! TST_I_OMASK)
-          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "mrl truncation fault");
+          doFault (FAULT_OFL, fst_zero, "mrl truncation fault");
       }
     else
       CLR_I_TRUNC;
@@ -4792,7 +4792,7 @@ static void EISloadInputBufferNumeric (int k)
 
                     if (c < 012 || c > 017)
                       doFault (FAULT_IPR,
-                               (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG},
+                               fst_ill_dig,
                                "loadInputBufferNumeric(1): illegal char in "
                                "input");
 
@@ -4825,7 +4825,7 @@ static void EISloadInputBufferNumeric (int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(2): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR, fst_ill_dig, "loadInputBufferNumeric(2): illegal char in input"); // TODO: generate ill proc fault
 
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -4838,7 +4838,7 @@ static void EISloadInputBufferNumeric (int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(3): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(FAULT_IPR, fst_ill_dig, "loadInputBufferNumeric(3): illegal char in input"); // TODO: generate ill proc fault
 
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -4847,7 +4847,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(4): illegal char in input");
+                        doFault(FAULT_IPR, fst_ill_dig, "loadInputBufferNumeric(4): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -4858,7 +4858,7 @@ static void EISloadInputBufferNumeric (int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                         doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(5): illegal char in input");
+                         doFault(FAULT_IPR, fst_ill_dig, "loadInputBufferNumeric(5): illegal char in input");
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -4866,7 +4866,7 @@ static void EISloadInputBufferNumeric (int k)
                 else
                 {
                     if (c > 011)
-                        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "loadInputBufferNumeric(6): illegal char in input");
+                        doFault(FAULT_IPR, fst_ill_dig, "loadInputBufferNumeric(6): illegal char in input");
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -6373,7 +6373,7 @@ static void mopExecutor (int kMop)
 #endif
 
     if (e -> _faults)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mopExecutor");
+      doFault (FAULT_IPR, fst_ill_proc, "mopExecutor");
 }
 
 
@@ -6396,24 +6396,24 @@ void mve (void)
     // Bits 0, 1, 9, and 10 MBZ
     // According to RJ78, bit 9 is T, but is not mentioned in the text.
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mve: 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mve: 0, 1, 9, 10 MBZ");
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mve op1 23 MBZ");
 
 #if 0
     // Bits 21-23 of OP1 MBZ
     if (e -> op [1]  & 0000000070000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 21-23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mve op2 21-23 MBZ");
 #endif
     // only bit 23 according to RH03. this was fixed in DPS9000
     if (e -> op [1]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op2 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mve op2 23 MBZ");
 
     // Bit 23 of OP3 MBZ
     if (e -> op [2]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mve op3 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mve op3 23 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6498,7 +6498,7 @@ void mvne (void)
     
     // Bits 0, 1, 9, and 10 MBZ
     if (IWB_IRODD & 0600600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvne: 0, 1, 9, 10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mvne: 0, 1, 9, 10 MBZ");
 
     uint srcTN = e -> TN1;    // type of chars in src
 
@@ -6535,18 +6535,18 @@ void mvne (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mvne adjusted n1<1");
 
     // Putting this check in pAOD breaks Multics boot
     // From DH03 it seems that DPS8 does not check this explicitly, but L2 exhaust occurs which raises IPR anyway
     // So we may as well keep it here.
     if (e->N[1] == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne N2 0");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne N2 0");
 
     // this is a flaw in DPS8/70 which was corrected in DPS88 and later
     // ISOLTS-841 07h, RH03 p.7-295
     if (e->N[2] == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne N3 0");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne N3 0");
 
 //if ((e -> op [0]  & 0000000007700) ||
 //    (e -> op [1]  & 0000000077700) ||
@@ -6567,25 +6567,25 @@ void mvne (void)
     // Bit 24-29 of OP1 MBZ
     // Multics has been observed to use 600162017511, cf RJ78
     //if (e -> op [0]  & 0000000007700)
-      //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op1 24-29 MBZ");
+      //doFault (FAULT_IPR, fst_ill_proc, "mvne op1 24-29 MBZ");
 
 #if 0
     // Bits 21-29 of OP1 MBZ
     if (e -> op [1]  & 0000000077700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-29 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne op2 21-29 MBZ");
 #endif
     // only bits 21-23 according to RJ78, maybe even less on DPS8
     if (e -> op [1]  & 0000000070000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op2 21-23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne op2 21-23 MBZ");
 
 #if 0
     // Bits 23-29 of OP3 MBZ
     if (e -> op [2]  & 0000000017700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23-29 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne op3 23-29 MBZ");
 #endif
     // only bit 23 according to RJ78
     if (e -> op [2]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvne op3 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvne op3 23 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->mopES = false; // End Suppression flag
@@ -6714,31 +6714,31 @@ void mvt (void)
     if (IWB_IRODD & 0000200000000)
       {
         //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 10 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "mvt 10 MBZ");
       }
 #else
     // Bits 0,1,9,10 MBZ 
     if (IWB_IRODD & 0600600000000)
       {
         //sim_printf ("mvt %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvt 0,1,9,10 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "mvt 0,1,9,10 MBZ");
       }
 #endif
 
     // Bit 23 of OP1 MBZ
     if (e -> op [0]  & 0000000010000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op1 23 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvt op1 23 MBZ");
 
 // This breaks eis_tester mvt 110
 #if 0
     // Bits 18 of OP2 MBZ
     if (e -> op [1]  & 0000000400000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op2 18 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvt op2 18 MBZ");
 #endif
 
     // Bits 18-28 of OP3 MBZ
     if (e -> op [2]  & 0000000777600)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvt op3 18-28 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "mvt op3 18-28 MBZ");
 
 #ifdef EIS_PTR3
     e->srcTA = (int) TA1;
@@ -6947,7 +6947,7 @@ void mvt (void)
       {
         SET_I_TRUNC;
         if (T && ! TST_I_OMASK)
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvt truncation fault");
+          doFault(FAULT_OFL, fst_zero, "mvt truncation fault");
       }
     else
       CLR_I_TRUNC;
@@ -6978,7 +6978,7 @@ void cmpn (void)
     
     // Bits 0-10 MBZ
     if (IWB_IRODD & 0777600000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpn 0-10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "cmpn 0-10 MBZ");
 
     uint srcTN = e->TN1;    // type of chars in src
     
@@ -7018,7 +7018,7 @@ void cmpn (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "cmpn adjusted n1<1");
 
     switch(e->S2)
     {
@@ -7044,7 +7044,7 @@ void cmpn (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "cmpn adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "cmpn adjusted n2<1");
 
 
     decContext set;
@@ -7261,7 +7261,7 @@ void mvn (void)
     
     // Bits 2-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mvn 2-8 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mvn 2-8 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
@@ -7321,7 +7321,7 @@ void mvn (void)
     // sign and/or exponent, plus at least one digit. 
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mvn adjusted n1<1");
 
     switch(e->S2)
     {
@@ -7348,7 +7348,7 @@ void mvn (void)
       n2);
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mvn adjusted n2<1");
 
 
     decContext set;
@@ -7486,14 +7486,14 @@ void mvn (void)
     cleanupOperandDescriptor (2);
     
     if (TST_I_TRUNC && T && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn truncation(overflow) fault");
+        doFault(FAULT_OFL, fst_zero, "mvn truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "mvn over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn overflow fault");
+          doFault(FAULT_OFL, fst_zero, "mvn overflow fault");
     }
 }
 
@@ -7567,7 +7567,7 @@ void csl (bool isSZTL)
     
     // Bits 1-4 and 10 MBZ
     if (IWB_IRODD & 0360200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "csl 1-4,10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "csl 1-4,10 MBZ");
 
     e->ADDR1.cPos = (int) e->C1;
     e->ADDR2.cPos = (int) e->C2;
@@ -7717,7 +7717,7 @@ void csl (bool isSZTL)
         SET_I_TRUNC;
         if (T && tstOVFfault ())
         {
-            doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "csl truncation fault");
+            doFault(FAULT_OFL, fst_zero, "csl truncation fault");
         }
     }
     else
@@ -7857,7 +7857,7 @@ void csr (bool isSZTR)
     
     // Bits 1-4 and 10 MBZ
     if (IWB_IRODD & 0360200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "csr 1-4,10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "csr 1-4,10 MBZ");
 
     e->ADDR1.cPos = (int) e->C1;
     e->ADDR2.cPos = (int) e->C2;
@@ -8018,7 +8018,7 @@ void csr (bool isSZTR)
         SET_I_TRUNC;
         if (T && tstOVFfault ())
         {
-            doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "csr truncation fault");
+            doFault(FAULT_OFL, fst_zero, "csr truncation fault");
         }
     }
     else
@@ -8105,7 +8105,7 @@ void cmpb (void)
     
     // Bits 1-8 and 10 MBZ
     if (IWB_IRODD & 0377200000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "cmpb 1-8,10 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "cmpb 1-8,10 MBZ");
 
     int charPosn1 = (int) e->C1;
     int charPosn2 = (int) e->C2;
@@ -8698,24 +8698,24 @@ void btd (void)
     if (IWB_IRODD & 0377600000000)
       {
         //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "btd 0-8 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "btd 0-8 MBZ");
       }
 
     // Bits 21-29 of OP1 MBZ
     if (e -> op [0]  & 0000000077700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op1 21-29 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "btd op1 21-29 MBZ");
 
     // Bits 24-29 of OP2 MBZ
     if (e -> op [1]  & 0000000007700)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op2 24-29 MBZ");
+      doFault (FAULT_IPR, fst_ill_proc, "btd op2 24-29 MBZ");
 
     if (e->S[1] == 0)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd op2 S=0");
+      doFault (FAULT_IPR, fst_ill_proc, "btd op2 S=0");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     
     if (e->N1 == 0 || e->N1 > 8)
-        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd(1): N1 == 0 || N1 > 8"); 
+        doFault(FAULT_IPR, fst_ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
     uint dstTN = e->TN2;    // type of chars in dst
     uint dstCN = e->CN2;    // starting at char pos CN
@@ -8739,7 +8739,7 @@ void btd (void)
       n2);
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "btd adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "btd adjusted n2<1");
 
 
     decContext set;
@@ -8851,7 +8851,7 @@ void btd (void)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "btd overflow fault");
+          doFault(FAULT_OFL, fst_zero, "btd overflow fault");
     }
 }
 
@@ -8925,7 +8925,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a leading sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no leading sign (1)");
+                    doFault(FAULT_IPR, fst_ill_proc, "loadDec(): no leading sign (1)");
             }
             pos += 1;           // onto next posotion
             continue;
@@ -8946,7 +8946,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a leading sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no leading sign (2)");
+                    doFault(FAULT_IPR, fst_ill_proc, "loadDec(): no leading sign (2)");
             }
             pos += 1;           // onto next posotion
             continue;
@@ -8968,7 +8968,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a trailing sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no trailing sign (1)");
+                    doFault(FAULT_IPR, fst_ill_proc, "loadDec(): no trailing sign (1)");
             }
             break;
         }
@@ -8988,7 +8988,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
                     break;
                 default:
                     // not a trailing sign
-                    doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "loadDec(): no trailing sign (2)");
+                    doFault(FAULT_IPR, fst_ill_proc, "loadDec(): no trailing sign (2)");
             }
             break;
         }
@@ -9079,13 +9079,13 @@ void dtb (void)
     uint mbz = (uint) getbits36 (IWB_IRODD, 0, 11);
     if (mbz)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dtb(): 0-10 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "dtb(): 0-10 MBZ");
       }
 
     // Bits 21-29 of OP2 MBZ
     if (e -> op [1]  & 0000000077700)
       {
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb op2 21-28 MBZ");
+        doFault (FAULT_IPR, fst_ill_proc, "dtb op2 21-28 MBZ");
        }
 
     // Attempted conversion of a floating-point number (S1 = 0) or attempted
@@ -9093,7 +9093,7 @@ void dtb (void)
     // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
     {
-        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8 etc.");
+        doFault(FAULT_IPR, fst_ill_proc, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
     int n1 = 0;
@@ -9124,7 +9124,7 @@ void dtb (void)
     // specified sign and/or exponent, plus at least one digit. 
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dtb adjusted n1<1");
 
 
     EISloadInputBufferNumeric (1);   // according to MF1
@@ -9179,7 +9179,7 @@ sim_printf("dtb: N1 %d N2 %d nin %d CN1 %d CN2 %d msk %012"PRIo64" %012"PRIo64"\
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dtb overflow fault");
+          doFault(FAULT_OFL, fst_zero, "dtb overflow fault");
     }
 }
 
@@ -9208,7 +9208,7 @@ void ad2d (void)
     
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad2d 1-8 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "ad2d 1-8 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -9260,7 +9260,7 @@ void ad2d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "ad2d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -9286,7 +9286,7 @@ void ad2d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "ad2d adjusted n2<1");
     
 
     decContext set;
@@ -9466,14 +9466,14 @@ void ad2d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad2d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "ad2d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad2d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "ad2d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad2d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "ad2d overflow fault");
     }
 }
 
@@ -9537,7 +9537,7 @@ void ad3d (void)
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "ad3d(): 1 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "ad3d(): 1 MBZ");
 
     // initialize mop flags. Probably best done elsewhere.
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
@@ -9588,7 +9588,7 @@ void ad3d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "ad3d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -9614,7 +9614,7 @@ void ad3d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "ad3d adjusted n2<1");
     
     switch(e->S3)
     {
@@ -9637,7 +9637,7 @@ void ad3d (void)
     }
 
     if (n3 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad3d adjusted n3<1");
+        doFault (FAULT_IPR, fst_ill_proc, "ad3d adjusted n3<1");
     
 
     decContext set;
@@ -9824,14 +9824,14 @@ void ad3d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad3d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "ad3d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad3d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "ad3d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "ad3d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "ad3d overflow fault");
     }
 }
 
@@ -9856,7 +9856,7 @@ void sb2d (void)
     if (IWB_IRODD & 0377000000000)
       {
         //sim_printf ("sb2d %012"PRIo64"\n", IWB_IRODD);
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb2d 0-8 MBZ");
+        doFault (FAULT_IPR, fst_ill_op, "sb2d 0-8 MBZ");
       }
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
@@ -9910,7 +9910,7 @@ void sb2d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "sb2d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -9936,7 +9936,7 @@ void sb2d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb2d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "sb2d adjusted n2<1");
 
     
     decContext set;
@@ -10116,14 +10116,14 @@ void sb2d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb2d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "sb2d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb2d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "sb2d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb2d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "sb2d overflow fault");
     }
 }
 
@@ -10147,7 +10147,7 @@ void sb3d (void)
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "sb3d(): 1 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "sb3d(): 1 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -10197,7 +10197,7 @@ void sb3d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "sb3d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -10223,7 +10223,7 @@ void sb3d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "sb3d adjusted n2<1");
     
     switch(e->S3)
     {
@@ -10246,7 +10246,7 @@ void sb3d (void)
     }
 
     if (n3 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "sb3d adjusted n3<1");
+        doFault (FAULT_IPR, fst_ill_proc, "sb3d adjusted n3<1");
     
 
     decContext set;
@@ -10425,14 +10425,14 @@ void sb3d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb3d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "sb3d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb3d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "sb3d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "sb3d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "sb3d overflow fault");
     }
 }
 
@@ -10455,7 +10455,7 @@ void mp2d (void)
     
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp2d 1-8 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mp2d 1-8 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -10507,7 +10507,7 @@ void mp2d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mp2d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -10533,7 +10533,7 @@ void mp2d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp2d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mp2d adjusted n2<1");
     
 
     decContext set;
@@ -10673,14 +10673,14 @@ void mp2d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp2d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "mp2d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp2d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "mp2d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp2d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "mp2d overflow fault");
     }
 }
 
@@ -10704,7 +10704,7 @@ void mp3d (void)
     
     // Bit 1 MBZ
     if (IWB_IRODD & 0200000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "mp3d(): 1 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "mp3d(): 1 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -10754,7 +10754,7 @@ void mp3d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mp3d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -10780,7 +10780,7 @@ void mp3d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mp3d adjusted n2<1");
     
     switch(e->S3)
     {
@@ -10803,7 +10803,7 @@ void mp3d (void)
     }
 
     if (n3 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mp3d adjusted n3<1");
+        doFault (FAULT_IPR, fst_ill_proc, "mp3d adjusted n3<1");
 
 
     decContext set;
@@ -10957,14 +10957,14 @@ void mp3d (void)
     cleanupOperandDescriptor (3);
 
     if (TST_I_TRUNC && T && tstOVFfault ())
-      doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp3d truncation(overflow) fault");
+      doFault(FAULT_OFL, fst_zero, "mp3d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp3d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "mp3d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mp3d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "mp3d overflow fault");
     }
 }
 
@@ -11750,7 +11750,7 @@ void dv2d (void)
     // Bits 1-8 MBZ
     // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ as well
     if (IWB_IRODD & 0377400000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv2d 1-9 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "dv2d 1-9 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -11802,7 +11802,7 @@ void dv2d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dv2d adjusted n1<1");
     
     switch(e->S2)
     {
@@ -11828,7 +11828,7 @@ void dv2d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv2d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dv2d adjusted n2<1");
 
 
     decContext set;
@@ -11849,7 +11849,7 @@ void dv2d (void)
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d division by 0");
+        doFault(FAULT_DIV, fst_zero, "dv2d division by 0");
     }
 
     word9   inBufferop1 [64];
@@ -11890,7 +11890,7 @@ void dv2d (void)
 sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %d E1 %d E2 %d SF2 %d NQ %d\n",e->S1,e->S2,e->N1,e->N2,clz1,clz2,op1->exponent,op2->exponent,e->SF2,NQ);
     }
     if (NQ > 63)
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv2d NQ>63");
+        doFault(FAULT_DIV, fst_zero, "dv2d NQ>63");
     // Note: NQ is currently unused apart from this FAULT_DIV check. decNumber produces more digits than required, but they are then rounded/truncated
 
     // Yes, they're switched. op1=divisor
@@ -12087,14 +12087,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv2d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
     cleanupOperandDescriptor (3);
 
     //if (TST_I_TRUNC && T && tstOVFfault ())
-    //  doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d truncation(overflow) fault");
+    //  doFault(FAULT_OFL, fst_zero, "dv2d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "dv2d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv2d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "dv2d overflow fault");
     }
 }
 
@@ -12120,7 +12120,7 @@ void dv3d (void)
     // Bit 1 MBZ
     // ISOLTS test 840 and RJ78 says bit 9 (T) MBZ
     if (IWB_IRODD & 0200400000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}, "dv3d(): 1,9 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "dv3d(): 1,9 MBZ");
 
     e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
     //bool T = getbits36_1 (cpu.cu.IWB, 9) != 0;  // truncation bit
@@ -12170,7 +12170,7 @@ void dv3d (void)
     }
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n1<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dv3d adjusted n1<1");
 
     switch(e->S2)
     {
@@ -12196,7 +12196,7 @@ void dv3d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n2<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dv3d adjusted n2<1");
     
     switch(e->S3)
     {
@@ -12218,7 +12218,7 @@ void dv3d (void)
             break;  // no sign wysiwyg
     }
     if (n3 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dv3d adjusted n3<1");
+        doFault (FAULT_IPR, fst_ill_proc, "dv3d adjusted n3<1");
 
 
     decContext set;
@@ -12240,7 +12240,7 @@ void dv3d (void)
     // check for divide by 0!
     if (decNumberIsZero(op1))
     {
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d division by 0");
+        doFault(FAULT_DIV, fst_zero, "dv3d division by 0");
     }
 
     word9   inBufferop1 [64];
@@ -12298,7 +12298,7 @@ void dv3d (void)
 sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %d E1 %d E2 %d SF3 %d NQ %d\n",e->S1,e->S2,e->N1,e->N2,clz1,clz2,op1->exponent,op2->exponent,e->SF3,NQ);
     }
     if (NQ > 63)
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "dv3d NQ>63");
+        doFault(FAULT_DIV, fst_zero, "dv3d NQ>63");
     // Note: NQ is currently unused apart from this FAULT_DIV check. decNumber produces more digits than required, but they are then rounded/truncated
 
     // Yes, they're switched. op1=divisor
@@ -12497,14 +12497,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dv3d S1 %d S2 %d N1 %d N2 %d clz1 %d clz2 %
     cleanupOperandDescriptor (3);
     
     //if (TST_I_TRUNC && T && tstOVFfault ())
-    //  doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d truncation(overflow) fault");
+    //  doFault(FAULT_OFL, fst_zero, "dv3d truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d over/underflow fault");
+        doFault(FAULT_OFL, fst_zero, "dv3d over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "dv3d overflow fault");
+          doFault(FAULT_OFL, fst_zero, "dv3d overflow fault");
     }
 }
 

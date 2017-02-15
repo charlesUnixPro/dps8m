@@ -549,7 +549,7 @@ void ufa (bool sub)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp overflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "ufa exp overflow fault");
     }
     
     // EUFL: If exponent is less than -128, then ON
@@ -557,7 +557,7 @@ void ufa (bool sub)
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "ufa exp underflow fault");
     }
 
 }
@@ -628,7 +628,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
             {
                 SET_I_EOFL;
                 if (tstOVFfault ())
-                    dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp overflow fault");
+                    dlyDoFault (FAULT_OFL, fst_zero, "fno exp overflow fault");
             }
             (*E) ++;
             *E &= MASK8;
@@ -710,7 +710,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
     {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fno exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "fno exp underflow fault");
     }
 
     *E = (word8) e & MASK8;
@@ -897,7 +897,7 @@ void fneg (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fneg exp overflow fault");
+                dlyDoFault (FAULT_OFL, fst_zero, "fneg exp overflow fault");
         }
         cpu . rE ++;
         cpu . rE &= MASK8;
@@ -952,13 +952,13 @@ void ufm (void)
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "ufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "ufm exp underflow fault");
     }
 
     // RJ78: This multiplication is executed in the following way:
@@ -978,7 +978,7 @@ void ufm (void)
         {
           SET_I_EOFL;
           if (tstOVFfault ())
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "ufm exp overflow fault");
+              dlyDoFault (FAULT_OFL, fst_zero, "ufm exp overflow fault");
         }
         m3a >>= 1;
         e3 += 1;
@@ -1112,7 +1112,7 @@ static void fdvX(bool bInvert)
             cpu . rQ = m1 & MASK36;
         }
 
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "FDV: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "FDV: divide check fault");
     }
 
     while (m1 >= m2) // DH02 (equivalent but perhaps clearer description):
@@ -1129,13 +1129,13 @@ static void fdvX(bool bInvert)
     {
         SET_I_EOFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp overflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "fdvX exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "fdvX exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "fdvX exp underflow fault");
     }
     
     // We need 35 bits quotient + sign. Divisor is at most 28 bits.
@@ -1783,7 +1783,7 @@ void dufa (bool subtract)
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufa exp overflow fault");
       }
     
     // EUFL: If exponent is less than -128, then ON
@@ -1791,7 +1791,7 @@ void dufa (bool subtract)
       {
         SET_I_EUFL;
         if (tstOVFfault ())
-            dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufa exp underflow fault");
+            dlyDoFault (FAULT_OFL, fst_zero, "dufa exp underflow fault");
       }
   }
 
@@ -1834,7 +1834,7 @@ void dufs (void)
         {
             SET_I_EOFL;
             if (tstOVFfault ())
-                doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufs exp overflow fault");
+                doFault (FAULT_OFL, fst_zero, "dufs exp overflow fault");
         }
         e2 += 1;
     }
@@ -1912,13 +1912,13 @@ void dufm (void)
     {
       SET_I_EOFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufm exp overflow fault");
     }
     if (e3 < -128)
     {
       SET_I_EUFL;
       if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dufm exp underflow fault");
     }
 
     // RJ78: This multiplication is executed in the following way:
@@ -1985,7 +1985,7 @@ void dufm (void)
         {
           SET_I_EOFL;
           if (tstOVFfault ())
-              dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "dufm exp overflow fault");
+              dlyDoFault (FAULT_OFL, fst_zero, "dufm exp overflow fault");
         }
         m3a >>= 1;
         e3 += 1;
@@ -2130,8 +2130,7 @@ static void dfdvX (bool bInvert)
             cpu . rQ = m1 & MASK36;
         }
          
-        doFault (FAULT_DIV, (_fault_subtype) {.bits=0},
-                 "DFDV: divide check fault");
+        doFault (FAULT_DIV, fst_zero, "DFDV: divide check fault");
       }
     
 #ifdef L68
@@ -2148,15 +2147,13 @@ static void dfdvX (bool bInvert)
       {
         SET_I_EOFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                   "dfdvX exp overflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dfdvX exp overflow fault");
        }
     if (e3 < -128)
       {
         SET_I_EUFL;
         if (tstOVFfault ())
-          dlyDoFault (FAULT_OFL, (_fault_subtype) {.bits=0},
-                   "dfdvX exp underflow fault");
+          dlyDoFault (FAULT_OFL, fst_zero, "dfdvX exp underflow fault");
       }
 
 #ifdef L68
@@ -2275,7 +2272,7 @@ void dvf (void)
 //HWR--        SET_I_ZERO;
 //HWR--        SC_I_NEG (cpu . rA & SIGN36);
 //HWR--        
-//HWR--        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+//HWR--        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
 //HWR--    }
 //HWR--    
 //HWR--    uint128 dividend = (uint128)m1 << 63;
@@ -2366,7 +2363,7 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
       }
 
 #ifdef L68
@@ -2410,7 +2407,7 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
         SC_I_ZERO (cpu.rA == 0);
         SC_I_NEG (cpu.rA & SIGN36);
         
-        doFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
       }
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
@@ -2504,7 +2501,7 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
         //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.CY == 0);
         SC_I_NEG (cpu.rA & SIGN36);
-        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
         return;
       }
 
@@ -2557,7 +2554,7 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
         SC_I_ZERO (AQzero);
         SC_I_NEG (Aneg);
         
-        dlyDoFault(FAULT_DIV, (_fault_subtype) {.bits=0}, "DVF: divide check fault");
+        dlyDoFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
         return;
       }
     //char buf3 [128] = "";
