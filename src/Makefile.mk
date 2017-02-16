@@ -23,10 +23,10 @@ else
 endif
   EXE = .exe
 else
-#CC = gcc
-#LD = gcc
-CC = clang
-LD = clang
+CC = gcc
+LD = gcc
+#CC = clang
+#LD = clang
 endif
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
