@@ -3372,7 +3372,7 @@ static t_stat cpu_set_initialize_and_clear (UNIT * uptr, UNUSED int32 value,
                                             UNUSED const char * cptr, 
                                             UNUSED void * desc)
   {
-    long cpu_unit_num = UNIT_NUM (uptr);
+    //long cpu_unit_num = UNIT_NUM (uptr);
     // Crashes console?
     //cpun_reset2 ((uint) cpu_unit_num);
 #ifdef ISOLTS

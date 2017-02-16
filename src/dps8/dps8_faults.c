@@ -678,7 +678,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     // Increment FCT
 
     word3 FCT = cpu.cu.APUCycleBits & MASK3;
-    FCT = (FCT + 1) & MASK3;
+    FCT = (FCT + 1u) & MASK3;
     cpu.cu.APUCycleBits = (word12) ((cpu.cu.APUCycleBits & 07770) | FCT);
 
     // Set fault register bits

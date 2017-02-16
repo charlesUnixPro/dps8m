@@ -901,7 +901,7 @@ void consoleProcess (void)
               }
             console_state . autop ++;
 
-            if (isprint ((char) c))
+            if (isprint ((int) c))
               sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '%c'\n", c);
             else
               sim_debug (DBG_NOTIFY, & opcon_dev, "getConsoleInput: Used auto-input char '\\%03o'\n", c);

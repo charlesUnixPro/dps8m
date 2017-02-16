@@ -1180,8 +1180,8 @@ char * strlower(char *q)
         char *s = q;
     
         while (*s) {
-                if (isupper(*s))
-                        *s = (char) tolower(*s);
+                if (isupper((int) (*s)))
+                        *s = (char) tolower((int) (*s));
                 s++;
         }
         return q;
