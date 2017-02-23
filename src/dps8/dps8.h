@@ -88,6 +88,9 @@
 #undef HDBG
 #endif
 
+// RALR register fixes
+#define RALRx
+
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
 

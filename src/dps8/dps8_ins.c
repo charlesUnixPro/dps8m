@@ -53,6 +53,39 @@ static int emCall (void);
 #endif
 #endif
 
+#ifdef LOOPTRC
+#include <time.h>
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
+}
+
+void elapsedtime (void)
+  {
+    static bool init = false;
+    static struct timespec t0;
+    struct timespec now, delta;
+
+    if (! init)
+      {
+        init = true;
+        clock_gettime (CLOCK_REALTIME, & t0);
+      }
+    clock_gettime (CLOCK_REALTIME, & now);
+    timespec_diff (& t0, & now, & delta);
+    sim_printf ("%5ld.%03ld", delta.tv_sec, delta.tv_nsec/1000000);
+  }
+#endif
+
 // CANFAULT
 static void writeOperands (void)
 {
@@ -6497,6 +6530,10 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
 #endif
           sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
+#ifdef LOOPTRC
+elapsedtime ();
+ sim_printf (" ldt %d  PSR:IC %05o:%06o\r\n", cpu.rTR, cpu.PPR.PSR, cpu.PPR.IC);
+#endif
           // Undocumented feature. return to bce has been observed to
           // experience TRO while masked, setting the TR to -1, and
           // experiencing an unexpected TRo interrupt when unmasking.
@@ -8183,6 +8220,13 @@ static t_stat DoEISInstruction (void)
             CPTUR (cptUseRALR);
             cpu.rRALR = cpu.CY & MASK3;
             sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
+#ifdef LOOPTRC
+{
+void elapsedtime (void);
+elapsedtime ();
+ sim_printf (" RALR set to %o  PSR:IC %05o:%06o\r\n", cpu.rRALR, cpu.PPR.PSR, cpu.PPR.IC);
+}
+#endif
             break;
 
         case 0232:  // lsdr
@@ -9514,6 +9558,10 @@ static int doABSA (word36 * result)
 
 void doRCU (void)
   {
+#ifdef LOOPTRC
+elapsedtime ();
+ sim_printf (" rcu to %05o:%06o  PSR:IC %05o:%06o\r\n",  (cpu.Yblock8[0]>>18)&MASK15, (cpu.Yblock8[4]>>18)&MASK18, cpu.PPR.PSR, cpu.PPR.IC);
+#endif
 
     if_sim_debug (DBG_TRACE, & cpu_dev)
       {

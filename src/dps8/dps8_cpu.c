@@ -1030,6 +1030,10 @@ static void cpun_reset2 (uint cpun)
     cpu.faultRegister [0] = 0;
     cpu.faultRegister [1] = 0;
 
+#ifdef RAPRx
+    cpu.apu.lastCycle = UNKNOWN_CYCLE;
+#endif
+
     memset (& cpu.PPR, 0, sizeof (struct _ppr));
 
     setup_scbank_map ();
@@ -1736,6 +1740,12 @@ setCPU:;
                 // present register.  
 
                 uint intr_pair_addr = get_highest_intr ();
+#ifdef LOOPTRC
+{ void elapsedtime (void);
+elapsedtime ();
+ sim_printf (" intr %u PSR:IC %05o:%06o\r\n", intr_pair_addr, cpu.PPR.PSR, cpu.PPR.IC);
+}
+#endif
                 cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
 
@@ -1948,6 +1958,11 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 if ((cpu.PPR.IC % 2) == 0)
                   cpu.wasInhibited = false;
 
+                if (cpu.g7_flag)
+                  {
+                    cpu.g7_flag = false;
+                    doG7Fault ();
+                  }
                 if (cpu.interrupt_flag)
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
@@ -1956,11 +1971,6 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     CPT (cpt1U, 15); // interrupt
                     setCpuCycle (INTERRUPT_cycle);
                     break;
-                  }
-                if (cpu.g7_flag)
-                  {
-                    cpu.g7_flag = false;
-                    doG7Fault ();
                   }
                 cpu.lufCounter ++;
 
@@ -2498,8 +2508,12 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
         addr &= 0777776;   // make even
+#ifdef RALRx
+        Read2 (addr, cpu.Ypair, RTCD_OPERAND_FETCH, b29);
+#else
         Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH, b29);
         Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH, b29);
+#endif
         return SCPE_OK;
     }
 

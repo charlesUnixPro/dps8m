@@ -107,6 +107,79 @@ B29:;
     return SCPE_UNK;
 }
 
+t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp,
+              bool b29)
+  {
+    cpu.iefpFinalAddress = address;
+
+    bool isBAR = get_bar_mode ();
+
+    if (b29 || get_went_appending ())
+      {
+        goto B29;
+      }
+
+    switch (get_addr_mode ())
+      {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+              {
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                cpu.iefpFinalAddress = getBARaddress (address);
+        
+                core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 2; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "Read2 (Actual) Read:       bar address=%08o  readData=%012"PRIo64"\n", address+i, result [i]);
+                  }
+                return SCPE_OK;
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                core_read2 (address, result + 0, result + 1, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 2; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "Read2 (Actual) Read:       abs address=%08o  readData=%012"PRIo64"\n", address+i, result[i]);
+                  }
+                return SCPE_OK;
+              }
+          }
+
+        case APPEND_mode:
+          {
+B29:;
+            if (isBAR)
+              {
+                word18 barAddress = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp);
+                core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 2; i ++)
+                     sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read2 (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, result [i]);
+                  }
+                return SCPE_OK;
+              }
+            else
+              {
+                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp);
+                core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 2; i ++)
+                      sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Read2 (Actual) Read:  iefpFinalAddress=%08o  readData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, result [i]);
+                 }
+              }
+            return SCPE_OK;
+          }
+      }
+    return SCPE_UNK;
+  }
+
 t_stat Read8 (word18 address, word36 * result, _processor_cycle_type cyctyp, bool b29)
   {
     cpu.iefpFinalAddress = address;

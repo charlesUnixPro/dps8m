@@ -858,6 +858,9 @@ enum {
 
 typedef struct
   {
+#ifdef RALRx
+    _processor_cycle_type lastCycle;
+#endif
 #ifdef PANEL
     word34 state;
 #endif
