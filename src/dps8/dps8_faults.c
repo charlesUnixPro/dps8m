@@ -329,10 +329,26 @@ bit-28 tp inhibit interrupts
  
 */
 
+#ifdef LOOPTRC
+#include <time.h>
+void elapsedtime (void);
+#endif
 // CANFAULT 
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
+#ifdef LOOPTRC
+if (faultNumber == FAULT_TRO)
+{
+ elapsedtime ();
+ sim_printf (" TRO PSR:IC %05o:%06o\r\n", cpu.PPR.PSR, cpu.PPR.IC);
+}
+else if (faultNumber == FAULT_ACV)
+{
+ elapsedtime ();
+ sim_printf (" ACV %012llo PSR:IC %05o:%06o\r\n", subFault.bits, cpu.PPR.PSR, cpu.PPR.IC);
+}
+#endif
 //if (currentRunningCPUnum)
     //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 

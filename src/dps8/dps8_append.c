@@ -980,7 +980,7 @@ static void acvFault(fault_acv_subtype_ acvfault, char * msg)
     PNL (L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;))
     cpu.acvFaults |= acvfault;
     sim_debug(DBG_APPENDING, &cpu_dev,
-              "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s",
+              "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s\n",
               (word36) acvfault, (word36) cpu.acvFaults, msg);
 }
 
@@ -1070,6 +1070,11 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 #ifdef APPFIX
     bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+#endif
+
+#ifdef RALRx
+    _processor_cycle_type lastCycle = cpu.apu.lastCycle;
+    cpu.apu.lastCycle = thisCycle;
 #endif
 
     PNL (L68_ (cpu.apu.state = 0;))
@@ -1269,7 +1274,11 @@ A:;
         // Set fault ACV0 = IRO
         acvFault(ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
 
-    // No
+#ifdef RALRx
+    // Was last cycle an rtcd operand fetch?
+    if (lastCycle == RTCD_OPERAND_FETCH)
+      goto C;
+#endif
 
 //
 // B1: The operand is one of: an instruction, data to be read or data to be
@@ -1335,16 +1344,42 @@ A:;
     }
     goto G;
     
+#ifdef RALRx
+C:;
+    // (rtcd operand)
+    // C(TPR.TRR) < C(SDW.R1)?
+    // C(TPR.TRR) > C(SDW.R2)?
+    if (cpu.TPR.TRR < cpu.SDW->R1 ||
+        cpu.TPR.TRR > cpu.SDW->R2)
+      {
+        //Set fault ACV5 = OEB
+        acvFault (ACV1, "doAppendCycle(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)");
+      }
+    // SDW.E set ON?
+    if (! cpu.SDW->E)
+      {
+        //Set fault ACV2 = E-OFF
+        acvFault (ACV2, "doAppendCycle(C) SDW.E");
+      }
+    // C(TPR.TRR) ≥ C(PPR.PRR)
+    if (cpu.TPR.TRR < cpu.PPR.PRR)
+      {
+        //Set fault ACV11 = INRET
+        acvFault (ACV11, "doAppendCycle(C) TRR>=PRR");
+      }
+#endif
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
     
     // transfer or instruction fetch
 
+#ifndef RALRx
     // AL39, pg 31, RING ALARM REGISTER:
     // "...and the instruction for which an absolute main memory address is 
     //  being prepared is a transfer instruction..."
     if (instructionFetch)
       goto G;
+#endif
 
     if (cpu . rRALR == 0)
         goto G;
@@ -1389,7 +1424,6 @@ E:;
     //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
 // EB is word 15; masking address makes no sense; rather 0-extend EB
 // Fixes ISOLTS 880-01
-    //if ((address & 0037777) >= cpu . SDW->EB) {
     if (address >= (word18) cpu.SDW->EB) {
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
@@ -1673,7 +1707,6 @@ KL:;
     
    
 Exit:;
-//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
     PNL (cpu.APUDataBusOffset = address;)
     PNL (cpu.APUDataBusAddr = finalAddress;)
