@@ -256,7 +256,8 @@ enum _processor_cycle_type {
     FAULT_CYCLE,
     EIS_OPERAND_DESCRIPTOR,  // change later for real MW EIS operand descriptors
     EIS_OPERAND_STORE,
-    EIS_OPERAND_READ
+    EIS_OPERAND_READ,
+    ABSA_CYCLE
     
 };
 typedef enum _processor_cycle_type _processor_cycle_type;

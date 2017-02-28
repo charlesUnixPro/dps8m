@@ -1,6 +1,7 @@
 /*
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -182,33 +183,50 @@ void do_ldbr (word36 * Ypair)
   {
     CPTUR (cptUseDSBR);
 #ifdef WAM
-    // XXX is it enabled?
-
-    // If SDWAM is enabled, then
-    //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
-    //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+    if (!cpu . switches . disable_wam) 
       {
-        cpu . SDWAM [i] . FE = 0;
-        cpu . SDWAM [i] . USE = (word6) i;
-      }
-
-    // If PTWAM is enabled, then
-    //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
-    //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
-    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
-      {
-        cpu . PTWAM [i] . FE = 0;
-        cpu . PTWAM [i] . USE = (word6) i;
-      }
-#ifdef do_selftestPTWAM
-    selftestPTWAM ();
+        if (cpu.cu.SD_ON) 
+          {
+		    // If SDWAM is enabled, then
+            //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
+            //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
+            for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+              {
+                cpu . SDWAM [i] . FE = 0;
+#ifdef L68
+                cpu . SDWAM [i] . USE = (word4) i;
 #endif
+#ifdef DPS8M
+                cpu . SDWAM [i] . USE = 0;
+#endif
+              }
+          }
+
+        if (cpu.cu.PT_ON) 
+          {
+            // If PTWAM is enabled, then
+            //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
+            //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
+            for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+              {
+                cpu . PTWAM [i] . FE = 0;
+#ifdef L68
+                cpu . PTWAM [i] . USE = (word4) i;
+#endif
+#ifdef DPS8M
+                cpu . PTWAM [i] . USE = 0;
+#endif
+              }
+#ifdef do_selftestPTWAM
+            selftestPTWAM ();
+#endif
+          }
+      }
 #else
-    cpu.SDWAM0.FE = 0;
-    cpu.SDWAM0.USE = 0;
-    cpu.PTWAM0.FE = 0;
-    cpu.PTWAM0.USE = 0;
+    cpu.SDW0.FE = 0;
+    cpu.SDW0.USE = 0;
+    cpu.PTW0.FE = 0;
+    cpu.PTW0.USE = 0;
 #endif // WAM
 
     // If cache is enabled, reset all cache column and level full flags
@@ -263,32 +281,48 @@ void do_camp (UNUSED word36 Y)
     // This may be done to either or both halves.
     // The full/empty bit of cache PTWAM register is set to zero and the LRU
     // counters are initialized.
-    // XXX enable/disable and LRU don't seem to be implemented; punt
-    // XXX ticket #1
 #ifdef WAM
-    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
-      {
-        cpu.PTWAM[i].FE = 0;
-        cpu.PTWAM[i].USE = (word6) i;
-      }
-#else
-    cpu.PTWAM0.FE = 0;
-    cpu.PTWAM0.USE = 0;
+    if (!cpu . switches . disable_wam) { // disabled by simh, do nothing
+#ifdef DPS8M
+        if (cpu.cu.PT_ON) // only clear when enabled
 #endif
-// 8009997-040 A level of the associative memory is disabled if
+            for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+              {
+                cpu.PTWAM[i].FE = 0;
+#ifdef L68
+                cpu.PTWAM[i].USE = (word4) i;
+#endif
+#ifdef DPS8M
+                cpu.PTWAM[i].USE = 0;
+#endif
+              }
+
+// 58009997-040 A level of the associative memory is disabled if
 // C(TPR.CA) 16,17 = 01
-// 8009997-040 A level of the associative memory is enabled if
+// 58009997-040 A level of the associative memory is enabled if
 // C(TPR.CA) 16,17 = 10
 // Level j is selected to be enabled/disable if
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    //if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
-      //sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
-    if ((cpu.TPR.CA & 3) == 02)
-      cpu.cu.PT_ON = 1;
-    else if ((cpu.TPR.CA & 3) == 01)
-      cpu.cu.PT_ON = 0;
+// This is contrary to what AL39 says, so I'm not going to implement it. In fact, I'm not even going to implement the halves.
+
+        //if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
+          //sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+        if ((cpu.TPR.CA & 3) == 02)
+          cpu.cu.PT_ON = 1;
+        else if ((cpu.TPR.CA & 3) == 01)
+          cpu.cu.PT_ON = 0;
+    }
+    else
+    {
+        cpu.PTW0.FE = 0;
+        cpu.PTW0.USE = 0;
+    }
+#else
+    cpu.PTW0.FE = 0;
+    cpu.PTW0.USE = 0;
+#endif
   }
 
 /**
@@ -303,36 +337,51 @@ void do_cams (UNUSED word36 Y)
     // unchanged.
     // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
     // This may be done to either or both halves.
-    // XXX enable/disable and LRU don't seem to be implemented; punt
-    // XXX ticket #2
 #ifdef WAM
-    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
-      {
-        cpu.SDWAM[i].FE = 0;
-        cpu.SDWAM[i].USE = (word6) i;
+    if (!cpu . switches . disable_wam) { // disabled by simh, do nothing
+#ifdef DPS8M
+        if (cpu.cu.SD_ON) // only clear when enabled
+#endif
+            for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+              {
+                cpu.SDWAM[i].FE = 0;
+#ifdef L68
+                cpu.SDWAM[i].USE = (word4) i;
+#endif
+#ifdef DPS8M
+                cpu.SDWAM[i].USE = 0;
+#endif
+              }
 #ifdef ISOLTS
-if (currentRunningCPUnum)
-sim_printf ("CAMS cleared it\n");
+IF1 sim_printf ("CAMS cleared it\n");
 #endif
-      }
-#else
-    cpu.SDWAM0.FE = 0;
-    cpu.SDWAM0.USE = 0;
-#endif
-// 8009997-040 A level of the associative memory is disabled if
+
+// 58009997-040 A level of the associative memory is disabled if
 // C(TPR.CA) 16,17 = 01
-// 8009997-040 A level of the associative memory is enabled if
+// 58009997-040 A level of the associative memory is enabled if
 // C(TPR.CA) 16,17 = 10
 // Level j is selected to be enabled/disable if
 // C(TPR.CA) 10+j = 1; j=1,2,3,4
 // All levels are selected to be enabled/disabled if
 // C(TPR.CA) 11,14 = 0
-    //if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
-      //sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
-    if ((cpu.TPR.CA & 3) == 02)
-      cpu.cu.SD_ON = 1;
-    else if ((cpu.TPR.CA & 3) == 01)
-      cpu.cu.SD_ON = 0;
+// This is contrary to what AL39 says, so I'm not going to implement it. In fact, I'm not even going to implement the halves.
+
+        //if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
+          //sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+        if ((cpu.TPR.CA & 3) == 02)
+          cpu.cu.SD_ON = 1;
+        else if ((cpu.TPR.CA & 3) == 01)
+          cpu.cu.SD_ON = 0;
+    }
+    else
+    {
+        cpu.SDW0.FE = 0;
+        cpu.SDW0.USE = 0;
+    }
+#else
+    cpu.SDW0.FE = 0;
+    cpu.SDW0.USE = 0;
+#endif
   }
 
     
@@ -355,7 +404,7 @@ static void fetchDSPTW(word15 segno)
     setAPUStatus (apuStatus_DSPTW);
 
     word24 y1 = (2u * segno) % 1024u;
-    word24 x1 = (2u * segno - y1) / 1024u;
+    word24 x1 = (2u * segno) / 1024u; // floor
 
     PNL (cpu.lastPTWOffset = segno;)
     PNL (cpu.lastPTWIsDS = true;)
@@ -387,6 +436,7 @@ static void modifyDSPTW(word15 segno)
 
     PNL (L68_ (cpu.apu.state |= apu_MDPT;))
 
+#if 0
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
         // generate access violation, out of segment bounds fault
@@ -394,11 +444,12 @@ static void modifyDSPTW(word15 segno)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: modifyDSPTW out of segment bounds fault");
       }
+#endif
 
     setAPUStatus (apuStatus_MDSPTW); 
 
-    word24 y1 = (2u * segno) % 1024u;
-    word24 x1 = (2u * segno - y1) / 1024u;
+    //word24 y1 = (2u * segno) % 1024u;
+    word24 x1 = (2u * segno) / 1024u; // floor
     
     word36 PTWx1;
     core_read((cpu . DSBR.ADDR + x1) & PAMASK, &PTWx1, __func__);
@@ -414,19 +465,37 @@ static void modifyDSPTW(word15 segno)
 
 
 #ifdef WAM
-// XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
+word6 calcHitAM(word6 LRU, uint hitLevel)
+{
+    switch (hitLevel)
+    {
+        case 0:  // hit level A
+          return (LRU | 070);
+        case 1:  // hit level B
+          return ((LRU & 037) | 06);
+        case 2:  // hit level C
+          return ((LRU & 053) | 01);
+        case 3:  // hit level D
+          return (LRU & 064);
+        default:
+          sim_debug(DBG_APPENDING, &cpu_dev, "calcHitAM: invalid AM level\n");
+          return 0;
+     }
+}
+
 static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
-    int nwam = N_WAM_ENTRIES;
-    if (cpu . switches . disable_wam)
+	if (cpu . switches . disable_wam || ! cpu.cu.SD_ON)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
-        nwam = 1;
+        //nwam = 1;
         return NULL;
     }
-    
+
+#ifdef L68
+    int nwam = N_WAM_ENTRIES;
     for(int _n = 0 ; _n < nwam ; _n++)
     {
         // make certain we initialize SDWAM prior to use!!!
@@ -436,16 +505,14 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
             cpu.cu.SDWAMM = 1;
-#ifdef L68
             cpu.SDWAMR = (word4) _n;
-#endif
-#ifdef DPS8M
-            cpu.SDWAMR = (word6) _n;
-#endif
             cpu . SDW = &cpu . SDWAM[_n];
             
             /*
-             If the SDWAM match logic circuitry indicates a hit, all usage counts (SDWAM.USE) greater than the usage count of the register hit are decremented by one, the usage count of the register hit is set to 15 (63?), and the contents of the register hit are read out into the address preparation circuitry. 
+             If the SDWAM match logic circuitry indicates a hit, all usage counts (SDWAM.USE) greater
+             than the usage count of the register hit are decremented by one, the usage count of the 
+             register hit is set to 15, and the contents of the register hit are read out into 
+             the address preparation circuitry. 
              */
             for(int _h = 0 ; _h < nwam ; _h++)
             {
@@ -453,11 +520,40 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
                     cpu . SDWAM[_h].USE -= 1;
             }
             cpu . SDW->USE = N_WAM_ENTRIES - 1;
-            
+ 		
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(cpu . SDW));
             return cpu . SDW;
         }
     }
+#endif
+#ifdef DPS8M
+    uint setno = segno & 017;
+    uint toffset;
+    _sdw *p;
+    for(toffset = 0 ; toffset < 64 ; toffset += 16)
+    {
+        p = &cpu . SDWAM[toffset + setno];
+        if (p->FE && segno == p->POINTER)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, toffset + setno);
+            
+            cpu.cu.SDWAMM = 1;
+            cpu.SDWAMR = (word6) (toffset + setno);
+            cpu . SDW = p; // export pointer for appending
+            								 
+            word6 u = calcHitAM (p->USE, toffset >> 4);
+            for(toffset = 0 ; toffset < 64 ; toffset += 16) // update LRU
+            {
+                p = &cpu . SDWAM[toffset + setno];
+                if (p->FE) 
+                    p->USE = u;
+            }
+ 		
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", toffset + setno, strSDW(cpu . SDW));
+            return cpu . SDW;
+        }
+    }
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
     cpu.cu.SDWAMM = 0;
     return NULL;    // segment not referenced in SDWAM
@@ -478,7 +574,7 @@ static void fetchPSDW(word15 segno)
     
     word36 SDWeven, SDWodd;
     
-    core_read2(((cpu . PTW0.ADDR << 6) + y1) & PAMASK, &SDWeven, &SDWodd, __func__);
+    core_read2(((((word24)cpu . PTW0.ADDR & 0777760) << 6) + y1) & PAMASK, &SDWeven, &SDWodd, __func__);
     
     // even word
     cpu . SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -609,13 +705,32 @@ t_stat dumpSDWAM (void)
     }
     return SCPE_OK;
 }
+
+uint toBeDiscardedAM(word6 LRU)
+{
+#if 0
+    uint cA=0,cB=0,cC=0,cD=0;
+    if (LRU & 040) cB++; else cA++;
+    if (LRU & 020) cC++; else cA++;
+    if (LRU & 010) cD++; else cA++;
+	if (cA==3) return 0;
+    if (LRU & 04)  cC++; else cB++;
+    if (LRU & 02)  cD++; else cB++;
+	if (cB==3) return 1;
+    if (LRU & 01)  return 3; else return 2;
 #endif
 
+    if ((LRU & 070) == 070) return 0;
+    if ((LRU & 046) == 006) return 1;
+    if ((LRU & 025) == 001) return 2;
+    return 3;
+}
+#endif
 
 /**
  * load the current in-core SDW0 into the SDWAM ...
  */
-static void loadSDWAM(word15 segno)
+static void loadSDWAM(word15 segno, bool nomatch)
 {
 #ifndef WAM
 #if 0
@@ -633,20 +748,20 @@ static void loadSDWAM(word15 segno)
     cpu . SDWAM0 . C = cpu . SDW0.C;
     cpu . SDWAM0 . EB = cpu . SDW0.EB;
 #else
-    cpu.SDWAM0 = cpu.SDW0;
+    //cpu.SDWAM0 = cpu.SDW0;
 #endif
-    cpu . SDWAM0 . POINTER = segno;
-    cpu . SDWAM0 . USE = 0;
+    cpu . SDW0 . POINTER = segno;
+    cpu . SDW0 . USE = 0;
             
-    cpu . SDWAM0 . FE = true;     // in use by SDWAM
+    cpu . SDW0 . FE = true;     // in use by SDWAM
             
-    cpu . SDW = & cpu . SDWAM0;
+    cpu . SDW = & cpu . SDW0;
             
 #else
-    if (cpu . switches . disable_wam)
+    if (nomatch || cpu . switches . disable_wam || ! cpu.cu.SD_ON)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
-        _sdw *p = &cpu . SDWAM[0];
+        _sdw *p = &cpu . SDW0;
 #if 0
         p->ADDR = cpu . SDW0.ADDR;
         p->R1 = cpu . SDW0.R1;
@@ -662,7 +777,7 @@ static void loadSDWAM(word15 segno)
         p->C = cpu . SDW0.C;
         p->EB = cpu . SDW0.EB;
 #else
-        * p = cpu.SDW0;
+        //* p = cpu.SDW0;
 #endif
         p->POINTER = segno;
         p->USE = 0;
@@ -674,8 +789,12 @@ static void loadSDWAM(word15 segno)
             
         return;
     }
-    
-    /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63?), and the newly loaded register is read out into the address preparation circuitry.
+
+#ifdef L68    
+    /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor 
+       segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), 
+       all usage counts are decremented by one with the newly loaded register rolling over from 
+       0 to 15, and the newly loaded register is read out into the address preparation circuitry.
      */
     for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
@@ -683,7 +802,7 @@ static void loadSDWAM(word15 segno)
         //if (!p->_initialized || p->USE == 0)
         if (!p->FE || p->USE == 0)
         {
-            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] p->USE=0\n", _n);
+            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] FE=0 || USE=0\n", _n);
             
 #if 0
             p->ADDR = cpu . SDW0.ADDR;
@@ -712,8 +831,8 @@ static void loadSDWAM(word15 segno)
             {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
-                if (!q->FE)
-                    continue;
+                //if (!q->FE)
+                //    continue;
                 
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
@@ -726,39 +845,75 @@ static void loadSDWAM(word15 segno)
             return;
         }
     }
+    // if we reach this, USE is scrambled
     sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(3) no USE=0 found for segment=%d\n", segno);
     
     sim_printf("loadSDWAM(%05o): no USE=0 found!\n", segno);
     dumpSDWAM();
 #endif
+#ifdef DPS8M
+    uint setno = segno & 017;
+    uint toffset;
+    _sdw *p;
+    for(toffset = 0 ; toffset < 64 ; toffset += 16)
+    {
+        p = &cpu . SDWAM[toffset + setno];
+        if (!p->FE) break;
+    }
+    if (toffset == 64) // all FE==1
+    {
+        toffset = toBeDiscardedAM(p->USE) << 4;
+        p = &cpu . SDWAM[toffset + setno];
+    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] FE=0 || LRU\n", toffset + setno);
+            
+    word6 u = calcHitAM (p->USE, toffset >> 4); // before loading the SDWAM!
+    *p = cpu.SDW0; // load the SDW
+    p->POINTER = segno;
+    p->FE = true;  // in use
+    cpu . SDW = p; // export pointer for appending
+
+    for(uint toffset1 = 0 ; toffset1 < 64 ; toffset1 += 16) // update LRU
+    {
+        p = &cpu . SDWAM[toffset1 + setno];
+        if (p->FE) 
+            p->USE = u;
+    }
+            
+    sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(2):SDWAM[%d]=%s\n", toffset + setno, strSDW(cpu.SDW));
+            
+    //return;
+    //sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(3) no USE=0 found for segment=%d\n", segno);
+#endif
+#endif // WAM
 }
 
 #ifdef WAM
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
-    int nwam = N_WAM_ENTRIES;
-    if (cpu . switches . disable_wam)
+	if (cpu . switches . disable_wam || ! cpu.cu.PT_ON)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
-        nwam = 1;
+        //nwam = 1;
         return NULL;
     }
     
+#ifdef L68
+    int nwam = N_WAM_ENTRIES;
     for(int _n = 0 ; _n < nwam ; _n++)
     {
-        if (((CA >> 10) & 0377) == ((cpu . PTWAM[_n].PAGENO >> 4) & 0377) && cpu . PTWAM[_n].POINTER == segno && cpu . PTWAM[_n].FE)   //_initialized)
+        if (cpu . PTWAM[_n].FE && ((CA >> 6) & 07760) == cpu . PTWAM[_n].PAGENO && cpu . PTWAM[_n].POINTER == segno)   //_initialized)
         {
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: found match for segno=%o pageno=%o at _n=%d\n",segno,cpu . PTWAM[_n].PAGENO, _n);
             cpu.cu.PTWAMM = 1;
-#ifdef L68
             cpu.PTWAMR = (word4) _n;
-#endif
-#ifdef DPS8M
-            cpu.PTWAMR = (word6) _n;
-#endif
             cpu . PTW = &cpu . PTWAM[_n];
             
             /*
-             * If the PTWAM match logic circuitry indicates a hit, all usage counts (PTWAM.USE) greater than the usage count of the register hit are decremented by one, the usage count of the register hit is set to 15 (63?), and the contents of the register hit are read out into the address preparation circuitry.
+             * If the PTWAM match logic circuitry indicates a hit, all usage counts (PTWAM.USE) greater
+               than the usage count of the register hit are decremented by one, the usage count of the 
+               register hit is set to 15, and the contents of the register hit are read out 
+               into the address preparation circuitry.
              */
             for(int _h = 0 ; _h < nwam ; _h++)
             {
@@ -769,21 +924,54 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 #ifdef do_selftestPTWAM
             selftestPTWAM ();
 #endif
+            sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTWfromPTWAM: ADDR 0%o U %o M %o F %o FC %o\n", cpu . PTW->ADDR, cpu . PTW->U, cpu . PTW->M, cpu . PTW->DF, cpu . PTW->FC);
             return cpu . PTW;
         }
     }
-    cpu.cu.PTWAMM = 0;
-    return NULL;    // segment not referenced in SDWAM
-}
 #endif
+#ifdef DPS8M
+    uint setno = (CA >> 10) & 017;
+    uint toffset;
+    _ptw *p;
+    for(toffset = 0 ; toffset < 64 ; toffset += 16)
+    {
+        p = &cpu . PTWAM[toffset + setno];
+
+        if (p->FE && ((CA >> 6) & 07760) == p->PAGENO && p->POINTER == segno)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: found match for segno=%o pageno=%o at _n=%d\n",segno,p->PAGENO, toffset + setno);
+            cpu.cu.PTWAMM = 1;
+            cpu.PTWAMR = (word6) (toffset + setno);
+            cpu . PTW = p; // export pointer for appending
+            
+            word6 u = calcHitAM (p->USE, toffset >> 4);
+            for(toffset = 0 ; toffset < 64 ; toffset += 16) // update LRU
+            {
+                p = &cpu . PTWAM[toffset + setno];
+                if (p->FE) 
+                    p->USE = u;
+            }
+
+            sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTWfromPTWAM: ADDR 0%o U %o M %o F %o FC %o\n", cpu . PTW->ADDR, cpu . PTW->U, cpu . PTW->M, cpu . PTW->DF, cpu . PTW->FC);
+            return cpu . PTW;
+        }
+    }
+#endif
+    cpu.cu.PTWAMM = 0;
+    return NULL;    // page not referenced in PTWAM
+}
+#endif // WAM
 
 static void fetchPTW(_sdw *sdw, word18 offset)
 {
+    // AL39 p.5-7
+    // Fetches a PTW from a page table other than a descriptor segment page table and
+    // sets the page accessed bit (PTW.U)
     PNL (L68_ (cpu.apu.state |= apu_FPTW;))
     setAPUStatus (apuStatus_PTW);
 
     word24 y2 = offset % 1024;
-    word24 x2 = (offset - y2) / 1024;
+    word24 x2 = (offset) / 1024; // floor
     
     word36 PTWx2;
     
@@ -799,6 +987,14 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     cpu . PTW0.M = TSTBIT(PTWx2, 6);
     cpu . PTW0.DF = TSTBIT(PTWx2, 2);
     cpu . PTW0.FC = PTWx2 & 3;
+
+    // ISOLTS-861 02
+    if (! cpu.PTW0.U) {
+        PTWx2 = SETBIT(PTWx2, 9);
+        core_write((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+		    
+        cpu . PTW0.U = 1;
+    }
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
@@ -808,33 +1004,33 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
-static void loadPTWAM(word15 segno, word18 offset)
+static void loadPTWAM(word15 segno, word18 offset, bool nomatch)
 {
 #ifndef WAM
 #if 0
     cpu . PTWAM0 . ADDR = cpu . PTW0.ADDR;
     cpu . PTWAM0 . M = cpu . PTW0.M;
 #else
-    cpu.PTWAM0 = cpu.PTW0;
+    //cpu.PTWAM0 = cpu.PTW0;
 #endif
-    cpu.PTWAM0.PAGENO = (offset >> 6) & 07777;
-    cpu.PTWAM0.POINTER = segno;
-    cpu.PTWAM0.USE = 0;
-    cpu.PTWAM0.FE = true;
+    cpu.PTW0.PAGENO = (offset >> 6) & 07760;
+    cpu.PTW0.POINTER = segno;
+    cpu.PTW0.USE = 0;
+    cpu.PTW0.FE = true;
             
-    cpu.PTW = & cpu.PTWAM0;
+    cpu.PTW = & cpu.PTW0;
 #else
-    if (cpu . switches . disable_wam)
+    if (nomatch || cpu . switches . disable_wam || ! cpu.cu.PT_ON)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
-        _ptw *p = &cpu . PTWAM[0];
+        _ptw *p = &cpu . PTW0;
 #if 0
         p->ADDR = cpu . PTW0.ADDR;
         p->M = cpu . PTW0.M;
 #else
-        *p = cpu.PTW0;
+        //*p = cpu.PTW0;
 #endif
-        p->PAGENO = (offset >> 6) & 07777;
+        p->PAGENO = (offset >> 6) & 07760;  // ISOLTS-861 02, AL39 p.3-22
         p->POINTER = segno;
         p->USE = 0;
         p->FE = true;
@@ -842,9 +1038,13 @@ static void loadPTWAM(word15 segno, word18 offset)
         cpu . PTW = p;
         return;
     }
-    
+
+#ifdef L68    
     /*
-     * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63), and the newly loaded register is read out into the address preparation circuitry.
+     * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and 
+       loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented 
+       by one with the newly loaded register rolling over from 0 to 15, and the newly loaded register 
+       is read out into the address preparation circuitry.
      */
     for(int _n = 0 ; _n < N_WAM_ENTRIES ; _n++)
     {
@@ -852,13 +1052,14 @@ static void loadPTWAM(word15 segno, word18 offset)
         //if (!p->_initialized || p->USE == 0)
         if (!p->FE || p->USE == 0)
         {
+            sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM(1):PTWAM[%d] FE=0 || USE=0\n", _n);
 #if 0
             p->ADDR = cpu . PTW0.ADDR;
             p->M = cpu . PTW0.M;
 #else
             *p = cpu.PTW0;
 #endif
-            p->PAGENO = (offset >> 6) & 07777;
+            p->PAGENO = (offset >> 6) & 07760;
             p->POINTER = segno;
             p->USE = 0;
             p->FE = true;
@@ -875,13 +1076,51 @@ static void loadPTWAM(word15 segno, word18 offset)
             }
             
             cpu . PTW = p;
+            sim_debug (DBG_APPENDING, & cpu_dev, "loadPTWAM(2): ADDR 0%o U %o M %o F %o FC %o POINTER=%o PAGENO=%o USE=%d\n", cpu . PTW->ADDR, cpu . PTW->U, cpu . PTW->M, cpu . PTW->DF, cpu . PTW->FC, cpu.PTW->POINTER,cpu.PTW->PAGENO,cpu.PTW->USE);
 #ifdef do_selftestPTWAM
             selftestPTWAM ();
 #endif
             return;
         }
     }
+    // if we reach this, USE is scrambled
     sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
+#endif
+#ifdef DPS8M
+    uint setno = (offset >> 10) & 017;
+    uint toffset;
+    _ptw *p;
+    for(toffset = 0 ; toffset < 64 ; toffset += 16)
+    {
+        p = &cpu . PTWAM[toffset + setno];
+        if (!p->FE) break;
+    }
+    if (toffset == 64) // all FE==1
+    {
+        toffset = toBeDiscardedAM(p->USE) << 4;
+        p = &cpu . PTWAM[toffset + setno];
+    }
+
+    sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM(1):PTWAM[%d] FE=0 || LRU\n", toffset + setno);
+
+    word6 u = calcHitAM (p->USE, toffset >> 4); // before loading the PTWAM
+    *p = cpu.PTW0; // load the PTW
+    p->PAGENO = (offset >> 6) & 07760;
+    p->POINTER = segno;
+    p->FE = true;  // in use
+    cpu . PTW = p; // export pointer for appending
+
+    for(uint toffset1 = 0 ; toffset1 < 64 ; toffset1 += 16)	// update LRU
+    {
+        p = &cpu . PTWAM[toffset1 + setno];
+        if (p->FE) 
+            p->USE = u;
+    }
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "loadPTWAM(2): ADDR 0%o U %o M %o F %o FC %o POINTER=%o PAGENO=%o USE=%d\n", cpu . PTW->ADDR, cpu . PTW->U, cpu . PTW->M, cpu . PTW->DF, cpu . PTW->FC, cpu.PTW->POINTER,cpu.PTW->PAGENO,cpu.PTW->USE);
+    //return;
+    //sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
+#endif
 #endif // WAM
 }
 
@@ -891,8 +1130,8 @@ static void loadPTWAM(word15 segno, word18 offset)
 static void modifyPTW(_sdw *sdw, word18 offset)
 {
     PNL (L68_ (cpu.apu.state |= apu_MPTW;))
-    word24 y2 = offset % 1024;
-    word24 x2 = (offset - y2) / 1024;
+    //word24 y2 = offset % 1024;
+    word24 x2 = offset / 1024; // floor
     
     word36 PTWx2;
     
@@ -913,6 +1152,43 @@ static void modifyPTW(_sdw *sdw, word18 offset)
 #endif
 }
 
+static void doPTW2(_sdw *sdw, word18 offset)
+{
+    PNL (L68_ (cpu.apu.state |= apu_FPTW2;))
+    setAPUStatus (apuStatus_PTW2);
+
+    word24 y2 = offset % 1024;
+    word24 x2 = (offset) / 1024; // floor
+    
+    word36 PTWx2n;
+    
+    sim_debug (DBG_APPENDING,& cpu_dev, "doPTW2 address %08o\n", sdw->ADDR + x2 + 1);
+
+    core_read((sdw->ADDR + x2 + 1) & PAMASK, &PTWx2n, __func__);
+
+    _ptw0 PTW2; 
+    PTW2.ADDR = GETHI(PTWx2n);
+    PTW2.U = TSTBIT(PTWx2n, 9);
+    PTW2.M = TSTBIT(PTWx2n, 6);
+    PTW2.DF = TSTBIT(PTWx2n, 2);
+    PTW2.FC = PTWx2n & 3;
+    
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      addAPUhist (APUH_FPTW2);
+#endif
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doPTW2 x2 0%o y2 0%o sdw->ADDR 0%o PTW2 0%012"PRIo64" PTW2: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2n, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.DF, PTW2.FC);
+
+    // check that PTW2 is the next page of the same segment
+    // ISOLTS 875 02a
+    if ((PTW2.ADDR & 0777760) == (cpu.PTW->ADDR & 0777760) + 16)
+       //Is PTW2.F set ON?
+       if (!PTW2.DF)
+           // initiate a directed fault
+           doFault(FAULT_DF0 + PTW2.FC, (_fault_subtype) {.bits=0}, "PTW2.F == 0");
+
+}
 
 
 /**
@@ -1007,6 +1283,7 @@ static char *strPCT(_processor_cycle_type t)
         case EIS_OPERAND_DESCRIPTOR : return "EIS_OPERAND_DESCRIPTOR";
         case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
         case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
+        case ABSA_CYCLE : return "ABSA_CYCLE";
 
         default:
             return "Unhandled _processor_cycle_type";
@@ -1014,6 +1291,7 @@ static char *strPCT(_processor_cycle_type t)
   
 }
 
+#if 0
 // CANFAULT
 _sdw0 * getSDW (word15 segno)
   {
@@ -1043,6 +1321,7 @@ _sdw0 * getSDW (word15 segno)
      }
    return & cpu . SDW0;
   }
+#endif
 
 //static bool bPrePageMode = false;
 
@@ -1072,6 +1351,14 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 #ifdef APPFIX
     bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+#endif
+#ifdef WAM
+    // AL39: The associative memory is ignored (forced to "no match") during address preparation.
+    // lptp,lptr,lsdp,lsdr,sptp,sptr,ssdp,ssdr
+    // Unfortunately, ISOLTS doesn't try to execute any of these in append mode.
+    // XXX should this be only for OPERAND_READ and OPERAND_STORE?
+    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 || i->opcode == 0154 || i->opcode == 0173) && i->opcodeX ) 
+          || (i->opcode == 0557 || i->opcode == 0257);
 #endif
 
     PNL (L68_ (cpu.apu.state = 0;))
@@ -1214,15 +1501,17 @@ A:;
     
     if (cpu . SDW0.DF == 0)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
-        // initiate a directed fault ...
-        doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
+        if (thisCycle != ABSA_CYCLE) {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
+            // initiate a directed fault ...
+            doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
+        }
     }
-    loadSDWAM(cpu . TPR.TSR);
+    loadSDWAM(cpu . TPR.TSR, true); // load SDW0 POINTER, always bypass SDWAM
 #else
 
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(cpu . TPR.TSR))
+    if (nomatch || !fetchSDWfromSDWAM(cpu . TPR.TSR))
     {
         // No
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):SDW for segment %05o not in SDWAM\n", cpu . TPR.TSR);
@@ -1246,19 +1535,24 @@ A:;
         
         if (cpu . SDW0.DF == 0)
         {
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
-            // initiate a directed fault ...
-            doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
+            if (thisCycle != ABSA_CYCLE) {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
+                // initiate a directed fault ...
+                doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
+            }
         }
-        else
-            // load SDWAM .....
-            loadSDWAM(cpu . TPR.TSR);
+        // load SDWAM .....
+        loadSDWAM(cpu . TPR.TSR, nomatch);
     }
 #endif
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(A) R1 %o R2 %o R3 %o\n", cpu . SDW -> R1, cpu . SDW -> R2, cpu . SDW -> R3);
+
     // Yes...
     cpu . RSDWH_R1 = cpu . SDW->R1;
+
+    //if (thisCycle == ABSA_CYCLE)
+    //    goto G;
 
 //
 // B: Check the ring
@@ -1509,13 +1803,15 @@ G:;
     if (!cpu . PTW0.DF)
     {
         //cpu . TPR.CA = address;
-        // initiate a directed fault
-        doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
-    }
-    loadPTWAM(cpu . SDW->POINTER, address);    // load PTW0 to PTWAM
+        if (thisCycle != ABSA_CYCLE) {
+            // initiate a directed fault
+            doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
+        }
+    } 
+    loadPTWAM(cpu . SDW->POINTER, address, true);    // load PTW0 POINTER, always bypass PTWAM
 
 #else
-    if (!fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
+    if (nomatch || !fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
     {
         appendingUnitCycleType = apuCycle_PTWfetch;
         //fetchPTW(cpu . SDW, cpu . TPR.CA);
@@ -1523,35 +1819,24 @@ G:;
         if (!cpu . PTW0.DF)
         {
             //cpu . TPR.CA = address;
-            // initiate a directed fault
-            doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
+            if (thisCycle != ABSA_CYCLE) {
+                // initiate a directed fault
+                doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
+            }
         }
-
         //loadPTWAM(cpu . SDW->POINTER, cpu . TPR.CA);    // load PTW0 to PTWAM
-        loadPTWAM(cpu . SDW->POINTER, address);    // load PTW0 to PTWAM
+        loadPTWAM(cpu . SDW->POINTER, address, nomatch);    // load PTW0 to PTWAM
     }
 #endif
     
-    // is prepage mode???
-    // XXX: don't know what todo with this yet ...
-    // XXX: ticket #11
-    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size
-    // of the translate table is determined by the TA1 data type as shown in
-    // the table below. Before the instruction is executed, a check is made for
-    // allocation in memory for the page for the translate table. If the page
-    // is not in memory, a Missing Page fault occurs before execution of the
-    // instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
-#if 0
-    if (bPrePageMode)
+    // check for "uninterruptible" EIS instruction
+    // ISOLTS-878 02: mvn,cmpn,mvne,ad3d; obviously also ad2/3d,sb2/3d,mp2/3d,dv2/3d
+    // DH03 p.8-13: probably also mve,btd,dtb
+    if (i->opcodeX && ((i->opcode & 0770)== 0200|| (i->opcode & 0770) == 0220
+        ||(i->opcode & 0770)== 020|| (i->opcode & 0770) == 0300))
     {
-        //Is PTW.F set ON?
-       if (!PTW0.F)
-          // initiate a directed fault
-         doFault(FAULT_DF0 + PTW0.FC, 0, "PTW0.F == 0");
-        
-    }
-    bPrePageMode = false;   // done with this
-#endif
+        doPTW2(cpu . SDW, address);
+    } 
     goto I;
     
 H:;
@@ -1575,7 +1860,7 @@ H:;
 #endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", cpu . SDW->ADDR, address);
 
-    finalAddress = cpu . SDW->ADDR + address;
+    finalAddress = (cpu . SDW->ADDR & 077777760)+ address;
     finalAddress &= 0xffffff;
     PNL (cpu.APUMemAddr = finalAddress;)
     
@@ -1585,6 +1870,8 @@ H:;
 #endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     
+    //if (thisCycle == ABSA_CYCLE)
+    //    goto Exit;
     goto HI;
     
 I:;
@@ -1602,7 +1889,7 @@ I:;
         cpu . PTW->M = 1;
         
 #else
-       modifyPTW(cpu . SDW, address);
+	   modifyPTW(cpu . SDW, address);
 #endif
     }
     
@@ -1614,7 +1901,9 @@ I:;
     //word24 y2 = TPR.CA % 1024;
     word24 y2 = address % 1024;
     
-    finalAddress = ((cpu . PTW->ADDR & 0777777) << 6) + y2;
+    // AL39: The hardware ignores low order bits of the main memory page address according
+    // to page size    
+    finalAddress = (((word24)cpu . PTW->ADDR & 0777760) << 6) + y2; 
     finalAddress &= 0xffffff;
     PNL (cpu.APUMemAddr = finalAddress;)
     
@@ -1623,7 +1912,10 @@ I:;
       addAPUhist (APUH_FAP);
 #endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
-    goto HI;
+
+    //if (thisCycle == ABSA_CYCLE)
+    //    goto Exit;
+    //goto HI;
 
 HI:
 
@@ -1709,7 +2001,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
         // fetchDSPTW
 
         word24 y1 = (2 * segno) % 1024;
-        word24 x1 = (2 * segno - y1) / 1024;
+        word24 x1 = (2 * segno) / 1024; // floor
 
         word36 PTWx1;
         core_read ((cpu . DSBR . ADDR + x1) & PAMASK, & PTWx1, __func__);
@@ -1733,7 +2025,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
     
         word36 SDWeven, SDWodd;
     
-        core_read2 (((PTW1 .  ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
+        core_read2 (((((word24)PTW1 .  ADDR & 0777760) << 6) + y1) & PAMASK, & SDWeven, & SDWodd, __func__);
     
         // even word
         SDW1 . ADDR = (SDWeven >> 12) & 077777777;
@@ -1806,7 +2098,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
       {
         // fetchPTW
         word24 y2 = offset % 1024;
-        word24 x2 = (offset - y2) / 1024;
+        word24 x2 = (offset) / 1024; // floor
     
         word36 PTWx2;
     
@@ -1827,7 +2119,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
 
         y2 = offset % 1024;
     
-        * finalAddress = (((PTW1 . ADDR & 0777777) << 6) + y2) & PAMASK;
+        * finalAddress = ((((word24)PTW1 . ADDR & 0777760) << 6) + y2) & PAMASK;
       }
     if (msg)
       * msg = "";

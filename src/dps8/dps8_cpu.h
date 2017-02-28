@@ -1588,7 +1588,7 @@ typedef struct
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
 #ifndef WAM
-    _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+    //_sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
 #ifdef L68
@@ -1715,7 +1715,7 @@ typedef struct
     word12 AM_tally;
 
 #ifndef WAM
-    _ptw PTWAM0;
+    //_ptw PTWAM0;
 #else
     _ptw PTWAM [N_WAM_ENTRIES];
 #ifdef L68

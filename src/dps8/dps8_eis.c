@@ -721,6 +721,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     return EISReadIdx (p, 0);
   }
 
+#if 0
 static void EISReadN (EISaddr * p, uint N, word36 *dst)
   {
 #ifdef EIS_PTR
@@ -735,6 +736,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
         * dst ++ = EISReadIdx (p, n);
       }
   }
+#endif
 
 static void EISReadPage (EISaddr * p, uint n, word36 * data)
   {
@@ -3997,10 +3999,31 @@ void scmr (void)
  * TCT - Test Character and Translate
  */
 
+#if 0
 static word9 xlate (word36 * xlatTbl, uint dstTA, uint c)
   {
     uint idx = (c / 4) & 0177;      // max 128-words (7-bit index)
     word36 entry = xlatTbl [idx];
+
+    uint pos9 = c % 4;      // lower 2-bits
+    word9 cout = GETBYTE (entry, pos9);
+    switch (dstTA)
+      {
+        case CTA4:
+          return cout & 017;
+        case CTA6:
+          return cout & 077;
+        case CTA9:
+          return cout;
+      }
+    return 0;
+  }
+#endif
+
+static word9 xlate (EISaddr * xlatTbl, uint dstTA, uint c)
+  {
+    uint idx = (c / 4) & 0177;      // max 128-words (7-bit index)
+    word36 entry = EISReadIdx(xlatTbl, idx);
 
     uint pos9 = c % 4;      // lower 2-bits
     word9 cout = GETBYTE (entry, pos9);
@@ -4118,7 +4141,8 @@ void tct (void)
             break;
       }
     
-    
+    // ISOLTS-878 01h asserts no prepaging
+#if 0    
     //  Prepage Check in a Multiword Instruction
     //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The
     //  size of the translate table is determined by the TA1 data type as shown
@@ -4154,6 +4178,7 @@ void tct (void)
     memset (xlatTbl, 0, sizeof (xlatTbl));    // 0 it out just in case
     
     EISReadN (& e -> ADDR2, xlatSize, xlatTbl);
+#endif
     
     word36 CY3 = 0;
     
@@ -4182,7 +4207,7 @@ void tct (void)
               break;              // should already be 0-filled
           }
         
-        word9 cout = xlate (xlatTbl, CTA9, m);
+        word9 cout = xlate (&e->ADDR2, CTA9, m);
 
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT c %03o %c cout %03o %c\n",
@@ -4312,7 +4337,8 @@ void tctr (void)
             break;
       }
     
-    
+    // ISOLTS-878 01i asserts no prepaging    
+#if 0    
     //  Prepage Check in a Multiword Instruction
     //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The
     //  size of the translate table is determined by the TA1 data type as shown
@@ -4348,6 +4374,7 @@ void tctr (void)
     memset (xlatTbl, 0, sizeof (xlatTbl));    // 0 it out just in case
     
     EISReadN (& e -> ADDR2, xlatSize, xlatTbl);
+#endif
     
     word36 CY3 = 0;
     
@@ -4377,7 +4404,7 @@ void tctr (void)
               break;              // should already be 0-filled
           }
         
-        word9 cout = xlate (xlatTbl, CTA9, m);
+        word9 cout = xlate (&e->ADDR2, CTA9, m);
 
         sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "TCT c %03o %c cout %03o %c\n",
@@ -7351,10 +7378,6 @@ void mvt (void)
           break;
       }
     
-
-    // XXX I think this is where prepage mode comes in. Need to ensure that the
-    // translation table's page is im memory.
-    // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
     //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The
     //  size of the translate table is determined by the TA1 data type as shown
@@ -7386,11 +7409,22 @@ void mvt (void)
             break;
     }
     
+#if 0    
     word36 xlatTbl[128];
     memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
+#endif
+
+    // ISOLTS 878 01c - op1 and xlate table are prepaged, in that order
+    // prepage op1
+    int lastpageidx = ((int)e->N1 + (int)e->CN1 -1) / e->srcSZ;
+    if (lastpageidx>0)
+        EISReadIdx(&e->ADDR1, (uint)lastpageidx);
+    // prepage xlate table
+    EISReadIdx(&e->ADDR3, 0);
+    EISReadIdx(&e->ADDR3, xlatSize-1);
     
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     
@@ -7425,13 +7459,13 @@ void mvt (void)
 #else
         if (e->TA1 == e->TA2)
 #endif
-            EISput469(2, cpu . du . CHTALLY, xlate (xlatTbl, dstTA, c));
+            EISput469(2, cpu . du . CHTALLY, xlate (&e->ADDR3, dstTA, c));
         else
         {
             // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cidx = c;
             
-            word9 cout = xlate(xlatTbl, dstTA, (uint) cidx);
+            word9 cout = xlate(&e->ADDR3, dstTA, (uint) cidx);
 
 //            switch(e->dstSZ)
 //            {
@@ -7473,14 +7507,12 @@ void mvt (void)
     }
     
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
-    //    C(FILL) → C(Y-charn2)N2-i
-    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL
-    // characters are high-order truncated as they are moved to C(Y-charn2). No
-    // character conversion takes place.
+    //    m = C(FILL)
+    //    C(Y-char93)m → C(Y-charn2)N2-i
     
     if (e->N1 < e->N2)
     {
-        word9 cfill = xlate(xlatTbl, dstTA, fillT);
+        word9 cfill = xlate(&e->ADDR3, dstTA, fillT);
         switch (e->srcSZ)
         {
             case 6:

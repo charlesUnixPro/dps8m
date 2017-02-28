@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -3162,7 +3163,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     //sim_printf("Super user:               %01o(8)\n", cpu.switches.super_user);
     sim_printf("EPP hack:                 %01o(8)\n", cpu.switches.epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
-    sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", cpu.switches.disable_wam);
+    sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
     sim_printf("Bullet time:              %01o(8)\n", scu [0].bullet_time);
     sim_printf("Disable kbd bkpt:         %01o(8)\n", cpu.switches.disable_kbd_bkpt);
@@ -3517,6 +3518,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 
             case 22: // DISABLE_WAM
               cpu.switches.disable_wam = (uint) v;
+              if (v) {
+                  cpu.cu.SD_ON = 0;
+                  cpu.cu.PT_ON = 0;
+              }
               break;
 
             case 23: // BULLET_TIME

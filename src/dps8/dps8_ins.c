@@ -6762,12 +6762,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
         case 0557:  // ssdp
           {
-            // AL39: The associative memory is ignored (forced to "no match")
+            // XXX AL39: The associative memory is ignored (forced to "no match")
             // during address preparation.
-            // The emulator always sets 'no match'
             // Level j is selected by C(TPR.CA)12,13
 #ifdef DPS8M
-            uint level = (cpu.TPR.CA >> 4) & 02u;
+            uint level = (cpu.TPR.CA >> 4) & 03;
 #endif
 #ifdef L68
             uint level = 0;
@@ -6784,6 +6783,19 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 putbits36_1 (& cpu.Yblock16[j], 27,
                            cpu.SDWAM[toffset + j].FE);
 #ifdef DPS8M
+                uint parity = 0;
+                if (cpu.SDWAM[toffset + j].FE)
+                {
+                    // calculate parity
+                    // 58009997-040 p.112
+                    parity = cpu.SDWAM[toffset + j].POINTER >> 4;
+                    //parity = parity ^ (parity >>16);
+                    parity = parity ^ (parity >> 8);
+                    parity = parity ^ (parity >> 4);
+                    parity = ~ (0x6996u >> (parity & 0xf)); 
+                }
+                putbits36_1 (& cpu.Yblock16[j], 15, parity);
+
                 putbits36_6 (& cpu.Yblock16[j], 30,
                            cpu.SDWAM[toffset + j].USE);
 #endif
@@ -6797,16 +6809,16 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock16[0], 0, 15,
-                           cpu.SDWAM0.POINTER);
+                           cpu.SDW0.POINTER);
                 putbits36 (& cpu.Yblock16[0], 27, 1,
-                           cpu.SDWAM0.FE);
+                           cpu.SDW0.FE);
 #ifdef DPS8M
                 putbits36 (& cpu.Yblock16[0], 30, 6,
-                           cpu.SDWAM0.USE);
+                           cpu.SDW0.USE);
 #endif
 #ifdef L68
                 putbits36 (& cpu.Yblock16[0], 32, 4,
-                           cpu.SDWAM0.USE);
+                           cpu.SDW0.USE);
 #endif
               }
 #endif
@@ -8213,12 +8225,11 @@ static t_stat DoEISInstruction (void)
 
         case 0557:  // sptp
           {
-// AL39 The associative memory is ignored (forced to "no match") during address
+// XXX AL39 The associative memory is ignored (forced to "no match") during address
 // preparation.
-// The emulator always sets 'no match' so not a problem
             // Level j is selected by C(TPR.CA)12,13
 #ifdef DPS8M
-            uint level = (cpu.TPR.CA >> 4) & 02u;
+            uint level = (cpu.TPR.CA >> 4) & 03;
 #endif
 #ifdef L68
             uint level = 0;
@@ -8235,6 +8246,19 @@ static t_stat DoEISInstruction (void)
 #ifdef DPS8M
                 putbits36_12 (& cpu.Yblock16[j], 15,
                            cpu.PTWAM[toffset + j].PAGENO & 07760);
+
+                uint parity = 0;
+                if (cpu.PTWAM[toffset + j].FE)
+                {
+                    // calculate parity
+                    // 58009997-040 p.101,111
+                    parity = ((uint) cpu.PTWAM[toffset + j].POINTER << 4) | (cpu.PTWAM[toffset + j].PAGENO >> 8);
+                    parity = parity ^ (parity >>16);
+                    parity = parity ^ (parity >> 8);
+                    parity = parity ^ (parity >> 4);
+                    parity = ~ (0x6996u >> (parity & 0xf)); 
+                }
+                putbits36_1 (& cpu.Yblock16[j], 23, parity);
 #endif
 #ifdef L68
                 putbits36_12 (& cpu.Yblock16[j], 15,
@@ -8257,24 +8281,24 @@ static t_stat DoEISInstruction (void)
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock16[0],  0, 15,
-                           cpu.PTWAM0.POINTER);
+                           cpu.PTW0.POINTER);
 #ifdef DPS8M
                 putbits36 (& cpu.Yblock16[0], 15, 12,
-                           cpu.PTWAM0.PAGENO & 07760);
+                           cpu.PTW0.PAGENO & 07760);
 #endif
 #ifdef L68
                 putbits36 (& cpu.Yblock16[0], 15, 12,
-                           cpu.PTWAM0.PAGENO);
+                           cpu.PTW0.PAGENO);
 #endif
                 putbits36 (& cpu.Yblock16[0], 27,  1,
-                           cpu.PTWAM0.FE);
+                           cpu.PTW0.FE);
 #ifdef DPS8M
                 putbits36 (& cpu.Yblock16[0], 30,  6,
-                           cpu.PTWAM0.USE);
+                           cpu.PTW0.USE);
 #endif
 #ifdef L68
                 putbits36 (& cpu.Yblock16[0], 32,  4,
-                           cpu.PTWAM0.USE);
+                           cpu.PTW0.USE);
 #endif
               }
 #endif
@@ -8288,7 +8312,7 @@ static t_stat DoEISInstruction (void)
 
             // Level j is selected by C(TPR.CA)12,13
 #ifdef DPS8M
-            uint level = (cpu.TPR.CA >> 4) & 02u;
+            uint level = (cpu.TPR.CA >> 4) & 03;
 #endif
 #ifdef L68
             uint level = 0;
@@ -8314,25 +8338,28 @@ static t_stat DoEISInstruction (void)
               }
 #ifndef WAM
             if (level == 0)
+              {
 #ifdef DPS8M
-              putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTWAM0.ADDR & 0777760);
+                putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTW0.ADDR & 0777760);
 #endif
 #ifdef L68
-              putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTWAM0.ADDR);
+                putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTW0.ADDR);
 #endif
+                putbits36_1 (& cpu.Yblock16[0], 29, cpu.PTW0.M);
+              }
 #endif
           }
           break;
 
         case 0254:  // ssdr
           {
-// AL39: The associative memory is ignored (forced to "no match") during
+// XXX AL39: The associative memory is ignored (forced to "no match") during
 // address preparation.
-// The emulator always sets 'no match' so ok here.
 
-            // Level j is selected by C(TPR.CA)12,13
+            // Level j is selected by C(TPR.CA)11,12
+            // Note: not bits 12,13. This is due to operand being Yblock32
 #ifdef DPS8M
-            uint level = (cpu.TPR.CA >> 4) & 02u;
+            uint level = (cpu.TPR.CA >> 5) & 03;
 #endif
 #ifdef L68
             uint level = 0;
@@ -8379,31 +8406,31 @@ static t_stat DoEISInstruction (void)
             if (level == 0)
               {
                 putbits36 (& cpu.Yblock32[0],  0, 24,
-                           cpu.SDWAM0.ADDR);
+                           cpu.SDW0.ADDR);
                 putbits36 (& cpu.Yblock32[0], 24,  3,
-                           cpu.SDWAM0.R1);
+                           cpu.SDW0.R1);
                 putbits36 (& cpu.Yblock32[0], 27,  3,
-                           cpu.SDWAM0.R2);
+                           cpu.SDW0.R2);
                 putbits36 (& cpu.Yblock32[0], 30,  3,
-                           cpu.SDWAM0.R3);
+                           cpu.SDW0.R3);
                 putbits36 (& cpu.Yblock32[0], 37 - 36, 14,
-                           cpu.SDWAM0.BOUND);
+                           cpu.SDW0.BOUND);
                 putbits36 (& cpu.Yblock32[1], 51 - 36,  1,
-                           cpu.SDWAM0.R);
+                           cpu.SDW0.R);
                 putbits36 (& cpu.Yblock32[1], 52 - 36,  1,
-                           cpu.SDWAM0.E);
+                           cpu.SDW0.E);
                 putbits36 (& cpu.Yblock32[1], 53 - 36,  1,
-                           cpu.SDWAM0.W);
+                           cpu.SDW0.W);
                 putbits36 (& cpu.Yblock32[1], 54 - 36,  1,
-                           cpu.SDWAM0.P);
+                           cpu.SDW0.P);
                 putbits36 (& cpu.Yblock32[1], 55 - 36,  1,
-                           cpu.SDWAM0.U);
+                           cpu.SDW0.U);
                 putbits36 (& cpu.Yblock32[1], 56 - 36,  1,
-                           cpu.SDWAM0.G);
+                           cpu.SDW0.G);
                 putbits36 (& cpu.Yblock32[1], 57 - 36,  1,
-                           cpu.SDWAM0.C);
+                           cpu.SDW0.C);
                 putbits36 (& cpu.Yblock32[1], 58 - 36, 14,
-                           cpu.SDWAM0.EB);
+                           cpu.SDW0.EB);
 
               }
 #endif
@@ -9212,7 +9239,7 @@ static int emCall (void)
 #endif
 #endif // TESTING
 
-// This code may be redundant; it may be possible to just let CAF do its
+// This code may be redundant; it may be possible to just let doAppendCycle do its
 // thing and put the final address into A.
 // CANFAULT
 static int doABSA (word36 * result)
@@ -9232,6 +9259,15 @@ static int doABSA (word36 * result)
         return SCPE_OK;
       }
 
+    // ABSA handles directed faults differently, so a special append cycle is needed.
+    // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
+    res = (word36)doAppendCycle(cpu.TPR.CA & MASK18, ABSA_CYCLE) << 12;
+
+#if 0
+    word36 SDWeven, SDWodd;
+    word15 segno = cpu.TPR.TSR;
+    word18 offset = cpu.TPR.CA;
+
     if (cpu.DSBR.U == 1) // Unpaged
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is unpaged\n");
@@ -9241,10 +9277,10 @@ static int doABSA (word36 * result)
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa Boundary check: TSR: %05o f(TSR): %06o "
           "BND: %05o f(BND): %06o\n",
-          cpu.TPR.TSR, 2 * (uint) cpu.TPR.TSR,
+          segno, 2 * (uint) segno,
           cpu.DSBR.BND, 16 * ((uint) cpu.DSBR.BND + 1));
 
-        if (2 * (uint) cpu.TPR.TSR >= 16 * ((uint) cpu.DSBR.BND + 1))
+        if (2 * (uint) segno >= 16 * ((uint) cpu.DSBR.BND + 1))
           {
             doFault (FAULT_ACV,
                      (_fault_subtype) {.fault_acv_subtype=ACV15},
@@ -9255,61 +9291,17 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa DSBR.ADDR %08o TSR %o SDWe offset %o SWDe %08o\n",
-          cpu.DSBR.ADDR, cpu.TPR.TSR, 2u * cpu.TPR.TSR,
-          cpu.DSBR.ADDR + 2u * cpu.TPR.TSR);
+          cpu.DSBR.ADDR, segno, 2u * segno,
+          cpu.DSBR.ADDR + 2u * segno);
 
-        word36 SDWe, SDWo;
-        core_read ((cpu.DSBR.ADDR + 2u * cpu.TPR.TSR) & PAMASK, & SDWe,
+        core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd,
                    __func__);
-        core_read ((cpu.DSBR.ADDR + 2u * cpu.TPR.TSR + 1u) & PAMASK, & SDWo, 
-                   __func__);
-
-//sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
-//sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n",
-//           DSBR.ADDR, cpu.TPR.TSR);
-//sim_debug (DBG_TRACE, & cpu_dev,
-//           "absa  SDWaddr: %08o SDW: %012"PRIo64" %012"PRIo64"\n",
-//           DSBR.ADDR + 2 * cpu.TPR.TSR, SDWe, SDWo);
-        // 3. If SDW.F = 0, then generate directed fault n where n is given in
-        // SDW.FC. The value of n used here is the value assigned to define a
-        // missing segment fault or, simply, a segment fault.
-
-        // ABSA doesn't care if the page isn't resident
-
-
-        // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access
-        // violation, out of segment bounds, fault.
-
-        word14 BOUND = (SDWo >> (35u - 14u)) & 037777u;
-        if (cpu.TPR.CA >= 16u * (BOUND + 1u))
-          {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in SDW boundary violation.");
-          }
-
-        // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are
-        // incompatible with the reference, generate the appropriate access
-        // violation fault.
-
-        // t4d doesn't care
-        // XXX Don't know what the correct behavior is here for ABSA
-
-
-        // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
-
-        word24 ADDR = (SDWe >> 12) & 077777760;
-        res = (word36) ADDR + (word36) cpu.TPR.CA;
-        res &= PAMASK; //24 bit math
-        res <<= 12; // 24:12 format
 
       }
     else
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is paged\n");
         // paged
-        word15 segno = cpu.TPR.TSR;
-        word18 offset = cpu.TPR.CA;
 
         // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
         // violation, out of segment bounds, fault.
@@ -9332,7 +9324,7 @@ static int doABSA (word36 * result)
         //       x1 = (2 * segno - y1) / 1024
 
         word24 y1 = (2u * segno) % 1024u;
-        word24 x1 = (2u * segno - y1) / 1024u;
+        word24 x1 = (2u * segno) / 1024u; // floor
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa y1:%08o x1:%08o\n", y1, x1);
@@ -9376,144 +9368,144 @@ static int doABSA (word36 * result)
 
         sim_debug (DBG_APPENDING, & cpu_dev,
           "absa read SDW@%08o<<6+%08o %08o\n",
-          PTW1.ADDR, y1, ((PTW1.ADDR << 6) + y1) & PAMASK);
+          PTW1.ADDR, y1, ((((word24)PTW1.ADDR & 0777760) << 6) + y1) & PAMASK);
 
-        word36 SDWeven, SDWodd;
-        core_read2 (((PTW1.ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd,
+        core_read2 (((((word24)PTW1.ADDR & 0777760) << 6) + y1) & PAMASK, & SDWeven, & SDWodd,
                      __func__);
-
-        _sdw0 SDW0;
-        // even word
-        SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-        SDW0.R1 = (SDWeven >> 9) & 7;
-        SDW0.R2 = (SDWeven >> 6) & 7;
-        SDW0.R3 = (SDWeven >> 3) & 7;
-        SDW0.DF = TSTBIT (SDWeven, 2);
-        SDW0.FC = SDWeven & 3;
-
-        // odd word
-        SDW0.BOUND = (SDWodd >> 21) & 037777;
-        SDW0.R = TSTBIT (SDWodd, 20);
-        SDW0.E = TSTBIT (SDWodd, 19);
-        SDW0.W = TSTBIT (SDWodd, 18);
-        SDW0.P = TSTBIT (SDWodd, 17);
-        SDW0.U = TSTBIT (SDWodd, 16);
-        SDW0.G = TSTBIT (SDWodd, 15);
-        SDW0.C = TSTBIT (SDWodd, 14);
-        SDW0.EB = SDWodd & 037777;
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa SDW0 ADDR %08o R1 %o R1 %o R3 %o F %o FC %o\n",
-          SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF,
-          SDW0.FC);
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa SDW0 BOUND %06o R %o E %o W %o P %o U %o G %o C %o "
-          "EB %05o\n",
-          SDW0.BOUND, SDW0.R, SDW0.E, SDW0.W, SDW0.P, SDW0.U,
-          SDW0.G, SDW0.C, SDW0.EB);
-
-
-        // 6. If SDW(segno).F = 0, then generate directed fault n where
-        // n is given in SDW(segno).FC.
-        // This is a segment fault as discussed earlier in this section.
-
-        if (!SDW0.DF)
-          {
-            sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
-            doFault (FAULT_DF0 + SDW0.FC,
-                     (_fault_subtype) {.bits=0},
-                     "ABSA !SDW0.F");
-          }
-
-        // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an
-        // access violation, out of segment bounds, fault.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa SDW boundary check: offset: %06o f(offset): %06o "
-          "BOUND: %06o\n",
-          offset, offset >> 4, SDW0.BOUND);
-
-        if (((offset >> 4) & 037777) > SDW0.BOUND)
-          {
-            sim_debug (DBG_APPENDING, & cpu_dev,
-                       "absa SDW boundary violation\n");
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in SDW boundary violation.");
-          }
-
-        // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the
-        // segment are incompatible with the reference, generate the
-        // appropriate access violation fault.
-
-        // Only the address is wanted, so no check
-
-        if (SDW0.U == 0)
-          {
-            // Segment is paged
-
-            // 9. Form the quantities:
-            //    y2 = offset modulo 1024
-            //    x2 = (offset - y2) / 1024
-
-            word24 y2 = offset % 1024;
-            word24 x2 = (offset - y2) / 1024;
-
-            sim_debug (DBG_APPENDING, & cpu_dev,
-              "absa y2:%08o x2:%08o\n", y2, x2);
-
-            // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
-
-            sim_debug (DBG_APPENDING, & cpu_dev,
-              "absa read PTWx2@%08o+%08o %08o\n",
-              SDW0.ADDR, x2, (SDW0.ADDR + x2) & PAMASK);
-
-            word36 PTWx2;
-            core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
-
-            _ptw0 PTW_2;
-            PTW_2.ADDR = GETHI (PTWx2);
-            PTW_2.U = TSTBIT (PTWx2, 9);
-            PTW_2.M = TSTBIT (PTWx2, 6);
-            PTW_2.DF = TSTBIT (PTWx2, 2);
-            PTW_2.FC = PTWx2 & 3;
-
-            sim_debug (DBG_APPENDING, & cpu_dev,
-              "absa PTW_2 ADDR %08o U %o M %o F %o FC %o\n",
-              PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.DF, PTW_2.FC);
-
-            // 11.If PTW(x2).F = 0, then generate directed fault n where n is
-            // given in PTW(x2).FC. This is a page fault as in Step 4 above.
-
-            // ABSA only wants the address; it doesn't care if the page is
-            // resident
-
-            // if (!PTW_2.F)
-            //   {
-            //     sim_debug (DBG_APPENDING, & cpu_dev,
-            //                "absa fault !PTW_2.F\n");
-            //     // initiate a directed fault
-            //     doFault (FAULT_DF0 + PTW_2.FC, 0, "ABSA !PTW_2.F");
-            //   }
-
-            // 12. Generate the 24-bit absolute main memory address
-            // PTW(x2).ADDR + y2.
-
-            res = (((word36) PTW_2.ADDR) << 6)  + (word36) y2;
-            res &= PAMASK; //24 bit math
-            res <<= 12; // 24:12 format
-          }
-        else
-          {
-            // Segment is unpaged
-            // SDW0.ADDR is the base address of the segment
-            res = (word36) SDW0.ADDR + offset;
-            res &= PAMASK; //24 bit math
-            res <<= 12; // 24:12 format
-          }
       }
 
+    _sdw0 SDW0;
+    // even word
+    SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+    SDW0.R1 = (SDWeven >> 9) & 7;
+    SDW0.R2 = (SDWeven >> 6) & 7;
+    SDW0.R3 = (SDWeven >> 3) & 7;
+    SDW0.DF = TSTBIT (SDWeven, 2);
+    SDW0.FC = SDWeven & 3;
+
+    // odd word
+    SDW0.BOUND = (SDWodd >> 21) & 037777;
+    SDW0.R = TSTBIT (SDWodd, 20);
+    SDW0.E = TSTBIT (SDWodd, 19);
+    SDW0.W = TSTBIT (SDWodd, 18);
+    SDW0.P = TSTBIT (SDWodd, 17);
+    SDW0.U = TSTBIT (SDWodd, 16);
+    SDW0.G = TSTBIT (SDWodd, 15);
+    SDW0.C = TSTBIT (SDWodd, 14);
+    SDW0.EB = SDWodd & 037777;
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+      "absa SDW0 ADDR %08o R1 %o R1 %o R3 %o F %o FC %o\n",
+      SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF,
+      SDW0.FC);
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+      "absa SDW0 BOUND %06o R %o E %o W %o P %o U %o G %o C %o "
+      "EB %05o\n",
+      SDW0.BOUND, SDW0.R, SDW0.E, SDW0.W, SDW0.P, SDW0.U,
+      SDW0.G, SDW0.C, SDW0.EB);
+
+
+    // 6. If SDW(segno).F = 0, then generate directed fault n where
+    // n is given in SDW(segno).FC.
+    // This is a segment fault as discussed earlier in this section.
+#if 0
+    if (!SDW0.DF)
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
+        doFault (FAULT_DF0 + SDW0.FC,
+                 (_fault_subtype) {.bits=0},
+                 "ABSA !SDW0.F");
+      }
+#endif
+
+    // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an
+    // access violation, out of segment bounds, fault.
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+      "absa SDW boundary check: offset: %06o f(offset): %06o "
+      "BOUND: %06o\n",
+      offset, offset >> 4, SDW0.BOUND);
+
+    if (((offset >> 4) & 037777) > SDW0.BOUND)
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "absa SDW boundary violation\n");
+        doFault (FAULT_ACV,
+                 (_fault_subtype) {.fault_acv_subtype=ACV15},
+                 "ABSA in SDW boundary violation.");
+      }
+
+    // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the
+    // segment are incompatible with the reference, generate the
+    // appropriate access violation fault.
+
+    // Only the address is wanted, so no check
+
+    if (SDW0.U == 0)
+      {
+        // Segment is paged
+
+        // 9. Form the quantities:
+        //    y2 = offset modulo 1024
+        //    x2 = (offset - y2) / 1024
+
+        word24 y2 = offset % 1024;
+        word24 x2 = offset / 1024; // floor
+
+        sim_debug (DBG_APPENDING, & cpu_dev,
+          "absa y2:%08o x2:%08o\n", y2, x2);
+
+        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+        sim_debug (DBG_APPENDING, & cpu_dev,
+          "absa read PTWx2@%08o+%08o %08o\n",
+          SDW0.ADDR, x2, (SDW0.ADDR + x2) & PAMASK);
+
+        word36 PTWx2;
+        core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
+
+        _ptw0 PTW_2;
+        PTW_2.ADDR = GETHI (PTWx2);
+        PTW_2.U = TSTBIT (PTWx2, 9);
+        PTW_2.M = TSTBIT (PTWx2, 6);
+        PTW_2.DF = TSTBIT (PTWx2, 2);
+        PTW_2.FC = PTWx2 & 3;
+
+        sim_debug (DBG_APPENDING, & cpu_dev,
+          "absa PTW_2 ADDR %08o U %o M %o F %o FC %o\n",
+          PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.DF, PTW_2.FC);
+
+        // 11.If PTW(x2).F = 0, then generate directed fault n where n is
+        // given in PTW(x2).FC. This is a page fault as in Step 4 above.
+
+        // ABSA only wants the address; it doesn't care if the page is
+        // resident
+
+        // if (!PTW_2.F)
+        //   {
+        //     sim_debug (DBG_APPENDING, & cpu_dev,
+        //                "absa fault !PTW_2.F\n");
+        //     // initiate a directed fault
+        //     doFault (FAULT_DF0 + PTW_2.FC, 0, "ABSA !PTW_2.F");
+        //   }
+
+        // 12. Generate the 24-bit absolute main memory address
+        // PTW(x2).ADDR + y2.
+
+        res = (((word24)PTW_2.ADDR & 0777760) << 6)  + y2;
+        res &= PAMASK; //24 bit math
+        res <<= 12; // 24:12 format
+      }
+    else
+      {
+        // Segment is unpaged
+        // SDW0.ADDR is the base address of the segment
+        res = (SDW0.ADDR & 077777760) + offset; // T4D blk5 bug14
+        res &= PAMASK; //24 bit math
+        res <<= 12; // 24:12 format
+      }
+#endif
 
     * result = res;
 
