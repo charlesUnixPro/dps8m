@@ -1204,10 +1204,12 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
                                             cpu . PPR . PRR);
                 
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
+sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
           }
         else
           {
             e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
+sim_debug (DBG_TRACEEXT, & cpu_dev, "No ARb %u\n", k - 1);
           }
 
         // Address modifier for ADDRESS. All register modifiers except du and
@@ -1234,6 +1236,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
     else
     {
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
+sim_debug (DBG_TRACEEXT, & cpu_dev, "No ARa %u\n", k - 1);
     }
     setupOperandDescriptorCache (k);
 }
@@ -1351,6 +1354,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
 
         e -> addr [k - 1] . mat = viaPR;   // ARs involved
+sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
       }
 
     PNL (cpu.du.POL = 1);

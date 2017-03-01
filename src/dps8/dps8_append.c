@@ -2232,10 +2232,14 @@ L:; // Transfer or instruction fetch
 KL:
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(KL)\n");
 
+// If PSR:IC is updated here, things like TSX get lost.
+// Trust CONT_TRA to catch this
+#if 0
     // C(TPR.TSR) -> C(PPR.PSR)
     cpu.PPR.PSR = cpu.TPR.TSR;
     // C(TPR.CA) -> C(PPR.IC) 
     cpu.PPR.IC = cpu.TPR.CA;
+#endif
     goto M;
 
 M: // Post CALL6 PR set

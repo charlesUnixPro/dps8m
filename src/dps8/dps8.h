@@ -262,26 +262,9 @@ typedef enum _processor_cycle_type _processor_cycle_type;
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
     UnknownMAT       = 0,
-    InstructionFetch,
-    IndirectRead,
-    //IndirectWrite,
-    DataRead,
-    DataWrite,
     OperandRead,
     OperandWrite,
-    
-//    APUDataRead,        // append operations from absolute mode
-//    APUDataWrite,
-//    APUOperandRead,
-//    APUOperandWrite,
-
-    Call6Operand,
-    RTCDOperand = RTCD_OPERAND_FETCH,
-    
-    
-    // for EIS read operations
-    viaPR,      // EIS data access vis PR
-    PrepareCA,
+    viaPR
 };
 
 typedef enum eMemoryAccessType MemoryAccessType;
