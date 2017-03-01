@@ -129,7 +129,7 @@ static enum _appendingUnit_cycle_type appendingUnitCycleType = apuCycle_APPUNKNO
  5. C(PRn.BITNO) → TPR.BITNO
  */
 
-
+#if 0
 void doPtrReg(void)
 {
     word3 n = GET_PRN(IWB_IRODD);  // get PRn
@@ -152,6 +152,7 @@ void doPtrReg(void)
     //set_went_appending ();
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, cpu . TPR.CA, cpu . TPR.TBR, cpu . TPR.TSR, cpu . TPR.TRR);
 }
+#endif
 
 // Define this to do error detection on the PTWAM table.
 // Useful if PTWAM reports an error message, but it slows the emulator
@@ -1417,6 +1418,15 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
                cpu.TPR.TRR, cpu.TPR.TSR);
+    for (uint n = 0; n < 3; n ++)
+      {
+        if (cpu.cu.TSN_VALID [n])
+          {
+            sim_debug (DBG_APPENDING, & cpu_dev,
+                       "doAppendCycle(Entry) TSN%o VALID %o PRNO %o\n",
+                       n, cpu.cu.TSN_VALID [n], cpu.cu.TSN_PRNO [n]);
+          }
+      }
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
@@ -1461,31 +1471,35 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
       goto A;
 
     //if (lastCycle != INSTRUCTION_FETCH && i -> a)
-    if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
+    //if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
+    if (lastCycle != INSTRUCTION_FETCH)
       {
-        PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-        //word3 n = GET_PRN(IWB_IRODD);  // get PRn
-        //if (cpu.cu.TSN_VALID[0] == 0)
-          //sim_printf ("----------------------------->>>> TSN not valide!\n");
-        word3 n = cpu.cu.TSN_PRNO[0];
-
-        CPTUR (cptUsePRn + n);
-sim_printf ("saw bit 29; n %o\n", n);
-        if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+        for (uint tsn = 0; tsn < 3; tsn ++)
           {
-            cpu.TPR.TRR = cpu.PAR[n].RNR;
+            if (cpu.cu.TSN_VALID [tsn])
+              {
+                PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
+                word3 n = cpu.cu.TSN_PRNO[tsn];
+                CPTUR (cptUsePRn + n);
+                if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+                  {
+                    cpu.TPR.TRR = cpu.PAR[n].RNR;
+                  }
+                else
+                 {
+                    cpu.TPR.TRR = cpu.PPR.PRR;
+                 }
+                cpu.TPR.TSR = cpu.PAR[n].SNR;
+                sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
+                goto A;
+              }
           }
-        else
-         {
-            cpu.TPR.TRR = cpu.PPR.PRR;
-         }
-        cpu.TPR.TSR = cpu.PAR[n].SNR;
-sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
-        goto A;
       }
 
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "set TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
     goto A;
 
 ////////////////////////////////////////
@@ -1497,9 +1511,8 @@ sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
 //
 //  A:
 //    Get SDW
-#ifdef APPFIX
+
 A:;
-#endif
 
     cpu.TPR.CA = address;
 

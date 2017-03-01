@@ -1828,7 +1828,7 @@ restart_1:
         cpu.cu.TSN_VALID[2] = 0;
 #endif
 
-#ifndef APPFIX
+#if 0 //  APPFIX
 // XXX This belongs in doAppend XXX XXX XXX
         if (! ci->a)
           {
@@ -2014,14 +2014,32 @@ restart_1:
             if (ci->a)   // if A bit set set-up TPR stuff ...
               {
                 CPT (cpt2U, 34); // B29
-                doPtrReg ();
-//#else
-                //word15 offset = GET_OFFSET (IWB_IRODD);
-                //cpu.TPR.CA = (cpu.PAR[n].WORDNO + 
-                             //SIGNEXT15_18 (offset)) & 0777777;
-                //cpu.TPR.TBR = GET_PR_BITNO (n);
+                //doPtrReg ();
+                word3 n = GET_PRN(IWB_IRODD);  // get PRn
+                word15 offset = GET_OFFSET(IWB_IRODD);
+                CPTUR (cptUsePRn + n);
+
+                sim_debug (DBG_APPENDING, &cpu_dev,
+                           "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
+                           "BITNO=%02o\n",
+                           n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
+                           cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
+
+                cpu.cu.TSN_PRNO [0] = n;
+                cpu.cu.TSN_VALID [0] = 1;
+
+                updateIWB ((SIGNEXT15_18 (offset)) & 0777777,
+                           GET_TAG (IWB_IRODD));
+
+                cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+
+                sim_debug (DBG_APPENDING, &cpu_dev,
+                           "doPtrReg(): n=%o offset=%05o TPR.CA=%06o "
+                           "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
+                           n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
+                           cpu.TPR.TSR, cpu.TPR.TRR);
+
                 set_went_appending ();
-//#endif
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -2034,6 +2052,7 @@ restart_1:
             else
               {
                 CPT (cpt2U, 35); // not B29
+                cpu.cu.TSN_VALID [0] = 0;
                 cpu.TPR.TBR = 0;
                 if (get_addr_mode () == ABSOLUTE_mode)
                   {
@@ -2119,6 +2138,7 @@ restart_1:
 #endif
         PNL (cpu.IWRAddr = 0);
       }
+    cpu.cu.TSN_VALID [0] = 0;
 
 ///
 /// executeInstruction: Execute the instruction

@@ -355,9 +355,7 @@ void updateIWB (word18 addr, word6 tag)
 
     putbits36_18 (wb,  0, addr);
     putbits36_6 (wb, 30, tag);
-#ifndef APPFIX
     putbits36_1 (wb, 29,  0);
-#endif
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "updateIWB: IWB now %012"PRIo64" %06o %s\n",

@@ -503,9 +503,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
     return 0;
   }
 
-#ifdef EIS_PTR
 #define EISADDR_IDX(p) ((p) - cpu.currentEISinstruction.addr)
-#endif
 
 static void EISWriteCache (EISaddr * p)
   {
@@ -514,45 +512,31 @@ static void EISWriteCache (EISaddr * p)
 
     if (p -> cacheValid && p -> cacheDirty)
       {
-#ifdef EIS_PTR4
-        if (cpu.cu.TSN_VALID[EISADDR_IDX(p)])
-#else
         if (p -> mat == viaPR)
-#endif
           {
-#ifdef EIS_PTR4
-            word3 n = cpu.cu.TSN_PRNO[EISADDR_IDX(p)];
-            cpu.TPR.TRR = max3 (cpu.PR[n].RNR,
-                                cpu.TPR.TRR,
-                                cpu.PPR.PRR);
-            cpu.TPR.TSR = cpu.PR[n].SNR;
-#else
-            cpu . TPR . TRR = p -> RNR;
-            cpu . TPR . TSR = p -> SNR;
-#endif
+            //cpu . TPR . TRR = p -> RNR;
+            //cpu . TPR . TSR = p -> SNR;
+            uint oprndno = (uint) EISADDR_IDX(p);
+            cpu.cu.TSN_VALID [oprndno] = 1;
+            //cpu.cu.TSN_PRNO [oprndno] = x // setup already
         
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
                 for (uint i = 0; i < 8; i ++)
-#ifdef EIS_PTR4
-                  sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                             "%s: writeCache (PR) %012"PRIo64"@%o:%06o\n", 
-                             __func__, p -> cachedParagraph [i], cpu.cu.TSN_PRNO[EISADDR_IDX(p)], p -> cachedAddr + i);
-#else
                   sim_debug (DBG_TRACEEXT, & cpu_dev, 
                              "%s: writeCache (PR) %012"PRIo64"@%o:%06o\n", 
                              __func__, p -> cachedParagraph [i], p -> SNR, p -> cachedAddr + i);
-#endif
               }
             Write8 (p->cachedAddr, p -> cachedParagraph, true);
+            cpu.cu.TSN_VALID [oprndno] = 0;
           }
         else
           {
-            if (get_addr_mode() == APPEND_mode)
-              {
-                cpu . TPR . TRR = cpu . PPR . PRR;
-                cpu . TPR . TSR = cpu . PPR . PSR;
-              }
+            //if (get_addr_mode() == APPEND_mode)
+              //{
+                //cpu . TPR . TRR = cpu . PPR . PRR;
+                //cpu . TPR . TSR = cpu . PPR . PSR;
+              //}
         
             if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
@@ -588,45 +572,31 @@ static void EISReadCache (EISaddr * p, word18 address)
         EISWriteCache (p);
       }
 
-#ifdef EIS_PTR4
-    if (cpu.cu.TSN_VALID[EISADDR_IDX(p)])
-#else
     if (p -> mat == viaPR)
-#endif
       {
-#ifdef EIS_PTR4
-        word3 n = cpu.cu.TSN_PRNO[EISADDR_IDX(p)];
-        cpu.TPR.TRR = max3 (cpu.PR[n].RNR,
-                            cpu.TPR.TRR,
-                            cpu.PPR.PRR);
-        cpu.TPR.TSR = cpu.PR[n].SNR;
-#else
-        cpu.TPR.TRR = p -> RNR;
-        cpu.TPR.TSR = p -> SNR;
-#endif
+        //cpu.TPR.TRR = p -> RNR;
+        //cpu.TPR.TSR = p -> SNR;
+        uint oprndno = (uint) EISADDR_IDX(p);
+        cpu.cu.TSN_VALID [oprndno] = 1;
+        //cpu.cu.TSN_PRNO [oprndno] = x // setup already
         Read8 (paragraphAddress, p -> cachedParagraph, true);
+        cpu.cu.TSN_VALID [oprndno] = 0;
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
             for (uint i = 0; i < 8; i ++)
-#ifdef EIS_PTR4
-              sim_debug (DBG_TRACEEXT, & cpu_dev, 
-                         "%s: readCache (PR) %012"PRIo64"@%o:%06o\n", 
-                           __func__, p -> cachedParagraph [i], cpu.TPR.TSR, paragraphAddress + i);
-#else
               sim_debug (DBG_TRACEEXT, & cpu_dev, 
                          "%s: readCache (PR) %012"PRIo64"@%o:%06o\n", 
                            __func__, p -> cachedParagraph [i], p -> SNR, paragraphAddress + i);
-#endif
           }
       }
     else
       {
-        if (get_addr_mode() == APPEND_mode)
-          {
-            cpu.TPR.TRR = cpu.PPR.PRR;
-            cpu.TPR.TSR = cpu.PPR.PSR;
-          }
+        //if (get_addr_mode() == APPEND_mode)
+          //{
+            //cpu.TPR.TRR = cpu.PPR.PRR;
+            //cpu.TPR.TSR = cpu.PPR.PSR;
+          //}
         
         Read8 (paragraphAddress, p -> cachedParagraph, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
@@ -758,23 +728,15 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
 
     word3 saveTRR = cpu.TPR.TRR;
 
-#ifdef EIS_PTR4
-    if (cpu.cu.TSN_VALID[EISADDR_IDX(p)])
-#else
     if (p -> mat == viaPR)
-#endif
       {
-#ifdef EIS_PTR4
-        word3 n = cpu.cu.TSN_PRNO[EISADDR_IDX(p)];
-        cpu.TPR.TRR = max3 (cpu.PR[n].RNR,
-                            cpu.TPR.TRR,
-                            cpu.PPR.PRR);
-        cpu.TPR.TSR = cpu.PR[n].SNR;
-#else
-        cpu.TPR.TRR = p -> RNR;
-        cpu.TPR.TSR = p -> SNR;
-#endif
+        //cpu.TPR.TRR = p -> RNR;
+        //cpu.TPR.TSR = p -> SNR;
+        uint oprndno = (uint) EISADDR_IDX(p);
+        cpu.cu.TSN_VALID [oprndno] = 1;
+        //cpu.cu.TSN_PRNO [oprndno] = x // setup already
         ReadPage (addressN, data, true);
+        cpu.cu.TSN_VALID [oprndno] = 0;
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -792,11 +754,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
       }
     else
       {
-        if (get_addr_mode() == APPEND_mode)
-          {
-            cpu.TPR.TRR = cpu.PPR.PRR;
-            cpu.TPR.TSR = cpu.PPR.PSR;
-          }
+        //if (get_addr_mode() == APPEND_mode)
+          //{
+            //cpu.TPR.TRR = cpu.PPR.PRR;
+            //cpu.TPR.TSR = cpu.PPR.PSR;
+          //}
         
         ReadPage (addressN, data, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
@@ -830,23 +792,15 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
 
     word3 saveTRR = cpu.TPR.TRR;
 
-#ifdef EIS_PTR4
-    if (cpu.cu.TSN_VALID[EISADDR_IDX(p)])
-#else
     if (p -> mat == viaPR)
-#endif
       {
-#ifdef EIS_PTR4
-        word3 n = cpu.cu.TSN_PRNO[EISADDR_IDX(p)];
-        cpu.TPR.TRR = max3 (cpu.PR[n].RNR,
-                            cpu.TPR.TRR,
-                            cpu.PPR.PRR);
-        cpu.TPR.TSR = cpu.PR[n].SNR;
-#else
-        cpu.TPR.TRR = p -> RNR;
-        cpu.TPR.TSR = p -> SNR;
-#endif
+        //cpu.TPR.TRR = p -> RNR;
+        //cpu.TPR.TSR = p -> SNR;
+        uint oprndno = (uint) EISADDR_IDX(p);
+        cpu.cu.TSN_VALID [oprndno] = 1;
+        //cpu.cu.TSN_PRNO [oprndno] = x // setup already
         WritePage (addressN, data, true);
+        cpu.cu.TSN_VALID [oprndno] = 0;
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -864,11 +818,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
       }
     else
       {
-        if (get_addr_mode() == APPEND_mode)
-          {
-            cpu.TPR.TRR = cpu.PPR.PRR;
-            cpu.TPR.TSR = cpu.PPR.PSR;
-          }
+        //if (get_addr_mode() == APPEND_mode)
+          //{
+            //cpu.TPR.TRR = cpu.PPR.PRR;
+            //cpu.TPR.TSR = cpu.PPR.PSR;
+          //}
         
         WritePage (addressN, data, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
@@ -1243,28 +1197,17 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
 #else
             e -> addr [k - 1] . address = address;
 #endif
-#ifdef EIS_PTR4
             cpu.cu.TSN_PRNO[k-1] = n;
-#else
             e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
             e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR,
                                             cpu . TPR . TRR,
                                             cpu . PPR . PRR);
-#endif
                 
-#ifdef EIS_PTR4
-            cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
             e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#endif
           }
         else
           {
-#ifdef EIS_PTR4
-            cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#else
             e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
-#endif
           }
 
         // Address modifier for ADDRESS. All register modifiers except du and
@@ -1290,11 +1233,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
     }
     else
     {
-#ifdef EIS_PTR4
-          cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#else
           e->addr [k - 1] . mat = OperandRead;      // no ARs involved yet
-#endif
     }
     setupOperandDescriptorCache (k);
 }
@@ -1407,24 +1346,12 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 //IF1 sim_printf ("initial ARn_CHAR %u %u\n", k, ARn_CHAR);
 //IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
-#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-#else
         e -> addr [k - 1] . SNR = cpu . PR [n] . SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
-#endif
 
-#ifdef EIS_PTR4
-        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
         e -> addr [k - 1] . mat = viaPR;   // ARs involved
-#endif
       }
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
-    else
-      cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
 
     PNL (cpu.du.POL = 1);
 
@@ -1633,23 +1560,11 @@ static void parseArgOperandDescriptor (uint k, fault_ipr_subtype_ *mod_fault)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
-#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-#else
         e -> addr [k - 1] . SNR = cpu . PR[n].SNR;
         e -> addr [k - 1] . RNR = max3 (cpu . PR [n] . RNR, cpu . TPR . TRR, cpu . PPR . PRR);
-#endif
-#ifdef EIS_PTR4
-        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
         e -> addr [k - 1] . mat = viaPR;
-#endif
       }
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
-    else
-      cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
     
     y += ((9u * ARn_CHAR + 36u * r + ARn_BITNO) / 36u);
     y &= AMASK;
@@ -1696,24 +1611,12 @@ static void parseNumericOperandDescriptor (int k, fault_ipr_subtype_ *mod_fault)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
-#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-#else
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-#endif
 
-#ifdef EIS_PTR4
-        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
         e->addr[k-1].mat = viaPR;   // ARs involved
-#endif
     }
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
-    else
-      cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif
 
     PNL (cpu.du.POL = 1);
 
@@ -1926,23 +1829,11 @@ static void parseBitstringOperandDescriptor (int k, fault_ipr_subtype_ *mod_faul
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
-#ifdef EIS_PTR4
         cpu.cu.TSN_PRNO[k-1] = n;
-#else
         e->addr[k-1].SNR = cpu . PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu . PR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
-#endif
-#ifdef EIS_PTR4
-        cpu.cu.TSN_VALID[k-1] = 1; // Use PR
-#else
         e->addr[k-1].mat = viaPR;   // ARs involved
-#endif
     }
-#ifdef EIS_PTR4
-// XXX remove when pointers saved correctly
-    else
-      cpu.cu.TSN_VALID[k-1] = 0; // Don't use PR
-#endif    
     PNL (cpu.du.POL = 1);
 
     //Operand length. If MFk.RL = 0, this field contains the string length of
