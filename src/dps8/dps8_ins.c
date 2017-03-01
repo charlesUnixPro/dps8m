@@ -2028,10 +2028,10 @@ restart_1:
                 cpu.cu.TSN_PRNO [0] = n;
                 cpu.cu.TSN_VALID [0] = 1;
 
-                updateIWB ((SIGNEXT15_18 (offset)) & 0777777,
-                           GET_TAG (IWB_IRODD));
+                cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
+                             & MASK18;
 
-                cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+                updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
 
                 sim_debug (DBG_APPENDING, &cpu_dev,
                            "doPtrReg(): n=%o offset=%05o TPR.CA=%06o "
