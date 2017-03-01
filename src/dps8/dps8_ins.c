@@ -513,16 +513,14 @@ static void scu2words (word36 *words)
 
     // words[3]
 
-    //  0, 18 0
-#ifdef EIS_PTR4
     putbits36_3 (& words[3], 18, cpu.cu.TSN_PRNO[0]);
     putbits36_1 (& words[3], 21, cpu.cu.TSN_VALID[0]);
     putbits36_3 (& words[3], 22, cpu.cu.TSN_PRNO[1]);
     putbits36_1 (& words[3], 25, cpu.cu.TSN_VALID[1]);
     putbits36_3 (& words[3], 26, cpu.cu.TSN_PRNO[2]);
     putbits36_1 (& words[3], 29, cpu.cu.TSN_VALID[2]);
-#endif
     putbits36_6 (& words[3], 30, cpu.TPR.TBR);
+
     // words[4]
 
     putbits36_18 (& words[4],  0, cpu.PPR.IC);
@@ -691,14 +689,13 @@ static void words2scu (word36 * words)
     // words[3]
 
     // 0-17 0
-#ifdef EIS_PTR4
+
     cpu.cu.TSN_PRNO[0]  = getbits36_3  (words[3], 18);
     cpu.cu.TSN_VALID[0] = getbits36_1  (words[3], 21);
     cpu.cu.TSN_PRNO[1]  = getbits36_3  (words[3], 22);
     cpu.cu.TSN_VALID[1] = getbits36_1  (words[3], 25);
     cpu.cu.TSN_PRNO[2]  = getbits36_3  (words[3], 26);
     cpu.cu.TSN_VALID[2] = getbits36_1  (words[3], 29);
-#endif
     cpu.TPR.TBR         = getbits36_6  (words[3], 30);
 
     // words[4]
@@ -1470,7 +1467,6 @@ t_stat executeInstruction (void)
 
     DCDstruct * ci = & cpu.currentInstruction;
     decodeInstruction (IWB_IRODD, ci);
-
     const opCode *info = ci->info;       // opCode *
     const word18 address = ci->address;  // bits 0-17 of instruction
 
@@ -1519,6 +1515,10 @@ IF1 sim_printf ("trapping opcode match......\n");
 
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
+
+    cpu.cu.TSN_VALID[0] = 0;
+    cpu.cu.TSN_VALID[1] = 0;
+    cpu.cu.TSN_VALID[2] = 0;
 
     // If executing the target of XEC/XED, check the instruction is allowed
     if (cpu.isXED)
@@ -5190,8 +5190,42 @@ static t_stat DoBasicInstruction (void)
                      "RTCD even %012"PRIo64" odd %012"PRIo64"\n",
                      cpu.Ypair[0], cpu.Ypair[1]);
 
+          // Flowchart "K"
+
           // C(Y-pair)3,17 -> C(PPR.PSR)
           cpu.PPR.PSR = GETHI (cpu.Ypair[0]) & 077777LL;
+
+          // C(Y+1)0,17 -> C(TPR.CA) 
+          cpu.TPR.CA = GET_OFFSET (cpu.Ypair[0]);
+
+          // C(TPR.TRR) >= C(PPR.PRR)?
+          if (cpu.TPR.TRR >= cpu.PPR.PRR)
+            {
+              // C(TPR.TRR) -> C(PRi.RNR)
+              //    for i = 0, 7
+
+#if 0 // done in doAppendCycle now
+              CPTUR (cptUsePRn + 0);
+              CPTUR (cptUsePRn + 1);
+              CPTUR (cptUsePRn + 2);
+              CPTUR (cptUsePRn + 3);
+              CPTUR (cptUsePRn + 4);
+              CPTUR (cptUsePRn + 5);
+              CPTUR (cptUsePRn + 6);
+              CPTUR (cptUsePRn + 7);
+              cpu.PR[0].RNR =
+              cpu.PR[1].RNR =
+              cpu.PR[2].RNR =
+              cpu.PR[3].RNR =
+              cpu.PR[4].RNR =
+              cpu.PR[5].RNR =
+              cpu.PR[6].RNR =
+              cpu.PR[7].RNR = cpu.PPR.PRR;
+#endif
+            }
+
+          // C(TPR.TRR) -> C(PPR.PRR)
+          cpu.PPR.PRR = cpu.TPR.TRR;
 
           // XXX ticket #16
           // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
@@ -5218,23 +5252,6 @@ static t_stat DoBasicInstruction (void)
           // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
           //for (int n = 0 ; n < 8 ; n += 1)
           //  PR[n].RNR = cpu.PPR.PRR;
-
-          CPTUR (cptUsePRn + 0);
-          CPTUR (cptUsePRn + 1);
-          CPTUR (cptUsePRn + 2);
-          CPTUR (cptUsePRn + 3);
-          CPTUR (cptUsePRn + 4);
-          CPTUR (cptUsePRn + 5);
-          CPTUR (cptUsePRn + 6);
-          CPTUR (cptUsePRn + 7);
-          cpu.PR[0].RNR =
-          cpu.PR[1].RNR =
-          cpu.PR[2].RNR =
-          cpu.PR[3].RNR =
-          cpu.PR[4].RNR =
-          cpu.PR[5].RNR =
-          cpu.PR[6].RNR =
-          cpu.PR[7].RNR = cpu.PPR.PRR;
 
           // RTCD always ends up in append mode.
           set_addr_mode (APPEND_mode);
@@ -5406,6 +5423,9 @@ sim_printf ("do bar attempt\n");
               n = (opcode & 3) + 4;
 
             CPTUR (cptUsePRn + n);
+
+#if 0
+done by append cycle now
             // XXX According to figure 8.1, all of this is done by the
             //  append unit.
             cpu.PR[n].RNR = cpu.PPR.PRR;
@@ -5416,8 +5436,10 @@ sim_printf ("do bar attempt\n");
               cpu.PR[n].SNR = cpu.PPR.PSR;
             cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
             SET_PR_BITNO (n, 0);
+#endif
             cpu.PPR.IC = cpu.TPR.CA;
             cpu.PPR.PSR = cpu.TPR.TSR;
+
           }
           return CONT_TRA;
 
@@ -9305,7 +9327,7 @@ static int doABSA (word36 * result)
 
     // ABSA handles directed faults differently, so a special append cycle is needed.
     // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
-    res = (word36)doAppendCycle(cpu.TPR.CA & MASK18, ABSA_CYCLE) << 12;
+    res = (word36)doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL) << 12;
 
 #if 0
     word36 SDWeven, SDWodd;

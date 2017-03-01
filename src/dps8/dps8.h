@@ -244,20 +244,13 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 enum _processor_cycle_type {
     UNKNOWN_CYCLE = 0,
-    APPEND_CYCLE,
-    CA_CYCLE,
     OPERAND_STORE,
     OPERAND_READ,
-    DIVIDE_EXECUTION,
-    FAULT,
     INDIRECT_WORD_FETCH,
     RTCD_OPERAND_FETCH,
     //SEQUENTIAL_INSTRUCTION_FETCH,
     INSTRUCTION_FETCH,
     APU_DATA_MOVEMENT,
-    ABORT_CYCLE,
-    FAULT_CYCLE,
-    EIS_OPERAND_DESCRIPTOR,  // change later for real MW EIS operand descriptors
     EIS_OPERAND_STORE,
     EIS_OPERAND_READ,
     ABSA_CYCLE

@@ -111,7 +111,7 @@ void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
+word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle, word36 * result);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
 void do_camp (word36 Y);

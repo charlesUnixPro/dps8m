@@ -25,6 +25,7 @@
 #include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_append.h"
+#include "dps8_addrmods.h"
 
 /**
  * \brief the appending unit ...
@@ -136,6 +137,10 @@ void doPtrReg(void)
     CPTUR (cptUsePRn + n);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o BITNO=%02o\n", n, cpu . PAR[n].SNR, cpu . PAR[n].RNR, cpu . PAR[n].WORDNO, GET_PR_BITNO (n));
+
+    cpu.cu.TSN_PRNO [0] = n;
+    cpu.cu.TSN_VALID [0] = 1;
+
     cpu . TPR.TSR = cpu . PAR[n].SNR;
     cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
     
@@ -730,7 +735,7 @@ uint toBeDiscardedAM(word6 LRU)
 /**
  * load the current in-core SDW0 into the SDWAM ...
  */
-static void loadSDWAM(word15 segno, bool nomatch)
+static void loadSDWAM(word15 segno, UNUSED bool nomatch)
 {
 #ifndef WAM
 #if 0
@@ -1004,7 +1009,7 @@ static void fetchPTW(_sdw *sdw, word18 offset)
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
 }
 
-static void loadPTWAM(word15 segno, word18 offset, bool nomatch)
+static void loadPTWAM(word15 segno, word18 offset, UNUSED bool nomatch)
 {
 #ifndef WAM
 #if 0
@@ -1267,20 +1272,13 @@ static char *strPCT(_processor_cycle_type t)
     switch (t)
     {
         case UNKNOWN_CYCLE: return "UNKNOWN_CYCLE";
-        case APPEND_CYCLE: return "APPEND_CYCLE";
-        case CA_CYCLE: return "CA_CYCLE";
         case OPERAND_STORE : return "OPERAND_STORE";
         case OPERAND_READ : return "OPERAND_READ";
-        case DIVIDE_EXECUTION: return "DIVIDE_EXECUTION";
-        case FAULT: return "FAULT";
         case INDIRECT_WORD_FETCH: return "INDIRECT_WORD_FETCH";
         case RTCD_OPERAND_FETCH: return "RTCD_OPERAND_FETCH";
         //case SEQUENTIAL_INSTRUCTION_FETCH: return "SEQUENTIAL_INSTRUCTION_FETCH";
         case INSTRUCTION_FETCH: return "INSTRUCTION_FETCH";
         case APU_DATA_MOVEMENT: return "APU_DATA_MOVEMENT";
-        case ABORT_CYCLE: return "ABORT_CYCLE";
-        case FAULT_CYCLE: return "FAULT_CYCLE";
-        case EIS_OPERAND_DESCRIPTOR : return "EIS_OPERAND_DESCRIPTOR";
         case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
         case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
         case ABSA_CYCLE : return "ABSA_CYCLE";
@@ -1329,96 +1327,6 @@ _sdw0 * getSDW (word15 segno)
  * recoding APU functions to more closely match Fig 5,6 & 8 ...
  * Returns final address suitable for core_read/write
  */
-
-// Usage notes:
-//   Checks for the following conditions:
-//     thisCycle == INSTRUCTION_FETCH, OPERAND_STORE, EIS_OPERAND_STORE, 
-//                  RTCD_OPERAND_FETCH
-//     thisCycle == OPERAND_READ && i->info->flags & CALL6_INS
-//     thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS
-
-// CANFAULT
-word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
-{
-    DCDstruct * i = & cpu . currentInstruction;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) Address=%06o\n", address);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", cpu . PPR.PRR, cpu . PPR.PSR);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", cpu . TPR.TRR, cpu . TPR.TSR);
-
-    bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
-    bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
-#ifdef APPFIX
-    bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
-    bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
-#endif
-#ifdef WAM
-    // AL39: The associative memory is ignored (forced to "no match") during address preparation.
-    // lptp,lptr,lsdp,lsdr,sptp,sptr,ssdp,ssdr
-    // Unfortunately, ISOLTS doesn't try to execute any of these in append mode.
-    // XXX should this be only for OPERAND_READ and OPERAND_STORE?
-    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 || i->opcode == 0154 || i->opcode == 0173) && i->opcodeX ) 
-          || (i->opcode == 0557 || i->opcode == 0257);
-#endif
-
-#ifdef RALRx
-    _processor_cycle_type lastCycle = cpu.apu.lastCycle;
-    cpu.apu.lastCycle = thisCycle;
-#endif
-
-    PNL (L68_ (cpu.apu.state = 0;))
-
-    cpu . RSDWH_R1 = 0;
-    
-    cpu.acvFaults = 0;
-
-//#define FMSG(x) x
-#define FMSG(x) 
-    FMSG (char * acvFaultsMsg = "<unknown>";)
-
-    word24 finalAddress = (word24) -1;  // not everything requires a final address
-    
-#ifdef APPFIX
-// START APPEND
-
-    if (indirectFetch)
-      goto A;
-
-    if (rtcdOperandFetch)
-      goto A;
-
-    if (! instructionFetch && i -> a)
-      {
-        PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-        word3 n = GET_PRN(IWB_IRODD);  // get PRn
-        CPTUR (cptUsePRn + n);
-sim_printf ("saw bit 29; n %o\n", n);
-        if (cpu.PAR[n].RNR > cpu.PPR.PRR)
-          {
-            cpu.TPR.TRR = cpu.PAR[n].RNR;
-          }
-        else
-         {
-            cpu.TPR.TRR = cpu.PPR.PRR;
-         }
-        cpu.TPR.TSR = cpu.PAR[n].SNR;
-sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
-        goto A;
-      }
-
-    cpu.TPR.TRR = cpu.PPR.PRR;
-    cpu.TPR.TSR = cpu.PPR.PSR;
-    goto A;
-
-//
-//  A:
-//    Get SDW
-A:;
-#endif
-
-    cpu . TPR . CA = address;
-
-    PNL (cpu.APUMemAddr = address;)
 
 //
 // Phase 1:
@@ -1472,176 +1380,303 @@ A:;
 //
 //     HI: --
 //         If indirect word fetch
-//           goto Exit
+//           goto J
 //         if rtcd operand fetch
-//           goto KL
+//           goto K
+//         if CALL6
+//           goto N
 //         If instruction fetch or transfer instruction operand
-//           goto KL
-//         "APU data movement"
-//         Goto Exit
+//           goto L
+//         APU data movement?
+//           load/store APU data
 //
-//    KL: Set PPR.P
-//         Goto Exit
+//    K: Set PPR.P
+//         Goto J
 //
-//    Exit: return
+//    J: return
 //
 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
+// CANFAULT
+word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * result)
+  {
+    DCDstruct * i = & cpu.currentInstruction;
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) thisCycle=%s\n",
+               strPCT (thisCycle));
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) Address=%06o\n",
+               address);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n",
+               cpu.PPR.PRR, cpu.PPR.PSR);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
+               cpu.TPR.TRR, cpu.TPR.TSR);
+
+    bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
+    bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
+    //bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
+    bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+#ifdef WAM
+    // AL39: The associative memory is ignored (forced to "no match") during address preparation.
+    // lptp,lptr,lsdp,lsdr,sptp,sptr,ssdp,ssdr
+    // Unfortunately, ISOLTS doesn't try to execute any of these in append mode.
+    // XXX should this be only for OPERAND_READ and OPERAND_STORE?
+    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 || i->opcode == 0154 || i->opcode == 0173) && i->opcodeX ) 
+          || (i->opcode == 0557 || i->opcode == 0257);
+#endif
+
+    _processor_cycle_type lastCycle = cpu.apu.lastCycle;
+    cpu.apu.lastCycle = thisCycle;
+
+    PNL (L68_ (cpu.apu.state = 0;))
+
+    cpu . RSDWH_R1 = 0;
+    
+    cpu.acvFaults = 0;
+
+//#define FMSG(x) x
+#define FMSG(x) 
+    FMSG (char * acvFaultsMsg = "<unknown>";)
+
+    word24 finalAddress = (word24) -1;  // not everything requires a final address
+    
+////////////////////////////////////////
+//
+// Sheet 1: "START APPEND"
+//
+////////////////////////////////////////
+
+// START APPEND
+
+    if (lastCycle == INDIRECT_WORD_FETCH)
+      goto A;
+
+    if (lastCycle == RTCD_OPERAND_FETCH)
+      goto A;
+
+    if (lastCycle != INSTRUCTION_FETCH && i -> a)
+      {
+        PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
+        //word3 n = GET_PRN(IWB_IRODD);  // get PRn
+        if (cpu.cu.TSN_VALID[0] == 0)
+          sim_printf ("----------------------------->>>> TSN not valide!\n");
+        word3 n = cpu.cu.TSN_PRNO[0];
+
+        CPTUR (cptUsePRn + n);
+sim_printf ("saw bit 29; n %o\n", n);
+        if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+          {
+            cpu.TPR.TRR = cpu.PAR[n].RNR;
+          }
+        else
+         {
+            cpu.TPR.TRR = cpu.PPR.PRR;
+         }
+        cpu.TPR.TSR = cpu.PAR[n].SNR;
+sim_printf ("TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
+        goto A;
+      }
+
+    cpu.TPR.TRR = cpu.PPR.PRR;
+    cpu.TPR.TSR = cpu.PPR.PSR;
+    goto A;
+
+////////////////////////////////////////
+//
+// Sheet 2: "A"
+//
+////////////////////////////////////////
+
+//
+//  A:
+//    Get SDW
+#ifdef APPFIX
+A:;
+#endif
+
+    cpu.TPR.CA = address;
+
+    PNL (cpu.APUMemAddr = address;)
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(A)\n");
     
 #ifndef WAM
-    if (cpu . DSBR.U == 0)
-    {
-        fetchDSPTW(cpu . TPR.TSR);
+    if (cpu.DSBR.U == 0)
+      {
+        fetchDSPTW (cpu.TPR.TSR);
         
-        if (!cpu . PTW0.DF)
-            doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
+        if (! cpu.PTW0.DF)
+          doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
         
-        if (!cpu . PTW0.U)
-            modifyDSPTW(cpu . TPR.TSR);
+        if (! cpu.PTW0.U)
+          modifyDSPTW (cpu.TPR.TSR);
         
-        fetchPSDW(cpu . TPR.TSR);
-    }
+        fetchPSDW (cpu.TPR.TSR);
+      }
     else
-        fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
+      fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
     
-    if (cpu . SDW0.DF == 0)
-    {
-        if (thisCycle != ABSA_CYCLE) {
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
+    if (cpu.SDW0.DF == 0)
+      {
+        if (thisCycle != ABSA_CYCLE)
+          {
+            sim_debug (DBG_APPENDING, & cpu_dev,
+                       "doAppendCycle(A): SDW0.F == 0! "
+                       "Initiating directed fault\n");
             // initiate a directed fault ...
-            doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
-        }
-    }
-    loadSDWAM(cpu . TPR.TSR, true); // load SDW0 POINTER, always bypass SDWAM
+            doFault (FAULT_DF0 + cpu.SDW0.FC, (_fault_subtype) {.bits=0},
+                     "SDW0.F == 0");
+          }
+      }
+
+    loadSDWAM (cpu.TPR.TSR, true); // load SDW0 POINTER, always bypass SDWAM
 #else
 
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (nomatch || !fetchSDWfromSDWAM(cpu . TPR.TSR))
+    if (nomatch || ! fetchSDWfromSDWAM (cpu.TPR.TSR))
     {
         // No
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):SDW for segment %05o not in SDWAM\n", cpu . TPR.TSR);
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "doAppendCycle(A):SDW for segment %05o not in SDWAM\n",
+                    cpu.TPR.TSR);
         
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):DSBR.U=%o\n", cpu . DSBR.U);
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "doAppendCycle(A):DSBR.U=%o\n",
+                   cpu.DSBR.U);
         
-        if (cpu . DSBR.U == 0)
-        {
-            fetchDSPTW(cpu . TPR.TSR);
+        if (cpu.DSBR.U == 0)
+          {
+            fetchDSPTW (cpu.TPR.TSR);
             
-            if (!cpu . PTW0.DF)
-                doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
+            if (! cpu.PTW0.DF)
+              doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                       "doAppendCycle(A): PTW0.F == 0");
             
-            if (!cpu . PTW0.U)
-                modifyDSPTW(cpu . TPR.TSR);
+            if (! cpu.PTW0.U)
+              modifyDSPTW (cpu.TPR.TSR);
             
-            fetchPSDW(cpu . TPR.TSR);
-        }
+            fetchPSDW (cpu.TPR.TSR);
+          }
         else
-            fetchNSDW(cpu . TPR.TSR); // load SDW0 from descriptor segment table.
+          fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
         
-        if (cpu . SDW0.DF == 0)
-        {
-            if (thisCycle != ABSA_CYCLE) {
-                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
+        if (cpu.SDW0.DF == 0)
+          {
+            if (thisCycle != ABSA_CYCLE)
+              {
+                sim_debug (DBG_APPENDING, & cpu_dev,
+                           "doAppendCycle(A): SDW0.F == 0! "
+                           "Initiating directed fault\n");
                 // initiate a directed fault ...
-                doFault(FAULT_DF0 + cpu . SDW0.FC, (_fault_subtype) {.bits=0}, "SDW0.F == 0");
-            }
-        }
+                doFault (FAULT_DF0 + cpu.SDW0.FC, (_fault_subtype) {.bits=0},
+                         "SDW0.F == 0");
+              }
+          }
         // load SDWAM .....
-        loadSDWAM(cpu . TPR.TSR, nomatch);
-    }
+        loadSDWAM (cpu.TPR.TSR, nomatch);
+      }
 #endif
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(A) R1 %o R2 %o R3 %o\n", cpu . SDW -> R1, cpu . SDW -> R2, cpu . SDW -> R3);
+               "doAppendCycle(A) R1 %o R2 %o R3 %o\n",
+               cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3);
 
     // Yes...
-    cpu . RSDWH_R1 = cpu . SDW->R1;
+    cpu.RSDWH_R1 = cpu.SDW->R1;
 
     //if (thisCycle == ABSA_CYCLE)
     //    goto G;
+
+////////////////////////////////////////
+//
+// Sheet 3: "B"
+//
+////////////////////////////////////////
 
 //
 // B: Check the ring
 //
 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B)\n");
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B)\n");
     
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
-    if (!(cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
-        // Set fault ACV0 = IRO
-        acvFault(ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
+    if (! (cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
+      // Set fault ACV0 = IRO
+      acvFault (ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
 
-#ifdef RALRx
     // Was last cycle an rtcd operand fetch?
     if (lastCycle == RTCD_OPERAND_FETCH)
       goto C;
-#endif
 
 //
 // B1: The operand is one of: an instruction, data to be read or data to be
 //     written
 //
 
-    // CALL6 must check the call gate. Also it has the feature of checking 
-    // the target address for execution permission (instead of allowing the 
-    // instruction fetch of the next cycle to do it). This allows the fault 
-    // to occur in the calling instruction, which is easier to debug.
-
     // Is OPCODE call6?
-    if (thisCycle == OPERAND_READ && i->info->flags & CALL6_INS)
+    if ((! instructionFetch) && i->info->flags & CALL6_INS)
       goto E;
- 
 
     // If the instruction is a transfer operand or we are doing an instruction
     // fetch, the operand is destined to be executed. Verify that the operand
     // is executable
 
     // Transfer or instruction fetch?
-    if (instructionFetch || (thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS)))
-        goto F;
+    if (instructionFetch || (i->info->flags & TRANSFER_INS))
+      goto F;
     
-    // Not executed, therefore it is data. Read or Write?
-
     if (StrOp)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):STR-OP\n");
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B):STR-OP\n");
         
         // C(TPR.TRR) > C(SDW .R2)?
-        if (cpu . TPR.TRR > cpu . SDW->R2)
-            //Set fault ACV5 = OWB
-            acvFault(ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
+        if (cpu.TPR.TRR > cpu.SDW->R2)
+          //Set fault ACV5 = OWB
+          acvFault (ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
         
-        if (!cpu . SDW->W)
-            // Set fault ACV6 = W-OFF
-            acvFault(ACV6, "doAppendCycle(B) ACV6 = W-OFF");
+        if (! cpu.SDW->W)
+          // Set fault ACV6 = W-OFF
+          acvFault (ACV6, "doAppendCycle(B) ACV6 = W-OFF");
         
-    } else {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):!STR-OP\n");
+      }
+    else
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "doAppendCycle(B):!STR-OP\n");
         
         // No
         // C(TPR.TRR) > C(SDW .R2)?
-        if (cpu . TPR.TRR > cpu . SDW->R2) {
+        if (cpu.TPR.TRR > cpu.SDW->R2)
+          {
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
             FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";)
-        }
+          }
         
-        if (cpu . SDW->R == 0)
-        {
+        if (cpu.SDW->R == 0)
+          {
             //C(PPR.PSR) = C(TPR.TSR)?
-            if (cpu . PPR.PSR != cpu . TPR.TSR) {
+            if (cpu.PPR.PSR != cpu.TPR.TSR)
+              {
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
                 PNL (L68_ (cpu.apu.state |= apu_FLT;))
                 FMSG (acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";)
-            }
-        }
+              }
+          }
         
-    }
+      }
     goto G;
     
-#ifdef RALRx
+////////////////////////////////////////
+//
+// Sheet 4: "C" "D"
+//
+////////////////////////////////////////
+
 C:;
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C)\n");
     // (rtcd operand)
     // C(TPR.TRR) < C(SDW.R1)?
     // C(TPR.TRR) > C(SDW.R2)?
@@ -1663,34 +1698,34 @@ C:;
         //Set fault ACV11 = INRET
         acvFault (ACV11, "doAppendCycle(C) TRR>=PRR");
       }
-#endif
+
 D:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(D)\n");
     
     // transfer or instruction fetch
 
-#ifndef RALRx
-    // AL39, pg 31, RING ALARM REGISTER:
-    // "...and the instruction for which an absolute main memory address is 
-    //  being prepared is a transfer instruction..."
-    if (instructionFetch)
-      goto G;
-#endif
-
-    if (cpu . rRALR == 0)
+    if (cpu.rRALR == 0)
         goto G;
     
     // C(PPR.PRR) < RALR?
-    if (!(cpu . PPR.PRR < cpu . rRALR)) {
+    if (! (cpu.PPR.PRR < cpu.rRALR))
+      {
         sim_debug (DBG_APPENDING, & cpu_dev,
-                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", cpu . PPR . PRR, cpu . rRALR);
+                   "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", 
+                   cpu.PPR.PRR, cpu.rRALR);
         cpu.acvFaults |= ACV13;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";)
-    }
+      }
     
     goto G;
     
+////////////////////////////////////////
+//
+// Sheet 5: "E"
+//
+////////////////////////////////////////
+
 E:;
 
 //
@@ -1699,187 +1734,231 @@ E:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): CALL6\n");
 
-    //SDW .E set ON?
-    if (!cpu . SDW->E) {
+    //SDW.E set ON?
+    if (!cpu . SDW->E)
+      {
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E) SDW .E set OFF";)
-    }
+      }
     
     //SDW .G set ON?
-    if (cpu . SDW->G)
-        goto E1;
+    if (cpu.SDW->G)
+      goto E1;
     
     // C(PPR.PSR) = C(TPR.TSR)?
-    if (cpu . PPR.PSR == cpu . TPR.TSR)
-        goto E1;
+    if (cpu.PPR.PSR == cpu.TPR.TSR)
+      goto E1;
     
     // XXX This doesn't seem right
-    // TPR.CA4-17 ≥ SDW.CL?
-    //if ((cpu . TPR.CA & 0037777) >= SDW->CL)
 // EB is word 15; masking address makes no sense; rather 0-extend EB
 // Fixes ISOLTS 880-01
-    if (address >= (word18) cpu.SDW->EB) {
+    if (address >= (word18) cpu.SDW->EB)
+      {
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";)
-    }
+      }
     
 E1:
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 (cont'd)\n");
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(E1): CALL6 (cont'd)\n");
 
     // C(TPR.TRR) > SDW.R3?
-    if (cpu . TPR.TRR > cpu . SDW->R3) {
+    if (cpu.TPR.TRR > cpu.SDW->R3)
+      {
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";)
-    }
+      }
     
     // C(TPR.TRR) < SDW.R1?
-    if (cpu . TPR.TRR < cpu . SDW->R1) {
+    if (cpu.TPR.TRR < cpu.SDW->R1)
+      {
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";)
-    }
+      }
     
     
     // C(TPR.TRR) > C(PPR.PRR)?
     if (cpu . TPR.TRR > cpu . PPR.PRR)
+      {
         // C(PPR.PRR) < SDW.R2?
-        if (cpu . PPR.PRR < cpu . SDW->R2) {
+        if (cpu . PPR.PRR < cpu . SDW->R2)
+          {
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
             FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";)
-        }
+          }
+      }
+
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(E1): CALL6 TPR.TRR %o SDW->R2 %o\n",
+               cpu.TPR.TRR, cpu.SDW->R2);
+
     // C(TPR.TRR) > SDW.R2?
-    if (cpu . TPR.TRR > cpu . SDW->R2)
-        // ￼SDW.R2 → C(TPR.TRR)
-        cpu . TPR.TRR = cpu . SDW->R2;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 TPR.TRR %o\n", cpu . TPR . TRR);
+    if (cpu.TPR.TRR > cpu.SDW->R2)
+      {
+        // SDW.R2 -> C(TPR.TRR)
+        cpu.TPR.TRR = cpu.SDW->R2;
+      }
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(E1): CALL6 TPR.TRR %o\n", cpu . TPR . TRR);
     
     goto G;
     
+////////////////////////////////////////
+//
+// Sheet 6: "F"
+//
+////////////////////////////////////////
+
 F:;
     PNL (L68_ (cpu.apu.state |= apu_PIAU;))
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
-    if (cpu . TPR.TRR < cpu . SDW->R1) {
+    if (cpu.TPR.TRR < cpu.SDW->R1)
+      {
         sim_debug (DBG_APPENDING, & cpu_dev,
-                   "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n", cpu . TPR . TRR, cpu . SDW -> R1);
+                   "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n",
+                   cpu.TPR.TRR, cpu.SDW->R1);
         cpu.acvFaults |= ACV1;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";)
-    }
+      }
     
-    //C(TPR.TRR) > C(SDW .R2)?
-    if (cpu . TPR.TRR > cpu . SDW->R2) {
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (cpu.TPR.TRR > cpu.SDW->R2)
+      {
         sim_debug (DBG_TRACE, & cpu_dev,
-                   "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n", cpu . TPR . TRR, cpu . SDW -> R2);
+                   "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n",
+                   cpu . TPR . TRR, cpu . SDW -> R2);
         cpu.acvFaults |= ACV1;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";)
-    }
+      }
     
-    //SDW .E set ON?
-    if (!cpu . SDW->E) {
+    // SDW .E set ON?
+    if (! cpu.SDW->E)
+      {
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
-    }
+      }
     
-    //C(PPR.PRR) = C(TPR.TRR)?
-    if (cpu . PPR.PRR != cpu . TPR.TRR) {
+    // C(PPR.PRR) = C(TPR.TRR)?
+    if (cpu.PPR.PRR != cpu.TPR.TRR)
+      {
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";)
-    }
+      }
     
     goto D;
+
+////////////////////////////////////////
+//
+// Sheet 7: "G"
+//
+////////////////////////////////////////
 
 G:;
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G)\n");
     
     //C(TPR.CA)0,13 > SDW.BOUND?
-    //if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-    if (((address >> 4) & 037777) > cpu . SDW->BOUND) {
+    if (((address >> 4) & 037777) > cpu.SDW->BOUND)
+      {
         cpu.acvFaults |= ACV15;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
-        sim_debug (DBG_FAULT, & cpu_dev, "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n    address %06o address>>4&037777 %06o SDW->BOUND %06o",
-                    address, ((address >> 4) & 037777), cpu . SDW->BOUND);
+        sim_debug (DBG_FAULT, & cpu_dev,
+                   "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n"
+                   "   address %06o address>>4&037777 %06o SDW->BOUND %06o",
+                   address, ((address >> 4) & 037777), cpu . SDW->BOUND);
     }
     
     if (cpu.acvFaults)
       {
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         // Initiate an access violation fault
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults}, "ACV fault");
+        doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults},
+                 "ACV fault");
       }
+
     // is segment C(TPR.TSR) paged?
-    if (cpu . SDW->U)
-        goto H; // Not paged
+    if (cpu.SDW->U)
+      goto H; // Not paged
     
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
 #ifndef WAM
-    fetchPTW(cpu . SDW, address);
-    if (!cpu . PTW0.DF)
-    {
-        //cpu . TPR.CA = address;
-        if (thisCycle != ABSA_CYCLE) {
+    fetchPTW (cpu.SDW, address);
+    if (! cpu.PTW0.DF)
+      {
+        // cpu.TPR.CA = address;
+        if (thisCycle != ABSA_CYCLE)
+          {
             // initiate a directed fault
-            doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
-        }
-    } 
-    loadPTWAM(cpu . SDW->POINTER, address, true);    // load PTW0 POINTER, always bypass PTWAM
+            doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                     "PTW0.F == 0");
+          }
+      } 
+    // load PTW0 POINTER, always bypass PTWAM
+    loadPTWAM (cpu.SDW->POINTER, address, true);
 
 #else
     if (nomatch || !fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
-    {
+      {
         appendingUnitCycleType = apuCycle_PTWfetch;
-        //fetchPTW(cpu . SDW, cpu . TPR.CA);
-        fetchPTW(cpu . SDW, address);
-        if (!cpu . PTW0.DF)
-        {
-            //cpu . TPR.CA = address;
-            if (thisCycle != ABSA_CYCLE) {
+        fetchPTW (cpu.SDW, address);
+        if (! cpu.PTW0.DF)
+          {
+            // cpu.TPR.CA = address;
+            if (thisCycle != ABSA_CYCLE)
+              {
                 // initiate a directed fault
-                doFault(FAULT_DF0 + cpu . PTW0.FC, (_fault_subtype) {.bits=0}, "PTW0.F == 0");
-            }
-        }
-        //loadPTWAM(cpu . SDW->POINTER, cpu . TPR.CA);    // load PTW0 to PTWAM
-        loadPTWAM(cpu . SDW->POINTER, address, nomatch);    // load PTW0 to PTWAM
+                doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                         "PTW0.F == 0");
+              }
+          }
+        loadPTWAM (cpu.SDW->POINTER, address, nomatch); // load PTW0 to PTWAM
     }
 #endif
     
+    // Prepage mode?
     // check for "uninterruptible" EIS instruction
     // ISOLTS-878 02: mvn,cmpn,mvne,ad3d; obviously also ad2/3d,sb2/3d,mp2/3d,dv2/3d
     // DH03 p.8-13: probably also mve,btd,dtb
     if (i->opcodeX && ((i->opcode & 0770)== 0200|| (i->opcode & 0770) == 0220
         ||(i->opcode & 0770)== 020|| (i->opcode & 0770) == 0300))
-    {
+      {
         doPTW2(cpu . SDW, address);
-    } 
+      } 
     goto I;
     
+////////////////////////////////////////
+//
+// Sheet 8: "H", "I"
+//
+////////////////////////////////////////
+
 H:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(H): FANP\n");
+
     PNL (L68_ (cpu.apu.state |= apu_FANP;))
-#if 0
-    appendingUnitCycleType = apuCycle_FANP;
-    setAPUStatus (apuStatus_FANP);
-#else
     // ISOLTS pa865 test-01a 101232
     if (get_bar_mode ())
       {
@@ -1891,40 +1970,29 @@ H:;
         appendingUnitCycleType = apuCycle_FANP;
         setAPUStatus (apuStatus_FANP);
       }
-#endif
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", cpu . SDW->ADDR, address);
 
-    finalAddress = (cpu . SDW->ADDR & 077777760)+ address;
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n",
+               cpu . SDW->ADDR, address);
+
+    finalAddress = (cpu.SDW->ADDR & 077777760) + address;
     finalAddress &= 0xffffff;
     PNL (cpu.APUMemAddr = finalAddress;)
     
-#ifdef L68
-    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FANP);
-#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
     
     //if (thisCycle == ABSA_CYCLE)
-    //    goto Exit;
+    //    goto J;
     goto HI;
     
 I:;
 
 // Set PTW.M
 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I)\n");
-    //if (isSTROP(i) && PTW->M == 0)
-    //if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I): FAP\n");
     if (StrOp && cpu . PTW->M == 0)  // is this the right way to do this?
     {
-#if 0
-        // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
-        appendingUnitCycleType = MPTW;
-        cpu . PTW->M = 1;
-        
-#else
-	   modifyPTW(cpu . SDW, address);
-#endif
+	   modifyPTW(cpu.SDW, address);
     }
     
     // final address paged
@@ -1948,58 +2016,322 @@ I:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
 
     //if (thisCycle == ABSA_CYCLE)
-    //    goto Exit;
-    //goto HI;
+    //    goto J;
+    goto HI;
 
 HI:
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(HI)\n");
 
-// Check for conditions that change the PPR.P bit
-
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");
-    
-    //if (thisCycle == INSTRUCTION_FETCH)
-    if (thisCycle == INDIRECT_WORD_FETCH)
-        goto Exit;
-    
-    if (thisCycle == RTCD_OPERAND_FETCH)
-        goto KL;
-    
-    //if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
-    if (instructionFetch || (i && (i->info->flags & TRANSFER_INS)))
-        goto KL;
-    
-// XXX "APU data movement; Load/store APU data" not implemented"
-// XXX ticket 12
-    // load/store data .....
-
-    
-    goto Exit;
- 
-KL:;
-
-// We end up here if the operand data is destined for the IC.
-//  Set PPR.P
-
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
-    
-    if (cpu . TPR.TRR == 0)
+    switch (thisCycle)
       {
-        // C(SDW.P) → C(PPR.P)
-        cpu . PPR.P = cpu . SDW->P;
-        PNL (L68_ (cpu.apu.state |= apu_TP_P;))
+        case UNKNOWN_CYCLE:
+          sim_printf ("doAppend HI UNKNOWN_CYCLE\n");
+          break;
+
+        case OPERAND_STORE:
+          core_write (finalAddress, * result, "OPERAND_STORE");
+          break;
+
+        case OPERAND_READ:
+          core_read (finalAddress, result, "OPERAND_STORE");
+          break;
+
+        case INDIRECT_WORD_FETCH:
+          core_read (finalAddress, result, "INDIRECT_WORD_FETCH");
+          goto J;
+
+        case RTCD_OPERAND_FETCH:
+          core_read (finalAddress, result, "RTCD_OPERAND_FETCH");
+          core_read (finalAddress + 1, result + 1, "RTCD_OPERAND_FETCH2");
+          goto K;
+
+        case INSTRUCTION_FETCH:
+          core_read (finalAddress, result, "INSTRUCTION_FETCH");
+          break;
+
+        case APU_DATA_MOVEMENT:
+          break;
+
+        case EIS_OPERAND_STORE:
+          core_write (finalAddress, * result, "EIS_OPERAND_STORE");
+          break;
+
+        case EIS_OPERAND_READ:
+          core_read (finalAddress, result, "EIS_OPERAND_READ");
+          break;
+
+        case ABSA_CYCLE:
+          break;
+      }
+
+    // Was this an indirect word fetch?
+    //   handled above
+
+    // Was this an rtcd operand fetch?
+    //   handled above
+
+    // is OPCODE call6?
+    if ((! instructionFetch) && i->info->flags & CALL6_INS)
+      goto N;
+
+    // Transfer or instruction fetch?
+    if (instructionFetch || (i->info->flags & TRANSFER_INS))
+      goto L;
+
+    // APU data movement?
+    //  handled in iefp
+   goto Exit;
+
+    
+////////////////////////////////////////
+//
+// Sheet 9: "J"
+//
+////////////////////////////////////////
+
+// Indirect operand fetch
+
+J:;
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(J)\n");
+
+    // ri or ir & TPC.CA even?
+    word6 tag = GET_TAG (IWB_IRODD);
+    if ((GET_TM (tag) == TM_IR || GET_TM (tag) == TM_RI) &&
+        (cpu.TPR.CA & 1) == 0)
+      {
+        if (ISITS (* result))
+          goto O;
+        if (ISITP (* result))
+          goto P;
+      }
+
+    // C(Y) tag == other indirect?
+    //   TM_R never indirects
+    //   TM_RI always indirects
+    //   TM_IR always indirects
+    //   TM_IT
+    //     IT_CI, IT_SC, IT_SCR -- address is used for tally word
+    //     IT_I indirects
+    //     IT_AD -- address is used for tally word
+    //     IT_SD -- address is used for tally word
+    //     IT_DI -- address is used for tally word
+    //     IT_ID -- address is used for tally word
+    //     IT_DIC -- address is used for tally word
+    //     IT_IDC -- address is used for tally word
+    static const bool isInd [64] =
+      {
+        // 00-15 R_MOD
+        false, false, false, false, false, false, false, false,
+        false, false, false, false, false, false, false, false,
+        // 16-31 RI_MOD
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        // 32-47 IT_MOD
+        // f1  und    und    und    sd     scr    f2     f3
+        false, false, false, false, true,  true,  false, false,
+        // ci  i      sc     ad     di     dic    id     idc
+        true,  true,  true,  true,  true,  true,  true,  true, 
+        // 48-63 IR_MOD
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true
+      };
+    if (isInd [(* result) & MASK6])
+      {
+        // C(Y)0,17 C(IWB) → 0,17
+        // C(Y)30,35 C(IWB) → 30,35
+        // 0 C(IWB) → 29
+        updateIWB (GET_OFFSET (* result), (* result) & MASK6);
+      }
+
+     goto Exit;
+
+////////////////////////////////////////
+//
+// Sheet 10: "K", "L", "M", "N"
+//
+////////////////////////////////////////
+
+K:; // Indirect operand fetch
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(K)\n");
+
+    // C(TPR.TRR) >= C(PPR.PRR)?
+    if (cpu.TPR.TRR >= cpu.PPR.PRR)
+      {
+        // C(TPR.TRR) => C(PRi.RNR)
+        //    for i = 0, 7
+        CPTUR (cptUsePRn + 0);
+        CPTUR (cptUsePRn + 1);
+        CPTUR (cptUsePRn + 2);
+        CPTUR (cptUsePRn + 3);
+        CPTUR (cptUsePRn + 4);
+        CPTUR (cptUsePRn + 5);
+        CPTUR (cptUsePRn + 6);
+        CPTUR (cptUsePRn + 7);
+        cpu.PR[0].RNR =
+        cpu.PR[1].RNR =
+        cpu.PR[2].RNR =
+        cpu.PR[3].RNR =
+        cpu.PR[4].RNR =
+        cpu.PR[5].RNR =
+        cpu.PR[6].RNR =
+        cpu.PR[7].RNR = cpu.PPR.PRR;
+      }
+
+    // C(TPR.TRR) -> C(PPR.PRR)
+    cpu.PPR.PRR = cpu.TPR.TRR;
+
+    goto KL;
+
+L:; // Transfer or instruction fetch
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(L)\n");
+
+    // Is OPCODE tspn?
+    if ((! instructionFetch) && i->info->flags & TSPN_INS)
+      {
+        word3 n;
+        if (i->opcode <= 0273)
+          n = (i->opcode & 3);
+        else
+          n = (i->opcode & 3) + 4;
+
+        // C(PPR.PRR) -> C(PRn .RNR)
+        // C(PPR.PSR) -> C(PRn .SNR)
+        // C(PPR.IC) -> C(PRn .WORDNO)
+        // 000000 -> C(PRn .BITNO)
+        cpu.PR[n].RNR = cpu.PPR.PRR;
+// According the AL39, the PSR is 'undefined' in absolute mode.
+// ISOLTS thinks means don't change the operand
+        if (get_addr_mode () == APPEND_mode)
+          cpu.PR[n].SNR = cpu.PPR.PSR;
+        cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
+        SET_PR_BITNO (n, 0);
+      }
+    goto KL;
+
+KL:
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(KL)\n");
+
+    // C(TPR.TSR) -> C(PPR.PSR)
+    cpu.PPR.PSR = cpu.TPR.TSR;
+    // C(TPR.CA) -> C(PPR.IC) 
+    cpu.PPR.IC = cpu.TPR.CA;
+    goto M;
+
+M: // Post CALL6 PR set
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(M)\n");
+
+    // C(TPR.TRR) = 0?
+    if (cpu.TPR.TRR == 0)
+      {
+        // C(SDW.P) -> C(PPR.P) 
+        cpu.PPR.P = cpu.SDW->P;
       }
     else
-        // 0 → C(PPR.P)
-        cpu . PPR.P = 0;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TSR %05o TPR.CA %06o\n", cpu.TPR.TSR, cpu.TPR.CA);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", cpu.TPR.TRR, cpu.SDW->P, cpu.PPR.P);
+      {
+        // 0 C(PPR.P)
+        cpu.PPR.P = 0;
+      }
+
+    // Is this an rtcd operand fetch?
+    if (rtcdOperandFetch)
+      goto O;
+
+    goto Exit; 
+
+N: // CALL6
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(N)\n");
+
+    // C(TPR.TRR) = C(PPR.PRR)?
+    if (cpu.TPR.TRR == cpu.PPR.PRR)
+      {
+        // C(PR6.SNR) -> C(PR7.SNR) 
+        cpu.PR[7].SNR = cpu.PR[6].SNR;
+      }
+    else
+      {
+        // C(DSBR.STACK) || C(TPR.TRR) -> C(PR7.SNR)
+        cpu.PR[7].SNR = (cpu.DSBR.STACK << 3) || cpu.TPR.TRR;
+      }
+
+    // C(TPR.TRR) -> C(PR7.RNR)
+    cpu.PR[7].RNR = cpu.TPR.TRR;
+    // 00...0 -> C(PR7.WORDNO)
+    cpu.PR[7].WORDNO = 0;
+    // 000000 -> C(PR7.BITNO)
+    SET_PR_BITNO (7, 0);
+    // C(TPR.TRR) -> C(PPR.PRR)
+    cpu.PPR.PRR = cpu.TPR.TRR;
+    // C(TPR.TSR) -> C(PPR.PSR)
+    cpu.PPR.PSR = cpu.TPR.TSR;
+    // C(TPR.CA) -> C(PPR.IC)
+    cpu.PPR.IC = cpu.TPR.CA;
+
+    goto M;
+
+////////////////////////////////////////
+//
+// Sheet 11: "O", "P"
+//
+////////////////////////////////////////
+
+O:; // ITS
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
+
+    // C(TPR.TRR) >= RSDWH.R1?
+    if (cpu.TPR.TRR >= cpu.RSDWH_R1)
+      {
+        // C(TPR.TRR) >= C(Y)18,20?
+        if (cpu.TPR.TRR >= (((* result) >> (18 - 3)) & MASK3))
+          goto Exit;
+        // C(Y)18,20 -> C(TPR.TRR)
+        cpu.TPR.TRR = (((* result) >> (18 - 3)) & MASK3);
+        goto Exit;
+      }
+    // C(Y)18,20 ≥ RSDWH.R1?
+    if ((((* result) >> (18 - 3)) & MASK3) >= cpu.RSDWH_R1)
+      {
+        // C(Y)18,20 -> C(TPR.TRR)
+        cpu.TPR.TRR = (((* result) >> (18 - 3)) & MASK3);
+      }
+    else
+      {
+        // RSDWH.R1 -> C(TPR.TRR)
+        cpu.TPR.TRR = cpu.RSDWH_R1;
+      }
+    goto Exit;
     
-    goto Exit;    // this may not be setup or right
+P:; // ITP
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
+
+    word3 n = GET_PRN (* result);
+    // C(TPR.TRR) >= RSDWH.R1?
+    if (cpu.TPR.TRR >= cpu.RSDWH_R1)
+      {
+        // C(TPR.TRR) >= C(Y)18,20?
+        if (cpu.TPR.TRR >= cpu.PR[n].RNR)
+          goto Exit;
+        // C(PRn .RNR) -> C(TPR.TRR)
+        cpu.TPR.TRR = cpu.PR[n].RNR;
+        goto Exit;
+      }
+    // C(PRn.RNR) ≥ RSDWH.R1?
+    if (cpu.PR[n].RNR >= cpu.RSDWH_R1)
+      {
+        // C(PRn .RNR) -> C(TPR.TRR)
+        cpu.TPR.TRR = cpu.PR[n].RNR;
+      }
+    else
+      {
+        // RSDWH.R1 -> C(TPR.TRR)
+        cpu.TPR.TRR = cpu.RSDWH_R1;
+      }
+    goto Exit;
     
 
-    
-    
-   
 Exit:;
 
     PNL (cpu.APUDataBusOffset = address;)
@@ -2009,7 +2341,7 @@ Exit:;
 
     cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???
-}
+  }
 
 // Translate a segno:offset to a absolute address.
 // Return 0 if successful.

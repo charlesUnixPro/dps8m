@@ -988,7 +988,7 @@ void cpu_init (void)
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
-static void cpun_reset2 (uint cpun)
+static void cpun_reset2 (UNUSED uint cpun)
 {
 #ifdef ROUND_ROBIN
     setCPUnum (cpun);
@@ -3383,14 +3383,15 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_initialize_and_clear (UNIT * uptr, UNUSED int32 value,
+static t_stat cpu_set_initialize_and_clear (UNUSED UNIT * uptr, 
+                                            UNUSED int32 value,
                                             UNUSED const char * cptr, 
                                             UNUSED void * desc)
   {
-    long cpu_unit_num = UNIT_NUM (uptr);
     // Crashes console?
     //cpun_reset2 ((uint) cpu_unit_num);
 #ifdef ISOLTS
+    long cpu_unit_num = UNIT_NUM (uptr);
     cpu_state_t * cpun = cpus + cpu_unit_num;
     if (cpun->switches.useMap)
       {
