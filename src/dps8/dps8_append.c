@@ -141,13 +141,15 @@ void doPtrReg(void)
     cpu.cu.TSN_PRNO [0] = n;
     cpu.cu.TSN_VALID [0] = 1;
 
-    cpu . TPR.TSR = cpu . PAR[n].SNR;
-    cpu . TPR.TRR = max3(cpu . PAR[n].RNR, cpu . TPR.TRR, cpu . PPR.PRR);
+    updateIWB ((SIGNEXT15_18 (offset)) & 0777777, GET_TAG (IWB_IRODD));
+
+    //cpu.TPR.TSR = cpu.PAR[n].SNR;
+    //cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
     
-    cpu . TPR.CA = (cpu . PAR[n].WORDNO + SIGNEXT15_18(offset)) & 0777777;
-    cpu . TPR.TBR = GET_PR_BITNO (n);
+    cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+    //cpu.TPR.TBR = GET_PR_BITNO (n);
     
-    set_went_appending ();
+    //set_went_appending ();
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, cpu . TPR.CA, cpu . TPR.TBR, cpu . TPR.TSR, cpu . TPR.TRR);
 }
 
@@ -1404,6 +1406,9 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
                "doAppendCycle(Entry) thisCycle=%s\n",
                strPCT (thisCycle));
     sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) lastCycle=%s\n",
+               strPCT (cpu.apu.lastCycle));
+    sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) Address=%06o\n",
                address);
     sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1455,12 +1460,13 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     if (lastCycle == RTCD_OPERAND_FETCH)
       goto A;
 
-    if (lastCycle != INSTRUCTION_FETCH && i -> a)
+    //if (lastCycle != INSTRUCTION_FETCH && i -> a)
+    if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
       {
         PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
         //word3 n = GET_PRN(IWB_IRODD);  // get PRn
-        if (cpu.cu.TSN_VALID[0] == 0)
-          sim_printf ("----------------------------->>>> TSN not valide!\n");
+        //if (cpu.cu.TSN_VALID[0] == 0)
+          //sim_printf ("----------------------------->>>> TSN not valide!\n");
         word3 n = cpu.cu.TSN_PRNO[0];
 
         CPTUR (cptUsePRn + n);

@@ -2014,7 +2014,6 @@ restart_1:
             if (ci->a)   // if A bit set set-up TPR stuff ...
               {
                 CPT (cpt2U, 34); // B29
-//#ifndef APPFIX
                 doPtrReg ();
 //#else
                 //word15 offset = GET_OFFSET (IWB_IRODD);
