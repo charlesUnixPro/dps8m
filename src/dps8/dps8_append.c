@@ -1275,7 +1275,8 @@ static char *strPCT(_processor_cycle_type t)
         case RTCD_OPERAND_FETCH: return "RTCD_OPERAND_FETCH";
         //case SEQUENTIAL_INSTRUCTION_FETCH: return "SEQUENTIAL_INSTRUCTION_FETCH";
         case INSTRUCTION_FETCH: return "INSTRUCTION_FETCH";
-        case APU_DATA_MOVEMENT: return "APU_DATA_MOVEMENT";
+        case APU_DATA_READ: return "APU_DATA_READ";
+        case APU_DATA_STORE: return "APU_DATA_STORE";
         case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
         case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
         case ABSA_CYCLE : return "ABSA_CYCLE";
@@ -1394,7 +1395,7 @@ _sdw0 * getSDW (word15 segno)
 //
 
 // CANFAULT
-word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * result)
+word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
   {
     DCDstruct * i = & cpu.currentInstruction;
     sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1406,6 +1407,9 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) Address=%06o\n",
                address);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) n=%2u\n",
+               nWords);
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n",
                cpu.PPR.PRR, cpu.PPR.PSR);
@@ -1423,7 +1427,9 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
       }
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
-    bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
+    bool StrOp = (thisCycle == OPERAND_STORE ||
+                  thisCycle == EIS_OPERAND_STORE ||
+                  thisCycle == APU_DATA_STORE);
     //bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
 #ifdef WAM
@@ -2036,53 +2042,22 @@ I:;
 HI:
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(HI)\n");
 
-    switch (thisCycle)
+    if (StrOp)
       {
-        case UNKNOWN_CYCLE:
-          sim_printf ("doAppend HI UNKNOWN_CYCLE\n");
-          break;
-
-        case OPERAND_STORE:
-          core_write (finalAddress, * result, "OPERAND_STORE");
-          break;
-
-        case OPERAND_READ:
-          core_read (finalAddress, result, "OPERAND_STORE");
-          break;
-
-        case INDIRECT_WORD_FETCH:
-          core_read (finalAddress, result, "INDIRECT_WORD_FETCH");
-          goto J;
-
-        case RTCD_OPERAND_FETCH:
-          core_read (finalAddress, result, "RTCD_OPERAND_FETCH");
-          core_read (finalAddress + 1, result + 1, "RTCD_OPERAND_FETCH2");
-          goto K;
-
-        case INSTRUCTION_FETCH:
-          core_read (finalAddress, result, "INSTRUCTION_FETCH");
-          break;
-
-        case APU_DATA_MOVEMENT:
-          break;
-
-        case EIS_OPERAND_STORE:
-          core_write (finalAddress, * result, "EIS_OPERAND_STORE");
-          break;
-
-        case EIS_OPERAND_READ:
-          core_read (finalAddress, result, "EIS_OPERAND_READ");
-          break;
-
-        case ABSA_CYCLE:
-          break;
+        core_writeN (finalAddress, data, nWords, strPCT (thisCycle));
+      }
+    else
+      {
+        core_readN (finalAddress, data, nWords, strPCT (thisCycle));
       }
 
     // Was this an indirect word fetch?
-    //   handled above
+    if (thisCycle == INDIRECT_WORD_FETCH)
+      goto J;
 
     // Was this an rtcd operand fetch?
-    //   handled above
+    if (thisCycle == RTCD_OPERAND_FETCH)
+      goto K;
 
     // is OPCODE call6?
     if ((! instructionFetch) && i->info->flags & CALL6_INS)
@@ -2093,7 +2068,7 @@ HI:
       goto L;
 
     // APU data movement?
-    //  handled in iefp
+    //  handled above
    goto Exit;
 
     
@@ -2113,9 +2088,9 @@ J:;
     if ((GET_TM (tag) == TM_IR || GET_TM (tag) == TM_RI) &&
         (cpu.TPR.CA & 1) == 0)
       {
-        if (ISITS (* result))
+        if (ISITS (* data))
           goto O;
-        if (ISITP (* result))
+        if (ISITP (* data))
           goto P;
       }
 
@@ -2149,12 +2124,12 @@ J:;
         true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true
       };
-    if (isInd [(* result) & MASK6])
+    if (isInd [(* data) & MASK6])
       {
         // C(Y)0,17 C(IWB) → 0,17
         // C(Y)30,35 C(IWB) → 30,35
         // 0 C(IWB) → 29
-        updateIWB (GET_OFFSET (* result), (* result) & MASK6);
+        updateIWB (GET_OFFSET (* data), (* data) & MASK6);
       }
 
      goto Exit;
@@ -2302,17 +2277,17 @@ O:; // ITS
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
       {
         // C(TPR.TRR) >= C(Y)18,20?
-        if (cpu.TPR.TRR >= (((* result) >> (18 - 3)) & MASK3))
+        if (cpu.TPR.TRR >= (((* data) >> (18 - 3)) & MASK3))
           goto Exit;
         // C(Y)18,20 -> C(TPR.TRR)
-        cpu.TPR.TRR = (((* result) >> (18 - 3)) & MASK3);
+        cpu.TPR.TRR = (((* data) >> (18 - 3)) & MASK3);
         goto Exit;
       }
     // C(Y)18,20 ≥ RSDWH.R1?
-    if ((((* result) >> (18 - 3)) & MASK3) >= cpu.RSDWH_R1)
+    if ((((* data) >> (18 - 3)) & MASK3) >= cpu.RSDWH_R1)
       {
         // C(Y)18,20 -> C(TPR.TRR)
-        cpu.TPR.TRR = (((* result) >> (18 - 3)) & MASK3);
+        cpu.TPR.TRR = (((* data) >> (18 - 3)) & MASK3);
       }
     else
       {
@@ -2325,7 +2300,7 @@ P:; // ITP
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
 
-    word3 n = GET_PRN (* result);
+    word3 n = GET_PRN (* data);
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
       {

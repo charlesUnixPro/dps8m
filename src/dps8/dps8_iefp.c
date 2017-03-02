@@ -31,14 +31,12 @@
 
 // new Read/Write stuff ...
 
-t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp,
-             bool b29)
+t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
     cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
 
-    // XXX went appending in BAR mode?
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         //if (isBAR)
           //sim_printf ("went appending fired in BAR mode\n"); 
@@ -77,8 +75,7 @@ B29:;
             if (isBAR)
             {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle(barAddress, cyctyp, result);
-                //core_read(cpu . iefpFinalAddress, result, __func__);
+                cpu.iefpFinalAddress = doAppendCycle(barAddress, cyctyp, result, 1);
                 sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012"PRIo64"\n", cpu . iefpFinalAddress, *result);
 #ifdef HDBG
                 hdbgMRead (cpu . iefpFinalAddress, * result);
@@ -86,8 +83,7 @@ B29:;
 
                 return SCPE_OK;
             } else {
-                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp, result);
-                //core_read(cpu . iefpFinalAddress, result, __func__);
+                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp, result, 1);
                 // XXX Don't trace Multics idle loop
                 if (cpu . PPR.PSR != 061 && cpu . PPR.IC != 0307)
                   {
@@ -103,14 +99,13 @@ B29:;
     return SCPE_UNK;
 }
 
-t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp,
-              bool b29)
+t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
     cpu.iefpFinalAddress = address;
 
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         goto B29;
       }
@@ -151,8 +146,7 @@ B29:;
             if (isBAR)
               {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp, result);
-                //core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp, result, 2);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < 2; i ++)
@@ -162,8 +156,7 @@ B29:;
               }
             else
               {
-                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp, result);
-                //core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp, result, 2);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < 2; i ++)
@@ -176,13 +169,13 @@ B29:;
     return SCPE_UNK;
   }
 
-t_stat Read8 (word18 address, word36 * result, bool b29)
+t_stat Read8 (word18 address, word36 * result)
   {
     cpu.iefpFinalAddress = address;
 
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         goto B29;
       }
@@ -231,24 +224,18 @@ B29:;
             if (isBAR)
               {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_MOVEMENT, result);
-                core_readN (cpu.iefpFinalAddress, result, 8, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_READ, result, 8);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < 8; i ++)
                      sim_debug (DBG_APPENDING | DBG_FINAL, &cpu_dev, "Read (Actual) Read:  bar iefpFinalAddress=%08o  readData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, result [i]);
                   }
-#ifdef HDBG
-                for (uint i = 0; i < 8; i ++)
-                  hdbgMRead (cpu.iefpFinalAddress + i, result [i]);
-#endif
 
                 return SCPE_OK;
               }
             else
               {
-                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_MOVEMENT, result);
-                core_readN (cpu.iefpFinalAddress, result, 8, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_READ, result, 8);
                 // XXX Don't trace Multics idle loop
                 if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
                   {
@@ -269,7 +256,7 @@ B29:;
     return SCPE_UNK;
   }
 
-t_stat ReadPage (word18 address, word36 * result, bool b29)
+t_stat ReadPage (word18 address, word36 * result)
   {
     if ((address & PGMK) != 0)
       {
@@ -288,7 +275,7 @@ t_stat ReadPage (word18 address, word36 * result, bool b29)
     // Correct version
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         goto B29;
       }
@@ -337,8 +324,7 @@ B29:;
             if (isBAR)
               {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_MOVEMENT, result);
-                core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_READ, result, PGSZ);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < PGSZ; i ++)
@@ -353,8 +339,7 @@ B29:;
               }
             else
               {
-                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_MOVEMENT, result);
-                core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
+                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_READ, result, PGSZ);
                 // XXX Don't trace Multics idle loop
                 if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
                   {
@@ -375,7 +360,7 @@ B29:;
     return SCPE_UNK;
   }
 
-t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
+t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp)
 {
     //word24 finalAddress;
     cpu . iefpFinalAddress = address;
@@ -390,9 +375,7 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
     // Correct version
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
-        //<generate address from  pRn and offset in address>
-        //core_read (address, * result, __func__);
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
         goto B29;
     
     
@@ -427,24 +410,12 @@ B29:
             if (isBAR)
             {
                 word18 barAddress = getBARaddress (address);
-                cpu . iefpFinalAddress = doAppendCycle(barAddress, cyctyp, & data);
-                //core_write(cpu . iefpFinalAddress, data, __func__);
-        
+                cpu . iefpFinalAddress = doAppendCycle(barAddress, cyctyp, & data, 1);
                 sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: bar iefpFinalAddress=%08o writeData=%012"PRIo64"\n", cpu . iefpFinalAddress, data);
-#ifdef HDBG
-                hdbgMWrite (cpu . iefpFinalAddress, data);
-#endif
-        
                 return SCPE_OK;
             } else {
-                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp, & data);
-                //core_write(cpu . iefpFinalAddress, data, __func__);
-        
+                cpu . iefpFinalAddress = doAppendCycle(address, cyctyp, & data, 1);
                 sim_debug(DBG_APPENDING | DBG_FINAL, &cpu_dev, "Write(Actual) Write: iefpFinalAddress=%08o writeData=%012"PRIo64"\n", cpu . iefpFinalAddress, data);
-#ifdef HDBG
-                hdbgMWrite (cpu . iefpFinalAddress, data);
-#endif
-        
                 return SCPE_OK;
             }
         }
@@ -454,14 +425,76 @@ B29:
 }
 
 
-t_stat Write8 (word18 address, word36 * data, bool b29)
+t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
+  {
+    cpu . iefpFinalAddress = address;
+    bool isBAR = get_bar_mode ();
+
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+      goto B29;
+    
+    switch (get_addr_mode ())
+      {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+              {
+                cpu.iefpFinalAddress = getBARaddress (address);
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                core_write2 (cpu.iefpFinalAddress, data [0], data [1],
+                              __func__);
+                sim_debug (DBG_FINAL, & cpu_dev,
+                           "Write2 (Actual) Write:      bar address=%08o "
+                           "writeData=%012"PRIo64" %012"PRIo64"\n",
+                           address, data [0], data [1]);
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                core_write2 (address, data [0], data [1], __func__);
+                sim_debug (DBG_FINAL, & cpu_dev,
+                           "Write2 (Actual) Write:      abs address=%08o "
+                           "writeData=%012"PRIo64" %012"PRIo64"\n", 
+                           address, data [0], data [1]);
+              }
+          }
+          break;
+
+        case APPEND_mode:
+          {
+B29:
+            if (isBAR)
+              {
+                word18 barAddress = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, cyctyp, data, 2);
+                sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
+                           "Write2 (Actual) Write: bar iefpFinalAddress=%08o "
+                           "writeData=%012"PRIo64" %012"PRIo64"\n", 
+                           address, data [0], data [1]);
+              }
+            else
+              {
+                cpu.iefpFinalAddress = doAppendCycle (address, cyctyp, data, 2);
+                sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
+                           "Write2 (Actual) Write: iefpFinalAddress=%08o "
+                           "writeData=%012"PRIo64" %012"PRIo64"\n", 
+                           address, data [0], data [1]);
+              }
+          }
+          break;
+      }
+    return SCPE_UNK;
+  }
+
+
+t_stat Write8 (word18 address, word36 * data)
   {
     address &= paragraphMask; // Round to 8 word boundarryt
     cpu.iefpFinalAddress = address;
 
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       goto B29;
     
     
@@ -508,9 +541,7 @@ B29:
             if (isBAR)
               {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_MOVEMENT, data);
-                core_writeN (cpu.iefpFinalAddress, data, 8, __func__);
-        
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_STORE, data, 8);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < 8; i ++)
@@ -525,9 +556,7 @@ B29:
               }
             else
               {
-                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_MOVEMENT, data);
-                core_writeN (cpu.iefpFinalAddress, data, 8, __func__);
-        
+                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_STORE, data, 8);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < 8; i ++)
@@ -545,7 +574,7 @@ B29:
     return SCPE_UNK;
   }
 
-t_stat WritePage (word18 address, word36 * data, bool b29)
+t_stat WritePage (word18 address, word36 * data)
   {
     if ((address & PGMK) != 0)
       {
@@ -556,7 +585,7 @@ t_stat WritePage (word18 address, word36 * data, bool b29)
 
     bool isBAR = get_bar_mode ();
 
-    if (b29 || get_went_appending ())
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
       goto B29;
     
     
@@ -603,26 +632,17 @@ B29:
             if (isBAR)
               {
                 word18 barAddress = getBARaddress (address);
-                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_MOVEMENT, data);
-                core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
-        
+                cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_STORE, data, PGSZ);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < PGSZ; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "WritePage(Actual) Write: bar iefpFinalAddress=%08o writeData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, data [i]);
                   }
-#ifdef HDBG
-                for (uint i = 0; i < PGSZ; i ++)
-                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
-#endif
-        
                 return SCPE_OK;
               }
             else
               {
-                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_MOVEMENT, data);
-                core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
-        
+                cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_STORE, data, PGSZ);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
                     for (uint i = 0; i < PGSZ; i ++)

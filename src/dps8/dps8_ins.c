@@ -135,7 +135,7 @@ static void writeOperands (void)
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, OPERAND_READ, i->a);
+        Read (indwordAddress, & indword, OPERAND_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT indword=%012"PRIo64"\n", indword);
@@ -207,7 +207,7 @@ static void writeOperands (void)
         cpu.cu.pot = 1;
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ, i->a);
+        Read (Yi, & data, OPERAND_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT data=%012"PRIo64"\n", data);
 
@@ -234,7 +234,7 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
-        Write (Yi, data, OPERAND_STORE, i->a);
+        Write (Yi, data, OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
@@ -249,7 +249,7 @@ static void writeOperands (void)
       } // IT
 
 
-    WriteOP (cpu.TPR.CA, OPERAND_STORE, i->a);
+    WriteOP (cpu.TPR.CA, OPERAND_STORE);
 
     return;
 }
@@ -333,7 +333,7 @@ static void readOperands (void)
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, OPERAND_READ, i->a);
+        Read (indwordAddress, & indword, OPERAND_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT indword=%012"PRIo64"\n", indword);
@@ -403,7 +403,7 @@ static void readOperands (void)
         PNL (cpu.prepare_state |= ps_SIW);
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ, i->a);
+        Read (Yi, & data, OPERAND_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT data=%012"PRIo64"\n", data);
 
@@ -434,7 +434,7 @@ static void readOperands (void)
       } // IT
 
 
-    ReadOP (cpu.TPR.CA, OPERAND_READ, i->a);
+    ReadOP (cpu.TPR.CA, OPERAND_READ);
 
     return;
   }
@@ -1162,7 +1162,7 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 10); // fetch rpt odd
-            Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH, 0);
+            Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH);
           }
       }
     else if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
@@ -1170,20 +1170,20 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 11); // fetch rpt even
-            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
+            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
           }
       }
     else
       {
         CPT (cpt2U, 12); // fetch 
-        Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH, 0);
+        Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
 #ifdef ISOLTS
 // ISOLTS test pa870 expects IRODD to be set up.
 // If we are fetching an even instruction, also fetch the odd.
 // If we are fetching an odd instruction, copy it to IRODD as
 // if that was where we got it from.
         if ((cpu.PPR.IC & 1) == 0) // Even
-          Read (addr+1, & cpu.cu.IRODD, INSTRUCTION_FETCH, 0);
+          Read (addr+1, & cpu.cu.IRODD, INSTRUCTION_FETCH);
         else
           cpu.cu.IRODD = cpu.cu.IWB;
 #endif
@@ -1814,35 +1814,11 @@ restart_1:
 #endif
 
 ///
-/// executeInstruction: Initialize TPR
+/// executeInstruction: Initialize misc.
 ///
 
-    // This must not happen on instruction restart
-    if (! ci->restart)
-      {
-#ifdef EIS_PTR4
-// XXX Causes system_startup_: Error condition while initializing ring 1 
-// environment.
-        cpu.cu.TSN_VALID[0] = 0;
-        cpu.cu.TSN_VALID[1] = 0;
-        cpu.cu.TSN_VALID[2] = 0;
-#endif
-
-#if 0 //  APPFIX
-// XXX This belongs in doAppend XXX XXX XXX
-        if (! ci->a)
-          {
-            PNL (L68_ (cpu.apu.state |= apu_ESN_PSR;))
-            cpu.TPR.TRR = cpu.PPR.PRR;
-            cpu.TPR.TSR = cpu.PPR.PSR;
-          }
-#endif
-      }
-
     cpu.du.JMP = (word3) info->ndes;
-
     cpu.dlyFlt = false;
-
     cpu.cu.XSF = 0;
 
 ///
@@ -1993,8 +1969,13 @@ restart_1:
 // to the condition we know it should be in.
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
+}}
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  EIS_OPERAND_READ, 0); // I think.
+                  EIS_OPERAND_READ); // I think.
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
         setupEISoperands ();
@@ -2032,6 +2013,9 @@ restart_1:
                              & MASK18;
 
                 updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
+
+                cpu.TPR.TSR = cpu.PAR[n].SNR;
+                cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
                 sim_debug (DBG_APPENDING, &cpu_dev,
                            "doPtrReg(): n=%o offset=%05o TPR.CA=%06o "
@@ -2138,7 +2122,6 @@ restart_1:
 #endif
         PNL (cpu.IWRAddr = 0);
       }
-    cpu.cu.TSN_VALID [0] = 0;
 
 ///
 /// executeInstruction: Execute the instruction
@@ -2186,7 +2169,7 @@ restart_1:
         //
 
         word36 indword;
-        Read (cpu.TPR.CA, & indword, OPERAND_READ, ci->a);
+        Read (cpu.TPR.CA, & indword, OPERAND_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT indword=%012"PRIo64"\n", indword);
@@ -2280,7 +2263,7 @@ restart_1:
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
-        Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH, ci->a);
+        Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
@@ -9346,7 +9329,7 @@ static int doABSA (word36 * result)
 
     // ABSA handles directed faults differently, so a special append cycle is needed.
     // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
-    res = (word36)doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL) << 12;
+    res = (word36)doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
 
 #if 0
     word36 SDWeven, SDWodd;

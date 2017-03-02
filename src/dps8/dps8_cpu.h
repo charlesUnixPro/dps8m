@@ -1836,8 +1836,8 @@ static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
-t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp);
+t_stat WriteOP (word18 addr, _processor_cycle_type acctyp);
 
 #ifdef PANEL
 static inline void trackport (word24 a, word36 d)

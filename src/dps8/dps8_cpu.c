@@ -2496,7 +2496,7 @@ int OPSIZE (void)
 }
 
 // read instruction operands
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
 {
     CPT (cpt1L, 6); // ReadOP
     DCDstruct * i = & cpu.currentInstruction;
@@ -2509,10 +2509,10 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     {
         addr &= 0777776;   // make even
 #ifdef RALRx
-        Read2 (addr, cpu.Ypair, RTCD_OPERAND_FETCH, b29);
+        Read2 (addr, cpu.Ypair, RTCD_OPERAND_FETCH);
 #else
-        Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH, b29);
-        Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH);
+        Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH);
 #endif
         return SCPE_OK;
     }
@@ -2521,32 +2521,40 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
     {
         case 1:
             CPT (cpt1L, 7); // word
-            Read (addr, &cpu.CY, cyctyp, b29);
+            Read (addr, &cpu.CY, cyctyp);
             return SCPE_OK;
         case 2:
             CPT (cpt1L, 8); // double word
             addr &= 0777776;   // make even
-            Read (addr + 0, cpu.Ypair + 0, cyctyp, b29);
-            Read (addr + 1, cpu.Ypair + 1, cyctyp, b29);
+            Read2 (addr, cpu.Ypair, cyctyp);
             break;
         case 8:
             CPT (cpt1L, 9); // oct word
             addr &= 0777770;   // make on 8-word boundary
-            for (uint j = 0 ; j < 8 ; j += 1)
-                Read (addr + j, cpu.Yblock8 + j, cyctyp, b29);
+            Read8 (addr, cpu.Yblock8);
             break;
         case 16:
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX Read16 w.r.t. lastCycle == indirect\n");
+}}
             CPT (cpt1L, 10); // 16 words
             addr &= 0777760;   // make on 16-word boundary
             for (uint j = 0 ; j < 16 ; j += 1)
-                Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
+                Read (addr + j, cpu.Yblock16 + j, cyctyp);
             
             break;
         case 32:
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX Read32 w.r.t. lastCycle == indirect\n");
+}}
             CPT (cpt1L, 11); // 32 words
             addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
-                Read (addr + j, cpu.Yblock32 + j, cyctyp, b29);
+                Read (addr + j, cpu.Yblock32 + j, cyctyp);
             
             break;
     }
@@ -2557,37 +2565,45 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 }
 
 // write instruction operands
-t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
+t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
 {
     switch (OPSIZE ())
     {
         case 1:
             CPT (cpt1L, 12); // word
-            Write (addr, cpu.CY, OPERAND_STORE, b29);
+            Write (addr, cpu.CY, OPERAND_STORE);
             return SCPE_OK;
         case 2:
             CPT (cpt1L, 13); // double word
             addr &= 0777776;   // make even
-            Write (addr + 0, cpu.Ypair[0], OPERAND_STORE, b29);
-            Write (addr + 1, cpu.Ypair[1], OPERAND_STORE, b29);
+            Write2 (addr + 0, cpu.Ypair, OPERAND_STORE);
             break;
         case 8:
             CPT (cpt1L, 14); // 8 words
             addr &= 0777770;   // make on 8-word boundary
-            for (uint j = 0 ; j < 8 ; j += 1)
-                Write (addr + j, cpu.Yblock8[j], OPERAND_STORE, b29);
+            Write8 (addr, cpu.Yblock8);
             break;
         case 16:
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX Write16 w.r.t. lastCycle == indirect\n");
+}}
             CPT (cpt1L, 15); // 16 words
             addr &= 0777760;   // make on 16-word boundary
             for (uint j = 0 ; j < 16 ; j += 1)
-                Write (addr + j, cpu.Yblock16[j], OPERAND_STORE, b29);
+                Write (addr + j, cpu.Yblock16[j], OPERAND_STORE);
             break;
         case 32:
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX Write32 w.r.t. lastCycle == indirect\n");
+}}
             CPT (cpt1L, 16); // 32 words
             addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
-                Write (addr + j, cpu.Yblock32[j], OPERAND_STORE, b29);
+                Write (addr + j, cpu.Yblock32[j], OPERAND_STORE);
             break;
     }
     //cpu.TPR.CA = addr;  // restore address
@@ -2678,7 +2694,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read   %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
@@ -2724,7 +2740,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "write  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2780,7 +2796,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
@@ -2799,7 +2815,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
 
@@ -2860,11 +2876,14 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     //if (watchBits [addr] && even==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, even, ctx);
-        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
     PNL (trackport (addr - 1, even));
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write2 %08o %012"PRIo64" (%s)\n",
+                addr - 1, even, ctx);
 
     // If the even address is OK, the odd will be
     //nem_check (addr,  "core_write2 nem");
@@ -2873,11 +2892,14 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     //if (watchBits [addr] && odd==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, odd, ctx);
-        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd;
     PNL (trackport (addr, odd));
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write2 %08o %012"PRIo64" (%s)\n",
+                addr, odd, ctx);
     return 0;
 }
 #endif
