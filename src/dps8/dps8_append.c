@@ -1216,14 +1216,8 @@ static char *strAccessType(MemoryAccessType accessType)
     switch (accessType)
     {
         case UnknownMAT:        return "Unknown";
-        case InstructionFetch:  return "InstructionFetch";
-        case IndirectRead:      return "IndirectRead";
-        //case DataRead:          return "DataRead";
-        //case DataWrite:         return "DataWrite";
-        case OperandRead:       return "Operand/Data-Read";
-        case OperandWrite:      return "Operand/Data-Write";
-        case Call6Operand:      return "Call6Operand";
-        case RTCDOperand:       return "RTCDOperand";
+        case OperandRead:       return "OperandRead";
+        case OperandWrite:      return "OperandWrite";
         default:                return "???";
     }
 }
@@ -1472,7 +1466,8 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
 
     //if (lastCycle != INSTRUCTION_FETCH && i -> a)
     //if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
-    if (lastCycle != INSTRUCTION_FETCH)
+    //if (lastCycle != INSTRUCTION_FETCH)
+    if (thisCycle != INSTRUCTION_FETCH)
       {
         for (uint tsn = 0; tsn < 3; tsn ++)
           {
