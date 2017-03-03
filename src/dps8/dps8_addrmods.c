@@ -483,7 +483,8 @@ startCA:;
         // verified that Tm is R or RI, and Td is X1..X7.
         if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
-            if (cpu.cu.TSN_VALID[0])
+#if 0 // executeInstruction has already cleared PRNO
+            if (cpu.isb29)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
                 CPTUR (cptUsePRn + PRn);
@@ -494,6 +495,19 @@ startCA:;
               {
                 cpu.TPR.CA = Cr;
               }
+#else
+            if (cpu.isb29)
+              {
+                word3 PRn = cpu.cu.TSN_PRNO[0];
+                CPTUR (cptUsePRn + PRn);
+                cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
+                cpu.TPR.CA &= AMASK;
+              }
+            else
+              {
+                cpu.TPR.CA = Cr;
+              }
+#endif
           }
         else
           {

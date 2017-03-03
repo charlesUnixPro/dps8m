@@ -404,6 +404,7 @@ static void fetchDSPTW(word15 segno)
 
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW ACV15\n");
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -609,8 +610,14 @@ static void fetchPSDW(word15 segno)
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (APUH_FSDWP);
 #endif
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012"PRIo64" 0%012"PRIo64" ADDR 0%o BOUND 0%o U %o F %o\n",
- y1, cpu . PTW0.ADDR, SDWeven, SDWodd, cpu . SDW0.ADDR, cpu . SDW0.BOUND, cpu . SDW0.U, cpu . SDW0.DF);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+      "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012"PRIo64" 0%012"PRIo64" "
+      "ADDR %o R %o%o%o BOUND 0%o REWPUGC %o%o%o%o%o%o%o "
+      "F %o FC %o FE %o USE %o\n",
+      y1, cpu.PTW0.ADDR, SDWeven, SDWodd, cpu.SDW0.ADDR,
+      cpu.SDW0.R1, cpu.SDW0.R2, cpu.SDW0.R3, cpu.SDW0.BOUND,
+      cpu.SDW0.R, cpu.SDW0.E, cpu.SDW0.W, cpu.SDW0.P, cpu.SDW0.U, cpu.SDW0.G,
+      cpu.SDW0.C, cpu.SDW0.DF, cpu.SDW0.FC, cpu.SDW0.FE, cpu.SDW0.USE);
 }
 
 /// \brief Nonpaged SDW Fetch
@@ -1277,8 +1284,6 @@ static char *strPCT(_processor_cycle_type t)
         case INSTRUCTION_FETCH: return "INSTRUCTION_FETCH";
         case APU_DATA_READ: return "APU_DATA_READ";
         case APU_DATA_STORE: return "APU_DATA_STORE";
-        case EIS_OPERAND_STORE : return "EIS_OPERAND_STORE";
-        case EIS_OPERAND_READ : return "EIS_OPERAND_READ";
         case ABSA_CYCLE : return "ABSA_CYCLE";
 
         default:
@@ -1416,6 +1421,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
                cpu.TPR.TRR, cpu.TPR.TSR);
+#if 0
     for (uint n = 0; n < 3; n ++)
       {
         if (cpu.cu.TSN_VALID [n])
@@ -1425,10 +1431,17 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
                        n, cpu.cu.TSN_VALID [n], cpu.cu.TSN_PRNO [n]);
           }
       }
+#else
+    if (cpu.isb29)
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "doAppendCycle(Entry) isb29 PRNO %o\n",
+                   cpu.cu.TSN_PRNO [0]);
+      }
+#endif
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE ||
-                  thisCycle == EIS_OPERAND_STORE ||
                   thisCycle == APU_DATA_STORE);
     //bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
@@ -1464,6 +1477,15 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
 
 // START APPEND
 
+    if (thisCycle == APU_DATA_READ ||
+        thisCycle == APU_DATA_STORE)
+      goto A;
+
+    // R/M/W?
+    if (thisCycle == OPERAND_STORE &&
+        lastCycle == OPERAND_READ)
+      goto A;
+
     if (lastCycle == INDIRECT_WORD_FETCH)
       goto A;
 
@@ -1475,6 +1497,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     //if (lastCycle != INSTRUCTION_FETCH)
     if (thisCycle != INSTRUCTION_FETCH)
       {
+#if 0
         for (uint tsn = 0; tsn < 3; tsn ++)
           {
             if (cpu.cu.TSN_VALID [tsn])
@@ -1495,6 +1518,25 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
                 goto A;
               }
           }
+#else
+        if (cpu.isb29)
+          {
+            PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
+            word3 n = cpu.cu.TSN_PRNO[0];
+            CPTUR (cptUsePRn + n);
+            if (cpu.PAR[n].RNR > cpu.PPR.PRR)
+              {
+                cpu.TPR.TRR = cpu.PAR[n].RNR;
+              }
+            else
+             {
+                cpu.TPR.TRR = cpu.PPR.PRR;
+             }
+            cpu.TPR.TSR = cpu.PAR[n].SNR;
+            sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
+            goto A;
+          }
+#endif
       }
 
     cpu.TPR.TRR = cpu.PPR.PRR;
@@ -1642,7 +1684,8 @@ A:;
     // is executable
 
     // Transfer or instruction fetch?
-    if (instructionFetch || (i->info->flags & TRANSFER_INS))
+    //if (instructionFetch || (i->info->flags & TRANSFER_INS))
+    if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle == OPERAND_READ))
       goto F;
     
     if (StrOp)
@@ -1668,6 +1711,7 @@ A:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (cpu.TPR.TRR > cpu.SDW->R2)
           {
+            sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV3\n");
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1679,6 +1723,7 @@ A:;
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu.PPR.PSR != cpu.TPR.TSR)
               {
+                sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV4\n");
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
                 PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1703,18 +1748,21 @@ C:;
     if (cpu.TPR.TRR < cpu.SDW->R1 ||
         cpu.TPR.TRR > cpu.SDW->R2)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV5\n");
         //Set fault ACV5 = OEB
         acvFault (ACV1, "doAppendCycle(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)");
       }
     // SDW.E set ON?
     if (! cpu.SDW->E)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV2\n");
         //Set fault ACV2 = E-OFF
         acvFault (ACV2, "doAppendCycle(C) SDW.E");
       }
     // C(TPR.TRR) ≥ C(PPR.PRR)
     if (cpu.TPR.TRR < cpu.PPR.PRR)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV11\n");
         //Set fault ACV11 = INRET
         acvFault (ACV11, "doAppendCycle(C) TRR>=PRR");
       }
@@ -1757,6 +1805,7 @@ E:;
     //SDW.E set ON?
     if (!cpu . SDW->E)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV2\n");
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1776,6 +1825,7 @@ E:;
 // Fixes ISOLTS 880-01
     if (address >= (word18) cpu.SDW->EB)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV7\n");
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1789,6 +1839,7 @@ E1:
     // C(TPR.TRR) > SDW.R3?
     if (cpu.TPR.TRR > cpu.SDW->R3)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV8\n");
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1798,6 +1849,7 @@ E1:
     // C(TPR.TRR) < SDW.R1?
     if (cpu.TPR.TRR < cpu.SDW->R1)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV9\n");
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1811,6 +1863,7 @@ E1:
         // C(PPR.PRR) < SDW.R2?
         if (cpu . PPR.PRR < cpu . SDW->R2)
           {
+            sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV10\n");
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1871,6 +1924,7 @@ F:;
     // SDW .E set ON?
     if (! cpu.SDW->E)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV2\n");
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
@@ -1879,6 +1933,7 @@ F:;
     // C(PPR.PRR) = C(TPR.TRR)?
     if (cpu.PPR.PRR != cpu.TPR.TRR)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV12\n");
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1900,6 +1955,7 @@ G:;
     //C(TPR.CA)0,13 > SDW.BOUND?
     if (((address >> 4) & 037777) > cpu.SDW->BOUND)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) ACV15\n");
         cpu.acvFaults |= ACV15;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
@@ -1911,6 +1967,7 @@ G:;
     
     if (cpu.acvFaults)
       {
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) acvFaults\n");
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         // Initiate an access violation fault
         doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults},
@@ -2298,13 +2355,13 @@ O:; // ITS
     
 P:; // ITP
 
-    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(P)\n");
 
     word3 n = GET_PRN (* data);
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
       {
-        // C(TPR.TRR) >= C(Y)18,20?
+        // C(TPR.TRR) >= C(PRn .RNR)?
         if (cpu.TPR.TRR >= cpu.PR[n].RNR)
           goto Exit;
         // C(PRn .RNR) -> C(TPR.TRR)

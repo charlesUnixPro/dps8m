@@ -253,8 +253,6 @@ enum _processor_cycle_type {
     //APU_DATA_MOVEMENT,
     APU_DATA_READ,
     APU_DATA_STORE,
-    EIS_OPERAND_STORE,
-    EIS_OPERAND_READ,
     ABSA_CYCLE
     
 };

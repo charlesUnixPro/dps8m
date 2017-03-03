@@ -2961,7 +2961,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
-    p->a       = GET_A(inst);   // "A" - the indirect via pointer register flag
+    p->b29     = GET_A(inst);   // "A" - the indirect via pointer register flag
     p->i       = GET_I(inst);   // "I" - inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
     
@@ -2973,11 +2973,11 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     
     // HWR 21 Dec 2013
     if (p->info->flags & IGN_B29)
-        p->a = 0;   // make certain 'a' bit is valid always
+        p->b29 = 0;   // make certain 'a' bit is valid always
 
     if (p->info->ndes > 0)
     {
-        p->a = 0;
+        p->b29 = 0;
         p->tag = 0;
         if (p->info->ndes > 1)
         {

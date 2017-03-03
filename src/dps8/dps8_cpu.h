@@ -701,7 +701,7 @@ struct DCDstruct
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     word18 address;       // bits 0-17 of instruction
-    word1  a;             // bit-29 - address via pointer register. Usually.
+    word1  b29;           // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.
     word6  tag;           // instruction tag
     
@@ -1556,6 +1556,7 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
+    bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;

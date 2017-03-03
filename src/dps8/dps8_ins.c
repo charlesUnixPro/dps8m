@@ -264,7 +264,7 @@ static void readOperands (void)
                "readOperands (%s):mne=%s flags=%x\n",
                disAssemble (cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
-              "readOperands a %d address %08o\n", i->a, cpu.TPR.CA);
+              "readOperands a %d address %08o\n", i->b29, cpu.TPR.CA);
 
     PNL (cpu.prepare_state |= ps_POA);
 
@@ -1247,7 +1247,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1261,7 +1261,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1280,7 +1280,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1293,7 +1293,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1318,7 +1318,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a, cpu.currentInstruction.i,
+                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
@@ -1333,7 +1333,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a, cpu.currentInstruction.i,
+                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #endif
@@ -1353,7 +1353,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1368,7 +1368,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.a,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1467,6 +1467,7 @@ t_stat executeInstruction (void)
 
     DCDstruct * ci = & cpu.currentInstruction;
     decodeInstruction (IWB_IRODD, ci);
+    cpu.isb29 = ci->b29;
     const opCode *info = ci->info;       // opCode *
     const word18 address = ci->address;  // bits 0-17 of instruction
 
@@ -1474,13 +1475,13 @@ t_stat executeInstruction (void)
     const uint32  opcode = ci->opcode;   // opcode
     const bool   opcodeX = ci->opcodeX;  // opcode extension
                                          // XXX replace with rY
-    const bool   a = ci->a;              // bit-29 - addressing via pointer
+    const bool   b29 = ci->b29;              // bit-29 - addressing via pointer
                                          // register
     const word6  tag = ci->tag;          // instruction tag
                                          //  XXX replace withrTAG
 
 
-    addToTheMatrix (opcode, opcodeX, a, tag);
+    addToTheMatrix (opcode, opcodeX, b29, tag);
 #endif
 
 #ifdef L68
@@ -1915,8 +1916,14 @@ restart_1:
                 cpu.cu.rl)                 // rl
               {
                 word18 offset;
-                if (ci->a)
+                if (ci->b29)
                   {
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX rethink this; bit 29 is finagled below; should this be done in a different order?\n");
+}}
+
                     // a:RJ78/rpd4
                     offset = SIGNEXT15_18 (ci->address & MASK15);
                   }
@@ -1959,6 +1966,7 @@ restart_1:
         for (uint n = 0; n < info->ndes; n += 1)
           {
             CPT (cpt2U, 29 + n); // EIS operand fetch (29, 30, 31)
+#if 0
 // XXX This is a bit of a hack; In general the code is good about
 // setting up for bit29 or PR operations by setting up TPR, but
 // assumes that the 'else' case can be ignored when it should set
@@ -1974,8 +1982,10 @@ if (first) {
 first = false;
 sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
 }}
+#else
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  EIS_OPERAND_READ); // I think.
+                  INSTRUCTION_FETCH);
+#endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
         setupEISoperands ();
@@ -1992,7 +2002,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         if (! ci->restart)
           {
             CPT (cpt2U, 33); // not restart non-EIS operand processing
-            if (ci->a)   // if A bit set set-up TPR stuff ...
+            if (ci->b29)   // if A bit set set-up TPR stuff ...
               {
                 CPT (cpt2U, 34); // B29
                 //doPtrReg ();
@@ -5199,32 +5209,6 @@ static t_stat DoBasicInstruction (void)
 
           // C(Y+1)0,17 -> C(TPR.CA) 
           cpu.TPR.CA = GET_OFFSET (cpu.Ypair[0]);
-
-          // C(TPR.TRR) >= C(PPR.PRR)?
-          if (cpu.TPR.TRR >= cpu.PPR.PRR)
-            {
-              // C(TPR.TRR) -> C(PRi.RNR)
-              //    for i = 0, 7
-
-#if 0 // done in doAppendCycle now
-              CPTUR (cptUsePRn + 0);
-              CPTUR (cptUsePRn + 1);
-              CPTUR (cptUsePRn + 2);
-              CPTUR (cptUsePRn + 3);
-              CPTUR (cptUsePRn + 4);
-              CPTUR (cptUsePRn + 5);
-              CPTUR (cptUsePRn + 6);
-              CPTUR (cptUsePRn + 7);
-              cpu.PR[0].RNR =
-              cpu.PR[1].RNR =
-              cpu.PR[2].RNR =
-              cpu.PR[3].RNR =
-              cpu.PR[4].RNR =
-              cpu.PR[5].RNR =
-              cpu.PR[6].RNR =
-              cpu.PR[7].RNR = cpu.PPR.PRR;
-#endif
-            }
 
           // C(TPR.TRR) -> C(PPR.PRR)
           cpu.PPR.PRR = cpu.TPR.TRR;
@@ -9307,8 +9291,6 @@ static int emCall (void)
 #endif
 #endif // TESTING
 
-// This code may be redundant; it may be possible to just let doAppendCycle do its
-// thing and put the final address into A.
 // CANFAULT
 static int doABSA (word36 * result)
   {
@@ -9316,264 +9298,15 @@ static int doABSA (word36 * result)
     word36 res;
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
-    if (get_addr_mode () == ABSOLUTE_mode && ! i->a)
+    if (get_addr_mode () == ABSOLUTE_mode && ! i->b29)
       {
-        //sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        // Not clear what the subfault should be; see Fault Register in AL39.
-        //doFault (FAULT_IPR,
-                 //(_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, 
-                 //"ABSA in absolute mode.");
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
       }
 
     // ABSA handles directed faults differently, so a special append cycle is needed.
     // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
-    res = (word36)doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
-
-#if 0
-    word36 SDWeven, SDWodd;
-    word15 segno = cpu.TPR.TSR;
-    word18 offset = cpu.TPR.CA;
-
-    if (cpu.DSBR.U == 1) // Unpaged
-      {
-        sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is unpaged\n");
-        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
-        // violation, out of segment bounds, fault.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa Boundary check: TSR: %05o f(TSR): %06o "
-          "BND: %05o f(BND): %06o\n",
-          segno, 2 * (uint) segno,
-          cpu.DSBR.BND, 16 * ((uint) cpu.DSBR.BND + 1));
-
-        if (2 * (uint) segno >= 16 * ((uint) cpu.DSBR.BND + 1))
-          {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in DSBR boundary violation.");
-          }
-
-        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa DSBR.ADDR %08o TSR %o SDWe offset %o SWDe %08o\n",
-          cpu.DSBR.ADDR, segno, 2u * segno,
-          cpu.DSBR.ADDR + 2u * segno);
-
-        core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd,
-                   __func__);
-
-      }
-    else
-      {
-        sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is paged\n");
-        // paged
-
-        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
-        // violation, out of segment bounds, fault.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa Segment boundary check: segno: %05o f(segno): %06o "
-          "BND: %05o f(BND): %06o\n",
-          segno, 2 * (uint) segno,
-          cpu.DSBR.BND, 16 * ((uint) cpu.DSBR.BND + 1));
-
-        if (2 * (uint) segno >= 16 * ((uint) cpu.DSBR.BND + 1))
-          {
-            doFault (FAULT_ACV,
-                     (_fault_subtype) {.fault_acv_subtype=ACV15},
-                     "ABSA in DSBR boundary violation.");
-          }
-
-        // 2. Form the quantities:
-        //       y1 = (2 * segno) modulo 1024
-        //       x1 = (2 * segno - y1) / 1024
-
-        word24 y1 = (2u * segno) % 1024u;
-        word24 x1 = (2u * segno) / 1024u; // floor
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa y1:%08o x1:%08o\n", y1, x1);
-
-        // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa read PTW1@%08o+%08o %08o\n",
-          cpu.DSBR.ADDR, x1, (cpu.DSBR.ADDR + x1) & PAMASK);
-
-        word36 PTWx1;
-        core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
-
-        _ptw0 PTW1;
-        PTW1.ADDR = GETHI (PTWx1);
-        PTW1.U = TSTBIT (PTWx1, 9);
-        PTW1.M = TSTBIT (PTWx1, 6);
-        PTW1.DF = TSTBIT (PTWx1, 2);
-        PTW1.FC = PTWx1 & 3;
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa PTW1 ADDR %08o U %o M %o F %o FC %o\n",
-          PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
-
-        // 4. If PTW(x1).F = 0, then generate directed fault n where n is
-        // given in PTW(x1).FC. The value of n used here is the value
-        // assigned to define a missing page fault or, simply, a
-        // page fault.
-
-        if (!PTW1.DF)
-          {
-            sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
-            // initiate a directed fault
-            doFault (FAULT_DF0 + PTW1.FC,
-                     (_fault_subtype) {.bits=0},
-                     "ABSA !PTW1.F");
-          }
-
-        // 5. Fetch the target segment SDW, SDW(segno), from the
-        // descriptor segment page at PTW(x1).ADDR + y1.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa read SDW@%08o<<6+%08o %08o\n",
-          PTW1.ADDR, y1, ((((word24)PTW1.ADDR & 0777760) << 6) + y1) & PAMASK);
-
-        core_read2 (((((word24)PTW1.ADDR & 0777760) << 6) + y1) & PAMASK, & SDWeven, & SDWodd,
-                     __func__);
-      }
-
-    _sdw0 SDW0;
-    // even word
-    SDW0.ADDR = (SDWeven >> 12) & PAMASK;
-    SDW0.R1 = (SDWeven >> 9) & 7;
-    SDW0.R2 = (SDWeven >> 6) & 7;
-    SDW0.R3 = (SDWeven >> 3) & 7;
-    SDW0.DF = TSTBIT (SDWeven, 2);
-    SDW0.FC = SDWeven & 3;
-
-    // odd word
-    SDW0.BOUND = (SDWodd >> 21) & 037777;
-    SDW0.R = TSTBIT (SDWodd, 20);
-    SDW0.E = TSTBIT (SDWodd, 19);
-    SDW0.W = TSTBIT (SDWodd, 18);
-    SDW0.P = TSTBIT (SDWodd, 17);
-    SDW0.U = TSTBIT (SDWodd, 16);
-    SDW0.G = TSTBIT (SDWodd, 15);
-    SDW0.C = TSTBIT (SDWodd, 14);
-    SDW0.EB = SDWodd & 037777;
-
-    sim_debug (DBG_APPENDING, & cpu_dev,
-      "absa SDW0 ADDR %08o R1 %o R1 %o R3 %o F %o FC %o\n",
-      SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF,
-      SDW0.FC);
-
-    sim_debug (DBG_APPENDING, & cpu_dev,
-      "absa SDW0 BOUND %06o R %o E %o W %o P %o U %o G %o C %o "
-      "EB %05o\n",
-      SDW0.BOUND, SDW0.R, SDW0.E, SDW0.W, SDW0.P, SDW0.U,
-      SDW0.G, SDW0.C, SDW0.EB);
-
-
-    // 6. If SDW(segno).F = 0, then generate directed fault n where
-    // n is given in SDW(segno).FC.
-    // This is a segment fault as discussed earlier in this section.
-#if 0
-    if (!SDW0.DF)
-      {
-        sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
-        doFault (FAULT_DF0 + SDW0.FC,
-                 (_fault_subtype) {.bits=0},
-                 "ABSA !SDW0.F");
-      }
-#endif
-
-    // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an
-    // access violation, out of segment bounds, fault.
-
-    sim_debug (DBG_APPENDING, & cpu_dev,
-      "absa SDW boundary check: offset: %06o f(offset): %06o "
-      "BOUND: %06o\n",
-      offset, offset >> 4, SDW0.BOUND);
-
-    if (((offset >> 4) & 037777) > SDW0.BOUND)
-      {
-        sim_debug (DBG_APPENDING, & cpu_dev,
-                   "absa SDW boundary violation\n");
-        doFault (FAULT_ACV,
-                 (_fault_subtype) {.fault_acv_subtype=ACV15},
-                 "ABSA in SDW boundary violation.");
-      }
-
-    // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the
-    // segment are incompatible with the reference, generate the
-    // appropriate access violation fault.
-
-    // Only the address is wanted, so no check
-
-    if (SDW0.U == 0)
-      {
-        // Segment is paged
-
-        // 9. Form the quantities:
-        //    y2 = offset modulo 1024
-        //    x2 = (offset - y2) / 1024
-
-        word24 y2 = offset % 1024;
-        word24 x2 = offset / 1024; // floor
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa y2:%08o x2:%08o\n", y2, x2);
-
-        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa read PTWx2@%08o+%08o %08o\n",
-          SDW0.ADDR, x2, (SDW0.ADDR + x2) & PAMASK);
-
-        word36 PTWx2;
-        core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
-
-        _ptw0 PTW_2;
-        PTW_2.ADDR = GETHI (PTWx2);
-        PTW_2.U = TSTBIT (PTWx2, 9);
-        PTW_2.M = TSTBIT (PTWx2, 6);
-        PTW_2.DF = TSTBIT (PTWx2, 2);
-        PTW_2.FC = PTWx2 & 3;
-
-        sim_debug (DBG_APPENDING, & cpu_dev,
-          "absa PTW_2 ADDR %08o U %o M %o F %o FC %o\n",
-          PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.DF, PTW_2.FC);
-
-        // 11.If PTW(x2).F = 0, then generate directed fault n where n is
-        // given in PTW(x2).FC. This is a page fault as in Step 4 above.
-
-        // ABSA only wants the address; it doesn't care if the page is
-        // resident
-
-        // if (!PTW_2.F)
-        //   {
-        //     sim_debug (DBG_APPENDING, & cpu_dev,
-        //                "absa fault !PTW_2.F\n");
-        //     // initiate a directed fault
-        //     doFault (FAULT_DF0 + PTW_2.FC, 0, "ABSA !PTW_2.F");
-        //   }
-
-        // 12. Generate the 24-bit absolute main memory address
-        // PTW(x2).ADDR + y2.
-
-        res = (((word24)PTW_2.ADDR & 0777760) << 6)  + y2;
-        res &= PAMASK; //24 bit math
-        res <<= 12; // 24:12 format
-      }
-    else
-      {
-        // Segment is unpaged
-        // SDW0.ADDR is the base address of the segment
-        res = (SDW0.ADDR & 077777760) + offset; // T4D blk5 bug14
-        res &= PAMASK; //24 bit math
-        res <<= 12; // 24:12 format
-      }
-#endif
+    res = (word36) doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
 
     * result = res;
 
