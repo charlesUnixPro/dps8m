@@ -2534,16 +2534,9 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
             Read8 (addr, cpu.Yblock8);
             break;
         case 16:
-{ static bool first = true;
-if (first) {
-first = false;
-sim_printf ("XXX Read16 w.r.t. lastCycle == indirect\n");
-}}
             CPT (cpt1L, 10); // 16 words
-            addr &= 0777760;   // make on 16-word boundary
-            for (uint j = 0 ; j < 16 ; j += 1)
-                Read (addr + j, cpu.Yblock16 + j, cyctyp);
-            
+            addr &= 0777770;   // make on 8-word boundary
+            Read16 (addr, cpu.Yblock16);
             break;
         case 32:
 { static bool first = true;
@@ -2572,7 +2565,7 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
         case 1:
             CPT (cpt1L, 12); // word
             Write (addr, cpu.CY, OPERAND_STORE);
-            return SCPE_OK;
+            break;
         case 2:
             CPT (cpt1L, 13); // double word
             addr &= 0777776;   // make even
@@ -2584,15 +2577,9 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
             Write8 (addr, cpu.Yblock8);
             break;
         case 16:
-{ static bool first = true;
-if (first) {
-first = false;
-sim_printf ("XXX Write16 w.r.t. lastCycle == indirect\n");
-}}
             CPT (cpt1L, 15); // 16 words
-            addr &= 0777760;   // make on 16-word boundary
-            for (uint j = 0 ; j < 16 ; j += 1)
-                Write (addr + j, cpu.Yblock16[j], OPERAND_STORE);
+            addr &= 0777770;   // make on 8-word boundary
+            Write16 (addr, cpu.Yblock16);
             break;
         case 32:
 { static bool first = true;
@@ -2606,7 +2593,6 @@ sim_printf ("XXX Write32 w.r.t. lastCycle == indirect\n");
                 Write (addr + j, cpu.Yblock32[j], OPERAND_STORE);
             break;
     }
-    //cpu.TPR.CA = addr;  // restore address
     
     return SCPE_OK;
     

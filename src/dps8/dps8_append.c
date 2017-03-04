@@ -1400,6 +1400,11 @@ _sdw0 * getSDW (word15 segno)
 //
 
 // CANFAULT
+void fauxDoAppendCycle (_processor_cycle_type thisCycle)
+  {
+    cpu.apu.lastCycle = thisCycle;
+  }
+
 word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
   {
     DCDstruct * i = & cpu.currentInstruction;
