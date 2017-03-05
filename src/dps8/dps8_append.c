@@ -1564,7 +1564,10 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
 
 A:;
 
+//#define NOINDTRACK
+#ifndef NOINDTRACK
     cpu.TPR.CA = address;
+#endif
 
     PNL (cpu.APUMemAddr = address;)
 
@@ -1960,7 +1963,8 @@ G:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G)\n");
     
     //C(TPR.CA)0,13 > SDW.BOUND?
-    if (((address >> 4) & 037777) > cpu.SDW->BOUND)
+    //if (((address >> 4) & 037777) > cpu.SDW->BOUND)
+    if (((cpu.TPR.CA >> 4) & 037777) > cpu.SDW->BOUND)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) ACV15\n");
         cpu.acvFaults |= ACV15;
@@ -2396,7 +2400,7 @@ Exit:;
 
     PNL (L68_ (cpu.apu.state |= apu_FA;))
 
-    cpu . TPR . CA = address;
+    //cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???
   }
 
