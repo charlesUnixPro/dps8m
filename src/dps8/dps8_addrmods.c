@@ -484,7 +484,8 @@ startCA:;
         if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
 #if 0 // executeInstruction has already cleared PRNO
-            if (cpu.isb29)
+            //if (cpu.isb29)
+            if (ISB29)
               {
                 word3 PRn = (i -> address >> 15) & MASK3;
                 CPTUR (cptUsePRn + PRn);
@@ -496,7 +497,8 @@ startCA:;
                 cpu.TPR.CA = Cr;
               }
 #else
-            if (cpu.isb29)
+            //if (cpu.isb29)
+            if (ISB29)
               {
                 word3 PRn = cpu.cu.TSN_PRNO[0];
                 CPTUR (cptUsePRn + PRn);
@@ -626,7 +628,7 @@ startCA:;
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           return SCPE_OK;
 
-        // APUFIX updateIWB (cpu.TPR.CA, cpu.rTAG);
+        updateIWB (cpu.TPR.CA, cpu.rTAG);
         goto startCA;
       } // RI_MOD
 
@@ -771,13 +773,13 @@ startCA:;
                            "IR_MOD(TM_RI): TPR.CA(After)=%06o\n",
                            cpu.TPR.CA);
 
-                // APUFIX updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
+                updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
                 goto IR_MOD_1;
               } // TM_RI
 
             case TM_IR:
               {
-                // APUFIX updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
+                updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
                 goto IR_MOD;
               } // TM_IR
           } // Tm
@@ -976,7 +978,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 cpu.TPR.CA = GET_ADDR (indword);
 
-                // APUFIX updateIWB (cpu.TPR.CA, 0);
+                updateIWB (cpu.TPR.CA, 0);
 
                 return SCPE_OK;
               } // IT_I
@@ -1037,7 +1039,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 cpu.TPR.CA = computedAddress;
 
-                // APUFIX updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
+                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
 
                 return SCPE_OK;
               } // IT_AD

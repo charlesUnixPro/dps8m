@@ -1437,7 +1437,8 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
           }
       }
 #else
-    if (cpu.isb29)
+    //if (cpu.isb29)
+    if (ISB29)
       {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "doAppendCycle(Entry) isb29 PRNO %o\n",
@@ -1524,7 +1525,8 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
               }
           }
 #else
-        if (cpu.isb29)
+        //if (cpu.isb29)
+        if (ISB29)
           {
             PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
             word3 n = cpu.cu.TSN_PRNO[0];

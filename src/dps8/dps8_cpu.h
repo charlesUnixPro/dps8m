@@ -987,6 +987,7 @@ typedef struct
                    //                  29       PRNO is valid
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
+#define ISB29 (cpu.cu.TSN_VALID [0])
 
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
@@ -1556,7 +1557,7 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
-    bool isb29; // The instruction has a valid bit 29 set when fetched
+    //bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;

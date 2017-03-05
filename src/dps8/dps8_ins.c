@@ -264,7 +264,7 @@ static void readOperands (void)
                "readOperands (%s):mne=%s flags=%x\n",
                disAssemble (cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
-              "readOperands a %d address %08o\n", i->b29, cpu.TPR.CA);
+              "readOperands a %d address %08o\n", ISB29, cpu.TPR.CA);
 
     PNL (cpu.prepare_state |= ps_POA);
 
@@ -1247,7 +1247,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1261,7 +1261,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1280,7 +1280,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1293,7 +1293,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1318,7 +1318,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
+                  ISB29,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
@@ -1333,7 +1333,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
+                  ISB29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #endif
@@ -1353,7 +1353,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1368,7 +1368,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
+                  ISB29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1467,9 +1467,9 @@ t_stat executeInstruction (void)
 
     DCDstruct * ci = & cpu.currentInstruction;
     decodeInstruction (IWB_IRODD, ci);
-    cpu.isb29 = ci->b29;
+    //cpu.isb29 = ci->b29;
+    //ISB29 = ci->b29;
     const opCode *info = ci->info;       // opCode *
-    const word18 address = ci->address;  // bits 0-17 of instruction
 
 #ifdef MATRIX
     const uint32  opcode = ci->opcode;   // opcode
@@ -1483,6 +1483,10 @@ t_stat executeInstruction (void)
 
     addToTheMatrix (opcode, opcodeX, b29, tag);
 #endif
+
+//sim_debug (DBG_TRACE, & cpu_dev, "isb29 %o\n", ISB29);
+    if (ci->b29)
+      ci->address = SIGNEXT15_18 (ci->address & MASK15);
 
 #ifdef L68
     CPTUR (cptUseMR);
@@ -1777,9 +1781,14 @@ IF1 sim_printf ("trapping opcode match......\n");
     ///                     Initialize address registers
     ///
 
-    cpu.TPR.CA = address;
+#if 1
+    cpu.TPR.CA = ci->address;
     cpu.iefpFinalAddress = cpu.TPR.CA;
     cpu.rY = cpu.TPR.CA;
+#else
+    cpu.iefpFinalAddress = ci->address;
+    cpu.rY = ci->address;
+#endif
 
 
 restart_1:
@@ -1915,6 +1924,7 @@ restart_1:
                 (cpu.cu.rd && icOdd)  ||   // rpd & odd
                 cpu.cu.rl)                 // rl
               {
+#if 0
                 word18 offset;
                 if (ci->b29)
                   {
@@ -1923,12 +1933,15 @@ if (first) {
 first = false;
 sim_printf ("XXX rethink this; bit 29 is finagled below; should this be done in a different order?\n");
 }}
-
+sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
                     // a:RJ78/rpd4
                     offset = SIGNEXT15_18 (ci->address & MASK15);
                   }
                 else
                   offset = ci->address;
+#else
+                word18 offset = ci->address;
+#endif
                 offset &= AMASK;
 
                 sim_debug (DBG_TRACE, & cpu_dev,
@@ -1940,7 +1953,8 @@ sim_printf ("XXX rethink this; bit 29 is finagled below; should this be done in 
                            "rpt/rd/rl repeat first; X%d was %06o\n",
                            Xn, cpu.rX[Xn]);
                 // a:RJ78/rpd5
-                cpu.rX[Xn] = (cpu.rX[Xn] + offset) & AMASK;
+                cpu.TPR.CA = (cpu.rX[Xn] + offset) & AMASK;
+                cpu.rX[Xn] = cpu.TPR.CA;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d now %06o\n",
                            Xn, cpu.rX[Xn]);
@@ -2002,6 +2016,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         if (! ci->restart)
           {
             CPT (cpt2U, 33); // not restart non-EIS operand processing
+            //if (cpu.isb29)   // if A bit set set-up TPR stuff ...
             if (ci->b29)   // if A bit set set-up TPR stuff ...
               {
                 CPT (cpt2U, 34); // B29
@@ -2022,7 +2037,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                              & MASK18;
 
-                updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
+                if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
+                  updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
                 cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
@@ -2341,7 +2357,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
               {
                 CPT (cpt2L, 8); // RPT delta
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
-                cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.rX[Xn] = cpu.TPR.CA;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -2355,7 +2372,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 CPT (cpt2L, 9); // RD even
                 // a:RJ78/rpd7
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
-                cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.rX[Xn] = cpu.TPR.CA;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -2365,7 +2383,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 CPT (cpt2L, 10); // RD odd
                 // a:RJ78/rpd8
                 uint Xn = (uint) getbits36_3 (cpu.cu.IRODD, 36 - 3);
-                cpu.rX[Xn] = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
+                cpu.rX[Xn] = cpu.TPR.CA;
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -9294,11 +9313,11 @@ static int emCall (void)
 // CANFAULT
 static int doABSA (word36 * result)
   {
-    DCDstruct * i = & cpu.currentInstruction;
     word36 res;
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
-    if (get_addr_mode () == ABSOLUTE_mode && ! i->b29)
+    //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
+    if (get_addr_mode () == ABSOLUTE_mode && ! ISB29)
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
