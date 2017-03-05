@@ -1405,7 +1405,8 @@ void fauxDoAppendCycle (_processor_cycle_type thisCycle)
     cpu.apu.lastCycle = thisCycle;
   }
 
-word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
+//word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
+word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWords)
   {
     DCDstruct * i = & cpu.currentInstruction;
     sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1414,9 +1415,12 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) lastCycle=%s\n",
                strPCT (cpu.apu.lastCycle));
+    //sim_debug (DBG_APPENDING, & cpu_dev,
+               //"doAppendCycle(Entry) Address=%06o\n",
+               //address);
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(Entry) Address=%06o\n",
-               address);
+               "doAppendCycle(Entry) CA %06o\n",
+               cpu.TPR.CA);
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) n=%2u\n",
                nWords);
@@ -1426,17 +1430,6 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
                cpu.TPR.TRR, cpu.TPR.TSR);
-#if 0
-    for (uint n = 0; n < 3; n ++)
-      {
-        if (cpu.cu.TSN_VALID [n])
-          {
-            sim_debug (DBG_APPENDING, & cpu_dev,
-                       "doAppendCycle(Entry) TSN%o VALID %o PRNO %o\n",
-                       n, cpu.cu.TSN_VALID [n], cpu.cu.TSN_PRNO [n]);
-          }
-      }
-#else
     //if (cpu.isb29)
     if (ISB29)
       {
@@ -1444,20 +1437,23 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
                    "doAppendCycle(Entry) isb29 PRNO %o\n",
                    cpu.cu.TSN_PRNO [0]);
       }
-#endif
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE ||
                   thisCycle == APU_DATA_STORE);
-    //bool indirectFetch = thisCycle == INDIRECT_WORD_FETCH;
     bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+
 #ifdef WAM
-    // AL39: The associative memory is ignored (forced to "no match") during address preparation.
+    // AL39: The associative memory is ignored (forced to "no match") during
+    // address preparation.
     // lptp,lptr,lsdp,lsdr,sptp,sptr,ssdp,ssdr
     // Unfortunately, ISOLTS doesn't try to execute any of these in append mode.
     // XXX should this be only for OPERAND_READ and OPERAND_STORE?
-    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 || i->opcode == 0154 || i->opcode == 0173) && i->opcodeX ) 
-          || (i->opcode == 0557 || i->opcode == 0257);
+    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 ||
+                     i->opcode == 0154 || i->opcode == 0173) &&
+                     i->opcodeX ) ||
+                    ((i->opcode == 0557 || i->opcode == 0257) &&
+                     !i->opcodeX);
 #endif
 
     _processor_cycle_type lastCycle = cpu.apu.lastCycle;
@@ -1564,12 +1560,10 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * 
 
 A:;
 
-//#define NOINDTRACK
-#ifndef NOINDTRACK
-    cpu.TPR.CA = address;
-#endif
+    //cpu.TPR.CA = address;
 
-    PNL (cpu.APUMemAddr = address;)
+    //PNL (cpu.APUMemAddr = address;)
+    PNL (cpu.APUMemAddr = cpu.TPR.CA;)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(A)\n");
     
@@ -1579,16 +1573,22 @@ A:;
         fetchDSPTW (cpu.TPR.TSR);
         
         if (! cpu.PTW0.DF)
+         {
           doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
+         }
         
         if (! cpu.PTW0.U)
+         {
           modifyDSPTW (cpu.TPR.TSR);
+        }
         
         fetchPSDW (cpu.TPR.TSR);
       }
     else
-      fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
-    
+      {
+        fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
+      }
+
     if (cpu.SDW0.DF == 0)
       {
         if (thisCycle != ABSA_CYCLE)
@@ -1650,8 +1650,8 @@ A:;
       }
 #endif
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(A) R1 %o R2 %o R3 %o\n",
-               cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3);
+               "doAppendCycle(A) R1 %o R2 %o R3 %o E %o\n",
+               cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3, cpu.SDW->E);
 
     // Yes...
     cpu.RSDWH_R1 = cpu.SDW->R1;
@@ -1693,9 +1693,15 @@ A:;
     // fetch, the operand is destined to be executed. Verify that the operand
     // is executable
 
+    // The flowchart trips up on the TSP PRn|foo,* for the INDIRECT_WORD_FETCH.
+    // Also, it transfers to F on RTCD PRn,n and E-OFFs; the operand is not in an
+    // executable segment, and should be treated as READ_OPERAND here.
+
+
     // Transfer or instruction fetch?
     //if (instructionFetch || (i->info->flags & TRANSFER_INS))
-    if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle == OPERAND_READ))
+    //if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle != INDIRECT_WORD_FETCH))
+    if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle != INDIRECT_WORD_FETCH && thisCycle != RTCD_OPERAND_FETCH))
       goto F;
     
     if (StrOp)
@@ -1833,7 +1839,8 @@ E:;
     // XXX This doesn't seem right
 // EB is word 15; masking address makes no sense; rather 0-extend EB
 // Fixes ISOLTS 880-01
-    if (address >= (word18) cpu.SDW->EB)
+    //if (address >= (word18) cpu.SDW->EB)
+    if (cpu.TPR.CA >= (word18) cpu.SDW->EB)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV7\n");
         // Set fault ACV7 = NO GA
@@ -1970,10 +1977,14 @@ G:;
         cpu.acvFaults |= ACV15;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
+        //sim_debug (DBG_FAULT, & cpu_dev,
+                   //"acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n"
+                   //"   address %06o address>>4&037777 %06o SDW->BOUND %06o",
+                   //address, ((address >> 4) & 037777), cpu . SDW->BOUND);
         sim_debug (DBG_FAULT, & cpu_dev,
                    "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n"
-                   "   address %06o address>>4&037777 %06o SDW->BOUND %06o",
-                   address, ((address >> 4) & 037777), cpu . SDW->BOUND);
+                   "   CA %06o CA>>4&037777 %06o SDW->BOUND %06o",
+                   cpu.TPR.CA, ((cpu.TPR.CA >> 4) & 037777), cpu.SDW->BOUND);
     }
     
     if (cpu.acvFaults)
@@ -1992,8 +2003,11 @@ G:;
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
+    //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G) CA %06o address %06o\n", cpu.TPR.CA, address);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G) CA %06o\n", cpu.TPR.CA);
 #ifndef WAM
-    fetchPTW (cpu.SDW, address);
+    //fetchPTW (cpu.SDW, address);
+    fetchPTW (cpu.SDW, cpu.TPR.CA);
     if (! cpu.PTW0.DF)
       {
         // cpu.TPR.CA = address;
@@ -2005,13 +2019,16 @@ G:;
           }
       } 
     // load PTW0 POINTER, always bypass PTWAM
-    loadPTWAM (cpu.SDW->POINTER, address, true);
+    //loadPTWAM (cpu.SDW->POINTER, address, true);
+    loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, true);
 
 #else
-    if (nomatch || !fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
+    //if (nomatch || !fetchPTWfromPTWAM(cpu . SDW->POINTER, address))  //TPR.CA))
+    if (nomatch || !fetchPTWfromPTWAM(cpu . SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
       {
         appendingUnitCycleType = apuCycle_PTWfetch;
-        fetchPTW (cpu.SDW, address);
+        //fetchPTW (cpu.SDW, address);
+        fetchPTW (cpu.SDW, cpu.TPR.CA);
         if (! cpu.PTW0.DF)
           {
             // cpu.TPR.CA = address;
@@ -2022,7 +2039,8 @@ G:;
                          "PTW0.F == 0");
               }
           }
-        loadPTWAM (cpu.SDW->POINTER, address, nomatch); // load PTW0 to PTWAM
+        //loadPTWAM (cpu.SDW->POINTER, address, nomatch); // load PTW0 to PTWAM
+        loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, nomatch); // load PTW0 to PTWAM
     }
 #endif
     
@@ -2033,7 +2051,8 @@ G:;
     if (i->opcodeX && ((i->opcode & 0770)== 0200|| (i->opcode & 0770) == 0220
         ||(i->opcode & 0770)== 020|| (i->opcode & 0770) == 0300))
       {
-        doPTW2(cpu . SDW, address);
+        //doPTW2(cpu . SDW, address);
+        doPTW2(cpu . SDW, cpu.TPR.CA);
       } 
     goto I;
     
@@ -2059,15 +2078,20 @@ H:;
         setAPUStatus (apuStatus_FANP);
       }
 
+    //sim_debug (DBG_APPENDING, & cpu_dev,
+               //"doAppendCycle(H): SDW->ADDR=%08o address=%06o \n",
+               //cpu . SDW->ADDR, address);
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n",
-               cpu . SDW->ADDR, address);
+               "doAppendCycle(H): SDW->ADDR=%08o CA=%06o \n",
+               cpu . SDW->ADDR, cpu.TPR.CA);
 
-    finalAddress = (cpu.SDW->ADDR & 077777760) + address;
+    //finalAddress = (cpu.SDW->ADDR & 077777760) + address;
+    finalAddress = (cpu.SDW->ADDR & 077777760) + cpu.TPR.CA;
     finalAddress &= 0xffffff;
     PNL (cpu.APUMemAddr = finalAddress;)
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
+    //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, cpu.TPR.CA, finalAddress);
     
     //if (thisCycle == ABSA_CYCLE)
     //    goto J;
@@ -2080,7 +2104,8 @@ I:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I): FAP\n");
     if (StrOp && cpu . PTW->M == 0)  // is this the right way to do this?
     {
-	   modifyPTW(cpu.SDW, address);
+	   //modifyPTW(cpu.SDW, address);
+	   modifyPTW(cpu.SDW, cpu.TPR.CA);
     }
     
     // final address paged
@@ -2088,8 +2113,8 @@ I:;
     setAPUStatus (apuStatus_FAP);
     PNL (L68_ (cpu.apu.state |= apu_FAP;))
     
-    //word24 y2 = TPR.CA % 1024;
-    word24 y2 = address % 1024;
+    word24 y2 = cpu.TPR.CA % 1024;
+    //word24 y2 = address % 1024;
     
     // AL39: The hardware ignores low order bits of the main memory page address according
     // to page size    
@@ -2101,7 +2126,8 @@ I:;
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (APUH_FAP);
 #endif
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
+    //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, cpu.TPR.CA, finalAddress);
 
     //if (thisCycle == ABSA_CYCLE)
     //    goto J;

@@ -9325,7 +9325,8 @@ static int doABSA (word36 * result)
 
     // ABSA handles directed faults differently, so a special append cycle is needed.
     // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
-    res = (word36) doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
+    //res = (word36) doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
+    res = (word36) doAppendCycle (ABSA_CYCLE, NULL, 0) << 12;
 
     * result = res;
 
