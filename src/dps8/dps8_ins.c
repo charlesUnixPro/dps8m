@@ -586,6 +586,7 @@ static void scu2words (word36 *words)
     // words[7]
 
     words[7] = cpu.cu.IRODD;
+//sim_printf ("scu2words %lld %012llo\n", sim_timell (), words [6]);
   }
 
 
@@ -707,7 +708,7 @@ static void words2scu (word36 * words)
 
 // XXX According to AL39 pg 75, RCU does not restore CA, but boot crashes
 // if not restored.
-    cpu.TPR.CA          = getbits36_18 (words[5], 0);
+    //cpu.TPR.CA          = getbits36_18 (words[5], 0);
     cpu.cu.repeat_first = getbits36_1  (words[5], 18);
     cpu.cu.rpt          = getbits36_1  (words[5], 19);
     cpu.cu.rd           = getbits36_1  (words[5], 20);
@@ -1780,6 +1781,7 @@ IF1 sim_printf ("trapping opcode match......\n");
     /// executeInstruction: Non-restart processing
     ///                     Initialize address registers
     ///
+restart_1:
 
 #if 1
     cpu.TPR.CA = ci->address;
@@ -1791,7 +1793,6 @@ IF1 sim_printf ("trapping opcode match......\n");
 #endif
 
 
-restart_1:
 
     CPT (cpt2U, 15); // instruction processing
 ///
@@ -2289,6 +2290,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
+sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
         Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -9363,6 +9365,9 @@ elapsedtime ();
         sim_debug (DBG_TRACE, & cpu_dev, "RCU interrupt return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
+
+    // Resync the append unit
+    fauxDoAppendCycle (INSTRUCTION_FETCH);
 
 // All of the faults list as having handlers have actually
 // been encountered in Multics operation and are believed

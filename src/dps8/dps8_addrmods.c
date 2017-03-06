@@ -538,7 +538,9 @@ startCA:;
           doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
+#ifdef OLD_CYCLE
         word18 tmpCA = cpu.TPR.CA;
+#endif
 
         if (Td != 0)
           {
@@ -547,35 +549,60 @@ startCA:;
             // We don''t need to worry about direct operand here, since du
             // and dl are disallowed above
 
+#ifdef OLDCYCLE
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
+#else
+            sim_debug (DBG_ADDRMOD, & cpu_dev,
+                       "RI_MOD: Cr=%06o CA(Before)=%06o\n", Cr, cpu.TPR.CA);
+#endif
 
             if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
                  word6 Td_ = GET_TD (i -> tag);
                  uint Xn = X (Td_);  // Get Xn of next instruction
+#ifdef OLDCYCLE
                  tmpCA = cpu.rX [Xn];
+#else
+                 cpu.TPR.CA = cpu.rX [Xn];
+#endif
               }
             else
               {
+#ifdef OLDCYCLE
                 tmpCA += Cr;
                 tmpCA &= MASK18;   // keep to 18-bits
+#else
+                cpu.TPR.CA += Cr;
+                cpu.TPR.CA &= MASK18;   // keep to 18-bits
+#endif
               }
+#ifdef OLDCYCLE
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
+#else
+            sim_debug (DBG_ADDRMOD, & cpu_dev,
+                       "RI_MOD: CA(After)=%06o\n", cpu.TPR.CA);
+#endif
           }
 
         // If the indirect word faults, on restart the CA will be the post
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
+#ifdef OLDCYCLE
         updateIWB (cpu.TPR.CA, TM_RI | TD_N);
+#endif
 
         // in case it turns out to be a ITS/ITP
         iTAG = cpu.rTAG;
 
         word36 indword;
+#ifdef OLDCYCLE
         Read (tmpCA, & indword, INDIRECT_WORD_FETCH); //TM_RI);
+#else
+        Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH); //TM_RI);
+#endif
 
         // "In the case of RI modification, only one indirect reference is made
         // per repeated execution. The TAG field of the indirect word is not
@@ -596,13 +623,17 @@ startCA:;
           {
             if (GET_TD (GET_TAG (indword)) == IT_F2)
               {
+#ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
+#endif
                 doFault (FAULT_F2, (_fault_subtype) {.bits=0},
                          "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG (indword)) == IT_F3)
               {
+#ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
+#endif
                 doFault (FAULT_F3, (_fault_subtype) {.bits=0},
                          "RI_MOD: IT_F3");
               }
@@ -610,7 +641,11 @@ startCA:;
 
         if (ISITP (indword) || ISITS (indword))
           {
+#ifdef OLDCYCLE
             doITSITP (tmpCA, indword, iTAG, & cpu.rTAG);
+#else
+            doITSITP (cpu.TPR.CA, indword, iTAG, & cpu.rTAG);
+#endif
           }
         else
           {
@@ -628,7 +663,9 @@ startCA:;
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           return SCPE_OK;
 
+#ifdef OLDCYCLE
         updateIWB (cpu.TPR.CA, cpu.rTAG);
+#endif
         goto startCA;
       } // RI_MOD
 
@@ -779,7 +816,9 @@ startCA:;
 
             case TM_IR:
               {
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
+#endif
                 goto IR_MOD;
               } // TM_IR
           } // Tm
