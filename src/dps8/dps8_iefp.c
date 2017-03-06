@@ -801,6 +801,99 @@ B29:
     return SCPE_UNK;
   }
 
+t_stat Write32 (word18 address, word36 * data)
+  {
+    address &= paragraphMask; // Round to 8 word boundary
+    //cpu.iefpFinalAddress = address;
+    cpu.TPR.CA = cpu.iefpFinalAddress = address;
+
+    bool isBAR = get_bar_mode ();
+
+    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+      goto B29;
+    
+    
+    switch (get_addr_mode ())
+     {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+             {
+                cpu.iefpFinalAddress = getBARaddress (address);
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                fauxDoAppendCycle (APU_DATA_STORE);
+                core_writeN (cpu.iefpFinalAddress, data, 32, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 32; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "Write32(Actual) Write:      bar address=%08o writeData=%012"PRIo64"\n", address + i, data [i]);
+                  }
+#ifdef HDBG
+                for (uint i = 0; i < 32; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+                return SCPE_OK;
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                fauxDoAppendCycle (APU_DATA_STORE);
+                core_writeN (address, data, 32, __func__);
+                if_sim_debug (DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 32; i ++)
+                      sim_debug (DBG_FINAL, & cpu_dev, "Write(Actual) Write:      abs address=%08o writeData=%012"PRIo64"\n", address + i, data [i]);
+                  }
+#ifdef HDBG
+                for (uint i = 0; i < 32; i ++)
+                  hdbgMWrite (address + i, data [i]);
+#endif
+                return SCPE_OK;
+              }
+          }
+
+        case APPEND_mode:
+          {
+B29:
+            if (isBAR)
+              {
+                //word18 barAddress = getBARaddress (address);
+                //cpu.iefpFinalAddress = doAppendCycle (barAddress, APU_DATA_STORE, data, 32);
+                cpu.TPR.CA = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (APU_DATA_STORE, data, 32);
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 32; i ++)
+                      sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Write32(Actual) Write: bar iefpFinalAddress=%08o writeData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, data [i]);
+                  }
+#ifdef HDBG
+                for (uint i = 0; i < 32; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+        
+                return SCPE_OK;
+              }
+            else
+              {
+                //cpu.iefpFinalAddress = doAppendCycle (address, APU_DATA_STORE, data, 32);
+                cpu.iefpFinalAddress = doAppendCycle (APU_DATA_STORE, data, 32);
+                if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
+                  {
+                    for (uint i = 0; i < 32; i ++)
+                      sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, "Write32(Actual) Write: iefpFinalAddress=%08o writeData=%012"PRIo64"\n", cpu.iefpFinalAddress + i, data [i]);
+                  }
+#ifdef HDBG
+                for (uint i = 0; i < 32; i ++)
+                  hdbgMWrite (cpu.iefpFinalAddress + i, data [i]);
+#endif
+        
+                return SCPE_OK;
+              }
+          }
+      }
+    return SCPE_UNK;
+  }
+
 t_stat WritePage (word18 address, word36 * data)
   {
     if ((address & PGMK) != 0)

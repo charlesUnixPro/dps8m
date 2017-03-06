@@ -1702,7 +1702,8 @@ setCPU:;
         cpu.rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (cpu.rTRlsb >= cpu.switches.trlsb)
+        //if (cpu.rTRlsb >= cpu.switches.trlsb)
+        if (cpu.rTRlsb >= 12)
           {
             cpu.rTRlsb = 0;
             cpu.rTR = (cpu.rTR - 1) & MASK27;
@@ -2582,11 +2583,6 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
             Write16 (addr, cpu.Yblock16);
             break;
         case 32:
-{ static bool first = true;
-if (first) {
-first = false;
-sim_printf ("XXX Write32 w.r.t. lastCycle == indirect\n");
-}}
             CPT (cpt1L, 16); // 32 words
             addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)

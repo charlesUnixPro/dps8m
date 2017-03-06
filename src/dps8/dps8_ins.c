@@ -135,7 +135,7 @@ static void writeOperands (void)
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, OPERAND_READ);
+        Read (indwordAddress, & indword, INDIRECT_WORD_FETCH);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT indword=%012"PRIo64"\n", indword);
@@ -2196,7 +2196,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         //
 
         word36 indword;
-        Read (cpu.TPR.CA, & indword, OPERAND_READ);
+        Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT indword=%012"PRIo64"\n", indword);
@@ -2290,8 +2290,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
-sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
-        Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
+//sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
+        //Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
+        Write (cpu.TPR.CA, indword, OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012"PRIo64" to %06o\n",

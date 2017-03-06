@@ -772,7 +772,9 @@ startCA:;
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_R): TPR.CA=%06o\n", cpu.TPR.CA);
 
+#ifdef OLDCYCLE
                     updateIWB (cpu.TPR.CA, 0);
+#endif
                   }
                 cpu.cu.CT_HOLD = 0;
                 return SCPE_OK;
